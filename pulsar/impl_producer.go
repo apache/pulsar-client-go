@@ -2,6 +2,7 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"pulsar-client-go-native/pulsar/impl"
 	"sync"
 )
@@ -14,7 +15,7 @@ type producer struct {
 
 func newProducer(client *client, options ProducerOptions) (*producer, error) {
 	if options.Topic == "" {
-		return nil, newError(InvalidTopicName, "Topic name is required for producer")
+		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
 	}
 
 	p := &producer{
@@ -47,7 +48,8 @@ func newProducer(client *client, options ProducerOptions) (*producer, error) {
 	for i := 0; i < numPartitions; i++ {
 		partition := i
 		go func() {
-			prod, err := newPartitionProducer(client, &options)
+			partitionName := fmt.Sprintf("%s-partition-%d", options.Topic, partition)
+			prod, err := newPartitionProducer(client, partitionName, &options)
 			c <- ProducerError{partition, prod, err}
 		}()
 	}
@@ -62,7 +64,7 @@ func newProducer(client *client, options ProducerOptions) (*producer, error) {
 		// Since there were some failures, cleanup all the partitions that succeeded in creating the producers
 		for _, producer := range p.producers {
 			if producer != nil {
-				_ := producer.Close()
+				_ = producer.Close()
 			}
 		}
 		return nil, err

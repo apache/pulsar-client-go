@@ -20,17 +20,17 @@ type client struct {
 
 func newClient(options ClientOptions) (Client, error) {
 	if options.URL == "" {
-		return nil, newError(InvalidConfiguration, "URL is required for client")
+		return nil, newError(ResultInvalidConfiguration, "URL is required for client")
 	}
 
 	url, err := url.Parse(options.URL)
 	if err != nil {
 		log.WithError(err).Error("Failed to parse service URL")
-		return nil, newError(InvalidConfiguration, "Invalid service URL")
+		return nil, newError(ResultInvalidConfiguration, "Invalid service URL")
 	}
 
 	if url.Scheme != "pulsar" {
-		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
+		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
 
 	c := &client{
@@ -77,14 +77,19 @@ func (client *client) TopicPartitions(topic string) ([]string, error) {
 
 	r := res.Response.PartitionMetadataResponse
 	if r.Error != nil {
-		return nil, newError(LookupError, r.GetError().String())
+		return nil, newError(ResultLookupError, r.GetError().String())
 	}
 
-	partitions := make([]string, r.GetPartitions())
-	for i := 0; i < int(r.GetPartitions()); i++ {
-		partitions[i] = fmt.Sprintf("%s-partition-%d", topic, i)
+	if r.GetPartitions() > 0 {
+		partitions := make([]string, r.GetPartitions())
+		for i := 0; i < int(r.GetPartitions()); i++ {
+			partitions[i] = fmt.Sprintf("%s-partition-%d", topic, i)
+		}
+		return partitions, nil
+	} else {
+		// Non-partitioned topic
+		return []string{topicName.Name}, nil
 	}
-	return partitions, nil
 }
 
 func (client *client) Close() error {

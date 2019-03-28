@@ -3,8 +3,8 @@ package pulsar
 import (
 	"context"
 	log "github.com/sirupsen/logrus"
-	"pulsar-client-go-native/pulsar/impl"
-	pb "pulsar-client-go-native/pulsar/pulsar_proto"
+	//"pulsar-client-go-native/pulsar/impl"
+	//pb "pulsar-client-go-native/pulsar/pulsar_proto"
 	"sync"
 )
 
@@ -33,25 +33,25 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 }
 
 func (p *partitionProducer) grabCnx() error {
-	lr, err := p.client.lookupService.Lookup(p.topic)
-	if err != nil {
-		p.log.WithError(err).Warn("Failed to lookup topic")
-		return err
-	}
+	//lr, err := p.client.lookupService.Lookup(p.topic)
+	//if err != nil {
+	//	p.log.WithError(err).Warn("Failed to lookup topic")
+	//	return err
+	//}
 
-	id := p.client.rpcClient.NewRequestId()
-	p.client.rpcClient.Request(lr.LogicalAddr.Host, lr.PhysicalAddr.Host, id, pb.BaseCommand_PRODUCER, *pb.CommandProducer{
+	//id := p.client.rpcClient.NewRequestId()
+	//p.client.rpcClient.Request(lr.LogicalAddr.Host, lr.PhysicalAddr.Host, id, pb.BaseCommand_PRODUCER, *pb.CommandProducer{
+	//
+	//})
+	//
+	//var cnx impl.Connection
+	//cnx, err = p.client.cnxPool.GetConnection(lr.LogicalAddr.Host, lr.PhysicalAddr.Host)
+	//if err != nil {
+	//	p.log.WithError(err).Warn("Failed to get connection")
+	//	return err
+	//}
 
-	})
-
-	var cnx impl.Connection
-	cnx, err = p.client.cnxPool.GetConnection(lr.LogicalAddr.Host, lr.PhysicalAddr.Host)
-	if err != nil {
-		p.log.WithError(err).Warn("Failed to get connection")
-		return err
-	}
-
-	cnx.
+	//cnx.
 
 	return nil
 }
