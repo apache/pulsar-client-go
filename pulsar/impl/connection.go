@@ -9,6 +9,7 @@ import (
 	pb "pulsar-client-go-native/pulsar/pulsar_proto"
 	"sync"
 	"sync/atomic"
+	"time"
 )
 
 type Connection interface {
@@ -26,6 +27,8 @@ const (
 	connectionClosed
 )
 
+const keepAliveInterval = 30 * time.Second
+
 type request struct {
 	id       uint64
 	cmd      *pb.BaseCommand
@@ -41,8 +44,10 @@ type connection struct {
 	physicalAddr string
 	cnx          net.Conn
 
-	writeBuffer Buffer
-	reader      *connectionReader
+	writeBuffer          Buffer
+	reader               *connectionReader
+	lastDataReceivedTime time.Time
+	pingTicker           *time.Ticker
 
 	log *log.Entry
 
@@ -54,12 +59,14 @@ type connection struct {
 
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL) *connection {
 	cnx := &connection{
-		state:        connectionInit,
-		logicalAddr:  logicalAddr.Host,
-		physicalAddr: physicalAddr.Host,
-		writeBuffer:  NewBuffer(4096),
-		log:          log.WithField("raddr", physicalAddr),
-		pendingReqs:  make(map[uint64]*request),
+		state:                connectionInit,
+		logicalAddr:          logicalAddr.Host,
+		physicalAddr:         physicalAddr.Host,
+		writeBuffer:          NewBuffer(4096),
+		log:                  log.WithField("raddr", physicalAddr),
+		pendingReqs:          make(map[uint64]*request),
+		lastDataReceivedTime: time.Now(),
+		pingTicker:           time.NewTicker(keepAliveInterval),
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -156,6 +163,9 @@ func (c *connection) run() {
 		case req := <-c.incomingRequests:
 			c.pendingReqs[req.id] = req
 			c.writeCommand(req.cmd)
+
+		case _ = <-c.pingTicker.C:
+			c.sendPing()
 		}
 	}
 }
@@ -189,59 +199,46 @@ func (c *connection) writeCommand(cmd proto.Message) {
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []byte) {
 	c.log.Infof("Received command: %s -- payload: %v", cmd, headersAndPayload)
+	c.lastDataReceivedTime = time.Now()
 
 	switch *cmd.Type {
 	case pb.BaseCommand_SUCCESS:
 		c.handleResponse(*cmd.Success.RequestId, cmd)
-		break
 
 	case pb.BaseCommand_PRODUCER_SUCCESS:
 		c.handleResponse(*cmd.ProducerSuccess.RequestId, cmd)
-		break
 
 	case pb.BaseCommand_PARTITIONED_METADATA_RESPONSE:
 		c.handleResponse(*cmd.PartitionMetadataResponse.RequestId, cmd)
-		break
 
 	case pb.BaseCommand_LOOKUP_RESPONSE:
 		c.handleResponse(*cmd.LookupTopicResponse.RequestId, cmd)
-		break
 
 	case pb.BaseCommand_CONSUMER_STATS_RESPONSE:
 		c.handleResponse(*cmd.ConsumerStatsResponse.RequestId, cmd)
-		break
 
 	case pb.BaseCommand_GET_LAST_MESSAGE_ID_RESPONSE:
 		c.handleResponse(*cmd.GetLastMessageIdResponse.RequestId, cmd)
-		break
 
 	case pb.BaseCommand_GET_TOPICS_OF_NAMESPACE_RESPONSE:
 		c.handleResponse(*cmd.GetTopicsOfNamespaceResponse.RequestId, cmd)
-		break
 
 	case pb.BaseCommand_GET_SCHEMA_RESPONSE:
 		c.handleResponse(*cmd.GetSchemaResponse.RequestId, cmd)
-		break
 
 	case pb.BaseCommand_ERROR:
-		break
-
 	case pb.BaseCommand_CLOSE_PRODUCER:
 	case pb.BaseCommand_CLOSE_CONSUMER:
-
 	case pb.BaseCommand_SEND_RECEIPT:
-		break
 	case pb.BaseCommand_SEND_ERROR:
-		break
 
 	case pb.BaseCommand_MESSAGE:
-		break
-
+	case pb.BaseCommand_PING:
+		c.handlePing()
 	case pb.BaseCommand_PONG:
+		c.handlePong()
 
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
-		// TODO
-		break
 
 	default:
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
@@ -269,6 +266,27 @@ func (c *connection) handleResponse(requestId uint64, response *pb.BaseCommand) 
 	request.callback(response)
 }
 
+func (c *connection) sendPing() {
+	if c.lastDataReceivedTime.Add(2 * keepAliveInterval).Before(time.Now()) {
+		// We have not received a response to the previous Ping request, the
+		// connection to broker is stale
+		c.log.Info("Detected stale connection to broker")
+		c.internalClose()
+		return
+	}
+
+	c.log.Debug("Sending PING")
+	c.writeCommand(baseCommand(pb.BaseCommand_PING, &pb.CommandPing{}))
+}
+
+func (c *connection) handlePong() {
+	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
+}
+
+func (c *connection) handlePing() {
+	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
+}
+
 func (c *connection) Close() {
 	// TODO
 }
@@ -285,10 +303,16 @@ func (c *connection) newRequestId() uint64 {
 }
 
 func (c *connection) internalClose() {
+	c.Lock()
+	defer c.Unlock()
+
 	c.state = connectionClosed
 	c.cond.Broadcast()
 
 	if c.cnx != nil {
+		c.log.Info("Connection closed")
 		c.cnx.Close()
+		c.pingTicker.Stop()
+		c.cnx = nil
 	}
 }

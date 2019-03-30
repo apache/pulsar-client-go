@@ -15,19 +15,16 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 	switch cmdType {
 	case pb.BaseCommand_CONNECT:
 		cmd.Connect = msg.(*pb.CommandConnect)
-		break
 	case pb.BaseCommand_LOOKUP:
 		cmd.LookupTopic = msg.(*pb.CommandLookupTopic)
-		break
-
 	case pb.BaseCommand_PARTITIONED_METADATA:
 		cmd.PartitionMetadata = msg.(*pb.CommandPartitionedTopicMetadata)
-		break
-
 	case pb.BaseCommand_PRODUCER:
 		cmd.Producer = msg.(*pb.CommandProducer)
-		break
-
+	case pb.BaseCommand_PING:
+		cmd.Ping = msg.(*pb.CommandPing)
+	case pb.BaseCommand_PONG:
+		cmd.Pong = msg.(*pb.CommandPong)
 	default:
 		log.Panic("Missing command type: ", cmdType)
 	}
