@@ -1,11 +1,13 @@
 package impl
 
 import (
+	log "github.com/sirupsen/logrus"
+	"net/url"
 	"sync"
 )
 
 type ConnectionPool interface {
-	GetConnection(logicalAddr string, physicalAddr string) (Connection, error)
+	GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error)
 
 	// Close all the connections in the pool
 	Close()
@@ -19,11 +21,13 @@ func NewConnectionPool() ConnectionPool {
 	return &connectionPool{}
 }
 
-func (p *connectionPool) GetConnection(logicalAddr string, physicalAddr string) (Connection, error) {
-	cachedCnx, found := p.pool.Load(logicalAddr)
+func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
+	cachedCnx, found := p.pool.Load(logicalAddr.Host)
 	if found {
 		cnx := cachedCnx.(*connection)
-		if err := cnx.waitUntilReady(); err != nil {
+		log.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
+
+		if err := cnx.waitUntilReady(); err == nil {
 			// Connection is ready to be used
 			return cnx, nil
 		} else {
@@ -33,7 +37,7 @@ func (p *connectionPool) GetConnection(logicalAddr string, physicalAddr string) 
 	}
 
 	// Try to create a new connection
-	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr, newConnection(logicalAddr, physicalAddr))
+	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host, newConnection(logicalAddr, physicalAddr))
 	cnx := newCnx.(*connection)
 	if !wasCached {
 		cnx.start()

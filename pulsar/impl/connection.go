@@ -5,6 +5,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"net"
+	"net/url"
 	pb "pulsar-client-go-native/pulsar/pulsar_proto"
 	"sync"
 	"sync/atomic"
@@ -51,11 +52,11 @@ type connection struct {
 	pendingReqs      map[uint64]*request
 }
 
-func newConnection(logicalAddr string, physicalAddr string) *connection {
+func newConnection(logicalAddr *url.URL, physicalAddr *url.URL) *connection {
 	cnx := &connection{
 		state:        connectionInit,
-		logicalAddr:  logicalAddr,
-		physicalAddr: physicalAddr,
+		logicalAddr:  logicalAddr.Host,
+		physicalAddr: physicalAddr.Host,
 		writeBuffer:  NewBuffer(4096),
 		log:          log.WithField("raddr", physicalAddr),
 		pendingReqs:  make(map[uint64]*request),

@@ -15,7 +15,9 @@ type client struct {
 	rpcClient     impl.RpcClient
 	lookupService impl.LookupService
 
-	handlers map[impl.Closable]bool
+	handlers            map[impl.Closable]bool
+	producerIdGenerator uint64
+	consumerIdGenerator uint64
 }
 
 func newClient(options ClientOptions) (Client, error) {
@@ -37,12 +39,13 @@ func newClient(options ClientOptions) (Client, error) {
 		cnxPool: impl.NewConnectionPool(),
 	}
 	c.rpcClient = impl.NewRpcClient(url, c.cnxPool)
-	c.lookupService = impl.NewLookupService(c.rpcClient)
+	c.lookupService = impl.NewLookupService(c.rpcClient, url)
+	c.handlers = make(map[impl.Closable]bool)
 	return c, nil
 }
 
 func (client *client) CreateProducer(options ProducerOptions) (Producer, error) {
-	producer, err := newProducer(client, options)
+	producer, err := newProducer(client, &options)
 	if err == nil {
 		client.handlers[producer] = true
 	}
@@ -91,6 +94,7 @@ func (client *client) TopicPartitions(topic string) ([]string, error) {
 		return []string{topicName.Name}, nil
 	}
 }
+
 
 func (client *client) Close() error {
 	for handler := range client.handlers {

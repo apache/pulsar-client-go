@@ -161,12 +161,12 @@ type Producer interface {
 	// This call will be blocking until is successfully acknowledged by the Pulsar broker.
 	// Example:
 	// producer.Send(ctx, pulsar.ProducerMessage{ Payload: myPayload })
-	Send(context.Context, ProducerMessage) error
+	Send(context.Context, *ProducerMessage) error
 
 	// Send a message in asynchronous mode
 	// The callback will report back the message being published and
 	// the eventual error in publishing
-	SendAsync(context.Context, ProducerMessage, func(ProducerMessage, error))
+	SendAsync(context.Context, *ProducerMessage, func(MessageID, *ProducerMessage, error))
 
 	// Get the last sequence id that was published by this producer.
 	// This represent either the automatically assigned or custom sequence id (set on the ProducerMessage) that

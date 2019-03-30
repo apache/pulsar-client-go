@@ -2,18 +2,16 @@ package pulsar
 
 import (
 	"context"
-	"fmt"
 	"pulsar-client-go-native/pulsar/impl"
-	"sync"
 )
 
 type producer struct {
 	topic         string
 	producers     []Producer
-	messageRouter func(ProducerMessage, TopicMetadata) int
+	messageRouter func(*ProducerMessage, TopicMetadata) int
 }
 
-func newProducer(client *client, options ProducerOptions) (*producer, error) {
+func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	if options.Topic == "" {
 		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
 	}
@@ -24,7 +22,7 @@ func newProducer(client *client, options ProducerOptions) (*producer, error) {
 
 	if options.MessageRouter == nil {
 		internalRouter := impl.NewDefaultRouter(options.BatchingMaxPublishDelay)
-		p.messageRouter = func(message ProducerMessage, metadata TopicMetadata) int {
+		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
 			return internalRouter(metadata.NumPartitions())
 		}
 	}
@@ -45,12 +43,10 @@ func newProducer(client *client, options ProducerOptions) (*producer, error) {
 
 	c := make(chan ProducerError, numPartitions)
 
-	for i := 0; i < numPartitions; i++ {
-		partition := i
+	for partitionIdx, partition := range partitions {
 		go func() {
-			partitionName := fmt.Sprintf("%s-partition-%d", options.Topic, partition)
-			prod, err := newPartitionProducer(client, partitionName, &options)
-			c <- ProducerError{partition, prod, err}
+			prod, err := newPartitionProducer(client, partition, options)
+			c <- ProducerError{partitionIdx, prod, err}
 		}()
 	}
 
@@ -85,22 +81,12 @@ func (p *producer) NumPartitions() uint32 {
 	return uint32(len(p.producers))
 }
 
-func (p *producer) Send(ctx context.Context, msg ProducerMessage) error {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	var err error
-
-	p.SendAsync(ctx, msg, func(message ProducerMessage, e error) {
-		err = e
-		wg.Done()
-	})
-
-	wg.Wait()
-	return err
+func (p *producer) Send(ctx context.Context, msg *ProducerMessage) error {
+	partition := p.messageRouter(msg, p)
+	return p.producers[partition].Send(ctx, msg)
 }
 
-func (p *producer) SendAsync(ctx context.Context, msg ProducerMessage, callback func(ProducerMessage, error)) {
+func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage, callback func(MessageID, *ProducerMessage, error)) {
 	partition := p.messageRouter(msg, p)
 	p.producers[partition].SendAsync(ctx, msg, callback)
 }
@@ -117,9 +103,21 @@ func (p *producer) LastSequenceID() int64 {
 }
 
 func (p *producer) Flush() error {
-	return nil
+	var err error = nil
+	for _, pp := range p.producers {
+		if e := pp.Flush(); e != nil && err == nil {
+			err = e
+		}
+	}
+	return err
 }
 
 func (p *producer) Close() error {
-	return nil
+	var err error = nil
+	for _, pp := range p.producers {
+		if e := pp.Close(); e != nil && err == nil {
+			err = e
+		}
+	}
+	return err
 }

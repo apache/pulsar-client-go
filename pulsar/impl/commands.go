@@ -24,6 +24,10 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.PartitionMetadata = msg.(*pb.CommandPartitionedTopicMetadata)
 		break
 
+	case pb.BaseCommand_PRODUCER:
+		cmd.Producer = msg.(*pb.CommandProducer)
+		break
+
 	default:
 		log.Panic("Missing command type: ", cmdType)
 	}

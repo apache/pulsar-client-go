@@ -17,31 +17,37 @@ type RpcClient interface {
 	// Create a new unique request id
 	NewRequestId() uint64
 
+	NewProducerId() uint64
+
+	NewConsumerId() uint64
+
 	// Send a request and block until the result is available
 	RequestToAnyBroker(requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
 
-	Request(logicalAddr string, physicalAddr string, requestId uint64,
+	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestId uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
 }
 
 type rpcClient struct {
-	hostPort           string
-	pool               ConnectionPool
-	requestIdGenerator uint64
+	serviceUrl          *url.URL
+	pool                ConnectionPool
+	requestIdGenerator  uint64
+	producerIdGenerator uint64
+	consumerIdGenerator uint64
 }
 
 func NewRpcClient(serviceUrl *url.URL, pool ConnectionPool) RpcClient {
 	return &rpcClient{
-		hostPort: serviceUrl.Host,
-		pool:     pool,
+		serviceUrl: serviceUrl,
+		pool:       pool,
 	}
 }
 
 func (c *rpcClient) RequestToAnyBroker(requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error) {
-	return c.Request(c.hostPort, c.hostPort, requestId, cmdType, message)
+	return c.Request(c.serviceUrl, c.serviceUrl, requestId, cmdType, message)
 }
 
-func (c *rpcClient) Request(logicalAddr string, physicalAddr string, requestId uint64,
+func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestId uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error) {
 	// TODO: Add retry logic in case of connection issues
 	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
@@ -68,4 +74,12 @@ func (c *rpcClient) Request(logicalAddr string, physicalAddr string, requestId u
 
 func (c *rpcClient) NewRequestId() uint64 {
 	return atomic.AddUint64(&c.requestIdGenerator, 1)
+}
+
+func (c *rpcClient) NewProducerId() uint64 {
+	return atomic.AddUint64(&c.producerIdGenerator, 1)
+}
+
+func (c *rpcClient) NewConsumerId() uint64 {
+	return atomic.AddUint64(&c.consumerIdGenerator, 1)
 }
