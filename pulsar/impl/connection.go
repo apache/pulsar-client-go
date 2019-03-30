@@ -95,7 +95,7 @@ func (c *connection) connect() (ok bool) {
 	c.cnx, err = net.Dial("tcp", c.physicalAddr)
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to connect to broker.")
-		c.internalClose()
+		c.Close()
 		return false
 	} else {
 		c.log = c.log.WithField("laddr", c.cnx.LocalAddr())
@@ -193,7 +193,7 @@ func (c *connection) writeCommand(cmd proto.Message) {
 
 	if _, err := c.cnx.Write(c.writeBuffer.ReadableSlice()); err != nil {
 		c.log.WithError(err).Warn("Failed to write on connection")
-		c.internalClose()
+		c.Close()
 	}
 }
 
@@ -271,7 +271,7 @@ func (c *connection) sendPing() {
 		// We have not received a response to the previous Ping request, the
 		// connection to broker is stale
 		c.log.Info("Detected stale connection to broker")
-		c.internalClose()
+		c.Close()
 		return
 	}
 
@@ -288,7 +288,19 @@ func (c *connection) handlePing() {
 }
 
 func (c *connection) Close() {
-	// TODO
+	c.Lock()
+	defer c.Unlock()
+
+	c.state = connectionClosed
+	c.cond.Broadcast()
+
+	if c.cnx != nil {
+		c.log.Info("Connection closed")
+		c.cnx.Close()
+		c.pingTicker.Stop()
+		close(c.incomingRequests)
+		c.cnx = nil
+	}
 }
 
 func (c *connection) changeState(state connectionState) {
@@ -302,17 +314,3 @@ func (c *connection) newRequestId() uint64 {
 	return atomic.AddUint64(&c.requestIdGenerator, 1)
 }
 
-func (c *connection) internalClose() {
-	c.Lock()
-	defer c.Unlock()
-
-	c.state = connectionClosed
-	c.cond.Broadcast()
-
-	if c.cnx != nil {
-		c.log.Info("Connection closed")
-		c.cnx.Close()
-		c.pingTicker.Stop()
-		c.cnx = nil
-	}
-}
