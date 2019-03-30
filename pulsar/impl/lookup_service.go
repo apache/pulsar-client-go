@@ -44,17 +44,17 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			return nil, err
 		}
 
-		log.Infof("Got lookup response: %s", res)
+		log.WithField("topic", topic).Debugf("Got topic lookup response: %s", res)
 		lr := res.Response.LookupTopicResponse
 		switch *lr.Response {
 		case pb.CommandLookupTopicResponse_Redirect:
 			// TODO: Handle redirects
-			log.WithField("topic", topic).Infof("Follow redirect to broker. %v / %v - Use proxy: %v",
+			log.WithField("topic", topic).Debugf("Follow redirect to broker. %v / %v - Use proxy: %v",
 				lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
 			break
 
 		case pb.CommandLookupTopicResponse_Connect:
-			log.WithField("topic", topic).Infof("Successfully looked up topic on broker. %s / %s - Use proxy: %t",
+			log.WithField("topic", topic).Debugf("Successfully looked up topic on broker. %s / %s - Use proxy: %t",
 				lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
 			logicalAddress, err := url.Parse(lr.GetBrokerServiceUrl())

@@ -99,7 +99,7 @@ func (c *connection) connect() (ok bool) {
 		return false
 	} else {
 		c.log = c.log.WithField("laddr", c.cnx.LocalAddr())
-		c.log.Info("TCP connection established")
+		c.log.Debug("TCP connection established")
 		c.state = connectionTcpConnected
 		return true
 	}
@@ -198,7 +198,7 @@ func (c *connection) writeCommand(cmd proto.Message) {
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []byte) {
-	c.log.Infof("Received command: %s -- payload: %v", cmd, headersAndPayload)
+	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.lastDataReceivedTime = time.Now()
 
 	switch *cmd.Type {

@@ -42,7 +42,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		log.WithError(err).Errorf("Failed to create producer")
 		return nil, err
 	} else {
-		log.Info("Created producer on cnx: ")
+		p.log = p.log.WithField("name", *p.producerName)
+		p.log.Info("Created producer")
 		go p.run()
 		return p, nil
 	}
@@ -55,7 +56,7 @@ func (p *partitionProducer) grabCnx() error {
 		return err
 	}
 
-	p.log.Info("Lookup result: ", lr)
+	p.log.Debug("Lookup result: ", lr)
 	id := p.client.rpcClient.NewRequestId()
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, &pb.CommandProducer{
 		RequestId:    &id,
@@ -74,7 +75,7 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.producerName = res.Response.ProducerSuccess.ProducerName
 	p.cnx = res.Cnx
-	p.log.WithField("cnx", res.Cnx).Info("Created producer")
+	p.log.WithField("cnx", res.Cnx).Debug("Connected producer")
 	return nil
 }
 
@@ -83,7 +84,7 @@ func (p *partitionProducer) run() {
 		i := <-p.eventsChan
 		switch v := i.(type) {
 		case *sendRequest:
-			p.log.Info("Received send request: ", v)
+			p.log.Debug("Received send request: ", v)
 			v.callback(nil, v.msg, nil)
 		}
 	}
