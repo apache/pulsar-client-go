@@ -32,3 +32,28 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 	return cmd
 }
 
+func ConvertFromStringMap(m map[string]string) []*pb.KeyValue {
+	list := make([]*pb.KeyValue, len(m))
+
+	i := 0
+	for k, v := range m {
+		list[i] = &pb.KeyValue{
+			Key:   proto.String(k),
+			Value: proto.String(v),
+		}
+
+		i += 1
+	}
+
+	return list
+}
+
+func ConvertToStringMap(pbb []*pb.KeyValue) map[string]string {
+	m := make(map[string]string)
+
+	for _, kv := range pbb {
+		m[*kv.Key] = *kv.Value
+	}
+
+	return m
+}
