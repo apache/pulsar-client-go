@@ -32,13 +32,13 @@ type ProducerMessage struct {
 	Properties map[string]string
 
 	// Set the event time for a given message
-	EventTime time.Time
+	EventTime *time.Time
 
 	// Override the replication clusters for this message.
 	ReplicationClusters []string
 
 	// Set the sequence id to assign to the current message
-	SequenceID int64
+	SequenceID *int64
 }
 
 type Message interface {

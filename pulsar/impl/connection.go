@@ -14,6 +14,7 @@ import (
 
 type Connection interface {
 	SendRequest(requestId uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand))
+	WriteData(data []byte)
 	Close()
 }
 
@@ -54,6 +55,7 @@ type connection struct {
 	requestIdGenerator uint64
 
 	incomingRequests chan *request
+	writeRequests    chan []byte
 	pendingReqs      map[uint64]*request
 }
 
@@ -67,6 +69,9 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL) *connection {
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
+
+		incomingRequests: make(chan *request),
+		writeRequests:    make(chan []byte),
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -164,9 +169,24 @@ func (c *connection) run() {
 			c.pendingReqs[req.id] = req
 			c.writeCommand(req.cmd)
 
+		case data := <-c.writeRequests:
+			c.internalWriteData(data)
+
 		case _ = <-c.pingTicker.C:
 			c.sendPing()
 		}
+	}
+}
+
+func (c *connection) WriteData(data []byte) {
+	c.writeRequests <- data
+}
+
+func (c *connection) internalWriteData(data []byte) {
+	c.log.Info("Write data: ", len(data))
+	if _, err := c.cnx.Write(data); err != nil {
+		c.log.WithError(err).Warn("Failed to write on connection")
+		c.Close()
 	}
 }
 
@@ -190,11 +210,7 @@ func (c *connection) writeCommand(cmd proto.Message) {
 	}
 
 	c.writeBuffer.Write(serialized)
-
-	if _, err := c.cnx.Write(c.writeBuffer.ReadableSlice()); err != nil {
-		c.log.WithError(err).Warn("Failed to write on connection")
-		c.Close()
-	}
+	c.internalWriteData(c.writeBuffer.ReadableSlice())
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []byte) {
@@ -230,6 +246,8 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_CLOSE_PRODUCER:
 	case pb.BaseCommand_CLOSE_CONSUMER:
 	case pb.BaseCommand_SEND_RECEIPT:
+		c.log.Info("Got SEND_RECEIPT: ", cmd.GetSendReceipt())
+
 	case pb.BaseCommand_SEND_ERROR:
 
 	case pb.BaseCommand_MESSAGE:
@@ -246,13 +264,21 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	}
 }
 
+func (c *connection) Write(data []byte) {
+	c.writeRequests <- data
+}
+
 func (c *connection) SendRequest(requestId uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand)) {
-	c.pendingReqs[requestId] = &request{
+	c.incomingRequests <- &request{
 		id:       requestId,
 		cmd:      req,
 		callback: callback,
 	}
-	c.writeCommand(req)
+}
+
+func (c *connection) internalSendRequest(req *request) {
+	c.pendingReqs[req.id] = req
+	c.writeCommand(req.cmd)
 }
 
 func (c *connection) handleResponse(requestId uint64, response *pb.BaseCommand) {
@@ -299,6 +325,7 @@ func (c *connection) Close() {
 		c.cnx.Close()
 		c.pingTicker.Stop()
 		close(c.incomingRequests)
+		close(c.writeRequests)
 		c.cnx = nil
 	}
 }
@@ -313,4 +340,3 @@ func (c *connection) changeState(state connectionState) {
 func (c *connection) newRequestId() uint64 {
 	return atomic.AddUint64(&c.requestIdGenerator, 1)
 }
-

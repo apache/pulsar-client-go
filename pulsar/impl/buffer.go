@@ -13,6 +13,8 @@ type Buffer interface {
 
 	Read(size uint32) []byte
 
+	Get(readerIndex uint32, size uint32) []byte
+
 	ReadableSlice() []byte
 
 	WritableSlice() []byte
@@ -23,11 +25,19 @@ type Buffer interface {
 	// Copy the available portion of data at the beginning of the buffer
 	MoveToFront()
 
+	ReadUint16() uint16
 	ReadUint32() uint32
 
+	WriteUint16(n uint16)
 	WriteUint32(n uint32)
 
+	WriterIndex() uint32
+	ReaderIndex() uint32
+
 	Write(s []byte)
+
+	Put(writerIdx uint32, s []byte)
+	PutUint32(n uint32, writerIdx uint32)
 
 	Resize(newSize uint32)
 
@@ -71,6 +81,10 @@ func (b *buffer) Read(size uint32) []byte {
 	return res
 }
 
+func (b *buffer) Get(readerIdx uint32, size uint32) []byte {
+	return b.data[readerIdx : readerIdx+size]
+}
+
 func (b *buffer) ReadableSlice() []byte {
 	return b.data[b.readerIdx:b.writerIdx]
 }
@@ -81,6 +95,14 @@ func (b *buffer) WritableSlice() []byte {
 
 func (b *buffer) WrittenBytes(size uint32) {
 	b.writerIdx += size
+}
+
+func (b *buffer) WriterIndex() uint32 {
+	return b.writerIdx
+}
+
+func (b *buffer) ReaderIndex() uint32 {
+	return b.readerIdx
 }
 
 func (b *buffer) MoveToFront() {
@@ -103,14 +125,31 @@ func (b *buffer) ReadUint32() uint32 {
 	return binary.BigEndian.Uint32(b.Read(4))
 }
 
+func (b *buffer) ReadUint16() uint16 {
+	return binary.BigEndian.Uint16(b.Read(2))
+}
+
 func (b *buffer) WriteUint32(n uint32) {
 	binary.BigEndian.PutUint32(b.WritableSlice(), n)
 	b.writerIdx += 4
 }
 
+func (b *buffer) PutUint32(n uint32, idx uint32) {
+	binary.BigEndian.PutUint32(b.data[idx:], n)
+}
+
+func (b *buffer) WriteUint16(n uint16) {
+	binary.BigEndian.PutUint16(b.WritableSlice(), n)
+	b.writerIdx += 2
+}
+
 func (b *buffer) Write(s []byte) {
 	copy(b.WritableSlice(), s)
 	b.writerIdx += uint32(len(s))
+}
+
+func (b *buffer) Put(writerIdx uint32, s []byte) {
+	copy(b.data[writerIdx:], s)
 }
 
 func (b *buffer) Clear() {
