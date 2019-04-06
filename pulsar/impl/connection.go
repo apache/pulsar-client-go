@@ -12,9 +12,17 @@ import (
 	"time"
 )
 
+// ConnectionListener is a user of a connection (eg. a producer or
+// a consumer) that can register itself to get notified
+// when the connection is closed.
+type ConnectionListener interface {
+	ConnectionClosed()
+}
+
 type Connection interface {
 	SendRequest(requestId uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand))
 	WriteData(data []byte)
+	RegisterListener(listener ConnectionListener)
 	Close()
 }
 
@@ -57,6 +65,7 @@ type connection struct {
 	incomingRequests chan *request
 	writeRequests    chan []byte
 	pendingReqs      map[uint64]*request
+	listeners        []ConnectionListener
 }
 
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL) *connection {
@@ -72,6 +81,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL) *connection {
 
 		incomingRequests: make(chan *request),
 		writeRequests:    make(chan []byte),
+		listeners:        make([]ConnectionListener, 0),
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -142,13 +152,15 @@ func (c *connection) waitUntilReady() error {
 	defer c.Unlock()
 
 	for {
+		c.log.Debug("Wait until connection is ready. State: ", c.state)
 		switch c.state {
 		case connectionInit:
+			fallthrough
 		case connectionConnecting:
+			fallthrough
 		case connectionTcpConnected:
 			// Wait for the state to change
 			c.cond.Wait()
-			break
 
 		case connectionReady:
 			return nil
@@ -166,10 +178,16 @@ func (c *connection) run() {
 	for {
 		select {
 		case req := <-c.incomingRequests:
+			if req == nil {
+				return
+			}
 			c.pendingReqs[req.id] = req
 			c.writeCommand(req.cmd)
 
 		case data := <-c.writeRequests:
+			if data == nil {
+				return
+			}
 			c.internalWriteData(data)
 
 		case _ = <-c.pingTicker.C:
@@ -183,7 +201,7 @@ func (c *connection) WriteData(data []byte) {
 }
 
 func (c *connection) internalWriteData(data []byte) {
-	c.log.Info("Write data: ", len(data))
+	c.log.Debug("Write data: ", len(data))
 	if _, err := c.cnx.Write(data); err != nil {
 		c.log.WithError(err).Warn("Failed to write on connection")
 		c.Close()
@@ -313,20 +331,34 @@ func (c *connection) handlePing() {
 	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
 }
 
+func (c *connection) RegisterListener(listener ConnectionListener) {
+	c.Lock()
+	defer c.Unlock()
+
+	c.listeners = append(c.listeners, listener)
+}
+
 func (c *connection) Close() {
 	c.Lock()
 	defer c.Unlock()
 
-	c.state = connectionClosed
 	c.cond.Broadcast()
 
+	if c.state == connectionClosed {
+		return
+	}
+
+	c.log.Info("Connection closed")
+	c.state = connectionClosed
 	if c.cnx != nil {
-		c.log.Info("Connection closed")
 		c.cnx.Close()
-		c.pingTicker.Stop()
-		close(c.incomingRequests)
-		close(c.writeRequests)
-		c.cnx = nil
+	}
+	c.pingTicker.Stop()
+	close(c.incomingRequests)
+	close(c.writeRequests)
+	//c.cnx = nil
+	for _, listener := range c.listeners {
+		listener.ConnectionClosed()
 	}
 }
 

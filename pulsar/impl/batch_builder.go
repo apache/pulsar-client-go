@@ -84,7 +84,7 @@ func (bb *BatchBuilder) reset() {
 }
 
 func (bb *BatchBuilder) Flush() []byte {
-	log.Info("BatchBuilder flush: messages: ", bb.numMessages)
+	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
 		return nil

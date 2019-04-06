@@ -99,9 +99,35 @@ func (p *partitionProducer) grabCnx() error {
 		p.sequenceIdGenerator = &nextSequenceId
 	}
 	p.cnx = res.Cnx
+	p.cnx.RegisterListener(p)
 	p.log.WithField("cnx", res.Cnx).Debug("Connected producer")
 	return nil
 }
+
+type connectionClosed struct {
+}
+
+func (p *partitionProducer) ConnectionClosed() {
+	// Trigger reconnection in the produce goroutine
+	p.eventsChan <- &connectionClosed{}
+}
+
+func (p *partitionProducer) reconnectToBroker() {
+	backoff := impl.Backoff{}
+	for {
+		err := p.grabCnx()
+		if err == nil {
+			// Successfully reconnected
+			return
+		}
+
+		d := backoff.Next()
+		p.log.Info("Retrying reconnection after ", d)
+
+		time.Sleep(d)
+	}
+}
+
 
 func (p *partitionProducer) run() {
 	for {
@@ -110,6 +136,8 @@ func (p *partitionProducer) run() {
 			switch v := i.(type) {
 			case *sendRequest:
 				p.internalSend(v)
+			case *connectionClosed:
+				p.reconnectToBroker()
 			}
 
 		case _ = <-p.batchFlushTicker.C:
