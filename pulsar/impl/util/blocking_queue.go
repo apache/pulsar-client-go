@@ -1,6 +1,7 @@
 package util
 
 import (
+	log "github.com/sirupsen/logrus"
 	"sync"
 )
 
@@ -19,6 +20,14 @@ type BlockingQueue interface {
 
 	// Return the current size of the queue
 	Size() int
+
+	// Return an iterator for the queue
+	Iterator() BlockingQueueIterator
+}
+
+type BlockingQueueIterator interface {
+	HasNext() bool
+	Next() interface{}
 }
 
 type blockingQueue struct {
@@ -31,6 +40,12 @@ type blockingQueue struct {
 	mutex      sync.Mutex
 	isNotEmpty *sync.Cond
 	isNotFull  *sync.Cond
+}
+
+type blockingQueueIterator struct {
+	bq      *blockingQueue
+	readIdx int
+	toRead  int
 }
 
 func NewBlockingQueue(maxSize int) BlockingQueue {
@@ -122,4 +137,33 @@ func (bq *blockingQueue) Size() int {
 	defer bq.mutex.Unlock()
 
 	return bq.size
+}
+
+func (bq *blockingQueue) Iterator() BlockingQueueIterator {
+	bq.mutex.Lock()
+	defer bq.mutex.Unlock()
+
+	return &blockingQueueIterator{
+		bq:      bq,
+		readIdx: bq.headIdx,
+		toRead:  bq.size,
+	}
+}
+
+func (bqi *blockingQueueIterator) HasNext() bool {
+	return bqi.toRead > 0
+}
+
+func (bqi *blockingQueueIterator) Next() interface{} {
+	if bqi.toRead == 0 {
+		log.Panic("Trying to read past the end of the iterator")
+	}
+
+	item := bqi.bq.items[bqi.readIdx]
+	bqi.toRead--
+	bqi.readIdx++
+	if bqi.readIdx == bqi.bq.maxSize {
+		bqi.readIdx = 0
+	}
+	return item
 }

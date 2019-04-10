@@ -95,3 +95,18 @@ func TestBlockingQueueWaitWhenFull(t *testing.T) {
 
 	close(ch)
 }
+
+func TestBlockingQueueIterator(t *testing.T) {
+	q := NewBlockingQueue(10)
+
+	q.Put(1)
+	q.Put(2)
+	q.Put(3)
+	assert.Equal(t, 3, q.Size())
+
+	i := 1
+	for it := q.Iterator(); it.HasNext(); {
+		assert.Equal(t, i, it.Next())
+		i++
+	}
+}
