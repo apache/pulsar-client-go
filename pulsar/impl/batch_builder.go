@@ -27,6 +27,7 @@ type BatchBuilder struct {
 
 	cmdSend     *pb.BaseCommand
 	msgMetadata *pb.MessageMetadata
+	callbacks   []interface{}
 }
 
 func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64) *BatchBuilder {
@@ -46,6 +47,7 @@ func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64) *
 		msgMetadata: &pb.MessageMetadata{
 			ProducerName: &producerName,
 		},
+		callbacks: []interface{}{},
 	}
 }
 
@@ -58,7 +60,8 @@ func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 	return bb.numMessages > 0 && (bb.buffer.ReadableBytes()+msgSize) > MaxBatchSize
 }
 
-func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceId uint64, payload []byte) bool {
+func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceId uint64, payload []byte,
+	callback interface{}) bool {
 	if bb.hasSpace(payload) {
 		// The current batch is full. Producer has to call Flush() to
 		return false
@@ -75,19 +78,21 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceId uint6
 	serializeSingleMessage(bb.buffer, metadata, payload)
 
 	bb.numMessages += 1
+	bb.callbacks = append(bb.callbacks, callback)
 	return true
 }
 
 func (bb *BatchBuilder) reset() {
 	bb.numMessages = 0
 	bb.buffer.Clear()
+	bb.callbacks = []interface{}{}
 }
 
-func (bb *BatchBuilder) Flush() []byte {
+func (bb *BatchBuilder) Flush() (batchData []byte, sequenceId uint64, callbacks []interface{}) {
 	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
-		return nil
+		return nil, 0, nil
 	}
 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
@@ -96,6 +101,8 @@ func (bb *BatchBuilder) Flush() []byte {
 	buffer := NewBuffer(4096)
 	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer.ReadableSlice())
 
+	callbacks = bb.callbacks
+	sequenceId = bb.cmdSend.Send.GetSequenceId()
 	bb.reset()
-	return buffer.ReadableSlice()
+	return buffer.ReadableSlice(), sequenceId, callbacks
 }

@@ -82,7 +82,7 @@ func DeserializeMessageID(data []byte) MessageID {
 }
 
 var (
-// MessageID that points to the earliest message avaialable in a topic
+// MessageID that points to the earliest message available in a topic
 // TODO: EarliestMessage MessageID = earliestMessageID()
 
 // MessageID that points to the latest message

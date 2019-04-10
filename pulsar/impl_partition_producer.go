@@ -5,6 +5,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"pulsar-client-go-native/pulsar/impl"
+	"pulsar-client-go-native/pulsar/impl/util"
 	pb "pulsar-client-go-native/pulsar/pulsar_proto"
 	"sync"
 	"time"
@@ -27,6 +28,9 @@ type partitionProducer struct {
 
 	// Channel where app is posting messages to be published
 	eventsChan chan interface{}
+
+	publishSemaphore util.Semaphore
+	pendingQueue     util.BlockingQueue
 }
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
@@ -40,6 +44,13 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		batchingMaxPublishDelay = defaultBatchingMaxPublishDelay
 	}
 
+	var maxPendingMessages int
+	if options.MaxPendingMessages == 0 {
+		maxPendingMessages = 1000
+	} else {
+		maxPendingMessages = options.MaxPendingMessages
+	}
+
 	p := &partitionProducer{
 		log:              log.WithField("topic", topic),
 		client:           client,
@@ -48,6 +59,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		producerId:       client.rpcClient.NewProducerId(),
 		eventsChan:       make(chan interface{}),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
+		publishSemaphore: make(util.Semaphore, maxPendingMessages),
+		pendingQueue:     util.NewBlockingQueue(maxPendingMessages),
 	}
 
 	if options.Name != "" {
@@ -61,7 +74,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	} else {
 		p.log = p.log.WithField("name", *p.producerName)
 		p.log.Info("Created producer")
-		go p.run()
+		go p.runEventsLoop()
 		return p, nil
 	}
 }
@@ -99,7 +112,7 @@ func (p *partitionProducer) grabCnx() error {
 		p.sequenceIdGenerator = &nextSequenceId
 	}
 	p.cnx = res.Cnx
-	p.cnx.RegisterListener(p)
+	p.cnx.RegisterListener(p.producerId, p)
 	p.log.WithField("cnx", res.Cnx).Debug("Connected producer")
 	return nil
 }
@@ -128,8 +141,7 @@ func (p *partitionProducer) reconnectToBroker() {
 	}
 }
 
-
-func (p *partitionProducer) run() {
+func (p *partitionProducer) runEventsLoop() {
 	for {
 		select {
 		case i := <-p.eventsChan:
@@ -177,7 +189,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		}
 
 		sequenceId := impl.GetAndAdd(p.sequenceIdGenerator, 1)
-		for ; p.batchBuilder.Add(smm, sequenceId, msg.Payload) == false; {
+		for ; p.batchBuilder.Add(smm, sequenceId, msg.Payload, request) == false; {
 			// The current batch is full.. flush it and retry
 			p.internalFlush()
 		}
@@ -186,12 +198,19 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 }
 
+type pendingItem struct {
+	batchData   []byte
+	sequenceId  uint64
+	sendRequest []interface{}
+}
+
 func (p *partitionProducer) internalFlush() {
-	batchData := p.batchBuilder.Flush()
+	batchData, sequenceId, callbacks := p.batchBuilder.Flush()
 	if batchData == nil {
 		return
 	}
 
+	p.pendingQueue.Put(&pendingItem{batchData, sequenceId, callbacks})
 	p.cnx.WriteData(batchData)
 }
 
@@ -216,14 +235,30 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) erro
 	return err
 }
 
-type sendRequest struct {
-	ctx      context.Context
-	msg      *ProducerMessage
-	callback func(MessageID, *ProducerMessage, error)
+func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
+	callback func(MessageID, *ProducerMessage, error)) {
+	p.publishSemaphore.Acquire()
+	p.eventsChan <- &sendRequest{ctx, msg, callback}
 }
 
-func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage, callback func(MessageID, *ProducerMessage, error)) {
-	p.eventsChan <- &sendRequest{ctx, msg, callback}
+func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
+	pi := p.pendingQueue.Peek().(*pendingItem)
+
+	if pi == nil {
+		p.log.Warnf("Received ack for %v although the pending queue is empty", response.GetMessageId())
+		return
+	} else if pi.sequenceId != response.GetSequenceId() {
+		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v", response.GetMessageId(),
+			response.GetSequenceId(), pi.sequenceId)
+		return
+	}
+
+	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
+	p.pendingQueue.Poll()
+	for _ ,i := range pi.sendRequest {
+		sr := i.(*sendRequest)
+		sr.callback(nil, sr.msg, nil)
+	}
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
@@ -238,4 +273,10 @@ func (p *partitionProducer) Flush() error {
 func (p *partitionProducer) Close() error {
 	p.log.Info("Closing producer")
 	return nil
+}
+
+type sendRequest struct {
+	ctx      context.Context
+	msg      *ProducerMessage
+	callback func(MessageID, *ProducerMessage, error)
 }

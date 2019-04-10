@@ -16,13 +16,15 @@ import (
 // a consumer) that can register itself to get notified
 // when the connection is closed.
 type ConnectionListener interface {
+	ReceivedSendReceipt(response *pb.CommandSendReceipt)
+
 	ConnectionClosed()
 }
 
 type Connection interface {
 	SendRequest(requestId uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand))
 	WriteData(data []byte)
-	RegisterListener(listener ConnectionListener)
+	RegisterListener(id uint64, listener ConnectionListener)
 	Close()
 }
 
@@ -65,7 +67,7 @@ type connection struct {
 	incomingRequests chan *request
 	writeRequests    chan []byte
 	pendingReqs      map[uint64]*request
-	listeners        []ConnectionListener
+	listeners        map[uint64]ConnectionListener
 }
 
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL) *connection {
@@ -81,7 +83,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL) *connection {
 
 		incomingRequests: make(chan *request),
 		writeRequests:    make(chan []byte),
-		listeners:        make([]ConnectionListener, 0),
+		listeners:        make(map[uint64]ConnectionListener),
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -263,8 +265,9 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_ERROR:
 	case pb.BaseCommand_CLOSE_PRODUCER:
 	case pb.BaseCommand_CLOSE_CONSUMER:
+
 	case pb.BaseCommand_SEND_RECEIPT:
-		c.log.Info("Got SEND_RECEIPT: ", cmd.GetSendReceipt())
+		c.handleSendReceipt(cmd.GetSendReceipt())
 
 	case pb.BaseCommand_SEND_ERROR:
 
@@ -310,6 +313,16 @@ func (c *connection) handleResponse(requestId uint64, response *pb.BaseCommand) 
 	request.callback(response)
 }
 
+func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
+	c.log.Debug("Got SEND_RECEIPT: ", response)
+	producerId := response.GetProducerId()
+	if producer, ok := c.listeners[producerId]; ok {
+		producer.ReceivedSendReceipt(response)
+	} else {
+		c.log.WithField("producerId", producerId).Warn("Got unexpected send receipt for message: ", response.MessageId)
+	}
+}
+
 func (c *connection) sendPing() {
 	if c.lastDataReceivedTime.Add(2 * keepAliveInterval).Before(time.Now()) {
 		// We have not received a response to the previous Ping request, the
@@ -331,11 +344,11 @@ func (c *connection) handlePing() {
 	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
 }
 
-func (c *connection) RegisterListener(listener ConnectionListener) {
+func (c *connection) RegisterListener(id uint64, listener ConnectionListener) {
 	c.Lock()
 	defer c.Unlock()
 
-	c.listeners = append(c.listeners, listener)
+	c.listeners[id] = listener
 }
 
 func (c *connection) Close() {
