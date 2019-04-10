@@ -158,6 +158,8 @@ func (p *partitionProducer) runEventsLoop() {
 				p.internalSend(v)
 			case *connectionClosed:
 				p.reconnectToBroker()
+			case *closeProducer:
+				p.internalClose(v)
 			}
 
 		case _ = <-p.batchFlushTicker.C:
@@ -179,30 +181,38 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	msg := request.msg
 
-	if msg.ReplicationClusters == nil {
-		smm := &pb.SingleMessageMetadata{
-			PayloadSize: proto.Int(len(msg.Payload)),
-		}
+	sendAsBatch := !p.options.DisableBatching && request.msg.ReplicationClusters == nil
+	smm := &pb.SingleMessageMetadata{
+		PayloadSize: proto.Int(len(msg.Payload)),
+	}
 
-		if msg.EventTime != nil {
-			smm.EventTime = proto.Uint64(impl.TimestampMillis(*msg.EventTime))
-		}
+	if msg.EventTime != nil {
+		smm.EventTime = proto.Uint64(impl.TimestampMillis(*msg.EventTime))
+	}
 
-		if msg.Key != "" {
-			smm.PartitionKey = &msg.Key
-		}
+	if msg.Key != "" {
+		smm.PartitionKey = &msg.Key
+	}
 
-		if msg.Properties != nil {
-			smm.Properties = impl.ConvertFromStringMap(msg.Properties)
-		}
+	if msg.Properties != nil {
+		smm.Properties = impl.ConvertFromStringMap(msg.Properties)
+	}
 
-		sequenceId := impl.GetAndAdd(p.sequenceIdGenerator, 1)
-		for ; p.batchBuilder.Add(smm, sequenceId, msg.Payload, request) == false; {
+	sequenceId := impl.GetAndAdd(p.sequenceIdGenerator, 1)
+
+	if sendAsBatch {
+		for ; p.batchBuilder.Add(smm, sequenceId, msg.Payload, request, msg.ReplicationClusters) == false; {
 			// The current batch is full.. flush it and retry
 			p.internalFlush()
 		}
 	} else {
-		p.log.Panic("TODO: serialize into single message")
+		// Send individually
+		p.batchBuilder.Add(smm, sequenceId, msg.Payload, request, msg.ReplicationClusters)
+		p.internalFlush()
+	}
+
+	if request.flushImmediately {
+		p.internalFlush()
 	}
 }
 
@@ -228,10 +238,10 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) erro
 
 	var err error
 
-	p.SendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
+	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
 		err = e
 		wg.Done()
-	})
+	}, true)
 
 	// When sending synchronously we flush immediately to avoid
 	// the increased latency and reduced throughput of batching
@@ -246,7 +256,13 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) erro
 func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error)) {
 	p.publishSemaphore.Acquire()
-	p.eventsChan <- &sendRequest{ctx, msg, callback}
+	p.eventsChan <- &sendRequest{ctx, msg, callback, false}
+}
+
+func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
+	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
+	p.publishSemaphore.Acquire()
+	p.eventsChan <- &sendRequest{ctx, msg, callback, flushImmediately}
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -264,7 +280,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
 	p.publishSemaphore.Release()
-	for _ ,i := range pi.sendRequest {
+	for _, i := range pi.sendRequest {
 		sr := i.(*sendRequest)
 		sr.callback(nil, sr.msg, nil)
 	}
@@ -285,7 +301,11 @@ func (p *partitionProducer) Close() error {
 }
 
 type sendRequest struct {
-	ctx      context.Context
-	msg      *ProducerMessage
-	callback func(MessageID, *ProducerMessage, error)
+	ctx              context.Context
+	msg              *ProducerMessage
+	callback         func(MessageID, *ProducerMessage, error)
+	flushImmediately bool
+}
+
+type closeProducer struct {
 }

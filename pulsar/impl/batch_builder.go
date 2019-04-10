@@ -61,8 +61,16 @@ func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 }
 
 func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceId uint64, payload []byte,
-	callback interface{}) bool {
-	if bb.hasSpace(payload) {
+	callback interface{}, replicateTo []string, ) bool {
+	if replicateTo != nil && bb.numMessages != 0 {
+		// If the current batch is not empty and we're trying to set the replication clusters,
+		// then we need to force the current batch to flush and send the message individually
+		return false
+	} else if bb.msgMetadata.ReplicateTo != nil {
+		// There's already a message with cluster replication list. need to flush before next
+		// message can be sent
+		return false
+	} else if bb.hasSpace(payload) {
 		// The current batch is full. Producer has to call Flush() to
 		return false
 	}
@@ -72,10 +80,11 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceId uint6
 		bb.msgMetadata.PublishTime = proto.Uint64(TimestampMillis(time.Now()))
 		bb.msgMetadata.SequenceId = proto.Uint64(sequenceId)
 		bb.msgMetadata.ProducerName = &bb.producerName
+		bb.msgMetadata.ReplicateTo = replicateTo
 
 		bb.cmdSend.Send.SequenceId = proto.Uint64(sequenceId)
 	}
-	serializeSingleMessage(bb.buffer, metadata, payload)
+	addSingleMessageToBatch(bb.buffer, metadata, payload)
 
 	bb.numMessages += 1
 	bb.callbacks = append(bb.callbacks, callback)
@@ -86,6 +95,7 @@ func (bb *BatchBuilder) reset() {
 	bb.numMessages = 0
 	bb.buffer.Clear()
 	bb.callbacks = []interface{}{}
+	bb.msgMetadata.ReplicateTo = nil
 }
 
 func (bb *BatchBuilder) Flush() (batchData []byte, sequenceId uint64, callbacks []interface{}) {

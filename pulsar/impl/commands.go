@@ -36,7 +36,7 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 	return cmd
 }
 
-func serializeSingleMessage(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte) {
+func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte) {
 	serialized, err := proto.Marshal(smm)
 	if err != nil {
 		log.WithError(err).Fatal("Protobuf serialization error")

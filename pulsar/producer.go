@@ -130,7 +130,8 @@ type ProducerOptions struct {
 	// partition index where the message should be routed to
 	MessageRouter func(Message, TopicMetadata) int
 
-	// Control whether automatic batching of messages is enabled for the producer. Default: false [No batching]
+	// Control whether automatic batching of messages is enabled for the producer. By default batching
+	// is enabled.
 	//
 	// When batching is enabled, multiple calls to Producer.sendAsync can result in a single batch to be sent to the
 	// broker, leading to better throughput, especially when publishing small messages. If compression is enabled,
@@ -138,7 +139,8 @@ type ProducerOptions struct {
 	// contents.
 	//
 	// When enabled default batch delay is set to 1 ms and default batch size is 1000 messages
-	Batching bool
+	// Setting `DisableBatching: true` will make the producer to send messages individually
+	DisableBatching bool
 
 	// Set the time period within which the messages sent will be batched (default: 10ms) if batch messages are
 	// enabled. If set to a non zero value, messages will be queued until this time interval or until
