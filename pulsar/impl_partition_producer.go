@@ -114,6 +114,13 @@ func (p *partitionProducer) grabCnx() error {
 	p.cnx = res.Cnx
 	p.cnx.RegisterListener(p.producerId, p)
 	p.log.WithField("cnx", res.Cnx).Debug("Connected producer")
+
+	if p.pendingQueue.Size() > 0 {
+		p.log.Infof("Resending %v pending batches", p.pendingQueue.Size())
+		for it := p.pendingQueue.Iterator(); it.HasNext(); {
+			p.cnx.WriteData(it.Next().(*pendingItem).batchData)
+		}
+	}
 	return nil
 }
 
@@ -126,6 +133,7 @@ func (p *partitionProducer) ConnectionClosed() {
 }
 
 func (p *partitionProducer) reconnectToBroker() {
+	p.log.Info("Reconnecting to broker")
 	backoff := impl.Backoff{}
 	for {
 		err := p.grabCnx()
@@ -255,6 +263,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
+	p.publishSemaphore.Release()
 	for _ ,i := range pi.sendRequest {
 		sr := i.(*sendRequest)
 		sr.callback(nil, sr.msg, nil)

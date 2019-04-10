@@ -369,7 +369,7 @@ func (c *connection) Close() {
 	c.pingTicker.Stop()
 	close(c.incomingRequests)
 	close(c.writeRequests)
-	//c.cnx = nil
+
 	for _, listener := range c.listeners {
 		listener.ConnectionClosed()
 	}
