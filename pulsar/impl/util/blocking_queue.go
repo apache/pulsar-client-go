@@ -15,8 +15,11 @@ type BlockingQueue interface {
 	// Dequeue one item, return nil if queue is empty
 	Poll() interface{}
 
-	// Return one item without dequeing, return nil if queue is empty
+	// Return the first item without dequeing, return nil if queue is empty
 	Peek() interface{}
+
+	// Return last item in queue without dequeing, return nil if queue is empty
+	PeekLast() interface{}
 
 	// Return the current size of the queue
 	Size() int
@@ -115,6 +118,18 @@ func (bq *blockingQueue) Peek() interface{} {
 		return nil
 	} else {
 		return bq.items[bq.headIdx]
+	}
+}
+
+func (bq *blockingQueue) PeekLast() interface{} {
+	bq.mutex.Lock()
+	defer bq.mutex.Unlock()
+
+	if bq.size == 0 {
+		return nil
+	} else {
+		idx := (bq.headIdx + bq.size - 1) % bq.maxSize
+		return bq.items[idx]
 	}
 }
 

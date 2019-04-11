@@ -14,14 +14,18 @@ func TestBlockingQueue(t *testing.T) {
 	assert.Equal(t, 0, q.Size())
 	assert.Equal(t, nil, q.Poll())
 	assert.Equal(t, nil, q.Peek())
+	assert.Equal(t, nil, q.PeekLast())
 
 	q.Put("test")
 	assert.Equal(t, 1, q.Size())
 
 	assert.Equal(t, "test", q.Peek())
+	assert.Equal(t, "test", q.PeekLast())
 	assert.Equal(t, 1, q.Size())
 
 	assert.Equal(t, "test", q.Take())
+	assert.Equal(t, nil, q.Peek())
+	assert.Equal(t, nil, q.PeekLast())
 	assert.Equal(t, 0, q.Size())
 
 	ch := make(chan string)
@@ -65,6 +69,8 @@ func TestBlockingQueueWaitWhenFull(t *testing.T) {
 	q.Put("test-2")
 	q.Put("test-3")
 	assert.Equal(t, 3, q.Size())
+	assert.Equal(t, "test-1", q.Peek())
+	assert.Equal(t, "test-3", q.PeekLast())
 
 	ch := make(chan bool)
 

@@ -168,21 +168,20 @@ func (p *partitionProducer) runEventsLoop() {
 	for {
 		select {
 		case i := <-p.eventsChan:
-			if i == nil {
-				return
-			}
-
 			switch v := i.(type) {
 			case *sendRequest:
 				p.internalSend(v)
 			case *connectionClosed:
 				p.reconnectToBroker()
+			case *flushRequest:
+				p.internalFlush(v)
 			case *closeProducer:
 				p.internalClose(v)
+				return
 			}
 
 		case _ = <-p.batchFlushTicker.C:
-			p.internalFlush()
+			p.internalFlushCurrentBatch()
 		}
 	}
 }
@@ -222,26 +221,26 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if sendAsBatch {
 		for ; p.batchBuilder.Add(smm, sequenceId, msg.Payload, request, msg.ReplicationClusters) == false; {
 			// The current batch is full.. flush it and retry
-			p.internalFlush()
+			p.internalFlushCurrentBatch()
 		}
 	} else {
 		// Send individually
 		p.batchBuilder.Add(smm, sequenceId, msg.Payload, request, msg.ReplicationClusters)
-		p.internalFlush()
+		p.internalFlushCurrentBatch()
 	}
 
 	if request.flushImmediately {
-		p.internalFlush()
+		p.internalFlushCurrentBatch()
 	}
 }
 
 type pendingItem struct {
 	batchData   []byte
 	sequenceId  uint64
-	sendRequest []interface{}
+	sendRequests []interface{}
 }
 
-func (p *partitionProducer) internalFlush() {
+func (p *partitionProducer) internalFlushCurrentBatch() {
 	batchData, sequenceId, callbacks := p.batchBuilder.Flush()
 	if batchData == nil {
 		return
@@ -249,6 +248,18 @@ func (p *partitionProducer) internalFlush() {
 
 	p.pendingQueue.Put(&pendingItem{batchData, sequenceId, callbacks})
 	p.cnx.WriteData(batchData)
+}
+
+func (p *partitionProducer) internalFlush(fr *flushRequest) {
+	p.internalFlushCurrentBatch()
+
+	pi := p.pendingQueue.PeekLast().(*pendingItem)
+	pi.sendRequests = append(pi.sendRequests, &sendRequest{
+		callback: func(id MessageID, message *ProducerMessage, e error) {
+			fr.err = e
+			fr.waitGroup.Done()
+		},
+	})
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) error {
@@ -299,9 +310,11 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
 	p.publishSemaphore.Release()
-	for _, i := range pi.sendRequest {
+	for _, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
-		sr.callback(nil, sr.msg, nil)
+		if sr.callback != nil {
+			sr.callback(nil, sr.msg, nil)
+		}
 	}
 }
 
@@ -338,10 +351,21 @@ func (p *partitionProducer) LastSequenceID() int64 {
 }
 
 func (p *partitionProducer) Flush() error {
-	return nil
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	cp := &flushRequest{&wg, nil}
+	p.eventsChan <- cp
+
+	wg.Wait()
+	return cp.err
 }
 
 func (p *partitionProducer) Close() error {
+	if p.state != producerReady {
+		// Producer is closing
+		return nil
+	}
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -364,3 +388,9 @@ type closeProducer struct {
 	waitGroup *sync.WaitGroup
 	err       error
 }
+
+type flushRequest struct {
+	waitGroup *sync.WaitGroup
+	err       error
+}
+
