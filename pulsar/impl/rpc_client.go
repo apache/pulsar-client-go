@@ -26,6 +26,8 @@ type RpcClient interface {
 
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestId uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
+
+	RequestOnCnx(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
 }
 
 type rpcClient struct {
@@ -63,6 +65,24 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	}
 
 	// TODO: Handle errors with disconnections
+	cnx.SendRequest(requestId, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
+		rpcResult.Response = response
+		wg.Done()
+	})
+
+	wg.Wait()
+	return rpcResult, nil
+}
+
+func (c *rpcClient) RequestOnCnx(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RpcResult, error) {
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	rpcResult := &RpcResult{
+		Cnx: cnx,
+	}
+
 	cnx.SendRequest(requestId, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
 		rpcResult.Response = response
 		wg.Done()

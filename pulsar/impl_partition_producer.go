@@ -11,12 +11,20 @@ import (
 	"time"
 )
 
+type producerState int
+
+const (
+	producerInit = iota
+	producerReady
+	producerClosing
+	producerClosed
+)
+
 type partitionProducer struct {
+	state  producerState
 	client *client
 	topic  string
 	log    *log.Entry
-	mutex  sync.Mutex
-	cond   *sync.Cond
 	cnx    impl.Connection
 
 	options             *ProducerOptions
@@ -52,6 +60,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	p := &partitionProducer{
+		state:            producerInit,
 		log:              log.WithField("topic", topic),
 		client:           client,
 		topic:            topic,
@@ -74,6 +83,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	} else {
 		p.log = p.log.WithField("name", *p.producerName)
 		p.log.Info("Created producer")
+		p.state = producerReady
 		go p.runEventsLoop()
 		return p, nil
 	}
@@ -136,6 +146,11 @@ func (p *partitionProducer) reconnectToBroker() {
 	p.log.Info("Reconnecting to broker")
 	backoff := impl.Backoff{}
 	for {
+		if p.state != producerReady {
+			// Producer is already closing
+			return
+		}
+
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
@@ -153,6 +168,10 @@ func (p *partitionProducer) runEventsLoop() {
 	for {
 		select {
 		case i := <-p.eventsChan:
+			if i == nil {
+				return
+			}
+
 			switch v := i.(type) {
 			case *sendRequest:
 				p.internalSend(v)
@@ -286,6 +305,33 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	}
 }
 
+func (p *partitionProducer) internalClose(req *closeProducer) {
+	if p.state != producerReady {
+		req.waitGroup.Done()
+		return
+	}
+
+	p.state = producerClosing
+	p.log.Info("Closing producer")
+
+	id := p.client.rpcClient.NewRequestId()
+	_, err := p.client.rpcClient.RequestOnCnx(p.cnx, id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
+		ProducerId: &p.producerId,
+		RequestId:  &id,
+	})
+
+	if err != nil {
+		req.err = err
+	} else {
+		p.log.Info("Closed producer")
+		p.state = producerClosed
+		p.cnx.UnregisterListener(p.producerId)
+		p.batchFlushTicker.Stop()
+	}
+
+	req.waitGroup.Done()
+}
+
 func (p *partitionProducer) LastSequenceID() int64 {
 	// TODO: return real last sequence id
 	return -1
@@ -296,8 +342,15 @@ func (p *partitionProducer) Flush() error {
 }
 
 func (p *partitionProducer) Close() error {
-	p.log.Info("Closing producer")
-	return nil
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+
+	cp := &closeProducer{&wg, nil}
+	p.eventsChan <- cp
+
+	wg.Wait()
+	return cp.err
 }
 
 type sendRequest struct {
@@ -308,4 +361,6 @@ type sendRequest struct {
 }
 
 type closeProducer struct {
+	waitGroup *sync.WaitGroup
+	err       error
 }

@@ -29,6 +29,8 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.Pong = msg.(*pb.CommandPong)
 	case pb.BaseCommand_SEND:
 		cmd.Send = msg.(*pb.CommandSend)
+	case pb.BaseCommand_CLOSE_PRODUCER:
+		cmd.CloseProducer = msg.(*pb.CommandCloseProducer)
 	default:
 		log.Panic("Missing command type: ", cmdType)
 	}

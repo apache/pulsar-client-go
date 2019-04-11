@@ -25,6 +25,7 @@ type Connection interface {
 	SendRequest(requestId uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand))
 	WriteData(data []byte)
 	RegisterListener(id uint64, listener ConnectionListener)
+	UnregisterListener(id uint64)
 	Close()
 }
 
@@ -349,6 +350,13 @@ func (c *connection) RegisterListener(id uint64, listener ConnectionListener) {
 	defer c.Unlock()
 
 	c.listeners[id] = listener
+}
+
+func (c *connection) UnregisterListener(id uint64) {
+	c.Lock()
+	defer c.Unlock()
+
+	delete(c.listeners, id)
 }
 
 func (c *connection) Close() {
