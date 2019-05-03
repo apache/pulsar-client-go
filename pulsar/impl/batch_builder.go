@@ -3,6 +3,7 @@ package impl
 import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
+	"pulsar-client-go-native/pulsar/impl/compression"
 	pb "pulsar-client-go-native/pulsar/pulsar_proto"
 	"time"
 )
@@ -28,13 +29,16 @@ type BatchBuilder struct {
 	cmdSend     *pb.BaseCommand
 	msgMetadata *pb.MessageMetadata
 	callbacks   []interface{}
+
+	compressionProvider compression.Provider
 }
 
-func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64) *BatchBuilder {
+func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64,
+	compressionType pb.CompressionType) *BatchBuilder {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
 	}
-	return &BatchBuilder{
+	bb := &BatchBuilder{
 		buffer:       NewBuffer(4096),
 		numMessages:  0,
 		maxMessages:  maxMessages,
@@ -47,8 +51,15 @@ func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64) *
 		msgMetadata: &pb.MessageMetadata{
 			ProducerName: &producerName,
 		},
-		callbacks: []interface{}{},
+		callbacks:           []interface{}{},
+		compressionProvider: getCompressionProvider(compressionType),
 	}
+
+	if compressionType != pb.CompressionType_NONE {
+		bb.msgMetadata.Compression = &compressionType
+	}
+
+	return bb
 }
 
 func (bb *BatchBuilder) IsFull() bool {
@@ -108,11 +119,29 @@ func (bb *BatchBuilder) Flush() (batchData []byte, sequenceId uint64, callbacks 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
 	bb.cmdSend.Send.NumMessages = proto.Int32(int32(bb.numMessages))
 
+	compressed := bb.compressionProvider.Compress(bb.buffer.ReadableSlice())
+
 	buffer := NewBuffer(4096)
-	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer.ReadableSlice())
+	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, compressed)
 
 	callbacks = bb.callbacks
 	sequenceId = bb.cmdSend.Send.GetSequenceId()
 	bb.reset()
 	return buffer.ReadableSlice(), sequenceId, callbacks
+}
+
+func getCompressionProvider(compressionType pb.CompressionType) compression.Provider {
+	switch compressionType {
+	case pb.CompressionType_NONE:
+		return compression.NoopProvider
+	case pb.CompressionType_LZ4:
+		return compression.Lz4Provider
+	case pb.CompressionType_ZLIB:
+		return compression.ZLibProvider
+	case pb.CompressionType_ZSTD:
+		return compression.ZStdProvider
+	default:
+		log.Panic("Unsupported compression type: ", compressionType)
+		return nil
+	}
 }

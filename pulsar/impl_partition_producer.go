@@ -115,7 +115,8 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.producerName = res.Response.ProducerSuccess.ProducerName
 	if p.batchBuilder == nil {
-		p.batchBuilder = impl.NewBatchBuilder(p.options.BatchingMaxMessages, *p.producerName, p.producerId)
+		p.batchBuilder = impl.NewBatchBuilder(p.options.BatchingMaxMessages, *p.producerName,
+			p.producerId, pb.CompressionType(p.options.CompressionType))
 	}
 	if p.sequenceIdGenerator == nil {
 		nextSequenceId := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
@@ -235,8 +236,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 }
 
 type pendingItem struct {
-	batchData   []byte
-	sequenceId  uint64
+	batchData    []byte
+	sequenceId   uint64
 	sendRequests []interface{}
 }
 
@@ -393,4 +394,3 @@ type flushRequest struct {
 	waitGroup *sync.WaitGroup
 	err       error
 }
-
