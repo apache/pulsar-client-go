@@ -8,6 +8,7 @@ import (
 	"pulsar-client-go-native/pulsar/impl/util"
 	pb "pulsar-client-go-native/pulsar/pulsar_proto"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -39,6 +40,7 @@ type partitionProducer struct {
 
 	publishSemaphore util.Semaphore
 	pendingQueue     util.BlockingQueue
+	lastSequenceID   int64
 }
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
@@ -70,6 +72,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: make(util.Semaphore, maxPendingMessages),
 		pendingQueue:     util.NewBlockingQueue(maxPendingMessages),
+		lastSequenceID:   -1,
 	}
 
 	if options.Name != "" {
@@ -313,6 +316,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	p.publishSemaphore.Release()
 	for _, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
+		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceId))
 		if sr.callback != nil {
 			sr.callback(nil, sr.msg, nil)
 		}
@@ -347,8 +351,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
-	// TODO: return real last sequence id
-	return -1
+	return atomic.LoadInt64(&p.lastSequenceID)
 }
 
 func (p *partitionProducer) Flush() error {

@@ -78,3 +78,34 @@ func TestProducerCompression(t *testing.T) {
 		})
 	}
 }
+
+func TestProducerLastSequenceID(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceUrl,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	assert.Equal(t, int64(-1), producer.LastSequenceID())
+
+	for i := 0; i < 10; i++ {
+		err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte("hello"),
+		})
+
+		assert.NoError(t, err)
+		assert.Equal(t, int64(i), producer.LastSequenceID())
+	}
+
+	err = producer.Close()
+	assert.NoError(t, err)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
