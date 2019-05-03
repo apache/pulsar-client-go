@@ -3,6 +3,7 @@ package impl
 import (
 	"errors"
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"net/url"
 	pb "pulsar-client-go-native/pulsar/pulsar_proto"
@@ -29,17 +30,34 @@ func NewLookupService(rpcClient RpcClient, serviceUrl *url.URL) LookupService {
 	}
 }
 
+func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (logicalAddress *url.URL, physicalAddress *url.URL, err error) {
+	logicalAddress, err = url.ParseRequestURI(lr.GetBrokerServiceUrl())
+	if err != nil {
+		return nil, nil, err
+	}
+
+	var physicalAddr *url.URL
+	if lr.GetProxyThroughServiceUrl() {
+		physicalAddr = ls.serviceUrl
+	} else {
+		physicalAddr = logicalAddress
+	}
+
+	return logicalAddress, physicalAddr, nil
+}
+
+// Follow brokers redirect up to certain number of times
+const lookupResultMaxRedirect = 20
+
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
-	// Follow brokers redirect up to certain number of times
-	const lookupResultMaxRedirect = 20
+	id := ls.rpcClient.NewRequestId()
+	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
+		RequestId:     &id,
+		Topic:         &topic,
+		Authoritative: proto.Bool(false),
+	})
 
 	for i := 0; i < lookupResultMaxRedirect; i++ {
-		id := ls.rpcClient.NewRequestId()
-		res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-			RequestId: &id,
-			Topic:     &topic,
-		})
-
 		if err != nil {
 			return nil, err
 		}
@@ -47,38 +65,49 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 		log.WithField("topic", topic).Debugf("Got topic lookup response: %s", res)
 		lr := res.Response.LookupTopicResponse
 		switch *lr.Response {
+
 		case pb.CommandLookupTopicResponse_Redirect:
-			// TODO: Handle redirects
+			logicalAddress, physicalAddr, err := ls.getBrokerAddress(lr)
+			if err != nil {
+				return nil, err
+			}
+
 			log.WithField("topic", topic).Debugf("Follow redirect to broker. %v / %v - Use proxy: %v",
 				lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
-			break
+
+			id := ls.rpcClient.NewRequestId()
+			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
+				RequestId:     &id,
+				Topic:         &topic,
+				Authoritative: lr.Authoritative,
+			})
+
+			// Process the response at the top of the loop
+			continue
 
 		case pb.CommandLookupTopicResponse_Connect:
 			log.WithField("topic", topic).Debugf("Successfully looked up topic on broker. %s / %s - Use proxy: %t",
 				lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
-			logicalAddress, err := url.Parse(lr.GetBrokerServiceUrl())
+			logicalAddress, physicalAddress, err := ls.getBrokerAddress(lr)
 			if err != nil {
 				return nil, err
 			}
 
-			var physicalAddr *url.URL
-			if lr.GetProxyThroughServiceUrl() {
-				physicalAddr = ls.serviceUrl
-			} else {
-				physicalAddr = logicalAddress
-			}
 			return &LookupResult{
 				LogicalAddr:  logicalAddress,
-				PhysicalAddr: physicalAddr,
+				PhysicalAddr: physicalAddress,
 			}, nil
 
 		case pb.CommandLookupTopicResponse_Failed:
-			log.WithField("topic", topic).Warn("Failed to lookup topic",
-				lr.Error.String())
-			return nil, errors.New(fmt.Sprintf("failed to lookup topic: %s", lr.Error.String()))
+			errorMsg := ""
+			if lr.Error != nil {
+				errorMsg = lr.Error.String()
+			}
+			log.WithField("topic", topic).Warn("Failed to lookup topic", errorMsg)
+			return nil, errors.New(fmt.Sprintf("failed to lookup topic: %s", errorMsg))
 		}
 	}
 
-	return nil, nil
+	return nil, errors.New("exceeded max number of redirection during topic lookup")
 }
