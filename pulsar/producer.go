@@ -24,25 +24,11 @@ import (
 	"time"
 )
 
-type MessageRoutingMode int
-
-const (
-	// Publish messages across all partitions in round-robin.
-	RoundRobinDistribution MessageRoutingMode = iota
-
-	// The producer will chose one single partition and publish all the messages into that partition
-	UseSinglePartition
-
-	// Use custom message router implementation that will be called to determine the partition for a particular message.
-	CustomPartition
-)
-
 type HashingScheme int
 
 const (
 	JavaStringHash HashingScheme = iota // Java String.hashCode() equivalent
 	Murmur3_32Hash                      // Use Murmur3 hashing function
-	BoostHash                           // C++ based boost::hash
 )
 
 type CompressionType int
@@ -97,20 +83,12 @@ type ProducerOptions struct {
 	// `ProducerQueueIsFullError` when there is no space left in pending queue.
 	BlockIfQueueFull bool
 
-	// Set the message routing mode for the partitioned producer.
-	// Default routing mode is round-robin routing.
-	//
-	// This logic is applied when the application is not setting a key ProducerMessage#setKey(String) on a
-	// particular message.
-	MessageRoutingMode
-
 	// Change the `HashingScheme` used to chose the partition on where to publish a particular message.
 	// Standard hashing functions available are:
 	//
 	//  - `JavaStringHash` : Java String.hashCode() equivalent
 	//  - `Murmur3_32Hash` : Use Murmur3 hashing function.
 	// 		https://en.wikipedia.org/wiki/MurmurHash">https://en.wikipedia.org/wiki/MurmurHash
-	//  - `BoostHash`      : C++ based boost::hash
 	//
 	// Default is `JavaStringHash`.
 	HashingScheme

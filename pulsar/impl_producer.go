@@ -11,6 +11,17 @@ type producer struct {
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 }
 
+func getHashingFunction(s HashingScheme) func(string) uint32 {
+	switch s {
+	case JavaStringHash:
+		return impl.JavaStringHash
+	case Murmur3_32Hash:
+		return impl.Murmur3_32Hash
+	default:
+		return impl.JavaStringHash
+	}
+}
+
 func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	if options.Topic == "" {
 		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
@@ -21,9 +32,12 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	}
 
 	if options.MessageRouter == nil {
-		internalRouter := impl.NewDefaultRouter(options.BatchingMaxPublishDelay)
+		internalRouter := impl.NewDefaultRouter(
+			impl.NewSystemClock(),
+			getHashingFunction(options.HashingScheme),
+			options.BatchingMaxPublishDelay)
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
-			return internalRouter(metadata.NumPartitions())
+			return internalRouter(message.Key, metadata.NumPartitions())
 		}
 	}
 
