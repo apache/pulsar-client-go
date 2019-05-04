@@ -313,11 +313,11 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
-	p.publishSemaphore.Release()
 	for _, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
 		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceId))
 		if sr.callback != nil {
+			p.publishSemaphore.Release()
 			sr.callback(nil, sr.msg, nil)
 		}
 	}

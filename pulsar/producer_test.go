@@ -2,8 +2,12 @@ package pulsar
 
 import (
 	"context"
+	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
+	"pulsar-client-go-native/pulsar/impl/util"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestSimpleProducer(t *testing.T) {
@@ -26,6 +30,53 @@ func TestSimpleProducer(t *testing.T) {
 
 		assert.NoError(t, err)
 	}
+
+	err = producer.Close()
+	assert.NoError(t, err)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
+func TestProducerAsyncSend(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceUrl,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   newTopicName(),
+		BatchingMaxPublishDelay: 1 * time.Second,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	wg := sync.WaitGroup{}
+	wg.Add(10)
+	errors := util.NewBlockingQueue(10)
+
+	for i := 0; i < 10; i++ {
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: []byte("hello"),
+		}, func(id MessageID, message *ProducerMessage, e error) {
+			if e != nil {
+				log.WithError(e).Error("Failed to publish")
+				errors.Put(e)
+			} else {
+				log.Info("Published message ", id)
+			}
+			wg.Done()
+		})
+
+		assert.NoError(t, err)
+	}
+
+	producer.Flush()
+
+	wg.Wait()
+
+	assert.Equal(t, 0, errors.Size())
 
 	err = producer.Close()
 	assert.NoError(t, err)
