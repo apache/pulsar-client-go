@@ -22,10 +22,9 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"pulsar-client-go-native/pulsar"
 	"github.com/spf13/cobra"
-	"log"
+	log "github.com/sirupsen/logrus"
 	"sync/atomic"
 	"time"
 )
@@ -55,9 +54,9 @@ func initConsumer() {
 
 func consume() {
 	b, _ := json.MarshalIndent(clientArgs, "", "  ")
-	fmt.Println("Client config: ", string(b))
+	log.Info("Client config: ", string(b))
 	b, _ = json.MarshalIndent(consumeArgs, "", "  ")
-	fmt.Println("Consumer config: ", string(b))
+	log.Info("Consumer config: ", string(b))
 
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
 		URL:                    clientArgs.ServiceUrl,
@@ -107,7 +106,7 @@ func consume() {
 			msgRate := float64(currentMsgReceived) / float64(10)
 			bytesRate := float64(currentBytesReceived) / float64(10)
 
-			log.Printf(`Stats - Consume rate: %6.1f msg/s - %6.1f Mbps`,
+			log.Infof(`Stats - Consume rate: %6.1f msg/s - %6.1f Mbps`,
 				msgRate, bytesRate*8/1024/1024)
 		}
 	}
