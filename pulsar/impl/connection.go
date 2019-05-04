@@ -216,13 +216,8 @@ func (c *connection) writeCommand(cmd proto.Message) {
 	// [FRAME_SIZE] [CMD_SIZE][CMD]
 	cmdSize := uint32(proto.Size(cmd))
 	frameSize := cmdSize + 4
-	bufferSize := frameSize + 4
 
 	c.writeBuffer.Clear()
-	if c.writeBuffer.WritableBytes() < bufferSize {
-		c.writeBuffer.Resize(c.writeBuffer.Capacity() * 2)
-	}
-
 	c.writeBuffer.WriteUint32(frameSize)
 	c.writeBuffer.WriteUint32(cmdSize)
 	serialized, err := proto.Marshal(cmd)

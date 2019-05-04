@@ -1,6 +1,8 @@
 package impl
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+)
 
 type Buffer interface {
 	ReadableBytes() uint32
@@ -121,6 +123,17 @@ func (b *buffer) Resize(newSize uint32) {
 	b.writerIdx = size
 }
 
+func (b *buffer) resizeIfNeeded(spaceNeeded int) {
+	if b.WritableBytes() < uint32(spaceNeeded) {
+		capacityNeeded := uint32(cap(b.data) + spaceNeeded)
+		minCapacityIncrease := uint32(cap(b.data) * 3 / 2)
+		if capacityNeeded < minCapacityIncrease {
+			capacityNeeded = minCapacityIncrease
+		}
+		b.Resize(capacityNeeded)
+	}
+}
+
 func (b *buffer) ReadUint32() uint32 {
 	return binary.BigEndian.Uint32(b.Read(4))
 }
@@ -130,6 +143,7 @@ func (b *buffer) ReadUint16() uint16 {
 }
 
 func (b *buffer) WriteUint32(n uint32) {
+	b.resizeIfNeeded(4)
 	binary.BigEndian.PutUint32(b.WritableSlice(), n)
 	b.writerIdx += 4
 }
@@ -139,11 +153,13 @@ func (b *buffer) PutUint32(n uint32, idx uint32) {
 }
 
 func (b *buffer) WriteUint16(n uint16) {
+	b.resizeIfNeeded(2)
 	binary.BigEndian.PutUint16(b.WritableSlice(), n)
 	b.writerIdx += 2
 }
 
 func (b *buffer) Write(s []byte) {
+	b.resizeIfNeeded(len(s))
 	copy(b.WritableSlice(), s)
 	b.writerIdx += uint32(len(s))
 }
