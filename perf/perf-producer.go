@@ -26,7 +26,7 @@ import (
 	"github.com/bmizerany/perks/quantile"
 	"github.com/spf13/cobra"
 	log "github.com/sirupsen/logrus"
-	"pulsar-client-go-native/pulsar"
+	"pulsar-client-go/pulsar"
 	"time"
 )
 

@@ -4,7 +4,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"net/url"
-	pb "pulsar-client-go-native/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/pulsar_proto"
 	"testing"
 )
 

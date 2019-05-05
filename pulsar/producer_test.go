@@ -4,7 +4,7 @@ import (
 	"context"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"pulsar-client-go-native/pulsar/impl/util"
+	"pulsar-client-go/pulsar/impl/util"
 	"sync"
 	"testing"
 	"time"

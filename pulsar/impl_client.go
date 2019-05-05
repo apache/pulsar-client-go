@@ -4,8 +4,8 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"net/url"
-	"pulsar-client-go-native/pulsar/impl"
-	pb "pulsar-client-go-native/pulsar/pulsar_proto"
+	"pulsar-client-go/pulsar/impl"
+	pb "pulsar-client-go/pulsar/pulsar_proto"
 )
 
 type client struct {

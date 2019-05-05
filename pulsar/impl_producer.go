@@ -2,7 +2,7 @@ package pulsar
 
 import (
 	"context"
-	"pulsar-client-go-native/pulsar/impl"
+	"pulsar-client-go/pulsar/impl"
 )
 
 type producer struct {

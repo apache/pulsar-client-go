@@ -3,7 +3,7 @@ package impl
 import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
-	pb "pulsar-client-go-native/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/pulsar_proto"
 )
 
 const MaxFrameSize = 5 * 1024 * 1024

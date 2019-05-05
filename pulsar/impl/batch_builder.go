@@ -3,8 +3,8 @@ package impl
 import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
-	"pulsar-client-go-native/pulsar/impl/compression"
-	pb "pulsar-client-go-native/pulsar/pulsar_proto"
+	"pulsar-client-go/pulsar/impl/compression"
+	pb "pulsar-client-go/pulsar/pulsar_proto"
 	"time"
 )
 

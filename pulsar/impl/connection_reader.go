@@ -5,7 +5,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"io"
-	pb "pulsar-client-go-native/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/pulsar_proto"
 )
 
 type connectionReader struct {
