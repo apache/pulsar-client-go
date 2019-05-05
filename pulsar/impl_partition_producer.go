@@ -41,11 +41,13 @@ type partitionProducer struct {
 	publishSemaphore util.Semaphore
 	pendingQueue     util.BlockingQueue
 	lastSequenceID   int64
+
+	partitionIdx int
 }
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
 
-func newPartitionProducer(client *client, topic string, options *ProducerOptions) (*partitionProducer, error) {
+func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (*partitionProducer, error) {
 
 	var batchingMaxPublishDelay time.Duration
 	if options.BatchingMaxPublishDelay != 0 {
@@ -73,6 +75,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		publishSemaphore: make(util.Semaphore, maxPendingMessages),
 		pendingQueue:     util.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
+		partitionIdx:     partitionIdx,
 	}
 
 	if options.Name != "" {
@@ -313,12 +316,18 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
-	for _, i := range pi.sendRequests {
+	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
 		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceId))
 		if sr.callback != nil {
 			p.publishSemaphore.Release()
-			sr.callback(nil, sr.msg, nil)
+			msgID := newMessageId(
+				int64(response.MessageId.GetLedgerId()),
+				int64(response.MessageId.GetEntryId()),
+				idx,
+				p.partitionIdx,
+			)
+			sr.callback(msgID, sr.msg, nil)
 		}
 	}
 }

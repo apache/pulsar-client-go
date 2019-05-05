@@ -59,7 +59,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 
 	for partitionIdx, partition := range partitions {
 		go func() {
-			prod, err := newPartitionProducer(client, partition, options)
+			prod, err := newPartitionProducer(client, partition, options, partitionIdx)
 			c <- ProducerError{partitionIdx, prod, err}
 		}()
 	}

@@ -75,16 +75,14 @@ type MessageID interface {
 }
 
 // Reconstruct a MessageID object from its serialized representation
-func DeserializeMessageID(data []byte) MessageID {
-	// TODO
-	//return deserializeMessageId(data)
-	return nil
+func DeserializeMessageID(data []byte) (MessageID, error) {
+	return deserializeMessageId(data)
 }
 
 var (
-// MessageID that points to the earliest message available in a topic
-// TODO: EarliestMessage MessageID = earliestMessageID()
+	// MessageID that points to the earliest message available in a topic
+	EarliestMessage MessageID = earliestMessageID()
 
-// MessageID that points to the latest message
-// TODO: LatestMessage MessageID = latestMessageID()
+	// MessageID that points to the latest message
+	LatestMessage MessageID = latestMessageID()
 )
