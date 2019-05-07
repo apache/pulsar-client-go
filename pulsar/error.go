@@ -19,7 +19,6 @@
 
 package pulsar
 
-import "C"
 import "fmt"
 
 type Result int

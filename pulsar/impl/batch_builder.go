@@ -27,11 +27,11 @@ import (
 	"time"
 )
 
-const MaxMessageSize = 5 * 1024 * 1024
-
-const MaxBatchSize = 128 * 1024
-
-const DefaultMaxMessagesPerBatch = 1000
+const (
+	MaxMessageSize = 5 * 1024 * 1024
+	MaxBatchSize = 128 * 1024
+	DefaultMaxMessagesPerBatch = 1000
+)
 
 type BatchBuilder struct {
 	buffer Buffer

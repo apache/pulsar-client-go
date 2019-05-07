@@ -27,8 +27,10 @@ type Backoff struct {
 	backoff time.Duration
 }
 
-const minBackoff = 100 * time.Millisecond
-const maxBackoff = 60 * time.Second
+const (
+	minBackoff = 100 * time.Millisecond
+	maxBackoff = 60 * time.Second
+)
 
 func (b *Backoff) Next() time.Duration {
 	// Double the delay each time
