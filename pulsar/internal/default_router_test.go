@@ -17,7 +17,7 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	"github.com/stretchr/testify/assert"

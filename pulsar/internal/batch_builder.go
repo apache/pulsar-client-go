@@ -17,13 +17,13 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
-	"pulsar-client-go/pulsar/impl/compression"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	"pulsar-client-go/pulsar/internal/compression"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 	"time"
 )
 

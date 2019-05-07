@@ -17,23 +17,29 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
-	"sync/atomic"
 	"time"
 )
 
-func TimestampMillis(t time.Time) uint64 {
-	return uint64(t.UnixNano()) / uint64(time.Millisecond)
+type Backoff struct {
+	backoff time.Duration
 }
 
-// Perform atomic read and update
-func GetAndAdd(n *uint64, diff uint64) uint64 {
-	for {
-		v := *n
-		if atomic.CompareAndSwapUint64(n, v, v+diff) {
-			return v
-		}
+const (
+	minBackoff = 100 * time.Millisecond
+	maxBackoff = 60 * time.Second
+)
+
+func (b *Backoff) Next() time.Duration {
+	// Double the delay each time
+	b.backoff += b.backoff
+	if b.backoff.Nanoseconds() < minBackoff.Nanoseconds() {
+		b.backoff = minBackoff
+	} else if b.backoff.Nanoseconds() > maxBackoff.Nanoseconds() {
+		b.backoff = maxBackoff
 	}
+
+	return b.backoff
 }

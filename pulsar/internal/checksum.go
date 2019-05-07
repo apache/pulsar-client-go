@@ -17,22 +17,12 @@
 // under the License.
 //
 
-package impl
+package internal
 
-import (
-	"testing"
+import "hash/crc32"
 
-	"github.com/stretchr/testify/assert"
-)
+var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 
-func TestBuffer(t *testing.T) {
-	b := NewBuffer(1024)
-	assert.Equal(t, uint32(0), b.ReadableBytes())
-	assert.Equal(t, uint32(1024), b.WritableBytes())
-	assert.Equal(t, uint32(1024), b.Capacity())
-
-	b.Write([]byte("hello"))
-	assert.Equal(t, uint32(5), b.ReadableBytes())
-	assert.Equal(t, uint32(1019), b.WritableBytes())
-	assert.Equal(t, uint32(1024), b.Capacity())
+func Crc32cCheckSum(data []byte) uint32 {
+	return crc32.Checksum(data, crc32cTable)
 }

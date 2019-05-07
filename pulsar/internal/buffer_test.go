@@ -17,22 +17,22 @@
 // under the License.
 //
 
-package impl
+package internal
 
-import "github.com/spaolacci/murmur3"
+import (
+	"testing"
 
-func JavaStringHash(s string) uint32 {
-	var h uint32
-	for i, size := 0, len(s); i < size; i++ {
-		h = 31*h + uint32(s[i])
-	}
+	"github.com/stretchr/testify/assert"
+)
 
-	return h
-}
+func TestBuffer(t *testing.T) {
+	b := NewBuffer(1024)
+	assert.Equal(t, uint32(0), b.ReadableBytes())
+	assert.Equal(t, uint32(1024), b.WritableBytes())
+	assert.Equal(t, uint32(1024), b.Capacity())
 
-func Murmur3_32Hash(s string) uint32 {
-	h := murmur3.New32()
-	h.Write([]byte(s))
-	// Maintain compatibility with values used in Java client
-	return h.Sum32() & 0x7fffffff
+	b.Write([]byte("hello"))
+	assert.Equal(t, uint32(5), b.ReadableBytes())
+	assert.Equal(t, uint32(1019), b.WritableBytes())
+	assert.Equal(t, uint32(1024), b.Capacity())
 }

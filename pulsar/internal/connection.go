@@ -17,7 +17,7 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	"errors"
@@ -25,7 +25,7 @@ import (
 	log "github.com/sirupsen/logrus"
 	"net"
 	"net/url"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 	"sync"
 	"sync/atomic"
 	"time"

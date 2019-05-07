@@ -21,7 +21,7 @@ package pulsar
 
 import (
 	"github.com/golang/protobuf/proto"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 type messageId struct {

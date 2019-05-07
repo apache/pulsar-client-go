@@ -17,7 +17,7 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	log "github.com/sirupsen/logrus"

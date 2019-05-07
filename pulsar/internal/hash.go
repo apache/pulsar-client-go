@@ -17,29 +17,22 @@
 // under the License.
 //
 
-package impl
+package internal
 
-import (
-	"time"
-)
+import "github.com/spaolacci/murmur3"
 
-type Backoff struct {
-	backoff time.Duration
-}
-
-const (
-	minBackoff = 100 * time.Millisecond
-	maxBackoff = 60 * time.Second
-)
-
-func (b *Backoff) Next() time.Duration {
-	// Double the delay each time
-	b.backoff += b.backoff
-	if b.backoff.Nanoseconds() < minBackoff.Nanoseconds() {
-		b.backoff = minBackoff
-	} else if b.backoff.Nanoseconds() > maxBackoff.Nanoseconds() {
-		b.backoff = maxBackoff
+func JavaStringHash(s string) uint32 {
+	var h uint32
+	for i, size := 0, len(s); i < size; i++ {
+		h = 31*h + uint32(s[i])
 	}
 
-	return b.backoff
+	return h
+}
+
+func Murmur3_32Hash(s string) uint32 {
+	h := murmur3.New32()
+	h.Write([]byte(s))
+	// Maintain compatibility with values used in Java client
+	return h.Sum32() & 0x7fffffff
 }

@@ -17,12 +17,12 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	"github.com/golang/protobuf/proto"
 	"net/url"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 	"sync"
 	"sync/atomic"
 )

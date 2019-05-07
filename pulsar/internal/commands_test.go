@@ -17,43 +17,29 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	"github.com/stretchr/testify/assert"
 	"testing"
 )
 
-type testProvider struct {
-	str string
+func TestConvertStringMap(t *testing.T) {
+	m := make(map[string]string)
+	m["a"] = "1"
+	m["b"] = "2"
 
-	hash uint32
+	pbm := ConvertFromStringMap(m)
+
+	assert.Equal(t, 2, len(pbm))
+	assert.Equal(t, "a", *pbm[0].Key)
+	assert.Equal(t, "1", *pbm[0].Value)
+	assert.Equal(t, "b", *pbm[1].Key)
+	assert.Equal(t, "2", *pbm[1].Value)
+
+	m2 := ConvertToStringMap(pbm)
+	assert.Equal(t, 2, len(m2))
+	assert.Equal(t, "1", m2["a"])
+	assert.Equal(t, "2", m2["b"])
 }
 
-var javaHashValues = []testProvider{
-	{"", 0x0,},
-	{"hello", 0x5e918d2},
-	{"test", 0x364492},
-}
-
-var murmurHashValues = []testProvider{
-	{"", 0x0},
-	{"hello", 0x248bfa47},
-	{"test", 0x3a6bd213},
-}
-
-func TestJavaHash(t *testing.T) {
-	for _, p := range javaHashValues {
-		t.Run(p.str, func(t *testing.T) {
-			assert.Equal(t, p.hash, JavaStringHash(p.str))
-		})
-	}
-}
-
-func TestMurmurHash(t *testing.T) {
-	for _, p := range murmurHashValues {
-		t.Run(p.str, func(t *testing.T) {
-			assert.Equal(t, p.hash, Murmur3_32Hash(p.str))
-		})
-	}
-}

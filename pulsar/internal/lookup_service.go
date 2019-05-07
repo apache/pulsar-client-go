@@ -17,7 +17,7 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	"errors"
@@ -25,7 +25,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"net/url"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 type LookupResult struct {

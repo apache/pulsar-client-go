@@ -23,18 +23,18 @@ import (
 	"fmt"
 	log "github.com/sirupsen/logrus"
 	"net/url"
-	"pulsar-client-go/pulsar/impl"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	"pulsar-client-go/pulsar/internal"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 type client struct {
 	options ClientOptions
 
-	cnxPool       impl.ConnectionPool
-	rpcClient     impl.RpcClient
-	lookupService impl.LookupService
+	cnxPool       internal.ConnectionPool
+	rpcClient     internal.RpcClient
+	lookupService internal.LookupService
 
-	handlers            map[impl.Closable]bool
+	handlers            map[internal.Closable]bool
 	producerIdGenerator uint64
 	consumerIdGenerator uint64
 }
@@ -55,11 +55,11 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	c := &client{
-		cnxPool: impl.NewConnectionPool(),
+		cnxPool: internal.NewConnectionPool(),
 	}
-	c.rpcClient = impl.NewRpcClient(url, c.cnxPool)
-	c.lookupService = impl.NewLookupService(c.rpcClient, url)
-	c.handlers = make(map[impl.Closable]bool)
+	c.rpcClient = internal.NewRpcClient(url, c.cnxPool)
+	c.lookupService = internal.NewLookupService(c.rpcClient, url)
+	c.handlers = make(map[internal.Closable]bool)
 	return c, nil
 }
 
@@ -82,7 +82,7 @@ func (client *client) CreateReader(options ReaderOptions) (Reader, error) {
 }
 
 func (client *client) TopicPartitions(topic string) ([]string, error) {
-	topicName, err := impl.ParseTopicName(topic)
+	topicName, err := internal.ParseTopicName(topic)
 	if err != nil {
 		return nil, err
 	}

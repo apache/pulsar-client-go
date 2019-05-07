@@ -23,9 +23,9 @@ import (
 	"context"
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
-	"pulsar-client-go/pulsar/impl"
-	"pulsar-client-go/pulsar/impl/util"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	"pulsar-client-go/pulsar/internal"
+	"pulsar-client-go/pulsar/internal/util"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -45,12 +45,12 @@ type partitionProducer struct {
 	client *client
 	topic  string
 	log    *log.Entry
-	cnx    impl.Connection
+	cnx    internal.Connection
 
 	options             *ProducerOptions
 	producerName        *string
 	producerId          uint64
-	batchBuilder        *impl.BatchBuilder
+	batchBuilder        *internal.BatchBuilder
 	sequenceIdGenerator *uint64
 	batchFlushTicker    *time.Ticker
 
@@ -140,7 +140,7 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.producerName = res.Response.ProducerSuccess.ProducerName
 	if p.batchBuilder == nil {
-		p.batchBuilder = impl.NewBatchBuilder(p.options.BatchingMaxMessages, *p.producerName,
+		p.batchBuilder = internal.NewBatchBuilder(p.options.BatchingMaxMessages, *p.producerName,
 			p.producerId, pb.CompressionType(p.options.CompressionType))
 	}
 	if p.sequenceIdGenerator == nil {
@@ -170,7 +170,7 @@ func (p *partitionProducer) ConnectionClosed() {
 
 func (p *partitionProducer) reconnectToBroker() {
 	p.log.Info("Reconnecting to broker")
-	backoff := impl.Backoff{}
+	backoff := internal.Backoff{}
 	for {
 		if p.state != producerReady {
 			// Producer is already closing
@@ -231,7 +231,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if msg.EventTime != nil {
-		smm.EventTime = proto.Uint64(impl.TimestampMillis(*msg.EventTime))
+		smm.EventTime = proto.Uint64(internal.TimestampMillis(*msg.EventTime))
 	}
 
 	if msg.Key != "" {
@@ -239,10 +239,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if msg.Properties != nil {
-		smm.Properties = impl.ConvertFromStringMap(msg.Properties)
+		smm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}
 
-	sequenceId := impl.GetAndAdd(p.sequenceIdGenerator, 1)
+	sequenceId := internal.GetAndAdd(p.sequenceIdGenerator, 1)
 
 	if sendAsBatch {
 		for ; p.batchBuilder.Add(smm, sequenceId, msg.Payload, request, msg.ReplicationClusters) == false; {

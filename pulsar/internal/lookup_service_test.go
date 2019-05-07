@@ -17,13 +17,13 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"net/url"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 	"testing"
 )
 

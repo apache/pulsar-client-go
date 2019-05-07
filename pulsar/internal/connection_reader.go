@@ -17,14 +17,14 @@
 // under the License.
 //
 
-package impl
+package internal
 
 import (
 	"bufio"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"io"
-	pb "pulsar-client-go/pulsar/pulsar_proto"
+	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 type connectionReader struct {

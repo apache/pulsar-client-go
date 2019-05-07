@@ -21,7 +21,7 @@ package pulsar
 
 import (
 	"context"
-	"pulsar-client-go/pulsar/impl"
+	"pulsar-client-go/pulsar/internal"
 )
 
 type producer struct {
@@ -33,11 +33,11 @@ type producer struct {
 func getHashingFunction(s HashingScheme) func(string) uint32 {
 	switch s {
 	case JavaStringHash:
-		return impl.JavaStringHash
+		return internal.JavaStringHash
 	case Murmur3_32Hash:
-		return impl.Murmur3_32Hash
+		return internal.Murmur3_32Hash
 	default:
-		return impl.JavaStringHash
+		return internal.JavaStringHash
 	}
 }
 
@@ -51,8 +51,8 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	}
 
 	if options.MessageRouter == nil {
-		internalRouter := impl.NewDefaultRouter(
-			impl.NewSystemClock(),
+		internalRouter := internal.NewDefaultRouter(
+			internal.NewSystemClock(),
 			getHashingFunction(options.HashingScheme),
 			options.BatchingMaxPublishDelay)
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
