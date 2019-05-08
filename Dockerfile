@@ -1,0 +1,41 @@
+#
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+#
+
+FROM golang:1.12 as go
+
+FROM apachepulsar/pulsar:latest
+
+COPY --from=go /usr/local/go /usr/local/go
+ENV PATH /root/go/bin:/usr/local/go/bin:$PATH
+
+### Add test scripts
+
+COPY integration-tests/certs /pulsar/certs
+COPY integration-tests/standalone.conf /pulsar/conf
+COPY integration-tests/client.conf /pulsar/conf
+COPY pulsar-test-service-start.sh /pulsar/bin
+COPY pulsar-test-service-stop.sh /pulsar/bin
+
+# Initialize test configuration and credentials
+RUN mkdir /pulsar/tokens
+RUN /pulsar/bin/pulsar tokens create-secret-key --output /pulsar/tokens/secret.key
+RUN /pulsar/bin/pulsar tokens create \
+                --subject token-principal \
+                --secret-key file:///pulsar/tokens/secret.key \
+                > /pulsar/tokens/token.txt
