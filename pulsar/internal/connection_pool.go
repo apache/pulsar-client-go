@@ -33,11 +33,14 @@ type ConnectionPool interface {
 }
 
 type connectionPool struct {
-	pool sync.Map
+	pool       sync.Map
+	tlsOptions *TLSOptions
 }
 
-func NewConnectionPool() ConnectionPool {
-	return &connectionPool{}
+func NewConnectionPool(tlsOptions *TLSOptions) ConnectionPool {
+	return &connectionPool{
+		tlsOptions: tlsOptions,
+	}
 }
 
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
@@ -57,7 +60,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	}
 
 	// Try to create a new connection
-	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host, newConnection(logicalAddr, physicalAddr))
+	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host, newConnection(logicalAddr, physicalAddr, p.tlsOptions))
 	cnx := newCnx.(*connection)
 	if !wasCached {
 		cnx.start()

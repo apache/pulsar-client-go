@@ -20,6 +20,7 @@
 package pulsar
 
 import (
+	"pulsar-client-go/pulsar/internal/auth"
 	"time"
 )
 
@@ -44,8 +45,7 @@ func NewAuthenticationTokenSupplier(tokenSupplier func() string) Authentication 
 
 // Create new Authentication provider with specified TLS certificate and private key
 func NewAuthenticationTLS(certificatePath string, privateKeyPath string) Authentication {
-	// TODO: return newAuthenticationTLS(certificatePath, privateKeyPath)
-	return nil
+	return auth.NewAuthenticationTLS(certificatePath, privateKeyPath)
 }
 
 // Create new Athenz Authentication provider with configuration in JSON form

@@ -20,8 +20,12 @@
 package pulsar
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"net/url"
 	"pulsar-client-go/pulsar/internal"
 	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -50,12 +54,24 @@ func newClient(options ClientOptions) (Client, error) {
 		return nil, newError(ResultInvalidConfiguration, "Invalid service URL")
 	}
 
-	if url.Scheme != "pulsar" {
+	var tlsConfig *internal.TLSOptions
+	if url.Scheme == "pulsar" {
+		tlsConfig = nil
+	} else if url.Scheme == "pulsar+ssl" {
+		tlsConfig = &internal.TLSOptions{
+			AllowInsecureConnection: options.TLSAllowInsecureConnection,
+			TrustCertsFilePath:      options.TLSTrustCertsFilePath,
+			ValidateHostname:        options.TLSValidateHostname,
+		}
+		if err != nil {
+			return nil, err
+		}
+	} else {
 		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
 
 	c := &client{
-		cnxPool: internal.NewConnectionPool(),
+		cnxPool: internal.NewConnectionPool(tlsConfig),
 	}
 	c.rpcClient = internal.NewRpcClient(url, c.cnxPool)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url)
@@ -114,7 +130,6 @@ func (client *client) TopicPartitions(topic string) ([]string, error) {
 	}
 }
 
-
 func (client *client) Close() error {
 	for handler := range client.handlers {
 		if err := handler.Close(); err != nil {
@@ -123,4 +138,29 @@ func (client *client) Close() error {
 	}
 
 	return nil
+}
+
+func getTlsConfig(options ClientOptions) (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: options.TLSAllowInsecureConnection,
+	}
+
+	if options.TLSTrustCertsFilePath != "" {
+		caCerts, err := ioutil.ReadFile(options.TLSTrustCertsFilePath)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig.RootCAs = x509.NewCertPool()
+		ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(caCerts))
+		if !ok {
+			return nil, errors.New("failed to parse root CAs certificates")
+		}
+	}
+
+	if options.TLSValidateHostname {
+		tlsConfig.ServerName = options.URL
+	}
+
+	return tlsConfig, nil
 }

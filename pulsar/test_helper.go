@@ -24,7 +24,12 @@ import (
 	"time"
 )
 
-const serviceUrl = "pulsar://localhost:6650"
+const (
+	serviceUrl    = "pulsar://localhost:6650"
+	serviceUrlTls = "pulsar+ssl://localhost:6651"
+
+	caCertsPath   = "../integration-tests/certs/cacert.pem"
+)
 
 func newTopicName() string {
 	return fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())

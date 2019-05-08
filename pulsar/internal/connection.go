@@ -20,9 +20,12 @@
 package internal
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
+	"io/ioutil"
 	"net"
 	"net/url"
 	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -30,6 +33,12 @@ import (
 	"sync/atomic"
 	"time"
 )
+
+type TLSOptions struct {
+	TrustCertsFilePath      string
+	AllowInsecureConnection bool
+	ValidateHostname        bool
+}
 
 // ConnectionListener is a user of a connection (eg. a producer or
 // a consumer) that can register itself to get notified
@@ -71,8 +80,8 @@ type connection struct {
 	cond  *sync.Cond
 	state connectionState
 
-	logicalAddr  string
-	physicalAddr string
+	logicalAddr  *url.URL
+	physicalAddr *url.URL
 	cnx          net.Conn
 
 	writeBuffer          Buffer
@@ -88,18 +97,21 @@ type connection struct {
 	writeRequests    chan []byte
 	pendingReqs      map[uint64]*request
 	listeners        map[uint64]ConnectionListener
+
+	tlsOptions *TLSOptions
 }
 
-func newConnection(logicalAddr *url.URL, physicalAddr *url.URL) *connection {
+func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions) *connection {
 	cnx := &connection{
 		state:                connectionInit,
-		logicalAddr:          logicalAddr.Host,
-		physicalAddr:         physicalAddr.Host,
+		logicalAddr:          logicalAddr,
+		physicalAddr:         physicalAddr,
 		writeBuffer:          NewBuffer(4096),
 		log:                  log.WithField("raddr", physicalAddr),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
+		tlsOptions:           tlsOptions,
 
 		incomingRequests: make(chan *request),
 		writeRequests:    make(chan []byte),
@@ -128,13 +140,32 @@ func (c *connection) start() {
 func (c *connection) connect() (ok bool) {
 	c.log.Info("Connecting to broker")
 
-	var err error
-	c.cnx, err = net.Dial("tcp", c.physicalAddr)
+	var (
+		err       error
+		cnx       net.Conn
+		tlsConfig *tls.Config
+	)
+
+	if c.tlsOptions == nil {
+		// Clear text connection
+		cnx, err = net.Dial("tcp", c.physicalAddr.Host)
+	} else {
+		// TLS connection
+		tlsConfig, err  = c.getTlsConfig()
+		if err != nil {
+			c.log.WithError(err).Warn("Failed to configure TLS ")
+			return false
+		}
+
+		cnx, err = tls.Dial("tcp", c.physicalAddr.Host, tlsConfig)
+	}
+
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to connect to broker.")
 		c.Close()
 		return false
 	} else {
+		c.cnx = cnx
 		c.log = c.log.WithField("laddr", c.cnx.LocalAddr())
 		c.log.Debug("TCP connection established")
 		c.state = connectionTcpConnected
@@ -406,4 +437,29 @@ func (c *connection) changeState(state connectionState) {
 
 func (c *connection) newRequestId() uint64 {
 	return atomic.AddUint64(&c.requestIdGenerator, 1)
+}
+
+func (c *connection) getTlsConfig() (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: c.tlsOptions.AllowInsecureConnection,
+	}
+
+	if c.tlsOptions.TrustCertsFilePath != "" {
+		caCerts, err := ioutil.ReadFile(c.tlsOptions.TrustCertsFilePath)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig.RootCAs = x509.NewCertPool()
+		ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(caCerts))
+		if !ok {
+			return nil, errors.New("failed to parse root CAs certificates")
+		}
+	}
+
+	if c.tlsOptions.ValidateHostname {
+		tlsConfig.ServerName = c.physicalAddr.Hostname()
+	}
+
+	return tlsConfig, nil
 }

@@ -31,3 +31,97 @@ func TestClient(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Equal(t, Result(ResultInvalidConfiguration), err.(*Error).Result())
 }
+
+func TestTLSConnectionCAError(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceUrlTls,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	// The client should fail because it wouldn't trust the
+	// broker certificate
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
+func TestTLSInsecureConnection(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                        serviceUrlTls,
+		TLSAllowInsecureConnection: true,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
+func TestTLSConnection(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   serviceUrlTls,
+		TLSTrustCertsFilePath: caCertsPath,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
+func TestTLSConnectionHostNameVerification(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   serviceUrlTls,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
+func TestTLSConnectionHostNameVerificationError(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   "pulsar+ssl://127.0.0.1:6651",
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
