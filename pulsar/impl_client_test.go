@@ -125,3 +125,39 @@ func TestTLSConnectionHostNameVerificationError(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestTLSAuthError(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   serviceUrlTls,
+		TLSTrustCertsFilePath: caCertsPath,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
+func TestTLSAuth(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   serviceUrlTls,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication: NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}

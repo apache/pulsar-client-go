@@ -17,26 +17,44 @@
 // under the License.
 //
 
-package pulsar
+package auth
 
 import (
+	"crypto/tls"
 	"fmt"
-	"time"
+	"github.com/pkg/errors"
+	"io"
 )
 
-const (
-	serviceUrl    = "pulsar://localhost:6650"
-	serviceUrlTls = "pulsar+ssl://localhost:6651"
+type Provider interface {
+	Init() error
 
-	caCertsPath       = "../integration-tests/certs/cacert.pem"
-	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"
-	tlsClientKeyPath = "../integration-tests/certs/client-key.pem"
-)
+	Name() string
 
-func newTopicName() string {
-	return fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
+	// return a client certificate chain, or nil if the data are not available
+	GetTlsCertificate() (*tls.Certificate, error)
+
+	//
+	GetData() ([]byte, error)
+
+	io.Closer
 }
 
-func newAuthTopicName() string {
-	return fmt.Sprintf("private/auth/my-topic-%v", time.Now().Nanosecond())
+func NewProvider(name string, params string) (Provider, error) {
+	m := parseParams(params)
+
+	switch name {
+	case "":
+		return NewAuthDisabled(), nil
+
+	case "tls", "org.apache.pulsar.client.impl.auth.AuthenticationTls":
+		return NewAuthenticationTLSWithParams(m), nil
+
+	default:
+		return nil, errors.New(fmt.Sprintf("invalid auth provider '%s'", name))
+	}
+}
+
+func parseParams(params string) map[string]string {
+	return nil
 }

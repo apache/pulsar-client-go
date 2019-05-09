@@ -28,6 +28,7 @@ import (
 	"io/ioutil"
 	"net"
 	"net/url"
+	"pulsar-client-go/pulsar/internal/auth"
 	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 	"sync"
 	"sync/atomic"
@@ -99,9 +100,10 @@ type connection struct {
 	listeners        map[uint64]ConnectionListener
 
 	tlsOptions *TLSOptions
+	auth       auth.Provider
 }
 
-func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions) *connection {
+func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions, auth auth.Provider) *connection {
 	cnx := &connection{
 		state:                connectionInit,
 		logicalAddr:          logicalAddr,
@@ -112,6 +114,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
 		tlsOptions:           tlsOptions,
+		auth:                 auth,
 
 		incomingRequests: make(chan *request),
 		writeRequests:    make(chan []byte),
@@ -151,7 +154,7 @@ func (c *connection) connect() (ok bool) {
 		cnx, err = net.Dial("tcp", c.physicalAddr.Host)
 	} else {
 		// TLS connection
-		tlsConfig, err  = c.getTlsConfig()
+		tlsConfig, err = c.getTlsConfig()
 		if err != nil {
 			c.log.WithError(err).Warn("Failed to configure TLS ")
 			return false
@@ -176,11 +179,18 @@ func (c *connection) connect() (ok bool) {
 func (c *connection) doHandshake() (ok bool) {
 	// Send 'Connect' command to initiate handshake
 	version := int32(pb.ProtocolVersion_v13)
+
+	authData, err := c.auth.GetData()
+	if err != nil {
+		c.log.WithError(err).Warn("Failed to load auth credentials")
+		return false
+	}
+
 	c.writeCommand(baseCommand(pb.BaseCommand_CONNECT, &pb.CommandConnect{
 		ProtocolVersion: &version,
 		ClientVersion:   proto.String("Pulsar Go 0.1"),
-		// AuthMethodName: "token",
-		// AuthData: authData,
+		AuthMethodName:  proto.String(c.auth.Name()),
+		AuthData:        authData,
 	}))
 
 	cmd, _, err := c.reader.readSingleCommand()
@@ -459,6 +469,15 @@ func (c *connection) getTlsConfig() (*tls.Config, error) {
 
 	if c.tlsOptions.ValidateHostname {
 		tlsConfig.ServerName = c.physicalAddr.Hostname()
+	}
+
+	cert, err := c.auth.GetTlsCertificate()
+	if err != nil {
+		return nil, err
+	}
+
+	if cert != nil {
+		tlsConfig.Certificates = []tls.Certificate{*cert}
 	}
 
 	return tlsConfig, nil

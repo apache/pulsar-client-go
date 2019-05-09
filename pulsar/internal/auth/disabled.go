@@ -17,26 +17,33 @@
 // under the License.
 //
 
-package pulsar
+package auth
 
-import (
-	"fmt"
-	"time"
-)
+import "crypto/tls"
 
-const (
-	serviceUrl    = "pulsar://localhost:6650"
-	serviceUrlTls = "pulsar+ssl://localhost:6651"
-
-	caCertsPath       = "../integration-tests/certs/cacert.pem"
-	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"
-	tlsClientKeyPath = "../integration-tests/certs/client-key.pem"
-)
-
-func newTopicName() string {
-	return fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
+type disabled struct {
 }
 
-func newAuthTopicName() string {
-	return fmt.Sprintf("private/auth/my-topic-%v", time.Now().Nanosecond())
+func NewAuthDisabled() Provider {
+	return &disabled{}
+}
+
+func (disabled) Init() error {
+	return nil
+}
+
+func (disabled) GetData() ([]byte, error) {
+	return nil, nil
+}
+
+func (disabled) Name() string {
+	return ""
+}
+
+func (disabled) GetTlsCertificate() (*tls.Certificate, error) {
+	return nil, nil
+}
+
+func (disabled) Close() error {
+	return nil
 }

@@ -28,6 +28,7 @@ import (
 	"io/ioutil"
 	"net/url"
 	"pulsar-client-go/pulsar/internal"
+	"pulsar-client-go/pulsar/internal/auth"
 	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
@@ -37,6 +38,7 @@ type client struct {
 	cnxPool       internal.ConnectionPool
 	rpcClient     internal.RpcClient
 	lookupService internal.LookupService
+	auth          auth.Provider
 
 	handlers            map[internal.Closable]bool
 	producerIdGenerator uint64
@@ -70,8 +72,20 @@ func newClient(options ClientOptions) (Client, error) {
 		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
 
+	var authProvider auth.Provider
+	var ok bool
+
+	if options.Authentication == nil {
+		authProvider = auth.NewAuthDisabled()
+	} else {
+		authProvider, ok = options.Authentication.(auth.Provider)
+		if !ok {
+			return nil, errors.New("invalid auth provider interface")
+		}
+	}
+
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig),
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider),
 	}
 	c.rpcClient = internal.NewRpcClient(url, c.cnxPool)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url)

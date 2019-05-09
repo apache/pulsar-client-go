@@ -22,6 +22,7 @@ package internal
 import (
 	log "github.com/sirupsen/logrus"
 	"net/url"
+	"pulsar-client-go/pulsar/internal/auth"
 	"sync"
 )
 
@@ -35,11 +36,13 @@ type ConnectionPool interface {
 type connectionPool struct {
 	pool       sync.Map
 	tlsOptions *TLSOptions
+	auth       auth.Provider
 }
 
-func NewConnectionPool(tlsOptions *TLSOptions) ConnectionPool {
+func NewConnectionPool(tlsOptions *TLSOptions, auth auth.Provider) ConnectionPool {
 	return &connectionPool{
 		tlsOptions: tlsOptions,
+		auth:       auth,
 	}
 }
 
@@ -60,7 +63,8 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	}
 
 	// Try to create a new connection
-	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host, newConnection(logicalAddr, physicalAddr, p.tlsOptions))
+	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host,
+		newConnection(logicalAddr, physicalAddr, p.tlsOptions, p.auth))
 	cnx := newCnx.(*connection)
 	if !wasCached {
 		cnx.start()

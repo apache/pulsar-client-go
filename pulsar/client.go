@@ -31,6 +31,10 @@ func NewClient(options ClientOptions) (Client, error) {
 // Opaque interface that represents the authentication credentials
 type Authentication interface{}
 
+func NewAuthentication(name string, params string) (Authentication, error) {
+	return auth.NewProvider(name, params)
+}
+
 // Create new Authentication provider with specified auth token
 func NewAuthenticationToken(token string) Authentication {
 	// TODO: return newAuthenticationToken(token)
