@@ -20,12 +20,9 @@
 package pulsar
 
 import (
-	"crypto/tls"
-	"crypto/x509"
 	"fmt"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
-	"io/ioutil"
 	"net/url"
 	"pulsar-client-go/pulsar/internal"
 	"pulsar-client-go/pulsar/internal/auth"
@@ -152,29 +149,4 @@ func (client *client) Close() error {
 	}
 
 	return nil
-}
-
-func getTlsConfig(options ClientOptions) (*tls.Config, error) {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: options.TLSAllowInsecureConnection,
-	}
-
-	if options.TLSTrustCertsFilePath != "" {
-		caCerts, err := ioutil.ReadFile(options.TLSTrustCertsFilePath)
-		if err != nil {
-			return nil, err
-		}
-
-		tlsConfig.RootCAs = x509.NewCertPool()
-		ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(caCerts))
-		if !ok {
-			return nil, errors.New("failed to parse root CAs certificates")
-		}
-	}
-
-	if options.TLSValidateHostname {
-		tlsConfig.ServerName = options.URL
-	}
-
-	return tlsConfig, nil
 }

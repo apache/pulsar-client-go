@@ -20,6 +20,7 @@
 package pulsar
 
 import (
+	"io/ioutil"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -147,7 +148,46 @@ func TestTLSAuth(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL:                   serviceUrlTls,
 		TLSTrustCertsFilePath: caCertsPath,
-		Authentication: NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
+		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
+func TestTokenAuth(t *testing.T) {
+	token, err := ioutil.ReadFile(tokenFilePath)
+	assert.NoError(t, err)
+
+	client, err := NewClient(ClientOptions{
+		URL:            serviceUrl,
+		Authentication: NewAuthenticationToken(string(token)),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	err = client.Close()
+	assert.NoError(t, err)
+}
+
+func TestTokenAuthFromFile(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:            serviceUrl,
+		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
 	})
 	assert.NoError(t, err)
 

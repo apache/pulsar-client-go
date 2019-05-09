@@ -30,7 +30,8 @@ const (
 
 	caCertsPath       = "../integration-tests/certs/cacert.pem"
 	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"
-	tlsClientKeyPath = "../integration-tests/certs/client-key.pem"
+	tlsClientKeyPath  = "../integration-tests/certs/client-key.pem"
+	tokenFilePath     = "../integration-tests/tokens/token.txt"
 )
 
 func newTopicName() string {

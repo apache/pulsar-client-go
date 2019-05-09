@@ -37,14 +37,12 @@ func NewAuthentication(name string, params string) (Authentication, error) {
 
 // Create new Authentication provider with specified auth token
 func NewAuthenticationToken(token string) Authentication {
-	// TODO: return newAuthenticationToken(token)
-	return nil
+	return auth.NewAuthenticationToken(token)
 }
 
-// Create new Authentication provider with specified auth token supplier
-func NewAuthenticationTokenSupplier(tokenSupplier func() string) Authentication {
-	// TODO:  return newAuthenticationTokenSupplier(tokenSupplier)
-	return nil
+// Create new Authentication provider with specified auth token from a file
+func NewAuthenticationTokenFromFile(tokenFilePath string) Authentication {
+	return auth.NewAuthenticationTokenFromFile(tokenFilePath)
 }
 
 // Create new Authentication provider with specified TLS certificate and private key

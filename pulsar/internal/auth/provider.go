@@ -50,6 +50,9 @@ func NewProvider(name string, params string) (Provider, error) {
 	case "tls", "org.apache.pulsar.client.impl.auth.AuthenticationTls":
 		return NewAuthenticationTLSWithParams(m), nil
 
+	case "token", "org.apache.pulsar.client.impl.auth.AuthenticationToken":
+		return NewAuthenticationTokenWithParams(m)
+
 	default:
 		return nil, errors.New(fmt.Sprintf("invalid auth provider '%s'", name))
 	}
