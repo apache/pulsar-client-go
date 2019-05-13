@@ -20,6 +20,8 @@
 package compression
 
 type Provider interface {
+	CanCompress() bool
+
 	Compress(data []byte) []byte
 
 	Decompress(compressedData []byte, originalSize int) ([]byte, error)

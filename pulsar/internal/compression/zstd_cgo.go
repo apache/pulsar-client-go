@@ -17,17 +17,30 @@
 // under the License.
 //
 
+// +build cgo
+
+// If CGO is enabled, use ZSTD library that links with official
+// C based zstd. This can perform both compression and decompression.
+
 package compression
 
 import (
 	zstd "github.com/valyala/gozstd"
 )
 
+func NewZStdProvider() Provider {
+	return newCGoZStdProvider()
+}
+
 type zstdProvider struct {
 }
 
-func NewZStdProvider() Provider {
+func newCGoZStdProvider() Provider {
 	return &zstdProvider{}
+}
+
+func (zstdProvider) CanCompress() bool {
+	return true
 }
 
 func (zstdProvider) Compress(data []byte) []byte {

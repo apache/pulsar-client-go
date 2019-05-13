@@ -26,6 +26,10 @@ func NewNoopProvider() Provider {
 	return &noopProvider{}
 }
 
+func (noopProvider) CanCompress() bool {
+	return true
+}
+
 func (noopProvider) Compress(data []byte) []byte {
 	return data
 }

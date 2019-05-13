@@ -140,8 +140,11 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.producerName = res.Response.ProducerSuccess.ProducerName
 	if p.batchBuilder == nil {
-		p.batchBuilder = internal.NewBatchBuilder(p.options.BatchingMaxMessages, *p.producerName,
+		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, *p.producerName,
 			p.producerId, pb.CompressionType(p.options.CompressionType))
+		if err != nil {
+			return err
+		}
 	}
 	if p.sequenceIdGenerator == nil {
 		nextSequenceId := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)

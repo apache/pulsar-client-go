@@ -30,6 +30,10 @@ func NewLz4Provider() Provider {
 	return &lz4Provider{}
 }
 
+func (lz4Provider) CanCompress() bool {
+	return true
+}
+
 func (lz4Provider) Compress(data []byte) []byte {
 	maxSize := lz4.CompressBound(data)
 	compressed := make([]byte, maxSize)

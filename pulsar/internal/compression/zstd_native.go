@@ -17,42 +17,50 @@
 // under the License.
 //
 
+// +build !cgo
+
+// Pure GO ZStd library only supports decompression
+
 package compression
 
 import (
 	"bytes"
-	"compress/zlib"
+	"github.com/klauspost/compress/zstd"
+	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
-type zlibProvider struct {
+// Pure GO ZStd library only supports decompression
+
+type zstdProvider struct {
 }
 
-func NewZLibProvider() Provider {
-	return &zlibProvider{}
+func NewZStdProvider() Provider {
+	return &zstdProvider{}
 }
 
-func (zlibProvider) CanCompress() bool {
-	return true
+func (zstdProvider) CanCompress() bool {
+	return false
 }
 
-func (zlibProvider) Compress(data []byte) []byte {
-	var b bytes.Buffer
-	w := zlib.NewWriter(&b)
-	w.Write(data)
-	w.Close()
-
-	return b.Bytes()
+func (zstdProvider) Compress(data []byte) []byte {
+	log.Panic("ZSTD compression is not supported if CGo is disabled")
+	return nil
 }
 
-func (zlibProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	r, err := zlib.NewReader(bytes.NewBuffer(compressedData))
+func (zstdProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
+	d, err := zstd.NewReader(bytes.NewReader(compressedData))
 	if err != nil {
 		return nil, err
 	}
 
 	uncompressed := make([]byte, originalSize)
-	r.Read(uncompressed)
-	r.Close()
-
-	return uncompressed, nil
+	size, err := d.Read(uncompressed)
+	if err != nil {
+		return nil, err
+	} else if size != originalSize {
+		return nil, errors.New("Invalid uncompressed size")
+	} else {
+		return uncompressed, nil
+	}
 }
