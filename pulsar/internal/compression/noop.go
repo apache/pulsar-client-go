@@ -19,8 +19,7 @@
 
 package compression
 
-type noopProvider struct {
-}
+type noopProvider struct {}
 
 func NewNoopProvider() Provider {
 	return &noopProvider{}

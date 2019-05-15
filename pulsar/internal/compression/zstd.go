@@ -23,8 +23,7 @@ import (
 	zstd "github.com/valyala/gozstd"
 )
 
-type zstdProvider struct {
-}
+type zstdProvider struct {}
 
 func NewZStdProvider() Provider {
 	return &zstdProvider{}
