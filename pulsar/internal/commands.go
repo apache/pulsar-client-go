@@ -22,7 +22,7 @@ package internal
 import (
 	"github.com/golang/protobuf/proto"
 
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pkg/pb"
 	log "github.com/sirupsen/logrus"
 )
 

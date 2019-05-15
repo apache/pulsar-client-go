@@ -20,7 +20,7 @@
 package pulsar
 
 import (
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+	"github.com/apache/pulsar-client-go/pkg/auth"
 	"time"
 )
 
