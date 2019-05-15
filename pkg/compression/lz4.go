@@ -30,6 +30,10 @@ func NewLz4Provider() Provider {
 	return &lz4Provider{}
 }
 
+func (lz4Provider) CanCompress() bool {
+	return true
+}
+
 func (lz4Provider) Compress(data []byte) []byte {
 	const tableSize = 1 << 16
 	hashTable := make([]int, tableSize)

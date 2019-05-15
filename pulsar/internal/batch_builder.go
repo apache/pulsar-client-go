@@ -20,6 +20,8 @@
 package internal
 
 import (
+	"errors"
+	"fmt"
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"github.com/apache/pulsar-client-go/pkg/compression"
@@ -53,7 +55,7 @@ type BatchBuilder struct {
 }
 
 func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64,
-	compressionType pb.CompressionType) *BatchBuilder {
+	compressionType pb.CompressionType) (*BatchBuilder, error) {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
 	}
@@ -78,7 +80,11 @@ func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64,
 		bb.msgMetadata.Compression = &compressionType
 	}
 
-	return bb
+	if !bb.compressionProvider.CanCompress() {
+		return nil, errors.New(fmt.Sprintf("Compression provider %v can only decompress data", compressionType))
+	}
+
+	return bb, nil
 }
 
 func (bb *BatchBuilder) IsFull() bool {
