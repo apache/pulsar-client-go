@@ -38,6 +38,34 @@ CGo based library.
 Check the Projects page at https://github.com/apache/pulsar-client-go/projects for
 tracking the status and the progress.
 
+## Usage
+
+Import the client library:
+
+```go
+import "github.com/apache/pulsar-client-go/pulsar"
+```
+
+```go
+client, err := pulsar.NewClient(pulsar.ClientOptions{
+    URL: "pulsar://localhost:6650",
+})
+
+producer, err := client.CreateProducer(pulsar.ProducerOptions{
+	Topic: "my-topic",
+})
+
+err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+	Payload: []byte("hello"),
+})
+
+if err == nil {
+	fmt.Println("Published message")
+} else {
+	fmt.Println("Failed to publish message", err)
+}
+```
+
 ## Contact
 
 ##### Mailing lists
