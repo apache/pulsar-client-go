@@ -25,8 +25,8 @@ import (
 	log "github.com/sirupsen/logrus"
 	"net/url"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pkg/auth"
+	"github.com/apache/pulsar-client-go/pkg/pb"
 )
 
 type client struct {

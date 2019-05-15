@@ -23,7 +23,7 @@ import (
 	"context"
 	log "github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
-	"github.com/apache/pulsar-client-go/pulsar/internal/util"
+	"github.com/apache/pulsar-client-go/util"
 	"sync"
 	"testing"
 	"time"
