@@ -32,10 +32,6 @@ func TestConvertStringMap(t *testing.T) {
 	pbm := ConvertFromStringMap(m)
 
 	assert.Equal(t, 2, len(pbm))
-	assert.Equal(t, "a", *pbm[0].Key)
-	assert.Equal(t, "1", *pbm[0].Value)
-	assert.Equal(t, "b", *pbm[1].Key)
-	assert.Equal(t, "2", *pbm[1].Value)
 
 	m2 := ConvertToStringMap(pbm)
 	assert.Equal(t, 2, len(m2))
