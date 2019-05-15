@@ -24,8 +24,8 @@ import (
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 	"pulsar-client-go/pulsar/internal"
-	"pulsar-client-go/pulsar/internal/util"
 	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
+	"pulsar-client-go/pulsar/internal/util"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -281,6 +281,7 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 
 	pi := p.pendingQueue.PeekLast().(*pendingItem)
 	pi.sendRequests = append(pi.sendRequests, &sendRequest{
+		msg: nil,
 		callback: func(id MessageID, message *ProducerMessage, e error) {
 			fr.err = e
 			fr.waitGroup.Done()
@@ -337,9 +338,12 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	p.pendingQueue.Poll()
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
-		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceId))
-		if sr.callback != nil {
+		if sr.msg != nil {
+			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceId))
 			p.publishSemaphore.Release()
+		}
+
+		if sr.callback != nil {
 			msgID := newMessageId(
 				int64(response.MessageId.GetLedgerId()),
 				int64(response.MessageId.GetEntryId()),
