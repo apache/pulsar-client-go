@@ -22,7 +22,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"pulsar-client-go/pulsar"
+	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/spf13/cobra"
 	log "github.com/sirupsen/logrus"
 	"sync/atomic"

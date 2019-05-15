@@ -24,8 +24,7 @@ import (
 	"compress/zlib"
 )
 
-type zlibProvider struct {
-}
+type zlibProvider struct {}
 
 func NewZLibProvider() Provider {
 	return &zlibProvider{}

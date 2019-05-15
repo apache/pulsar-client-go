@@ -22,11 +22,12 @@ package main
 import (
 	"context"
 	"encoding/json"
+	`github.com/Anankke/bilibili-backup/library/net/http/blademaster/middleware/rate`
 	"github.com/beefsack/go-rate"
 	"github.com/bmizerany/perks/quantile"
 	"github.com/spf13/cobra"
 	log "github.com/sirupsen/logrus"
-	"pulsar-client-go/pulsar"
+	"github.com/apache/pulsar-client-go/pulsar"
 	"time"
 )
 

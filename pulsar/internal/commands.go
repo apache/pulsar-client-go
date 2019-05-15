@@ -21,8 +21,9 @@ package internal
 
 import (
 	"github.com/golang/protobuf/proto"
+
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	log "github.com/sirupsen/logrus"
-	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 const MaxFrameSize = 5 * 1024 * 1024
