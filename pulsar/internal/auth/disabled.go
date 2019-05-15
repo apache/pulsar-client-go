@@ -21,8 +21,7 @@ package auth
 
 import "crypto/tls"
 
-type disabled struct {
-}
+type disabled struct {}
 
 func NewAuthDisabled() Provider {
 	return &disabled{}

@@ -21,7 +21,7 @@ package pulsar
 
 import (
 	"context"
-	"pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 type producer struct {

@@ -23,7 +23,7 @@ import (
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
 	"net/url"
-	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"testing"
 )
 

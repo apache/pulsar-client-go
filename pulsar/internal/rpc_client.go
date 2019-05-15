@@ -22,7 +22,7 @@ package internal
 import (
 	"github.com/golang/protobuf/proto"
 	"net/url"
-	pb "pulsar-client-go/pulsar/internal/pulsar_proto"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"sync"
 	"sync/atomic"
 )
