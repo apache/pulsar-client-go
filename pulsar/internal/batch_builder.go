@@ -24,8 +24,8 @@ import (
 	"fmt"
 	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
-	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pkg/compression"
+	"github.com/apache/pulsar-client-go/pkg/pb"
 	"time"
 )
 

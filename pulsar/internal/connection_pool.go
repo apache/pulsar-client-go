@@ -22,7 +22,7 @@ package internal
 import (
 	log "github.com/sirupsen/logrus"
 	"net/url"
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+	"github.com/apache/pulsar-client-go/pkg/auth"
 	"sync"
 )
 
