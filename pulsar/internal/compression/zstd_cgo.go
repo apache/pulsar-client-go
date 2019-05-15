@@ -32,8 +32,7 @@ func NewZStdProvider() Provider {
 	return newCGoZStdProvider()
 }
 
-type zstdProvider struct {
-}
+type zstdProvider struct {}
 
 func newCGoZStdProvider() Provider {
 	return &zstdProvider{}
