@@ -1,3 +1,4 @@
+#!/bin/bash
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -17,19 +18,23 @@
 # under the License.
 #
 
-FROM golang:1.12 as go
+set -e -x
 
-FROM apachepulsar/pulsar:latest
+export GOPATH=/
 
-COPY --from=go /usr/local/go /usr/local/go
-ENV PATH /root/go/bin:/usr/local/go/bin:$PATH
+# Install dependencies
+go mod download
 
-### Add test scripts
+# Basic compilation
+go build ./pulsar
+go build -o pulsar-perf ./perf
 
-COPY integration-tests/certs /pulsar/certs
-COPY integration-tests/tokens /pulsar/tokens
-COPY integration-tests/standalone.conf /pulsar/conf
-COPY integration-tests/client.conf /pulsar/conf
-COPY pulsar-test-service-start.sh /pulsar/bin
-COPY pulsar-test-service-stop.sh /pulsar/bin
-COPY run-ci.sh /pulsar/bin
+./pulsar-test-service-start.sh
+
+# Run tests on the directories that contains any '*_test.go' file
+DIRS=`find ./pulsar -name '*_test.go' | xargs -n1 dirname | sort | uniq`
+go test -coverprofile=/tmp/coverage ${DIRS}
+go tool cover -html=/tmp/coverage -o coverage.html
+
+./pulsar-test-service-stop.sh
+

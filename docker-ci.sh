@@ -1,3 +1,4 @@
+#!/bin/bash
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -17,19 +18,14 @@
 # under the License.
 #
 
-FROM golang:1.12 as go
+set -e -x
 
-FROM apachepulsar/pulsar:latest
+SRC_DIR=$(git rev-parse --show-toplevel)
+cd ${SRC_DIR}
 
-COPY --from=go /usr/local/go /usr/local/go
-ENV PATH /root/go/bin:/usr/local/go/bin:$PATH
+IMAGE_NAME=pulsar-client-go-test:latest
 
-### Add test scripts
+docker build -t ${IMAGE_NAME} .
 
-COPY integration-tests/certs /pulsar/certs
-COPY integration-tests/tokens /pulsar/tokens
-COPY integration-tests/standalone.conf /pulsar/conf
-COPY integration-tests/client.conf /pulsar/conf
-COPY pulsar-test-service-start.sh /pulsar/bin
-COPY pulsar-test-service-stop.sh /pulsar/bin
-COPY run-ci.sh /pulsar/bin
+docker run -i -v ${PWD}:/pulsar-client-go ${IMAGE_NAME} \
+       bash -c "cd /pulsar-client-go && ./run-ci.sh"
