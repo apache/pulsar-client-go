@@ -21,6 +21,7 @@ package internal
 
 import (
 	"bufio"
+	`github.com/apache/pulsar-client-go/pkg/log`
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
 	"io"
@@ -45,13 +46,13 @@ func (r *connectionReader) readFromConnection() {
 	for {
 		cmd, headersAndPayload, err := r.readSingleCommand()
 		if err != nil {
-			r.cnx.log.WithError(err).Info("Error reading from connection")
+			log.Infof("reading from connection error: %+v", err)
 			r.cnx.Close()
 			break
 		}
 
 		// Process
-		r.cnx.log.Debug("Got command! ", cmd, " with payload ", headersAndPayload)
+		log.Debugf("got command [%v] with payload %v", cmd, headersAndPayload)
 		r.cnx.receivedCommand(cmd, headersAndPayload)
 	}
 }
@@ -71,7 +72,7 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 	// We have enough to read frame size
 	frameSize := r.buffer.ReadUint32()
 	if frameSize > MaxFrameSize {
-		r.cnx.log.Warnf("Received too big frame size. size=%d", frameSize)
+		log.Warnf("received too big frame size. size=%d", frameSize)
 		r.cnx.Close()
 		return nil, nil, errors.New("Frame size too big")
 	}
@@ -127,7 +128,7 @@ func (r *connectionReader) deserializeCmd(data []byte) (*pb.BaseCommand, error) 
 	cmd := &pb.BaseCommand{}
 	err := proto.Unmarshal(data, cmd)
 	if err != nil {
-		r.cnx.log.WithError(err).Warn("Failed to parse protobuf command")
+		log.Warnf("parse protobuf command error: %+v", err)
 		r.cnx.Close()
 		return nil, err
 	} else {
