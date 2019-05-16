@@ -131,7 +131,7 @@ func (p *partitionProducer) grabCnx() error {
 	})
 
 	if err != nil {
-		log.Errorf("create producer [%s] error: &+v", *p.producerName, err)
+		log.Errorf("create producer [%s] error: %+v", *p.producerName, err)
 		return err
 	}
 

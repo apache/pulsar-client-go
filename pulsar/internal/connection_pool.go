@@ -50,7 +50,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	cachedCnx, found := p.pool.Load(logicalAddr.Host)
 	if found {
 		cnx := cachedCnx.(*connection)
-		log.Debugf("found connection in cache, logicalAddr is: &v, physicalAddr is: %v", cnx.logicalAddr, cnx.physicalAddr)
+		log.Debugf("found connection in cache, logicalAddr is: %v, physicalAddr is: %v", cnx.logicalAddr, cnx.physicalAddr)
 
 		if err := cnx.waitUntilReady(); err == nil {
 			// Connection is ready to be used
@@ -58,7 +58,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		} else {
 			// The cached connection is failed
 			p.pool.Delete(logicalAddr.Host)
-			log.Debugf("removed failed connection from pool, logicalAddr is: &v, physicalAddr is: %v", cnx.logicalAddr, cnx.physicalAddr)
+			log.Debugf("removed failed connection from pool, logicalAddr is: %v, physicalAddr is: %v", cnx.logicalAddr, cnx.physicalAddr)
 		}
 	}
 
