@@ -365,7 +365,7 @@ func (c *connection) handleResponse(requestId uint64, response *pb.BaseCommand) 
 }
 
 func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
-	log.Debug("got SEND_RECEIPT: %+v", response)
+	log.Debugf("got SEND_RECEIPT: %+v", response)
 	producerId := response.GetProducerId()
 	if producer, ok := c.listeners[producerId]; ok {
 		producer.ReceivedSendReceipt(response)

@@ -166,7 +166,7 @@ func getCompressionProvider(compressionType pb.CompressionType) compression.Prov
 	case pb.CompressionType_ZSTD:
 		return compression.ZStdProvider
 	default:
-		log.Panic("Unsupported compression type: %v", compressionType)
+		log.Panic("unsupported compression type")
 		return nil
 	}
 }

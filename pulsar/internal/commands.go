@@ -61,7 +61,7 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte) {
 	serialized, err := proto.Marshal(smm)
 	if err != nil {
-		log.Fatal("protobuf serialization error：%+v", err)
+		log.Fatalf("protobuf serialization error：%+v", err)
 	}
 
 	wb.Write(serialized)
@@ -86,7 +86,7 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	wb.WriteUint32(uint32(cmdSize))
 	serialized, err := proto.Marshal(cmdSend)
 	if err != nil {
-		log.Fatal("protobuf error:%+v when serializing cmdSend", err)
+		log.Fatalf("protobuf error:%+v when serializing cmdSend", err)
 	}
 
 	wb.Write(serialized)
@@ -101,7 +101,7 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	wb.WriteUint32(uint32(msgMetadataSize))
 	serialized, err = proto.Marshal(msgMetadata)
 	if err != nil {
-		log.Fatal("protobuf error:%+v when serializing msgMetadata", err)
+		log.Fatalf("protobuf error:%+v when serializing msgMetadata", err)
 	}
 
 	wb.Write(serialized)

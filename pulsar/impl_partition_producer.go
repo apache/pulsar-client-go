@@ -104,7 +104,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		log.Errorf("create producer error: %+v", err)
 		return nil, err
 	} else {
-		log.Infof("created producer: %s", p.producerName)
+		log.Infof("created producer: %s", *p.producerName)
 		p.state = producerReady
 		go p.runEventsLoop()
 		return p, nil
@@ -118,7 +118,7 @@ func (p *partitionProducer) grabCnx() error {
 		return err
 	}
 
-	log.Debug("lookup result: %+v", lr)
+	log.Debugf("lookup result: %+v", lr)
 	id := p.client.rpcClient.NewRequestId()
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, &pb.CommandProducer{
 		RequestId:    &id,
@@ -131,7 +131,7 @@ func (p *partitionProducer) grabCnx() error {
 	})
 
 	if err != nil {
-		log.Errorf("create producer [%s] error: &+v", p.producerName, err)
+		log.Errorf("create producer [%s] error: &+v", *p.producerName, err)
 		return err
 	}
 
@@ -149,7 +149,7 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	p.cnx = res.Cnx
 	p.cnx.RegisterListener(p.producerId, p)
-	log.Debugf("connected producer [%s] cnx is: %+v", p.producerName, res.Cnx)
+	log.Debugf("connected producer [%s] cnx is: %+v", *p.producerName, res.Cnx)
 
 	if p.pendingQueue.Size() > 0 {
 		log.Infof("resending %d pending batches", p.pendingQueue.Size())
