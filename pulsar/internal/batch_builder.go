@@ -23,7 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 	"github.com/apache/pulsar-client-go/pkg/compression"
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"time"
@@ -135,7 +135,7 @@ func (bb *BatchBuilder) reset() {
 }
 
 func (bb *BatchBuilder) Flush() (batchData []byte, sequenceId uint64, callbacks []interface{}) {
-	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
+	log.Debugf("BatchBuilder flush: messages: %d", bb.numMessages)
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
 		return nil, 0, nil
@@ -166,7 +166,7 @@ func getCompressionProvider(compressionType pb.CompressionType) compression.Prov
 	case pb.CompressionType_ZSTD:
 		return compression.ZStdProvider
 	default:
-		log.Panic("Unsupported compression type: ", compressionType)
+		log.Panic("Unsupported compression type: %v", compressionType)
 		return nil
 	}
 }

@@ -25,7 +25,7 @@ import (
 	"github.com/beefsack/go-rate"
 	"github.com/bmizerany/perks/quantile"
 	"github.com/spf13/cobra"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 	"github.com/apache/pulsar-client-go/pulsar"
 	"time"
 )
@@ -59,9 +59,9 @@ func initProducer() {
 
 func produce() {
 	b, _ := json.MarshalIndent(clientArgs, "", "  ")
-	log.Info("Client config: ", string(b))
+	log.Infof("Client config: %s", string(b))
 	b, _ = json.MarshalIndent(produceArgs, "", "  ")
-	log.Info("Producer config: ", string(b))
+	log.Infof("Producer config: %s", string(b))
 
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
 		URL: clientArgs.ServiceUrl,
@@ -109,7 +109,7 @@ func produce() {
 				Payload: payload,
 			}, func(msgID pulsar.MessageID, message *pulsar.ProducerMessage, e error) {
 				if e != nil {
-					log.WithError(e).Fatal("Failed to publish")
+					log.Fatalf("failed to publish: %+v", e)
 				}
 
 				latency := time.Since(start).Seconds()

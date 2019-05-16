@@ -23,7 +23,7 @@ import (
 	"github.com/golang/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 )
 
 const MaxFrameSize = 5 * 1024 * 1024
@@ -61,7 +61,7 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte) {
 	serialized, err := proto.Marshal(smm)
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf serialization error")
+		log.Fatal("protobuf serialization error：%+v", err)
 	}
 
 	wb.Write(serialized)
@@ -86,7 +86,7 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	wb.WriteUint32(uint32(cmdSize))
 	serialized, err := proto.Marshal(cmdSend)
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf error when serializing cmdSend")
+		log.Fatal("protobuf error:%+v when serializing cmdSend", err)
 	}
 
 	wb.Write(serialized)
@@ -101,7 +101,7 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	wb.WriteUint32(uint32(msgMetadataSize))
 	serialized, err = proto.Marshal(msgMetadata)
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf error when serializing msgMetadata")
+		log.Fatal("protobuf error:%+v when serializing msgMetadata", err)
 	}
 
 	wb.Write(serialized)

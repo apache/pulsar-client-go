@@ -20,7 +20,7 @@
 package util
 
 import (
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 	"sync"
 )
 
@@ -190,7 +190,7 @@ func (bqi *blockingQueueIterator) HasNext() bool {
 
 func (bqi *blockingQueueIterator) Next() interface{} {
 	if bqi.toRead == 0 {
-		log.Panic("Trying to read past the end of the iterator")
+		log.Panic("trying to read past the end of the iterator")
 	}
 
 	item := bqi.bq.items[bqi.readIdx]

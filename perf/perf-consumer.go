@@ -24,7 +24,7 @@ import (
 	"encoding/json"
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/spf13/cobra"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 	"sync/atomic"
 	"time"
 )
@@ -54,12 +54,12 @@ func initConsumer() {
 
 func consume() {
 	b, _ := json.MarshalIndent(clientArgs, "", "  ")
-	log.Info("Client config: ", string(b))
+	log.Infof("Client config: %s", string(b))
 	b, _ = json.MarshalIndent(consumeArgs, "", "  ")
-	log.Info("Consumer config: ", string(b))
+	log.Infof("Consumer config: %s", string(b))
 
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL:                    clientArgs.ServiceUrl,
+		URL: clientArgs.ServiceUrl,
 	})
 
 	if err != nil {

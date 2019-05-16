@@ -21,7 +21,7 @@ package pulsar
 
 import (
 	"context"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/apache/pulsar-client-go/util"
 	"sync"
@@ -80,10 +80,10 @@ func TestProducerAsyncSend(t *testing.T) {
 			Payload: []byte("hello"),
 		}, func(id MessageID, message *ProducerMessage, e error) {
 			if e != nil {
-				log.WithError(e).Error("Failed to publish")
+				log.Errorf("publish error: %+v", err)
 				errors.Put(e)
 			} else {
-				log.Info("Published message ", id)
+				log.Infof("published message ID is: %+v", id)
 			}
 			wg.Done()
 		})

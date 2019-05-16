@@ -21,7 +21,6 @@ package main
 
 import (
 	"github.com/spf13/cobra"
-	log "github.com/sirupsen/logrus"
 )
 
 type ClientArgs struct {
@@ -31,12 +30,6 @@ type ClientArgs struct {
 var clientArgs ClientArgs
 
 func main() {
-	log.SetFormatter(&log.TextFormatter{
-		FullTimestamp:   true,
-		TimestampFormat: "15:04:05.000",
-	})
-	log.SetLevel(log.InfoLevel)
-
 	initProducer()
 	initConsumer()
 

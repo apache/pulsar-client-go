@@ -23,7 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 	"net/url"
 	"github.com/apache/pulsar-client-go/pkg/pb"
 )
@@ -81,7 +81,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			return nil, err
 		}
 
-		log.WithField("topic", topic).Debugf("Got topic lookup response: %s", res)
+		log.Debugf("got topic: %s lookup response: %s", topic, res)
 		lr := res.Response.LookupTopicResponse
 		switch *lr.Response {
 
@@ -91,8 +91,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 				return nil, err
 			}
 
-			log.WithField("topic", topic).Debugf("Follow redirect to broker. %v / %v - Use proxy: %v",
-				lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
+			log.Debugf("follow redirect to broker. %v / %v - Use proxy: %v - Topic is: %s",
+				lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl, topic)
 
 			id := ls.rpcClient.NewRequestId()
 			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
@@ -105,8 +105,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			continue
 
 		case pb.CommandLookupTopicResponse_Connect:
-			log.WithField("topic", topic).Debugf("Successfully looked up topic on broker. %s / %s - Use proxy: %t",
-				lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
+			log.Debugf("successfully looked up topic [%s] on broker. %s / %s - Use proxy: %t",
+				topic, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
 			logicalAddress, physicalAddress, err := ls.getBrokerAddress(lr)
 			if err != nil {
@@ -123,7 +123,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			if lr.Error != nil {
 				errorMsg = lr.Error.String()
 			}
-			log.WithField("topic", topic).Warn("Failed to lookup topic", errorMsg)
+			log.Warnf("lookup topic [%s] error: %s", topic, errorMsg)
 			return nil, errors.New(fmt.Sprintf("failed to lookup topic: %s", errorMsg))
 		}
 	}

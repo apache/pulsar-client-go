@@ -24,7 +24,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"github.com/golang/protobuf/proto"
-    log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 	"io/ioutil"
 	"net"
 	"net/url"
@@ -90,8 +90,6 @@ type connection struct {
 	lastDataReceivedTime time.Time
 	pingTicker           *time.Ticker
 
-	log *log.Entry
-
 	requestIdGenerator uint64
 
 	incomingRequests chan *request
@@ -109,7 +107,6 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		logicalAddr:          logicalAddr,
 		physicalAddr:         physicalAddr,
 		writeBuffer:          NewBuffer(4096),
-		log:                  log.WithField("raddr", physicalAddr),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
@@ -141,7 +138,7 @@ func (c *connection) start() {
 }
 
 func (c *connection) connect() (ok bool) {
-	c.log.Info("Connecting to broker")
+	log.Info("connecting to broker")
 
 	var (
 		err       error
@@ -156,7 +153,7 @@ func (c *connection) connect() (ok bool) {
 		// TLS connection
 		tlsConfig, err = c.getTlsConfig()
 		if err != nil {
-			c.log.WithError(err).Warn("Failed to configure TLS ")
+			log.Warnf("configure TLS error:%+v", err)
 			return false
 		}
 
@@ -164,13 +161,12 @@ func (c *connection) connect() (ok bool) {
 	}
 
 	if err != nil {
-		c.log.WithError(err).Warn("Failed to connect to broker.")
+		log.Warnf("connect to broker error:%+v", err)
 		c.Close()
 		return false
 	} else {
 		c.cnx = cnx
-		c.log = c.log.WithField("laddr", c.cnx.LocalAddr())
-		c.log.Debug("TCP connection established")
+		log.Debugf("TCP connection established, localAddr is:%+v", c.cnx.LocalAddr())
 		c.state = connectionTcpConnected
 		return true
 	}
@@ -182,7 +178,7 @@ func (c *connection) doHandshake() (ok bool) {
 
 	authData, err := c.auth.GetData()
 	if err != nil {
-		c.log.WithError(err).Warn("Failed to load auth credentials")
+		log.Warnf("load auth credentials error:%+v", err)
 		return false
 	}
 
@@ -195,17 +191,16 @@ func (c *connection) doHandshake() (ok bool) {
 
 	cmd, _, err := c.reader.readSingleCommand()
 	if err != nil {
-		c.log.WithError(err).Warn("Failed to perform initial handshake")
+		log.Warnf("perform initial handshake error:%+v", err)
 		return false
 	}
 
 	if cmd.Connected == nil {
-		c.log.Warnf("Failed to perform initial handshake - Expecting 'Connected' cmd, got '%s'",
+		log.Warnf("failed to perform initial handshake - Expecting 'Connected' cmd, got '%+v'",
 			cmd.Type)
 		return false
 	}
-
-	c.log.Info("Connection is ready")
+	log.Info("connection is ready")
 	c.changeState(connectionReady)
 	return true
 }
@@ -215,7 +210,7 @@ func (c *connection) waitUntilReady() error {
 	defer c.Unlock()
 
 	for {
-		c.log.Debug("Wait until connection is ready. State: ", c.state)
+		log.Debugf("wait until connection is ready. State: %+v", c.state)
 		switch c.state {
 		case connectionInit:
 			fallthrough
@@ -264,9 +259,9 @@ func (c *connection) WriteData(data []byte) {
 }
 
 func (c *connection) internalWriteData(data []byte) {
-	c.log.Debug("Write data: ", len(data))
+	log.Debugf("write data: %d", len(data))
 	if _, err := c.cnx.Write(data); err != nil {
-		c.log.WithError(err).Warn("Failed to write on connection")
+		log.Warnf("write on connection error:%+v", err)
 		c.Close()
 	}
 }
@@ -282,7 +277,7 @@ func (c *connection) writeCommand(cmd proto.Message) {
 	c.writeBuffer.WriteUint32(cmdSize)
 	serialized, err := proto.Marshal(cmd)
 	if err != nil {
-		c.log.WithError(err).Fatal("Protobuf serialization error")
+		log.Fatalf("protobuf serialization error:%+v", err)
 	}
 
 	c.writeBuffer.Write(serialized)
@@ -290,7 +285,7 @@ func (c *connection) writeCommand(cmd proto.Message) {
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []byte) {
-	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
+	log.Debugf("received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.lastDataReceivedTime = time.Now()
 
 	switch *cmd.Type {
@@ -336,7 +331,7 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
 
 	default:
-		c.log.Errorf("Received invalid command type: %s", cmd.Type)
+		log.Errorf("received invalid command type: %s", cmd.Type)
 		c.Close()
 	}
 }
@@ -361,7 +356,7 @@ func (c *connection) internalSendRequest(req *request) {
 func (c *connection) handleResponse(requestId uint64, response *pb.BaseCommand) {
 	request, ok := c.pendingReqs[requestId]
 	if !ok {
-		c.log.Warnf("Received unexpected response for request %d of type %s", requestId, response.Type)
+		log.Warnf("received unexpected response for request %d of type %s", requestId, response.Type)
 		return
 	}
 
@@ -370,12 +365,12 @@ func (c *connection) handleResponse(requestId uint64, response *pb.BaseCommand) 
 }
 
 func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
-	c.log.Debug("Got SEND_RECEIPT: ", response)
+	log.Debug("got SEND_RECEIPT: %+v", response)
 	producerId := response.GetProducerId()
 	if producer, ok := c.listeners[producerId]; ok {
 		producer.ReceivedSendReceipt(response)
 	} else {
-		c.log.WithField("producerId", producerId).Warn("Got unexpected send receipt for message: ", response.MessageId)
+		log.Warnf("got unexpected send receipt for message: %+v, producerID is: %d", response.MessageId, producerId)
 	}
 }
 
@@ -383,12 +378,12 @@ func (c *connection) sendPing() {
 	if c.lastDataReceivedTime.Add(2 * keepAliveInterval).Before(time.Now()) {
 		// We have not received a response to the previous Ping request, the
 		// connection to broker is stale
-		c.log.Info("Detected stale connection to broker")
+		log.Info("detected stale connection to broker")
 		c.Close()
 		return
 	}
 
-	c.log.Debug("Sending PING")
+	log.Debug("sending PING")
 	c.writeCommand(baseCommand(pb.BaseCommand_PING, &pb.CommandPing{}))
 }
 
@@ -424,7 +419,7 @@ func (c *connection) Close() {
 		return
 	}
 
-	c.log.Info("Connection closed")
+	log.Info("connection closed")
 	c.state = connectionClosed
 	if c.cnx != nil {
 		c.cnx.Close()

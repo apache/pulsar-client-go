@@ -22,7 +22,7 @@ package pulsar
 import (
 	"fmt"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 	"net/url"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pkg/auth"
@@ -49,7 +49,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 	url, err := url.Parse(options.URL)
 	if err != nil {
-		log.WithError(err).Error("Failed to parse service URL")
+		log.Errorf("parse service URL error: %+v", err)
 		return nil, newError(ResultInvalidConfiguration, "Invalid service URL")
 	}
 

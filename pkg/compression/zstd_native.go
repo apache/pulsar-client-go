@@ -27,7 +27,7 @@ import (
 	"bytes"
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/log"
 )
 
 // Pure GO ZStd library only supports decompression
