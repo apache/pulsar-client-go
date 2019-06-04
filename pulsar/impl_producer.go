@@ -77,10 +77,10 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	c := make(chan ProducerError, numPartitions)
 
 	for partitionIdx, partition := range partitions {
-		go func() {
-			prod, err := newPartitionProducer(client, partition, options, partitionIdx)
+		go func(index int) {
+			prod, err := newPartitionProducer(client, partition, options, index)
 			c <- ProducerError{partitionIdx, prod, err}
-		}()
+		}(partitionIdx)
 	}
 
 	for i := 0; i < numPartitions; i++ {
