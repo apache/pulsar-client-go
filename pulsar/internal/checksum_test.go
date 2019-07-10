@@ -20,30 +20,32 @@
 package internal
 
 import (
-    `hash`
-    `hash/crc32`
+    "bytes"
+    "hash/crc32"
+    "testing"
 )
 
-var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
+func TestFrameChecksum(t *testing.T) {
+    input := []byte{1, 2, 3, 4, 5}
+    var f CheckSum
 
-type CheckSum struct {
-    hash hash.Hash
-}
-
-func Crc32cCheckSum(data []byte) uint32 {
-	return crc32.Checksum(data, crc32cTable)
-}
-
-func (cs *CheckSum) Write(p []byte) (int, error) {
-    if cs.hash == nil {
-        cs.hash = crc32.New(crc32cTable)
+    if got := f.compute(); got != nil {
+        t.Fatalf("compute() = %v; expected nil", got)
     }
-    return cs.hash.Write(p)
+
+    if _, err := f.Write(input); err != nil {
+        t.Fatalf("Write() err = %v; expected nil", err)
+    }
+
+    h := crc32.New(crc32.MakeTable(crc32.Castagnoli))
+    if _, err := h.Write(input); err != nil {
+        t.Fatal(err)
+    }
+
+    if got, expected := f.compute(), h.Sum(nil); !bytes.Equal(got, expected) {
+        t.Fatalf("compute() = %x; expected %x", got, expected)
+    } else {
+        t.Logf("compute() = 0x%x", got)
+    }
 }
 
-func (cs *CheckSum) compute() []byte {
-    if cs.hash == nil {
-        return nil
-    }
-    return cs.hash.Sum(nil)
-}

@@ -44,6 +44,8 @@ const (
 	// Multiple consumer will be able to use the same subscription name but only 1 consumer will receive the messages.
 	// If that consumer disconnects, one of the other connected consumers will start receiving messages.
 	Failover
+
+	KeyShared
 )
 
 type InitialPosition int
@@ -137,6 +139,8 @@ type Consumer interface {
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)
 
+	ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error
+
 	// Ack the consumption of a single message
 	Ack(Message) error
 
@@ -175,5 +179,5 @@ type Consumer interface {
 	// active for the given topic. In Shared mode, the consumers messages to be redelivered are distributed across all
 	// the connected consumers. This is a non blocking call and doesn't throw an exception. In case the connection
 	// breaks, the messages are redelivered after reconnect.
-	RedeliverUnackedMessages()
+	RedeliverUnackedMessages() error
 }

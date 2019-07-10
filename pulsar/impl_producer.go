@@ -97,9 +97,9 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 			}
 		}
 		return nil, err
-	} else {
-		return p, nil
 	}
+
+	return p, nil
 }
 
 func (p *producer) Topic() string {
@@ -136,21 +136,15 @@ func (p *producer) LastSequenceID() int64 {
 }
 
 func (p *producer) Flush() error {
-	var err error = nil
 	for _, pp := range p.producers {
-		if e := pp.Flush(); e != nil && err == nil {
-			err = e
-		}
+		return pp.Flush()
 	}
-	return err
+	return nil
 }
 
 func (p *producer) Close() error {
-	var err error = nil
 	for _, pp := range p.producers {
-		if e := pp.Close(); e != nil && err == nil {
-			err = e
-		}
+		return pp.Close()
 	}
-	return err
+	return nil
 }
