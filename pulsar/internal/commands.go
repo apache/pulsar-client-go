@@ -64,6 +64,8 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.CloseConsumer = msg.(*pb.CommandCloseConsumer)
 	case pb.BaseCommand_ACK:
 		cmd.Ack = msg.(*pb.CommandAck)
+	case pb.BaseCommand_SEEK:
+		cmd.Seek = msg.(*pb.CommandSeek)
 	default:
 		log.Panic("Missing command type: ", cmdType)
 	}

@@ -281,7 +281,7 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
                     pc.unAckTracker.Add(id)
                 }
                 receivedSinceFlow++
-                if  receivedSinceFlow >= highwater {
+                if receivedSinceFlow >= highwater {
                     if err := pc.internalFlow(receivedSinceFlow); err != nil {
                         pc.log.Errorf("Send Flow cmd error:%s", err.Error())
                         return err
@@ -403,11 +403,17 @@ func (pc *partitionConsumer) Close() error {
 }
 
 func (pc *partitionConsumer) Seek(msgID MessageID) error {
+    wg := &sync.WaitGroup{}
+    wg.Add(1)
+
     hc := &handleSeek{
-        msgID: msgID,
-        err:   nil,
+        msgID:     msgID,
+        waitGroup: wg,
+        err:       nil,
     }
     pc.eventsChan <- hc
+
+    wg.Wait()
     return hc.err
 }
 
@@ -430,6 +436,8 @@ func (pc *partitionConsumer) internalSeek(seek *handleSeek) {
         pc.log.WithError(err).Error("Failed to unsubscribe consumer")
         seek.err = err
     }
+
+    seek.waitGroup.Done()
 }
 
 func (pc *partitionConsumer) RedeliverUnackedMessages() error {
@@ -559,7 +567,7 @@ func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headers
     msgID := response.GetMessageId()
 
     id := newMessageId(int64(msgID.GetLedgerId()), int64(msgID.GetEntryId()),
-        pc.partitionIdx, int(msgID.GetBatchIndex()))
+        int(msgID.GetBatchIndex()), pc.partitionIdx)
 
     msgMeta, payload, err := internal.ParseMessage(headersAndPayload)
     if err != nil {
@@ -624,8 +632,9 @@ type handleUnsubscribe struct {
 }
 
 type handleSeek struct {
-    msgID MessageID
-    err   error
+    msgID     MessageID
+    waitGroup *sync.WaitGroup
+    err       error
 }
 
 type handleRedeliver struct {

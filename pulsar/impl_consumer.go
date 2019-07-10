@@ -220,7 +220,8 @@ func (c *consumer) Seek(msgID MessageID) error {
         return err
     }
 
-    partition := uint32(*id.Partition)
+    partition := id.GetPartition()
+
     if partition < 0 {
         return errors.New("invalid partition index")
     }
