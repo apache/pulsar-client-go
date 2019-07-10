@@ -20,9 +20,9 @@
 package internal
 
 import (
+	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/golang/protobuf/proto"
 	"net/url"
-	"github.com/apache/pulsar-client-go/pkg/pb"
 	"sync"
 	"sync/atomic"
 )
@@ -47,6 +47,8 @@ type RpcClient interface {
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
 
 	RequestOnCnx(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
+
+	RequestOnCnxNoWait(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
 }
 
 type rpcClient struct {
@@ -110,6 +112,20 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestId uint64, cmdType pb.Ba
 	wg.Wait()
 	return rpcResult, nil
 }
+
+func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type,
+		message proto.Message) (*RpcResult, error) {
+	rpcResult := &RpcResult{
+		Cnx: cnx,
+	}
+
+	cnx.SendRequest(requestId, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
+		rpcResult.Response = response
+	})
+
+	return rpcResult, nil
+}
+
 
 func (c *rpcClient) NewRequestId() uint64 {
 	return atomic.AddUint64(&c.requestIdGenerator, 1)

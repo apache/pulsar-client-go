@@ -23,13 +23,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"github.com/apache/pulsar-client-go/pkg/auth"
+	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/golang/protobuf/proto"
-    log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
 	"net/url"
-	"github.com/apache/pulsar-client-go/pkg/auth"
-	"github.com/apache/pulsar-client-go/pkg/pb"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,7 +46,6 @@ type TLSOptions struct {
 // when the connection is closed.
 type ConnectionListener interface {
 	ReceivedSendReceipt(response *pb.CommandSendReceipt)
-
 	ConnectionClosed()
 }
 
@@ -55,7 +54,13 @@ type Connection interface {
 	WriteData(data []byte)
 	RegisterListener(id uint64, listener ConnectionListener)
 	UnregisterListener(id uint64)
+	AddConsumeHandler(id uint64, handler ConsumerHandler)
+	DeleteConsumeHandler(id uint64)
 	Close()
+}
+
+type ConsumerHandler interface {
+    HandlerMessage(response *pb.CommandMessage, headersAndPayload []byte) error
 }
 
 type connectionState int
@@ -98,6 +103,7 @@ type connection struct {
 	writeRequests    chan []byte
 	pendingReqs      map[uint64]*request
 	listeners        map[uint64]ConnectionListener
+	connWrapper      *ConnWrapper
 
 	tlsOptions *TLSOptions
 	auth       auth.Provider
@@ -119,6 +125,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		incomingRequests: make(chan *request),
 		writeRequests:    make(chan []byte),
 		listeners:        make(map[uint64]ConnectionListener),
+        connWrapper:      NewConnWrapper(),
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -292,6 +299,7 @@ func (c *connection) writeCommand(cmd proto.Message) {
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []byte) {
 	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.lastDataReceivedTime = time.Now()
+    var err error
 
 	switch *cmd.Type {
 	case pb.BaseCommand_SUCCESS:
@@ -328,6 +336,7 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_SEND_ERROR:
 
 	case pb.BaseCommand_MESSAGE:
+        err = c.handleMessage(cmd.GetMessage(), headersAndPayload)
 	case pb.BaseCommand_PING:
 		c.handlePing()
 	case pb.BaseCommand_PONG:
@@ -336,7 +345,9 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
 
 	default:
-		c.log.Errorf("Received invalid command type: %s", cmd.Type)
+        if err != nil {
+            c.log.Errorf("Received invalid command type: %s", cmd.Type)
+        }
 		c.Close()
 	}
 }
@@ -377,6 +388,21 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	} else {
 		c.log.WithField("producerId", producerId).Warn("Got unexpected send receipt for message: ", response.MessageId)
 	}
+}
+
+func (c *connection) handleMessage(response *pb.CommandMessage, payload []byte) error {
+    c.log.Debug("Got Message: ", response)
+    consumerId := response.GetConsumerId()
+    if consumer, ok := c.connWrapper.Consumers[consumerId]; ok {
+        err := consumer.HandlerMessage(response, payload)
+        if err != nil {
+            c.log.WithField("consumerId", consumerId).Error("handle message err: ", response.MessageId)
+            return errors.New("handler not found")
+        }
+    } else {
+        c.log.WithField("consumerId", consumerId).Warn("Got unexpected message: ", response.MessageId)
+    }
+    return nil
 }
 
 func (c *connection) sendPing() {
@@ -481,4 +507,27 @@ func (c *connection) getTlsConfig() (*tls.Config, error) {
 	}
 
 	return tlsConfig, nil
+}
+
+type ConnWrapper struct {
+	Rwmu             sync.RWMutex
+	Consumers        map[uint64]ConsumerHandler
+}
+
+func NewConnWrapper() *ConnWrapper {
+	return &ConnWrapper{
+		Consumers: make(map[uint64]ConsumerHandler),
+	}
+}
+
+func (c *connection) AddConsumeHandler(id uint64, handler ConsumerHandler) {
+    c.connWrapper.Rwmu.Lock()
+    c.connWrapper.Consumers[id] = handler
+    c.connWrapper.Rwmu.Unlock()
+}
+
+func (c *connection) DeleteConsumeHandler(id uint64) {
+    c.connWrapper.Rwmu.Lock()
+    delete(c.connWrapper.Consumers, id)
+    c.connWrapper.Rwmu.Unlock()
 }

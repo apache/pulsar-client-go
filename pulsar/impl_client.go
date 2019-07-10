@@ -20,13 +20,13 @@
 package pulsar
 
 import (
-	"fmt"
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
-	"net/url"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pkg/auth"
-	"github.com/apache/pulsar-client-go/pkg/pb"
+    "fmt"
+    "github.com/apache/pulsar-client-go/pkg/auth"
+    "github.com/apache/pulsar-client-go/pkg/pb"
+    "github.com/apache/pulsar-client-go/pulsar/internal"
+    "github.com/pkg/errors"
+    log "github.com/sirupsen/logrus"
+    "net/url"
 )
 
 type client struct {
@@ -99,8 +99,12 @@ func (client *client) CreateProducer(options ProducerOptions) (Producer, error) 
 }
 
 func (client *client) Subscribe(options ConsumerOptions) (Consumer, error) {
-	// TODO: Implement consumer
-	return nil, nil
+    consumer, err := newConsumer(client, &options)
+    if err != nil {
+        return nil, err
+    }
+    client.handlers[consumer] = true
+    return consumer, nil
 }
 
 func (client *client) CreateReader(options ReaderOptions) (Reader, error) {

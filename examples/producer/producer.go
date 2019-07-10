@@ -17,33 +17,42 @@
 // under the License.
 //
 
-package internal
+package main
 
 import (
-    `hash`
-    `hash/crc32`
+    `context`
+    `fmt`
+    `github.com/apache/pulsar-client-go/pulsar`
+    `log`
 )
 
-var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
+func main() {
+    client, err := pulsar.NewClient(pulsar.ClientOptions{
+        URL: "pulsar://localhost:6650",
+    })
 
-type CheckSum struct {
-    hash hash.Hash
-}
-
-func Crc32cCheckSum(data []byte) uint32 {
-	return crc32.Checksum(data, crc32cTable)
-}
-
-func (cs *CheckSum) Write(p []byte) (int, error) {
-    if cs.hash == nil {
-        cs.hash = crc32.New(crc32cTable)
+    if err != nil {
+        log.Fatal(err)
     }
-    return cs.hash.Write(p)
-}
 
-func (cs *CheckSum) compute() []byte {
-    if cs.hash == nil {
-        return nil
+    defer client.Close()
+
+    producer, err := client.CreateProducer(pulsar.ProducerOptions{
+        Topic: "topic-1",
+    })
+    if err != nil {
+        log.Fatal(err)
     }
-    return cs.hash.Sum(nil)
+
+    defer producer.Close()
+
+    ctx := context.Background()
+
+    for i := 0; i < 10; i++ {
+        if err := producer.Send(ctx, &pulsar.ProducerMessage{
+            Payload: []byte(fmt.Sprintf("hello-%d", i)),
+        }); err != nil {
+            log.Fatal(err)
+        }
+    }
 }

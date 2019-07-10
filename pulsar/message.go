@@ -62,7 +62,7 @@ type Message interface {
 	// Get the event time associated with this message. It is typically set by the applications via
 	// `ProducerMessage.EventTime`.
 	// If there isn't any event time associated with this event, it will be nil.
-	EventTime() *time.Time
+	EventTime() time.Time
 
 	// Get the key of the message, if any
 	Key() string

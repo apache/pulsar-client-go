@@ -155,7 +155,7 @@ func (p *partitionProducer) grabCnx() error {
 	p.log.WithField("cnx", res.Cnx).Debug("Connected producer")
 
 	if p.pendingQueue.Size() > 0 {
-		p.log.Infof("Resending %v pending batches", p.pendingQueue.Size())
+		p.log.Infof("Resending %d pending batches", p.pendingQueue.Size())
 		for it := p.pendingQueue.Iterator(); it.HasNext(); {
 			p.cnx.WriteData(it.Next().(*pendingItem).batchData)
 		}
@@ -163,8 +163,7 @@ func (p *partitionProducer) grabCnx() error {
 	return nil
 }
 
-type connectionClosed struct {
-}
+type connectionClosed struct {}
 
 func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine
@@ -228,7 +227,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	msg := request.msg
 
-	sendAsBatch := !p.options.DisableBatching && request.msg.ReplicationClusters == nil
+	sendAsBatch := !p.options.DisableBatching && msg.ReplicationClusters == nil
 	smm := &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int(len(msg.Payload)),
 	}
