@@ -215,9 +215,6 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 }
 
 func (t *UnackedMessageTracker) Stop() {
-    t.cmu.Lock()
-    defer t.cmu.Unlock()
-
     t.timeout.Stop()
     log.Debug("stop ticker ", t.timeout)
 

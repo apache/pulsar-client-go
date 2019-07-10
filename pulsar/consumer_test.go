@@ -72,7 +72,6 @@ func TestProducerConsumer(t *testing.T) {
         }
 
         expectMsg := fmt.Sprintf("hello-%d", i)
-        fmt.Println(string(msg.Payload()))
         assert.Equal(t, []byte(expectMsg), msg.Payload())
     }
 }
