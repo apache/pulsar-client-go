@@ -388,9 +388,9 @@ func (pc *partitionConsumer) Close() error {
     if pc.state != consumerReady {
         return nil
     }
-    //if pc.unAckTracker != nil {
-    //    pc.unAckTracker.Stop()
-    //}
+    if pc.unAckTracker != nil {
+       pc.unAckTracker.Stop()
+    }
 
     wg := sync.WaitGroup{}
     wg.Add(1)
