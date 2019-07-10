@@ -20,14 +20,14 @@
 package internal
 
 import (
-	`bytes`
-	`encoding/binary`
-	`fmt`
-	"github.com/golang/protobuf/proto"
-	`io`
+    `bytes`
+    `encoding/binary`
+    `fmt`
+    "github.com/golang/protobuf/proto"
+    `io`
 
-	"github.com/apache/pulsar-client-go/pkg/pb"
-	log "github.com/sirupsen/logrus"
+    "github.com/apache/pulsar-client-go/pkg/pb"
+    log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -160,8 +160,13 @@ func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloa
 		return nil, nil, err
 	}
 
-	// Anything left in the frame is considered
-	// the payload and can be any sequence of bytes.
+    batchLen := make([]byte, 2)
+    if _, err = io.ReadFull(lr, batchLen); err != nil {
+        return nil, nil, err
+    }
+
+    // Anything left in the frame is considered
+    // the payload and can be any sequence of bytes.
 	if lr.N > 0 {
 		// guard against allocating large buffer
 		if lr.N > MaxFrameSize {
