@@ -28,8 +28,8 @@ import (
 type messageId struct {
     ledgerID     int64
     entryID      int64
-    batchIdx     int
     partitionIdx int
+    batchIdx     int
 }
 
 func newMessageId(ledgerID int64, entryID int64, batchIdx int, partitionIdx int) MessageID {
