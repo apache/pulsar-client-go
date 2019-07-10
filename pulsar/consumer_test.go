@@ -45,7 +45,7 @@ func TestProducerConsumer(t *testing.T) {
         Type:             Shared,
     })
     assert.Nil(t, err)
-    //defer consumer.Close()
+    defer consumer.Close()
 
     // create producer
     producer, err := client.CreateProducer(ProducerOptions{
