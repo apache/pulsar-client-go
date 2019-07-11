@@ -19,6 +19,8 @@
 
 -->
 
+[![Go Report Card](https://goreportcard.com/badge/github.com/apache/pulsar-client-go)](https://goreportcard.com/report/github.com/apache/pulsar-client-go)
+
 # Apache Pulsar Go Client Library
 
 > Note: this library is still a work in progress. For production usage, please
