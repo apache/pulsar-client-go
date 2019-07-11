@@ -62,13 +62,10 @@ This change added tests and can be verified as follows:
   - The schema: (yes / no / don't know)
   - The default values of configurations: (yes / no)
   - The wire protocol: (yes / no)
-  - The rest endpoints: (yes / no)
-  - The admin cli options: (yes / no)
-  - Anything that affects deployment: (yes / no / don't know)
 
 ### Documentation
 
   - Does this pull request introduce a new feature? (yes / no)
-  - If yes, how is the feature documented? (not applicable / docs / JavaDocs / not documented)
+  - If yes, how is the feature documented? (not applicable / docs / GoDocs / not documented)
   - If a feature is not applicable for documentation, explain why?
   - If a feature is not documented yet in this PR, please create a followup issue for adding the documentation
