@@ -77,7 +77,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
         log:          log.WithField("topic", topic),
         consumerID:   client.rpcClient.NewConsumerId(),
         partitionIdx: partitionId,
-        eventsChan:   make(chan interface{}, 10),
+        eventsChan:   make(chan interface{}),
     }
 
     c.setDefault(options)
@@ -155,7 +155,7 @@ func (pc *partitionConsumer) grabCnx() error {
     res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
         pb.BaseCommand_SUBSCRIBE, &pb.CommandSubscribe{
             RequestId:       proto.Uint64(requestID),
-            Topic:           &pc.topic,
+            Topic:           proto.String(pc.topic),
             SubType:         subType.Enum(),
             Subscription:    proto.String(pc.options.SubscriptionName),
             ConsumerId:      proto.Uint64(pc.consumerID),
@@ -524,8 +524,8 @@ func (pc *partitionConsumer) internalClose(req *handlerClose) {
 
     requestID := pc.client.rpcClient.NewRequestId()
     _, err := pc.client.rpcClient.RequestOnCnx(pc.cnx, requestID, pb.BaseCommand_CLOSE_CONSUMER, &pb.CommandCloseConsumer{
-        ConsumerId: &pc.consumerID,
-        RequestId:  &requestID,
+        ConsumerId: proto.Uint64(pc.consumerID),
+        RequestId:  proto.Uint64(requestID),
     })
     pc.cnx.DeleteConsumeHandler(pc.consumerID)
 
