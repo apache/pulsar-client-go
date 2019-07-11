@@ -20,8 +20,8 @@
 package pulsar
 
 import (
-	"context"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+    "context"
+    "github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 type producer struct {
@@ -77,10 +77,10 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	c := make(chan ProducerError, numPartitions)
 
 	for partitionIdx, partition := range partitions {
-		go func(index int) {
-			prod, err := newPartitionProducer(client, partition, options, index)
-			c <- ProducerError{partitionIdx, prod, err}
-		}(partitionIdx)
+        go func(partitionIdx int, partition string) {
+            prod, err := newPartitionProducer(client, partition, options, partitionIdx)
+            c <- ProducerError{partitionIdx, prod, err}
+        }(partitionIdx, partition)
 	}
 
 	for i := 0; i < numPartitions; i++ {

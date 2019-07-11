@@ -92,7 +92,7 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
     ch := make(chan ConsumerError, numPartitions)
 
     for partitionIdx, partitionTopic := range partitions {
-        go func(index int) {
+        go func(index int, partitionTopic string) {
             cons, err := newPartitionConsumer(client, partitionTopic, options, index)
             ch <- ConsumerError{
                 partition: partitionIdx,
@@ -100,7 +100,7 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
                 err:       err,
             }
 
-        }(partitionIdx)
+        }(partitionIdx, partitionTopic)
     }
 
     for i := 0; i < numPartitions; i++ {
