@@ -49,6 +49,10 @@ func newConsumer(client *client, options *ConsumerOptions) (*consumer, error) {
         return nil, newError(SubscriptionNotFound, "subscription name is required for consumer")
     }
 
+    if options.ReceiverQueueSize == 0 {
+        options.ReceiverQueueSize = 1000
+    }
+
     if options.TopicsPattern != "" {
         if options.Topics != nil {
             return nil, newError(ResultInvalidConfiguration, "Topic names list must be null when use topicsPattern")
@@ -92,14 +96,13 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
     ch := make(chan ConsumerError, numPartitions)
 
     for partitionIdx, partitionTopic := range partitions {
-        go func(index int, partitionTopic string) {
-            cons, err := newPartitionConsumer(client, partitionTopic, options, index)
+        go func(partitionIdx int, partitionTopic string) {
+            cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx, c.queue)
             ch <- ConsumerError{
+                err:       err,
                 partition: partitionIdx,
                 cons:      cons,
-                err:       err,
             }
-
         }(partitionIdx, partitionTopic)
     }
 
@@ -148,16 +151,19 @@ func (c *consumer) Unsubscribe() error {
 }
 
 func (c *consumer) Receive(ctx context.Context) (Message, error) {
-    //TODO: not support partition-topic
-    select {
-    case <-ctx.Done():
-        return nil, ctx.Err()
-    default:
-        for _, c := range c.consumers {
-            return c.Receive(ctx)
+    if len(c.consumers) > 1 {
+        select {
+        case <-ctx.Done():
+            return nil, ctx.Err()
+        case msg, ok := <-c.queue:
+            if ok {
+                return msg.Message, nil
+            }
+            return nil, errors.New("receive message error")
         }
-        return nil, errors.New("receive message error")
     }
+
+    return c.consumers[0].Receive(ctx)
 }
 
 func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
