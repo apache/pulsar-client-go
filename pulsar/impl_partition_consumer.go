@@ -68,7 +68,7 @@ type partitionConsumer struct {
     partitionIdx int
 }
 
-func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionId int) (*partitionConsumer, error) {
+func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionId int, queue chan ConsumerMessage) (*partitionConsumer, error) {
     c := &partitionConsumer{
         state:        consumerInit,
         client:       client,
@@ -84,6 +84,8 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 
     if options.MessageChannel == nil {
         options.MessageChannel = make(chan ConsumerMessage, options.ReceiverQueueSize)
+    } else {
+        options.MessageChannel = queue
     }
 
     if options.Name != "" {
