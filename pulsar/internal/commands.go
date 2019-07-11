@@ -66,6 +66,8 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.Ack = msg.(*pb.CommandAck)
 	case pb.BaseCommand_SEEK:
 		cmd.Seek = msg.(*pb.CommandSeek)
+	case pb.BaseCommand_UNSUBSCRIBE:
+		cmd.Unsubscribe = msg.(*pb.CommandUnsubscribe)
 	default:
 		log.Panic("Missing command type: ", cmdType)
 	}

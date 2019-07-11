@@ -73,5 +73,10 @@ func TestProducerConsumer(t *testing.T) {
 
         expectMsg := fmt.Sprintf("hello-%d", i)
         assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+        // ack message
+        if err := consumer.Ack(msg); err != nil {
+            log.Fatal(err)
+        }
     }
 }
