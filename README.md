@@ -20,7 +20,8 @@
 -->
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/apache/pulsar-client-go)](https://goreportcard.com/report/github.com/apache/pulsar-client-go)
-
+[![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
+[![LICENSE](https://img.shields.io/hexpm/l/pulsar.svg)](https://github.com/apache/pulsar-client-go/blob/master/LICENSE)
 # Apache Pulsar Go Client Library
 
 > Note: this library is still a work in progress. For production usage, please
