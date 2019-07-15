@@ -157,19 +157,13 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
                 t.oldOpenSet.Clear()
 
                 if t.pc != nil {
-                    lr, err := t.pc.client.lookupService.Lookup(t.pc.topic)
-                    if err != nil {
-                        t.pc.log.WithError(err).Warn("Failed to lookup topic")
-                        return
-                    }
-
                     requestID := t.pc.client.rpcClient.NewRequestId()
                     cmd := &pb.CommandRedeliverUnacknowledgedMessages{
                         ConsumerId: proto.Uint64(t.pc.consumerID),
                         MessageIds: messageIds,
                     }
 
-                    _, err = t.pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
+                    _, err := t.pc.client.rpcClient.RequestOnCnx(t.pc.cnx, requestID,
                         pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, cmd)
                     if err != nil {
                         t.pc.log.WithError(err).Error("Failed to unsubscribe consumer")
@@ -185,19 +179,13 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 
                     for index, subConsumer := range t.pcs {
                         if messageIdsMap[int32(index)] != nil {
-                            lr, err := subConsumer.client.lookupService.Lookup(subConsumer.topic)
-                            if err != nil {
-                                subConsumer.log.WithError(err).Warn("Failed to lookup topic")
-                                return
-                            }
-
                             requestID := subConsumer.client.rpcClient.NewRequestId()
                             cmd := &pb.CommandRedeliverUnacknowledgedMessages{
                                 ConsumerId: proto.Uint64(subConsumer.consumerID),
                                 MessageIds: messageIdsMap[int32(index)],
                             }
 
-                            _, err = subConsumer.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
+                            _, err := subConsumer.client.rpcClient.RequestOnCnx(subConsumer.cnx, requestID,
                                 pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, cmd)
                             if err != nil {
                                 subConsumer.log.WithError(err).Error("Failed to unsubscribe consumer")

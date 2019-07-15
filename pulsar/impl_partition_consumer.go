@@ -420,6 +420,11 @@ func (pc *partitionConsumer) Seek(msgID MessageID) error {
 }
 
 func (pc *partitionConsumer) internalSeek(seek *handleSeek) {
+    if pc.state == consumerClosing || pc.state == consumerClosed {
+        pc.log.Error("Consumer was already closed")
+        return
+    }
+
     id := &pb.MessageIdData{}
     err := proto.Unmarshal(seek.msgID.Serialize(), id)
     if err != nil {
@@ -472,7 +477,7 @@ func (pc *partitionConsumer) internalRedeliver(redeliver *handleRedeliver) {
         if end > overFlowSize {
             end = overFlowSize
         }
-        _, err := pc.client.rpcClient.RequestOnCnx(pc.cnx, requestID,
+        _, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID,
             pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
                 ConsumerId: proto.Uint64(pc.consumerID),
                 MessageIds: pc.overflow[i:end],
@@ -596,8 +601,6 @@ func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headers
 
     select {
     case pc.options.MessageChannel <- consumerMsg:
-        return nil
-    default:
         // Add messageId to Overflow buffer, avoiding duplicates.
         newMid := response.GetMessageId()
         var dup bool
@@ -614,7 +617,9 @@ func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headers
             pc.overflow = append(pc.overflow, newMid)
         }
         pc.omu.Unlock()
-        return fmt.Errorf("consumer message queue on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
+        return nil
+    default:
+        return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
     }
 }
 
