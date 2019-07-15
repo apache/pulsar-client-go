@@ -79,4 +79,10 @@ func TestProducerConsumer(t *testing.T) {
             log.Fatal(err)
         }
     }
+
+
+    // unsubscribe consumer
+    if err := consumer.Unsubscribe(); err != nil {
+        log.Fatal(err)
+    }
 }

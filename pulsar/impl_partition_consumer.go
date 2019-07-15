@@ -536,6 +536,7 @@ func (pc *partitionConsumer) internalClose(req *handlerClose) {
     } else {
         pc.log.Info("Closed consumer")
         pc.state = consumerClosed
+        close(pc.options.MessageChannel)
         //pc.cnx.UnregisterListener(pc.consumerID)
     }
 

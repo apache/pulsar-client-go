@@ -20,10 +20,10 @@
 package main
 
 import (
-    "context"
     "fmt"
-    `github.com/apache/pulsar-client-go/pulsar`
-    `log`
+    "log"
+
+    "github.com/apache/pulsar-client-go/pulsar"
 )
 
 func main() {
@@ -34,31 +34,33 @@ func main() {
 
     defer client.Close()
 
-    consumer, err := client.Subscribe(pulsar.ConsumerOptions{
+    channel := make(chan pulsar.ConsumerMessage, 100)
+
+    options := pulsar.ConsumerOptions{
         Topic:            "topic-1",
-        SubscriptionName: "my-sub",
+        SubscriptionName: "my-subscription",
         Type:             pulsar.Shared,
-    })
+    }
+
+    options.MessageChannel = channel
+
+    consumer, err := client.Subscribe(options)
     if err != nil {
         log.Fatal(err)
     }
+
     defer consumer.Close()
 
-    for i := 0; i < 10; i++ {
-        msg, err := consumer.Receive(context.Background())
-        if err != nil {
-            log.Fatal(err)
-        }
-
-        fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+    // Receive messages from channel. The channel returns a struct which contains message and the consumer from where
+    // the message was received. It's not necessary here since we have 1 single consumer, but the channel could be
+    // shared across multiple consumers as well
+    for cm := range channel {
+        msg := cm.Message
+        fmt.Printf("Received message  msgId: %s -- content: '%s'\n",
             msg.ID(), string(msg.Payload()))
 
         if err := consumer.Ack(msg); err != nil {
             log.Fatal(err)
         }
-    }
-
-    if err := consumer.Unsubscribe(); err != nil {
-        log.Fatal(err)
     }
 }
