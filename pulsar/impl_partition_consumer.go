@@ -525,7 +525,7 @@ func (pc *partitionConsumer) internalClose(req *handlerClose) {
     pc.log.Info("Closing consumer")
 
     requestID := pc.client.rpcClient.NewRequestId()
-    _, err := pc.client.rpcClient.RequestOnCnx(pc.cnx, requestID, pb.BaseCommand_CLOSE_CONSUMER, &pb.CommandCloseConsumer{
+    _, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID, pb.BaseCommand_CLOSE_CONSUMER, &pb.CommandCloseConsumer{
         ConsumerId: proto.Uint64(pc.consumerID),
         RequestId:  proto.Uint64(requestID),
     })
