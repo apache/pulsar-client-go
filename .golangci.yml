@@ -1,0 +1,30 @@
+# Make sure golangci-lint is installed.
+# https://github.com/golangci/golangci-lint#install
+# We can execute `golangci-lint run` for code checking.
+run:
+  tests: true
+  skip-dirs:
+    - _examples
+
+output:
+  print-issued-lines: false
+
+linters:
+  enable-all: true
+  disable:
+    - maligned
+    - megacheck
+    - lll
+    - gocyclo
+    - gochecknoglobals
+
+linters-settings:
+  govet:
+    check-shadowing: true
+  gocyclo:
+    min-complexity: 10
+  dupl:
+    threshold: 100
+  goconst:
+    min-len: 8
+    min-occurrences: 3
