@@ -515,6 +515,8 @@ func (pc *partitionConsumer) runEventsLoop() {
                 pc.internalAck(v)
             case *handleRedeliver:
                 pc.internalRedeliver(v)
+            case *handleConnectionClosed:
+                pc.reconnectToBroker()
             }
         }
     }
@@ -659,7 +661,7 @@ type handleConnectionClosed struct{}
 
 func (pc *partitionConsumer) ConnectionClosed() {
     // Trigger reconnection in the produce goroutine
-    pc.eventsChan <- &connectionClosed{}
+    pc.eventsChan <- &handleConnectionClosed{}
 }
 
 func (pc *partitionConsumer) reconnectToBroker() {
