@@ -1,3 +1,4 @@
+[![GoDoc](https://img.shields.io/badge/Godoc-reference-blue.svg)](https://godoc.org/github.com/apache/pulsar-client-go)
 <!--
 
     Licensed to the Apache Software Foundation (ASF) under one
