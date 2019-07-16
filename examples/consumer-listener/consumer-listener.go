@@ -56,7 +56,7 @@ func main() {
     // shared across multiple consumers as well
     for cm := range channel {
         msg := cm.Message
-        fmt.Printf("Received message  msgId: %s -- content: '%s'\n",
+        fmt.Printf("Received message  msgId: %v -- content: '%s'\n",
             msg.ID(), string(msg.Payload()))
 
         if err := consumer.Ack(msg); err != nil {

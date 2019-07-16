@@ -97,7 +97,7 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 
     for partitionIdx, partitionTopic := range partitions {
         go func(partitionIdx int, partitionTopic string) {
-            cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx, c.queue)
+            cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx)
             ch <- ConsumerError{
                 err:       err,
                 partition: partitionIdx,
@@ -151,19 +151,23 @@ func (c *consumer) Unsubscribe() error {
 }
 
 func (c *consumer) Receive(ctx context.Context) (Message, error) {
-    if len(c.consumers) > 1 {
-        select {
-        case <-ctx.Done():
-            return nil, ctx.Err()
-        case msg, ok := <-c.queue:
-            if ok {
-                return msg.Message, nil
+    for _, pc := range c.consumers {
+        go func(pc Consumer) {
+            if err := pc.ReceiveAsync(ctx, c.queue); err != nil {
+                return
             }
-            return nil, errors.New("receive message error")
-        }
+        }(pc)
     }
 
-    return c.consumers[0].Receive(ctx)
+    select {
+    case <-ctx.Done():
+        return nil, ctx.Err()
+    case msg, ok := <-c.queue:
+        if ok {
+            return msg.Message, nil
+        }
+        return nil, errors.New("receive message error")
+    }
 }
 
 func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {

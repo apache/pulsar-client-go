@@ -58,6 +58,7 @@ type partitionConsumer struct {
     options      *ConsumerOptions
     consumerName *string
     consumerID   uint64
+    subQueue     chan ConsumerMessage
 
     omu      sync.Mutex // protects following
     overflow []*pb.MessageIdData
@@ -68,7 +69,7 @@ type partitionConsumer struct {
     partitionIdx int
 }
 
-func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionId int, queue chan ConsumerMessage) (*partitionConsumer, error) {
+func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionId int) (*partitionConsumer, error) {
     c := &partitionConsumer{
         state:        consumerInit,
         client:       client,
@@ -78,6 +79,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
         consumerID:   client.rpcClient.NewConsumerId(),
         partitionIdx: partitionId,
         eventsChan:   make(chan interface{}),
+        subQueue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
     }
 
     c.setDefault(options)
@@ -85,7 +87,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
     if options.MessageChannel == nil {
         options.MessageChannel = make(chan ConsumerMessage, options.ReceiverQueueSize)
     } else {
-        options.MessageChannel = queue
+        c.subQueue = options.MessageChannel
     }
 
     if options.Name != "" {
@@ -241,7 +243,7 @@ func (pc *partitionConsumer) Receive(ctx context.Context) (Message, error) {
     select {
     case <-ctx.Done():
         return nil, ctx.Err()
-    case cm, ok := <-pc.options.MessageChannel:
+    case cm, ok := <-pc.subQueue:
         if ok {
             id := &pb.MessageIdData{}
             err := proto.Unmarshal(cm.ID().Serialize(), id)
@@ -263,14 +265,14 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
 
     // request half the buffer's capacity
     if err := pc.internalFlow(highwater); err != nil {
-        pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-        return err
+       pc.log.Errorf("Send Flow cmd error:%s", err.Error())
+       return err
     }
     var receivedSinceFlow uint32
 
     for {
         select {
-        case tmpMsg, ok := <-pc.options.MessageChannel:
+        case tmpMsg, ok := <-pc.subQueue:
             if ok {
                 msgs <- tmpMsg
                 id := &pb.MessageIdData{}
@@ -284,11 +286,11 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
                 }
                 receivedSinceFlow++
                 if receivedSinceFlow >= highwater {
-                    if err := pc.internalFlow(receivedSinceFlow); err != nil {
-                        pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-                        return err
-                    }
-                    receivedSinceFlow = 0
+                   if err := pc.internalFlow(receivedSinceFlow); err != nil {
+                       pc.log.Errorf("Send Flow cmd error:%s", err.Error())
+                       return err
+                   }
+                   receivedSinceFlow = 0
                 }
                 continue
             }
@@ -602,7 +604,7 @@ func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headers
     }
 
     select {
-    case pc.options.MessageChannel <- consumerMsg:
+    case pc.subQueue <- consumerMsg:
         // Add messageId to Overflow buffer, avoiding duplicates.
         newMid := response.GetMessageId()
         var dup bool
