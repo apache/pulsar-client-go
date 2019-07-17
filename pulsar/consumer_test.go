@@ -23,16 +23,21 @@ import (
     `context`
     `fmt`
     `github.com/stretchr/testify/assert`
-    `io/ioutil`
     `log`
     `net/http`
+    `strings`
     `testing`
     `time`
 )
 
+var (
+    adminUrl  = "http://localhost:8080"
+    lookupUrl = "pulsar://localhost:6650"
+)
+
 func TestProducerConsumer(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: "pulsar://localhost:6650",
+        URL: lookupUrl,
     })
 
     assert.Nil(t, err)
@@ -112,7 +117,7 @@ func TestConsumerConnectError(t *testing.T) {
 
 func TestConsumerWithInvalidConf(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: "pulsar://localhost:6650",
+        URL: lookupUrl,
     })
 
     if err != nil {
@@ -146,7 +151,7 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 
 func TestConsumer_SubscriptionInitPos(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: "pulsar://localhost:6650",
+        URL: lookupUrl,
     })
 
     assert.Nil(t, err)
@@ -190,18 +195,10 @@ func TestConsumer_SubscriptionInitPos(t *testing.T) {
     assert.Equal(t, "msg-1-content-1", string(msg.Payload()))
 }
 
-func makeHttpPutCall(t *testing.T, url string) string {
-    return makeHttpCall(t, http.MethodPut, url)
-}
-
-func makeHttpGetCall(t *testing.T, url string) string {
-    return makeHttpCall(t, http.MethodGet, url)
-}
-
-func makeHttpCall(t *testing.T, method string, url string) string {
+func makeHttpCall(t *testing.T, method string, urls string, body string) {
     client := http.Client{}
 
-    req, err := http.NewRequest(method, url, nil)
+    req, err := http.NewRequest(method, urls, strings.NewReader(body))
     if err != nil {
         t.Fatal(err)
     }
@@ -213,18 +210,12 @@ func makeHttpCall(t *testing.T, method string, url string) string {
     if err != nil {
         t.Fatal(err)
     }
-
-    body, err := ioutil.ReadAll(res.Body)
-    if err != nil {
-        t.Fatal(err)
-    }
-
-    return string(body)
+    defer res.Body.Close()
 }
 
 func TestConsumerShared(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: "pulsar://localhost:6650",
+        URL: lookupUrl,
     })
     assert.Nil(t, err)
     defer client.Close()
@@ -249,8 +240,7 @@ func TestConsumerShared(t *testing.T) {
 
     // create producer
     producer, err := client.CreateProducer(ProducerOptions{
-        Topic:    topic,
-        //Batching: false,
+        Topic: topic,
     })
     assert.Nil(t, err)
     defer producer.Close()
@@ -289,4 +279,59 @@ func TestConsumerShared(t *testing.T) {
             }
         }
     }()
+}
+
+func TestPartitionTopicsConsumerPubSub(t *testing.T) {
+    client, err := NewClient(ClientOptions{
+        URL: lookupUrl,
+    })
+    assert.Nil(t, err)
+    defer client.Close()
+
+    topic := "persistent://public/default/testGetPartitions"
+    testURL := adminUrl + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
+
+    makeHttpCall(t, http.MethodPut, testURL, "3")
+
+    // create producer
+    producer, err := client.CreateProducer(ProducerOptions{
+        Topic: topic,
+    })
+    assert.Nil(t, err)
+    defer producer.Close()
+
+    topics, err := client.TopicPartitions(topic)
+    assert.Nil(t, err)
+    assert.Equal(t, topic+"-partition-0", topics[0])
+    assert.Equal(t, topic+"-partition-1", topics[1])
+    assert.Equal(t, topic+"-partition-2", topics[2])
+
+    ctx := context.Background()
+    for i := 0; i < 10; i++ {
+       err := producer.Send(ctx, &ProducerMessage{
+           Payload: []byte(fmt.Sprintf("hello-%d", i)),
+       })
+       assert.Nil(t, err)
+    }
+
+    consumer, err := client.Subscribe(ConsumerOptions{
+       Topic:            topic,
+       SubscriptionName: "my-sub",
+       Type:             Exclusive,
+    })
+    assert.Nil(t, err)
+    defer consumer.Close()
+
+    for i := 0; i < 10; i++ {
+       msg, err := consumer.Receive(ctx)
+       assert.Nil(t, err)
+       assert.Equal(t, string(msg.Payload()), fmt.Sprintf("hello-%d", i))
+
+       fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+           msg.ID(), string(msg.Payload()))
+
+       if err := consumer.Ack(msg); err != nil {
+           assert.Nil(t, err)
+       }
+    }
 }
