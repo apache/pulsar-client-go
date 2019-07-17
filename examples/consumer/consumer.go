@@ -58,7 +58,6 @@ func main() {
         }
     }
 
-
     if err := consumer.Unsubscribe(); err != nil {
         log.Fatal(err)
     }

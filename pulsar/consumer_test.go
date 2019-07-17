@@ -25,6 +25,7 @@ import (
     `github.com/stretchr/testify/assert`
     `log`
     `testing`
+    `time`
 )
 
 func TestProducerConsumer(t *testing.T) {
@@ -84,4 +85,105 @@ func TestProducerConsumer(t *testing.T) {
     if err := consumer.Unsubscribe(); err != nil {
         log.Fatal(err)
     }
+}
+
+func TestConsumerConnectError(t *testing.T) {
+    client, err := NewClient(ClientOptions{
+        URL: "pulsar://invalid-hostname:6650",
+    })
+
+    assert.Nil(t, err)
+
+    defer client.Close()
+
+    consumer, err := client.Subscribe(ConsumerOptions{
+        Topic:            "my-topic",
+        SubscriptionName: "my-subscription",
+    })
+
+    // Expect error in creating consumer
+    assert.Nil(t, consumer)
+    assert.NotNil(t, err)
+
+    assert.Equal(t, err.Error(), "connection error")
+}
+
+func TestConsumerWithInvalidConf(t *testing.T) {
+    client, err := NewClient(ClientOptions{
+        URL: "pulsar://localhost:6650",
+    })
+
+    if err != nil {
+        t.Fatal(err)
+        return
+    }
+
+    defer client.Close()
+
+    consumer, err := client.Subscribe(ConsumerOptions{
+        Topic: "my-topic",
+    })
+
+    // Expect error in creating cosnumer
+    assert.Nil(t, consumer)
+    assert.NotNil(t, err)
+
+    fmt.Println(err.Error())
+    assert.Equal(t, err.(*Error).Result(), SubscriptionNotFound)
+
+    consumer, err = client.Subscribe(ConsumerOptions{
+        SubscriptionName: "my-subscription",
+    })
+
+    // Expect error in creating consumer
+    assert.Nil(t, consumer)
+    assert.NotNil(t, err)
+
+    assert.Equal(t, err.(*Error).Result(), TopicNotFound)
+}
+
+func TestConsumer_SubscriptionInitPos(t *testing.T) {
+    client, err := NewClient(ClientOptions{
+        URL: "pulsar://localhost:6650",
+    })
+
+    assert.Nil(t, err)
+    defer client.Close()
+
+    topicName := fmt.Sprintf("testSeek-%d", time.Now().Unix())
+    subName := "test-subscription-initial-earliest-position"
+
+    // create producer
+    producer, err := client.CreateProducer(ProducerOptions{
+        Topic: topicName,
+    })
+    assert.Nil(t, err)
+    defer producer.Close()
+
+    //sent message
+    ctx := context.Background()
+
+    err = producer.Send(ctx, &ProducerMessage{
+        Payload: []byte("msg-1-content-1"),
+    })
+    assert.Nil(t, err)
+
+    err = producer.Send(ctx, &ProducerMessage{
+        Payload: []byte("msg-1-content-2"),
+    })
+    assert.Nil(t, err)
+
+    // create consumer
+    consumer, err := client.Subscribe(ConsumerOptions{
+        Topic:               topicName,
+        SubscriptionName:    subName,
+        SubscriptionInitPos: Earliest,
+    })
+    assert.Nil(t, err)
+    defer consumer.Close()
+
+    msg, err := consumer.Receive(ctx)
+    assert.Nil(t, err)
+
+    assert.Equal(t, "msg-1-content-1", string(msg.Payload()))
 }
