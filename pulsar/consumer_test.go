@@ -23,7 +23,9 @@ import (
     `context`
     `fmt`
     `github.com/stretchr/testify/assert`
+    `io/ioutil`
     `log`
+    `net/http`
     `testing`
     `time`
 )
@@ -186,4 +188,105 @@ func TestConsumer_SubscriptionInitPos(t *testing.T) {
     assert.Nil(t, err)
 
     assert.Equal(t, "msg-1-content-1", string(msg.Payload()))
+}
+
+func makeHttpPutCall(t *testing.T, url string) string {
+    return makeHttpCall(t, http.MethodPut, url)
+}
+
+func makeHttpGetCall(t *testing.T, url string) string {
+    return makeHttpCall(t, http.MethodGet, url)
+}
+
+func makeHttpCall(t *testing.T, method string, url string) string {
+    client := http.Client{}
+
+    req, err := http.NewRequest(method, url, nil)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Accept", "application/json")
+
+    res, err := client.Do(req)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    body, err := ioutil.ReadAll(res.Body)
+    if err != nil {
+        t.Fatal(err)
+    }
+
+    return string(body)
+}
+
+func TestConsumerShared(t *testing.T) {
+    client, err := NewClient(ClientOptions{
+        URL: "pulsar://localhost:6650",
+    })
+    assert.Nil(t, err)
+    defer client.Close()
+
+    topic := "persistent://public/default/test-topic-6"
+
+    consumer1, err := client.Subscribe(ConsumerOptions{
+        Topic:            topic,
+        SubscriptionName: "sub-1",
+        Type:             KeyShared,
+    })
+    assert.Nil(t, err)
+    defer consumer1.Close()
+
+    consumer2, err := client.Subscribe(ConsumerOptions{
+        Topic:            topic,
+        SubscriptionName: "sub-1",
+        Type:             KeyShared,
+    })
+    assert.Nil(t, err)
+    defer consumer2.Close()
+
+    // create producer
+    producer, err := client.CreateProducer(ProducerOptions{
+        Topic:    topic,
+        //Batching: false,
+    })
+    assert.Nil(t, err)
+    defer producer.Close()
+
+    ctx := context.Background()
+    for i := 0; i < 10; i++ {
+        err := producer.Send(ctx, &ProducerMessage{
+            Key:     fmt.Sprintf("key-shared-%d", i%3),
+            Payload: []byte(fmt.Sprintf("value-%d", i)),
+        })
+        assert.Nil(t, err)
+    }
+
+    time.Sleep(time.Second * 5)
+
+    go func() {
+        for i := 0; i < 10; i++ {
+            msg, err := consumer1.Receive(ctx)
+            assert.Nil(t, err)
+            if msg != nil {
+                fmt.Printf("consumer1 key is: %s, value is: %s\n", msg.Key(), string(msg.Payload()))
+                err = consumer1.Ack(msg)
+                assert.Nil(t, err)
+            }
+        }
+    }()
+
+    go func() {
+        for i := 0; i < 10; i++ {
+            msg2, err := consumer2.Receive(ctx)
+            assert.Nil(t, err)
+            if msg2 != nil {
+                fmt.Printf("consumer2 key is:%s, value is: %s\n", msg2.Key(), string(msg2.Payload()))
+                err = consumer2.Ack(msg2)
+                assert.Nil(t, err)
+            }
+        }
+    }()
 }
