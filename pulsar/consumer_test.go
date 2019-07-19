@@ -306,32 +306,109 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
     assert.Equal(t, topic+"-partition-1", topics[1])
     assert.Equal(t, topic+"-partition-2", topics[2])
 
-    ctx := context.Background()
-    for i := 0; i < 10; i++ {
-       err := producer.Send(ctx, &ProducerMessage{
-           Payload: []byte(fmt.Sprintf("hello-%d", i)),
-       })
-       assert.Nil(t, err)
-    }
-
     consumer, err := client.Subscribe(ConsumerOptions{
-       Topic:            topic,
-       SubscriptionName: "my-sub",
-       Type:             Exclusive,
+        Topic:            topic,
+        SubscriptionName: "my-sub",
+        Type:             Exclusive,
     })
     assert.Nil(t, err)
     defer consumer.Close()
 
+    ctx := context.Background()
     for i := 0; i < 10; i++ {
-       msg, err := consumer.Receive(ctx)
-       assert.Nil(t, err)
-       assert.Equal(t, string(msg.Payload()), fmt.Sprintf("hello-%d", i))
+        err := producer.Send(ctx, &ProducerMessage{
+            Payload: []byte(fmt.Sprintf("hello-%d", i)),
+        })
+        assert.Nil(t, err)
+    }
 
-       fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
-           msg.ID(), string(msg.Payload()))
+    msgs := make([]string, 0)
 
-       if err := consumer.Ack(msg); err != nil {
-           assert.Nil(t, err)
-       }
+    for i := 0; i < 10; i++ {
+        msg, err := consumer.Receive(ctx)
+        assert.Nil(t, err)
+        msgs = append(msgs, string(msg.Payload()))
+
+        fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+            msg.ID(), string(msg.Payload()))
+
+        if err := consumer.Ack(msg); err != nil {
+            assert.Nil(t, err)
+        }
+    }
+
+    assert.Equal(t, len(msgs), 10)
+}
+
+func TestConsumerAckTimeout(t *testing.T) {
+    client, err := NewClient(ClientOptions{
+        URL: lookupUrl,
+    })
+    assert.Nil(t, err)
+    defer client.Close()
+
+    topic := "test-ack-timeout-topic"
+    ctx := context.Background()
+
+    // create consumer
+    consumer, err := client.Subscribe(ConsumerOptions{
+        Topic:            topic,
+        SubscriptionName: "my-sub1",
+        Type:             Exclusive,
+        AckTimeout:       5 * 1000,
+    })
+    assert.Nil(t, err)
+    defer consumer.Close()
+
+    // create producer
+    producer, err := client.CreateProducer(ProducerOptions{
+        Topic:           topic,
+        DisableBatching: false,
+    })
+    assert.Nil(t, err)
+    defer producer.Close()
+
+    // send 10 messages
+    for i := 0; i < 10; i++ {
+        if err := producer.Send(ctx, &ProducerMessage{
+            Payload: []byte(fmt.Sprintf("hello-%d", i)),
+        }); err != nil {
+            log.Fatal(err)
+        }
+    }
+
+    // receive 10 messages
+    for i := 0; i < 10; i++ {
+        msg, err := consumer.Receive(context.Background())
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        expectMsg := fmt.Sprintf("hello-%d", i)
+        fmt.Printf("first receive message, value is:%s\n", expectMsg)
+        assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+        // not ack message
+    }
+
+    // wait ack timeout
+    time.Sleep(6 * time.Second)
+
+    fmt.Println("start redeliver messages...")
+
+    for i := 0; i < 10; i++ {
+        msg, err := consumer.Receive(context.Background())
+        if err != nil {
+            log.Fatal(err)
+        }
+
+        expectMsg := fmt.Sprintf("hello-%d", i)
+        fmt.Printf("second receive message, value is:%s\n", expectMsg)
+        assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+        // ack message
+        if err := consumer.Ack(msg); err != nil {
+            log.Fatal(err)
+        }
     }
 }
