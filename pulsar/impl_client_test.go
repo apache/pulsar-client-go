@@ -35,7 +35,7 @@ func TestClient(t *testing.T) {
 
 func TestTLSConnectionCAError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceUrlTls,
+		URL: serviceURLTLS,
 	})
 	assert.NoError(t, err)
 
@@ -54,7 +54,7 @@ func TestTLSConnectionCAError(t *testing.T) {
 
 func TestTLSInsecureConnection(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                        serviceUrlTls,
+		URL:                        serviceURLTLS,
 		TLSAllowInsecureConnection: true,
 	})
 	assert.NoError(t, err)
@@ -72,7 +72,7 @@ func TestTLSInsecureConnection(t *testing.T) {
 
 func TestTLSConnection(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceUrlTls,
+		URL:                   serviceURLTLS,
 		TLSTrustCertsFilePath: caCertsPath,
 	})
 	assert.NoError(t, err)
@@ -90,7 +90,7 @@ func TestTLSConnection(t *testing.T) {
 
 func TestTLSConnectionHostNameVerification(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceUrlTls,
+		URL:                   serviceURLTLS,
 		TLSTrustCertsFilePath: caCertsPath,
 		TLSValidateHostname:   true,
 	})
@@ -128,7 +128,7 @@ func TestTLSConnectionHostNameVerificationError(t *testing.T) {
 
 func TestTLSAuthError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceUrlTls,
+		URL:                   serviceURLTLS,
 		TLSTrustCertsFilePath: caCertsPath,
 	})
 	assert.NoError(t, err)
@@ -146,7 +146,7 @@ func TestTLSAuthError(t *testing.T) {
 
 func TestTLSAuth(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceUrlTls,
+		URL:                   serviceURLTLS,
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
 	})
@@ -168,7 +168,7 @@ func TestTokenAuth(t *testing.T) {
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
-		URL:            serviceUrl,
+		URL:            serviceURL,
 		Authentication: NewAuthenticationToken(string(token)),
 	})
 	assert.NoError(t, err)
@@ -186,7 +186,7 @@ func TestTokenAuth(t *testing.T) {
 
 func TestTokenAuthFromFile(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:            serviceUrl,
+		URL:            serviceURL,
 		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
 	})
 	assert.NoError(t, err)

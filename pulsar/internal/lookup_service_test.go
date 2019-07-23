@@ -20,37 +20,38 @@
 package internal
 
 import (
+	"net/url"
+	"testing"
+
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
-	"net/url"
 	"github.com/apache/pulsar-client-go/pkg/pb"
-	"testing"
 )
 
-type mockedRpcClient struct {
-	requestIdGenerator uint64
+type mockedRPCClient struct {
+	requestIDGenerator uint64
 	t                  *testing.T
 
-	expectedUrl      string
+	expectedURL      string
 	expectedRequests []pb.CommandLookupTopic
 	mockedResponses  []pb.CommandLookupTopicResponse
 }
 
 // Create a new unique request id
-func (c *mockedRpcClient) NewRequestId() uint64 {
-	c.requestIdGenerator += 1
-	return c.requestIdGenerator
+func (c *mockedRPCClient) NewRequestID() uint64 {
+	c.requestIDGenerator++
+	return c.requestIDGenerator
 }
 
-func (c *mockedRpcClient) NewProducerId() uint64 {
+func (c *mockedRPCClient) NewProducerID() uint64 {
 	return 1
 }
 
-func (c *mockedRpcClient) NewConsumerId() uint64 {
+func (c *mockedRPCClient) NewConsumerID() uint64 {
 	return 1
 }
 
-func (c *mockedRpcClient) RequestToAnyBroker(requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error) {
+func (c *mockedRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	assert.Equal(c.t, cmdType, pb.BaseCommand_LOOKUP)
 
 	expectedRequest := &c.expectedRequests[0]
@@ -61,7 +62,7 @@ func (c *mockedRpcClient) RequestToAnyBroker(requestId uint64, cmdType pb.BaseCo
 	mockedResponse := &c.mockedResponses[0]
 	c.mockedResponses = c.mockedResponses[1:]
 
-	return &RpcResult{
+	return &RPCResult{
 		&pb.BaseCommand{
 			LookupTopicResponse: mockedResponse,
 		},
@@ -69,8 +70,8 @@ func (c *mockedRpcClient) RequestToAnyBroker(requestId uint64, cmdType pb.BaseCo
 	}, nil
 }
 
-func (c *mockedRpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestId uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error) {
+func (c *mockedRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	assert.Equal(c.t, cmdType, pb.BaseCommand_LOOKUP)
 	expectedRequest := &c.expectedRequests[0]
 	c.expectedRequests = c.expectedRequests[1:]
@@ -80,10 +81,10 @@ func (c *mockedRpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, r
 	mockedResponse := &c.mockedResponses[0]
 	c.mockedResponses = c.mockedResponses[1:]
 
-	assert.Equal(c.t, c.expectedUrl, logicalAddr.String())
-	assert.Equal(c.t, c.expectedUrl, physicalAddr.String())
+	assert.Equal(c.t, c.expectedURL, logicalAddr.String())
+	assert.Equal(c.t, c.expectedURL, physicalAddr.String())
 
-	return &RpcResult{
+	return &RPCResult{
 		&pb.BaseCommand{
 			LookupTopicResponse: mockedResponse,
 		},
@@ -91,7 +92,7 @@ func (c *mockedRpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, r
 	}, nil
 }
 
-func (c *mockedRpcClient) RequestOnCnx(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error) {
+func (c *mockedRPCClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	assert.Fail(c.t, "Shouldn't be called")
 	return nil, nil
 }
@@ -104,7 +105,7 @@ func TestLookupSuccess(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRpcClient{
+	ls := NewLookupService(&mockedRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -136,7 +137,7 @@ func TestLookupWithProxy(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRpcClient{
+	ls := NewLookupService(&mockedRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -169,9 +170,9 @@ func TestLookupWithRedirect(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRpcClient{
+	ls := NewLookupService(&mockedRPCClient{
 		t:           t,
-		expectedUrl: "pulsar://broker-2:6650",
+		expectedURL: "pulsar://broker-2:6650",
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
@@ -213,7 +214,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRpcClient{
+	ls := NewLookupService(&mockedRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -243,7 +244,7 @@ func TestLookupWithLookupFailure(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRpcClient{
+	ls := NewLookupService(&mockedRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{

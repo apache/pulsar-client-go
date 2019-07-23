@@ -20,10 +20,12 @@
 package internal
 
 import (
-	log "github.com/sirupsen/logrus"
-	"net/url"
-	"github.com/apache/pulsar-client-go/pkg/auth"
 	"sync"
+	"net/url"
+
+	"github.com/apache/pulsar-client-go/pkg/auth"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type ConnectionPool interface {
@@ -55,11 +57,10 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		if err := cnx.waitUntilReady(); err == nil {
 			// Connection is ready to be used
 			return cnx, nil
-		} else {
-			// The cached connection is failed
-			p.pool.Delete(logicalAddr.Host)
-			log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
 		}
+		// The cached connection is failed
+		p.pool.Delete(logicalAddr.Host)
+		log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
 	}
 
 	// Try to create a new connection
@@ -72,9 +73,8 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 
 	if err := cnx.waitUntilReady(); err != nil {
 		return nil, err
-	} else {
-		return cnx, nil
 	}
+	return cnx, nil
 }
 
 func (p *connectionPool) Close() {

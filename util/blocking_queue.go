@@ -20,8 +20,9 @@
 package util
 
 import (
-	log "github.com/sirupsen/logrus"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type BlockingQueue interface {
@@ -95,8 +96,8 @@ func (bq *blockingQueue) Put(item interface{}) {
 	wasEmpty := bq.size == 0
 
 	bq.items[bq.tailIdx] = item
-	bq.size += 1
-	bq.tailIdx += 1
+	bq.size++
+	bq.tailIdx++
 	if bq.tailIdx >= bq.maxSize {
 		bq.tailIdx = 0
 	}
@@ -135,9 +136,8 @@ func (bq *blockingQueue) Peek() interface{} {
 
 	if bq.size == 0 {
 		return nil
-	} else {
-		return bq.items[bq.headIdx]
 	}
+	return bq.items[bq.headIdx]
 }
 
 func (bq *blockingQueue) PeekLast() interface{} {
@@ -146,22 +146,21 @@ func (bq *blockingQueue) PeekLast() interface{} {
 
 	if bq.size == 0 {
 		return nil
-	} else {
-		idx := (bq.headIdx + bq.size - 1) % bq.maxSize
-		return bq.items[idx]
 	}
+	idx := (bq.headIdx + bq.size - 1) % bq.maxSize
+	return bq.items[idx]
 }
 
 func (bq *blockingQueue) dequeue() interface{} {
 	item := bq.items[bq.headIdx]
 	bq.items[bq.headIdx] = nil
 
-	bq.headIdx += 1
+	bq.headIdx++
 	if bq.headIdx == len(bq.items) {
 		bq.headIdx = 0
 	}
 
-	bq.size -= 1
+	bq.size--
 	bq.isNotFull.Signal()
 	return item
 }

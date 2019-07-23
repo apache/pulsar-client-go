@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	serviceUrl    = "pulsar://localhost:6650"
-	serviceUrlTls = "pulsar+ssl://localhost:6651"
+	serviceURL    = "pulsar://localhost:6650"
+	serviceURLTLS = "pulsar+ssl://localhost:6651"
 
 	caCertsPath       = "../integration-tests/certs/cacert.pem"
 	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"

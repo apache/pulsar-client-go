@@ -20,14 +20,16 @@
 package main
 
 import (
+	"time"
 	"context"
 	"encoding/json"
+
+	"github.com/spf13/cobra"
 	"github.com/beefsack/go-rate"
 	"github.com/bmizerany/perks/quantile"
-	"github.com/spf13/cobra"
-	log "github.com/sirupsen/logrus"
 	"github.com/apache/pulsar-client-go/pulsar"
-	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type ProduceArgs struct {
@@ -93,7 +95,7 @@ func produce() {
 	ch := make(chan float64)
 
 	go func() {
-		var rateLimiter *rate.RateLimiter = nil
+		var rateLimiter *rate.RateLimiter
 		if produceArgs.Rate > 0 {
 			rateLimiter = rate.New(produceArgs.Rate, time.Second)
 		}
@@ -140,7 +142,7 @@ func produce() {
 			q.Reset()
 			messagesPublished = 0
 		case latency := <-ch:
-			messagesPublished += 1
+			messagesPublished++
 			q.Insert(latency)
 		}
 	}

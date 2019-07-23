@@ -101,7 +101,6 @@ func getPartitionIndex(topic string) (int, error) {
 	if strings.Contains(topic, partitionedTopicSuffix) {
 		idx  := strings.LastIndex(topic, "-") + 1
 		return strconv.Atoi(topic[idx:])
-	} else {
-		return -1, nil
 	}
+	return -1, nil
 }

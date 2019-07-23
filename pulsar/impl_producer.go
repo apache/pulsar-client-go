@@ -21,6 +21,7 @@ package pulsar
 
 import (
 	"context"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
@@ -97,9 +98,8 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 			}
 		}
 		return nil, err
-	} else {
-		return p, nil
 	}
+	return p, nil
 }
 
 func (p *producer) Topic() string {
@@ -136,7 +136,7 @@ func (p *producer) LastSequenceID() int64 {
 }
 
 func (p *producer) Flush() error {
-	var err error = nil
+	var err error
 	for _, pp := range p.producers {
 		if e := pp.Flush(); e != nil && err == nil {
 			err = e
@@ -146,7 +146,7 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) Close() error {
-	var err error = nil
+	var err error
 	for _, pp := range p.producers {
 		if e := pp.Close(); e != nil && err == nil {
 			err = e

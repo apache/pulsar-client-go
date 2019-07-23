@@ -21,6 +21,7 @@ package main
 
 import (
 	"github.com/spf13/cobra"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -45,5 +46,8 @@ func main() {
 		"pulsar://localhost:6650", "The Pulsar service URL")
 	rootCmd.AddCommand(cmdProduce, cmdConsume)
 
-	rootCmd.Execute()
+    err := rootCmd.Execute()
+    if err != nil {
+        panic("execute root cmd error, please check.")
+    }
 }

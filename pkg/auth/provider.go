@@ -33,7 +33,7 @@ type Provider interface {
 	Name() string
 
 	// return a client certificate chain, or nil if the data are not available
-	GetTlsCertificate() (*tls.Certificate, error)
+	GetTLSCertificate() (*tls.Certificate, error)
 
 	//
 	GetData() ([]byte, error)

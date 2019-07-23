@@ -26,17 +26,17 @@ import (
 )
 
 func TestMessageId(t *testing.T) {
-	id := newMessageId(1,2, 3, 4)
+	id := newMessageID(1,2, 3, 4)
 	bytes := id.Serialize()
 
 	id2, err := DeserializeMessageID(bytes)
 	assert.NoError(t, err)
 	assert.NotNil(t, id2)
 
-	assert.Equal(t, int64(1), id2.(*messageId).ledgerID)
-	assert.Equal(t, int64(2), id2.(*messageId).entryID)
-	assert.Equal(t, 3, id2.(*messageId).batchIdx)
-	assert.Equal(t, 4, id2.(*messageId).partitionIdx)
+	assert.Equal(t, int64(1), id2.(*messageID).ledgerID)
+	assert.Equal(t, int64(2), id2.(*messageID).entryID)
+	assert.Equal(t, 3, id2.(*messageID).batchIdx)
+	assert.Equal(t, 4, id2.(*messageID).partitionIdx)
 
 	id, err = DeserializeMessageID(nil)
 	assert.Error(t, err)

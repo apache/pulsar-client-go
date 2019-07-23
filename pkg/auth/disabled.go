@@ -39,7 +39,7 @@ func (disabled) Name() string {
 	return ""
 }
 
-func (disabled) GetTlsCertificate() (*tls.Certificate, error) {
+func (disabled) GetTLSCertificate() (*tls.Certificate, error) {
 	return nil, nil
 }
 

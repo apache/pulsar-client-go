@@ -20,9 +20,10 @@
 package internal
 
 import (
-	"github.com/stretchr/testify/assert"
-	"testing"
 	"time"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 

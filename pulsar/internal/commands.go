@@ -21,8 +21,8 @@ package internal
 
 import (
 	"github.com/golang/protobuf/proto"
-
 	"github.com/apache/pulsar-client-go/pkg/pb"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -125,7 +125,7 @@ func ConvertFromStringMap(m map[string]string) []*pb.KeyValue {
 			Value: proto.String(v),
 		}
 
-		i += 1
+		i++
 	}
 
 	return list
