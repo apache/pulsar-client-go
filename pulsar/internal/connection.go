@@ -20,21 +20,21 @@
 package internal
 
 import (
-    "crypto/tls"
-    "crypto/x509"
-    "errors"
-    "io/ioutil"
-    "net"
-    "net/url"
-    "sync"
-    "sync/atomic"
-    "time"
+	"crypto/tls"
+	"crypto/x509"
+	"errors"
+	"io/ioutil"
+	"net"
+	"net/url"
+	"sync"
+	"sync/atomic"
+	"time"
 
-    "github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/proto"
 
-    "github.com/apache/pulsar-client-go/pkg/auth"
-    "github.com/apache/pulsar-client-go/pkg/pb"
-    log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/auth"
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	log "github.com/sirupsen/logrus"
 )
 
 type TLSOptions struct {
@@ -170,12 +170,12 @@ func (c *connection) connect() (ok bool) {
 		c.Close()
 		return false
 	}
-    c.cnx = cnx
-    c.log = c.log.WithField("laddr", c.cnx.LocalAddr())
-    c.log.Debug("TCP connection established")
-    c.state = connectionTCPConnected
+	c.cnx = cnx
+	c.log = c.log.WithField("laddr", c.cnx.LocalAddr())
+	c.log.Debug("TCP connection established")
+	c.state = connectionTCPConnected
 
-    return true
+	return true
 }
 
 func (c *connection) doHandshake() (ok bool) {

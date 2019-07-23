@@ -84,5 +84,5 @@ var (
 	EarliestMessage = earliestMessageID()
 
 	// LatestMessage messageID that points to the latest message
-	LatestMessage  = latestMessageID()
+	LatestMessage = latestMessageID()
 )

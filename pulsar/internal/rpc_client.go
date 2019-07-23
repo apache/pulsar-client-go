@@ -20,12 +20,12 @@
 package internal
 
 import (
-	"sync"
 	"net/url"
+	"sync"
 	"sync/atomic"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/golang/protobuf/proto"
 )
 
 type RPCResult struct {

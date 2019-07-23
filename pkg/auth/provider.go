@@ -20,11 +20,11 @@
 package auth
 
 import (
-    "crypto/tls"
-    "fmt"
-    "io"
+	"crypto/tls"
+	"fmt"
+	"io"
 
-    "github.com/pkg/errors"
+	"github.com/pkg/errors"
 )
 
 type Provider interface {

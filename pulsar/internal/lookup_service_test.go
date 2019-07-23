@@ -23,9 +23,9 @@ import (
 	"net/url"
 	"testing"
 
+	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
-	"github.com/apache/pulsar-client-go/pkg/pb"
 )
 
 type mockedRPCClient struct {
@@ -229,7 +229,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 				RequestId:              proto.Uint64(1),
 				Response:               responseType(pb.CommandLookupTopicResponse_Connect),
 				Authoritative:          proto.Bool(true),
-				BrokerServiceUrl:       proto.String("foo.html") /* invalid url */,
+				BrokerServiceUrl:       proto.String("foo.html"), /* invalid url */
 				ProxyThroughServiceUrl: proto.Bool(false),
 			},
 		},
@@ -256,9 +256,9 @@ func TestLookupWithLookupFailure(t *testing.T) {
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
 			{
-				RequestId:              proto.Uint64(1),
-				Response:               responseType(pb.CommandLookupTopicResponse_Failed),
-				Authoritative:          proto.Bool(true),
+				RequestId:     proto.Uint64(1),
+				Response:      responseType(pb.CommandLookupTopicResponse_Failed),
+				Authoritative: proto.Bool(true),
 			},
 		},
 	}, url)

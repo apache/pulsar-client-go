@@ -26,7 +26,7 @@ import (
 )
 
 type ClientArgs struct {
-	ServiceUrl      string
+	ServiceURL string
 }
 
 var clientArgs ClientArgs
@@ -42,12 +42,12 @@ func main() {
 	initConsumer()
 
 	var rootCmd = &cobra.Command{Use: "pulsar-perf-go"}
-	rootCmd.Flags().StringVarP(&clientArgs.ServiceUrl, "service-url", "u",
+	rootCmd.Flags().StringVarP(&clientArgs.ServiceURL, "service-url", "u",
 		"pulsar://localhost:6650", "The Pulsar service URL")
 	rootCmd.AddCommand(cmdProduce, cmdConsume)
 
-    err := rootCmd.Execute()
-    if err != nil {
-        panic("execute root cmd error, please check.")
-    }
+	err := rootCmd.Execute()
+	if err != nil {
+		panic("execute root cmd error, please check.")
+	}
 }

@@ -26,7 +26,7 @@ import (
 )
 
 func TestMessageId(t *testing.T) {
-	id := newMessageID(1,2, 3, 4)
+	id := newMessageID(1, 2, 3, 4)
 	bytes := id.Serialize()
 
 	id2, err := DeserializeMessageID(bytes)

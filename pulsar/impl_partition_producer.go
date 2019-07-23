@@ -20,17 +20,17 @@
 package pulsar
 
 import (
-    "context"
-    "sync"
-    "sync/atomic"
-    "time"
+	"context"
+	"sync"
+	"sync/atomic"
+	"time"
 
-    "github.com/apache/pulsar-client-go/pkg/pb"
-    "github.com/apache/pulsar-client-go/pulsar/internal"
-    "github.com/apache/pulsar-client-go/util"
-    "github.com/golang/protobuf/proto"
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/util"
+	"github.com/golang/protobuf/proto"
 
-    log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 type producerState int
@@ -109,13 +109,13 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		return nil, err
 	}
 
-    p.log = p.log.WithField("name", *p.producerName)
-    p.log.Info("Created producer")
-    p.state = producerReady
+	p.log = p.log.WithField("name", *p.producerName)
+	p.log.Info("Created producer")
+	p.state = producerReady
 
-    go p.runEventsLoop()
+	go p.runEventsLoop()
 
-    return p, nil
+	return p, nil
 }
 
 func (p *partitionProducer) grabCnx() error {
@@ -252,7 +252,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	sequenceID := internal.GetAndAdd(p.sequenceIDGenerator, 1)
 
 	if sendAsBatch {
-		for ; p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters) == false; {
+		for p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters) == false {
 			// The current batch is full.. flush it and retry
 			p.internalFlushCurrentBatch()
 		}

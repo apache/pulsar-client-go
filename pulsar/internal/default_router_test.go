@@ -20,12 +20,11 @@
 package internal
 
 import (
-	"time"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
-
 
 func TestDefaultRouter(t *testing.T) {
 
@@ -83,4 +82,3 @@ func TestDefaultRouterNoPartitions(t *testing.T) {
 	assert.Equal(t, 0, p3)
 	assert.Equal(t, 0, p4)
 }
-

@@ -89,7 +89,7 @@ func (bq *blockingQueue) Put(item interface{}) {
 	bq.mutex.Lock()
 	defer bq.mutex.Unlock()
 
-	for ; bq.size == bq.maxSize; {
+	for bq.size == bq.maxSize {
 		bq.isNotFull.Wait()
 	}
 
@@ -112,7 +112,7 @@ func (bq *blockingQueue) Take() interface{} {
 	bq.mutex.Lock()
 	defer bq.mutex.Unlock()
 
-	for ; bq.size == 0; {
+	for bq.size == 0 {
 		bq.isNotEmpty.Wait()
 	}
 

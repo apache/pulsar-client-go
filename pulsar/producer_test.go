@@ -20,13 +20,13 @@
 package pulsar
 
 import (
-	"sync"
-	"time"
 	"context"
+	"sync"
 	"testing"
+	"time"
 
-	"github.com/stretchr/testify/assert"
 	"github.com/apache/pulsar-client-go/util"
+	"github.com/stretchr/testify/assert"
 
 	log "github.com/sirupsen/logrus"
 )

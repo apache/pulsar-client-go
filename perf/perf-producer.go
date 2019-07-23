@@ -20,14 +20,14 @@
 package main
 
 import (
-	"time"
 	"context"
 	"encoding/json"
+	"time"
 
-	"github.com/spf13/cobra"
+	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/beefsack/go-rate"
 	"github.com/bmizerany/perks/quantile"
-	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/spf13/cobra"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -66,7 +66,7 @@ func produce() {
 	log.Info("Producer config: ", string(b))
 
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: clientArgs.ServiceUrl,
+		URL: clientArgs.ServiceURL,
 	})
 
 	if err != nil {

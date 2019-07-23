@@ -20,8 +20,8 @@
 package internal
 
 import (
-	"github.com/golang/protobuf/proto"
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/golang/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -80,7 +80,7 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	// cmdLength + cmdSize + magicLength + checksumSize + msgMetadataLength + msgMetadataSize
 	totalSize := headerContentSize + payloadSize
 
-	wb.WriteUint32(uint32(totalSize))  // External frame
+	wb.WriteUint32(uint32(totalSize)) // External frame
 
 	// Write cmd
 	wb.WriteUint32(uint32(cmdSize))

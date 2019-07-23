@@ -20,8 +20,8 @@
 package internal
 
 import (
-	"sync"
 	"net/url"
+	"sync"
 
 	"github.com/apache/pulsar-client-go/pkg/auth"
 

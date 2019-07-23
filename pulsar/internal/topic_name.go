@@ -99,7 +99,7 @@ func ParseTopicName(topic string) (*TopicName, error) {
 
 func getPartitionIndex(topic string) (int, error) {
 	if strings.Contains(topic, partitionedTopicSuffix) {
-		idx  := strings.LastIndex(topic, "-") + 1
+		idx := strings.LastIndex(topic, "-") + 1
 		return strconv.Atoi(topic[idx:])
 	}
 	return -1, nil

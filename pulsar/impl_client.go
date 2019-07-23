@@ -20,15 +20,15 @@
 package pulsar
 
 import (
-    "fmt"
-    "net/url"
+	"fmt"
+	"net/url"
 
-    "github.com/apache/pulsar-client-go/pkg/auth"
-    "github.com/apache/pulsar-client-go/pkg/pb"
-    "github.com/apache/pulsar-client-go/pulsar/internal"
-    "github.com/pkg/errors"
+	"github.com/apache/pulsar-client-go/pkg/auth"
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/pkg/errors"
 
-    log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 type client struct {
@@ -135,8 +135,8 @@ func (client *client) TopicPartitions(topic string) ([]string, error) {
 		}
 		return partitions, nil
 	}
-    // Non-partitioned topic
-    return []string{topicName.Name}, nil
+	// Non-partitioned topic
+	return []string{topicName.Name}, nil
 }
 
 func (client *client) Close() error {

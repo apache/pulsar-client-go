@@ -20,12 +20,12 @@
 package internal
 
 import (
-	"fmt"
 	"errors"
+	"fmt"
 	"net/url"
 
-	"github.com/golang/protobuf/proto"
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/golang/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
 )

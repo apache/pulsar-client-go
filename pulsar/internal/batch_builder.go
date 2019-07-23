@@ -31,8 +31,8 @@ import (
 )
 
 const (
-	MaxMessageSize = 5 * 1024 * 1024
-	MaxBatchSize = 128 * 1024
+	MaxMessageSize             = 5 * 1024 * 1024
+	MaxBatchSize               = 128 * 1024
 	DefaultMaxMessagesPerBatch = 1000
 )
 
@@ -98,7 +98,7 @@ func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 }
 
 func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint64, payload []byte,
-	callback interface{}, replicateTo []string, ) bool {
+	callback interface{}, replicateTo []string) bool {
 	if replicateTo != nil && bb.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
 		// then we need to force the current batch to flush and send the message individually

@@ -20,15 +20,15 @@
 package main
 
 import (
-    "context"
-    "encoding/json"
-    "sync/atomic"
-    "time"
+	"context"
+	"encoding/json"
+	"sync/atomic"
+	"time"
 
-    "github.com/apache/pulsar-client-go/pulsar"
-    "github.com/spf13/cobra"
+	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/spf13/cobra"
 
-    log "github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
 )
 
 type ConsumeArgs struct {
@@ -61,7 +61,7 @@ func consume() {
 	log.Info("Consumer config: ", string(b))
 
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL:                    clientArgs.ServiceUrl,
+		URL: clientArgs.ServiceURL,
 	})
 
 	if err != nil {
@@ -89,16 +89,16 @@ func consume() {
 	go func() {
 		for {
 			msg, err := consumer.Receive(ctx)
-            if err != nil {
-                return
-            }
+			if err != nil {
+				return
+			}
 
 			atomic.AddInt64(&msgReceived, 1)
 			atomic.AddInt64(&bytesReceived, int64(len(msg.Payload())))
 
-            if err := consumer.Ack(msg); err != nil {
-                return
-            }
+			if err := consumer.Ack(msg); err != nil {
+				return
+			}
 		}
 	}()
 
