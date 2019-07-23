@@ -40,8 +40,8 @@ type client struct {
 	auth          auth.Provider
 
 	handlers            map[internal.Closable]bool
-	producerIdGenerator uint64
-	consumerIdGenerator uint64
+	producerIDGenerator uint64
+	consumerIDGenerator uint64
 }
 
 func newClient(options ClientOptions) (Client, error) {
