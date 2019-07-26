@@ -23,16 +23,18 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
-	"github.com/apache/pulsar-client-go/pkg/auth"
-	"github.com/apache/pulsar-client-go/pkg/pb"
-	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
 	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/golang/protobuf/proto"
+
+	"github.com/apache/pulsar-client-go/pkg/auth"
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	log "github.com/sirupsen/logrus"
 )
 
 type TLSOptions struct {
@@ -50,7 +52,7 @@ type ConnectionListener interface {
 }
 
 type Connection interface {
-	SendRequest(requestId uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand))
+	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand))
 	WriteData(data []byte)
 	RegisterListener(id uint64, listener ConnectionListener)
 	UnregisterListener(id uint64)
@@ -68,7 +70,7 @@ type connectionState int
 const (
 	connectionInit connectionState = iota
 	connectionConnecting
-	connectionTcpConnected
+	connectionTCPConnected
 	connectionReady
 	connectionClosed
 )
@@ -97,7 +99,7 @@ type connection struct {
 
 	log *log.Entry
 
-	requestIdGenerator uint64
+	requestIDGenerator uint64
 
 	incomingRequests chan *request
 	writeRequests    chan []byte
@@ -161,7 +163,7 @@ func (c *connection) connect() (ok bool) {
 		cnx, err = net.Dial("tcp", c.physicalAddr.Host)
 	} else {
 		// TLS connection
-		tlsConfig, err = c.getTlsConfig()
+		tlsConfig, err = c.getTLSConfig()
 		if err != nil {
 			c.log.WithError(err).Warn("Failed to configure TLS ")
 			return false
@@ -174,13 +176,13 @@ func (c *connection) connect() (ok bool) {
 		c.log.WithError(err).Warn("Failed to connect to broker.")
 		c.Close()
 		return false
-	} else {
-		c.cnx = cnx
-		c.log = c.log.WithField("laddr", c.cnx.LocalAddr())
-		c.log.Debug("TCP connection established")
-		c.state = connectionTcpConnected
-		return true
 	}
+	c.cnx = cnx
+	c.log = c.log.WithField("laddr", c.cnx.LocalAddr())
+	c.log.Debug("TCP connection established")
+	c.state = connectionTCPConnected
+
+	return true
 }
 
 func (c *connection) doHandshake() (ok bool) {
@@ -228,7 +230,7 @@ func (c *connection) waitUntilReady() error {
 			fallthrough
 		case connectionConnecting:
 			fallthrough
-		case connectionTcpConnected:
+		case connectionTCPConnected:
 			// Wait for the state to change
 			c.cond.Wait()
 
@@ -356,9 +358,9 @@ func (c *connection) Write(data []byte) {
 	c.writeRequests <- data
 }
 
-func (c *connection) SendRequest(requestId uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand)) {
+func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand)) {
 	c.incomingRequests <- &request{
-		id:       requestId,
+		id:       requestID,
 		cmd:      req,
 		callback: callback,
 	}
@@ -369,24 +371,24 @@ func (c *connection) internalSendRequest(req *request) {
 	c.writeCommand(req.cmd)
 }
 
-func (c *connection) handleResponse(requestId uint64, response *pb.BaseCommand) {
-	request, ok := c.pendingReqs[requestId]
+func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
+	request, ok := c.pendingReqs[requestID]
 	if !ok {
-		c.log.Warnf("Received unexpected response for request %d of type %s", requestId, response.Type)
+		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
 		return
 	}
 
-	delete(c.pendingReqs, requestId)
+	delete(c.pendingReqs, requestID)
 	request.callback(response)
 }
 
 func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	c.log.Debug("Got SEND_RECEIPT: ", response)
-	producerId := response.GetProducerId()
-	if producer, ok := c.listeners[producerId]; ok {
+	producerID := response.GetProducerId()
+	if producer, ok := c.listeners[producerID]; ok {
 		producer.ReceivedSendReceipt(response)
 	} else {
-		c.log.WithField("producerId", producerId).Warn("Got unexpected send receipt for message: ", response.MessageId)
+		c.log.WithField("producerId", producerID).Warn("Got unexpected send receipt for message: ", response.MessageId)
 	}
 }
 
@@ -471,11 +473,11 @@ func (c *connection) changeState(state connectionState) {
 	c.Unlock()
 }
 
-func (c *connection) newRequestId() uint64 {
-	return atomic.AddUint64(&c.requestIdGenerator, 1)
+func (c *connection) newRequestID() uint64 {
+	return atomic.AddUint64(&c.requestIDGenerator, 1)
 }
 
-func (c *connection) getTlsConfig() (*tls.Config, error) {
+func (c *connection) getTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: c.tlsOptions.AllowInsecureConnection,
 	}
@@ -487,7 +489,7 @@ func (c *connection) getTlsConfig() (*tls.Config, error) {
 		}
 
 		tlsConfig.RootCAs = x509.NewCertPool()
-		ok := tlsConfig.RootCAs.AppendCertsFromPEM([]byte(caCerts))
+		ok := tlsConfig.RootCAs.AppendCertsFromPEM(caCerts)
 		if !ok {
 			return nil, errors.New("failed to parse root CAs certificates")
 		}
@@ -497,7 +499,7 @@ func (c *connection) getTlsConfig() (*tls.Config, error) {
 		tlsConfig.ServerName = c.physicalAddr.Hostname()
 	}
 
-	cert, err := c.auth.GetTlsCertificate()
+	cert, err := c.auth.GetTLSCertificate()
 	if err != nil {
 		return nil, err
 	}

@@ -76,7 +76,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
         topic:        topic,
         options:      options,
         log:          log.WithField("topic", topic),
-        consumerID:   client.rpcClient.NewConsumerId(),
+        consumerID:   client.rpcClient.NewConsumerID(),
         partitionIdx: partitionId,
         eventsChan:   make(chan interface{}),
         subQueue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
@@ -155,7 +155,7 @@ func (pc *partitionConsumer) grabCnx() error {
     }
 
     pc.log.Debug("Lookup result: ", lr)
-    requestID := pc.client.rpcClient.NewRequestId()
+    requestID := pc.client.rpcClient.NewRequestID()
     res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
         pb.BaseCommand_SUBSCRIBE, &pb.CommandSubscribe{
             RequestId:       proto.Uint64(requestID),
@@ -220,7 +220,7 @@ func (pc *partitionConsumer) Unsubscribe() error {
 }
 
 func (pc *partitionConsumer) internalUnsubscribe(unsub *handleUnsubscribe) {
-    requestID := pc.client.rpcClient.NewRequestId()
+    requestID := pc.client.rpcClient.NewRequestID()
     _, err := pc.client.rpcClient.RequestOnCnx(pc.cnx, requestID,
         pb.BaseCommand_UNSUBSCRIBE, &pb.CommandUnsubscribe{
             RequestId:  proto.Uint64(requestID),
@@ -329,7 +329,7 @@ func (pc *partitionConsumer) internalAck(ack *handleAck) {
 
     messageIDs = append(messageIDs, id)
 
-    requestID := pc.client.rpcClient.NewRequestId()
+    requestID := pc.client.rpcClient.NewRequestID()
     _, err = pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID,
         pb.BaseCommand_ACK, &pb.CommandAck{
             ConsumerId: proto.Uint64(pc.consumerID),
@@ -371,7 +371,7 @@ func (pc *partitionConsumer) internalAckCumulative(ackCumulative *handleAckCumul
     }
     messageIDs = append(messageIDs, id)
 
-    requestID := pc.client.rpcClient.NewRequestId()
+    requestID := pc.client.rpcClient.NewRequestID()
     _, err = pc.client.rpcClient.RequestOnCnx(pc.cnx, requestID,
         pb.BaseCommand_ACK, &pb.CommandAck{
             ConsumerId: proto.Uint64(pc.consumerID),
@@ -434,7 +434,7 @@ func (pc *partitionConsumer) internalSeek(seek *handleSeek) {
         seek.err = err
     }
 
-    requestID := pc.client.rpcClient.NewRequestId()
+    requestID := pc.client.rpcClient.NewRequestID()
     _, err = pc.client.rpcClient.RequestOnCnx(pc.cnx, requestID,
         pb.BaseCommand_SEEK, &pb.CommandSeek{
             ConsumerId: proto.Uint64(pc.consumerID),
@@ -472,7 +472,7 @@ func (pc *partitionConsumer) internalRedeliver(redeliver *handleRedeliver) {
         return
     }
 
-    requestID := pc.client.rpcClient.NewRequestId()
+    requestID := pc.client.rpcClient.NewRequestID()
 
     for i := 0; i < len(pc.overflow); i += maxRedeliverUnacknowledged {
         end := i + maxRedeliverUnacknowledged
@@ -533,7 +533,7 @@ func (pc *partitionConsumer) internalClose(req *handlerClose) {
     pc.state = consumerClosing
     pc.log.Info("Closing consumer")
 
-    requestID := pc.client.rpcClient.NewRequestId()
+    requestID := pc.client.rpcClient.NewRequestID()
     _, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID, pb.BaseCommand_CLOSE_CONSUMER, &pb.CommandCloseConsumer{
         ConsumerId: proto.Uint64(pc.consumerID),
         RequestId:  proto.Uint64(requestID),
@@ -561,7 +561,7 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
         return fmt.Errorf("invalid number of permits requested: %d", permits)
     }
 
-    requestID := pc.client.rpcClient.NewRequestId()
+    requestID := pc.client.rpcClient.NewRequestID()
     _, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID,
         pb.BaseCommand_FLOW, &pb.CommandFlow{
             ConsumerId:     proto.Uint64(pc.consumerID),
@@ -578,7 +578,7 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headersAndPayload []byte) error {
     msgID := response.GetMessageId()
 
-    id := newMessageId(int64(msgID.GetLedgerId()), int64(msgID.GetEntryId()),
+    id := newMessageID(int64(msgID.GetLedgerId()), int64(msgID.GetEntryId()),
         int(msgID.GetBatchIndex()), pc.partitionIdx)
 
     msgMeta, payload, err := internal.ParseMessage(headersAndPayload)

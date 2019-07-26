@@ -20,18 +20,19 @@
 package internal
 
 import (
-	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
+	"time"
+
 	"github.com/apache/pulsar-client-go/pkg/compression"
 	"github.com/apache/pulsar-client-go/pkg/pb"
-	"time"
+	"github.com/golang/protobuf/proto"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
-	MaxMessageSize = 5 * 1024 * 1024
-	MaxBatchSize = 128 * 1024
+	MaxMessageSize             = 5 * 1024 * 1024
+	MaxBatchSize               = 128 * 1024
 	DefaultMaxMessagesPerBatch = 1000
 )
 
@@ -45,7 +46,7 @@ type BatchBuilder struct {
 	maxMessages uint
 
 	producerName string
-	producerId   uint64
+	producerID   uint64
 
 	cmdSend     *pb.BaseCommand
 	msgMetadata *pb.MessageMetadata
@@ -54,7 +55,7 @@ type BatchBuilder struct {
 	compressionProvider compression.Provider
 }
 
-func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64,
+func NewBatchBuilder(maxMessages uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType) (*BatchBuilder, error) {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
@@ -64,10 +65,10 @@ func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64,
 		numMessages:  0,
 		maxMessages:  maxMessages,
 		producerName: producerName,
-		producerId:   producerId,
+		producerID:   producerID,
 		cmdSend: baseCommand(pb.BaseCommand_SEND,
 			&pb.CommandSend{
-				ProducerId: &producerId,
+				ProducerId: &producerID,
 			}),
 		msgMetadata: &pb.MessageMetadata{
 			ProducerName: &producerName,
@@ -81,7 +82,7 @@ func NewBatchBuilder(maxMessages uint, producerName string, producerId uint64,
 	}
 
 	if !bb.compressionProvider.CanCompress() {
-		return nil, errors.New(fmt.Sprintf("Compression provider %v can only decompress data", compressionType))
+		return nil, fmt.Errorf("compression provider %d can only decompress data", compressionType)
 	}
 
 	return bb, nil
@@ -96,8 +97,8 @@ func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 	return bb.numMessages > 0 && (bb.buffer.ReadableBytes()+msgSize) > MaxBatchSize
 }
 
-func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceId uint64, payload []byte,
-	callback interface{}, replicateTo []string, ) bool {
+func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint64, payload []byte,
+	callback interface{}, replicateTo []string) bool {
 	if replicateTo != nil && bb.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
 		// then we need to force the current batch to flush and send the message individually
@@ -112,17 +113,17 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceId uint6
 	}
 
 	if bb.numMessages == 0 {
-		bb.msgMetadata.SequenceId = proto.Uint64(sequenceId)
+		bb.msgMetadata.SequenceId = proto.Uint64(sequenceID)
 		bb.msgMetadata.PublishTime = proto.Uint64(TimestampMillis(time.Now()))
-		bb.msgMetadata.SequenceId = proto.Uint64(sequenceId)
+		bb.msgMetadata.SequenceId = proto.Uint64(sequenceID)
 		bb.msgMetadata.ProducerName = &bb.producerName
 		bb.msgMetadata.ReplicateTo = replicateTo
 
-		bb.cmdSend.Send.SequenceId = proto.Uint64(sequenceId)
+		bb.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
 	}
 	addSingleMessageToBatch(bb.buffer, metadata, payload)
 
-	bb.numMessages += 1
+	bb.numMessages++
 	bb.callbacks = append(bb.callbacks, callback)
 	return true
 }
@@ -134,7 +135,7 @@ func (bb *BatchBuilder) reset() {
 	bb.msgMetadata.ReplicateTo = nil
 }
 
-func (bb *BatchBuilder) Flush() (batchData []byte, sequenceId uint64, callbacks []interface{}) {
+func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks []interface{}) {
 	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
@@ -150,9 +151,9 @@ func (bb *BatchBuilder) Flush() (batchData []byte, sequenceId uint64, callbacks 
 	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, compressed)
 
 	callbacks = bb.callbacks
-	sequenceId = bb.cmdSend.Send.GetSequenceId()
+	sequenceID = bb.cmdSend.Send.GetSequenceId()
 	bb.reset()
-	return buffer.ReadableSlice(), sequenceId, callbacks
+	return buffer.ReadableSlice(), sequenceID, callbacks
 }
 
 func getCompressionProvider(compressionType pb.CompressionType) compression.Provider {
@@ -166,7 +167,7 @@ func getCompressionProvider(compressionType pb.CompressionType) compression.Prov
 	case pb.CompressionType_ZSTD:
 		return compression.ZStdProvider
 	default:
-		log.Panic("Unsupported compression type: ", compressionType)
+		log.Panic("unsupported compression type")
 		return nil
 	}
 }

@@ -22,12 +22,14 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/beefsack/go-rate"
 	"github.com/bmizerany/perks/quantile"
 	"github.com/spf13/cobra"
+
 	log "github.com/sirupsen/logrus"
-	"github.com/apache/pulsar-client-go/pulsar"
-	"time"
 )
 
 type ProduceArgs struct {
@@ -64,7 +66,7 @@ func produce() {
 	log.Info("Producer config: ", string(b))
 
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: clientArgs.ServiceUrl,
+		URL: clientArgs.ServiceURL,
 	})
 
 	if err != nil {
@@ -93,7 +95,7 @@ func produce() {
 	ch := make(chan float64)
 
 	go func() {
-		var rateLimiter *rate.RateLimiter = nil
+		var rateLimiter *rate.RateLimiter
 		if produceArgs.Rate > 0 {
 			rateLimiter = rate.New(produceArgs.Rate, time.Second)
 		}
@@ -140,7 +142,7 @@ func produce() {
 			q.Reset()
 			messagesPublished = 0
 		case latency := <-ch:
-			messagesPublished += 1
+			messagesPublished++
 			q.Insert(latency)
 		}
 	}

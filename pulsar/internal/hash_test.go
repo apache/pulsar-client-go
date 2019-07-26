@@ -20,8 +20,9 @@
 package internal
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type testProvider struct {
@@ -31,7 +32,7 @@ type testProvider struct {
 }
 
 var javaHashValues = []testProvider{
-	{"", 0x0,},
+	{"", 0x0},
 	{"hello", 0x5e918d2},
 	{"test", 0x364492},
 }

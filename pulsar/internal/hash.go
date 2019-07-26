@@ -32,7 +32,10 @@ func JavaStringHash(s string) uint32 {
 
 func Murmur3_32Hash(s string) uint32 {
 	h := murmur3.New32()
-	h.Write([]byte(s))
+	_, err := h.Write([]byte(s))
+	if err != nil {
+		return 0
+	}
 	// Maintain compatibility with values used in Java client
 	return h.Sum32() & 0x7fffffff
 }

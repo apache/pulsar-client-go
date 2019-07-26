@@ -203,7 +203,7 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	// cmdLength + cmdSize + magicLength + checksumSize + msgMetadataLength + msgMetadataSize
 	totalSize := headerContentSize + payloadSize
 
-	wb.WriteUint32(uint32(totalSize))  // External frame
+	wb.WriteUint32(uint32(totalSize)) // External frame
 
 	// Write cmd
 	wb.WriteUint32(uint32(cmdSize))
@@ -248,7 +248,7 @@ func ConvertFromStringMap(m map[string]string) []*pb.KeyValue {
 			Value: proto.String(v),
 		}
 
-		i += 1
+		i++
 	}
 
 	return list

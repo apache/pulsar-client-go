@@ -21,17 +21,19 @@ package pulsar
 
 import (
 	"context"
-	log "github.com/sirupsen/logrus"
-	"github.com/stretchr/testify/assert"
-	"github.com/apache/pulsar-client-go/util"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/apache/pulsar-client-go/util"
+	"github.com/stretchr/testify/assert"
+
+	log "github.com/sirupsen/logrus"
 )
 
 func TestSimpleProducer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceUrl,
+		URL: serviceURL,
 	})
 	assert.NoError(t, err)
 
@@ -43,7 +45,7 @@ func TestSimpleProducer(t *testing.T) {
 	assert.NotNil(t, producer)
 
 	for i := 0; i < 10; i++ {
-		err := producer.Send(context.Background(), &ProducerMessage{
+		err = producer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte("hello"),
 		})
 
@@ -59,7 +61,7 @@ func TestSimpleProducer(t *testing.T) {
 
 func TestProducerAsyncSend(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceUrl,
+		URL: serviceURL,
 	})
 	assert.NoError(t, err)
 
@@ -120,7 +122,7 @@ func TestProducerCompression(t *testing.T) {
 	for _, p := range providers {
 		t.Run(p.name, func(t *testing.T) {
 			client, err := NewClient(ClientOptions{
-				URL: serviceUrl,
+				URL: serviceURL,
 			})
 			assert.NoError(t, err)
 
@@ -133,7 +135,7 @@ func TestProducerCompression(t *testing.T) {
 			assert.NotNil(t, producer)
 
 			for i := 0; i < 10; i++ {
-				err := producer.Send(context.Background(), &ProducerMessage{
+				err = producer.Send(context.Background(), &ProducerMessage{
 					Payload: []byte("hello"),
 				})
 
@@ -151,7 +153,7 @@ func TestProducerCompression(t *testing.T) {
 
 func TestProducerLastSequenceID(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceUrl,
+		URL: serviceURL,
 	})
 	assert.NoError(t, err)
 
@@ -165,7 +167,7 @@ func TestProducerLastSequenceID(t *testing.T) {
 	assert.Equal(t, int64(-1), producer.LastSequenceID())
 
 	for i := 0; i < 10; i++ {
-		err := producer.Send(context.Background(), &ProducerMessage{
+		err = producer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte("hello"),
 		})
 

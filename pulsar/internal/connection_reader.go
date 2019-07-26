@@ -21,10 +21,11 @@ package internal
 
 import (
 	"bufio"
+	"io"
+
+	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/golang/protobuf/proto"
 	"github.com/pkg/errors"
-	"io"
-	"github.com/apache/pulsar-client-go/pkg/pb"
 )
 
 type connectionReader struct {
@@ -130,7 +131,6 @@ func (r *connectionReader) deserializeCmd(data []byte) (*pb.BaseCommand, error) 
 		r.cnx.log.WithError(err).Warn("Failed to parse protobuf command")
 		r.cnx.Close()
 		return nil, err
-	} else {
-		return cmd, nil
 	}
+	return cmd, nil
 }

@@ -25,57 +25,57 @@ import (
     `time`
 )
 
-type messageId struct {
-    ledgerID     int64
-    entryID      int64
-    partitionIdx int
-    batchIdx     int
-}
-
-func newMessageId(ledgerID int64, entryID int64, batchIdx int, partitionIdx int) MessageID {
-    return &messageId{
-        ledgerID:     ledgerID,
-        entryID:      entryID,
-        batchIdx:     batchIdx,
-        partitionIdx: partitionIdx,
-    }
-}
-
-func (id *messageId) Serialize() []byte {
-    msgId := &pb.MessageIdData{
-        LedgerId:   proto.Uint64(uint64(id.ledgerID)),
-        EntryId:    proto.Uint64(uint64(id.entryID)),
-        BatchIndex: proto.Int(id.batchIdx),
-        Partition:  proto.Int(id.partitionIdx),
-    }
-    data, _ := proto.Marshal(msgId)
-    return data
-}
-
-func deserializeMessageId(data []byte) (MessageID, error) {
-    msgId := &pb.MessageIdData{}
-    err := proto.Unmarshal(data, msgId)
-    if err != nil {
-        return nil, err
-    } else {
-        id := newMessageId(
-            int64(msgId.GetLedgerId()),
-            int64(msgId.GetEntryId()),
-            int(msgId.GetBatchIndex()),
-            int(msgId.GetPartition()),
-        )
-        return id, nil
-    }
-}
-
 func earliestMessageID() MessageID {
-    return newMessageId(-1, -1, -1, -1)
+    return newMessageID(-1, -1, -1, -1)
 }
+
+type messageID struct {
+	ledgerID     int64
+	entryID      int64
+	batchIdx     int
+	partitionIdx int
+}
+
+func newMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int) MessageID {
+	return &messageID{
+		ledgerID:     ledgerID,
+		entryID:      entryID,
+		batchIdx:     batchIdx,
+		partitionIdx: partitionIdx,
+	}
+}
+
+func (id *messageID) Serialize() []byte {
+	msgID := &pb.MessageIdData{
+		LedgerId:   proto.Uint64(uint64(id.ledgerID)),
+		EntryId:    proto.Uint64(uint64(id.entryID)),
+		BatchIndex: proto.Int(id.batchIdx),
+		Partition:  proto.Int(id.partitionIdx),
+	}
+	data, _ := proto.Marshal(msgID)
+	return data
+}
+
+func deserializeMessageID(data []byte) (MessageID, error) {
+	msgID := &pb.MessageIdData{}
+	err := proto.Unmarshal(data, msgID)
+	if err != nil {
+		return nil, err
+	}
+	id := newMessageID(
+		int64(msgID.GetLedgerId()),
+		int64(msgID.GetEntryId()),
+		int(msgID.GetBatchIndex()),
+		int(msgID.GetPartition()),
+	)
+	return id, nil
+}
+
 
 const maxLong int64 = 0x7fffffffffffffff
 
 func latestMessageID() MessageID {
-    return newMessageId(maxLong, maxLong, -1, -1)
+    return newMessageID(maxLong, maxLong, -1, -1)
 }
 
 func timeFromUnixTimestampMillis(timestamp uint64) time.Time {

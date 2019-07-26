@@ -20,11 +20,11 @@
 package auth
 
 import (
-    "crypto/tls"
-    "fmt"
-    "io"
+	"crypto/tls"
+	"fmt"
+	"io"
 
-    "github.com/pkg/errors"
+	"github.com/pkg/errors"
 )
 
 type Provider interface {
@@ -33,7 +33,7 @@ type Provider interface {
 	Name() string
 
 	// return a client certificate chain, or nil if the data are not available
-	GetTlsCertificate() (*tls.Certificate, error)
+	GetTLSCertificate() (*tls.Certificate, error)
 
 	//
 	GetData() ([]byte, error)

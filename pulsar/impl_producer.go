@@ -21,6 +21,7 @@ package pulsar
 
 import (
 	"context"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 

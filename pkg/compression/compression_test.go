@@ -20,8 +20,9 @@
 package compression
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type testProvider struct {

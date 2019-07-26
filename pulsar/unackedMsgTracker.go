@@ -157,7 +157,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
                 t.oldOpenSet.Clear()
 
                 if t.pc != nil {
-                    requestID := t.pc.client.rpcClient.NewRequestId()
+                    requestID := t.pc.client.rpcClient.NewRequestID()
                     cmd := &pb.CommandRedeliverUnacknowledgedMessages{
                         ConsumerId: proto.Uint64(t.pc.consumerID),
                         MessageIds: messageIds,
@@ -179,7 +179,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 
                     for index, subConsumer := range t.pcs {
                         if messageIdsMap[int32(index)] != nil {
-                            requestID := subConsumer.client.rpcClient.NewRequestId()
+                            requestID := subConsumer.client.rpcClient.NewRequestID()
                             cmd := &pb.CommandRedeliverUnacknowledgedMessages{
                                 ConsumerId: proto.Uint64(subConsumer.consumerID),
                                 MessageIds: messageIdsMap[int32(index)],
