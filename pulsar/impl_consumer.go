@@ -23,9 +23,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/util"
 	"github.com/golang/protobuf/proto"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -119,7 +121,7 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 		// Since there were some failures, cleanup all the partitions that succeeded in creating the consumers
 		for _, consumer := range c.consumers {
 			if !util.IsNil(consumer) {
-				if err := consumer.Close(); err != nil {
+				if err = consumer.Close(); err != nil {
 					panic("close consumer error, please check.")
 				}
 			}
