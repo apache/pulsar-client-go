@@ -31,13 +31,13 @@ import (
 )
 
 var (
-    adminUrl  = "http://localhost:8080"
-    lookupUrl = "pulsar://localhost:6650"
+    adminURL  = "http://localhost:8080"
+    lookupURL = "pulsar://localhost:6650"
 )
 
 func TestProducerConsumer(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: lookupUrl,
+        URL: lookupURL,
     })
 
     assert.Nil(t, err)
@@ -117,7 +117,7 @@ func TestConsumerConnectError(t *testing.T) {
 
 func TestConsumerWithInvalidConf(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: lookupUrl,
+        URL: lookupURL,
     })
 
     if err != nil {
@@ -151,7 +151,7 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 
 func TestConsumer_SubscriptionInitPos(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: lookupUrl,
+        URL: lookupURL,
     })
 
     assert.Nil(t, err)
@@ -195,7 +195,7 @@ func TestConsumer_SubscriptionInitPos(t *testing.T) {
     assert.Equal(t, "msg-1-content-1", string(msg.Payload()))
 }
 
-func makeHttpCall(t *testing.T, method string, urls string, body string) {
+func makeHTTPCall(t *testing.T, method string, urls string, body string) {
     client := http.Client{}
 
     req, err := http.NewRequest(method, urls, strings.NewReader(body))
@@ -215,7 +215,7 @@ func makeHttpCall(t *testing.T, method string, urls string, body string) {
 
 func TestConsumerShared(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: lookupUrl,
+        URL: lookupURL,
     })
     assert.Nil(t, err)
     defer client.Close()
@@ -283,15 +283,15 @@ func TestConsumerShared(t *testing.T) {
 
 func TestPartitionTopicsConsumerPubSub(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: lookupUrl,
+        URL: lookupURL,
     })
     assert.Nil(t, err)
     defer client.Close()
 
     topic := "persistent://public/default/testGetPartitions"
-    testURL := adminUrl + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
+    testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
 
-    makeHttpCall(t, http.MethodPut, testURL, "3")
+    makeHTTPCall(t, http.MethodPut, testURL, "3")
 
     // create producer
     producer, err := client.CreateProducer(ProducerOptions{
@@ -342,7 +342,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 
 func TestConsumerAckTimeout(t *testing.T) {
     client, err := NewClient(ClientOptions{
-        URL: lookupUrl,
+        URL: lookupURL,
     })
     assert.Nil(t, err)
     defer client.Close()

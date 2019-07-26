@@ -69,7 +69,7 @@ type partitionConsumer struct {
     partitionIdx int
 }
 
-func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionId int) (*partitionConsumer, error) {
+func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID int) (*partitionConsumer, error) {
     c := &partitionConsumer{
         state:        consumerInit,
         client:       client,
@@ -77,7 +77,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
         options:      options,
         log:          log.WithField("topic", topic),
         consumerID:   client.rpcClient.NewConsumerID(),
-        partitionIdx: partitionId,
+        partitionIdx: partitionID,
         eventsChan:   make(chan interface{}),
         subQueue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
     }
@@ -124,14 +124,13 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
     if err != nil {
         log.WithError(err).Errorf("Failed to create consumer")
         return nil, err
-    } else {
-        c.log = c.log.WithField("name", c.consumerName)
-        c.log.Info("Created consumer")
-        c.state = consumerReady
-        go c.runEventsLoop()
-
-        return c, nil
     }
+    c.log = c.log.WithField("name", c.consumerName)
+    c.log.Info("Created consumer")
+    c.state = consumerReady
+    go c.runEventsLoop()
+
+    return c, nil
 }
 
 func (pc *partitionConsumer) setDefault(options *ConsumerOptions) {
