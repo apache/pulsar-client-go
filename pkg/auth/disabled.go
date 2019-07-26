@@ -21,7 +21,7 @@ package auth
 
 import "crypto/tls"
 
-type disabled struct {}
+type disabled struct{}
 
 func NewAuthDisabled() Provider {
 	return &disabled{}
@@ -39,7 +39,7 @@ func (disabled) Name() string {
 	return ""
 }
 
-func (disabled) GetTlsCertificate() (*tls.Certificate, error) {
+func (disabled) GetTLSCertificate() (*tls.Certificate, error) {
 	return nil, nil
 }
 

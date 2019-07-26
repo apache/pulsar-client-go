@@ -21,9 +21,10 @@ package auth
 
 import (
 	"crypto/tls"
-	"github.com/pkg/errors"
 	"io/ioutil"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 type tokenAuthProvider struct {
@@ -45,9 +46,8 @@ func NewAuthenticationToken(token string) Provider {
 		tokenSupplier: func() (string, error) {
 			if token == "" {
 				return "", errors.New("empty token credentials")
-			} else {
-				return token, nil
 			}
+			return token, nil
 		},
 	}
 }
@@ -63,9 +63,8 @@ func NewAuthenticationTokenFromFile(tokenFilePath string) Provider {
 			token := strings.Trim(string(data), " \n")
 			if token == "" {
 				return "", errors.New("empty token credentials")
-			} else {
-				return token, nil
 			}
+			return token, nil
 		},
 	}
 }
@@ -80,7 +79,7 @@ func (p *tokenAuthProvider) Name() string {
 	return "token"
 }
 
-func (p *tokenAuthProvider) GetTlsCertificate() (*tls.Certificate, error) {
+func (p *tokenAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
 	return nil, nil
 }
 
@@ -88,9 +87,8 @@ func (p *tokenAuthProvider) GetData() ([]byte, error) {
 	t, err := p.tokenSupplier()
 	if err != nil {
 		return nil, err
-	} else {
-		return []byte(t), nil
 	}
+	return []byte(t), nil
 }
 
 func (tokenAuthProvider) Close() error {

@@ -22,10 +22,12 @@ package internal
 import (
 	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
 	"net/url"
+
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/golang/protobuf/proto"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type LookupResult struct {
@@ -38,14 +40,14 @@ type LookupService interface {
 }
 
 type lookupService struct {
-	rpcClient  RpcClient
-	serviceUrl *url.URL
+	rpcClient  RPCClient
+	serviceURL *url.URL
 }
 
-func NewLookupService(rpcClient RpcClient, serviceUrl *url.URL) LookupService {
+func NewLookupService(rpcClient RPCClient, serviceURL *url.URL) LookupService {
 	return &lookupService{
 		rpcClient:  rpcClient,
-		serviceUrl: serviceUrl,
+		serviceURL: serviceURL,
 	}
 }
 
@@ -57,7 +59,7 @@ func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (lo
 
 	var physicalAddr *url.URL
 	if lr.GetProxyThroughServiceUrl() {
-		physicalAddr = ls.serviceUrl
+		physicalAddr = ls.serviceURL
 	} else {
 		physicalAddr = logicalAddress
 	}
@@ -69,7 +71,7 @@ func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (lo
 const lookupResultMaxRedirect = 20
 
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
-	id := ls.rpcClient.NewRequestId()
+	id := ls.rpcClient.NewRequestID()
 	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
 		RequestId:     &id,
 		Topic:         &topic,
@@ -94,12 +96,15 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			log.WithField("topic", topic).Debugf("Follow redirect to broker. %v / %v - Use proxy: %v",
 				lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
 
-			id := ls.rpcClient.NewRequestId()
+			id := ls.rpcClient.NewRequestID()
 			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
 				RequestId:     &id,
 				Topic:         &topic,
 				Authoritative: lr.Authoritative,
 			})
+			if err != nil {
+				return nil, err
+			}
 
 			// Process the response at the top of the loop
 			continue
@@ -124,7 +129,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 				errorMsg = lr.Error.String()
 			}
 			log.WithField("topic", topic).Warn("Failed to lookup topic", errorMsg)
-			return nil, errors.New(fmt.Sprintf("failed to lookup topic: %s", errorMsg))
+			return nil, fmt.Errorf("failed to lookup topic: %s", errorMsg)
 		}
 	}
 

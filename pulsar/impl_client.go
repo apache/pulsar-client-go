@@ -21,25 +21,27 @@ package pulsar
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	log "github.com/sirupsen/logrus"
 	"net/url"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+
 	"github.com/apache/pulsar-client-go/pkg/auth"
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/pkg/errors"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type client struct {
 	options ClientOptions
 
 	cnxPool       internal.ConnectionPool
-	rpcClient     internal.RpcClient
+	rpcClient     internal.RPCClient
 	lookupService internal.LookupService
 	auth          auth.Provider
 
 	handlers            map[internal.Closable]bool
-	producerIdGenerator uint64
-	consumerIdGenerator uint64
+	producerIDGenerator uint64
+	consumerIDGenerator uint64
 }
 
 func newClient(options ClientOptions) (Client, error) {
@@ -62,9 +64,6 @@ func newClient(options ClientOptions) (Client, error) {
 			TrustCertsFilePath:      options.TLSTrustCertsFilePath,
 			ValidateHostname:        options.TLSValidateHostname,
 		}
-		if err != nil {
-			return nil, err
-		}
 	} else {
 		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
@@ -84,7 +83,7 @@ func newClient(options ClientOptions) (Client, error) {
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider),
 	}
-	c.rpcClient = internal.NewRpcClient(url, c.cnxPool)
+	c.rpcClient = internal.NewRPCClient(url, c.cnxPool)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url)
 	c.handlers = make(map[internal.Closable]bool)
 	return c, nil
@@ -114,7 +113,7 @@ func (client *client) TopicPartitions(topic string) ([]string, error) {
 		return nil, err
 	}
 
-	id := client.rpcClient.NewRequestId()
+	id := client.rpcClient.NewRequestID()
 	res, err := client.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_PARTITIONED_METADATA,
 		&pb.CommandPartitionedTopicMetadata{
 			RequestId: &id,
@@ -135,10 +134,9 @@ func (client *client) TopicPartitions(topic string) ([]string, error) {
 			partitions[i] = fmt.Sprintf("%s-partition-%d", topic, i)
 		}
 		return partitions, nil
-	} else {
-		// Non-partitioned topic
-		return []string{topicName.Name}, nil
 	}
+	// Non-partitioned topic
+	return []string{topicName.Name}, nil
 }
 
 func (client *client) Close() error {

@@ -22,11 +22,13 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/spf13/cobra"
-	log "github.com/sirupsen/logrus"
 	"sync/atomic"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/spf13/cobra"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type ConsumeArgs struct {
@@ -59,7 +61,7 @@ func consume() {
 	log.Info("Consumer config: ", string(b))
 
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL:                    clientArgs.ServiceUrl,
+		URL: clientArgs.ServiceURL,
 	})
 
 	if err != nil {
@@ -81,17 +83,22 @@ func consume() {
 
 	ctx := context.Background()
 
-	var msgReceived int64 = 0
-	var bytesReceived int64 = 0
+	var msgReceived int64
+	var bytesReceived int64
 
 	go func() {
 		for {
-			msg, _ := consumer.Receive(ctx)
+			msg, err := consumer.Receive(ctx)
+			if err != nil {
+				return
+			}
 
 			atomic.AddInt64(&msgReceived, 1)
 			atomic.AddInt64(&bytesReceived, int64(len(msg.Payload())))
 
-			consumer.Ack(msg)
+			if err := consumer.Ack(msg); err != nil {
+				return
+			}
 		}
 	}()
 

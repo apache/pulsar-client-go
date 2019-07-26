@@ -20,56 +20,57 @@
 package internal
 
 import (
-	"github.com/golang/protobuf/proto"
 	"net/url"
-	"github.com/apache/pulsar-client-go/pkg/pb"
 	"sync"
 	"sync/atomic"
+
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/golang/protobuf/proto"
 )
 
-type RpcResult struct {
+type RPCResult struct {
 	Response *pb.BaseCommand
 	Cnx      Connection
 }
 
-type RpcClient interface {
+type RPCClient interface {
 	// Create a new unique request id
-	NewRequestId() uint64
+	NewRequestID() uint64
 
-	NewProducerId() uint64
+	NewProducerID() uint64
 
-	NewConsumerId() uint64
+	NewConsumerID() uint64
 
 	// Send a request and block until the result is available
-	RequestToAnyBroker(requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
+	RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestId uint64,
-		cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
+	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
+		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	RequestOnCnx(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error)
+	RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 }
 
 type rpcClient struct {
-	serviceUrl          *url.URL
+	serviceURL          *url.URL
 	pool                ConnectionPool
-	requestIdGenerator  uint64
-	producerIdGenerator uint64
-	consumerIdGenerator uint64
+	requestIDGenerator  uint64
+	producerIDGenerator uint64
+	consumerIDGenerator uint64
 }
 
-func NewRpcClient(serviceUrl *url.URL, pool ConnectionPool) RpcClient {
+func NewRPCClient(serviceURL *url.URL, pool ConnectionPool) RPCClient {
 	return &rpcClient{
-		serviceUrl: serviceUrl,
+		serviceURL: serviceURL,
 		pool:       pool,
 	}
 }
 
-func (c *rpcClient) RequestToAnyBroker(requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error) {
-	return c.Request(c.serviceUrl, c.serviceUrl, requestId, cmdType, message)
+func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	return c.Request(c.serviceURL, c.serviceURL, requestID, cmdType, message)
 }
 
-func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestId uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message) (*RpcResult, error) {
+func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	// TODO: Add retry logic in case of connection issues
 	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
 	if err != nil {
@@ -79,12 +80,12 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	rpcResult := &RpcResult{
+	rpcResult := &RPCResult{
 		Cnx: cnx,
 	}
 
 	// TODO: Handle errors with disconnections
-	cnx.SendRequest(requestId, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
+	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
 		rpcResult.Response = response
 		wg.Done()
 	})
@@ -93,16 +94,16 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	return rpcResult, nil
 }
 
-func (c *rpcClient) RequestOnCnx(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RpcResult, error) {
+func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RPCResult, error) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	rpcResult := &RpcResult{
+	rpcResult := &RPCResult{
 		Cnx: cnx,
 	}
 
-	cnx.SendRequest(requestId, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
+	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
 		rpcResult.Response = response
 		wg.Done()
 	})
@@ -111,14 +112,14 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestId uint64, cmdType pb.Ba
 	return rpcResult, nil
 }
 
-func (c *rpcClient) NewRequestId() uint64 {
-	return atomic.AddUint64(&c.requestIdGenerator, 1)
+func (c *rpcClient) NewRequestID() uint64 {
+	return atomic.AddUint64(&c.requestIDGenerator, 1)
 }
 
-func (c *rpcClient) NewProducerId() uint64 {
-	return atomic.AddUint64(&c.producerIdGenerator, 1)
+func (c *rpcClient) NewProducerID() uint64 {
+	return atomic.AddUint64(&c.producerIDGenerator, 1)
 }
 
-func (c *rpcClient) NewConsumerId() uint64 {
-	return atomic.AddUint64(&c.consumerIdGenerator, 1)
+func (c *rpcClient) NewConsumerID() uint64 {
+	return atomic.AddUint64(&c.consumerIDGenerator, 1)
 }

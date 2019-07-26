@@ -51,7 +51,6 @@ func TestParseTopicName(t *testing.T) {
 	assert.Equal(t, "my-tenant/my-namespace", topic.Namespace)
 	assert.Equal(t, -1, topic.Partition)
 
-
 	topic, err = ParseTopicName("my-topic-partition-5")
 	assert.Nil(t, err)
 	assert.Equal(t, "persistent://public/default/my-topic-partition-5", topic.Name)

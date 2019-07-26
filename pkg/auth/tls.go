@@ -42,7 +42,7 @@ func NewAuthenticationTLS(certificatePath string, privateKeyPath string) Provide
 
 func (p *tlsAuthProvider) Init() error {
 	// Try to read certificates immediately to provide better error at startup
-	_, err := p.GetTlsCertificate()
+	_, err := p.GetTLSCertificate()
 	return err
 }
 
@@ -50,7 +50,7 @@ func (p *tlsAuthProvider) Name() string {
 	return "tls"
 }
 
-func (p *tlsAuthProvider) GetTlsCertificate() (*tls.Certificate, error) {
+func (p *tlsAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
 	cert, err := tls.LoadX509KeyPair(p.certificatePath, p.privateKeyPath)
 	return &cert, err
 }

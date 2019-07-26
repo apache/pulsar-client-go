@@ -76,13 +76,13 @@ type MessageID interface {
 
 // Reconstruct a MessageID object from its serialized representation
 func DeserializeMessageID(data []byte) (MessageID, error) {
-	return deserializeMessageId(data)
+	return deserializeMessageID(data)
 }
 
 var (
-	// MessageID that points to the earliest message available in a topic
-	EarliestMessage MessageID = earliestMessageID()
+	// EarliestMessage messageID that points to the earliest message available in a topic
+	EarliestMessage = earliestMessageID()
 
-	// MessageID that points to the latest message
-	LatestMessage MessageID = latestMessageID()
+	// LatestMessage messageID that points to the latest message
+	LatestMessage = latestMessageID()
 )

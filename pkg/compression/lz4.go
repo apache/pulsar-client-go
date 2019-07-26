@@ -51,9 +51,8 @@ func (lz4Provider) Compress(data []byte) []byte {
 		headerSize := writeSize(len(data), compressed)
 		copy(compressed[headerSize:], data)
 		return compressed[:len(data)+headerSize]
-	} else {
-		return compressed[:size]
 	}
+	return compressed[:size]
 }
 
 // Write the encoded size for the uncompressed payload
@@ -61,17 +60,16 @@ func writeSize(size int, dst []byte) int {
 	if size < 0xF {
 		dst[0] |= byte(size << 4)
 		return 1
-	} else {
-		dst[0] |= 0xF0
-		l := size - 0xF
-		i := 1
-		for ; l >= 0xFF; l -= 0xFF {
-			dst[i] = 0xFF
-			i++
-		}
-		dst[i] = byte(l)
-		return i + 1
 	}
+	dst[0] |= 0xF0
+	l := size - 0xF
+	i := 1
+	for ; l >= 0xFF; l -= 0xFF {
+		dst[i] = 0xFF
+		i++
+	}
+	dst[i] = byte(l)
+	return i + 1
 }
 
 func (lz4Provider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
