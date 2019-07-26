@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -23,6 +21,7 @@ import (
 	"time"
 )
 
+// Backoff
 type Backoff struct {
 	backoff time.Duration
 }
@@ -32,6 +31,7 @@ const (
 	maxBackoff = 60 * time.Second
 )
 
+// Next
 func (b *Backoff) Next() time.Duration {
 	// Double the delay each time
 	b.backoff += b.backoff

@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,26 +14,27 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package pulsar
 
 import "context"
 
+// ReaderMessage package Reader and Message as a struct to use
 type ReaderMessage struct {
 	Reader
 	Message
 }
 
+// ReaderOptions abstraction Reader options to use.
 type ReaderOptions struct {
-	// Specify the topic this consumer will subscribe on.
+	// Topic specify the topic this consumer will subscribe on.
 	// This argument is required when constructing the reader.
 	Topic string
 
-	// Set the reader name.
+	// Name set the reader name.
 	Name string
 
-	// The initial reader positioning is done by specifying a message id. The options are:
+	// StartMessageID initial reader positioning is done by specifying a message id. The options are:
 	//  * `pulsar.EarliestMessage` : Start reading from the earliest message available in the topic
 	//  * `pulsar.LatestMessage` : Start reading from the end topic, only getting messages published after the
 	//                           reader was created
@@ -43,19 +43,18 @@ type ReaderOptions struct {
 	//                  messageID
 	StartMessageID MessageID
 
-	// Sets a `MessageChannel` for the consumer
+	// MessageChannel sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
 	MessageChannel chan ReaderMessage
 
-	// Sets the size of the consumer receive queue.
+	// ReceiverQueueSize sets the size of the consumer receive queue.
 	// The consumer receive queue controls how many messages can be accumulated by the Reader before the
 	// application calls Reader.readNext(). Using a higher value could potentially increase the consumer
 	// throughput at the expense of bigger memory utilization.
-	//
 	// Default value is {@code 1000} messages and should be good for most use cases.
 	ReceiverQueueSize int
 
-	// Set the subscription role prefix. The default prefix is "reader".
+	// SubscriptionRolePrefix set the subscription role prefix. The default prefix is "reader".
 	SubscriptionRolePrefix string
 
 	// If enabled, the reader will read messages from the compacted topic rather than reading the full message backlog
@@ -68,15 +67,15 @@ type ReaderOptions struct {
 	ReadCompacted bool
 }
 
-// A Reader can be used to scan through all the messages currently available in a topic.
+// Reader can be used to scan through all the messages currently available in a topic.
 type Reader interface {
-	// The topic from which this reader is reading from
+	// Topic from which this reader is reading from
 	Topic() string
 
-	// Read the next message in the topic, blocking until a message is available
+	// Next read the next message in the topic, blocking until a message is available
 	Next(context.Context) (Message, error)
 
-	// Check if there is any message available to read from the current position
+	// HasNext check if there is any message available to read from the current position
 	HasNext() (bool, error)
 
 	// Close the reader and stop the broker to push more messages

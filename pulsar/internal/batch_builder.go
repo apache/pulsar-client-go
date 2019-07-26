@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -31,11 +29,17 @@ import (
 )
 
 const (
-	MaxMessageSize             = 5 * 1024 * 1024
-	MaxBatchSize               = 128 * 1024
+	// MaxMessageSize limit message size for transfer
+	MaxMessageSize = 5 * 1024 * 1024
+	// MaxBatchSize will be the largest size for a batch sent from this particular producer.
+	// This is used as a baseline to allocate a new buffer that can hold the entire batch
+	// without needing costly re-allocations.
+	MaxBatchSize = 128 * 1024
+	// DefaultMaxMessagesPerBatch init default num of entries in per batch.
 	DefaultMaxMessagesPerBatch = 1000
 )
 
+// BatchBuilder wraps the objects needed to build a batch.
 type BatchBuilder struct {
 	buffer Buffer
 
@@ -55,6 +59,7 @@ type BatchBuilder struct {
 	compressionProvider compression.Provider
 }
 
+// NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
 func NewBatchBuilder(maxMessages uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType) (*BatchBuilder, error) {
 	if maxMessages == 0 {
@@ -88,6 +93,7 @@ func NewBatchBuilder(maxMessages uint, producerName string, producerID uint64,
 	return bb, nil
 }
 
+// IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
 func (bb *BatchBuilder) IsFull() bool {
 	return bb.numMessages >= bb.maxMessages || bb.buffer.ReadableBytes() > MaxBatchSize
 }
@@ -97,6 +103,7 @@ func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 	return bb.numMessages > 0 && (bb.buffer.ReadableBytes()+msgSize) > MaxBatchSize
 }
 
+// Add will add single message to batch.
 func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint64, payload []byte,
 	callback interface{}, replicateTo []string) bool {
 	if replicateTo != nil && bb.numMessages != 0 {
@@ -135,6 +142,7 @@ func (bb *BatchBuilder) reset() {
 	bb.msgMetadata.ReplicateTo = nil
 }
 
+// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
 func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks []interface{}) {
 	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 	if bb.numMessages == 0 {

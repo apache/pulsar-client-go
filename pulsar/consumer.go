@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package pulsar
 
@@ -30,18 +28,18 @@ type ConsumerMessage struct {
 	Message
 }
 
-// Types of subscription supported by Pulsar
+// SubscriptionType of subscription supported by Pulsar
 type SubscriptionType int
 
 const (
-	// There can be only 1 consumer on the same topic with the same subscription name
+	// Exclusive there can be only 1 consumer on the same topic with the same subscription name
 	Exclusive SubscriptionType = iota
 
-	// Multiple consumer will be able to use the same subscription name and the messages will be dispatched according to
+	// Shared subscription mode, multiple consumer will be able to use the same subscription name and the messages will be dispatched according to
 	// a round-robin rotation between the connected consumers
 	Shared
 
-	// Multiple consumer will be able to use the same subscription name but only 1 consumer will receive the messages.
+	// Failover subscription mode, multiple consumer will be able to use the same subscription name but only 1 consumer will receive the messages.
 	// If that consumer disconnects, one of the other connected consumers will start receiving messages.
 	Failover
 )
@@ -56,7 +54,7 @@ const (
 	Earliest
 )
 
-// ConsumerBuilder is used to configure and create instances of Consumer
+// ConsumerOptions is used to configure and create instances of Consumer
 type ConsumerOptions struct {
 	// Specify the topic this consumer will subscribe on.
 	// Either a topic, a list of topics or a topics pattern are required when subscribing
@@ -122,28 +120,28 @@ type ConsumerOptions struct {
 	ReadCompacted bool
 }
 
-// An interface that abstracts behavior of Pulsar's consumer
+// Consumer is an interface that abstracts behavior of Pulsar's consumer
 type Consumer interface {
-	// Get the topic for the consumer
+	// Topic get the topic for the consumer
 	Topic() string
 
-	// Get a subscription for the consumer
+	// Subscription get a subscription for the consumer
 	Subscription() string
 
 	// Unsubscribe the consumer
 	Unsubscribe() error
 
-	// Receives a single message.
+	// Receive a single message.
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)
 
 	// Ack the consumption of a single message
 	Ack(Message) error
 
-	// Ack the consumption of a single message, identified by its MessageID
+	// AckID the consumption of a single message, identified by its MessageID
 	AckID(MessageID) error
 
-	// Ack the reception of all the messages in the stream up to (and including) the provided message.
+	// AckCumulative the reception of all the messages in the stream up to (and including) the provided message.
 	// This method will block until the acknowledge has been sent to the broker. After that, the messages will not be
 	// re-delivered to this consumer.
 	//
@@ -152,26 +150,23 @@ type Consumer interface {
 	// It's equivalent to calling asyncAcknowledgeCumulative(Message) and waiting for the callback to be triggered.
 	AckCumulative(Message) error
 
-	// Ack the reception of all the messages in the stream up to (and including) the provided message.
+	// AckCumulativeID the reception of all the messages in the stream up to (and including) the provided message.
 	// This method will block until the acknowledge has been sent to the broker. After that, the messages will not be
 	// re-delivered to this consumer.
-	//
 	// Cumulative acknowledge cannot be used when the consumer type is set to ConsumerShared.
-	//
 	// It's equivalent to calling asyncAcknowledgeCumulative(MessageID) and waiting for the callback to be triggered.
 	AckCumulativeID(MessageID) error
 
 	// Close the consumer and stop the broker to push more messages
 	Close() error
 
-	// Reset the subscription associated with this consumer to a specific message id.
+	// Seek reset the subscription associated with this consumer to a specific message id.
 	// The message id can either be a specific message or represent the first or last messages in the topic.
-	//
 	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the
 	//       seek() on the individual partitions.
 	Seek(msgID MessageID) error
 
-	// Redelivers all the unacknowledged messages. In Failover mode, the request is ignored if the consumer is not
+	// RedeliverUnackedMessages redeliver all the unacknowledged messages. In Failover mode, the request is ignored if the consumer is not
 	// active for the given topic. In Shared mode, the consumers messages to be redelivered are distributed across all
 	// the connected consumers. This is a non blocking call and doesn't throw an exception. In case the connection
 	// breaks, the messages are redelivered after reconnect.

@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -33,12 +31,15 @@ type defaultRouter struct {
 
 type Clock func() uint64
 
+// NewSystemClock init system clock and return current time.
 func NewSystemClock() Clock {
 	return func() uint64 {
 		return uint64(time.Now().UnixNano())
 	}
 }
 
+// NewDefaultRouter set the message routing mode for the partitioned producer.
+// Default routing mode is round-robin routing.
 func NewDefaultRouter(clock Clock, hashFunc func(string) uint32, maxBatchingDelay time.Duration) func(string, uint32) int {
 	state := &defaultRouter{
 		clock:            clock,

@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -30,12 +28,16 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
 type LookupResult struct {
 	LogicalAddr  *url.URL
 	PhysicalAddr *url.URL
 }
 
+// LookupService is a interface of lookup service.
 type LookupService interface {
+	// Lookup perform a lookup for the given topic, confirm the location of the broker
+	// where the topic is located, and return the LookupResult.
 	Lookup(topic string) (*LookupResult, error)
 }
 
@@ -44,6 +46,7 @@ type lookupService struct {
 	serviceURL *url.URL
 }
 
+// NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL) LookupService {
 	return &lookupService{
 		rpcClient:  rpcClient,
