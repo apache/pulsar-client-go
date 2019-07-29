@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -23,11 +21,15 @@ import (
 	"encoding/binary"
 )
 
+// Buffer is a variable-sized buffer of bytes with Read and Write methods.
+// The zero value for Buffer is an empty buffer ready to use.
 type Buffer interface {
 	ReadableBytes() uint32
 
 	WritableBytes() uint32
 
+	// Capacity returns the capacity of the buffer's underlying byte slice,
+	// that is, the total space allocated for the buffer's data.
 	Capacity() uint32
 
 	IsWritable() bool
@@ -40,10 +42,10 @@ type Buffer interface {
 
 	WritableSlice() []byte
 
-	// Advance the writer index when data was written in a slice
+	// WrittenBytes advance the writer index when data was written in a slice
 	WrittenBytes(size uint32)
 
-	// Copy the available portion of data at the beginning of the buffer
+	// MoveToFront copy the available portion of data at the beginning of the buffer
 	MoveToFront()
 
 	ReadUint16() uint16
@@ -62,6 +64,7 @@ type Buffer interface {
 
 	Resize(newSize uint32)
 
+	// Clear will clear the current buffer data.
 	Clear()
 }
 
@@ -72,6 +75,7 @@ type buffer struct {
 	writerIdx uint32
 }
 
+// NewBuffer creates and initializes a new Buffer using buf as its initial contents.
 func NewBuffer(size int) Buffer {
 	return &buffer{
 		data:      make([]byte, size),

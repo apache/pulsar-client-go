@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,66 +14,67 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package pulsar
 
 import "time"
 
+// ProducerMessage abstraction used in Pulsar producer
 type ProducerMessage struct {
 	// Payload for the message
 	Payload []byte
 
-	// Sets the key of the message for routing policy
+	// Key sets the key of the message for routing policy
 	Key string
 
-	// Attach application defined properties on the message
+	// Properties attach application defined properties on the message
 	Properties map[string]string
 
-	// Set the event time for a given message
+	// EventTime set the event time for a given message
 	EventTime *time.Time
 
-	// Override the replication clusters for this message.
+	// ReplicationClusters override the replication clusters for this message.
 	ReplicationClusters []string
 
-	// Set the sequence id to assign to the current message
+	// SequenceID set the sequence id to assign to the current message
 	SequenceID *int64
 }
 
+// Message abstraction used in Pulsar
 type Message interface {
-	// Get the topic from which this message originated from
+	// Topic get the topic from which this message originated from
 	Topic() string
 
+	// Properties are application defined key/value pairs that will be attached to the message.
 	// Return the properties attached to the message.
-	// Properties are application defined key/value pairs that will be attached to the message
 	Properties() map[string]string
 
-	// Get the payload of the message
+	// Payload get the payload of the message
 	Payload() []byte
 
-	// Get the unique message ID associated with this message.
+	// ID get the unique message ID associated with this message.
 	// The message id can be used to univocally refer to a message without having the keep the entire payload in memory.
 	ID() MessageID
 
-	// Get the publish time of this message. The publish time is the timestamp that a client publish the message.
+	// PublishTime get the publish time of this message. The publish time is the timestamp that a client publish the message.
 	PublishTime() time.Time
 
-	// Get the event time associated with this message. It is typically set by the applications via
+	// EventTime get the event time associated with this message. It is typically set by the applications via
 	// `ProducerMessage.EventTime`.
 	// If there isn't any event time associated with this event, it will be nil.
 	EventTime() time.Time
 
-	// Get the key of the message, if any
+	// Key get the key of the message, if any
 	Key() string
 }
 
-// Identifier for a particular message
+// MessageID identifier for a particular message
 type MessageID interface {
 	// Serialize the message id into a sequence of bytes that can be stored somewhere else
 	Serialize() []byte
 }
 
-// Reconstruct a MessageID object from its serialized representation
+// DeserializeMessageID reconstruct a MessageID object from its serialized representation
 func DeserializeMessageID(data []byte) (MessageID, error) {
 	return deserializeMessageID(data)
 }

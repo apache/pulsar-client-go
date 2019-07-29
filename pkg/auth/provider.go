@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package auth
 
@@ -27,20 +25,27 @@ import (
 	"github.com/pkg/errors"
 )
 
+// Provider is a interface of authentication providers.
 type Provider interface {
+	// Init the authentication provider.
 	Init() error
 
+	// Name func returns the identifier for this authentication method.
 	Name() string
 
 	// return a client certificate chain, or nil if the data are not available
 	GetTLSCertificate() (*tls.Certificate, error)
 
-	//
+	// GetData returns the authentication data identifying this client that will be sent to the broker.
 	GetData() ([]byte, error)
 
 	io.Closer
 }
 
+// NewProvider get/create an authentication data provider which provides the data
+// that this client will be sent to the broker.
+// Some authentication method need to auth between each client channel. So it need
+// the broker, who it will talk to.
 func NewProvider(name string, params string) (Provider, error) {
 	m := parseParams(params)
 

@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package pulsar
 
@@ -41,6 +39,7 @@ type UnackedMessageTracker struct {
 	pcs []*partitionConsumer
 }
 
+// NewUnackedMessageTracker init UnackedMessageTracker object
 func NewUnackedMessageTracker() *UnackedMessageTracker {
 	unAckTracker := &UnackedMessageTracker{
 		currentSet: set.NewSet(),
@@ -50,6 +49,7 @@ func NewUnackedMessageTracker() *UnackedMessageTracker {
 	return unAckTracker
 }
 
+// Size return the size of current set and old open set cardinality
 func (t *UnackedMessageTracker) Size() int {
 	t.cmu.Lock()
 	defer t.cmu.Unlock()
@@ -57,6 +57,7 @@ func (t *UnackedMessageTracker) Size() int {
 	return t.currentSet.Cardinality() + t.oldOpenSet.Cardinality()
 }
 
+// IsEmpty check if the currentSet or oldOpenSet are empty.
 func (t *UnackedMessageTracker) IsEmpty() bool {
 	t.cmu.RLock()
 	defer t.cmu.RUnlock()
@@ -64,6 +65,7 @@ func (t *UnackedMessageTracker) IsEmpty() bool {
 	return t.currentSet.Cardinality() == 0 && t.oldOpenSet.Cardinality() == 0
 }
 
+// Add will add message id data to currentSet and remove the message id from oldOpenSet.
 func (t *UnackedMessageTracker) Add(id *pb.MessageIdData) bool {
 	t.cmu.Lock()
 	defer t.cmu.Unlock()
@@ -72,6 +74,7 @@ func (t *UnackedMessageTracker) Add(id *pb.MessageIdData) bool {
 	return t.currentSet.Add(id)
 }
 
+// Remove will remove message id data from currentSet and oldOpenSet
 func (t *UnackedMessageTracker) Remove(id *pb.MessageIdData) {
 	t.cmu.Lock()
 	defer t.cmu.Unlock()

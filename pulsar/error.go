@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,22 +14,29 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package pulsar
 
 import "fmt"
 
+// Result used to represent pulsar processing is an alias of type int.
 type Result int
 
 const (
-	ResultOk                   = iota // No errors
-	ResultUnknownError                // Unknown error happened on broker
-	ResultInvalidConfiguration        // Invalid configuration
-	ResultTimeoutError                // Operation timed out
-	ResultLookupError                 // Broker lookup failed
-	ResultInvalidTopicName            // Invalid topic name
-	ResultConnectError                // Failed to connect to broker
+	// ResultOk means no errors
+	ResultOk = iota
+	// ResultUnknownError means unknown error happened on broker
+	ResultUnknownError
+	// ResultInvalidConfiguration means invalid configuration
+	ResultInvalidConfiguration
+	// ResultTimeoutError means operation timed out
+	ResultTimeoutError
+	// ResultLookupError means broker lookup failed
+	ResultLookupError
+	// ResultInvalidTopicName means invalid topic name
+	ResultInvalidTopicName
+	// ResultConnectError means failed to connect to broker
+	ResultConnectError
 
 	//ReadError                      Result = 6  // Failed to read from socket
 	//AuthenticationError            Result = 7  // Authentication failed on broker
@@ -61,6 +67,7 @@ const (
 	//CryptoError                           Result = 33 // Error when crypto operation fails
 )
 
+// Error implement error interface, composed of two parts: msg and result.
 type Error struct {
 	msg    string
 	result Result

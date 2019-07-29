@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package auth
 
@@ -31,6 +29,7 @@ type tokenAuthProvider struct {
 	tokenSupplier func() (string, error)
 }
 
+// NewAuthenticationTokenWithParams return a interface of Provider with string map.
 func NewAuthenticationTokenWithParams(params map[string]string) (Provider, error) {
 	if params["token"] != "" {
 		return NewAuthenticationToken(params["token"]), nil
@@ -41,6 +40,7 @@ func NewAuthenticationTokenWithParams(params map[string]string) (Provider, error
 	}
 }
 
+// NewAuthenticationToken return a interface of Provider with a string token.
 func NewAuthenticationToken(token string) Provider {
 	return &tokenAuthProvider{
 		tokenSupplier: func() (string, error) {
@@ -52,6 +52,7 @@ func NewAuthenticationToken(token string) Provider {
 	}
 }
 
+// NewAuthenticationTokenFromFile return a interface of a Provider with a string token file path.
 func NewAuthenticationTokenFromFile(tokenFilePath string) Provider {
 	return &tokenAuthProvider{
 		tokenSupplier: func() (string, error) {

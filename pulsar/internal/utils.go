@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -24,11 +22,12 @@ import (
 	"time"
 )
 
+// TimestampMillis return a time unix nano.
 func TimestampMillis(t time.Time) uint64 {
 	return uint64(t.UnixNano()) / uint64(time.Millisecond)
 }
 
-// Perform atomic read and update
+// GetAndAdd perform atomic read and update
 func GetAndAdd(n *uint64, diff uint64) uint64 {
 	for {
 		v := *n
