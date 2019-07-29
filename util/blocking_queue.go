@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package util
 
@@ -25,29 +23,31 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// BlockingQueue is a interface of block queue
 type BlockingQueue interface {
-	// Enqueue one item, block if the queue is full
+	// Put enqueue one item, block if the queue is full
 	Put(item interface{})
 
-	// Dequeue one item, block until it's available
+	// Take dequeue one item, block until it's available
 	Take() interface{}
 
-	// Dequeue one item, return nil if queue is empty
+	// Poll dequeue one item, return nil if queue is empty
 	Poll() interface{}
 
-	// Return the first item without dequeing, return nil if queue is empty
+	// Peek return the first item without dequeing, return nil if queue is empty
 	Peek() interface{}
 
-	// Return last item in queue without dequeing, return nil if queue is empty
+	// PeekLast return last item in queue without dequeing, return nil if queue is empty
 	PeekLast() interface{}
 
-	// Return the current size of the queue
+	// Size return the current size of the queue
 	Size() int
 
-	// Return an iterator for the queue
+	// Iterator return an iterator for the queue
 	Iterator() BlockingQueueIterator
 }
 
+// BlockingQueueIterator abstract a interface of block queue iterator.
 type BlockingQueueIterator interface {
 	HasNext() bool
 	Next() interface{}
@@ -71,6 +71,7 @@ type blockingQueueIterator struct {
 	toRead  int
 }
 
+// NewBlockingQueue init block queue and returns a BlockingQueue
 func NewBlockingQueue(maxSize int) BlockingQueue {
 	bq := &blockingQueue{
 		items:   make([]interface{}, maxSize),

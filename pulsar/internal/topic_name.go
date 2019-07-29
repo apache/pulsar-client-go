@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -26,6 +24,7 @@ import (
 	"strings"
 )
 
+// TopicName abstract a struct contained in a Topic
 type TopicName struct {
 	Name      string
 	Namespace string
@@ -38,6 +37,7 @@ const (
 	partitionedTopicSuffix = "-partition-"
 )
 
+// ParseTopicName parse the given topic name and return TopicName.
 func ParseTopicName(topic string) (*TopicName, error) {
 	// The topic name can be in two different forms, one is fully qualified topic name,
 	// the other one is short topic name

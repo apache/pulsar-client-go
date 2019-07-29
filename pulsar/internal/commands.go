@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -26,6 +24,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+// MaxFrameSize limit the maximum size that pulsar allows for messages to be sent.
 const MaxFrameSize = 5 * 1024 * 1024
 
 const magicCrc32c uint16 = 0x0e01
@@ -115,6 +114,7 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	wb.PutUint32(checksum, checksumIdx)
 }
 
+// ConvertFromStringMap convert a string map to a KeyValue []byte
 func ConvertFromStringMap(m map[string]string) []*pb.KeyValue {
 	list := make([]*pb.KeyValue, len(m))
 
@@ -131,6 +131,7 @@ func ConvertFromStringMap(m map[string]string) []*pb.KeyValue {
 	return list
 }
 
+// ConvertToStringMap convert a KeyValue []byte to string map
 func ConvertToStringMap(pbb []*pb.KeyValue) map[string]string {
 	m := make(map[string]string)
 

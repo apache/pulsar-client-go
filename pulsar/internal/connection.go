@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package internal
 
@@ -47,11 +45,14 @@ type TLSOptions struct {
 // a consumer) that can register itself to get notified
 // when the connection is closed.
 type ConnectionListener interface {
+	// ReceivedSendReceipt receive and process the return value of the send command.
 	ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
+	// ConnectionClosed close the TCP connection.
 	ConnectionClosed()
 }
 
+// Connection is a interface of client cnx.
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand))
 	WriteData(data []byte)

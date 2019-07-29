@@ -1,4 +1,3 @@
-//
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
@@ -15,7 +14,6 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
-//
 
 package auth
 
@@ -26,6 +24,7 @@ type tlsAuthProvider struct {
 	privateKeyPath  string
 }
 
+// NewAuthenticationTLSWithParams initialize the authentication provider with map param.
 func NewAuthenticationTLSWithParams(params map[string]string) Provider {
 	return NewAuthenticationTLS(
 		params["tlsCertFile"],
@@ -33,6 +32,7 @@ func NewAuthenticationTLSWithParams(params map[string]string) Provider {
 	)
 }
 
+// NewAuthenticationTLS initialize the authentication provider
 func NewAuthenticationTLS(certificatePath string, privateKeyPath string) Provider {
 	return &tlsAuthProvider{
 		certificatePath: certificatePath,
