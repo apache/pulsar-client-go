@@ -165,7 +165,7 @@ func (p *partitionProducer) grabCnx() error {
 	return nil
 }
 
-type connectionClosed struct {}
+type connectionClosed struct{}
 
 func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine

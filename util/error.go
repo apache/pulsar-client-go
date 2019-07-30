@@ -34,8 +34,7 @@ func NewUnexpectedErrMsg(msgType pb.BaseCommand_Type, ids ...interface{}) *Unexp
     }
 }
 
-// UnexpectedErrMsg is returned when an unexpected
-// message is received.
+// UnexpectedErrMsg is returned when an unexpected message is received.
 type UnexpectedErrMsg struct {
     msgType pb.BaseCommand_Type
     ids     []interface{}
