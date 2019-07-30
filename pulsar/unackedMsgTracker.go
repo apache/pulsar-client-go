@@ -32,7 +32,6 @@ type UnackedMessageTracker struct {
 	cmu        sync.RWMutex // protects following
 	currentSet set.Set
 	oldOpenSet set.Set
-	log        *log.Entry
 	timeout    *time.Ticker
 
 	pc  *partitionConsumer
@@ -148,7 +147,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 		select {
 		case tick := <-t.timeout.C:
 			if t.isAckTimeout() {
-				t.log.Debugf(" %d messages have timed-out", t.oldOpenSet.Cardinality())
+				log.Debugf(" %d messages have timed-out", t.oldOpenSet.Cardinality())
 				messageIds := make([]*pb.MessageIdData, 0)
 
 				t.oldOpenSet.Each(func(i interface{}) bool {
@@ -156,7 +155,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 					return false
 				})
 
-				t.log.Debugf("messageID length is:%d", len(messageIds))
+				log.Debugf("messageID length is:%d", len(messageIds))
 
 				t.oldOpenSet.Clear()
 
@@ -174,7 +173,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 						return
 					}
 
-					t.log.Debugf("consumer:%v redeliver messages num:%d", t.pc.consumerName, len(messageIds))
+					log.Debugf("consumer:%v redeliver messages num:%d", t.pc.consumerName, len(messageIds))
 				} else if t.pcs != nil {
 					messageIdsMap := make(map[int32][]*pb.MessageIdData)
 					for _, msgID := range messageIds {
@@ -199,7 +198,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 					}
 				}
 			}
-			t.log.Debug("Tick at ", tick)
+			log.Debug("Tick at ", tick)
 		}
 
 		t.toggle()
@@ -208,7 +207,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 
 func (t *UnackedMessageTracker) Stop() {
 	t.timeout.Stop()
-	t.log.Debug("stop ticker ", t.timeout)
+	log.Debug("stop ticker ", t.timeout)
 
 	t.clear()
 }

@@ -149,7 +149,7 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 	assert.Equal(t, err.(*Error).Result(), TopicNotFound)
 }
 
-func TestConsumer_SubscriptionInitPos(t *testing.T) {
+func TestConsumer_SubscriptionEarliestPos(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})

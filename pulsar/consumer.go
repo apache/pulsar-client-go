@@ -43,6 +43,8 @@ const (
 	// If that consumer disconnects, one of the other connected consumers will start receiving messages.
 	Failover
 
+	// KeyShared subscription mode, multiple consumer will be able to use the same subscription and all messages with the same key
+	// will be dispatched to only one consumer
 	KeyShared
 )
 
@@ -137,6 +139,7 @@ type Consumer interface {
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)
 
+	// ReceiveAsync appends the message to the msgs channel asynchronously.
 	ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error
 
 	// Ack the consumption of a single message

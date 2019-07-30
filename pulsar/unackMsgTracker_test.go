@@ -51,8 +51,9 @@ func TestUnackedMessageTracker(t *testing.T) {
     num := unAckTracker.Size()
     assert.Equal(t, num, 5)
 
-    for _, msgID := range msgIDs {
+    for index, msgID := range msgIDs {
         unAckTracker.Remove(msgID)
+        assert.Equal(t, 4-index, unAckTracker.Size())
     }
 
     num = unAckTracker.Size()
