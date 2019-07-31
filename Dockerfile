@@ -21,7 +21,7 @@ FROM apachepulsar/pulsar:latest as pulsar
 
 FROM golang:1.12 as go
 
-#RUN apt-get update && apt-get install -y openjdk-8-jre-headless
+RUN apt-get update && mkdir -p /usr/share/man/man1 && apt-get install -y openjdk-8-jre-headless
 
 COPY --from=pulsar /pulsar /pulsar
 
