@@ -36,14 +36,8 @@ func (zlibProvider) CanCompress() bool {
 func (zlibProvider) Compress(data []byte) []byte {
 	var b bytes.Buffer
 	w := zlib.NewWriter(&b)
-	_, err := w.Write(data)
-	if err != nil {
-		return nil
-	}
-	err = w.Close()
-	if err != nil {
-		return nil
-	}
+	w.Write(data)
+	w.Close()
 
 	return b.Bytes()
 }
@@ -55,14 +49,8 @@ func (zlibProvider) Decompress(compressedData []byte, originalSize int) ([]byte,
 	}
 
 	uncompressed := make([]byte, originalSize)
-	_, err = r.Read(uncompressed)
-	if err != nil {
-		return nil, err
-	}
-	err = r.Close()
-	if err != nil {
-		return nil, err
-	}
+	r.Read(uncompressed)
+	r.Close()
 
 	return uncompressed, nil
 }
