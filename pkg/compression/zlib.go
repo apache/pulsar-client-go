@@ -55,14 +55,8 @@ func (zlibProvider) Decompress(compressedData []byte, originalSize int) ([]byte,
 	}
 
 	uncompressed := make([]byte, originalSize)
-	_, err = r.Read(uncompressed)
-	if err != nil {
-		return nil, err
-	}
-	err = r.Close()
-	if err != nil {
-		return nil, err
-	}
+	r.Read(uncompressed)
+	r.Close()
 
 	return uncompressed, nil
 }
