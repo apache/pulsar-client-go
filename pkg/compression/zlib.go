@@ -37,12 +37,11 @@ func (zlibProvider) CanCompress() bool {
 func (zlibProvider) Compress(data []byte) []byte {
 	var b bytes.Buffer
 	w := zlib.NewWriter(&b)
-	_, err := w.Write(data)
-	if err != nil {
+
+	if _, err := w.Write(data); err != nil {
 		return nil
 	}
-	err = w.Close()
-	if err != nil {
+	if err := w.Close(); err != nil {
 		return nil
 	}
 
@@ -50,23 +49,17 @@ func (zlibProvider) Compress(data []byte) []byte {
 }
 
 func (zlibProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	r, err := zlib.NewReader(bytes.NewBuffer(compressedData))
+	r, err := zlib.NewReader(bytes.NewReader(compressedData))
 	if err != nil {
 		return nil, err
 	}
 
 	uncompressed := make([]byte, originalSize)
-	for {
-		_, err = r.Read(uncompressed)
-		if err == io.EOF {
-			break
-		}
-		if err != nil && err != io.EOF {
-			return nil, err
-		}
+	if _, err = io.ReadFull(r, uncompressed); err != nil {
+		return nil, err
 	}
-	err = r.Close()
-	if err != nil {
+
+	if err = r.Close(); err != nil {
 		return nil, err
 	}
 
