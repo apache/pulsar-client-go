@@ -20,6 +20,7 @@ package compression
 import (
 	"bytes"
 	"compress/zlib"
+	"io"
 )
 
 type zlibProvider struct{}
@@ -36,21 +37,31 @@ func (zlibProvider) CanCompress() bool {
 func (zlibProvider) Compress(data []byte) []byte {
 	var b bytes.Buffer
 	w := zlib.NewWriter(&b)
-	w.Write(data)
-	w.Close()
+
+	if _, err := w.Write(data); err != nil {
+		return nil
+	}
+	if err := w.Close(); err != nil {
+		return nil
+	}
 
 	return b.Bytes()
 }
 
 func (zlibProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	r, err := zlib.NewReader(bytes.NewBuffer(compressedData))
+	r, err := zlib.NewReader(bytes.NewReader(compressedData))
 	if err != nil {
 		return nil, err
 	}
 
 	uncompressed := make([]byte, originalSize)
-	r.Read(uncompressed)
-	r.Close()
+	if _, err = io.ReadFull(r, uncompressed); err != nil {
+		return nil, err
+	}
+
+	if err = r.Close(); err != nil {
+		return nil, err
+	}
 
 	return uncompressed, nil
 }
