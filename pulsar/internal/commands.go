@@ -82,6 +82,7 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 		log.WithError(err).Fatal("Protobuf serialization error")
 	}
 
+	wb.WriteUint32(uint32(len(serialized)))
 	wb.Write(serialized)
 	wb.Write(payload)
 }
@@ -163,24 +164,26 @@ func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloa
 		return nil, nil, err
 	}
 
-    batchLen := make([]byte, 2)
-    if _, err = io.ReadFull(lr, batchLen); err != nil {
+    // Anything left in the frame is considered
+    // the payload and can be any sequence of bytes.
+    payloads := make([]byte, lr.N)
+    if _, err = io.ReadFull(lr, payloads); err != nil {
         return nil, nil, err
     }
 
-    // Anything left in the frame is considered
-    // the payload and can be any sequence of bytes.
-	if lr.N > 0 {
-		// guard against allocating large buffer
-		if lr.N > MaxFrameSize {
-			return nil, nil, fmt.Errorf("frame payload size (%d) "+
-					"cannot be greater than max frame size (%d)", lr.N, MaxFrameSize)
-		}
-		payload = make([]byte, lr.N)
-		if _, err = io.ReadFull(lr, payload); err != nil {
-			return nil, nil, err
-		}
-	}
+    numMsg := msgMeta.GetNumMessagesInBatch()
+
+    singleMessages, err := decodeBatchPayload(payloads, numMsg)
+    if err != nil {
+        return nil, nil, err
+    }
+
+    for _, singleMsg := range singleMessages {
+        payload = singleMsg.SinglePayload
+        msgMeta.PartitionKey = singleMsg.SingleMeta.PartitionKey
+        msgMeta.Properties = singleMsg.SingleMeta.Properties
+        msgMeta.EventTime = singleMsg.SingleMeta.EventTime
+    }
 
 	if computed := chksum.compute(); !bytes.Equal(computed, expectedChksum) {
 		return nil, nil, fmt.Errorf("checksum mismatch: computed (0x%X) does "+
@@ -235,6 +238,49 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 
 	// set computed checksum
 	wb.PutUint32(checksum, checksumIdx)
+}
+
+// singleMessage represents one of the elements of the batch type payload
+type singleMessage struct {
+	SingleMetaSize uint32
+	SingleMeta     *pb.SingleMessageMetadata
+	SinglePayload  []byte
+}
+
+// decodeBatchPayload parses the payload of the batch type
+// If the producer uses the batch function, msg.Payload will be a singleMessage array structure.
+func decodeBatchPayload(bp []byte, batchNum int32) ([]*singleMessage, error) {
+	buf32 := make([]byte, 4)
+	rdBuf := bytes.NewReader(bp)
+	list := make([]*singleMessage, 0, batchNum)
+	for i := int32(0); i < batchNum; i++ {
+		// singleMetaSize
+		if _, err := io.ReadFull(rdBuf, buf32); err != nil {
+			return nil, err
+		}
+		singleMetaSize := binary.BigEndian.Uint32(buf32)
+
+		// singleMeta
+		singleMetaBuf := make([]byte, singleMetaSize)
+		if _, err := io.ReadFull(rdBuf, singleMetaBuf); err != nil {
+			return nil, err
+		}
+		singleMeta := new(pb.SingleMessageMetadata)
+		if err := proto.Unmarshal(singleMetaBuf, singleMeta); err != nil {
+			return nil, err
+		}
+		// payload
+		singlePayload := make([]byte, singleMeta.GetPayloadSize())
+		if _, err := io.ReadFull(rdBuf, singlePayload); err != nil {
+			return nil, err
+		}
+		d := &singleMessage{}
+		//d.SingleMetaSize = singleMetaSize
+		d.SingleMeta = singleMeta
+		d.SinglePayload = singlePayload
+		list = append(list, d)
+	}
+	return list, nil
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte
