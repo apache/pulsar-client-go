@@ -275,7 +275,7 @@ func decodeBatchPayload(bp []byte, batchNum int32) ([]*singleMessage, error) {
 			return nil, err
 		}
 		d := &singleMessage{}
-		//d.SingleMetaSize = singleMetaSize
+		d.SingleMetaSize = singleMetaSize
 		d.SingleMeta = singleMeta
 		d.SinglePayload = singlePayload
 		list = append(list, d)
