@@ -69,23 +69,29 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 
 	type ProducerError struct {
 		partition int
-		Producer
-		error
+		prod      Producer
+		err       error
 	}
 
 	c := make(chan ProducerError, numPartitions)
 
 	for partitionIdx, partition := range partitions {
-		go func(index int) {
-			prod, err := newPartitionProducer(client, partition, options, index)
-			c <- ProducerError{partitionIdx, prod, err}
-		}(partitionIdx)
+		go func(partitionIdx int, partition string) {
+			prod, err := newPartitionProducer(client, partition, options, partitionIdx)
+			c <- ProducerError{
+				partition: partitionIdx,
+				prod:      prod,
+				err:       err,
+			}
+		}(partitionIdx, partition)
 	}
 
 	for i := 0; i < numPartitions; i++ {
-		pe := <-c
-		err = pe.error
-		p.producers[pe.partition] = pe.Producer
+		pe, ok := <-c
+		if ok {
+			err = pe.err
+			p.producers[pe.partition] = pe.prod
+		}
 	}
 
 	if err != nil {
@@ -97,6 +103,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		}
 		return nil, err
 	}
+
 	return p, nil
 }
 
@@ -134,21 +141,15 @@ func (p *producer) LastSequenceID() int64 {
 }
 
 func (p *producer) Flush() error {
-	var err error
 	for _, pp := range p.producers {
-		if e := pp.Flush(); e != nil && err == nil {
-			err = e
-		}
+		return pp.Flush()
 	}
-	return err
+	return nil
 }
 
 func (p *producer) Close() error {
-	var err error
 	for _, pp := range p.producers {
-		if e := pp.Close(); e != nil && err == nil {
-			err = e
-		}
+		return pp.Close()
 	}
-	return err
+	return nil
 }

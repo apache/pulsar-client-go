@@ -15,36 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package internal
+package util
 
 import (
-    `hash`
-    `hash/crc32`
+    `reflect`
 )
 
-// crc32cTable holds the precomputed crc32 hash table
-// used by Pulsar (crc32c)
-var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
-
-type CheckSum struct {
-    hash hash.Hash
-}
-
-// Crc32cCheckSum handles computing the checksum.
-func Crc32cCheckSum(data []byte) uint32 {
-	return crc32.Checksum(data, crc32cTable)
-}
-
-func (cs *CheckSum) Write(p []byte) (int, error) {
-    if cs.hash == nil {
-        cs.hash = crc32.New(crc32cTable)
+// IsNil check if the interface is nil
+func IsNil(i interface{}) bool {
+    vi := reflect.ValueOf(i)
+    if vi.Kind() == reflect.Ptr {
+        return vi.IsNil()
     }
-    return cs.hash.Write(p)
+    return false
 }
 
-func (cs *CheckSum) compute() []byte {
-    if cs.hash == nil {
-        return nil
-    }
-    return cs.hash.Sum(nil)
-}

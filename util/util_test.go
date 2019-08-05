@@ -15,36 +15,17 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package internal
+package util
 
 import (
-    `hash`
-    `hash/crc32`
+    `github.com/stretchr/testify/assert`
+    `testing`
 )
 
-// crc32cTable holds the precomputed crc32 hash table
-// used by Pulsar (crc32c)
-var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
+func TestIsNil(t *testing.T) {
+    var a interface{} = nil
+    var b interface{} = (*int)(nil)
 
-type CheckSum struct {
-    hash hash.Hash
-}
-
-// Crc32cCheckSum handles computing the checksum.
-func Crc32cCheckSum(data []byte) uint32 {
-	return crc32.Checksum(data, crc32cTable)
-}
-
-func (cs *CheckSum) Write(p []byte) (int, error) {
-    if cs.hash == nil {
-        cs.hash = crc32.New(crc32cTable)
-    }
-    return cs.hash.Write(p)
-}
-
-func (cs *CheckSum) compute() []byte {
-    if cs.hash == nil {
-        return nil
-    }
-    return cs.hash.Sum(nil)
+    assert.True(t, a == nil)
+    assert.False(t, b == nil)
 }

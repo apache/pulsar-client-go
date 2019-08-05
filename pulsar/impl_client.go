@@ -96,8 +96,12 @@ func (client *client) CreateProducer(options ProducerOptions) (Producer, error) 
 }
 
 func (client *client) Subscribe(options ConsumerOptions) (Consumer, error) {
-	// TODO: Implement consumer
-	return nil, nil
+	consumer, err := newConsumer(client, &options)
+	if err != nil {
+		return nil, err
+	}
+	client.handlers[consumer] = true
+	return consumer, nil
 }
 
 func (client *client) CreateReader(options ReaderOptions) (Reader, error) {

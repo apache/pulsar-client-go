@@ -18,9 +18,15 @@
 package pulsar
 
 import (
+	"time"
+
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/golang/protobuf/proto"
 )
+
+func earliestMessageID() MessageID {
+	return newMessageID(-1, -1, -1, -1)
+}
 
 type messageID struct {
 	ledgerID     int64
@@ -64,12 +70,59 @@ func deserializeMessageID(data []byte) (MessageID, error) {
 	return id, nil
 }
 
-func earliestMessageID() MessageID {
-	return newMessageID(-1, -1, -1, -1)
-}
-
 const maxLong int64 = 0x7fffffffffffffff
 
 func latestMessageID() MessageID {
 	return newMessageID(maxLong, maxLong, -1, -1)
+}
+
+func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
+	ts := int64(timestamp) * int64(time.Millisecond)
+	seconds := ts / int64(time.Second)
+	nanos := ts - (seconds * int64(time.Second))
+	return time.Unix(seconds, nanos)
+}
+
+func timeToUnixTimestampMillis(t time.Time) uint64 {
+	nanos := t.UnixNano()
+	millis := nanos / int64(time.Millisecond)
+	return uint64(millis)
+}
+
+type message struct {
+	publishTime time.Time
+	eventTime   time.Time
+	key         string
+	payLoad     []byte
+	msgID       MessageID
+	properties  map[string]string
+	topic       string
+}
+
+func (msg *message) Topic() string {
+	return msg.topic
+}
+
+func (msg *message) Properties() map[string]string {
+	return msg.properties
+}
+
+func (msg *message) Payload() []byte {
+	return msg.payLoad
+}
+
+func (msg *message) ID() MessageID {
+	return msg.msgID
+}
+
+func (msg *message) PublishTime() time.Time {
+	return msg.publishTime
+}
+
+func (msg *message) EventTime() time.Time {
+	return msg.eventTime
+}
+
+func (msg *message) Key() string {
+	return msg.key
 }
