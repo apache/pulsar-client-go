@@ -50,7 +50,7 @@ func TestProducerConsumer(t *testing.T) {
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: "my-sub",
-		Type:             Shared,
+		Type:             Exclusive,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -67,6 +67,10 @@ func TestProducerConsumer(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		if err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
 		}); err != nil {
 			log.Fatal(err)
 		}
@@ -80,7 +84,12 @@ func TestProducerConsumer(t *testing.T) {
 		}
 
 		expectMsg := fmt.Sprintf("hello-%d", i)
+		expectProperties := map[string]string{
+			"key-1": "pulsar-1",
+		}
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
 
 		// ack message
 		if err := consumer.Ack(msg); err != nil {
@@ -213,7 +222,7 @@ func makeHTTPCall(t *testing.T, method string, urls string, body string) {
 	defer res.Body.Close()
 }
 
-func TestConsumerShared(t *testing.T) {
+func TestConsumerKeyShared(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
