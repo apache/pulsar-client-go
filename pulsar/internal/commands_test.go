@@ -39,8 +39,9 @@ func TestConvertStringMap(t *testing.T) {
 }
 
 func TestDecodeBatchPayload(t *testing.T) {
-	payload := []byte{0, 0, 0, 2, 24, 12, 104, 101, 108, 108, 111, 45, 112, 117, 108, 115, 97, 114} // hello-pulsar
-	list, err := decodeBatchPayload(payload, 1)
+	// singleMsg = singleMetaSize(4  bytes) + singleMeta(var length) + payload
+	singleMsg := []byte{0, 0, 0, 2, 24, 12, 104, 101, 108, 108, 111, 45, 112, 117, 108, 115, 97, 114}
+	list, err := decodeBatchPayload(singleMsg, 1)
 	if err != nil {
 		t.Fatal(err)
 	}

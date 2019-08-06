@@ -18,20 +18,20 @@
 package internal
 
 import (
-    `bytes`
-    `encoding/binary`
-    `fmt`
-    "github.com/golang/protobuf/proto"
-    `io`
+	"bytes"
+	"encoding/binary"
+	"fmt"
+	"github.com/golang/protobuf/proto"
+	"io"
 
-    "github.com/apache/pulsar-client-go/pkg/pb"
-    log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
 	// MaxFrameSize limit the maximum size that pulsar allows for messages to be sent.
-	MaxFrameSize = 5 * 1024 * 1024
-	magicCrc32c uint16 = 0x0e01
+	MaxFrameSize        = 5 * 1024 * 1024
+	magicCrc32c  uint16 = 0x0e01
 )
 
 func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand {
@@ -151,7 +151,7 @@ func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloa
 	// guard against allocating large buffer
 	if metadataSize > MaxFrameSize {
 		return nil, nil, fmt.Errorf("frame metadata size (%d) "+
-				"cannot b greater than max frame size (%d)", metadataSize, MaxFrameSize)
+			"cannot b greater than max frame size (%d)", metadataSize, MaxFrameSize)
 	}
 
 	// Read protobuf encoded metadata
@@ -164,30 +164,30 @@ func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloa
 		return nil, nil, err
 	}
 
-    // Anything left in the frame is considered
-    // the payload and can be any sequence of bytes.
-    payloads := make([]byte, lr.N)
-    if _, err = io.ReadFull(lr, payloads); err != nil {
-        return nil, nil, err
-    }
+	// Anything left in the frame is considered
+	// the payload and can be any sequence of bytes.
+	payloads := make([]byte, lr.N)
+	if _, err = io.ReadFull(lr, payloads); err != nil {
+		return nil, nil, err
+	}
 
-    numMsg := msgMeta.GetNumMessagesInBatch()
+	numMsg := msgMeta.GetNumMessagesInBatch()
 
-    singleMessages, err := decodeBatchPayload(payloads, numMsg)
-    if err != nil {
-        return nil, nil, err
-    }
+	singleMessages, err := decodeBatchPayload(payloads, numMsg)
+	if err != nil {
+		return nil, nil, err
+	}
 
-    for _, singleMsg := range singleMessages {
-        payload = singleMsg.SinglePayload
-        msgMeta.PartitionKey = singleMsg.SingleMeta.PartitionKey
-        msgMeta.Properties = singleMsg.SingleMeta.Properties
-        msgMeta.EventTime = singleMsg.SingleMeta.EventTime
-    }
+	for _, singleMsg := range singleMessages {
+		payload = singleMsg.SinglePayload
+		msgMeta.PartitionKey = singleMsg.SingleMeta.PartitionKey
+		msgMeta.Properties = singleMsg.SingleMeta.Properties
+		msgMeta.EventTime = singleMsg.SingleMeta.EventTime
+	}
 
 	if computed := chksum.compute(); !bytes.Equal(computed, expectedChksum) {
 		return nil, nil, fmt.Errorf("checksum mismatch: computed (0x%X) does "+
-				"not match given checksum (0x%X)", computed, expectedChksum)
+			"not match given checksum (0x%X)", computed, expectedChksum)
 	}
 
 	return msgMeta, payload, nil

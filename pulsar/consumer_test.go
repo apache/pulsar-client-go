@@ -67,7 +67,7 @@ func TestProducerConsumer(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		if err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-			Key: "pulsar",
+			Key:     "pulsar",
 			Properties: map[string]string{
 				"key-1": "pulsar-1",
 			},
