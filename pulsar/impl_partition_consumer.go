@@ -580,50 +580,53 @@ func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headers
 	id := newMessageID(int64(msgID.GetLedgerId()), int64(msgID.GetEntryId()),
 		int(msgID.GetBatchIndex()), pc.partitionIdx)
 
-	msgMeta, payload, err := internal.ParseMessage(headersAndPayload)
+	msgMeta, payloadList, err := internal.ParseMessage(headersAndPayload)
 	if err != nil {
 		return fmt.Errorf("parse message error:%s", err)
 	}
 
-	//numMsgs := msgMeta.GetNumMessagesInBatch()
+	var consumerMsg ConsumerMessage
+	for _, payload := range payloadList {
+		msg := &message{
+			publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+			eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+			key:         msgMeta.GetPartitionKey(),
+			properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
+			topic:       pc.topic,
+			msgID:       id,
+			payLoad:     payload,
+		}
 
-	msg := &message{
-		publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-		eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-		key:         msgMeta.GetPartitionKey(),
-		properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
-		topic:       pc.topic,
-		msgID:       id,
-		payLoad:     payload,
-	}
+		consumerMsg = ConsumerMessage{
+			Message:  msg,
+			Consumer: pc,
+		}
 
-	consumerMsg := ConsumerMessage{
-		Message:  msg,
-		Consumer: pc,
-	}
+		select {
+		case pc.subQueue <- consumerMsg:
+			//Add messageId to Overflow buffer, avoiding duplicates.
+			newMid := response.GetMessageId()
+			var dup bool
 
-	select {
-	case pc.subQueue <- consumerMsg:
-		// Add messageId to Overflow buffer, avoiding duplicates.
-		newMid := response.GetMessageId()
-		var dup bool
-
-		pc.omu.Lock()
-		for _, mid := range pc.overflow {
-			if proto.Equal(mid, newMid) {
-				dup = true
-				break
+			pc.omu.Lock()
+			for _, mid := range pc.overflow {
+				if proto.Equal(mid, newMid) {
+					dup = true
+					break
+				}
 			}
-		}
 
-		if !dup {
-			pc.overflow = append(pc.overflow, newMid)
+			if !dup {
+				pc.overflow = append(pc.overflow, newMid)
+			}
+			pc.omu.Unlock()
+			continue
+		default:
+			return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
 		}
-		pc.omu.Unlock()
-		return nil
-	default:
-		return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
 	}
+
+	return nil
 }
 
 type handleAck struct {

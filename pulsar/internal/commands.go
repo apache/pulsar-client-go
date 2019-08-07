@@ -87,7 +87,7 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.Write(payload)
 }
 
-func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payload []byte, err error) {
+func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloadList [][]byte, err error) {
 	// reusable buffer for 4-byte uint32s
 	buf32 := make([]byte, 4)
 	r := bytes.NewReader(headersAndPayload)
@@ -164,33 +164,63 @@ func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloa
 		return nil, nil, err
 	}
 
-	// Anything left in the frame is considered
-	// the payload and can be any sequence of bytes.
-	payloads := make([]byte, lr.N)
-	if _, err = io.ReadFull(lr, payloads); err != nil {
-		return nil, nil, err
-	}
-
 	numMsg := msgMeta.GetNumMessagesInBatch()
 
-	singleMessages, err := decodeBatchPayload(payloads, numMsg)
-	if err != nil {
+	if numMsg > 0 && msgMeta.NumMessagesInBatch != nil {
+		payloads := make([]byte, lr.N)
+		if _, err = io.ReadFull(lr, payloads); err != nil {
+			return nil, nil, err
+		}
+
+		singleMessages, err := decodeBatchPayload(payloads, numMsg)
+		if err != nil {
+			return nil, nil, err
+		}
+
+		payloadList = make([][]byte, 0, numMsg)
+		for _, singleMsg := range singleMessages {
+			msgMeta.PartitionKey = singleMsg.SingleMeta.PartitionKey
+			msgMeta.Properties = singleMsg.SingleMeta.Properties
+			msgMeta.EventTime = singleMsg.SingleMeta.EventTime
+			payloadList = append(payloadList, singleMsg.SinglePayload)
+		}
+
+		if err := computeChecksum(chksum, expectedChksum); err != nil {
+			return nil, nil, err
+		}
+		return msgMeta, payloadList, nil
+	}
+	// Anything left in the frame is considered
+	// the payload and can be any sequence of bytes.
+	payloadList = make([][]byte, 0, 10)
+	if lr.N > 0 {
+		// guard against allocating large buffer
+		if lr.N > MaxFrameSize {
+			return nil, nil, fmt.Errorf("frame payload size (%d) cannot be greater than max frame size (%d)", lr.N, MaxFrameSize)
+		}
+
+		payload := make([]byte, lr.N)
+		if _, err = io.ReadFull(lr, payload); err != nil {
+			return nil, nil, err
+		}
+
+		payloadList = append(payloadList, payload)
+	}
+
+	if err := computeChecksum(chksum, expectedChksum); err != nil {
 		return nil, nil, err
 	}
 
-	for _, singleMsg := range singleMessages {
-		payload = singleMsg.SinglePayload
-		msgMeta.PartitionKey = singleMsg.SingleMeta.PartitionKey
-		msgMeta.Properties = singleMsg.SingleMeta.Properties
-		msgMeta.EventTime = singleMsg.SingleMeta.EventTime
-	}
+	return msgMeta, payloadList, nil
+}
 
-	if computed := chksum.compute(); !bytes.Equal(computed, expectedChksum) {
-		return nil, nil, fmt.Errorf("checksum mismatch: computed (0x%X) does "+
+func computeChecksum(chksum CheckSum, expectedChksum []byte) error {
+	computed := chksum.compute()
+	if !bytes.Equal(computed, expectedChksum) {
+		return fmt.Errorf("checksum mismatch: computed (0x%X) does "+
 			"not match given checksum (0x%X)", computed, expectedChksum)
 	}
-
-	return msgMeta, payload, nil
+	return nil
 }
 
 func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageMetadata, payload []byte) {
@@ -252,7 +282,7 @@ type singleMessage struct {
 func decodeBatchPayload(bp []byte, batchNum int32) ([]*singleMessage, error) {
 	buf32 := make([]byte, 4)
 	rdBuf := bytes.NewReader(bp)
-	list := make([]*singleMessage, 0, batchNum)
+	singleMsgList := make([]*singleMessage, 0, batchNum)
 	for i := int32(0); i < batchNum; i++ {
 		// singleMetaSize
 		if _, err := io.ReadFull(rdBuf, buf32); err != nil {
@@ -274,13 +304,15 @@ func decodeBatchPayload(bp []byte, batchNum int32) ([]*singleMessage, error) {
 		if _, err := io.ReadFull(rdBuf, singlePayload); err != nil {
 			return nil, err
 		}
-		d := &singleMessage{}
-		d.SingleMetaSize = singleMetaSize
-		d.SingleMeta = singleMeta
-		d.SinglePayload = singlePayload
-		list = append(list, d)
+		singleMsg := &singleMessage{
+			SingleMetaSize: singleMetaSize,
+			SingleMeta:     singleMeta,
+			SinglePayload:  singlePayload,
+		}
+
+		singleMsgList = append(singleMsgList, singleMsg)
 	}
-	return list, nil
+	return singleMsgList, nil
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte

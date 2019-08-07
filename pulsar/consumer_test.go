@@ -124,6 +124,67 @@ func TestConsumerConnectError(t *testing.T) {
 	assert.Equal(t, err.Error(), "connection error")
 }
 
+func TestBatchMessageReceive(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "persistent://public/default/receive-batch"
+	subName := "subscription-name"
+	prefix := "msg-batch-"
+	ctx := context.Background()
+
+	// Enable batching on producer side
+	batchSize, numOfMessages := 2, 100
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topicName,
+		BatchingMaxMessages: uint(batchSize),
+		DisableBatching:     false,
+		BlockIfQueueFull:    true,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, topicName, producer.Topic())
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+	})
+	assert.Equal(t, topicName, consumer.Topic())
+	count := 0
+
+	for i := 0; i < numOfMessages; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		msg := &ProducerMessage{
+			Payload: []byte(messageContent),
+		}
+		err := producer.Send(ctx, msg)
+		assert.Nil(t, err)
+	}
+
+	for i := 0; i < numOfMessages; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
+		count++
+	}
+
+	// check strategically
+	for i := 0; i < 3; i++ {
+		if count == numOfMessages {
+			break
+		}
+		time.Sleep(time.Second)
+	}
+	assert.Equal(t, count, numOfMessages)
+}
+
 func TestConsumerWithInvalidConf(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
