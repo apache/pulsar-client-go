@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -91,7 +92,8 @@ func TestProducerAsyncSend(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	producer.Flush()
+	err = producer.Flush()
+	assert.Nil(t, err)
 
 	wg.Wait()
 
@@ -178,4 +180,38 @@ func TestProducerLastSequenceID(t *testing.T) {
 
 	err = client.Close()
 	assert.NoError(t, err)
+}
+
+func TestEventTime(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := "test-event-time"
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "subName",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	eventTime := timeFromUnixTimestampMillis(uint64(1565161612))
+	err = producer.Send(context.Background(), &ProducerMessage{
+		Payload:   []byte(fmt.Sprintf("test-event-time")),
+		EventTime: &eventTime,
+	})
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	actualEventTime := msg.EventTime()
+	assert.Equal(t, eventTime.Unix(), actualEventTime.Unix())
 }

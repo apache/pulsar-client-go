@@ -585,7 +585,6 @@ func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headers
 		return fmt.Errorf("parse message error:%s", err)
 	}
 
-	var consumerMsg ConsumerMessage
 	for _, payload := range payloadList {
 		msg := &message{
 			publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
@@ -597,7 +596,7 @@ func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headers
 			payLoad:     payload,
 		}
 
-		consumerMsg = ConsumerMessage{
+		consumerMsg := ConsumerMessage{
 			Message:  msg,
 			Consumer: pc,
 		}
