@@ -107,7 +107,7 @@ type ProducerOptions struct {
 	// MessageRouter set a custom message routing policy by passing an implementation of MessageRouter
 	// The router is a function that given a particular message and the topic metadata, returns the
 	// partition index where the message should be routed to
-	MessageRouter func(Message, TopicMetadata) int
+	MessageRouter func(*ProducerMessage, TopicMetadata) int
 
 	// DisableBatching control whether automatic batching of messages is enabled for the producer. By default batching
 	// is enabled.
