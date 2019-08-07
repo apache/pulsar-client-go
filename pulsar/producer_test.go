@@ -30,6 +30,55 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+func TestInvalidURL(t *testing.T) {
+	client, err := NewClient(ClientOptions{})
+
+	if client != nil || err == nil {
+		t.Fatal("Should have failed to create client")
+	}
+}
+
+func TestProducerConnectError(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://invalid-hostname:6650",
+	})
+
+	assert.Nil(t, err)
+
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	// Expect error in creating producer
+	assert.Nil(t, producer)
+	assert.NotNil(t, err)
+
+	assert.Equal(t, err.Error(), "connection error")
+}
+
+func TestProducerNoTopic(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+
+	if err != nil {
+		t.Fatal(err)
+		return
+	}
+
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{})
+
+	// Expect error in creating producer
+	assert.Nil(t, producer)
+	assert.NotNil(t, err)
+
+	assert.Equal(t, err.(*Error).Result(), ResultInvalidTopicName)
+}
+
 func TestSimpleProducer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
