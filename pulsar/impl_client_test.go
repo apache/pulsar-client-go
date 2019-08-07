@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"fmt"
 	"io/ioutil"
 	"testing"
 
@@ -198,4 +199,35 @@ func TestTokenAuthFromFile(t *testing.T) {
 
 	err = client.Close()
 	assert.NoError(t, err)
+}
+
+func TestTopicPartitions(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// Create topic with 5 partitions
+	httpPut("http://localhost:8080/admin/v2/persistent/public/default/TestGetTopicPartitions/partitions",
+		5)
+
+	partitionedTopic := "persistent://public/default/TestGetTopicPartitions"
+
+	partitions, err := client.TopicPartitions(partitionedTopic)
+	assert.Nil(t, err)
+	assert.Equal(t, len(partitions), 5)
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, partitions[i],
+			fmt.Sprintf("%s-partition-%d", partitionedTopic, i))
+	}
+
+	// Non-Partitioned topic
+	topic := "persistent://public/default/TestGetTopicPartitions-nopartitions"
+
+	partitions, err = client.TopicPartitions(topic)
+	assert.Nil(t, err)
+	assert.Equal(t, len(partitions), 1)
+	assert.Equal(t, partitions[0], topic)
 }
