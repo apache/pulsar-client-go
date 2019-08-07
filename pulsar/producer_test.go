@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -178,4 +179,50 @@ func TestProducerLastSequenceID(t *testing.T) {
 
 	err = client.Close()
 	assert.NoError(t, err)
+}
+
+func TestMessageRouter(t *testing.T) {
+	// Create topic with 5 partitions
+	httpPut("http://localhost:8080/admin/v2/persistent/public/default/my-partitioned-topic/partitions", 5)
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// Only subscribe on the specific partition
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            "my-partitioned-topic-partition-2",
+		SubscriptionName: "my-sub",
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: "my-partitioned-topic",
+		MessageRouter: func(msg *ProducerMessage, tm TopicMetadata) int {
+			fmt.Println("Routing message ", msg, " -- Partitions: ", tm.NumPartitions())
+			return 2
+		},
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+
+	err = producer.Send(ctx, &ProducerMessage{
+		Payload: []byte("hello"),
+	})
+	assert.Nil(t, err)
+
+	fmt.Println("PUBLISHED")
+
+	// Verify message was published on partition 2
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+	assert.Equal(t, string(msg.Payload()), "hello")
 }

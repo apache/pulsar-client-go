@@ -18,7 +18,11 @@
 package pulsar
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
+	"log"
+	"net/http"
 	"time"
 )
 
@@ -38,4 +42,23 @@ func newTopicName() string {
 
 func newAuthTopicName() string {
 	return fmt.Sprintf("private/auth/my-topic-%v", time.Now().Nanosecond())
+}
+
+func httpPut(url string, body interface{}) {
+	client := http.Client{}
+
+	data, _ := json.Marshal(body)
+	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(data))
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	req.Header = map[string][]string{
+		"Content-Type": {"application/json"},
+	}
+
+	_, err = client.Do(req)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
