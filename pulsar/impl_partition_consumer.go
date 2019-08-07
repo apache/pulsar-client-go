@@ -37,7 +37,7 @@ const maxRedeliverUnacknowledged = 1000
 type consumerState int
 
 const (
-	consumerInit = iota
+	consumerInit consumerState = iota
 	consumerReady
 	consumerClosing
 	consumerClosed

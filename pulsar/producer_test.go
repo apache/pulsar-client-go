@@ -20,6 +20,7 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"sync"
 	"testing"
 	"time"
@@ -263,4 +264,173 @@ func TestEventTime(t *testing.T) {
 	assert.Nil(t, err)
 	actualEventTime := msg.EventTime()
 	assert.Equal(t, eventTime.Unix(), actualEventTime.Unix())
+}
+
+func TestFlushInProducer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := "test-flush-in-producer"
+	subName := "subscription-name"
+	numOfMessages := 10
+	ctx := context.Background()
+
+	// set batch message number numOfMessages, and max delay 10s
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBatching:         false,
+		BatchingMaxMessages:     uint(numOfMessages),
+		BatchingMaxPublishDelay: time.Second * 10,
+		BlockIfQueueFull:        true,
+		Properties: map[string]string{
+			"producer-name": "test-producer-name",
+			"producer-id":   "test-producer-id",
+		},
+	})
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	prefix := "msg-batch-async"
+	msgCount := 0
+
+	wg := sync.WaitGroup{}
+	wg.Add(5)
+	errors := util.NewBlockingQueue(10)
+	for i := 0; i < numOfMessages/2; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(messageContent),
+		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
+			if e != nil {
+				log.WithError(e).Error("Failed to publish")
+				errors.Put(e)
+			} else {
+				log.Info("Published message ", id)
+			}
+			wg.Done()
+		})
+		assert.Nil(t, err)
+	}
+	err = producer.Flush()
+	assert.Nil(t, err)
+	wg.Wait()
+
+	for i := 0; i < numOfMessages/2; i++ {
+		_, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		msgCount++
+	}
+
+	assert.Equal(t, msgCount, numOfMessages/2)
+
+	wg.Add(5)
+	for i := numOfMessages / 2; i < numOfMessages; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(messageContent),
+		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
+			if e != nil {
+				log.WithError(e).Error("Failed to publish")
+				errors.Put(e)
+			} else {
+				log.Info("Published message ", id)
+			}
+			wg.Done()
+		})
+		assert.Nil(t, err)
+	}
+
+	err = producer.Flush()
+	assert.Nil(t, err)
+	wg.Wait()
+
+	for i := numOfMessages / 2; i < numOfMessages; i++ {
+		_, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		msgCount++
+	}
+	assert.Equal(t, msgCount, numOfMessages)
+}
+
+func TestFlushInPartitionedProducer(t *testing.T) {
+	topicName := "persistent://public/default/partition-testFlushInPartitionedProducer12"
+
+	// call admin api to make it partitioned
+	url := adminURL + "/" + "admin/v2/" + topicName + "/partitions"
+	makeHTTPCall(t, http.MethodPut, url, "5")
+
+	numberOfPartitions := 5
+	numOfMessages := 10
+	ctx := context.Background()
+
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// set batch message number numOfMessages, and max delay 10s
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBatching:         false,
+		BatchingMaxMessages:     uint(numOfMessages / numberOfPartitions),
+		BatchingMaxPublishDelay: time.Second * 10,
+		BlockIfQueueFull:        true,
+	})
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+
+	prefix := "msg-batch-async-"
+	wg := sync.WaitGroup{}
+	wg.Add(5)
+	errors := util.NewBlockingQueue(10)
+	for i := 0; i < numOfMessages/2; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(messageContent),
+		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
+			if e != nil {
+				log.WithError(e).Error("Failed to publish")
+				errors.Put(e)
+			} else {
+				log.Info("Published message: ", id)
+			}
+			wg.Done()
+		})
+		assert.Nil(t, err)
+	}
+
+	// After flush, should be able to consume.
+	err = producer.Flush()
+	assert.Nil(t, err)
+
+	wg.Wait()
+
+	// Receive all messages
+	msgCount := 0
+	for i := 0; i < numOfMessages/2; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		msg, err := consumer.Receive(ctx)
+		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+			msg.ID(), string(msg.Payload()))
+		assert.Nil(t, err)
+		assert.Equal(t, messageContent, string(msg.Payload()))
+		msgCount++
+	}
+	assert.Equal(t, msgCount, numOfMessages/2)
 }

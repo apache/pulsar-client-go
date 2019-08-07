@@ -34,7 +34,7 @@ import (
 type producerState int
 
 const (
-	producerInit = iota
+	producerInit producerState = iota
 	producerReady
 	producerClosing
 	producerClosed
@@ -249,7 +249,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	sequenceID := internal.GetAndAdd(p.sequenceIDGenerator, 1)
 
 	if sendAsBatch {
-		for p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters) == false {
+		ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters)
+		if ok == false {
 			// The current batch is full.. flush it and retry
 			p.internalFlushCurrentBatch()
 		}
