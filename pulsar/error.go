@@ -24,7 +24,7 @@ type Result int
 
 const (
 	// ResultOk means no errors
-	ResultOk = iota
+	ResultOk Result = iota
 	// ResultUnknownError means unknown error happened on broker
 	ResultUnknownError
 	// ResultInvalidConfiguration means invalid configuration
@@ -59,8 +59,8 @@ const (
 	//ProducerBlockedQuotaExceededException Result = 25 // Producer is getting exception
 	//ProducerQueueIsFull                   Result = 26 // Producer queue is full
 	//MessageTooBig                         Result = 27 // Trying to send a messages exceeding the max size
-	TopicNotFound        Result = 28 // Topic not found
-	SubscriptionNotFound Result = 29 // Subscription not found
+	TopicNotFound        = 28 // Topic not found
+	SubscriptionNotFound = 29 // Subscription not found
 	//ConsumerNotFound                      Result = 30 // Consumer not found
 	//UnsupportedVersionError               Result = 31 // Error when an older client/version doesn't support a required feature
 	//TopicTerminated                       Result = 32 // Topic was already terminated
