@@ -57,6 +57,8 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
 			return internalRouter(message.Key, metadata.NumPartitions())
 		}
+	} else {
+		p.messageRouter = options.MessageRouter
 	}
 
 	partitions, err := client.TopicPartitions(options.Topic)
