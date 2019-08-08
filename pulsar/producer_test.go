@@ -293,9 +293,8 @@ func TestFlushInProducer(t *testing.T) {
 	defer producer.Close()
 
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:             topicName,
-		SubscriptionName:  subName,
-		ReceiverQueueSize: 2,
+		Topic:            topicName,
+		SubscriptionName: subName,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -363,7 +362,7 @@ func TestFlushInProducer(t *testing.T) {
 }
 
 func TestFlushInPartitionedProducer(t *testing.T) {
-	topicName := "persistent://public/default/partition-testFlushInPartitionedProducer12"
+	topicName := "persistent://public/default/partition-testFlushInPartitionedProducer"
 
 	// call admin api to make it partitioned
 	url := adminURL + "/" + "admin/v2/" + topicName + "/partitions"
@@ -373,13 +372,23 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	numOfMessages := 10
 	ctx := context.Background()
 
+	// creat client connection
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
 	})
 	assert.NoError(t, err)
 	defer client.Close()
 
-	// set batch message number numOfMessages, and max delay 10s
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer and set batch message number numOfMessages, and max delay 10s
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:                   topicName,
 		DisableBatching:         false,
@@ -389,10 +398,11 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	})
 	defer producer.Close()
 
+	// send 5 messages
 	prefix := "msg-batch-async-"
 	wg := sync.WaitGroup{}
 	wg.Add(5)
-	errors := util.NewBlockingQueue(10)
+	errors := util.NewBlockingQueue(5)
 	for i := 0; i < numOfMessages/2; i++ {
 		messageContent := prefix + fmt.Sprintf("%d", i)
 		producer.SendAsync(ctx, &ProducerMessage{
@@ -415,20 +425,14 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 
 	wg.Wait()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:             topicName,
-		SubscriptionName:  "my-sub",
-		Type:              Exclusive,
-		ReceiverQueueSize: 2,
-	})
-	assert.Nil(t, err)
-	defer consumer.Close()
 	// Receive all messages
 	msgCount := 0
 	for i := 0; i < numOfMessages/2; i++ {
 		msg, err := consumer.Receive(ctx)
 		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
 			msg.ID(), string(msg.Payload()))
+		assert.Nil(t, err)
+		err = consumer.Ack(msg)
 		assert.Nil(t, err)
 		msgCount++
 	}

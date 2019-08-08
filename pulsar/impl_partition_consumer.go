@@ -239,6 +239,15 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *handleUnsubscribe) {
 }
 
 func (pc *partitionConsumer) Receive(ctx context.Context) (Message, error) {
+	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
+
+	// request half the buffer's capacity
+	if err := pc.internalFlow(highwater); err != nil {
+		pc.log.Errorf("Send Flow cmd error:%s", err.Error())
+		return nil, err
+	}
+	var receivedSinceFlow uint32
+
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -252,6 +261,14 @@ func (pc *partitionConsumer) Receive(ctx context.Context) (Message, error) {
 			}
 			if pc.unAckTracker != nil {
 				pc.unAckTracker.Add(id)
+			}
+			receivedSinceFlow++
+			if receivedSinceFlow >= highwater {
+				if err := pc.internalFlow(receivedSinceFlow); err != nil {
+					pc.log.Errorf("Send Flow cmd error:%s", err.Error())
+					return nil, err
+				}
+				receivedSinceFlow = 0
 			}
 			return cm.Message, nil
 		}
@@ -297,7 +314,6 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
 			return ctx.Err()
 		}
 	}
-
 }
 
 func (pc *partitionConsumer) Ack(msg Message) error {

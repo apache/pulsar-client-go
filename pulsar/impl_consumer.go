@@ -79,6 +79,7 @@ func newConsumer(client *client, options *ConsumerOptions) (*consumer, error) {
 func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string) (*consumer, error) {
 	c := &consumer{
 		topicName: topic,
+		log:       log.WithField("topic", topic),
 		queue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
 	}
 
@@ -156,8 +157,17 @@ func (c *consumer) Unsubscribe() error {
 func (c *consumer) Receive(ctx context.Context) (Message, error) {
 	for _, pc := range c.consumers {
 		go func(pc Consumer) {
-			if err := pc.ReceiveAsync(ctx, c.queue); err != nil {
-				return
+			for {
+				msg, err := pc.Receive(ctx)
+				if err != nil {
+					return
+				}
+
+				consumerMessage := ConsumerMessage{
+					Message:  msg,
+					Consumer: pc,
+				}
+				c.queue <- consumerMessage
 			}
 		}(pc)
 	}
@@ -165,16 +175,24 @@ func (c *consumer) Receive(ctx context.Context) (Message, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
-	case msg, ok := <-c.queue:
+	case cMsg, ok := <-c.queue:
 		if ok {
-			return msg.Message, nil
+			return cMsg.Message, nil
 		}
 		return nil, errors.New("receive message error")
 	}
 }
 
 func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	//TODO: impl logic
+	for _, pc := range c.consumers {
+		go func(pc Consumer) {
+			if err := pc.ReceiveAsync(ctx, msgs); err != nil {
+				c.log.Errorf("receive async messages error, please check.")
+				return
+			}
+		}(pc)
+	}
+
 	return nil
 }
 

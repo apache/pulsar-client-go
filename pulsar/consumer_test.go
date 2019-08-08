@@ -324,7 +324,7 @@ func TestConsumerKeyShared(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	time.Sleep(time.Second * 5)
+	time.Sleep(time.Second * 1)
 
 	go func() {
 		for i := 0; i < 10; i++ {
@@ -349,6 +349,8 @@ func TestConsumerKeyShared(t *testing.T) {
 			}
 		}
 	}()
+
+	time.Sleep(time.Second * 1)
 }
 
 func TestPartitionTopicsConsumerPubSub(t *testing.T) {
@@ -358,10 +360,10 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "persistent://public/default/testGetPartitions"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
+	topic := "persistent://public/default/testGetPartitions1"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions1/partitions"
 
-	makeHTTPCall(t, http.MethodPut, testURL, "3")
+	makeHTTPCall(t, http.MethodPut, testURL, "50")
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
@@ -377,9 +379,10 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Equal(t, topic+"-partition-2", topics[2])
 
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "my-sub",
-		Type:             Exclusive,
+		Topic:             topic,
+		SubscriptionName:  "my-sub",
+		Type:              Exclusive,
+		ReceiverQueueSize: 1,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -408,4 +411,64 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	}
 
 	assert.Equal(t, len(msgs), 10)
+}
+
+func TestConsumer_ReceiveAsync(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "persistent://public/default/receive-async"
+	subName := "subscription-receive-async"
+	ctx := context.Background()
+	ch := make(chan ConsumerMessage, 10)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+	})
+	defer consumer.Close()
+
+	//send 10 messages
+	for i := 0; i < 10; i++ {
+		err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	//receive async 10 messages
+	for i := 0; i < 10; i++ {
+		err := consumer.ReceiveAsync(ctx, ch)
+		assert.Nil(t, err)
+	}
+	payloadList := make([]string, 0, 10)
+
+RECEIVE:
+	for {
+		select {
+		case cMsg, ok := <-ch:
+			if ok {
+				assert.Equal(t, topicName, cMsg.Message.Topic())
+				assert.Equal(t, topicName, cMsg.Consumer.Topic())
+				payloadList = append(payloadList, string(cMsg.Message.Payload()))
+				if len(payloadList) == 10 {
+					break RECEIVE
+				}
+			}
+			continue RECEIVE
+		case <-ctx.Done():
+			t.Error("context error.")
+			return
+		}
+	}
 }
