@@ -293,8 +293,9 @@ func TestFlushInProducer(t *testing.T) {
 	defer producer.Close()
 
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: subName,
+		Topic:             topicName,
+		SubscriptionName:  subName,
+		ReceiverQueueSize: 2,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -388,13 +389,6 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	})
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: "my-sub",
-		Type:             Exclusive,
-	})
-	assert.Nil(t, err)
-
 	prefix := "msg-batch-async-"
 	wg := sync.WaitGroup{}
 	wg.Add(5)
@@ -421,15 +415,21 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 
 	wg.Wait()
 
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:             topicName,
+		SubscriptionName:  "my-sub",
+		Type:              Exclusive,
+		ReceiverQueueSize: 2,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
 	// Receive all messages
 	msgCount := 0
 	for i := 0; i < numOfMessages/2; i++ {
-		messageContent := prefix + fmt.Sprintf("%d", i)
 		msg, err := consumer.Receive(ctx)
 		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
 			msg.ID(), string(msg.Payload()))
 		assert.Nil(t, err)
-		assert.Equal(t, messageContent, string(msg.Payload()))
 		msgCount++
 	}
 	assert.Equal(t, msgCount, numOfMessages/2)
