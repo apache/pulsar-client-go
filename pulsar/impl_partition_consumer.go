@@ -238,37 +238,55 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *handleUnsubscribe) {
 	unsub.waitGroup.Done()
 }
 
-func (pc *partitionConsumer) Receive(ctx context.Context) (Message, error) {
-	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
+func (pc *partitionConsumer) trackMessage(msgID MessageID) error {
+	id := &pb.MessageIdData{}
+	err := proto.Unmarshal(msgID.Serialize(), id)
+	if err != nil {
+		pc.log.WithError(err).Errorf("unserialize message id error:%s", err.Error())
+		return err
+	}
+	if pc.unAckTracker != nil {
+		pc.unAckTracker.Add(id)
+	}
+	return nil
+}
 
-	// request half the buffer's capacity
-	if err := pc.internalFlow(highwater); err != nil {
+func (pc *partitionConsumer) increaseAvailablePermits(receivedSinceFlow uint32) error {
+	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
+	if receivedSinceFlow >= highwater {
+		if err := pc.internalFlow(receivedSinceFlow); err != nil {
+			pc.log.Errorf("Send Flow cmd error:%s", err.Error())
+			return err
+		}
+		receivedSinceFlow = 0
+	}
+	return nil
+}
+
+func (pc *partitionConsumer) Receive(ctx context.Context) (Message, error) {
+	var receivedSinceFlow uint32
+	if err := pc.internalFlow(1); err != nil {
 		pc.log.Errorf("Send Flow cmd error:%s", err.Error())
 		return nil, err
 	}
-	var receivedSinceFlow uint32
 
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
 	case cm, ok := <-pc.subQueue:
 		if ok {
-			id := &pb.MessageIdData{}
-			err := proto.Unmarshal(cm.ID().Serialize(), id)
+
+			// track messages by message ID
+			err := pc.trackMessage(cm.ID())
 			if err != nil {
-				pc.log.WithError(err).Errorf("unserialize message id error:%s", err.Error())
 				return nil, err
 			}
-			if pc.unAckTracker != nil {
-				pc.unAckTracker.Add(id)
-			}
+
+			// increase available permits
 			receivedSinceFlow++
-			if receivedSinceFlow >= highwater {
-				if err := pc.internalFlow(receivedSinceFlow); err != nil {
-					pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-					return nil, err
-				}
-				receivedSinceFlow = 0
+			err = pc.increaseAvailablePermits(receivedSinceFlow)
+			if err != nil {
+				return nil, err
 			}
 			return cm.Message, nil
 		}
@@ -291,22 +309,18 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
 		case tmpMsg, ok := <-pc.subQueue:
 			if ok {
 				msgs <- tmpMsg
-				id := &pb.MessageIdData{}
-				err := proto.Unmarshal(tmpMsg.ID().Serialize(), id)
+
+				// track messages by message ID
+				err := pc.trackMessage(tmpMsg.ID())
 				if err != nil {
-					pc.log.WithError(err).Errorf("unserialize message id error:%s", err.Error())
 					return err
 				}
-				if pc.unAckTracker != nil {
-					pc.unAckTracker.Add(id)
-				}
+
+				// increase available permits
 				receivedSinceFlow++
-				if receivedSinceFlow >= highwater {
-					if err := pc.internalFlow(receivedSinceFlow); err != nil {
-						pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-						return err
-					}
-					receivedSinceFlow = 0
+				err = pc.increaseAvailablePermits(receivedSinceFlow)
+				if err != nil {
+					return err
 				}
 				continue
 			}

@@ -322,13 +322,25 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) erro
 func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error)) {
 	p.publishSemaphore.Acquire()
-	p.eventsChan <- &sendRequest{ctx, msg, callback, false}
+	sr := &sendRequest{
+		ctx:              ctx,
+		msg:              msg,
+		callback:         callback,
+		flushImmediately: false,
+	}
+	p.eventsChan <- sr
 }
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
 	p.publishSemaphore.Acquire()
-	p.eventsChan <- &sendRequest{ctx, msg, callback, flushImmediately}
+	sr := &sendRequest{
+		ctx:              ctx,
+		msg:              msg,
+		callback:         callback,
+		flushImmediately: flushImmediately,
+	}
+	p.eventsChan <- sr
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {

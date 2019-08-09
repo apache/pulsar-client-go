@@ -445,10 +445,9 @@ func TestConsumer_ReceiveAsync(t *testing.T) {
 	}
 
 	//receive async 10 messages
-	for i := 0; i < 10; i++ {
-		err := consumer.ReceiveAsync(ctx, ch)
-		assert.Nil(t, err)
-	}
+	err = consumer.ReceiveAsync(ctx, ch)
+	assert.Nil(t, err)
+
 	payloadList := make([]string, 0, 10)
 
 RECEIVE:
@@ -456,6 +455,7 @@ RECEIVE:
 		select {
 		case cMsg, ok := <-ch:
 			if ok {
+				fmt.Printf("receive message payload is:%s\n", string(cMsg.Payload()))
 				assert.Equal(t, topicName, cMsg.Message.Topic())
 				assert.Equal(t, topicName, cMsg.Consumer.Topic())
 				payloadList = append(payloadList, string(cMsg.Message.Payload()))

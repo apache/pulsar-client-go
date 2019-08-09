@@ -187,18 +187,16 @@ func (c *consumer) Receive(ctx context.Context) (Message, error) {
 }
 
 func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	if len(c.consumers) > 1 {
-		for _, pc := range c.consumers {
-			go func(pc Consumer) {
-				if err := pc.ReceiveAsync(ctx, msgs); err != nil {
-					c.log.Errorf("receive async messages error, please check.")
-					return
-				}
-			}(pc)
-		}
+	for _, pc := range c.consumers {
+		go func(pc Consumer) {
+			if err := pc.ReceiveAsync(ctx, msgs); err != nil {
+				c.log.Errorf("receive async messages error:%s, please check.", err.Error())
+				return
+			}
+		}(pc)
 	}
 
-	return c.consumers[0].(*partitionConsumer).ReceiveAsync(ctx, msgs)
+	return nil
 }
 
 //Ack the consumption of a single message
