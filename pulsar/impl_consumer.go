@@ -155,45 +155,50 @@ func (c *consumer) Unsubscribe() error {
 }
 
 func (c *consumer) Receive(ctx context.Context) (Message, error) {
-	for _, pc := range c.consumers {
-		go func(pc Consumer) {
-			for {
-				msg, err := pc.Receive(ctx)
-				if err != nil {
-					return
-				}
+	if len(c.consumers) > 1 {
+		for _, pc := range c.consumers {
+			go func(pc Consumer) {
+				for {
+					msg, err := pc.Receive(ctx)
+					if err != nil {
+						return
+					}
 
-				consumerMessage := ConsumerMessage{
-					Message:  msg,
-					Consumer: pc,
+					consumerMessage := ConsumerMessage{
+						Message:  msg,
+						Consumer: pc,
+					}
+					c.queue <- consumerMessage
 				}
-				c.queue <- consumerMessage
-			}
-		}(pc)
-	}
-
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case cMsg, ok := <-c.queue:
-		if ok {
-			return cMsg.Message, nil
+			}(pc)
 		}
-		return nil, errors.New("receive message error")
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case cMsg, ok := <-c.queue:
+			if ok {
+				return cMsg.Message, nil
+			}
+			return nil, errors.New("receive message error")
+		}
 	}
+
+	return c.consumers[0].(*partitionConsumer).Receive(ctx)
 }
 
 func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	for _, pc := range c.consumers {
-		go func(pc Consumer) {
-			if err := pc.ReceiveAsync(ctx, msgs); err != nil {
-				c.log.Errorf("receive async messages error, please check.")
-				return
-			}
-		}(pc)
+	if len(c.consumers) > 1 {
+		for _, pc := range c.consumers {
+			go func(pc Consumer) {
+				if err := pc.ReceiveAsync(ctx, msgs); err != nil {
+					c.log.Errorf("receive async messages error, please check.")
+					return
+				}
+			}(pc)
+		}
 	}
 
-	return nil
+	return c.consumers[0].(*partitionConsumer).ReceiveAsync(ctx, msgs)
 }
 
 //Ack the consumption of a single message
