@@ -60,8 +60,8 @@ type partitionConsumer struct {
 	consumerID   uint64
 	subQueue     chan ConsumerMessage
 
-	omu      sync.Mutex // protects following
-	overflow []*pb.MessageIdData
+	omu             sync.Mutex // protects following
+	pendingReceives []*pb.MessageIdData
 
 	unAckTracker *UnackedMessageTracker
 
@@ -263,35 +263,32 @@ func (pc *partitionConsumer) increaseAvailablePermits(receivedSinceFlow uint32) 
 	return nil
 }
 
-func (pc *partitionConsumer) Receive(ctx context.Context) (Message, error) {
-	var receivedSinceFlow uint32
-	if err := pc.internalFlow(1); err != nil {
-		pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-		return nil, err
+func (pc *partitionConsumer) messageProcessed(msgID MessageID, receivedSinceFlow uint32) error {
+	err := pc.trackMessage(msgID)
+	if err != nil {
+		return err
+	}
+	receivedSinceFlow++
+
+	err = pc.increaseAvailablePermits(receivedSinceFlow)
+	if err != nil {
+		return err
 	}
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case cm, ok := <-pc.subQueue:
-		if ok {
+	return nil
+}
 
-			// track messages by message ID
-			err := pc.trackMessage(cm.ID())
-			if err != nil {
-				return nil, err
-			}
+func (pc *partitionConsumer) Receive(ctx context.Context) (message Message, err error) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	pc.ReceiveAsyncWithCallback(ctx, func(msg Message, e error) {
+		message = msg
+		err = e
+		wg.Done()
+	})
+	wg.Wait()
 
-			// increase available permits
-			receivedSinceFlow++
-			err = pc.increaseAvailablePermits(receivedSinceFlow)
-			if err != nil {
-				return nil, err
-			}
-			return cm.Message, nil
-		}
-		return nil, newError(ResultConnectError, "receive queue closed")
-	}
+	return message, err
 }
 
 func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
@@ -310,23 +307,43 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
 			if ok {
 				msgs <- tmpMsg
 
-				// track messages by message ID
-				err := pc.trackMessage(tmpMsg.ID())
-				if err != nil {
-					return err
-				}
-
-				// increase available permits
-				receivedSinceFlow++
-				err = pc.increaseAvailablePermits(receivedSinceFlow)
+				err := pc.messageProcessed(tmpMsg.ID(), receivedSinceFlow)
 				if err != nil {
 					return err
 				}
 				continue
 			}
+			break
 		case <-ctx.Done():
 			return ctx.Err()
 		}
+	}
+}
+
+func (pc *partitionConsumer) ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error)) {
+	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
+
+	// request half the buffer's capacity
+	if err := pc.internalFlow(highwater); err != nil {
+		pc.log.Errorf("Send Flow cmd error:%s", err.Error())
+		return
+	}
+	var receivedSinceFlow uint32
+	var err error
+
+	select {
+	case tmpMsg, ok := <-pc.subQueue:
+		if ok {
+			callback(tmpMsg.Message, err)
+			err = pc.messageProcessed(tmpMsg.ID(), receivedSinceFlow)
+			if err != nil {
+				pc.log.Errorf("processed messages error:%s", err.Error())
+				return
+			}
+		}
+	case <-ctx.Done():
+		pc.log.Errorf("context shouldn't done, please check error:%s", ctx.Err().Error())
+		return
 	}
 }
 
@@ -495,23 +512,23 @@ func (pc *partitionConsumer) internalRedeliver(redeliver *handleRedeliver) {
 	pc.omu.Lock()
 	defer pc.omu.Unlock()
 
-	overFlowSize := len(pc.overflow)
+	pendingReceivesSize := len(pc.pendingReceives)
 
-	if overFlowSize == 0 {
+	if pendingReceivesSize == 0 {
 		return
 	}
 
 	requestID := pc.client.rpcClient.NewRequestID()
 
-	for i := 0; i < len(pc.overflow); i += maxRedeliverUnacknowledged {
+	for i := 0; i < len(pc.pendingReceives); i += maxRedeliverUnacknowledged {
 		end := i + maxRedeliverUnacknowledged
-		if end > overFlowSize {
-			end = overFlowSize
+		if end > pendingReceivesSize {
+			end = pendingReceivesSize
 		}
 		_, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID,
 			pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
 				ConsumerId: proto.Uint64(pc.consumerID),
-				MessageIds: pc.overflow[i:end],
+				MessageIds: pc.pendingReceives[i:end],
 			})
 		if err != nil {
 			pc.log.WithError(err).Error("Failed to unsubscribe consumer")
@@ -519,8 +536,8 @@ func (pc *partitionConsumer) internalRedeliver(redeliver *handleRedeliver) {
 		}
 	}
 
-	// clear Overflow slice
-	pc.overflow = nil
+	// clear pendingReceives slice
+	pc.pendingReceives = nil
 
 	if pc.unAckTracker != nil {
 		pc.unAckTracker.clear()
@@ -604,7 +621,7 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 	return nil
 }
 
-func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headersAndPayload []byte) error {
+func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload []byte) error {
 	msgID := response.GetMessageId()
 
 	id := newMessageID(int64(msgID.GetLedgerId()), int64(msgID.GetEntryId()),
@@ -633,22 +650,22 @@ func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headers
 
 		select {
 		case pc.subQueue <- consumerMsg:
-			//Add messageId to Overflow buffer, avoiding duplicates.
-			newMid := response.GetMessageId()
-			var dup bool
-
-			pc.omu.Lock()
-			for _, mid := range pc.overflow {
-				if proto.Equal(mid, newMid) {
-					dup = true
-					break
-				}
-			}
-
-			if !dup {
-				pc.overflow = append(pc.overflow, newMid)
-			}
-			pc.omu.Unlock()
+			////Add messageId to pendingReceives buffer, avoiding duplicates.
+			//newMid := response.GetMessageId()
+			//var dup bool
+			//
+			//pc.omu.Lock()
+			//for _, mid := range pc.pendingReceives {
+			//	if proto.Equal(mid, newMid) {
+			//		dup = true
+			//		break
+			//	}
+			//}
+			//
+			//if !dup {
+			//	pc.pendingReceives = append(pc.pendingReceives, newMid)
+			//}
+			//pc.omu.Unlock()
 			continue
 		default:
 			return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))

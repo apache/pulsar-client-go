@@ -592,3 +592,46 @@ func TestConsumerAckTimeout(t *testing.T) {
 	// sleep 2 seconds, wait gorutine receive messages.
 	time.Sleep(time.Second * 2)
 }
+
+func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "persistent://public/default/receive-async-with-callback"
+	subName := "subscription-receive-async"
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+	})
+	defer consumer.Close()
+
+	//send 10 messages
+	for i := 0; i < 10; i++ {
+		err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	for i := 0; i < 10; i++ {
+		consumer.ReceiveAsyncWithCallback(ctx, func(msg Message, err error) {
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("receive message payload is:%s\n", string(msg.Payload()))
+			assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+		})
+	}
+}
