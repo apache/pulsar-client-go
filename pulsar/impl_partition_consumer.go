@@ -61,7 +61,7 @@ type partitionConsumer struct {
 	subQueue     chan ConsumerMessage
 
 	omu             sync.Mutex // protects following
-	pendingReceives []*pb.MessageIdData
+	redeliverMessages []*pb.MessageIdData
 
 	unAckTracker *UnackedMessageTracker
 
@@ -512,23 +512,23 @@ func (pc *partitionConsumer) internalRedeliver(redeliver *handleRedeliver) {
 	pc.omu.Lock()
 	defer pc.omu.Unlock()
 
-	pendingReceivesSize := len(pc.pendingReceives)
+	redeliverMessagesSize := len(pc.redeliverMessages)
 
-	if pendingReceivesSize == 0 {
+	if redeliverMessagesSize == 0 {
 		return
 	}
 
 	requestID := pc.client.rpcClient.NewRequestID()
 
-	for i := 0; i < len(pc.pendingReceives); i += maxRedeliverUnacknowledged {
+	for i := 0; i < len(pc.redeliverMessages); i += maxRedeliverUnacknowledged {
 		end := i + maxRedeliverUnacknowledged
-		if end > pendingReceivesSize {
-			end = pendingReceivesSize
+		if end > redeliverMessagesSize {
+			end = redeliverMessagesSize
 		}
 		_, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID,
 			pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
 				ConsumerId: proto.Uint64(pc.consumerID),
-				MessageIds: pc.pendingReceives[i:end],
+				MessageIds: pc.redeliverMessages[i:end],
 			})
 		if err != nil {
 			pc.log.WithError(err).Error("Failed to unsubscribe consumer")
@@ -536,8 +536,8 @@ func (pc *partitionConsumer) internalRedeliver(redeliver *handleRedeliver) {
 		}
 	}
 
-	// clear pendingReceives slice
-	pc.pendingReceives = nil
+	// clear redeliverMessages slice
+	pc.redeliverMessages = nil
 
 	if pc.unAckTracker != nil {
 		pc.unAckTracker.clear()
@@ -650,22 +650,22 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 		select {
 		case pc.subQueue <- consumerMsg:
-			////Add messageId to pendingReceives buffer, avoiding duplicates.
-			//newMid := response.GetMessageId()
-			//var dup bool
-			//
-			//pc.omu.Lock()
-			//for _, mid := range pc.pendingReceives {
-			//	if proto.Equal(mid, newMid) {
-			//		dup = true
-			//		break
-			//	}
-			//}
-			//
-			//if !dup {
-			//	pc.pendingReceives = append(pc.pendingReceives, newMid)
-			//}
-			//pc.omu.Unlock()
+			//Add messageId to redeliverMessages buffer, avoiding duplicates.
+			newMid := response.GetMessageId()
+			var dup bool
+			
+			pc.omu.Lock()
+			for _, mid := range pc.redeliverMessages {
+				if proto.Equal(mid, newMid) {
+					dup = true
+					break
+				}
+			}
+			
+			if !dup {
+				pc.redeliverMessages = append(pc.redeliverMessages, newMid)
+			}
+			pc.omu.Unlock()
 			continue
 		default:
 			return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
