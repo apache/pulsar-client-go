@@ -24,9 +24,7 @@
 [![LICENSE](https://img.shields.io/hexpm/l/pulsar.svg)](https://github.com/apache/pulsar-client-go/blob/master/LICENSE)
 # Apache Pulsar Go Client Library
 
-> Note: this library is still a work in progress. For production usage, please
-refer to the CGo based client library, documented at
-http://pulsar.apache.org/docs/en/client-libraries-go/
+A Go client library for the [Apache Pulsar](https://pulsar.incubator.apache.org/) project.
 
 ## Goal
 
@@ -35,6 +33,10 @@ depend on the C++ Pulsar library.
 
 Once feature parity and stability are reached, this will supersede the current
 CGo based library.
+
+## Requirements
+
+- Go 1.11+
 
 ## Status
 
@@ -49,10 +51,14 @@ Import the client library:
 import "github.com/apache/pulsar-client-go/pulsar"
 ```
 
+Create a Producer:
+
 ```go
 client, err := pulsar.NewClient(pulsar.ClientOptions{
     URL: "pulsar://localhost:6650",
 })
+
+defer client.Close()
 
 producer, err := client.CreateProducer(pulsar.ProducerOptions{
 	Topic: "my-topic",
@@ -62,12 +68,44 @@ err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 	Payload: []byte("hello"),
 })
 
-if err == nil {
-	fmt.Println("Published message")
-} else {
-	fmt.Println("Failed to publish message", err)
+defer producer.Close()
+
+if err != nil {
+    fmt.Println("Failed to publish message", err)
 }
+fmt.Println("Published message")
 ```
+
+Create a Consumer:
+
+```go
+client, err := pulsar.NewClient(pulsar.ClientOptions{
+    URL: "pulsar://localhost:6650",
+})
+
+defer client.Close()
+
+consumer, err := client.Subscribe(pulsar.ConsumerOptions{
+        Topic:            "my-topic",
+        SubscriptionName: "my-sub",
+        Type:             pulsar.Shared,
+    })
+
+defer consumer.Close()
+
+msg, err := consumer.Receive(context.Background())
+    if err != nil {
+        log.Fatal(err)
+    }
+
+fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+            msg.ID(), string(msg.Payload()))
+
+```
+
+## Contributing
+
+Contributions are welcomed and greatly appreciated. See [CONTRIBUTING.md](CONTRIBUTING.md) for details on submitting patches and the contribution workflow.
 
 ## Contact
 
@@ -87,5 +125,3 @@ You can self-register at https://apache-pulsar.herokuapp.com/
 ## License
 
 Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
-
-
