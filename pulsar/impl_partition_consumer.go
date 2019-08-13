@@ -67,9 +67,10 @@ type partitionConsumer struct {
 
 	eventsChan   chan interface{}
 	partitionIdx int
+	partitionNum int
 }
 
-func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID int) (*partitionConsumer, error) {
+func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID, partitionNum int, ch chan ConsumerMessage) (*partitionConsumer, error) {
 	c := &partitionConsumer{
 		state:        consumerInit,
 		client:       client,
@@ -78,6 +79,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 		log:          log.WithField("topic", topic),
 		consumerID:   client.rpcClient.NewConsumerID(),
 		partitionIdx: partitionID,
+		partitionNum: partitionNum,
 		eventsChan:   make(chan interface{}),
 		subQueue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
 	}
@@ -128,6 +130,18 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 	c.log = c.log.WithField("name", c.consumerName)
 	c.log.Info("Created consumer")
 	c.state = consumerReady
+
+	// In here, open a gorutine to receive data asynchronously from the subConsumer,
+	// filling the queue channel of the current consumer.
+	if partitionNum > 1 {
+		go func() {
+			err = c.ReceiveAsync(context.Background(), ch)
+			if err != nil {
+				return
+			}
+		}()
+	}
+
 	go c.runEventsLoop()
 
 	return c, nil
@@ -292,10 +306,10 @@ func (pc *partitionConsumer) Receive(ctx context.Context) (message Message, err 
 }
 
 func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
+	highWater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
 
 	// request half the buffer's capacity
-	if err := pc.internalFlow(highwater); err != nil {
+	if err := pc.internalFlow(highWater); err != nil {
 		pc.log.Errorf("Send Flow cmd error:%s", err.Error())
 		return err
 	}

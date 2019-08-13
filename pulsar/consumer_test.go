@@ -358,8 +358,8 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "persistent://public/default/testGetPartitions1"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions1/partitions"
+	topic := "persistent://public/default/testGetPartitions"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
 
 	makeHTTPCall(t, http.MethodPut, testURL, "50")
 
@@ -380,7 +380,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 		Topic:             topic,
 		SubscriptionName:  "my-sub",
 		Type:              Exclusive,
-		ReceiverQueueSize: 1,
+		ReceiverQueueSize: 10,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()

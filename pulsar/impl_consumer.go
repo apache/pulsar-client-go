@@ -101,7 +101,7 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 
 	for partitionIdx, partitionTopic := range partitions {
 		go func(partitionIdx int, partitionTopic string) {
-			cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx)
+			cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
 			ch <- ConsumerError{
 				err:       err,
 				partition: partitionIdx,
@@ -157,17 +157,9 @@ func (c *consumer) Unsubscribe() error {
 func (c *consumer) getMessageFromSubConsumer(ctx context.Context) {
 	for _, pc := range c.consumers {
 		go func(pc Consumer) {
-			for {
-				msg, err := pc.Receive(ctx)
-				if err != nil {
-					return
-				}
-
-				consumerMessage := ConsumerMessage{
-					Message:  msg,
-					Consumer: pc,
-				}
-				c.queue <- consumerMessage
+			err := pc.ReceiveAsync(ctx, c.queue)
+			if err != nil {
+				return
 			}
 		}(pc)
 	}
@@ -175,7 +167,6 @@ func (c *consumer) getMessageFromSubConsumer(ctx context.Context) {
 
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	if len(c.consumers) > 1 {
-		c.getMessageFromSubConsumer(ctx)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -206,7 +197,6 @@ func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage
 func (c *consumer) ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error)) {
 	var err error
 	if len(c.consumers) > 1 {
-		c.getMessageFromSubConsumer(ctx)
 		select {
 		case <-ctx.Done():
 			c.log.Errorf("ReceiveAsyncWithCallback: receive message error:%s", ctx.Err().Error())
