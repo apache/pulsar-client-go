@@ -306,13 +306,6 @@ func (pc *partitionConsumer) Receive(ctx context.Context) (message Message, err 
 }
 
 func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	highWater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
-
-	// request half the buffer's capacity
-	if err := pc.internalFlow(highWater); err != nil {
-		pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-		return err
-	}
 	var receivedSinceFlow uint32
 
 	for {
@@ -335,13 +328,6 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
 }
 
 func (pc *partitionConsumer) ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error)) {
-	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
-
-	// request half the buffer's capacity
-	if err := pc.internalFlow(highwater); err != nil {
-		pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-		return
-	}
 	var receivedSinceFlow uint32
 	var err error
 
