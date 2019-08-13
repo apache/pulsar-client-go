@@ -33,7 +33,7 @@ go build -o pulsar-perf ./perf
 
 # Run tests on the directories that contains any '*_test.go' file
 DIRS=`find . -name '*_test.go' | xargs -n1 dirname | sort | uniq`
-go test -coverprofile=/tmp/coverage ${DIRS}
+go test -coverprofile=/tmp/coverage -timeout=1h ${DIRS}
 go tool cover -html=/tmp/coverage -o coverage.html
 
 ./pulsar-test-service-stop.sh
