@@ -635,3 +635,70 @@ func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
 		})
 	}
 }
+
+func TestPartitionConsumerAckTimeout(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/testPartitionConsumerAckTimeout"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testPartitionConsumerAckTimeout/partitions"
+
+	makeHTTPCall(t, http.MethodPut, testURL, "5")
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		AckTimeout:       5 * 1000,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	msgs := make([]string, 0)
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		msgs = append(msgs, string(msg.Payload()))
+
+		fmt.Printf("First received message msgId: %#v -- content: '%s'\n",
+			msg.ID(), string(msg.Payload()))
+	}
+
+	assert.Equal(t, len(msgs), 10)
+
+	time.Sleep(time.Second * 6)
+	fmt.Println("start redeliver messages...")
+
+	msgs = make([]string, 0)
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		msgs = append(msgs, string(msg.Payload()))
+
+		fmt.Printf("Second received message msgId: %#v -- content: '%s'\n",
+			msg.ID(), string(msg.Payload()))
+		// ack message
+		if err := consumer.Ack(msg); err != nil {
+			log.Fatal(err)
+		}
+	}
+	assert.Equal(t, len(msgs), 10)
+}

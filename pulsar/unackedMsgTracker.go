@@ -34,7 +34,6 @@ type UnackedMessageTracker struct {
 	oldOpenSet set.Set
 	timeout    *time.Ticker
 
-	pc  *partitionConsumer
 	pcs []*partitionConsumer
 }
 
@@ -159,22 +158,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 
 				t.oldOpenSet.Clear()
 
-				if t.pc != nil {
-					requestID := t.pc.client.rpcClient.NewRequestID()
-					cmd := &pb.CommandRedeliverUnacknowledgedMessages{
-						ConsumerId: proto.Uint64(t.pc.consumerID),
-						MessageIds: messageIds,
-					}
-
-					_, err := t.pc.client.rpcClient.RequestOnCnx(t.pc.cnx, requestID,
-						pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, cmd)
-					if err != nil {
-						t.pc.log.WithError(err).Error("Failed to unsubscribe consumer")
-						return
-					}
-
-					log.Debugf("consumer:%v redeliver messages num:%d", t.pc.consumerName, len(messageIds))
-				} else if t.pcs != nil {
+				if t.pcs != nil {
 					messageIdsMap := make(map[int32][]*pb.MessageIdData)
 					for _, msgID := range messageIds {
 						messageIdsMap[msgID.GetPartition()] = append(messageIdsMap[msgID.GetPartition()], msgID)
@@ -198,7 +182,7 @@ func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
 					}
 				}
 			}
-			log.Debug("Tick at ", tick)
+			log.Debugf("Tick at: %v", tick)
 		}
 
 		t.toggle()

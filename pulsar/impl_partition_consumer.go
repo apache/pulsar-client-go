@@ -60,7 +60,7 @@ type partitionConsumer struct {
 	consumerID   uint64
 	subQueue     chan ConsumerMessage
 
-	omu             sync.Mutex // protects following
+	omu               sync.Mutex // protects following
 	redeliverMessages []*pb.MessageIdData
 
 	unAckTracker *UnackedMessageTracker
@@ -110,7 +110,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 	if options.Type == Shared || options.Type == KeyShared {
 		if options.AckTimeout != 0 {
 			c.unAckTracker = NewUnackedMessageTracker()
-			c.unAckTracker.pc = c
+			c.unAckTracker.pcs = append(c.unAckTracker.pcs, c)
 			c.unAckTracker.Start(int64(options.AckTimeout))
 		}
 	}
@@ -667,7 +667,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			//Add messageId to redeliverMessages buffer, avoiding duplicates.
 			newMid := response.GetMessageId()
 			var dup bool
-			
+
 			pc.omu.Lock()
 			for _, mid := range pc.redeliverMessages {
 				if proto.Equal(mid, newMid) {
@@ -675,7 +675,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 					break
 				}
 			}
-			
+
 			if !dup {
 				pc.redeliverMessages = append(pc.redeliverMessages, newMid)
 			}
