@@ -318,6 +318,7 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
 				if err != nil {
 					return err
 				}
+				receivedSinceFlow = 0
 				continue
 			}
 			break

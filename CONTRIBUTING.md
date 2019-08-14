@@ -21,23 +21,15 @@
 
 # How to contribute
 
-If you would like to contribute code to this project you can do so through GitHub by forking the repository and sending a pull request.
+If you would like to contribute code to this project, fork the repository and send a pull request.
 
-This document outlines some of the conventions on development workflow, commit message formatting, contact points and other resources to make it easier to get your contribution accepted.
+## Prerequisite
 
-## Steps to Contribute
+If you have not installed Go, install it according to the [installation instruction](http://golang.org/doc/install).
 
-Since the `go mod` package management tool is used in this project, your go version is required at **Go1.11+**.
+Since the `go mod` package management tool is used in this project, **Go 1.11 or higher** version is required.
 
-### Fork
-
-Before you start contributing, you need to fork [pulsar-client-go](https://github.com/apache/pulsar) to your github repository.
-
-### Installation
-
-If you don't currently have a go environment installed，install Go according to the installation instructions here: http://golang.org/doc/install
-
-##### mac os && linux
+### Install Go on Mac OS and Linux
 
 ```bash
 $ mkdir -p $HOME/github.com/apache/
@@ -47,19 +39,21 @@ $ cd pulsar-client-go
 $ go mod download
 ```
 
-When you execute `go mod download`, there may be some libs that cannot be downloaded. You can download them by referring to the proxy provided by [GOPROXY.io](https://goproxy.io/).
+If some libs cannot be downloaded when you enter the `go mod download` command, download them by referring to the proxy provided by [GOPROXY.io](https://goproxy.io/).
 
-### Contribution flow
+## Fork
+
+Before contributing, you need to fork [pulsar-client-go](https://github.com/apache/pulsar) to your github repository.
+
+## Contribution flow
 
 ```bash
 $ git remote add apache git@github.com:apache/pulsar-client-go.git
-
 // sync with remote master
 $ git checkout master
 $ git fetch apache
 $ git rebase apache/master
 $ git push origin master
-
 // create PR branch
 $ git checkout -b your_branch   
 # do your work, and then
@@ -68,19 +62,16 @@ $ git commit -sm "xxx"
 $ git push origin your_branch
 ```
 
-Thanks for your contributions!
+## Code style
 
-#### Code style
+The coding style suggested by the Golang community is used in Apache pulsar-client-go. For details, refer to [style doc](https://github.com/golang/go/wiki/CodeReviewComments).
+Follow the style, make your pull request easy to review, maintain and develop.
 
-The coding style suggested by the Golang community is used in Apache pulsar-client-go. See the [style doc](https://github.com/golang/go/wiki/CodeReviewComments) for details.
+## Create new files
 
-Please follow this style to make your pull request easy to review, maintain and develop.
+The project uses the open source protocol of Apache License 2.0. If you need to create a new file when developing new features, 
+add the license at the beginning of each file. The location of the header file: [header file](.header).
 
-#### Create new file
+## Update dependencies
 
-The project uses the open source protocol of Apache License 2.0. When you need to create a new file when developing new features, 
-please add it at the beginning of the file. The location of the header file: [header file](.header).
-
-#### Updating dependencies
-
-Apache `pulsar-client-go` uses [Go 1.11 module](https://github.com/golang/go/wiki/Modules) to manage dependencies. To add or update a dependency: use the `go mod edit` command to change the dependency.
+Apache `pulsar-client-go` uses [Go 1.11 module](https://github.com/golang/go/wiki/Modules) to manage dependencies. To add or update a dependency, use the `go mod edit` command to change the dependency.
