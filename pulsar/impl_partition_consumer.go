@@ -37,7 +37,7 @@ const maxRedeliverUnacknowledged = 1000
 type consumerState int
 
 const (
-	consumerInit = iota
+	consumerInit consumerState = iota
 	consumerReady
 	consumerClosing
 	consumerClosed
@@ -60,16 +60,17 @@ type partitionConsumer struct {
 	consumerID   uint64
 	subQueue     chan ConsumerMessage
 
-	omu      sync.Mutex // protects following
-	overflow []*pb.MessageIdData
+	omu               sync.Mutex // protects following
+	redeliverMessages []*pb.MessageIdData
 
 	unAckTracker *UnackedMessageTracker
 
 	eventsChan   chan interface{}
 	partitionIdx int
+	partitionNum int
 }
 
-func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID int) (*partitionConsumer, error) {
+func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID, partitionNum int, ch chan ConsumerMessage) (*partitionConsumer, error) {
 	c := &partitionConsumer{
 		state:        consumerInit,
 		client:       client,
@@ -78,6 +79,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 		log:          log.WithField("topic", topic),
 		consumerID:   client.rpcClient.NewConsumerID(),
 		partitionIdx: partitionID,
+		partitionNum: partitionNum,
 		eventsChan:   make(chan interface{}),
 		subQueue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
 	}
@@ -108,7 +110,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 	if options.Type == Shared || options.Type == KeyShared {
 		if options.AckTimeout != 0 {
 			c.unAckTracker = NewUnackedMessageTracker()
-			c.unAckTracker.pc = c
+			c.unAckTracker.pcs = append(c.unAckTracker.pcs, c)
 			c.unAckTracker.Start(int64(options.AckTimeout))
 		}
 	}
@@ -128,6 +130,18 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 	c.log = c.log.WithField("name", c.consumerName)
 	c.log.Info("Created consumer")
 	c.state = consumerReady
+
+	// In here, open a gorutine to receive data asynchronously from the subConsumer,
+	// filling the queue channel of the current consumer.
+	if partitionNum > 1 {
+		go func() {
+			err = c.ReceiveAsync(context.Background(), ch)
+			if err != nil {
+				return
+			}
+		}()
+	}
+
 	go c.runEventsLoop()
 
 	return c, nil
@@ -238,35 +252,60 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *handleUnsubscribe) {
 	unsub.waitGroup.Done()
 }
 
-func (pc *partitionConsumer) Receive(ctx context.Context) (Message, error) {
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case cm, ok := <-pc.subQueue:
-		if ok {
-			id := &pb.MessageIdData{}
-			err := proto.Unmarshal(cm.ID().Serialize(), id)
-			if err != nil {
-				pc.log.WithError(err).Errorf("unserialize message id error:%s", err.Error())
-				return nil, err
-			}
-			if pc.unAckTracker != nil {
-				pc.unAckTracker.Add(id)
-			}
-			return cm.Message, nil
-		}
-		return nil, newError(ResultConnectError, "receive queue closed")
+func (pc *partitionConsumer) trackMessage(msgID MessageID) error {
+	id := &pb.MessageIdData{}
+	err := proto.Unmarshal(msgID.Serialize(), id)
+	if err != nil {
+		pc.log.WithError(err).Errorf("unserialize message id error:%s", err.Error())
+		return err
 	}
+	if pc.unAckTracker != nil {
+		pc.unAckTracker.Add(id)
+	}
+	return nil
+}
+
+func (pc *partitionConsumer) increaseAvailablePermits(receivedSinceFlow uint32) error {
+	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
+	if receivedSinceFlow >= highwater {
+		if err := pc.internalFlow(receivedSinceFlow); err != nil {
+			pc.log.Errorf("Send Flow cmd error:%s", err.Error())
+			return err
+		}
+		receivedSinceFlow = 0
+	}
+	return nil
+}
+
+func (pc *partitionConsumer) messageProcessed(msgID MessageID, receivedSinceFlow uint32) error {
+	err := pc.trackMessage(msgID)
+	if err != nil {
+		return err
+	}
+	receivedSinceFlow++
+
+	err = pc.increaseAvailablePermits(receivedSinceFlow)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (pc *partitionConsumer) Receive(ctx context.Context) (message Message, err error) {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	pc.ReceiveAsyncWithCallback(ctx, func(msg Message, e error) {
+		message = msg
+		err = e
+		wg.Done()
+	})
+	wg.Wait()
+
+	return message, err
 }
 
 func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
-
-	// request half the buffer's capacity
-	if err := pc.internalFlow(highwater); err != nil {
-		pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-		return err
-	}
 	var receivedSinceFlow uint32
 
 	for {
@@ -274,30 +313,38 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
 		case tmpMsg, ok := <-pc.subQueue:
 			if ok {
 				msgs <- tmpMsg
-				id := &pb.MessageIdData{}
-				err := proto.Unmarshal(tmpMsg.ID().Serialize(), id)
+
+				err := pc.messageProcessed(tmpMsg.ID(), receivedSinceFlow)
 				if err != nil {
-					pc.log.WithError(err).Errorf("unserialize message id error:%s", err.Error())
 					return err
-				}
-				if pc.unAckTracker != nil {
-					pc.unAckTracker.Add(id)
-				}
-				receivedSinceFlow++
-				if receivedSinceFlow >= highwater {
-					if err := pc.internalFlow(receivedSinceFlow); err != nil {
-						pc.log.Errorf("Send Flow cmd error:%s", err.Error())
-						return err
-					}
-					receivedSinceFlow = 0
 				}
 				continue
 			}
+			break
 		case <-ctx.Done():
 			return ctx.Err()
 		}
 	}
+}
 
+func (pc *partitionConsumer) ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error)) {
+	var receivedSinceFlow uint32
+	var err error
+
+	select {
+	case tmpMsg, ok := <-pc.subQueue:
+		if ok {
+			err = pc.messageProcessed(tmpMsg.ID(), receivedSinceFlow)
+			callback(tmpMsg.Message, err)
+			if err != nil {
+				pc.log.Errorf("processed messages error:%s", err.Error())
+				return
+			}
+		}
+	case <-ctx.Done():
+		pc.log.Errorf("context shouldn't done, please check error:%s", ctx.Err().Error())
+		return
+	}
 }
 
 func (pc *partitionConsumer) Ack(msg Message) error {
@@ -465,23 +512,23 @@ func (pc *partitionConsumer) internalRedeliver(redeliver *handleRedeliver) {
 	pc.omu.Lock()
 	defer pc.omu.Unlock()
 
-	overFlowSize := len(pc.overflow)
+	redeliverMessagesSize := len(pc.redeliverMessages)
 
-	if overFlowSize == 0 {
+	if redeliverMessagesSize == 0 {
 		return
 	}
 
 	requestID := pc.client.rpcClient.NewRequestID()
 
-	for i := 0; i < len(pc.overflow); i += maxRedeliverUnacknowledged {
+	for i := 0; i < len(pc.redeliverMessages); i += maxRedeliverUnacknowledged {
 		end := i + maxRedeliverUnacknowledged
-		if end > overFlowSize {
-			end = overFlowSize
+		if end > redeliverMessagesSize {
+			end = redeliverMessagesSize
 		}
 		_, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID,
 			pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
 				ConsumerId: proto.Uint64(pc.consumerID),
-				MessageIds: pc.overflow[i:end],
+				MessageIds: pc.redeliverMessages[i:end],
 			})
 		if err != nil {
 			pc.log.WithError(err).Error("Failed to unsubscribe consumer")
@@ -489,8 +536,8 @@ func (pc *partitionConsumer) internalRedeliver(redeliver *handleRedeliver) {
 		}
 	}
 
-	// clear Overflow slice
-	pc.overflow = nil
+	// clear redeliverMessages slice
+	pc.redeliverMessages = nil
 
 	if pc.unAckTracker != nil {
 		pc.unAckTracker.clear()
@@ -574,56 +621,58 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 	return nil
 }
 
-func (pc *partitionConsumer) HandlerMessage(response *pb.CommandMessage, headersAndPayload []byte) error {
+func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload []byte) error {
 	msgID := response.GetMessageId()
 
 	id := newMessageID(int64(msgID.GetLedgerId()), int64(msgID.GetEntryId()),
 		int(msgID.GetBatchIndex()), pc.partitionIdx)
 
-	msgMeta, payload, err := internal.ParseMessage(headersAndPayload)
+	msgMeta, payloadList, err := internal.ParseMessage(headersAndPayload)
 	if err != nil {
 		return fmt.Errorf("parse message error:%s", err)
 	}
 
-	//numMsgs := msgMeta.GetNumMessagesInBatch()
+	for _, payload := range payloadList {
+		msg := &message{
+			publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+			eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+			key:         msgMeta.GetPartitionKey(),
+			properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
+			topic:       pc.topic,
+			msgID:       id,
+			payLoad:     payload,
+		}
 
-	msg := &message{
-		publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-		eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-		key:         msgMeta.GetPartitionKey(),
-		properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
-		topic:       pc.topic,
-		msgID:       id,
-		payLoad:     payload,
-	}
+		consumerMsg := ConsumerMessage{
+			Message:  msg,
+			Consumer: pc,
+		}
 
-	consumerMsg := ConsumerMessage{
-		Message:  msg,
-		Consumer: pc,
-	}
+		select {
+		case pc.subQueue <- consumerMsg:
+			//Add messageId to redeliverMessages buffer, avoiding duplicates.
+			newMid := response.GetMessageId()
+			var dup bool
 
-	select {
-	case pc.subQueue <- consumerMsg:
-		// Add messageId to Overflow buffer, avoiding duplicates.
-		newMid := response.GetMessageId()
-		var dup bool
-
-		pc.omu.Lock()
-		for _, mid := range pc.overflow {
-			if proto.Equal(mid, newMid) {
-				dup = true
-				break
+			pc.omu.Lock()
+			for _, mid := range pc.redeliverMessages {
+				if proto.Equal(mid, newMid) {
+					dup = true
+					break
+				}
 			}
-		}
 
-		if !dup {
-			pc.overflow = append(pc.overflow, newMid)
+			if !dup {
+				pc.redeliverMessages = append(pc.redeliverMessages, newMid)
+			}
+			pc.omu.Unlock()
+			continue
+		default:
+			return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
 		}
-		pc.omu.Unlock()
-		return nil
-	default:
-		return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
 	}
+
+	return nil
 }
 
 type handleAck struct {

@@ -24,7 +24,7 @@ type Result int
 
 const (
 	// ResultOk means no errors
-	ResultOk = iota
+	ResultOk Result = iota
 	// ResultUnknownError means unknown error happened on broker
 	ResultUnknownError
 	// ResultInvalidConfiguration means invalid configuration

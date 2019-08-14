@@ -18,15 +18,27 @@
 package util
 
 import (
-    `reflect`
+	"reflect"
 )
 
 // IsNil check if the interface is nil
 func IsNil(i interface{}) bool {
-    vi := reflect.ValueOf(i)
-    if vi.Kind() == reflect.Ptr {
-        return vi.IsNil()
-    }
-    return false
+	vi := reflect.ValueOf(i)
+	if vi.Kind() == reflect.Ptr {
+		return vi.IsNil()
+	}
+	return false
 }
 
+// RemoveDuplicateElement remove repeating elements from the string slice
+func RemoveDuplicateElement(addrs []string) []string {
+	result := make([]string, 0, len(addrs))
+	temp := map[string]struct{}{}
+	for _, item := range addrs {
+		if _, ok := temp[item]; !ok {
+			temp[item] = struct{}{}
+			result = append(result, item)
+		}
+	}
+	return result
+}

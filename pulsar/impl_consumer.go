@@ -79,6 +79,7 @@ func newConsumer(client *client, options *ConsumerOptions) (*consumer, error) {
 func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string) (*consumer, error) {
 	c := &consumer{
 		topicName: topic,
+		log:       log.WithField("topic", topic),
 		queue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
 	}
 
@@ -100,7 +101,7 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 
 	for partitionIdx, partitionTopic := range partitions {
 		go func(partitionIdx int, partitionTopic string) {
-			cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx)
+			cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
 			ch <- ConsumerError{
 				err:       err,
 				partition: partitionIdx,
@@ -153,29 +154,61 @@ func (c *consumer) Unsubscribe() error {
 	return nil
 }
 
-func (c *consumer) Receive(ctx context.Context) (Message, error) {
+func (c *consumer) getMessageFromSubConsumer(ctx context.Context) {
 	for _, pc := range c.consumers {
 		go func(pc Consumer) {
-			if err := pc.ReceiveAsync(ctx, c.queue); err != nil {
+			err := pc.ReceiveAsync(ctx, c.queue)
+			if err != nil {
+				return
+			}
+		}(pc)
+	}
+}
+
+func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
+	if len(c.consumers) > 1 {
+		select {
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		case cMsg, ok := <-c.queue:
+			if ok {
+				return cMsg.Message, nil
+			}
+			return nil, errors.New("receive message error")
+		}
+	}
+
+	return c.consumers[0].(*partitionConsumer).Receive(ctx)
+}
+
+func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
+	for _, pc := range c.consumers {
+		go func(pc Consumer) {
+			if err := pc.ReceiveAsync(ctx, msgs); err != nil {
+				c.log.Errorf("receive async messages error:%s, please check.", err.Error())
 				return
 			}
 		}(pc)
 	}
 
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	case msg, ok := <-c.queue:
-		if ok {
-			return msg.Message, nil
-		}
-		return nil, errors.New("receive message error")
-	}
+	return nil
 }
 
-func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	//TODO: impl logic
-	return nil
+func (c *consumer) ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error)) {
+	var err error
+	if len(c.consumers) > 1 {
+		select {
+		case <-ctx.Done():
+			c.log.Errorf("ReceiveAsyncWithCallback: receive message error:%s", ctx.Err().Error())
+			return
+		case cMsg, ok := <-c.queue:
+			if ok {
+				callback(cMsg.Message, err)
+			}
+			return
+		}
+	}
+	c.consumers[0].(*partitionConsumer).ReceiveAsyncWithCallback(ctx, callback)
 }
 
 //Ack the consumption of a single message

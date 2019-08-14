@@ -34,7 +34,7 @@ import (
 type producerState int
 
 const (
-	producerInit = iota
+	producerInit producerState = iota
 	producerReady
 	producerClosing
 	producerClosed
@@ -249,7 +249,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	sequenceID := internal.GetAndAdd(p.sequenceIDGenerator, 1)
 
 	if sendAsBatch {
-		for p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters) == false {
+		ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters)
+		if ok == false {
 			// The current batch is full.. flush it and retry
 			p.internalFlushCurrentBatch()
 		}
@@ -321,13 +322,25 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) erro
 func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error)) {
 	p.publishSemaphore.Acquire()
-	p.eventsChan <- &sendRequest{ctx, msg, callback, false}
+	sr := &sendRequest{
+		ctx:              ctx,
+		msg:              msg,
+		callback:         callback,
+		flushImmediately: false,
+	}
+	p.eventsChan <- sr
 }
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
 	p.publishSemaphore.Acquire()
-	p.eventsChan <- &sendRequest{ctx, msg, callback, flushImmediately}
+	sr := &sendRequest{
+		ctx:              ctx,
+		msg:              msg,
+		callback:         callback,
+		flushImmediately: flushImmediately,
+	}
+	p.eventsChan <- sr
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {

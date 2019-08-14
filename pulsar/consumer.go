@@ -142,6 +142,9 @@ type Consumer interface {
 	// ReceiveAsync appends the message to the msgs channel asynchronously.
 	ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error
 
+	// ReceiveAsyncWithCallback returns a callback containing the message and error objects
+	ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error))
+
 	// Ack the consumption of a single message
 	Ack(Message) error
 

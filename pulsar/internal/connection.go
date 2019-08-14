@@ -64,7 +64,7 @@ type Connection interface {
 }
 
 type ConsumerHandler interface {
-    HandlerMessage(response *pb.CommandMessage, headersAndPayload []byte) error
+	MessageReceived(response *pb.CommandMessage, headersAndPayload []byte) error
 }
 
 type connectionState int
@@ -131,7 +131,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		incomingRequests: make(chan *request),
 		writeRequests:    make(chan []byte),
 		listeners:        make(map[uint64]ConnectionListener),
-        connWrapper:      NewConnWrapper(),
+		connWrapper:      NewConnWrapper(),
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -307,7 +307,7 @@ func (c *connection) writeCommand(cmd proto.Message) {
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []byte) {
 	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.lastDataReceivedTime = time.Now()
-    var err error
+	var err error
 
 	switch *cmd.Type {
 	case pb.BaseCommand_SUCCESS:
@@ -344,7 +344,7 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_SEND_ERROR:
 
 	case pb.BaseCommand_MESSAGE:
-        err = c.handleMessage(cmd.GetMessage(), headersAndPayload)
+		err = c.handleMessage(cmd.GetMessage(), headersAndPayload)
 	case pb.BaseCommand_PING:
 		c.handlePing()
 	case pb.BaseCommand_PONG:
@@ -353,9 +353,9 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
 
 	default:
-        if err != nil {
-            c.log.Errorf("Received invalid command type: %s", cmd.Type)
-        }
+		if err != nil {
+			c.log.Errorf("Received invalid command type: %s", cmd.Type)
+		}
 		c.Close()
 	}
 }
@@ -403,18 +403,18 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 }
 
 func (c *connection) handleMessage(response *pb.CommandMessage, payload []byte) error {
-    c.log.Debug("Got Message: ", response)
-    consumerId := response.GetConsumerId()
-    if consumer, ok := c.connWrapper.Consumers[consumerId]; ok {
-        err := consumer.HandlerMessage(response, payload)
-        if err != nil {
-            c.log.WithField("consumerId", consumerId).Error("handle message err: ", response.MessageId)
-            return errors.New("handler not found")
-        }
-    } else {
-        c.log.WithField("consumerId", consumerId).Warn("Got unexpected message: ", response.MessageId)
-    }
-    return nil
+	c.log.Debug("Got Message: ", response)
+	consumerId := response.GetConsumerId()
+	if consumer, ok := c.connWrapper.Consumers[consumerId]; ok {
+		err := consumer.MessageReceived(response, payload)
+		if err != nil {
+			c.log.WithField("consumerId", consumerId).Error("handle message err: ", response.MessageId)
+			return errors.New("handler not found")
+		}
+	} else {
+		c.log.WithField("consumerId", consumerId).Warn("Got unexpected message: ", response.MessageId)
+	}
+	return nil
 }
 
 func (c *connection) sendPing() {
@@ -522,8 +522,8 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 }
 
 type ConnWrapper struct {
-	Rwmu             sync.RWMutex
-	Consumers        map[uint64]ConsumerHandler
+	Rwmu      sync.RWMutex
+	Consumers map[uint64]ConsumerHandler
 }
 
 func NewConnWrapper() *ConnWrapper {
@@ -533,13 +533,13 @@ func NewConnWrapper() *ConnWrapper {
 }
 
 func (c *connection) AddConsumeHandler(id uint64, handler ConsumerHandler) {
-    c.connWrapper.Rwmu.Lock()
-    c.connWrapper.Consumers[id] = handler
-    c.connWrapper.Rwmu.Unlock()
+	c.connWrapper.Rwmu.Lock()
+	c.connWrapper.Consumers[id] = handler
+	c.connWrapper.Rwmu.Unlock()
 }
 
 func (c *connection) DeleteConsumeHandler(id uint64) {
-    c.connWrapper.Rwmu.Lock()
-    delete(c.connWrapper.Consumers, id)
-    c.connWrapper.Rwmu.Unlock()
+	c.connWrapper.Rwmu.Lock()
+	delete(c.connWrapper.Consumers, id)
+	c.connWrapper.Rwmu.Unlock()
 }

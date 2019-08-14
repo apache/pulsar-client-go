@@ -18,14 +18,23 @@
 package util
 
 import (
-    `github.com/stretchr/testify/assert`
-    `testing`
+	"fmt"
+	"github.com/stretchr/testify/assert"
+	"strings"
+	"testing"
 )
 
 func TestIsNil(t *testing.T) {
-    var a interface{} = nil
-    var b interface{} = (*int)(nil)
+	var a interface{} = nil
+	var b interface{} = (*int)(nil)
 
-    assert.True(t, a == nil)
-    assert.False(t, b == nil)
+	assert.True(t, a == nil)
+	assert.False(t, b == nil)
+}
+
+func TestRemoveDuplicateElement(t *testing.T) {
+	s := []string{"hello", "world", "hello", "golang", "hello", "ruby", "php", "java"}
+	resList := RemoveDuplicateElement(s)
+	res := fmt.Sprintf("%s", resList[:])
+	assert.Equal(t, 1, strings.Count(res, "hello"))
 }
