@@ -21,7 +21,7 @@ import (
 	"github.com/pierrec/lz4"
 )
 
-type lz4Provider struct {}
+type lz4Provider struct{}
 
 // NewLz4Provider return a interface of Provider.
 func NewLz4Provider() Provider {

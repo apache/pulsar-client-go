@@ -18,47 +18,48 @@
 package pulsar
 
 import (
-    `github.com/apache/pulsar-client-go/pkg/pb`
-    `github.com/golang/protobuf/proto`
-    `github.com/stretchr/testify/assert`
-    `testing`
+	"testing"
+
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/golang/protobuf/proto"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestUnackedMessageTracker(t *testing.T) {
-    unAckTracker := NewUnackedMessageTracker()
+	unAckTracker := NewUnackedMessageTracker()
 
-    var msgIDs []*pb.MessageIdData
+	var msgIDs []*pb.MessageIdData
 
-    for i := 0; i < 5; i++ {
-        msgID := &pb.MessageIdData{
-            LedgerId:   proto.Uint64(1),
-            EntryId:    proto.Uint64(uint64(i)),
-            Partition:  proto.Int32(-1),
-            BatchIndex: proto.Int32(-1),
-        }
+	for i := 0; i < 5; i++ {
+		msgID := &pb.MessageIdData{
+			LedgerId:   proto.Uint64(1),
+			EntryId:    proto.Uint64(uint64(i)),
+			Partition:  proto.Int32(-1),
+			BatchIndex: proto.Int32(-1),
+		}
 
-        msgIDs = append(msgIDs, msgID)
-    }
+		msgIDs = append(msgIDs, msgID)
+	}
 
-    for _, msgID := range msgIDs {
-        ok := unAckTracker.Add(msgID)
-        assert.True(t, ok)
-    }
+	for _, msgID := range msgIDs {
+		ok := unAckTracker.Add(msgID)
+		assert.True(t, ok)
+	}
 
-    flag := unAckTracker.IsEmpty()
-    assert.False(t, flag)
+	flag := unAckTracker.IsEmpty()
+	assert.False(t, flag)
 
-    num := unAckTracker.Size()
-    assert.Equal(t, num, 5)
+	num := unAckTracker.Size()
+	assert.Equal(t, num, 5)
 
-    for index, msgID := range msgIDs {
-        unAckTracker.Remove(msgID)
-        assert.Equal(t, 4-index, unAckTracker.Size())
-    }
+	for index, msgID := range msgIDs {
+		unAckTracker.Remove(msgID)
+		assert.Equal(t, 4-index, unAckTracker.Size())
+	}
 
-    num = unAckTracker.Size()
-    assert.Equal(t, num, 0)
+	num = unAckTracker.Size()
+	assert.Equal(t, num, 0)
 
-    flag = unAckTracker.IsEmpty()
-    assert.True(t, flag)
+	flag = unAckTracker.IsEmpty()
+	assert.True(t, flag)
 }

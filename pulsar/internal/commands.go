@@ -21,10 +21,10 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"io"
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -172,9 +172,9 @@ func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloa
 			return nil, nil, err
 		}
 
-		singleMessages, err := decodeBatchPayload(payloads, numMsg)
-		if err != nil {
-			return nil, nil, err
+		singleMessages, e := decodeBatchPayload(payloads, numMsg)
+		if e != nil {
+			return nil, nil, e
 		}
 
 		payloadList = make([][]byte, 0, numMsg)
@@ -185,7 +185,7 @@ func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloa
 			payloadList = append(payloadList, singleMsg.SinglePayload)
 		}
 
-		if err := computeChecksum(chksum, expectedChksum); err != nil {
+		if err = computeChecksum(chksum, expectedChksum); err != nil {
 			return nil, nil, err
 		}
 		return msgMeta, payloadList, nil
@@ -207,7 +207,7 @@ func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloa
 		payloadList = append(payloadList, payload)
 	}
 
-	if err := computeChecksum(chksum, expectedChksum); err != nil {
+	if err = computeChecksum(chksum, expectedChksum); err != nil {
 		return nil, nil, err
 	}
 

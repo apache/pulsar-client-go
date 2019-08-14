@@ -20,13 +20,14 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"github.com/apache/pulsar-client-go/util"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/apache/pulsar-client-go/util"
+	"github.com/stretchr/testify/assert"
 )
 
 var (
@@ -154,6 +155,7 @@ func TestBatchMessageReceive(t *testing.T) {
 		Topic:            topicName,
 		SubscriptionName: subName,
 	})
+	assert.Nil(t, err)
 	assert.Equal(t, topicName, consumer.Topic())
 	count := 0
 
@@ -429,17 +431,19 @@ func TestConsumer_ReceiveAsync(t *testing.T) {
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topicName,
 	})
+	assert.Nil(t, err)
 	defer producer.Close()
 
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: subName,
 	})
+	assert.Nil(t, err)
 	defer consumer.Close()
 
 	//send 10 messages
 	for i := 0; i < 10; i++ {
-		err := producer.Send(ctx, &ProducerMessage{
+		err = producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
 		assert.Nil(t, err)
@@ -610,12 +614,14 @@ func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topicName,
 	})
+	assert.Nil(t, err)
 	defer producer.Close()
 
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: subName,
 	})
+	assert.Nil(t, err)
 	defer consumer.Close()
 
 	//send 10 messages
@@ -627,12 +633,13 @@ func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
 	}
 
 	for i := 0; i < 10; i++ {
+		tmpMsg := fmt.Sprintf("hello-%d", i)
 		consumer.ReceiveAsyncWithCallback(ctx, func(msg Message, err error) {
 			if err != nil {
 				log.Fatal(err)
 			}
 			fmt.Printf("receive message payload is:%s\n", string(msg.Payload()))
-			assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+			assert.Equal(t, tmpMsg, string(msg.Payload()))
 		})
 	}
 }

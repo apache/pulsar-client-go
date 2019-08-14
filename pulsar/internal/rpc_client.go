@@ -45,7 +45,7 @@ type RPCClient interface {
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	RequestOnCnxNoWait(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+	RequestOnCnxNoWait(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 }
@@ -112,13 +112,13 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 	return rpcResult, nil
 }
 
-func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, requestId uint64, cmdType pb.BaseCommand_Type,
-		message proto.Message) (*RPCResult, error) {
+func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RPCResult, error) {
 	rpcResult := &RPCResult{
 		Cnx: cnx,
 	}
 
-	cnx.SendRequest(requestId, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
+	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
 		rpcResult.Response = response
 	})
 

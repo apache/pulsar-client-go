@@ -18,39 +18,40 @@
 package main
 
 import (
-    `context`
-    `fmt`
-    `github.com/apache/pulsar-client-go/pulsar`
-    `log`
+	"context"
+	"fmt"
+	"log"
+
+	"github.com/apache/pulsar-client-go/pulsar"
 )
 
 func main() {
-    client, err := pulsar.NewClient(pulsar.ClientOptions{
-        URL: "pulsar://localhost:6650",
-    })
+	client, err := pulsar.NewClient(pulsar.ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
 
-    if err != nil {
-        log.Fatal(err)
-    }
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    defer client.Close()
+	defer client.Close()
 
-    producer, err := client.CreateProducer(pulsar.ProducerOptions{
-        Topic: "topic-1",
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
+	producer, err := client.CreateProducer(pulsar.ProducerOptions{
+		Topic: "topic-1",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
 
-    defer producer.Close()
+	defer producer.Close()
 
-    ctx := context.Background()
+	ctx := context.Background()
 
-    for i := 0; i < 10; i++ {
-        if err := producer.Send(ctx, &pulsar.ProducerMessage{
-            Payload: []byte(fmt.Sprintf("hello-%d", i)),
-        }); err != nil {
-            log.Fatal(err)
-        }
-    }
+	for i := 0; i < 10; i++ {
+		if err := producer.Send(ctx, &pulsar.ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
 }
