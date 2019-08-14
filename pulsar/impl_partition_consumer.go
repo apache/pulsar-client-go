@@ -334,8 +334,8 @@ func (pc *partitionConsumer) ReceiveAsyncWithCallback(ctx context.Context, callb
 	select {
 	case tmpMsg, ok := <-pc.subQueue:
 		if ok {
-			callback(tmpMsg.Message, err)
 			err = pc.messageProcessed(tmpMsg.ID(), receivedSinceFlow)
+			callback(tmpMsg.Message, err)
 			if err != nil {
 				pc.log.Errorf("processed messages error:%s", err.Error())
 				return

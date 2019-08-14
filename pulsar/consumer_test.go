@@ -361,7 +361,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	topic := "persistent://public/default/testGetPartitions"
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
 
-	makeHTTPCall(t, http.MethodPut, testURL, "50")
+	makeHTTPCall(t, http.MethodPut, testURL, "5")
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
@@ -659,6 +659,7 @@ func TestPartitionConsumerAckTimeout(t *testing.T) {
 		Topic:            topic,
 		SubscriptionName: "my-sub",
 		AckTimeout:       5 * 1000,
+		Type:             Shared,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
