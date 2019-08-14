@@ -381,8 +381,8 @@ func (c *connection) internalSendRequest(req *request) {
 
 func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
 	c.mapMutex.RLock()
+	defer c.mapMutex.RUnlock()
 	request, ok := c.pendingReqs[requestID]
-	c.mapMutex.RUnlock()
 	if !ok {
 		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
 		return
