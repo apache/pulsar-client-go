@@ -42,7 +42,8 @@ var murmurHashValues = []testProvider{
 }
 
 func TestJavaHash(t *testing.T) {
-	for _, p := range javaHashValues {
+	for _, javaHashValue := range javaHashValues {
+		p := javaHashValue
 		t.Run(p.str, func(t *testing.T) {
 			assert.Equal(t, p.hash, JavaStringHash(p.str))
 		})
@@ -50,7 +51,8 @@ func TestJavaHash(t *testing.T) {
 }
 
 func TestMurmurHash(t *testing.T) {
-	for _, p := range murmurHashValues {
+	for _, murmurHashValue := range murmurHashValues {
+		p := murmurHashValue
 		t.Run(p.str, func(t *testing.T) {
 			assert.Equal(t, p.hash, Murmur3_32Hash(p.str))
 		})

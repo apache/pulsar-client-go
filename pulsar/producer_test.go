@@ -169,7 +169,8 @@ func TestProducerCompression(t *testing.T) {
 		{"zstd", ZSTD},
 	}
 
-	for _, p := range providers {
+	for _, provider := range providers {
+		p := provider
 		t.Run(p.name, func(t *testing.T) {
 			client, err := NewClient(ClientOptions{
 				URL: serviceURL,
@@ -290,6 +291,7 @@ func TestFlushInProducer(t *testing.T) {
 			"producer-id":   "test-producer-id",
 		},
 	})
+	assert.Nil(t, err)
 	defer producer.Close()
 
 	consumer, err := client.Subscribe(ConsumerOptions{
@@ -325,7 +327,7 @@ func TestFlushInProducer(t *testing.T) {
 	wg.Wait()
 
 	for i := 0; i < numOfMessages/2; i++ {
-		_, err := consumer.Receive(ctx)
+		_, err = consumer.Receive(ctx)
 		assert.Nil(t, err)
 		msgCount++
 	}

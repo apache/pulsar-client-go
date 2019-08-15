@@ -404,15 +404,15 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 
 func (c *connection) handleMessage(response *pb.CommandMessage, payload []byte) error {
 	c.log.Debug("Got Message: ", response)
-	consumerId := response.GetConsumerId()
-	if consumer, ok := c.connWrapper.Consumers[consumerId]; ok {
+	consumerID := response.GetConsumerId()
+	if consumer, ok := c.connWrapper.Consumers[consumerID]; ok {
 		err := consumer.MessageReceived(response, payload)
 		if err != nil {
-			c.log.WithField("consumerId", consumerId).Error("handle message err: ", response.MessageId)
+			c.log.WithField("consumerID", consumerID).Error("handle message err: ", response.MessageId)
 			return errors.New("handler not found")
 		}
 	} else {
-		c.log.WithField("consumerId", consumerId).Warn("Got unexpected message: ", response.MessageId)
+		c.log.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)
 	}
 	return nil
 }

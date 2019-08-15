@@ -18,8 +18,8 @@
 package internal
 
 import (
-    `hash`
-    `hash/crc32`
+	"hash"
+	"hash/crc32"
 )
 
 // crc32cTable holds the precomputed crc32 hash table
@@ -27,7 +27,7 @@ import (
 var crc32cTable = crc32.MakeTable(crc32.Castagnoli)
 
 type CheckSum struct {
-    hash hash.Hash
+	hash hash.Hash
 }
 
 // Crc32cCheckSum handles computing the checksum.
@@ -36,15 +36,15 @@ func Crc32cCheckSum(data []byte) uint32 {
 }
 
 func (cs *CheckSum) Write(p []byte) (int, error) {
-    if cs.hash == nil {
-        cs.hash = crc32.New(crc32cTable)
-    }
-    return cs.hash.Write(p)
+	if cs.hash == nil {
+		cs.hash = crc32.New(crc32cTable)
+	}
+	return cs.hash.Write(p)
 }
 
 func (cs *CheckSum) compute() []byte {
-    if cs.hash == nil {
-        return nil
-    }
-    return cs.hash.Sum(nil)
+	if cs.hash == nil {
+		return nil
+	}
+	return cs.hash.Sum(nil)
 }

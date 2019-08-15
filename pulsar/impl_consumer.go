@@ -101,9 +101,9 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 
 	for partitionIdx, partitionTopic := range partitions {
 		go func(partitionIdx int, partitionTopic string) {
-			cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
+			cons, e := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
 			ch <- ConsumerError{
-				err:       err,
+				err:       e,
 				partition: partitionIdx,
 				cons:      cons,
 			}
@@ -268,9 +268,10 @@ func (c *consumer) Seek(msgID MessageID) error {
 
 	partition := id.GetPartition()
 
-	if partition < 0 {
-		return errors.New("invalid partition index")
-	}
+    // current topic is non-partition topic, we only need to get the first value in the consumers.
+    if partition < 0 {
+        partition = 0
+    }
 	return c.consumers[partition].Seek(msgID)
 }
 

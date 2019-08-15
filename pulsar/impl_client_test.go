@@ -29,7 +29,7 @@ func TestClient(t *testing.T) {
 	client, err := NewClient(ClientOptions{})
 	assert.Nil(t, client)
 	assert.NotNil(t, err)
-	assert.Equal(t, Result(ResultInvalidConfiguration), err.(*Error).Result())
+	assert.Equal(t, ResultInvalidConfiguration, err.(*Error).Result())
 }
 
 func TestTLSConnectionCAError(t *testing.T) {

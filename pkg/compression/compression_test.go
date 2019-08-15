@@ -38,7 +38,8 @@ var providers = []testProvider{
 }
 
 func TestCompression(t *testing.T) {
-	for _, p := range providers {
+	for _, provider := range providers {
+		p := provider
 		t.Run(p.name, func(t *testing.T) {
 			if !p.provider.CanCompress() {
 				return
@@ -54,7 +55,8 @@ func TestCompression(t *testing.T) {
 }
 
 func TestJavaCompatibility(t *testing.T) {
-	for _, p := range providers {
+	for _, provider := range providers {
+		p := provider
 		t.Run(p.name, func(t *testing.T) {
 			hello := []byte("hello")
 			uncompressed, err := p.provider.Decompress(p.compressedHello, len(hello))
@@ -65,7 +67,8 @@ func TestJavaCompatibility(t *testing.T) {
 }
 
 func TestDecompressionError(t *testing.T) {
-	for _, p := range providers {
+	for _, provider := range providers {
+		p := provider
 		t.Run(p.name, func(t *testing.T) {
 			_, err := p.provider.Decompress([]byte{0x05}, 10)
 			assert.NotNil(t, err)
