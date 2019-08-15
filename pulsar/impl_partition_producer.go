@@ -89,7 +89,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		topic:            topic,
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
-		eventsChan:       make(chan interface{}),
+		eventsChan:       make(chan interface{}, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: make(util.Semaphore, maxPendingMessages),
 		pendingQueue:     util.NewBlockingQueue(maxPendingMessages),
