@@ -28,10 +28,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/golang/protobuf/proto"
-
 	"github.com/apache/pulsar-client-go/pkg/auth"
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/util"
+	"github.com/golang/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -65,6 +65,9 @@ type Connection interface {
 
 type ConsumerHandler interface {
 	MessageReceived(response *pb.CommandMessage, headersAndPayload []byte) error
+
+	// ConnectionClosed close the TCP connection.
+	ConnectionClosed()
 }
 
 type connectionState int
@@ -336,7 +339,9 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 
 	case pb.BaseCommand_ERROR:
 	case pb.BaseCommand_CLOSE_PRODUCER:
+		c.handleCloseProducer(cmd.GetCloseProducer())
 	case pb.BaseCommand_CLOSE_CONSUMER:
+		c.handleCloseConsumer(cmd.GetCloseConsumer())
 
 	case pb.BaseCommand_SEND_RECEIPT:
 		c.handleSendReceipt(cmd.GetSendReceipt())
@@ -398,7 +403,7 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	if producer, ok := c.listeners[producerID]; ok {
 		producer.ReceivedSendReceipt(response)
 	} else {
-		c.log.WithField("producerId", producerID).Warn("Got unexpected send receipt for message: ", response.MessageId)
+		c.log.WithField("producerID", producerID).Warn("Got unexpected send receipt for message: ", response.MessageId)
 	}
 }
 
@@ -436,6 +441,28 @@ func (c *connection) handlePong() {
 
 func (c *connection) handlePing() {
 	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
+}
+
+func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
+	c.log.Infof("Broker notification of Closed consumer: %d", closeConsumer.GetConsumerId())
+	consumerID := closeConsumer.GetConsumerId()
+	if consumer, ok := c.connWrapper.Consumers[consumerID]; ok {
+		if !util.IsNil(consumer) {
+			consumer.ConnectionClosed()
+		}
+	} else {
+		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
+	}
+}
+
+func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer) {
+	c.log.Infof("Broker notification of Closed consumer: %d", closeProducer.GetProducerId())
+	producerID := closeProducer.GetProducerId()
+	if producer, ok := c.listeners[producerID]; ok {
+		producer.ConnectionClosed()
+	} else {
+		c.log.WithField("producerID", producerID).Warn("Producer with ID not found while closing producer")
+	}
 }
 
 func (c *connection) RegisterListener(id uint64, listener ConnectionListener) {

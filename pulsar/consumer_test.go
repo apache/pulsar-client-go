@@ -722,3 +722,71 @@ func TestConsumer_Shared(t *testing.T) {
 	res := util.RemoveDuplicateElement(msgList)
 	assert.Equal(t, 10, len(res))
 }
+
+func TestConsumer_Seek(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "persistent://public/default/testSeek"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testSeek"
+	makeHTTPCall(t, http.MethodPut, testURL, "1")
+	subName := "sub-testSeek"
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, producer.Topic(), topicName)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, consumer.Topic(), topicName)
+	assert.Equal(t, consumer.Subscription(), subName)
+	defer consumer.Close()
+
+	ctx := context.Background()
+
+	// Send 10 messages synchronously
+	t.Log("Publishing 10 messages synchronously")
+	for msgNum := 0; msgNum < 10; msgNum++ {
+		if err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-content-%d", msgNum)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	t.Log("Trying to receive 10 messages")
+	idList := make([]MessageID, 0, 10)
+	for msgNum := 0; msgNum < 10; msgNum++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		idList = append(idList, msg.ID())
+		fmt.Println(string(msg.Payload()))
+	}
+
+	for index, id := range idList {
+		if index == 4 {
+			// seek to fourth message, expected receive fourth message.
+			err = consumer.Seek(id)
+			assert.Nil(t, err)
+			break
+		}
+	}
+
+	// Sleeping for 500ms to wait for consumer re-connect
+	time.Sleep(500 * time.Millisecond)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	t.Logf("again received message:%+v", msg.ID())
+	assert.Equal(t, "msg-content-4", string(msg.Payload()))
+}

@@ -80,7 +80,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 		consumerID:   client.rpcClient.NewConsumerID(),
 		partitionIdx: partitionID,
 		partitionNum: partitionNum,
-		eventsChan:   make(chan interface{}),
+		eventsChan:   make(chan interface{}, 1),
 		subQueue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
 	}
 
@@ -167,7 +167,7 @@ func (pc *partitionConsumer) grabCnx() error {
 		return err
 	}
 
-	pc.log.Debug("Lookup result: ", lr)
+	pc.log.Infof("Lookup result: %v", lr)
 	requestID := pc.client.rpcClient.NewRequestID()
 	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
 		pb.BaseCommand_SUBSCRIBE, &pb.CommandSubscribe{
@@ -192,16 +192,13 @@ func (pc *partitionConsumer) grabCnx() error {
 
 	pc.cnx = res.Cnx
 	pc.log.WithField("cnx", res.Cnx).Debug("Connected consumer")
+	pc.cnx.AddConsumeHandler(pc.consumerID, pc)
 
 	msgType := res.Response.GetType()
 
 	switch msgType {
 	case pb.BaseCommand_SUCCESS:
-		pc.cnx.AddConsumeHandler(pc.consumerID, pc)
-		if err := pc.internalFlow(uint32(pc.options.ReceiverQueueSize)); err != nil {
-			return err
-		}
-		return nil
+		return pc.internalFlow(uint32(pc.options.ReceiverQueueSize))
 	case pb.BaseCommand_ERROR:
 		errMsg := res.Response.GetError()
 		return fmt.Errorf("%s: %s", errMsg.GetError().String(), errMsg.GetMessage())
@@ -593,7 +590,6 @@ func (pc *partitionConsumer) internalClose(req *handlerClose) {
 		pc.log.Info("Closed consumer")
 		pc.state = consumerClosed
 		close(pc.options.MessageChannel)
-		//pc.cnx.UnregisterListener(pc.consumerID)
 	}
 
 	req.waitGroup.Done()
@@ -711,13 +707,13 @@ type handlerClose struct {
 type handleConnectionClosed struct{}
 
 func (pc *partitionConsumer) ConnectionClosed() {
-	// Trigger reconnection in the produce goroutine
+	// Trigger reconnection in the consumer goroutine
 	pc.eventsChan <- &handleConnectionClosed{}
 }
 
 func (pc *partitionConsumer) reconnectToBroker() {
 	pc.log.Info("Reconnecting to broker")
-	backoff := internal.Backoff{}
+	backoff := new(internal.Backoff)
 	for {
 		if pc.state != consumerReady {
 			// Consumer is already closing
@@ -727,6 +723,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 		err := pc.grabCnx()
 		if err == nil {
 			// Successfully reconnected
+			pc.log.Info("Successfully reconnected")
 			return
 		}
 
