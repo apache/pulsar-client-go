@@ -45,7 +45,8 @@ const (
 	//BrokerMetadataError            Result = 10 // Broker failed in updating metadata
 	//BrokerPersistenceError         Result = 11 // Broker failed to persist entry
 	//ChecksumError                  Result = 12 // Corrupt message checksum failure
-	//ConsumerBusy                   Result = 13 // Exclusive consumer is already connected
+	// ConsumerBusy means Exclusive consumer is already connected
+	ConsumerBusy Result = 13
 	//NotConnectedError              Result = 14 // Producer/Consumer is not currently connected to broker
 	//AlreadyClosedError             Result = 15 // Producer/Consumer is already closed and not accepting any operation
 	//InvalidMessage                 Result = 16 // Error in publishing an already used message
@@ -104,6 +105,8 @@ func getResultStr(r Result) string {
 		return "InvalidTopicName"
 	case ResultConnectError:
 		return "ConnectError"
+	case ConsumerBusy:
+		return "ConsumerBusy"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
 	}

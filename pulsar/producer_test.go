@@ -486,3 +486,26 @@ func TestMessageRouter(t *testing.T) {
 	assert.NotNil(t, msg)
 	assert.Equal(t, string(msg.Payload()), "hello")
 }
+
+func TestNonPersistentTopic(t *testing.T) {
+	topicName := "non-persistent://public/default/testNonPersistentTopic"
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+}

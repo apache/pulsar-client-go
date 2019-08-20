@@ -790,3 +790,40 @@ func TestConsumer_Seek(t *testing.T) {
 	t.Logf("again received message:%+v", msg.ID())
 	assert.Equal(t, "msg-content-4", string(msg.Payload()))
 }
+
+func TestConsumer_EventTime(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "test-event-time"
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	et := timeFromUnixTimestampMillis(uint64(5))
+	err = producer.Send(ctx, &ProducerMessage{
+		Payload:   []byte("test"),
+		EventTime: &et,
+	})
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, et, msg.EventTime())
+	assert.Equal(t, "test", string(msg.Payload()))
+}
