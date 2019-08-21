@@ -167,7 +167,7 @@ func (pc *partitionConsumer) grabCnx() error {
 		return err
 	}
 
-	pc.log.Infof("Lookup result: %v", lr)
+	pc.log.Debugf("Lookup result: %v", lr)
 	requestID := pc.client.rpcClient.NewRequestID()
 	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
 		pb.BaseCommand_SUBSCRIBE, &pb.CommandSubscribe{

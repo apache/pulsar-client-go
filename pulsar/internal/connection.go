@@ -341,6 +341,7 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_ERROR:
 		if cmd.Error != nil {
 			c.log.Errorf("Error: %s, Error Message: %s", cmd.Error.GetError(), cmd.Error.GetMessage())
+			c.Close()
 			return
 		}
 	case pb.BaseCommand_CLOSE_PRODUCER:
@@ -505,6 +506,10 @@ func (c *connection) Close() {
 
 	for _, listener := range c.listeners {
 		listener.ConnectionClosed()
+	}
+
+	for _, cnx := range c.connWrapper.Consumers {
+		cnx.ConnectionClosed()
 	}
 }
 
