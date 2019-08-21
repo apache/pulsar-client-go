@@ -63,25 +63,27 @@ type partitionConsumer struct {
 	omu               sync.Mutex // protects following
 	redeliverMessages []*pb.MessageIdData
 
-	unAckTracker *UnackedMessageTracker
+	unAckTracker      *UnackedMessageTracker
+	receivedSinceFlow uint32
 
 	eventsChan   chan interface{}
 	partitionIdx int
 	partitionNum int
 }
 
-func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID, partitionNum int, ch chan ConsumerMessage) (*partitionConsumer, error) {
+func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID, partitionNum int, ch chan<- ConsumerMessage) (*partitionConsumer, error) {
 	c := &partitionConsumer{
-		state:        consumerInit,
-		client:       client,
-		topic:        topic,
-		options:      options,
-		log:          log.WithField("topic", topic),
-		consumerID:   client.rpcClient.NewConsumerID(),
-		partitionIdx: partitionID,
-		partitionNum: partitionNum,
-		eventsChan:   make(chan interface{}, 1),
-		subQueue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
+		state:             consumerInit,
+		client:            client,
+		topic:             topic,
+		options:           options,
+		log:               log.WithField("topic", topic),
+		consumerID:        client.rpcClient.NewConsumerID(),
+		partitionIdx:      partitionID,
+		partitionNum:      partitionNum,
+		eventsChan:        make(chan interface{}, 1),
+		subQueue:          make(chan ConsumerMessage, options.ReceiverQueueSize),
+		receivedSinceFlow: 0,
 	}
 
 	c.setDefault(options)
@@ -262,26 +264,33 @@ func (pc *partitionConsumer) trackMessage(msgID MessageID) error {
 	return nil
 }
 
-func (pc *partitionConsumer) increaseAvailablePermits(receivedSinceFlow uint32) error {
-	highwater := uint32(math.Max(float64(cap(pc.options.MessageChannel)/2), 1))
-	if receivedSinceFlow >= highwater {
-		if err := pc.internalFlow(receivedSinceFlow); err != nil {
-			pc.log.Errorf("Send Flow cmd error:%s", err.Error())
+func (pc *partitionConsumer) increaseAvailablePermits() error {
+	pc.receivedSinceFlow++
+	highWater := uint32(math.Max(float64(pc.options.ReceiverQueueSize/2), 1))
+
+	pc.log.Debugf("receivedSinceFlow size is: %d, highWater size is: %d", pc.receivedSinceFlow, highWater)
+
+	// send flow request after 1/2 of the queue has been consumed
+	if pc.receivedSinceFlow >= highWater {
+		pc.log.Debugf("send flow command to broker, permits size is: %d", pc.receivedSinceFlow)
+		err := pc.internalFlow(pc.receivedSinceFlow)
+		if err != nil {
+			pc.log.Errorf("Send flow cmd error:%s", err.Error())
+			pc.receivedSinceFlow = 0
 			return err
 		}
-		receivedSinceFlow = 0
+		pc.receivedSinceFlow = 0
 	}
 	return nil
 }
 
-func (pc *partitionConsumer) messageProcessed(msgID MessageID, receivedSinceFlow uint32) error {
+func (pc *partitionConsumer) messageProcessed(msgID MessageID) error {
 	err := pc.trackMessage(msgID)
 	if err != nil {
 		return err
 	}
-	receivedSinceFlow++
 
-	err = pc.increaseAvailablePermits(receivedSinceFlow)
+	err = pc.increaseAvailablePermits()
 	if err != nil {
 		return err
 	}
@@ -303,19 +312,16 @@ func (pc *partitionConsumer) Receive(ctx context.Context) (message Message, err 
 }
 
 func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	var receivedSinceFlow uint32
-
 	for {
 		select {
 		case tmpMsg, ok := <-pc.subQueue:
 			if ok {
 				msgs <- tmpMsg
 
-				err := pc.messageProcessed(tmpMsg.ID(), receivedSinceFlow)
+				err := pc.messageProcessed(tmpMsg.ID())
 				if err != nil {
 					return err
 				}
-				receivedSinceFlow = 0
 				continue
 			}
 			break
@@ -326,13 +332,12 @@ func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- Consu
 }
 
 func (pc *partitionConsumer) ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error)) {
-	var receivedSinceFlow uint32
 	var err error
 
 	select {
 	case tmpMsg, ok := <-pc.subQueue:
 		if ok {
-			err = pc.messageProcessed(tmpMsg.ID(), receivedSinceFlow)
+			err = pc.messageProcessed(tmpMsg.ID())
 			callback(tmpMsg.Message, err)
 			if err != nil {
 				pc.log.Errorf("processed messages error:%s", err.Error())
