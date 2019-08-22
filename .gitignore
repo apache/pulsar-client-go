@@ -9,3 +9,5 @@
 
 # Output of the go coverage tool
 *.out
+
+perf/perf

@@ -18,6 +18,11 @@
 package main
 
 import (
+	"fmt"
+	"net"
+	"net/http"
+	_ "net/http/pprof"
+
 	"github.com/spf13/cobra"
 
 	log "github.com/sirupsen/logrus"
@@ -30,6 +35,17 @@ type ClientArgs struct {
 var clientArgs ClientArgs
 
 func main() {
+	// use `go tool pprof http://localhost:3000/debug/pprof/profile` to get pprof file(cpu info)
+	// use `go tool pprof http://localhost:3000/debug/pprof/heap` to get inuse_space file
+	go func() {
+		listenAddr := net.JoinHostPort("localhost", "3000")
+		fmt.Printf("Profile server listening on %s\n", listenAddr)
+		profileRedirect := http.RedirectHandler("/debug/pprof", http.StatusSeeOther)
+		http.Handle("/", profileRedirect)
+		err := fmt.Errorf("%v", http.ListenAndServe(listenAddr, nil))
+		fmt.Println(err.Error())
+	}()
+
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp:   true,
 		TimestampFormat: "15:04:05.000",

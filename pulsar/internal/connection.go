@@ -314,30 +314,36 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 
 	switch *cmd.Type {
 	case pb.BaseCommand_SUCCESS:
-		c.handleResponse(*cmd.Success.RequestId, cmd)
+		c.handleResponse(cmd.Success.GetRequestId(), cmd)
 
 	case pb.BaseCommand_PRODUCER_SUCCESS:
-		c.handleResponse(*cmd.ProducerSuccess.RequestId, cmd)
+		c.handleResponse(cmd.ProducerSuccess.GetRequestId(), cmd)
 
 	case pb.BaseCommand_PARTITIONED_METADATA_RESPONSE:
-		c.handleResponse(*cmd.PartitionMetadataResponse.RequestId, cmd)
+		c.handleResponse(cmd.PartitionMetadataResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_LOOKUP_RESPONSE:
-		c.handleResponse(*cmd.LookupTopicResponse.RequestId, cmd)
+		lookupResult := cmd.LookupTopicResponse
+		c.handleResponse(lookupResult.GetRequestId(), cmd)
 
 	case pb.BaseCommand_CONSUMER_STATS_RESPONSE:
-		c.handleResponse(*cmd.ConsumerStatsResponse.RequestId, cmd)
+		c.handleResponse(cmd.ConsumerStatsResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_GET_LAST_MESSAGE_ID_RESPONSE:
-		c.handleResponse(*cmd.GetLastMessageIdResponse.RequestId, cmd)
+		c.handleResponse(cmd.GetLastMessageIdResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_GET_TOPICS_OF_NAMESPACE_RESPONSE:
-		c.handleResponse(*cmd.GetTopicsOfNamespaceResponse.RequestId, cmd)
+		c.handleResponse(cmd.GetTopicsOfNamespaceResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_GET_SCHEMA_RESPONSE:
-		c.handleResponse(*cmd.GetSchemaResponse.RequestId, cmd)
+		c.handleResponse(cmd.GetSchemaResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_ERROR:
+		if cmd.Error != nil {
+			c.log.Errorf("Error: %s, Error Message: %s", cmd.Error.GetError(), cmd.Error.GetMessage())
+			c.Close()
+			return
+		}
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
 	case pb.BaseCommand_CLOSE_CONSUMER:
@@ -500,6 +506,10 @@ func (c *connection) Close() {
 
 	for _, listener := range c.listeners {
 		listener.ConnectionClosed()
+	}
+
+	for _, cnx := range c.connWrapper.Consumers {
+		cnx.ConnectionClosed()
 	}
 }
 
