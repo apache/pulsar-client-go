@@ -73,7 +73,7 @@ type partitionConsumer struct {
 }
 
 func newPartitionConsumer(client *client, topic string, options *ConsumerOptions,
-	partitionID, partitionNum int, ch chan ConsumerMessage) (*partitionConsumer, error) {
+	partitionID, partitionNum int, ch chan<-ConsumerMessage) (*partitionConsumer, error) {
 	c := &partitionConsumer{
 		state:             consumerInit,
 		client:            client,
@@ -158,8 +158,8 @@ func (pc *partitionConsumer) setDefault(options *ConsumerOptions) {
 	subType = pb.CommandSubscribe_Exclusive
 }
 
-func (pc *partitionConsumer) getMessageFromSubConsumer(ctx context.Context, ch chan ConsumerMessage) {
-	err := pc.ReceiveAsync(context.Background(), ch)
+func (pc *partitionConsumer) getMessageFromSubConsumer(ctx context.Context, ch chan<- ConsumerMessage) {
+	err := pc.ReceiveAsync(ctx, ch)
 	if err != nil {
 		pc.log.Errorf("get message from sub queue error: %s", err.Error())
 		return

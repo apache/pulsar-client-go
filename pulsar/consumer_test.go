@@ -650,8 +650,8 @@ func TestConsumer_Shared(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "persistent://public/default/testMultiPartitionConsumerShared"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testMultiPartitionConsumerShared/partitions"
+	topic := "persistent://public/default/testMultiPartitionConsumerShared-0"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testMultiPartitionConsumerShared-0/partitions"
 
 	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
@@ -675,7 +675,6 @@ func TestConsumer_Shared(t *testing.T) {
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
-		DisableBatching: true,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -689,33 +688,36 @@ func TestConsumer_Shared(t *testing.T) {
 		}
 	}
 
-	msgList := make([]string, 0, 5)
-	for i := 0; i < 5; i++ {
-		msg, err := consumer1.Receive(context.Background())
-		if err != nil {
-			log.Fatal(err)
+	msgList := make([]string, 0, 10)
+	go func() {
+		for {
+			msg, err := consumer1.Receive(context.Background())
+			if err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("consumer1 msg id is: %v, value is: %s\n", msg.ID(), string(msg.Payload()))
+			msgList = append(msgList, string(msg.Payload()))
+			if err := consumer1.Ack(msg); err != nil {
+				log.Fatal(err)
+			}
 		}
-		fmt.Printf("consumer1 msg id is: %v, value is: %s\n", msg.ID(), string(msg.Payload()))
-		msgList = append(msgList, string(msg.Payload()))
-		if err := consumer1.Ack(msg); err != nil {
-			log.Fatal(err)
-		}
-	}
+	}()
 
-	assert.Equal(t, 5, len(msgList))
-
-	for i := 0; i < 5; i++ {
-		msg, err := consumer2.Receive(context.Background())
-		if err != nil {
-			log.Fatal(err)
+	go func() {
+		for {
+			msg, err := consumer2.Receive(context.Background())
+			if err != nil {
+				log.Fatal(err)
+			}
+			if err := consumer2.Ack(msg); err != nil {
+				log.Fatal(err)
+			}
+			fmt.Printf("consumer2 msg id is: %v, value is: %s\n", msg.ID(), string(msg.Payload()))
+			msgList = append(msgList, string(msg.Payload()))
 		}
-		if err := consumer2.Ack(msg); err != nil {
-			log.Fatal(err)
-		}
-		fmt.Printf("consumer2 msg id is: %v, value is: %s\n", msg.ID(), string(msg.Payload()))
-		msgList = append(msgList, string(msg.Payload()))
-	}
+	}()
 
+	time.Sleep(time.Second * 3)
 	assert.Equal(t, 10, len(msgList))
 	res := util.RemoveDuplicateElement(msgList)
 	assert.Equal(t, 10, len(res))
