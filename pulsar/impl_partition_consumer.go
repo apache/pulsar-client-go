@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
@@ -71,7 +72,8 @@ type partitionConsumer struct {
 	partitionNum int
 }
 
-func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID, partitionNum int, ch chan<- ConsumerMessage) (*partitionConsumer, error) {
+func newPartitionConsumer(client *client, topic string, options *ConsumerOptions,
+	partitionID, partitionNum int, ch chan ConsumerMessage) (*partitionConsumer, error) {
 	c := &partitionConsumer{
 		state:             consumerInit,
 		client:            client,
@@ -129,21 +131,15 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 		log.WithError(err).Errorf("Failed to create consumer")
 		return nil, err
 	}
-	c.log = c.log.WithField("name", c.consumerName)
+	c.log = c.log.WithField("consumerID", c.consumerID)
 	c.log.Info("Created consumer")
 	c.state = consumerReady
 
 	// In here, open a gorutine to receive data asynchronously from the subConsumer,
 	// filling the queue channel of the current consumer.
 	if partitionNum > 1 {
-		go func() {
-			err = c.ReceiveAsync(context.Background(), ch)
-			if err != nil {
-				return
-			}
-		}()
+		go c.getMessageFromSubConsumer(context.Background(), ch)
 	}
-
 	go c.runEventsLoop()
 
 	return c, nil
@@ -162,6 +158,14 @@ func (pc *partitionConsumer) setDefault(options *ConsumerOptions) {
 	subType = pb.CommandSubscribe_Exclusive
 }
 
+func (pc *partitionConsumer) getMessageFromSubConsumer(ctx context.Context, ch chan ConsumerMessage) {
+	err := pc.ReceiveAsync(context.Background(), ch)
+	if err != nil {
+		pc.log.Errorf("get message from sub queue error: %s", err.Error())
+		return
+	}
+}
+
 func (pc *partitionConsumer) grabCnx() error {
 	lr, err := pc.client.lookupService.Lookup(pc.topic)
 	if err != nil {
@@ -169,7 +173,7 @@ func (pc *partitionConsumer) grabCnx() error {
 		return err
 	}
 
-	pc.log.Debugf("Lookup result: %v", lr)
+	pc.log.Debugf("Lookup result: %v, consumerID: %d", lr.LogicalAddr, pc.consumerID)
 	requestID := pc.client.rpcClient.NewRequestID()
 	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
 		pb.BaseCommand_SUBSCRIBE, &pb.CommandSubscribe{
@@ -265,21 +269,20 @@ func (pc *partitionConsumer) trackMessage(msgID MessageID) error {
 }
 
 func (pc *partitionConsumer) increaseAvailablePermits() error {
-	pc.receivedSinceFlow++
-	highWater := uint32(math.Max(float64(pc.options.ReceiverQueueSize/2), 1))
-
+	atomic.AddUint32(&pc.receivedSinceFlow, 1)
+	highWater := uint32(math.Max(float64(cap(pc.subQueue)/2), 1))
 	pc.log.Debugf("receivedSinceFlow size is: %d, highWater size is: %d", pc.receivedSinceFlow, highWater)
-
+	val := atomic.LoadUint32(&pc.receivedSinceFlow)
 	// send flow request after 1/2 of the queue has been consumed
-	if pc.receivedSinceFlow >= highWater {
+	if val >= highWater {
 		pc.log.Debugf("send flow command to broker, permits size is: %d", pc.receivedSinceFlow)
 		err := pc.internalFlow(pc.receivedSinceFlow)
 		if err != nil {
 			pc.log.Errorf("Send flow cmd error:%s", err.Error())
-			pc.receivedSinceFlow = 0
+			atomic.SwapUint32(&pc.receivedSinceFlow, 0)
 			return err
 		}
-		pc.receivedSinceFlow = 0
+		atomic.SwapUint32(&pc.receivedSinceFlow, 0)
 	}
 	return nil
 }
@@ -610,6 +613,7 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 	}
 
 	requestID := pc.client.rpcClient.NewRequestID()
+	pc.log.Debugf("send flow cmd to consumer: [%d], permits size: [%d]\n", pc.consumerID, permits)
 	_, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.cnx, requestID,
 		pb.BaseCommand_FLOW, &pb.CommandFlow{
 			ConsumerId:     proto.Uint64(pc.consumerID),
@@ -650,8 +654,12 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			Consumer: pc,
 		}
 
+		pc.log.Debugf("receive message form broker, payload is:%s", string(payload))
+
 		select {
 		case pc.subQueue <- consumerMsg:
+			return nil
+		default:
 			//Add messageId to redeliverMessages buffer, avoiding duplicates.
 			newMid := response.GetMessageId()
 			var dup bool
@@ -668,8 +676,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				pc.redeliverMessages = append(pc.redeliverMessages, newMid)
 			}
 			pc.omu.Unlock()
-			continue
-		default:
 			return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
 		}
 	}

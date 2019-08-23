@@ -364,7 +364,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	topic := "persistent://public/default/testGetPartitions"
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
 
-	makeHTTPCall(t, http.MethodPut, testURL, "64")
+	makeHTTPCall(t, http.MethodPut, testURL, "2")
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
@@ -377,7 +377,6 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, topic+"-partition-0", topics[0])
 	assert.Equal(t, topic+"-partition-1", topics[1])
-	assert.Equal(t, topic+"-partition-2", topics[2])
 
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:             topic,
@@ -389,7 +388,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	defer consumer.Close()
 
 	ctx := context.Background()
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
@@ -398,20 +397,19 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 
 	msgs := make([]string, 0)
 
-	for i := 0; i < 10; i++ {
-		msg, err := consumer.Receive(ctx)
+	for i := 0; i < 100; i++ {
+		msg, err := consumer.Receive(context.Background())
 		assert.Nil(t, err)
 		msgs = append(msgs, string(msg.Payload()))
 
-		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
-			msg.ID(), string(msg.Payload()))
+		fmt.Printf("Received message content: [%s]\n", string(msg.Payload()))
 
 		if err := consumer.Ack(msg); err != nil {
 			assert.Nil(t, err)
 		}
 	}
 
-	assert.Equal(t, len(msgs), 10)
+	assert.Equal(t, len(msgs), 100)
 }
 
 func TestConsumer_ReceiveAsync(t *testing.T) {
@@ -757,7 +755,7 @@ func TestConsumer_Seek(t *testing.T) {
 	// Send 10 messages synchronously
 	t.Log("Publishing 10 messages synchronously")
 	for msgNum := 0; msgNum < 10; msgNum++ {
-		if err := producer.Send(ctx, &ProducerMessage{
+		if err = producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-content-%d", msgNum)),
 		}); err != nil {
 			t.Fatal(err)
@@ -850,6 +848,7 @@ func TestConsumer_Flow(t *testing.T) {
 		SubscriptionName:  "sub-1",
 		ReceiverQueueSize: 4,
 	})
+	assert.Nil(t, err)
 
 	for msgNum := 0; msgNum < 100; msgNum++ {
 		if err := producer.Send(ctx, &ProducerMessage{

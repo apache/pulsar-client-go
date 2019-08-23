@@ -19,9 +19,12 @@ package pulsar
 
 import (
 	"context"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
+
+const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
 
 type producer struct {
 	topic         string
@@ -45,6 +48,10 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
 	}
 
+	if options.BatchingMaxPublishDelay == 0 {
+		options.BatchingMaxPublishDelay = defaultBatchingMaxPublishDelay
+	}
+
 	p := &producer{
 		topic: options.Topic,
 	}
@@ -52,7 +59,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	if options.MessageRouter == nil {
 		internalRouter := internal.NewDefaultRouter(
 			internal.NewSystemClock(),
-			getHashingFunction(options.HashingScheme),
+			getHashingFunction(JavaStringHash),
 			options.BatchingMaxPublishDelay)
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
 			return internalRouter(message.Key, metadata.NumPartitions())

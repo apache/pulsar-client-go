@@ -101,11 +101,11 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 
 	for partitionIdx, partitionTopic := range partitions {
 		go func(partitionIdx int, partitionTopic string) {
-			cons, e := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
+			subConsumer, e := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
 			ch <- ConsumerError{
 				err:       e,
 				partition: partitionIdx,
-				cons:      cons,
+				cons:      subConsumer,
 			}
 		}(partitionIdx, partitionTopic)
 	}

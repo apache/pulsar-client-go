@@ -20,6 +20,8 @@ package internal
 import (
 	"math/rand"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type defaultRouter struct {
@@ -66,6 +68,7 @@ func NewDefaultRouter(clock Clock, hashFunc func(string) uint32, maxBatchingDela
 		//currentMs / maxBatchingDelayMs + startPtnIdx
 		if maxBatchingDelay.Nanoseconds() != 0 {
 			n := uint32(state.clock()/uint64(maxBatchingDelay.Nanoseconds())) + state.shiftIdx
+			log.Debugf("message router to partition-%d", n%numPartitions)
 			return int(n % numPartitions)
 		}
 		return 0

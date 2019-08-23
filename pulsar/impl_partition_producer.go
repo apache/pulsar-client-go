@@ -64,17 +64,8 @@ type partitionProducer struct {
 	partitionIdx int
 }
 
-const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
-
-func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (*partitionProducer, error) {
-
-	var batchingMaxPublishDelay time.Duration
-	if options.BatchingMaxPublishDelay != 0 {
-		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
-	} else {
-		batchingMaxPublishDelay = defaultBatchingMaxPublishDelay
-	}
-
+func newPartitionProducer(client *client, topic string, options *ProducerOptions,
+	partitionIdx int) (*partitionProducer, error) {
 	var maxPendingMessages int
 	if options.MaxPendingMessages == 0 {
 		maxPendingMessages = 1000
@@ -90,7 +81,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, 1),
-		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
+		batchFlushTicker: time.NewTicker(options.BatchingMaxPublishDelay),
 		publishSemaphore: make(util.Semaphore, maxPendingMessages),
 		pendingQueue:     util.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
