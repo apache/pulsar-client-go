@@ -1,6 +1,8 @@
 package pulsar
 
-import "fmt"
+import (
+	"fmt"
+)
 
 func makeHttpPath(apiVersion string, componentPath string) string {
 	return fmt.Sprintf("/admin/%s%s", apiVersion, componentPath)
