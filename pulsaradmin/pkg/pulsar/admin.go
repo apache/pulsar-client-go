@@ -2,13 +2,19 @@ package pulsar
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
+	"strings"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/auth"
 )
 
 const (
@@ -20,6 +26,15 @@ type Config struct {
 	WebServiceUrl string
 	HttpClient    *http.Client
 	ApiVersion    ApiVersion
+
+	Auth          *auth.TlsAuthProvider
+	AuthParams    string
+	TlsOptions    *TLSOptions
+}
+
+type TLSOptions struct {
+	TrustCertsFilePath      string
+	AllowInsecureConnection bool
 }
 
 // DefaultConfig returns a default configuration for the pulsar admin client
@@ -27,6 +42,10 @@ func DefaultConfig() *Config {
 	config := &Config{
 		WebServiceUrl: DefaultWebServiceURL,
 		HttpClient:    http.DefaultClient,
+
+		TlsOptions: &TLSOptions{
+			AllowInsecureConnection: false,
+		},
 	}
 	return config
 }
@@ -40,23 +59,78 @@ type client struct {
 	webServiceUrl string
 	apiVersion    string
 	httpClient    *http.Client
+
+	// TLS config
+	auth       *auth.TlsAuthProvider
+	authParams string
+	tlsOptions *TLSOptions
+	transport  *http.Transport
 }
 
 // New returns a new client
-func New(config *Config) Client {
-	defConfig := DefaultConfig()
-
+func New(config *Config) (Client, error) {
 	if len(config.WebServiceUrl) == 0 {
-		config.WebServiceUrl = defConfig.WebServiceUrl
+		config.WebServiceUrl = DefaultWebServiceURL
 	}
 
 	c := &client{
-		// TODO: make api version configurable
 		apiVersion:    config.ApiVersion.String(),
 		webServiceUrl: config.WebServiceUrl,
 	}
 
-	return c
+	if strings.HasPrefix(c.webServiceUrl, "https://") {
+		c.authParams = config.AuthParams
+		c.tlsOptions = config.TlsOptions
+		mapAuthParams := make(map[string]string)
+
+		err := json.Unmarshal([]byte(c.authParams), &mapAuthParams)
+		if err != nil {
+			return nil, err
+		}
+		c.auth = auth.NewAuthenticationTLSWithParams(mapAuthParams)
+
+		tlsConf, err := c.getTLSConfig()
+		if err != nil {
+			return nil, err
+		}
+
+		c.transport = &http.Transport{
+			MaxIdleConnsPerHost: 10,
+			TLSClientConfig:     tlsConf,
+		}
+	}
+
+	return c, nil
+}
+
+func (c *client) getTLSConfig() (*tls.Config, error) {
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: c.tlsOptions.AllowInsecureConnection,
+	}
+
+	if c.tlsOptions.TrustCertsFilePath != "" {
+		caCerts, err := ioutil.ReadFile(c.tlsOptions.TrustCertsFilePath)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig.RootCAs = x509.NewCertPool()
+		ok := tlsConfig.RootCAs.AppendCertsFromPEM(caCerts)
+		if !ok {
+			return nil, errors.New("failed to parse root CAs certificates")
+		}
+	}
+
+	cert, err := c.auth.GetTLSCertificate()
+	if err != nil {
+		return nil, err
+	}
+
+	if cert != nil {
+		tlsConfig.Certificates = []tls.Certificate{*cert}
+	}
+
+	return tlsConfig, nil
 }
 
 func (c *client) endpoint(componentPath string, parts ...string) string {
@@ -189,6 +263,7 @@ func (c *client) newRequest(method, path string) (*request, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	req := &request{
 		method: method,
 		url: &url.URL{
@@ -221,6 +296,9 @@ func (c *client) doRequest(r *request) (*http.Response, error) {
 	hc := c.httpClient
 	if hc == nil {
 		hc = http.DefaultClient
+	}
+	if c.transport != nil {
+		hc.Transport = c.transport
 	}
 
 	resp, err := hc.Do(req)
