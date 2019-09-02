@@ -31,7 +31,7 @@ func (desc *LongDescription) ToString() string {
 		PERMISSION + "\n" +
 		SPACES + desc.CommandPermission + "\n\n" +
 		EXAMPLES + "\n" +
-		desc.exampleToString() + "\n" +
+		desc.exampleToString() +
 		OUTPUT + "\n" +
 		desc.outputToString()
 }
@@ -39,7 +39,7 @@ func (desc *LongDescription) ToString() string {
 func (desc *LongDescription) exampleToString() string {
 	var result string
 	for _, v := range desc.CommandExamples {
-		result += SPACES + "#" + v.Desc + "\n" + SPACES + v.Command + "\n"
+		result += SPACES + "#" + v.Desc + "\n" + SPACES + v.Command + "\n\n"
 	}
 	return result
 }
