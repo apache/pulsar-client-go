@@ -15,7 +15,7 @@ func TestLongDescription_exampleToString(t *testing.T) {
 	res := desc.exampleToString()
 
 	expect := "    #command description\n" +
-		"    command\n"
+		"    command\n\n"
 
 	assert.Equal(t, expect, res)
 }
