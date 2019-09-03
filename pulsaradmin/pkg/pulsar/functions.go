@@ -49,6 +49,8 @@ type Functions interface {
 
 	// Stop function instance
 	StopFunctionWithID(tenant, namespace, name string, instanceID int) error
+
+	DeleteFunction(tenant, namespace, name string) error
 }
 
 type functions struct {
@@ -183,21 +185,17 @@ func (f *functions) CreateFuncWithUrl(funcConf *FunctionConfig, pkgUrl string) e
 
 func (f *functions) StopFunction(tenant, namespace, name string) error {
     endpoint := f.client.endpoint(f.basePath, tenant, namespace, name)
-    err := f.client.post(endpoint+"/stop", "", nil)
-    if err != nil {
-        return err
-    }
-    return nil
+    return f.client.post(endpoint+"/stop", "", nil)
 }
 
 func (f *functions) StopFunctionWithID(tenant, namespace, name string, instanceID int) error  {
     id := fmt.Sprintf("%d", instanceID)
     endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, id)
 
-    err := f.client.post(endpoint+"/stop", "", nil)
-    if err != nil {
-        return err
-    }
+    return f.client.post(endpoint+"/stop", "", nil)
+}
 
-    return nil
+func (f *functions) DeleteFunction(tenant, namespace, name string) error {
+	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name)
+	return f.client.delete(endpoint, nil)
 }
