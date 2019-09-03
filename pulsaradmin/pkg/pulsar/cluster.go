@@ -9,6 +9,7 @@ type Clusters interface {
 	Delete(string) error
 	Update(ClusterData) error
 	UpdatePeerClusters(string, []string) error
+	GetPeerClusters(string) ([]string, error)
 }
 
 type clusters struct {
@@ -53,6 +54,12 @@ func (c *clusters) Update(cdata ClusterData) error {
 }
 
 func (c *clusters) UpdatePeerClusters(cluster string, peerClusters []string) error {
-	endpoint :=  c.client.endpoint(c.basePath, cluster, "peers")
+	endpoint := c.client.endpoint(c.basePath, cluster, "peers")
 	return c.client.post(endpoint, peerClusters, nil)
+}
+func (c *clusters) GetPeerClusters(name string) ([]string, error) {
+	var peerClusters []string
+	endpoint := c.client.endpoint(c.basePath, name, "peers")
+	err := c.client.get(endpoint, &peerClusters)
+	return peerClusters, err
 }
