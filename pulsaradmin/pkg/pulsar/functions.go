@@ -43,6 +43,12 @@ type Functions interface {
 	// @param pkgUrl
 	//      url from which pkg can be downloaded
 	CreateFuncWithUrl(data *FunctionConfig, pkgUrl string) error
+
+	// Stop all function instances
+	StopFunction(tenant, namespace, name string) error
+
+	// Stop function instance
+	StopFunctionWithID(tenant, namespace, name string, instanceID int) error
 }
 
 type functions struct {
@@ -173,4 +179,25 @@ func (f *functions) CreateFuncWithUrl(funcConf *FunctionConfig, pkgUrl string) e
 	}
 
 	return nil
+}
+
+func (f *functions) StopFunction(tenant, namespace, name string) error {
+    endpoint := f.client.endpoint(f.basePath, tenant, namespace, name)
+    err := f.client.post(endpoint+"/stop", "", nil)
+    if err != nil {
+        return err
+    }
+    return nil
+}
+
+func (f *functions) StopFunctionWithID(tenant, namespace, name string, instanceID int) error  {
+    id := fmt.Sprintf("%d", instanceID)
+    endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, id)
+
+    err := f.client.post(endpoint+"/stop", "", nil)
+    if err != nil {
+        return err
+    }
+
+    return nil
 }
