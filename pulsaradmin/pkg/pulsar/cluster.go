@@ -39,8 +39,7 @@ func (c *clusters) Get(name string) (ClusterData, error) {
 
 func (c *clusters) Create(cdata ClusterData) error {
 	endpoint := c.client.endpoint(c.basePath, cdata.Name)
-	err := c.client.put(endpoint, &cdata, nil)
-	return err
+	return c.client.put(endpoint, &cdata, nil)
 }
 
 func (c *clusters) Delete(name string) error {
