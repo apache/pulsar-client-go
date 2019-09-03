@@ -53,6 +53,7 @@ func DefaultConfig() *Config {
 // Client provides a client to the Pulsar Restful API
 type Client interface {
 	Clusters() Clusters
+	Functions() Functions
 }
 
 type client struct {
@@ -209,6 +210,27 @@ func (c *client) post(endpoint string, in, obj interface{}) error {
 		return err
 	}
 	req.obj = in
+	resp, err := checkSuccessful(c.doRequest(req))
+	if err != nil {
+		return err
+	}
+	defer safeRespClose(resp)
+	if obj != nil {
+		if err := decodeJsonBody(resp, &obj); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (c *client) postWithMultiPart(endpoint string, in, obj interface{}, body io.Reader, contentType string) error {
+	req, err := c.newRequest(http.MethodPost, endpoint)
+	if err != nil {
+		return err
+	}
+	req.obj = in
+	req.body = body
+	req.contentType = contentType
 
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
@@ -226,9 +248,10 @@ func (c *client) post(endpoint string, in, obj interface{}) error {
 }
 
 type request struct {
-	method string
-	url    *url.URL
-	params url.Values
+	method      string
+	contentType string
+	url         *url.URL
+	params      url.Values
 
 	obj  interface{}
 	body io.Reader
@@ -288,9 +311,14 @@ func (c *client) doRequest(r *request) (*http.Response, error) {
 		return nil, err
 	}
 
-	// add default headers
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
+	if r.contentType != "" {
+		req.Header.Set("Content-Type", r.contentType)
+	} else {
+		// add default headers
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+	}
+
 	req.Header.Set("User-Agent", c.useragent())
 
 	hc := c.httpClient
@@ -301,8 +329,7 @@ func (c *client) doRequest(r *request) (*http.Response, error) {
 		hc.Transport = c.transport
 	}
 
-	resp, err := hc.Do(req)
-	return resp, err
+	return hc.Do(req)
 }
 
 // decodeJsonBody is used to JSON encode a body

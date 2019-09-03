@@ -3,6 +3,7 @@ module github.com/streamnative/pulsar-admin-go
 go 1.12
 
 require (
+	github.com/davecgh/go-spew v1.1.1
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/kris-nova/logger v0.0.0-20181127235838-fd0d87064b06
@@ -15,4 +16,5 @@ require (
 	github.com/spf13/pflag v1.0.3
 	github.com/stretchr/objx v0.2.0 // indirect
 	github.com/stretchr/testify v1.3.0
+	gopkg.in/yaml.v2 v2.2.2
 )
