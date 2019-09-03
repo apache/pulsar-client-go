@@ -50,3 +50,10 @@ type FunctionData struct {
 	FuncConf     *FunctionConfig `json:"-"`
 	UserCodeFile string          `json:"-"`
 }
+
+// Failure Domain information
+type FailureDomainData struct {
+	ClusterName string   `json:"-"`
+	DomainName  string   `json:"-"`
+	BrokerList  []string `json:"brokerList"`
+}
