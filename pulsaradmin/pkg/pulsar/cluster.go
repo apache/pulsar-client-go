@@ -10,6 +10,7 @@ type Clusters interface {
 	Update(ClusterData) error
 	UpdatePeerClusters(string, []string) error
 	GetPeerClusters(string) ([]string, error)
+	CreateFailureDomain(FailureDomainData) error
 }
 
 type clusters struct {
@@ -51,14 +52,19 @@ func (c *clusters) Update(cdata ClusterData) error {
 	endpoint := c.client.endpoint(c.basePath, cdata.Name)
 	return c.client.post(endpoint, &cdata, nil)
 }
-
-func (c *clusters) UpdatePeerClusters(cluster string, peerClusters []string) error {
-	endpoint := c.client.endpoint(c.basePath, cluster, "peers")
-	return c.client.post(endpoint, peerClusters, nil)
-}
 func (c *clusters) GetPeerClusters(name string) ([]string, error) {
 	var peerClusters []string
 	endpoint := c.client.endpoint(c.basePath, name, "peers")
 	err := c.client.get(endpoint, &peerClusters)
 	return peerClusters, err
+}
+
+func (c *clusters) UpdatePeerClusters(cluster string, peerClusters []string) error {
+	endpoint := c.client.endpoint(c.basePath, cluster, "peers")
+	return c.client.post(endpoint, peerClusters, nil)
+}
+
+func (c *clusters) CreateFailureDomain(data FailureDomainData) error {
+	endpoint := c.client.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
+	return c.client.post(endpoint, &data, nil)
 }
