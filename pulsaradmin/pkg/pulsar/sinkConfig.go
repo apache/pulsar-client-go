@@ -38,7 +38,7 @@ type SinkConfig struct {
     // SecretProviderConfigurator.getSecretObjectType() method.
     Secrets              map[string]interface{}
     Parallelism          int
-    ProcessingGuarantees ProcessingGuarantees
+    ProcessingGuarantees string
     RetainOrdering       bool
     Resources            Resources
     AutoAck              bool

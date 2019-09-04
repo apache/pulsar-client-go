@@ -37,7 +37,7 @@ type SourceConfig struct {
     Secrets map[string]interface{}
 
     Parallelism          int
-    ProcessingGuarantees ProcessingGuarantees
+    ProcessingGuarantees string
     Resources            Resources
     Archive              string
     // Any flags that you want to pass to the runtime.
