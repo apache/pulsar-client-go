@@ -55,5 +55,5 @@ type FunctionData struct {
 type FailureDomainData struct {
 	ClusterName string   `json:"-"`
 	DomainName  string   `json:"-"`
-	BrokerList  []string `json:"brokerList"`
+	BrokerList  []string `json:"brokers"`
 }
