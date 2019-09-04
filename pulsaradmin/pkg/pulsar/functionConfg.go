@@ -17,20 +17,10 @@
 
 package pulsar
 
-type  ProcessingGuarantees int
-
-type Runtime int
-
 const (
-    AtLeasetOnce ProcessingGuarantees = iota
-    AtMostOnce
-    EffectivelyOnce
-)
-
-const (
-    Java Runtime = iota
-    Python
-    Go
+    JavaRuntime = "JAVA"
+    PythonRuntime = "PYTHON"
+    GoRuntime = "GO"
 )
 
 type FunctionConfig struct {
@@ -58,7 +48,7 @@ type FunctionConfig struct {
 
     OutputSerdeClassName string                 `json:"outputSerdeClassName" yaml:"outputSerdeClassName"`
     LogTopic             string                 `json:"logTopic" yaml:"logTopic"`
-    ProcessingGuarantees ProcessingGuarantees   `json:"processingGuarantees" yaml:"processingGuarantees"`
+    ProcessingGuarantees string                 `json:"processingGuarantees" yaml:"processingGuarantees"`
     RetainOrdering       bool                   `json:"retainOrdering" yaml:"retainOrdering"`
     UserConfig           map[string]interface{} `json:"userConfig" yaml:"userConfig"`
 
@@ -69,7 +59,7 @@ type FunctionConfig struct {
     // SecretProviderConfigurator.getSecretObjectType() method.
     Secrets map[string]interface{} `json:"secrets" yaml:"secrets"`
 
-    Runtime           Runtime       `json:"runtime" yaml:"runtime"`
+    Runtime           string        `json:"runtime" yaml:"runtime"`
     AutoAck           bool          `json:"autoAck" yaml:"autoAck"`
     MaxMessageRetries int           `json:"maxMessageRetries" yaml:"maxMessageRetries"`
     DeadLetterTopic   string        `json:"deadLetterTopic" yaml:"deadLetterTopic"`
@@ -78,7 +68,7 @@ type FunctionConfig struct {
     Resources         *Resources    `json:"resources" yaml:"resources"`
     FQFN              string        `json:"fqfn" yaml:"fqfn"`
     WindowConfig      *WindowConfig `json:"windowConfig" yaml:"windowConfig"`
-    TimeoutMs         *int64         `json:"timeoutMs" yaml:"timeoutMs"`
+    TimeoutMs         *int64        `json:"timeoutMs" yaml:"timeoutMs"`
     Jar               string        `json:"jar" yaml:"jar"`
     Py                string        `json:"py" yaml:"py"`
     Go                string        `json:"go" yaml:"go"`
