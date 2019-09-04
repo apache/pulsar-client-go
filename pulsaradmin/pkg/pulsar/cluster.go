@@ -12,6 +12,7 @@ type Clusters interface {
 	GetPeerClusters(string) ([]string, error)
 	CreateFailureDomain(FailureDomainData) error
 	GetFailureDomain(clusterName, domainName string) (FailureDomainData, error)
+	ListFailureDomains(string) (FailureDomainMap, error)
 }
 
 type clusters struct {
@@ -76,4 +77,11 @@ func (c *clusters) GetFailureDomain(clusterName string, domainName string) (Fail
 	endpoint := c.client.endpoint(c.basePath, clusterName, "failureDomains", domainName)
 	err := c.client.get(endpoint, &res)
 	return res, err
+}
+
+func (c *clusters) ListFailureDomains(clusterName string) (FailureDomainMap, error) {
+	var domainData FailureDomainMap
+	endpoint := c.client.endpoint(c.basePath, clusterName, "failureDomains")
+	err := c.client.get(endpoint, &domainData)
+	return domainData, err
 }

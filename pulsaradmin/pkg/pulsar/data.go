@@ -57,3 +57,5 @@ type FailureDomainData struct {
 	DomainName  string   `json:"-"`
 	BrokerList  []string `json:"brokers"`
 }
+
+type FailureDomainMap map[string]FailureDomainData
