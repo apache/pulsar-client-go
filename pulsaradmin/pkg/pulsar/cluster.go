@@ -13,6 +13,7 @@ type Clusters interface {
 	CreateFailureDomain(FailureDomainData) error
 	GetFailureDomain(clusterName, domainName string) (FailureDomainData, error)
 	ListFailureDomains(string) (FailureDomainMap, error)
+	DeleteFailureDomain(FailureDomainData) error
 }
 
 type clusters struct {
@@ -84,4 +85,9 @@ func (c *clusters) ListFailureDomains(clusterName string) (FailureDomainMap, err
 	endpoint := c.client.endpoint(c.basePath, clusterName, "failureDomains")
 	err := c.client.get(endpoint, &domainData)
 	return domainData, err
+}
+
+func (c *clusters) DeleteFailureDomain(data FailureDomainData) error {
+	endpoint := c.client.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
+	return c.client.delete(endpoint, nil)
 }
