@@ -223,6 +223,30 @@ func (c *client) post(endpoint string, in, obj interface{}) error {
 	return nil
 }
 
+func (c *client) putWithMultiPart(endpoint string, in, obj interface{}, body io.Reader, contentType string) error {
+	req, err := c.newRequest(http.MethodPut, endpoint)
+	if err != nil {
+		return err
+	}
+	req.obj = in
+	req.body = body
+	req.contentType = contentType
+
+	resp, err := checkSuccessful(c.doRequest(req))
+	if err != nil {
+		return err
+	}
+	defer safeRespClose(resp)
+
+	if obj != nil {
+		if err := decodeJsonBody(resp, &obj); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (c *client) postWithMultiPart(endpoint string, in, obj interface{}, body io.Reader, contentType string) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {

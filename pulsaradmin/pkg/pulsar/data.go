@@ -47,6 +47,8 @@ type FunctionData struct {
 	MaxMessageRetries         int     `json:"maxMessageRetries"`
 	DeadLetterTopic           string  `json:"deadLetterTopic"`
 
+	UpdateAuthData bool `json:"updateAuthData"`
+
 	FuncConf     *FunctionConfig `json:"-"`
 	UserCodeFile string          `json:"-"`
 }
