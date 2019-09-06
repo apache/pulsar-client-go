@@ -3,6 +3,7 @@ package pulsar
 import (
 	"fmt"
 	"github.com/pkg/errors"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -45,11 +46,7 @@ func GetTopicName(completeName string) (*TopicName, error) {
 	// The fully qualified topic name can be:
 	// <domain>://<tenant>/<namespace>/<topic>
 
-	parts := strings.Split(completeName, "://")
-	if len(parts) != 2 {
-		return nil, errors.Errorf("Invalid complete topic name '%s', it should be in "+
-			"the format of <domain>://<tenant>/<namespace>/<topic>", completeName)
-	}
+	parts  := strings.SplitN(completeName, "://", 2)
 
 	domain, err := ParseTopicDomain(parts[0])
 	if err != nil {
@@ -58,7 +55,7 @@ func GetTopicName(completeName string) (*TopicName, error) {
 	topicname.domain = domain
 
 	rest := parts[1]
-	parts = strings.Split(rest, "/")
+	parts = strings.SplitN(rest, "/", 3)
 	if len(parts) == 3 {
 		topicname.tenant = parts[0]
 		topicname.namespace = parts[1]
@@ -67,6 +64,10 @@ func GetTopicName(completeName string) (*TopicName, error) {
 	} else {
 		return nil, errors.Errorf("Invalid topic name '%s', it should be in the format of "+
 			"<tenant>/<namespace>/<topic>", rest)
+	}
+
+	if topicname.topic == "" {
+		return nil, errors.New("Topic name can not be empty.")
 	}
 
 	n, err := GetNameSpaceName(topicname.tenant, topicname.namespace)
@@ -87,7 +88,11 @@ func (t *TopicName) GetDomain() TopicDomain {
 }
 
 func (t *TopicName) GetRestPath() string {
-	return fmt.Sprintf("%s/%s/%s/%s", t.domain, t.tenant, t.namespace, t.topic)
+	return fmt.Sprintf("%s/%s/%s/%s", t.domain, t.tenant, t.namespace, t.GetEncodedTopic())
+}
+
+func (t *TopicName) GetEncodedTopic() string {
+	return url.QueryEscape(t.topic)
 }
 
 func getPartitionIndex(topic string) int {
