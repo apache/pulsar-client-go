@@ -71,6 +71,30 @@ type Functions interface {
 	// Get the configuration for the specified function
 	GetFunction(tenant, namespace, name string) (FunctionConfig, error)
 
+	// Gets the current status of a function
+	GetFunctionStatus(tenant, namespace, name string) (FunctionStatus, error)
+
+	// Gets the current status of a function instance
+	GetFunctionStatusWithInstanceID(tenant, namespace, name string, instanceID int) (FunctionInstanceStatusData, error)
+
+	// Gets the current stats of a function
+	GetFunctionStats(tenant, namespace, name string) (FunctionStats, error)
+
+	// Gets the current stats of a function instance
+	GetFunctionStatsWithInstanceID(tenant, namespace, name string, instanceID int) (FunctionInstanceStatsData, error)
+
+	// Fetch the current state associated with a Pulsar Function
+	//
+	// Response Example:
+	// 		{ "value : 12, version : 2"}
+	GetFunctionState(tenant, namespace, name, key string) (FunctionState, error)
+
+	// Puts the given state associated with a Pulsar Function
+	PutFunctionState(tenant, namespace, name string, state FunctionState) error
+
+	// Triggers the function by writing to the input topic
+	TriggerFunction(tenant, namespace, name, topic, triggerValue, triggerFile string) (string, error)
+
 	// Update the configuration for a function.
 	UpdateFunction(functionConfig *FunctionConfig, fileName string, updateOptions *UpdateOptions) error
 
@@ -405,4 +429,151 @@ func (f *functions) UpdateFunctionWithUrl(functionConfig *FunctionConfig, pkgUrl
 	}
 
 	return nil
+}
+
+func (f *functions) GetFunctionStatus(tenant, namespace, name string) (FunctionStatus, error) {
+	var functionStatus FunctionStatus
+	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name)
+	err := f.client.get(endpoint+"/status", &functionStatus)
+	return functionStatus, err
+}
+
+func (f *functions) GetFunctionStatusWithInstanceID(tenant, namespace, name string, instanceID int) (FunctionInstanceStatusData, error) {
+	var functionInstanceStatusData FunctionInstanceStatusData
+	id := fmt.Sprintf("%d", instanceID)
+	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, id)
+	err := f.client.get(endpoint+"/status", &functionInstanceStatusData)
+	return functionInstanceStatusData, err
+}
+
+func (f *functions) GetFunctionStats(tenant, namespace, name string) (FunctionStats, error) {
+	var functionStats FunctionStats
+	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name)
+	err := f.client.get(endpoint+"/stats", &functionStats)
+	return functionStats, err
+}
+
+func (f *functions) GetFunctionStatsWithInstanceID(tenant, namespace, name string, instanceID int) (FunctionInstanceStatsData, error) {
+	var functionInstanceStatsData FunctionInstanceStatsData
+	id := fmt.Sprintf("%d", instanceID)
+	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, id)
+	err := f.client.get(endpoint+"/stats", &functionInstanceStatsData)
+	return functionInstanceStatsData, err
+}
+
+func (f *functions)GetFunctionState(tenant, namespace, name, key string) (FunctionState, error)  {
+	var functionState FunctionState
+	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, "state", key)
+	err := f.client.get(endpoint, &functionState)
+	return functionState, err
+}
+
+func (f *functions) PutFunctionState(tenant, namespace, name string, state FunctionState) error {
+	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, "state", state.Key)
+
+	// buffer to store our request as bytes
+	bodyBuf := bytes.NewBufferString("")
+
+	multiPartWriter := multipart.NewWriter(bodyBuf)
+
+	stateData, err := json.Marshal(state)
+
+	if err != nil {
+		return err
+	}
+
+	stateWriter, err := f.createStringFromField(multiPartWriter, "state")
+	if err != nil {
+		return err
+	}
+
+	_, err = stateWriter.Write(stateData)
+
+	if err != nil {
+		return err
+	}
+
+	// In here, we completed adding the file and the fields, let's close the multipart writer
+	// So it writes the ending boundary
+	if err = multiPartWriter.Close(); err != nil {
+		return err
+	}
+
+	contentType := multiPartWriter.FormDataContentType()
+
+	err = f.client.postWithMultiPart(endpoint, nil, nil, bodyBuf, contentType)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (f *functions) TriggerFunction(tenant, namespace, name, topic, triggerValue, triggerFile string) (string, error) {
+	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, "trigger")
+
+	// buffer to store our request as bytes
+	bodyBuf := bytes.NewBufferString("")
+
+	multiPartWriter := multipart.NewWriter(bodyBuf)
+
+	if triggerFile != "" {
+		file, err := os.Open(triggerFile)
+		if err != nil {
+			return "", err
+		}
+		defer file.Close()
+
+		part, err := multiPartWriter.CreateFormFile("dataStream", filepath.Base(file.Name()))
+
+		if err != nil {
+			return "", err
+		}
+
+		// copy the actual file content to the filed's writer
+		_, err = io.Copy(part, file)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if triggerValue != "" {
+		valueWriter, err := f.createTextFromFiled(multiPartWriter, "data")
+		if err != nil {
+			return "", err
+		}
+
+		_, err = valueWriter.Write([]byte(triggerValue))
+		if err != nil {
+			return "", err
+		}
+	}
+
+	if topic != "" {
+		topicWriter, err := f.createTextFromFiled(multiPartWriter, "topic")
+		if err != nil {
+			return "", err
+		}
+
+		_, err = topicWriter.Write([]byte(topic))
+		if err != nil {
+			return "", err
+		}
+	}
+
+	// In here, we completed adding the file and the fields, let's close the multipart writer
+	// So it writes the ending boundary
+	if err := multiPartWriter.Close(); err != nil {
+		return "", err
+	}
+
+	contentType := multiPartWriter.FormDataContentType()
+	var str string
+	err := f.client.postWithMultiPart(endpoint, &str, nil, bodyBuf, contentType)
+	if err != nil {
+		return "", err
+	}
+
+	return str, nil
 }
