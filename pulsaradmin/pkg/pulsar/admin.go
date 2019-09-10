@@ -55,6 +55,7 @@ type Client interface {
 	Clusters() Clusters
 	Functions() Functions
 	Tenants() Tenants
+	Topics() Topics
 }
 
 type client struct {
@@ -185,9 +186,20 @@ func (c *client) put(endpoint string, in, obj interface{}) error {
 }
 
 func (c *client) delete(endpoint string, obj interface{}) error {
+	return c.deleteWithQueryParams(endpoint, obj, nil)
+}
+
+func (c *client) deleteWithQueryParams(endpoint string, obj interface{}, params map[string]string) error {
 	req, err := c.newRequest(http.MethodDelete, endpoint)
 	if err != nil {
 		return err
+	}
+
+	if params != nil {
+		query := req.url.Query()
+		for k, v := range params {
+			query.Add(k, v)
+		}
 	}
 
 	resp, err := checkSuccessful(c.doRequest(req))

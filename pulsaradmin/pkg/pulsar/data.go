@@ -92,3 +92,8 @@ type TenantData struct {
 	AdminRoles      []string `json:"adminRoles"`
 	AllowedClusters []string `json:"allowedClusters"`
 }
+
+// Topic data
+type PartitionedTopicMetadata struct {
+	Partitions int `json:"partitions"`
+}
