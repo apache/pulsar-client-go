@@ -55,6 +55,7 @@ type Client interface {
 	Clusters() Clusters
 	Functions() Functions
 	Tenants() Tenants
+	Sources() Sources
 	Topics() Topics
 }
 
