@@ -405,17 +405,12 @@ func responseError(resp *http.Response) error {
 		return e
 	}
 
-	jsonErr := json.Unmarshal(body, &e)
+	json.Unmarshal(body, &e)
 
-	if jsonErr != nil {
-		e.Code = http.StatusPartialContent
-	} else {
-		e.Code = resp.StatusCode
-
-		if e.Reason == "" {
-			e.Reason = unknownErrorReason
-		}
-	}
+    e.Code = resp.StatusCode
+    if e.Reason == "" {
+        e.Reason = unknownErrorReason
+    }
 
 	return e
 }
