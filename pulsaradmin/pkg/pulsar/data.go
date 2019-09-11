@@ -93,6 +93,30 @@ type TenantData struct {
 	AllowedClusters []string `json:"allowedClusters"`
 }
 
+type SourceData struct {
+	Tenant                   string  `json:"tenant"`
+	Namespace                string  `json:"namespace"`
+	Name                     string  `json:"name"`
+	SourceType               string  `json:"sourceType"`
+	ProcessingGuarantees     string  `json:"processingGuarantees"`
+	DestinationTopicName     string  `json:"destinationTopicName"`
+	DeserializationClassName string  `json:"deserializationClassName"`
+	SchemaType               string  `json:"schemaType"`
+	Parallelism              int     `json:"parallelism"`
+	Archive                  string  `json:"archive"`
+	ClassName                string  `json:"className"`
+	SourceConfigFile         string  `json:"sourceConfigFile"`
+	CPU                      float64 `json:"cpu"`
+	RAM                      int64   `json:"ram"`
+	Disk                     int64   `json:"disk"`
+	SourceConfigString       string  `json:"sourceConfigString"`
+
+	SourceConf *SourceConfig `json:"-"`
+	InstanceID string        `json:"instanceId"`
+
+	UpdateAuthData bool `json:"updateAuthData"`
+}
+
 // Topic data
 type PartitionedTopicMetadata struct {
 	Partitions int `json:"partitions"`
