@@ -1,6 +1,7 @@
 package pulsar
 
 import (
+	"fmt"
 	"strconv"
 )
 
@@ -10,6 +11,8 @@ type Topics interface {
 	Update(TopicName, int) error
 	GetMetadata(TopicName) (PartitionedTopicMetadata, error)
 	List(NameSpaceName) ([]string, []string, error)
+	Lookup(TopicName) (LookupData, error)
+	GetBundleRange(TopicName) (string, error)
 }
 
 type topics struct {
@@ -17,6 +20,7 @@ type topics struct {
 	basePath          string
 	persistentPath    string
 	nonPersistentPath string
+	lookupPath        string
 }
 
 func (c *client) Topics() Topics {
@@ -25,6 +29,7 @@ func (c *client) Topics() Topics {
 		basePath:          "",
 		persistentPath:    "/persistent",
 		nonPersistentPath: "/non-persistent",
+		lookupPath:        "/lookup/v2/topic",
 	}
 }
 
@@ -61,7 +66,7 @@ func (t *topics) GetMetadata(topic TopicName) (PartitionedTopicMetadata, error) 
 
 func (t *topics) List(namespace NameSpaceName) ([]string, []string, error) {
 	var partitionedTopics, nonPartitionedTopics []string
-	partitionedTopicsChan  := make(chan []string)
+	partitionedTopicsChan := make(chan []string)
 	nonPartitionedTopicsChan := make(chan []string)
 	errChan := make(chan error)
 
@@ -78,15 +83,15 @@ func (t *topics) List(namespace NameSpaceName) ([]string, []string, error) {
 	requestCount := 4
 	for {
 		select {
-		case err :=<-errChan:
+		case err := <-errChan:
 			if err != nil {
 				return nil, nil, err
 			}
 			continue
-		case pTopic :=<- partitionedTopicsChan:
+		case pTopic := <-partitionedTopicsChan:
 			requestCount--
 			partitionedTopics = append(partitionedTopics, pTopic...)
-		case npTopic :=<- nonPartitionedTopicsChan:
+		case npTopic := <-nonPartitionedTopicsChan:
 			requestCount--
 			nonPartitionedTopics = append(nonPartitionedTopics, npTopic...)
 		}
@@ -101,4 +106,17 @@ func (t *topics) getTopics(endpoint string, out chan<- []string, err chan<- erro
 	var topics []string
 	err <- t.client.get(endpoint, &topics)
 	out <- topics
+}
+
+func (t *topics) Lookup(topic TopicName) (LookupData, error) {
+	var lookup LookupData
+	endpoint := fmt.Sprintf("%s/%s", t.lookupPath, topic.GetRestPath())
+	err := t.client.get(endpoint, &lookup)
+	return lookup, err
+}
+
+func (t *topics) GetBundleRange(topic TopicName) (string, error) {
+	endpoint := fmt.Sprintf("%s/%s/%s", t.lookupPath, topic.GetRestPath(), "bundle")
+	data, err := t.client.getAndDecode(endpoint, nil, false)
+	return string(data), err
 }
