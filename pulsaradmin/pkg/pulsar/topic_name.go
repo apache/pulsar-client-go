@@ -46,7 +46,7 @@ func GetTopicName(completeName string) (*TopicName, error) {
 	// The fully qualified topic name can be:
 	// <domain>://<tenant>/<namespace>/<topic>
 
-	parts  := strings.SplitN(completeName, "://", 2)
+	parts := strings.SplitN(completeName, "://", 2)
 
 	domain, err := ParseTopicDomain(parts[0])
 	if err != nil {
@@ -93,6 +93,10 @@ func (t *TopicName) GetRestPath() string {
 
 func (t *TopicName) GetEncodedTopic() string {
 	return url.QueryEscape(t.topic)
+}
+
+func (t *TopicName) GetLocalName() string {
+	return t.topic
 }
 
 func getPartitionIndex(topic string) int {
