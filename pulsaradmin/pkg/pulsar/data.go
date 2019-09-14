@@ -122,9 +122,20 @@ type PartitionedTopicMetadata struct {
 	Partitions int `json:"partitions"`
 }
 
+type SchemaData struct {
+	Version         int64  `json:"version"`
+	Filename        string `json:"filename"`
+	Jar             string `json:"jar"`
+	Type            string `json:"type"`
+	Classname       string `json:"classname"`
+	AlwaysAllowNull bool   `json:"alwaysAllowNull"`
+	DryRun          bool   `json:"dryRun"`
+}
+
 type LookupData struct {
 	BrokerUrl string `json:"brokerUrl"`
 	BrokerUrlTls string `json:"brokerUrlTls"`
 	HttpUrl string `json:"httpUrl"`
 	HttpUrlTls string `json:"httpUrlTls"`
 }
+

@@ -27,9 +27,9 @@ type Config struct {
 	HttpClient    *http.Client
 	ApiVersion    ApiVersion
 
-	Auth          *auth.TlsAuthProvider
-	AuthParams    string
-	TlsOptions    *TLSOptions
+	Auth       *auth.TlsAuthProvider
+	AuthParams string
+	TlsOptions *TLSOptions
 }
 
 type TLSOptions struct {
@@ -57,6 +57,7 @@ type Client interface {
 	Tenants() Tenants
 	Sources() Sources
 	Topics() Topics
+	Schemas() Schema
 }
 
 type client struct {
