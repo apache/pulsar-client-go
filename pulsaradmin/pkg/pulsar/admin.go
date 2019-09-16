@@ -56,6 +56,7 @@ type Client interface {
 	Functions() Functions
 	Tenants() Tenants
 	Sources() Sources
+	Sinks() Sinks
 	Topics() Topics
 	Schemas() Schema
 }

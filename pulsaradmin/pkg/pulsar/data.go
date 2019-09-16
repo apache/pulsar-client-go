@@ -117,6 +117,35 @@ type SourceData struct {
 	UpdateAuthData bool `json:"updateAuthData"`
 }
 
+type SinkData struct {
+	Tenant                  string  `json:"tenant"`
+	Namespace               string  `json:"namespace"`
+	Name                    string  `json:"name"`
+	SinkType                string  `json:"sinkType"`
+	Inputs                  string  `json:"inputs"`
+	TopicsPattern           string  `json:"topicsPattern"`
+	SubsName                string  `json:"subsName"`
+	CustomSerdeInputString  string  `json:"customSerdeInputString"`
+	CustomSchemaInputString string  `json:"customSchemaInputString"`
+	ProcessingGuarantees    string  `json:"processingGuarantees"`
+	RetainOrdering          bool    `json:"retainOrdering"`
+	Parallelism             int     `json:"parallelism"`
+	Archive                 string  `json:"archive"`
+	ClassName               string  `json:"className"`
+	SinkConfigFile          string  `json:"sinkConfigFile"`
+	CPU                     float64 `json:"cpu"`
+	RAM                     int64   `json:"ram"`
+	Disk                    int64   `json:"disk"`
+	SinkConfigString        string  `json:"sinkConfigString"`
+	AutoAck                 bool    `json:"autoAck"`
+	TimeoutMs               int64   `json:"timeoutMs"`
+
+	SinkConf   *SinkConfig `json:"-"`
+	InstanceID string      `json:"instanceId"`
+
+	UpdateAuthData bool `json:"updateAuthData"`
+}
+
 // Topic data
 type PartitionedTopicMetadata struct {
 	Partitions int `json:"partitions"`
