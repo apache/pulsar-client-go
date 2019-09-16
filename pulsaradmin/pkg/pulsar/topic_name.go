@@ -99,6 +99,19 @@ func (t *TopicName) GetLocalName() string {
 	return t.topic
 }
 
+func (t *TopicName) GetPartition(index int) (*TopicName, error) {
+	if index < 0 {
+		return nil, errors.New("Invalid partition index number.")
+	}
+
+	if strings.Contains(t.String(), PARTITIONED_TOPIC_SUFFIX) {
+		return t, nil
+	}
+
+	topicNameWithPartition := t.String() + PARTITIONED_TOPIC_SUFFIX + strconv.Itoa(index)
+	return GetTopicName(topicNameWithPartition)
+}
+
 func getPartitionIndex(topic string) int {
 	if strings.Contains(topic, PARTITIONED_TOPIC_SUFFIX) {
 		parts := strings.Split(topic, "-")

@@ -13,6 +13,7 @@ type Topics interface {
 	List(NameSpaceName) ([]string, []string, error)
 	Lookup(TopicName) (LookupData, error)
 	GetBundleRange(TopicName) (string, error)
+	GetLastMessageId(TopicName) (MessageId, error)
 }
 
 type topics struct {
@@ -119,4 +120,11 @@ func (t *topics) GetBundleRange(topic TopicName) (string, error) {
 	endpoint := fmt.Sprintf("%s/%s/%s", t.lookupPath, topic.GetRestPath(), "bundle")
 	data, err := t.client.getAndDecode(endpoint, nil, false)
 	return string(data), err
+}
+
+func (t *topics) GetLastMessageId(topic TopicName) (MessageId, error) {
+	var messageId MessageId
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "lastMessageId")
+	err := t.client.get(endpoint, &messageId)
+	return messageId, err
 }
