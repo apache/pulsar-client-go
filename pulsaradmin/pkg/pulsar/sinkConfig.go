@@ -18,34 +18,34 @@
 package pulsar
 
 type SinkConfig struct {
-    Tenant    string
-    Namespace string
-    Name      string
-    ClassName string
+    Tenant    string `json:"tenant" yaml:"tenant"`
+    Namespace string `json:"namespace" yaml:"namespace"`
+    Name      string `json:"name" yaml:"name"`
+    ClassName string `json:"className" yaml:"className"`
 
-    SourceSubscriptionName string
-    Inputs                 []string
-    TopicToSerdeClassName  map[string]string
-    TopicsPattern          string
-    TopicToSchemaType      map[string]string
-    InputSpecs             map[string]ConsumerConfig
-    Configs                map[string]interface{}
+    SourceSubscriptionName string `json:"sourceSubscriptionName" yaml:"sourceSubscriptionName"`
+    Inputs                 []string `json:"inputs" yaml:"inputs"`
+    TopicToSerdeClassName  map[string]string `json:"topicToSerdeClassName" yaml:"topicToSerdeClassName"`
+    TopicsPattern          *string `json:"topicsPattern" yaml:"topicsPattern"`
+    TopicToSchemaType      map[string]string `json:"topicToSchemaType" yaml:"topicToSchemaType"`
+    InputSpecs             map[string]ConsumerConfig `json:"inputSpecs" yaml:"inputSpecs"`
+    Configs                map[string]interface{} `json:"configs" yaml:"configs"`
 
     // This is a map of secretName(aka how the secret is going to be
     // accessed in the function via context) to an object that
     // encapsulates how the secret is fetched by the underlying
     // secrets provider. The type of an value here can be found by the
     // SecretProviderConfigurator.getSecretObjectType() method.
-    Secrets              map[string]interface{}
-    Parallelism          int
-    ProcessingGuarantees string
-    RetainOrdering       bool
-    Resources            Resources
-    AutoAck              bool
-    TimeoutMs            int64
-    Archive              string
+    Secrets              map[string]interface{} `json:"secrets" yaml:"secrets"`
+    Parallelism          int `json:"parallelism" yaml:"parallelism"`
+    ProcessingGuarantees string `json:"processingGuarantees" yaml:"processingGuarantees"`
+    RetainOrdering       bool `json:"retainOrdering" yaml:"retainOrdering"`
+    Resources            *Resources `json:"resources" yaml:"resources"`
+    AutoAck              bool `json:"autoAck" yaml:"autoAck"`
+    TimeoutMs            *int64 `json:"timeoutMs" yaml:"timeoutMs"`
+    Archive              string `json:"archive" yaml:"archive"`
 
     // Whether the subscriptions the functions created/used should be deleted when the functions is deleted
-    CleanupSubscription bool
-    RuntimeFlags        string
+    CleanupSubscription bool `json:"cleanupSubscription" yaml:"cleanupSubscription"`
+    RuntimeFlags        string `json:"runtimeFlags" yaml:"runtimeFlags"`
 }
