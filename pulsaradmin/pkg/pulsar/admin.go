@@ -58,6 +58,7 @@ type Client interface {
 	Sources() Sources
 	Sinks() Sinks
 	Topics() Topics
+	Namespaces() Namespaces
 	Schemas() Schema
 }
 
@@ -420,10 +421,10 @@ func responseError(resp *http.Response) error {
 
 	json.Unmarshal(body, &e)
 
-    e.Code = resp.StatusCode
-    if e.Reason == "" {
-        e.Reason = unknownErrorReason
-    }
+	e.Code = resp.StatusCode
+	if e.Reason == "" {
+		e.Reason = unknownErrorReason
+	}
 
 	return e
 }

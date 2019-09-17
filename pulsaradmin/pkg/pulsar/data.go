@@ -151,6 +151,11 @@ type PartitionedTopicMetadata struct {
 	Partitions int `json:"partitions"`
 }
 
+type NamespacesData struct {
+	NumBundles int      `json:"numBundles"`
+	Clusters   []string `json:"clusters"`
+}
+
 type SchemaData struct {
 	Version         int64  `json:"version"`
 	Filename        string `json:"filename"`
@@ -162,9 +167,8 @@ type SchemaData struct {
 }
 
 type LookupData struct {
-	BrokerUrl string `json:"brokerUrl"`
+	BrokerUrl    string `json:"brokerUrl"`
 	BrokerUrlTls string `json:"brokerUrlTls"`
-	HttpUrl string `json:"httpUrl"`
-	HttpUrlTls string `json:"httpUrlTls"`
+	HttpUrl      string `json:"httpUrl"`
+	HttpUrlTls   string `json:"httpUrlTls"`
 }
-
