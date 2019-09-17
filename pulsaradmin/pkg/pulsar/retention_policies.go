@@ -18,13 +18,6 @@
 package pulsar
 
 type RetentionPolicies struct {
-	RetentionTimeInMinutes int   `json:"retentionTimeInMinutes"`
-	RetentionSizeInMB      int64 `json:"retentionSizeInMB"`
-}
-
-func NewRetentionPolicies(retentionTimeInMinutes int, retentionSizeInMB int) RetentionPolicies {
-	return RetentionPolicies{
-		RetentionTimeInMinutes: retentionTimeInMinutes,
-		RetentionSizeInMB:      int64(retentionSizeInMB),
-	}
+	RetentionTimeInMinutes int
+	RetentionSizeInMB      int64
 }
