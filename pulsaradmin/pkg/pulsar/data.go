@@ -156,6 +156,122 @@ type NamespacesData struct {
 	Clusters   []string `json:"clusters"`
 }
 
+type TopicStats struct {
+	MsgRateIn           float64                      `json:"msgRateIn"`
+	MsgRateOut          float64                      `json:"msgRateOut"`
+	MsgThroughputIn     float64                      `json:"msgThroughputIn"`
+	MsgThroughputOut    float64                      `json:"msgThroughputOut"`
+	AverageMsgSize      float64                      `json:"averageMsgSize"`
+	StorageSize         int64                        `json:"storageSize"`
+	Publishers          []PublisherStats             `json:"publishers"`
+	Subscriptions       map[string]SubscriptionStats `json:"subscriptions"`
+	Replication         map[string]ReplicatorStats   `json:"replication"`
+	DeDuplicationStatus string                       `json:"deduplicationStatus"`
+}
+
+type PublisherStats struct {
+	ProducerId      int64             `json:"producerId"`
+	MsgRateIn       float64           `json:"msgRateIn"`
+	MsgThroughputIn float64           `json:"msgThroughputIn"`
+	AverageMsgSize  float64           `json:"averageMsgSize"`
+	Metadata        map[string]string `json:"metadata"`
+}
+
+type SubscriptionStats struct {
+	MsgRateOut                       float64         `json:"msgRateOut"`
+	MsgThroughputOut                 float64         `json:"msgThroughputOut"`
+	MsgRateRedeliver                 float64         `json:"msgRateRedeliver"`
+	MsgRateExpired                   float64         `json:"msgRateExpired"`
+	MsgBacklog                       int64           `json:"msgBacklog"`
+	BlockedSubscriptionOnUnackedMsgs bool            `json:"blockedSubscriptionOnUnackedMsgs"`
+	MsgDelayed                       int64           `json:"msgDelayed"`
+	unAckedMessages                  int64           `json:"unackedMessages"`
+	SubType                          string          `json:"type"`
+	ActiveConsumerName               string          `json:"activeConsumerName"`
+	Consumers                        []ConsumerStats `json:"consumers"`
+	IsReplicated                     bool            `json:"isReplicated"`
+}
+
+type ConsumerStats struct {
+	ConsumerName                 string            `json:"consumerName"`
+	MsgRateOut                   float64           `json:"msgRateOut"`
+	MsgThroughputOut             float64           `json:"msgThroughputOut"`
+	MsgRateRedeliver             float64           `json:"msgRateRedeliver"`
+	AvailablePermits             int               `json:"availablePermits"`
+	UnAckedMessages              int               `json:"unackedMessages"`
+	BlockedConsumerOnUnAckedMsgs bool              `json:"blockedConsumerOnUnackedMsgs"`
+	Metadata                     map[string]string `json:"metadata"`
+}
+
+type ReplicatorStats struct {
+	MsgRateIn                 float64 `json:"msgRateIn"`
+	MsgRateOut                float64 `json:"msgRateOut"`
+	MsgThroughputIn           float64 `json:"msgThroughputIn"`
+	MsgThroughputOut          float64 `json:"msgThroughputOut"`
+	MsgRateExpired            float64 `json:"msgRateExpired"`
+	ReplicationBacklog        int64   `json:"replicationBacklog"`
+	Connected                 bool    `json:"connected"`
+	ReplicationDelayInSeconds int64   `json:"replicationDelayInSeconds"`
+	InboundConnection         string  `json:"inboundConnection"`
+	InboundConnectedSince     string  `json:"inboundConnectedSince"`
+	OutboundConnection        string  `json:"outboundConnection"`
+	OutboundConnectedSince    string  `json:"outboundConnectedSince"`
+}
+
+type PersistentTopicInternalStats struct {
+	EntriesAddedCounter                int64                  `json:"entriesAddedCounter"`
+	NumberOfEntries                    int64                  `json:"numberOfEntries"`
+	TotalSize                          int64                  `json:"totalSize"`
+	CurrentLedgerEntries               int64                  `json:"currentLedgerEntries"`
+	CurrentLedgerSize                  int64                  `json:"currentLedgerSize"`
+	LastLedgerCreatedTimestamp         string                 `json:"lastLedgerCreatedTimestamp"`
+	LastLedgerCreationFailureTimestamp string                 `json:"lastLedgerCreationFailureTimestamp"`
+	WaitingCursorsCount                int                    `json:"waitingCursorsCount"`
+	PendingAddEntriesCount             int                    `json:"pendingAddEntriesCount"`
+	LastConfirmedEntry                 string                 `json:"lastConfirmedEntry"`
+	State                              string                 `json:"state"`
+	Ledgers                            []LedgerInfo           `json:"ledgers"`
+	Cursors                            map[string]CursorStats `json:"cursors"`
+}
+
+type LedgerInfo struct {
+	LedgerId  int64 `json:"ledgerId"`
+	Entries   int64 `json:"entries"`
+	Size      int64 `json:"size"`
+	Offloaded bool  `json:"offloaded"`
+}
+
+type CursorStats struct {
+	MarkDeletePosition                       string           `json:"markDeletePosition"`
+	ReadPosition                             string           `json:"readPosition"`
+	WaitingReadOp                            bool             `json:"waitingReadOp"`
+	PendingReadOps                           int              `json:"pendingReadOps"`
+	MessagesConsumedCounter                  int64            `json:"messagesConsumedCounter"`
+	CursorLedger                             int64            `json:"cursorLedger"`
+	CursorLedgerLastEntry                    int64            `json:"cursorLedgerLastEntry"`
+	IndividuallyDeletedMessages              string           `json:"individuallyDeletedMessages"`
+	LastLedgerWitchTimestamp                 string           `json:"lastLedgerWitchTimestamp"`
+	State                                    string           `json:"state"`
+	NumberOfEntriesSinceFirstNotAckedMessage int64            `json:"numberOfEntriesSinceFirstNotAckedMessage"`
+	TotalNonContiguousDeletedMessagesRange   int              `json:"totalNonContiguousDeletedMessagesRange"`
+	Properties                               map[string]int64 `json:"properties"`
+}
+
+type PartitionedTopicStats struct {
+	MsgRateIn           float64                      `json:"msgRateIn"`
+	MsgRateOut          float64                      `json:"msgRateOut"`
+	MsgThroughputIn     float64                      `json:"msgThroughputIn"`
+	MsgThroughputOut    float64                      `json:"msgThroughputOut"`
+	AverageMsgSize      float64                      `json:"averageMsgSize"`
+	StorageSize         int64                        `json:"storageSize"`
+	Publishers          []PublisherStats             `json:"publishers"`
+	Subscriptions       map[string]SubscriptionStats `json:"subscriptions"`
+	Replication         map[string]ReplicatorStats   `json:"replication"`
+	DeDuplicationStatus string                       `json:"deduplicationStatus"`
+	Metadata            PartitionedTopicMetadata     `json:"metadata"`
+	Partitions          map[string]TopicStats        `json:"partitions"`
+}
+
 type SchemaData struct {
 	Version         int64  `json:"version"`
 	Filename        string `json:"filename"`

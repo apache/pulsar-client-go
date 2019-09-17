@@ -14,6 +14,9 @@ type Topics interface {
 	Lookup(TopicName) (LookupData, error)
 	GetBundleRange(TopicName) (string, error)
 	GetLastMessageId(TopicName) (MessageId, error)
+	GetStats(TopicName) (TopicStats, error)
+	GetInternalStats(TopicName) (PersistentTopicInternalStats, error)
+	GetPartitionedStats(TopicName, bool) (PartitionedTopicStats, error)
 }
 
 type topics struct {
@@ -118,7 +121,7 @@ func (t *topics) Lookup(topic TopicName) (LookupData, error) {
 
 func (t *topics) GetBundleRange(topic TopicName) (string, error) {
 	endpoint := fmt.Sprintf("%s/%s/%s", t.lookupPath, topic.GetRestPath(), "bundle")
-	data, err := t.client.getAndDecode(endpoint, nil, false)
+	data, err := t.client.getWithQueryParams(endpoint, nil, nil, false)
 	return string(data), err
 }
 
@@ -127,4 +130,28 @@ func (t *topics) GetLastMessageId(topic TopicName) (MessageId, error) {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "lastMessageId")
 	err := t.client.get(endpoint, &messageId)
 	return messageId, err
+}
+
+func (t *topics) GetStats(topic TopicName) (TopicStats, error) {
+	var stats TopicStats
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "stats")
+	err := t.client.get(endpoint, &stats)
+	return stats, err
+}
+
+func (t *topics) GetInternalStats(topic TopicName) (PersistentTopicInternalStats, error) {
+	var stats PersistentTopicInternalStats
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "internalStats")
+	err := t.client.get(endpoint, &stats)
+	return stats, err
+}
+
+func (t *topics) GetPartitionedStats(topic TopicName, perPartition bool) (PartitionedTopicStats, error) {
+	var stats PartitionedTopicStats
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "partitioned-stats")
+	params := map[string]string{
+		"perPartition": strconv.FormatBool(perPartition),
+	}
+	_, err := t.client.getWithQueryParams(endpoint, &stats, params, true)
+	return stats, err
 }
