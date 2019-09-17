@@ -18,33 +18,25 @@
 package pulsar
 
 type BacklogQuota struct {
-	Limit            int64
-	Police           RetentionPolicy
-	BacklogQuotaType BacklogQuotaType
+	Limit  int64           `json:"limit"`
+	Policy RetentionPolicy `json:"policy"`
 }
 
-type RetentionPolicy int
+func NewBacklogQuota(limit int64, policy RetentionPolicy) BacklogQuota {
+	return BacklogQuota{
+		Limit:  limit,
+		Policy: policy,
+	}
+}
+
+type RetentionPolicy string
 
 type BacklogQuotaType string
 
 const DestinationStorage BacklogQuotaType = "destination_storage"
 
 const (
-	ProducerRequestHold RetentionPolicy = iota
-	ProducerException
-	ConsumerBacklogEviction
+	ProducerRequestHold RetentionPolicy = "producer_request_hold"
+	ProducerException RetentionPolicy = "producer_exception"
+	ConsumerBacklogEviction RetentionPolicy = "consumer_backlog_eviction"
 )
-
-func (rp RetentionPolicy) String() string {
-	names := [...]string{
-		"ProducerRequestHold",
-		"ProducerException",
-		"ConsumerBacklogEviction",
-	}
-
-	if rp < ProducerRequestHold || rp > ConsumerBacklogEviction {
-		return "Unknown Retention Policy"
-	}
-
-	return names[rp]
-}

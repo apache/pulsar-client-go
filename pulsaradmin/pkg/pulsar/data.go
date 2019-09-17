@@ -152,8 +152,12 @@ type PartitionedTopicMetadata struct {
 }
 
 type NamespacesData struct {
-	NumBundles int      `json:"numBundles"`
-	Clusters   []string `json:"clusters"`
+	NumBundles       int      `json:"numBundles"`
+	Clusters         []string `json:"clusters"`
+	MessageTTL       int      `json:"messageTTL"`
+	RetentionTimeStr string   `json:"retentionTimeStr"`
+	LimitStr         string   `json:"limitStr"`
+	PolicyStr        string   `json:"policyStr"`
 }
 
 type SchemaData struct {

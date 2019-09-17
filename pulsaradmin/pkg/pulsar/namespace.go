@@ -44,6 +44,27 @@ type Namespaces interface {
 
 	// Delete an existing bundle in a namespace
 	DeleteNamespaceBundle(namespace string, bundleRange string) error
+
+	// Set the messages Time to Live for all the topics within a namespace
+	SetNamespaceMessageTTL(namespace string, ttlInSeconds int) error
+
+	// Get the message TTL for a namespace
+	GetNamespaceMessageTTL(namespace string) (int, error)
+
+	// Get the retention configuration for a namespace
+	GetRetention(namespace string) (*RetentionPolicies, error)
+
+	// Set the retention configuration for all the topics on a namespace
+	SetRetention(namespace string, policy RetentionPolicies) error
+
+	// Get backlog quota map on a namespace
+	GetBacklogQuotaMap(namespace string) (map[BacklogQuotaType]BacklogQuota, error)
+
+	// Set a backlog quota for all the topics on a namespace
+	SetBacklogQuota(namespace string, backlogQuota BacklogQuota) error
+
+	// Remove a backlog quota policy from a namespace
+	RemoveBacklogQuota(namespace string) error
 }
 
 type namespaces struct {
@@ -137,4 +158,77 @@ func (n *namespaces) DeleteNamespaceBundle(namespace string, bundleRange string)
 	}
 	endpoint := n.client.endpoint(n.basePath, ns.String(), bundleRange)
 	return n.client.delete(endpoint, nil)
+}
+
+func (n *namespaces) GetNamespaceMessageTTL(namespace string) (int, error) {
+	var ttl int
+	nsName, err := GetNamespaceName(namespace)
+	if err != nil {
+		return 0, err
+	}
+	endpoint := n.client.endpoint(n.basePath, nsName.String(), "messageTTL")
+	err = n.client.get(endpoint, &ttl)
+	return ttl, err
+}
+
+func (n *namespaces) SetNamespaceMessageTTL(namespace string, ttlInSeconds int) error {
+	nsName, err := GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+
+	endpoint := n.client.endpoint(n.basePath, nsName.String(), "messageTTL")
+	return n.client.post(endpoint, &ttlInSeconds, nil)
+}
+
+func (n *namespaces) SetRetention(namespace string, policy RetentionPolicies) error {
+	nsName, err := GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+	endpoint := n.client.endpoint(n.basePath, nsName.String(), "retention")
+	return n.client.post(endpoint, &policy, nil)
+}
+
+func (n *namespaces) GetRetention(namespace string) (*RetentionPolicies, error) {
+	var policy RetentionPolicies
+	nsName, err := GetNamespaceName(namespace)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := n.client.endpoint(n.basePath, nsName.String(), "retention")
+	err = n.client.get(endpoint, &policy)
+	return &policy, err
+}
+
+func (n *namespaces) GetBacklogQuotaMap(namespace string) (map[BacklogQuotaType]BacklogQuota, error) {
+	var backlogQuotaMap map[BacklogQuotaType]BacklogQuota
+	nsName, err := GetNamespaceName(namespace)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := n.client.endpoint(n.basePath, nsName.String(), "backlogQuotaMap")
+	err = n.client.get(endpoint, &backlogQuotaMap)
+	return backlogQuotaMap, err
+}
+
+func (n *namespaces) SetBacklogQuota(namespace string, backlogQuota BacklogQuota) error {
+	nsName, err := GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+	endpoint := n.client.endpoint(n.basePath, nsName.String(), "backlogQuota")
+	return n.client.post(endpoint, &backlogQuota, nil)
+}
+
+func (n *namespaces) RemoveBacklogQuota(namespace string) error {
+	nsName, err := GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+	endpoint := n.client.endpoint(n.basePath, nsName.String(), "backlogQuota")
+	params := map[string]string{
+		"backlogQuotaType": string(DestinationStorage),
+	}
+	return n.client.deleteWithQueryParams(endpoint, nil, params)
 }
