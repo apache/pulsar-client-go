@@ -152,8 +152,23 @@ type PartitionedTopicMetadata struct {
 }
 
 type NamespacesData struct {
-	NumBundles int      `json:"numBundles"`
-	Clusters   []string `json:"clusters"`
+	NumBundles                     int      `json:"numBundles"`
+	Clusters                       []string `json:"clusters"`
+	ClusterIds                     string   `json:"clusterIds"`
+	MessageTTL                     int      `json:"messageTTL"`
+	RetentionTimeStr               string   `json:"retentionTimeStr"`
+	LimitStr                       string   `json:"limitStr"`
+	PolicyStr                      string   `json:"policyStr"`
+	AntiAffinityGroup              string   `json:"antiAffinityGroup"`
+	Tenant                         string   `json:"tenant"`
+	Cluster                        string   `json:"cluster"`
+	BookkeeperEnsemble             int      `json:"bookkeeperEnsemble"`
+	BookkeeperWriteQuorum          int      `json:"bookkeeperWriteQuorum"`
+	BookkeeperAckQuorum            int      `json:"bookkeeperAckQuorum"`
+	ManagedLedgerMaxMarkDeleteRate float64  `json:"managedLedgerMaxMarkDeleteRate"`
+	Enable                         bool     `json:"enable"`
+	Bundle                         string   `json:"bundle"`
+	Unload                         bool     `json:"unload"`
 }
 
 type TopicStats struct {

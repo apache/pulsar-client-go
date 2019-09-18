@@ -18,17 +18,38 @@
 package pulsar
 
 type PersistencePolicies struct {
-	BookkeeperEnsemble             int
-	BookkeeperWriteQuorum          int
-	BookkeeperAckQuorum            int
-	ManagedLedgerMaxMarkDeleteRate float64
+	BookkeeperEnsemble             int     `json:"bookkeeperEnsemble"`
+	BookkeeperWriteQuorum          int     `json:"bookkeeperWriteQuorum"`
+	BookkeeperAckQuorum            int     `json:"bookkeeperAckQuorum"`
+	ManagedLedgerMaxMarkDeleteRate float64 `json:"managedLedgerMaxMarkDeleteRate"`
 }
 
-func NewPersistencePolicies() *PersistencePolicies {
+func NewDefaultPersistencePolicies() *PersistencePolicies {
 	return &PersistencePolicies{
 		BookkeeperEnsemble:             2,
 		BookkeeperWriteQuorum:          2,
 		BookkeeperAckQuorum:            2,
 		ManagedLedgerMaxMarkDeleteRate: 0.0,
+	}
+}
+
+func NewPersistencePolicies(bookkeeperEnsemble, bookkeeperWriteQuorum, bookkeeperAckQuorum int, managedLedgerMaxMarkDeleteRate float64) PersistencePolicies {
+	return PersistencePolicies{
+		BookkeeperEnsemble:             bookkeeperEnsemble,
+		BookkeeperWriteQuorum:          bookkeeperWriteQuorum,
+		BookkeeperAckQuorum:            bookkeeperAckQuorum,
+		ManagedLedgerMaxMarkDeleteRate: managedLedgerMaxMarkDeleteRate,
+	}
+}
+
+type BookieAffinityGroupData struct {
+	BookkeeperAffinityGroupPrimary   string `json:"bookkeeperAffinityGroupPrimary"`
+	BookkeeperAffinityGroupSecondary string `json:"bookkeeperAffinityGroupSecondary"`
+}
+
+func NewBookieAffinityGroupData(bookkeeperAffinityGroupPrimary, bookkeeperAffinityGroupSecondary string) BookieAffinityGroupData {
+	return BookieAffinityGroupData{
+		BookkeeperAffinityGroupPrimary:   bookkeeperAffinityGroupPrimary,
+		BookkeeperAffinityGroupSecondary: bookkeeperAffinityGroupSecondary,
 	}
 }
