@@ -55,9 +55,9 @@ type Client interface {
 	Clusters() Clusters
 	Functions() Functions
 	Tenants() Tenants
+	Topics() Topics
 	Sources() Sources
 	Sinks() Sinks
-	Topics() Topics
 	Namespaces() Namespaces
 	Schemas() Schema
 }

@@ -11,6 +11,9 @@ type Topics interface {
 	Update(TopicName, int) error
 	GetMetadata(TopicName) (PartitionedTopicMetadata, error)
 	List(NameSpaceName) ([]string, []string, error)
+	GetPermissions(TopicName) (map[string][]AuthAction, error)
+	GrantPermission(TopicName, string, []AuthAction) error
+	RevokePermission(TopicName, string) error
 	Lookup(TopicName) (LookupData, error)
 	GetBundleRange(TopicName) (string, error)
 	GetLastMessageId(TopicName) (MessageId, error)
@@ -110,6 +113,27 @@ func (t *topics) getTopics(endpoint string, out chan<- []string, err chan<- erro
 	var topics []string
 	err <- t.client.get(endpoint, &topics)
 	out <- topics
+}
+
+func (t *topics) GetPermissions(topic TopicName) (map[string][]AuthAction, error) {
+	var permissions map[string][]AuthAction
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "permissions")
+	err := t.client.get(endpoint, &permissions)
+	return permissions, err
+}
+
+func (t *topics) GrantPermission(topic TopicName, role string, action []AuthAction) error {
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
+	var s []string
+	for _, v := range action {
+		s = append(s, v.String())
+	}
+	return t.client.post(endpoint, s, nil)
+}
+
+func (t *topics) RevokePermission(topic TopicName, role string) error {
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
+	return t.client.delete(endpoint, nil)
 }
 
 func (t *topics) Lookup(topic TopicName) (LookupData, error) {
