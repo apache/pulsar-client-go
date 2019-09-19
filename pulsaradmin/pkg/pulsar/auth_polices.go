@@ -30,11 +30,3 @@ func NewAuthPolicies() *AuthPolicies {
 		SubscriptionAuthRoles: make(map[string][]string),
 	}
 }
-
-type AuthAction string
-
-const (
-	produce  AuthAction = "produce"
-	consume  AuthAction = "consume"
-	function AuthAction = "functions"
-)
