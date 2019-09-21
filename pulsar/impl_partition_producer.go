@@ -293,14 +293,17 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
 	p.internalFlushCurrentBatch()
 
-	pi := p.pendingQueue.PeekLast().(*pendingItem)
-	pi.sendRequests = append(pi.sendRequests, &sendRequest{
-		msg: nil,
-		callback: func(id MessageID, message *ProducerMessage, e error) {
-			fr.err = e
-			fr.waitGroup.Done()
-		},
-	})
+	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
+	if ok {
+		pi.sendRequests = append(pi.sendRequests, &sendRequest{
+			msg: nil,
+			callback: func(id MessageID, message *ProducerMessage, e error) {
+				fr.err = e
+				fr.waitGroup.Done()
+			},
+		})
+	}
+
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) error {
@@ -349,9 +352,9 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
-	pi := p.pendingQueue.Peek().(*pendingItem)
+	pi, ok := p.pendingQueue.Peek().(*pendingItem)
 
-	if pi == nil {
+	if !ok || pi == nil {
 		p.log.Warnf("Received ack for %v although the pending queue is empty", response.GetMessageId())
 		return
 	} else if pi.sequenceID != response.GetSequenceId() {
