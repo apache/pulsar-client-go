@@ -28,6 +28,7 @@ type Topics interface {
 	Update(TopicName, int) error
 	GetMetadata(TopicName) (PartitionedTopicMetadata, error)
 	List(NameSpaceName) ([]string, []string, error)
+	GetInternalInfo(TopicName) (ManagedLedgerInfo, error)
 	GetPermissions(TopicName) (map[string][]AuthAction, error)
 	GrantPermission(TopicName, string, []AuthAction) error
 	RevokePermission(TopicName, string) error
@@ -130,6 +131,13 @@ func (t *topics) getTopics(endpoint string, out chan<- []string, err chan<- erro
 	var topics []string
 	err <- t.client.get(endpoint, &topics)
 	out <- topics
+}
+
+func (t *topics) GetInternalInfo(topic TopicName) (ManagedLedgerInfo, error) {
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "internal-info")
+	var info ManagedLedgerInfo
+	err := t.client.get(endpoint, &info)
+	return  info, err
 }
 
 func (t *topics) GetPermissions(topic TopicName) (map[string][]AuthAction, error) {

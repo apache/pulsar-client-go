@@ -462,6 +462,7 @@ func responseError(resp *http.Response) error {
 	json.Unmarshal(body, &e)
 
 	e.Code = resp.StatusCode
+
 	if e.Reason == "" {
 		e.Reason = unknownErrorReason
 	}
