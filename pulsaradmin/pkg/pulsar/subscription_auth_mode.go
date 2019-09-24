@@ -17,28 +17,26 @@
 
 package pulsar
 
-type DispatchRate struct {
-	DispatchThrottlingRateInMsg  int   `json:"dispatchThrottlingRateInMsg"`
-	DispatchThrottlingRateInByte int64 `json:"dispatchThrottlingRateInByte"`
-	RatePeriodInSecond           int   `json:"ratePeriodInSecond"`
-}
+import "github.com/pkg/errors"
 
-func NewDispatchRate() *DispatchRate {
-	return &DispatchRate{
-		DispatchThrottlingRateInMsg:  -1,
-		DispatchThrottlingRateInByte: -1,
-		RatePeriodInSecond:           1,
+type SubscriptionAuthMode string
+
+const (
+	None   SubscriptionAuthMode = "None"
+	Prefix SubscriptionAuthMode = "Prefix"
+)
+
+func ParseSubscriptionAuthMode(s string) (SubscriptionAuthMode, error) {
+	switch s {
+	case "None":
+		return None, nil
+	case "Prefix":
+		return Prefix, nil
+	default:
+		return "", errors.New("Invalid subscription auth mode")
 	}
 }
 
-type SubscribeRate struct {
-	SubscribeThrottlingRatePerConsumer int `json:"subscribeThrottlingRatePerConsumer"`
-	RatePeriodInSecond                 int `json:"ratePeriodInSecond"`
-}
-
-func NewSubscribeRate() *SubscribeRate {
-	return &SubscribeRate{
-		SubscribeThrottlingRatePerConsumer: -1,
-		RatePeriodInSecond:                 30,
-	}
+func (s SubscriptionAuthMode) String() string {
+	return string(s)
 }
