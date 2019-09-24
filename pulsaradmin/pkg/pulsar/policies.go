@@ -74,9 +74,3 @@ func NewDefaultPolicies() *Policies {
 	}
 }
 
-type SubscriptionAuthMode string
-
-const (
-	None   SubscriptionAuthMode = "None"
-	Prefix SubscriptionAuthMode = "Prefix"
-)
