@@ -80,7 +80,6 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 	c := &consumer{
 		topicName: topic,
 		log:       log.WithField("topic", topic),
-		queue:     make(chan ConsumerMessage, options.ReceiverQueueSize),
 	}
 
 	partitions, err := client.TopicPartitions(topic)
@@ -90,7 +89,7 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 
 	numPartitions := len(partitions)
 	c.consumers = make([]Consumer, numPartitions)
-
+	c.queue = make(chan ConsumerMessage, options.ReceiverQueueSize*numPartitions)
 	type ConsumerError struct {
 		err       error
 		partition int
@@ -167,6 +166,10 @@ func (c *consumer) getMessageFromSubConsumer(ctx context.Context) {
 
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	if len(c.consumers) > 1 {
+		// In here, open a gorutine to receive data asynchronously from the subConsumer,
+		// filling the queue channel of the current consumer.
+		go c.getMessageFromSubConsumer(ctx)
+
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -197,6 +200,10 @@ func (c *consumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage
 func (c *consumer) ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error)) {
 	var err error
 	if len(c.consumers) > 1 {
+		// In here, open a gorutine to receive data asynchronously from the subConsumer,
+		// filling the queue channel of the current consumer.
+		go c.getMessageFromSubConsumer(ctx)
+
 		select {
 		case <-ctx.Done():
 			c.log.Errorf("ReceiveAsyncWithCallback: receive message error:%s", ctx.Err().Error())

@@ -26,7 +26,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -361,10 +360,10 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "persistent://public/default/testGetPartitions"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
+	topic := "persistent://public/default/testGetPartitions-0"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions-0/partitions"
 
-	makeHTTPCall(t, http.MethodPut, testURL, "2")
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
@@ -377,6 +376,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, topic+"-partition-0", topics[0])
 	assert.Equal(t, topic+"-partition-1", topics[1])
+	assert.Equal(t, topic+"-partition-2", topics[2])
 
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:             topic,
@@ -388,6 +388,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	defer consumer.Close()
 
 	ctx := context.Background()
+
 	for i := 0; i < 100; i++ {
 		err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
@@ -397,17 +398,20 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 
 	msgs := make([]string, 0)
 
-	for i := 0; i < 100; i++ {
-		msg, err := consumer.Receive(context.Background())
-		assert.Nil(t, err)
-		msgs = append(msgs, string(msg.Payload()))
-
-		fmt.Printf("Received message content: [%s]\n", string(msg.Payload()))
-
-		if err := consumer.Ack(msg); err != nil {
+	go func() {
+		for {
+			msg, err := consumer.Receive(context.Background())
 			assert.Nil(t, err)
+			msgs = append(msgs, string(msg.Payload()))
+
+			fmt.Printf("Received message content: [%s]\n", string(msg.Payload()))
+
+			if err := consumer.Ack(msg); err != nil {
+				assert.Nil(t, err)
+			}
 		}
-	}
+	}()
+	time.Sleep(time.Second * 3)
 
 	assert.Equal(t, len(msgs), 100)
 }
@@ -640,87 +644,6 @@ func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
 			assert.Equal(t, tmpMsg, string(msg.Payload()))
 		})
 	}
-}
-
-func TestConsumer_Shared(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
-
-	assert.Nil(t, err)
-	defer client.Close()
-
-	topic := "persistent://public/default/testMultiPartitionConsumerShared-0"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testMultiPartitionConsumerShared-0/partitions"
-
-	makeHTTPCall(t, http.MethodPut, testURL, "3")
-
-	sub := "sub-shared-1"
-	consumer1, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: sub,
-		Type:             Shared,
-	})
-	assert.Nil(t, err)
-	defer consumer1.Close()
-
-	consumer2, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: sub,
-		Type:             Shared,
-	})
-	assert.Nil(t, err)
-	defer consumer2.Close()
-
-	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-	})
-	assert.Nil(t, err)
-	defer producer.Close()
-
-	// send 10 messages
-	for i := 0; i < 10; i++ {
-		if err := producer.Send(context.Background(), &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	msgList := make([]string, 0, 10)
-	go func() {
-		for {
-			msg, err := consumer1.Receive(context.Background())
-			if err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf("consumer1 msg id is: %v, value is: %s\n", msg.ID(), string(msg.Payload()))
-			msgList = append(msgList, string(msg.Payload()))
-			if err := consumer1.Ack(msg); err != nil {
-				log.Fatal(err)
-			}
-		}
-	}()
-
-	go func() {
-		for {
-			msg, err := consumer2.Receive(context.Background())
-			if err != nil {
-				log.Fatal(err)
-			}
-			if err := consumer2.Ack(msg); err != nil {
-				log.Fatal(err)
-			}
-			fmt.Printf("consumer2 msg id is: %v, value is: %s\n", msg.ID(), string(msg.Payload()))
-			msgList = append(msgList, string(msg.Payload()))
-		}
-	}()
-
-	time.Sleep(time.Second * 3)
-	assert.Equal(t, 10, len(msgList))
-	res := util.RemoveDuplicateElement(msgList)
-	assert.Equal(t, 10, len(res))
 }
 
 func TestConsumer_Seek(t *testing.T) {
