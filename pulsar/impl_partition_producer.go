@@ -293,6 +293,9 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
 	p.internalFlushCurrentBatch()
 
+	if util.IsNil(p.pendingQueue.PeekLast()) {
+		return
+	}
 	pi := p.pendingQueue.PeekLast().(*pendingItem)
 	pi.sendRequests = append(pi.sendRequests, &sendRequest{
 		msg: nil,
