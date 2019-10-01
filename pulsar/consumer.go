@@ -58,8 +58,8 @@ const (
 	Earliest
 )
 
-// ConsumerOptions is used to configure and create instances of Consumer
-type ConsumerOptions struct {
+// consumerOptions is used to configure and create instances of Consumer
+type consumerOptions struct {
 	// Specify the topic this consumer will subscribe on.
 	// Either a topic, a list of topics or a topics pattern are required when subscribing
 	Topic string
@@ -122,6 +122,90 @@ type ConsumerOptions struct {
 	//  failure or exclusive subscriptions). Attempting to enable it on subscriptions to a non-persistent topics or on a
 	//  shared subscription, will lead to the subscription call throwing a PulsarClientException.
 	ReadCompacted bool
+}
+
+type ConsumerOption func(*consumerOptions)
+
+func WithSubscriptionName(name string) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.SubscriptionName = name
+	}
+}
+
+func WithTopics(topics ...string) ConsumerOption {
+	return func(options *consumerOptions) {
+		if len(topics) > 1 {
+			options.Topics = topics
+			return
+		}
+		options.Topic = topics[0]
+	}
+}
+
+func WithTopicPattern(pattern string) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.TopicsPattern = pattern
+	}
+}
+
+func WithAckTimeout(timeout time.Duration) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.AckTimeout = timeout
+	}
+}
+
+func WithSubscriptionType(t SubscriptionType) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.Type = t
+	}
+}
+
+func WithSubscriptionInitPos(pos InitialPosition) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.SubscriptionInitPos = pos
+	}
+}
+
+func WithMessageChannel(channel chan ConsumerMessage) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.MessageChannel = channel
+	}
+}
+
+func WithReceiverQueueSize(size int) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.ReceiverQueueSize = size
+	}
+}
+
+func WithMaxTotalReceiverQueueSizeAcrossPartitions(size int) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.MaxTotalReceiverQueueSizeAcrossPartitions = size
+	}
+}
+
+func WithConsumerName(name string) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.Name = name
+	}
+}
+
+func WithReadCompacted(compacted bool) ConsumerOption {
+	return func(options *consumerOptions) {
+		options.ReadCompacted = compacted
+	}
+}
+
+func WithConsumerProperties(prop map[string]string) ConsumerOption {
+	return func(options *consumerOptions) {
+		if options.Properties == nil {
+			options.Properties = make(map[string]string, 0)
+		}
+
+		for k, v := range prop {
+			options.Properties[k] = v
+		}
+	}
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

@@ -23,24 +23,22 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/pkg/auth"
 )
 
 func TestClient(t *testing.T) {
-	client, err := NewClient(ClientOptions{})
+	client, err := NewClient("")
 	assert.Nil(t, client)
 	assert.NotNil(t, err)
 	assert.Equal(t, ResultInvalidConfiguration, err.(*Error).Result())
 }
 
 func TestTLSConnectionCAError(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: serviceURLTLS,
-	})
+	client, err := NewClient(serviceURLTLS, WithTLS("", false, false))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(newTopicName())
 
 	// The client should fail because it wouldn't trust the
 	// broker certificate
@@ -52,15 +50,10 @@ func TestTLSConnectionCAError(t *testing.T) {
 }
 
 func TestTLSInsecureConnection(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL:                        serviceURLTLS,
-		TLSAllowInsecureConnection: true,
-	})
+	client, err := NewClient(serviceURLTLS, WithTLS("", true, false))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(newTopicName())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -70,15 +63,10 @@ func TestTLSInsecureConnection(t *testing.T) {
 }
 
 func TestTLSConnection(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
-		TLSTrustCertsFilePath: caCertsPath,
-	})
+	client, err := NewClient(serviceURLTLS, WithTLS(caCertsPath, false, false))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(newTopicName())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -88,17 +76,10 @@ func TestTLSConnection(t *testing.T) {
 }
 
 func TestTLSConnectionHostNameVerification(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
-		TLSTrustCertsFilePath: caCertsPath,
-		TLSValidateHostname:   true,
-	})
+	client, err := NewClient(serviceURLTLS, WithTLS(caCertsPath, false, true))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
-
+	producer, err := client.CreateProducer(newTopicName())
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
@@ -107,16 +88,10 @@ func TestTLSConnectionHostNameVerification(t *testing.T) {
 }
 
 func TestTLSConnectionHostNameVerificationError(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL:                   "pulsar+ssl://127.0.0.1:6651",
-		TLSTrustCertsFilePath: caCertsPath,
-		TLSValidateHostname:   true,
-	})
+	client, err := NewClient("pulsar+ssl://127.0.0.1:6651", WithTLS(caCertsPath, false, true))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(newTopicName())
 
 	assert.Error(t, err)
 	assert.Nil(t, producer)
@@ -126,15 +101,10 @@ func TestTLSConnectionHostNameVerificationError(t *testing.T) {
 }
 
 func TestTLSAuthError(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
-		TLSTrustCertsFilePath: caCertsPath,
-	})
+	client, err := NewClient(serviceURLTLS, WithTLS(caCertsPath, false, false))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(newAuthTopicName())
 
 	assert.Error(t, err)
 	assert.Nil(t, producer)
@@ -144,16 +114,11 @@ func TestTLSAuthError(t *testing.T) {
 }
 
 func TestTLSAuth(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
-		TLSTrustCertsFilePath: caCertsPath,
-		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
-	})
+	client, err := NewClient(serviceURLTLS, WithTLS(caCertsPath, false, false),
+		WithAuthentication(NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath).(auth.Provider)))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(newAuthTopicName())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -166,15 +131,10 @@ func TestTokenAuth(t *testing.T) {
 	token, err := ioutil.ReadFile(tokenFilePath)
 	assert.NoError(t, err)
 
-	client, err := NewClient(ClientOptions{
-		URL:            serviceURL,
-		Authentication: NewAuthenticationToken(string(token)),
-	})
+	client, err := NewClient(serviceURL, WithAuthentication(NewAuthenticationToken(string(token)).(auth.Provider)))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(newAuthTopicName())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -184,15 +144,10 @@ func TestTokenAuth(t *testing.T) {
 }
 
 func TestTokenAuthFromFile(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL:            serviceURL,
-		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
-	})
+	client, err := NewClient(serviceURL, WithAuthentication(NewAuthenticationTokenFromFile(tokenFilePath).(auth.Provider)))
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(newAuthTopicName())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -202,9 +157,7 @@ func TestTokenAuthFromFile(t *testing.T) {
 }
 
 func TestTopicPartitions(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6650",
-	})
+	client, err := NewClient("pulsar://localhost:6650")
 
 	assert.Nil(t, err)
 	defer client.Close()

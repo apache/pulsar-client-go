@@ -59,9 +59,7 @@ func consume() {
 	b, _ = json.MarshalIndent(consumeArgs, "", "  ")
 	log.Info("Consumer config: ", string(b))
 
-	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: clientArgs.ServiceURL,
-	})
+	client, err := pulsar.NewClient(clientArgs.ServiceURL)
 
 	if err != nil {
 		log.Fatal(err)
@@ -69,10 +67,8 @@ func consume() {
 
 	defer client.Close()
 
-	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
-		Topic:            consumeArgs.Topic,
-		SubscriptionName: consumeArgs.SubscriptionName,
-	})
+	consumer, err := client.Subscribe(pulsar.WithSubscriptionName(consumeArgs.SubscriptionName),
+		pulsar.WithTopics(consumeArgs.Topic))
 
 	if err != nil {
 		log.Fatal(err)

@@ -25,14 +25,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/util"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/util"
 
 	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
-	client, err := NewClient(ClientOptions{})
+	client, err := NewClient("")
 
 	if client != nil || err == nil {
 		t.Fatal("Should have failed to create client")
@@ -40,17 +41,13 @@ func TestInvalidURL(t *testing.T) {
 }
 
 func TestProducerConnectError(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: "pulsar://invalid-hostname:6650",
-	})
+	client, err := NewClient("pulsar://invalid-hostname:6650")
 
 	assert.Nil(t, err)
 
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(newTopicName())
 
 	// Expect error in creating producer
 	assert.Nil(t, producer)
@@ -60,9 +57,7 @@ func TestProducerConnectError(t *testing.T) {
 }
 
 func TestProducerNoTopic(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6650",
-	})
+	client, err := NewClient("pulsar://localhost:6650")
 
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +66,7 @@ func TestProducerNoTopic(t *testing.T) {
 
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{})
+	producer, err := client.CreateProducer("")
 
 	// Expect error in creating producer
 	assert.Nil(t, producer)
@@ -81,14 +76,10 @@ func TestProducerNoTopic(t *testing.T) {
 }
 
 func TestSimpleProducer(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := NewClient(serviceURL)
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(newTopicName())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -109,15 +100,10 @@ func TestSimpleProducer(t *testing.T) {
 }
 
 func TestProducerAsyncSend(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := NewClient(serviceURL)
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   newTopicName(),
-		BatchingMaxPublishDelay: 1 * time.Second,
-	})
+	producer, err := client.CreateProducer(newTopicName(), WithBatchingMaxPublishDelay(1*time.Second))
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -172,15 +158,10 @@ func TestProducerCompression(t *testing.T) {
 	for _, provider := range providers {
 		p := provider
 		t.Run(p.name, func(t *testing.T) {
-			client, err := NewClient(ClientOptions{
-				URL: serviceURL,
-			})
+			client, err := NewClient(serviceURL)
 			assert.NoError(t, err)
 
-			producer, err := client.CreateProducer(ProducerOptions{
-				Topic:           newTopicName(),
-				CompressionType: p.compressionType,
-			})
+			producer, err := client.CreateProducer(newTopicName(), WithCompressionType(p.compressionType))
 
 			assert.NoError(t, err)
 			assert.NotNil(t, producer)
@@ -203,14 +184,10 @@ func TestProducerCompression(t *testing.T) {
 }
 
 func TestProducerLastSequenceID(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := NewClient(serviceURL)
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(newTopicName())
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -234,23 +211,16 @@ func TestProducerLastSequenceID(t *testing.T) {
 }
 
 func TestEventTime(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := NewClient(serviceURL)
 	assert.NoError(t, err)
 	defer client.Close()
 
 	topicName := "test-event-time"
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(topicName)
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: "subName",
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("subName"), WithTopics(topicName))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
@@ -268,9 +238,7 @@ func TestEventTime(t *testing.T) {
 }
 
 func TestFlushInProducer(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := NewClient(serviceURL)
 	assert.NoError(t, err)
 	defer client.Close()
 
@@ -280,24 +248,18 @@ func TestFlushInProducer(t *testing.T) {
 	ctx := context.Background()
 
 	// set batch message number numOfMessages, and max delay 10s
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   topicName,
-		DisableBatching:         false,
-		BatchingMaxMessages:     uint(numOfMessages),
-		BatchingMaxPublishDelay: time.Second * 10,
-		BlockIfQueueFull:        true,
-		Properties: map[string]string{
+	producer, err := client.CreateProducer(topicName, WithBatching(true),
+		WithBatchingMaxMessages(uint(numOfMessages)),
+		WithBatchingMaxPublishDelay(time.Second*10),
+		WithBlockIfQueueFull(true),
+		WithProducerProperties(map[string]string{
 			"producer-name": "test-producer-name",
 			"producer-id":   "test-producer-id",
-		},
-	})
+		}))
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: subName,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName(subName), WithTopics(topicName))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
@@ -375,29 +337,19 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	ctx := context.Background()
 
 	// creat client connection
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := NewClient(serviceURL)
 	assert.NoError(t, err)
 	defer client.Close()
 
 	// create consumer
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: "my-sub",
-		Type:             Exclusive,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("my-sub"), WithTopics(topicName), WithSubscriptionType(Exclusive))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
 	// create producer and set batch message number numOfMessages, and max delay 10s
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   topicName,
-		DisableBatching:         false,
-		BatchingMaxMessages:     uint(numOfMessages / numberOfPartitions),
-		BatchingMaxPublishDelay: time.Second * 10,
-		BlockIfQueueFull:        true,
-	})
+	producer, err := client.CreateProducer(topicName, WithBatching(true),
+		WithBatchingMaxMessages(uint(numOfMessages/numberOfPartitions)),
+		WithBlockIfQueueFull(true))
 	defer producer.Close()
 
 	// send 5 messages
@@ -444,29 +396,22 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 func TestMessageRouter(t *testing.T) {
 	// Create topic with 5 partitions
 	httpPut("http://localhost:8080/admin/v2/persistent/public/default/my-partitioned-topic/partitions", 5)
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := NewClient(serviceURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
 
 	// Only subscribe on the specific partition
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            "my-partitioned-topic-partition-2",
-		SubscriptionName: "my-sub",
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("my-sub"), WithTopics("my-partitioned-topic-partition-2"))
 
 	assert.Nil(t, err)
 	defer consumer.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: "my-partitioned-topic",
-		MessageRouter: func(msg *ProducerMessage, tm TopicMetadata) int {
+	producer, err := client.CreateProducer("my-partitioned-topic",
+		WithMessageRouter(func(msg *ProducerMessage, tm TopicMetadata) int {
 			fmt.Println("Routing message ", msg, " -- Partitions: ", tm.NumPartitions())
 			return 2
-		},
-	})
+		}))
 
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -489,23 +434,16 @@ func TestMessageRouter(t *testing.T) {
 
 func TestNonPersistentTopic(t *testing.T) {
 	topicName := "non-persistent://public/default/testNonPersistentTopic"
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
+	client, err := NewClient(serviceURL)
 	assert.Nil(t, err)
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(topicName)
 
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: "my-sub",
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("my-sub"), WithTopics(topicName))
 	assert.Nil(t, err)
 	defer consumer.Close()
 }

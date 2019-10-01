@@ -116,8 +116,8 @@ type connection struct {
 	cnx          net.Conn
 
 	writeBufferLock sync.Mutex
-	writeBuffer          Buffer
-	reader               *connectionReader
+	writeBuffer     Buffer
+	reader          *connectionReader
 
 	lastDataReceivedLock sync.Mutex
 	lastDataReceivedTime time.Time
@@ -135,7 +135,7 @@ type connection struct {
 	listeners   map[uint64]ConnectionListener
 
 	consumerHandlersLock sync.RWMutex
-	consumerHandlers map[uint64]ConsumerHandler
+	consumerHandlers     map[uint64]ConsumerHandler
 
 	tlsOptions *TLSOptions
 	auth       auth.Provider
@@ -455,7 +455,7 @@ func (c *connection) lastDataReceived() time.Time {
 	c.lastDataReceivedLock.Lock()
 	defer c.lastDataReceivedLock.Unlock()
 	t := c.lastDataReceivedTime
-	return t;
+	return t
 }
 
 func (c *connection) setLastDataReceived(t time.Time) {

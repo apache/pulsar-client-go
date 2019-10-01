@@ -20,11 +20,11 @@ package pulsar
 import (
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pkg/auth"
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/pkg/errors"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -42,45 +42,46 @@ type client struct {
 	consumerIDGenerator uint64
 }
 
-func newClient(options ClientOptions) (Client, error) {
-	if options.URL == "" {
+func defaultClientOptions() *ClientOptions {
+	return &ClientOptions{
+		OperationTimeout: 30 * time.Second,
+		Authentication:   auth.NewAuthDisabled(),
+		TlsConfig:        nil,
+	}
+}
+
+func newClient(URL string, opts ...ClientOption) (Client, error) {
+	if URL == "" {
 		return nil, newError(ResultInvalidConfiguration, "URL is required for client")
 	}
 
-	url, err := url.Parse(options.URL)
+	url, err := url.Parse(URL)
 	if err != nil {
 		log.WithError(err).Error("Failed to parse service URL")
 		return nil, newError(ResultInvalidConfiguration, "Invalid service URL")
 	}
 
-	var tlsConfig *internal.TLSOptions
+	options := defaultClientOptions()
+	for _, opt := range opts {
+		opt(options)
+	}
+	options.URL = URL
+
 	switch url.Scheme {
 	case "pulsar":
-		tlsConfig = nil
+		if options.TlsConfig != nil {
+			return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("tlsConfig should be nil for scheme:'%s'", url.Scheme))
+		}
 	case "pulsar+ssl":
-		tlsConfig = &internal.TLSOptions{
-			AllowInsecureConnection: options.TLSAllowInsecureConnection,
-			TrustCertsFilePath:      options.TLSTrustCertsFilePath,
-			ValidateHostname:        options.TLSValidateHostname,
+		if options.TlsConfig == nil {
+			return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("no tlsConfig for scheme:'%s'", url.Scheme))
 		}
 	default:
 		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
 
-	var authProvider auth.Provider
-	var ok bool
-
-	if options.Authentication == nil {
-		authProvider = auth.NewAuthDisabled()
-	} else {
-		authProvider, ok = options.Authentication.(auth.Provider)
-		if !ok {
-			return nil, errors.New("invalid auth provider interface")
-		}
-	}
-
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider),
+		cnxPool: internal.NewConnectionPool(options.TlsConfig, options.Authentication),
 	}
 	c.rpcClient = internal.NewRPCClient(url, c.cnxPool)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url)
@@ -88,16 +89,16 @@ func newClient(options ClientOptions) (Client, error) {
 	return c, nil
 }
 
-func (client *client) CreateProducer(options ProducerOptions) (Producer, error) {
-	producer, err := newProducer(client, &options)
+func (client *client) CreateProducer(topic string, options ...ProducerOption) (Producer, error) {
+	producer, err := newProducer(client, topic, options...)
 	if err == nil {
 		client.handlers[producer] = true
 	}
 	return producer, err
 }
 
-func (client *client) Subscribe(options ConsumerOptions) (Consumer, error) {
-	consumer, err := newConsumer(client, &options)
+func (client *client) Subscribe(name string, opts ...ConsumerOption) (Consumer, error) {
+	consumer, err := newConsumer(client, name, opts...)
 	if err != nil {
 		return nil, err
 	}

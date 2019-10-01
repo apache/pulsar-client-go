@@ -54,15 +54,11 @@ import "github.com/apache/pulsar-client-go/pulsar"
 Create a Producer:
 
 ```go
-client, err := pulsar.NewClient(pulsar.ClientOptions{
-    URL: "pulsar://localhost:6650",
-})
+client, err := pulsar.NewClient("pulsar://localhost:6650")
 
 defer client.Close()
 
-producer, err := client.CreateProducer(pulsar.ProducerOptions{
-	Topic: "my-topic",
-})
+producer, err := client.CreateProducer("my-topic")
 
 err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 	Payload: []byte("hello"),
@@ -79,17 +75,11 @@ fmt.Println("Published message")
 Create a Consumer:
 
 ```go
-client, err := pulsar.NewClient(pulsar.ClientOptions{
-    URL: "pulsar://localhost:6650",
-})
+client, err := pulsar.NewClient("pulsar://localhost:6650")
 
 defer client.Close()
 
-consumer, err := client.Subscribe(pulsar.ConsumerOptions{
-        Topic:            "my-topic",
-        SubscriptionName: "my-sub",
-        Type:             pulsar.Shared,
-    })
+consumer, err := client.Subscribe(WithSubscriptionName("my-sub"), WithTopics("my-topic"), WithSubscriptionType(Shared))
 
 defer consumer.Close()
 

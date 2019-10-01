@@ -26,9 +26,7 @@ import (
 )
 
 func main() {
-	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: "pulsar://localhost:6650",
-	})
+	client, err := pulsar.NewClient("pulsar://localhost:6650")
 
 	if err != nil {
 		log.Fatal(err)
@@ -36,9 +34,7 @@ func main() {
 
 	defer client.Close()
 
-	producer, err := client.CreateProducer(pulsar.ProducerOptions{
-		Topic: "topic-1",
-	})
+	producer, err := client.CreateProducer("topic-1")
 	if err != nil {
 		log.Fatal(err)
 	}

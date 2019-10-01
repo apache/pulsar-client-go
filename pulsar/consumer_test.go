@@ -26,8 +26,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/util"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/util"
 )
 
 var (
@@ -36,9 +37,7 @@ var (
 )
 
 func TestProducerConsumer(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -47,19 +46,12 @@ func TestProducerConsumer(t *testing.T) {
 	ctx := context.Background()
 
 	// create consumer
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "my-sub",
-		Type:             Exclusive,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("my-sub"), WithTopics(topic), WithSubscriptionType(Exclusive))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: false,
-	})
+	producer, err := client.CreateProducer(topic, WithBatching(true))
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -104,18 +96,13 @@ func TestProducerConsumer(t *testing.T) {
 }
 
 func TestConsumerConnectError(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: "pulsar://invalid-hostname:6650",
-	})
+	client, err := NewClient("pulsar://invalid-hostname:6650")
 
 	assert.Nil(t, err)
 
 	defer client.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            "my-topic",
-		SubscriptionName: "my-subscription",
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("my-subscription"), WithTopics("my-topic"))
 
 	// Expect error in creating consumer
 	assert.Nil(t, consumer)
@@ -125,9 +112,7 @@ func TestConsumerConnectError(t *testing.T) {
 }
 
 func TestBatchMessageReceive(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -141,20 +126,13 @@ func TestBatchMessageReceive(t *testing.T) {
 	batchSize, numOfMessages := 2, 100
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:               topicName,
-		BatchingMaxMessages: uint(batchSize),
-		DisableBatching:     false,
-		BlockIfQueueFull:    true,
-	})
+	producer, err := client.CreateProducer(topicName, WithBatchingMaxMessages(uint(batchSize)),
+		WithBatching(true), WithBlockIfQueueFull(true))
 	assert.Nil(t, err)
 	assert.Equal(t, topicName, producer.Topic())
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: subName,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName(subName), WithTopics(topicName))
 	assert.Nil(t, err)
 	assert.Equal(t, topicName, consumer.Topic())
 	count := 0
@@ -187,9 +165,7 @@ func TestBatchMessageReceive(t *testing.T) {
 }
 
 func TestConsumerWithInvalidConf(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	if err != nil {
 		t.Fatal(err)
@@ -198,9 +174,7 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 
 	defer client.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic: "my-topic",
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName(""), WithTopics("my-topic"))
 
 	// Expect error in creating cosnumer
 	assert.Nil(t, consumer)
@@ -209,9 +183,7 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 	fmt.Println(err.Error())
 	assert.Equal(t, err.(*Error).Result(), SubscriptionNotFound)
 
-	consumer, err = client.Subscribe(ConsumerOptions{
-		SubscriptionName: "my-subscription",
-	})
+	consumer, err = client.Subscribe(WithSubscriptionName("my-subscription"))
 
 	// Expect error in creating consumer
 	assert.Nil(t, consumer)
@@ -221,9 +193,7 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 }
 
 func TestConsumer_SubscriptionEarliestPos(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -232,9 +202,7 @@ func TestConsumer_SubscriptionEarliestPos(t *testing.T) {
 	subName := "test-subscription-initial-earliest-position"
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(topicName)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -252,11 +220,7 @@ func TestConsumer_SubscriptionEarliestPos(t *testing.T) {
 	assert.Nil(t, err)
 
 	// create consumer
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:               topicName,
-		SubscriptionName:    subName,
-		SubscriptionInitPos: Earliest,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName(subName), WithTopics(topicName), WithSubscriptionInitPos(Earliest))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
@@ -285,34 +249,22 @@ func makeHTTPCall(t *testing.T, method string, urls string, body string) {
 }
 
 func TestConsumerKeyShared(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 	assert.Nil(t, err)
 	defer client.Close()
 
 	topic := "persistent://public/default/test-topic-6"
 
-	consumer1, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "sub-1",
-		Type:             KeyShared,
-	})
+	consumer1, err := client.Subscribe(WithSubscriptionName("sub-1"), WithTopics(topic), WithSubscriptionType(KeyShared))
 	assert.Nil(t, err)
 	defer consumer1.Close()
 
-	consumer2, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "sub-1",
-		Type:             KeyShared,
-	})
+	consumer2, err := client.Subscribe(WithSubscriptionName("sub-1"), WithTopics(topic), WithSubscriptionType(KeyShared))
 	assert.Nil(t, err)
 	defer consumer2.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
+	producer, err := client.CreateProducer(topic)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -355,9 +307,7 @@ func TestConsumerKeyShared(t *testing.T) {
 }
 
 func TestPartitionTopicsConsumerPubSub(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 	assert.Nil(t, err)
 	defer client.Close()
 
@@ -367,9 +317,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	makeHTTPCall(t, http.MethodPut, testURL, "64")
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
+	producer, err := client.CreateProducer(topic)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -379,12 +327,8 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Equal(t, topic+"-partition-1", topics[1])
 	assert.Equal(t, topic+"-partition-2", topics[2])
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:             topic,
-		SubscriptionName:  "my-sub",
-		Type:              Exclusive,
-		ReceiverQueueSize: 10,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("my-sub"), WithTopics(topic),
+		WithSubscriptionType(Exclusive), WithReceiverQueueSize(10))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
@@ -415,9 +359,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 }
 
 func TestConsumer_ReceiveAsync(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -428,16 +370,11 @@ func TestConsumer_ReceiveAsync(t *testing.T) {
 	ch := make(chan ConsumerMessage, 10)
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(topicName)
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: subName,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName(subName), WithTopics(topicName))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
@@ -477,9 +414,7 @@ RECEIVE:
 }
 
 func TestConsumerAckTimeout(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 	assert.Nil(t, err)
 	defer client.Close()
 
@@ -487,30 +422,17 @@ func TestConsumerAckTimeout(t *testing.T) {
 	ctx := context.Background()
 
 	// create consumer
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "my-sub1",
-		Type:             Shared,
-		AckTimeout:       5 * 1000,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("my-sub1"), WithTopics(topic), WithSubscriptionType(Shared), WithAckTimeout(5*1000))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
 	// create consumer1
-	consumer1, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "my-sub2",
-		Type:             Shared,
-		AckTimeout:       5 * 1000,
-	})
+	consumer1, err := client.Subscribe(WithSubscriptionName("my-sub2"), WithTopics(topic), WithSubscriptionType(Shared), WithAckTimeout(5*1000))
 	assert.Nil(t, err)
 	defer consumer1.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(topic, WithBatching(false))
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -599,9 +521,7 @@ func TestConsumerAckTimeout(t *testing.T) {
 }
 
 func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -611,16 +531,11 @@ func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
 	ctx := context.Background()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(topicName)
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: subName,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName(subName), WithTopics(topicName))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
@@ -645,9 +560,7 @@ func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
 }
 
 func TestConsumer_Shared(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -658,27 +571,16 @@ func TestConsumer_Shared(t *testing.T) {
 	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
 	sub := "sub-shared-1"
-	consumer1, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: sub,
-		Type:             Shared,
-	})
+	consumer1, err := client.Subscribe(WithSubscriptionName(sub), WithTopics(topic), WithSubscriptionType(Shared))
 	assert.Nil(t, err)
 	defer consumer1.Close()
 
-	consumer2, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: sub,
-		Type:             Shared,
-	})
+	consumer2, err := client.Subscribe(WithSubscriptionName(sub), WithTopics(topic), WithSubscriptionType(Shared))
 	assert.Nil(t, err)
 	defer consumer2.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(topic, WithBatching(false))
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -724,9 +626,7 @@ func TestConsumer_Shared(t *testing.T) {
 }
 
 func TestConsumer_Seek(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -736,17 +636,12 @@ func TestConsumer_Seek(t *testing.T) {
 	makeHTTPCall(t, http.MethodPut, testURL, "1")
 	subName := "sub-testSeek"
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(topicName)
 	assert.Nil(t, err)
 	assert.Equal(t, producer.Topic(), topicName)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: subName,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName(subName), WithTopics(topicName))
 	assert.Nil(t, err)
 	assert.Equal(t, consumer.Topic(), topicName)
 	assert.Equal(t, consumer.Subscription(), subName)
@@ -792,9 +687,7 @@ func TestConsumer_Seek(t *testing.T) {
 }
 
 func TestConsumer_EventTime(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -802,16 +695,11 @@ func TestConsumer_EventTime(t *testing.T) {
 	topicName := "test-event-time"
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(topicName)
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: "sub-1",
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("sub-1"), WithTopics(topicName))
 	assert.Nil(t, err)
 	defer consumer.Close()
 
@@ -829,9 +717,7 @@ func TestConsumer_EventTime(t *testing.T) {
 }
 
 func TestConsumer_Flow(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(lookupURL)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -839,17 +725,11 @@ func TestConsumer_Flow(t *testing.T) {
 	topicName := "test-received-since-flow"
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(topicName)
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:             topicName,
-		SubscriptionName:  "sub-1",
-		ReceiverQueueSize: 4,
-	})
+	consumer, err := client.Subscribe(WithSubscriptionName("sub-1"), WithTopics(topicName), WithReceiverQueueSize(4))
 	assert.Nil(t, err)
 
 	for msgNum := 0; msgNum < 100; msgNum++ {

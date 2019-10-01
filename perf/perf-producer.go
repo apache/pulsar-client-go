@@ -64,9 +64,7 @@ func produce() {
 	b, _ = json.MarshalIndent(produceArgs, "", "  ")
 	log.Info("Producer config: ", string(b))
 
-	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: clientArgs.ServiceURL,
-	})
+	client, err := pulsar.NewClient(clientArgs.ServiceURL)
 
 	if err != nil {
 		log.Fatal(err)
@@ -74,13 +72,11 @@ func produce() {
 
 	defer client.Close()
 
-	producer, err := client.CreateProducer(pulsar.ProducerOptions{
-		Topic:                   produceArgs.Topic,
-		MaxPendingMessages:      produceArgs.ProducerQueueSize,
-		BatchingMaxPublishDelay: time.Millisecond * time.Duration(produceArgs.BatchingTimeMillis),
-		SendTimeout:             0,
-		BlockIfQueueFull:        true,
-	})
+	producer, err := client.CreateProducer(produceArgs.Topic,
+		pulsar.WithMaxPendingMessages(produceArgs.ProducerQueueSize),
+		pulsar.WithBatchingMaxPublishDelay(time.Millisecond*time.Duration(produceArgs.BatchingTimeMillis)),
+		pulsar.WithSendTimeout(0),
+		pulsar.WithBlockIfQueueFull(true))
 	if err != nil {
 		log.Fatal(err)
 	}

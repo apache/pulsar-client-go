@@ -37,21 +37,29 @@ type consumer struct {
 	unackMsgTracker *UnackedMessageTracker
 }
 
-func newConsumer(client *client, options *ConsumerOptions) (*consumer, error) {
-	if options == nil {
-		return nil, newError(ResultInvalidConfiguration, "consumer configuration undefined")
+func defaultConsumerOptions() *consumerOptions {
+	return &consumerOptions{
+		AckTimeout:          0,
+		Type:                Exclusive,
+		SubscriptionInitPos: Latest,
+		ReceiverQueueSize:   1000,
+		MaxTotalReceiverQueueSizeAcrossPartitions: 50000,
 	}
+}
 
-	if options.Topic == "" && options.Topics == nil && options.TopicsPattern == "" {
-		return nil, newError(TopicNotFound, "topic is required")
+func newConsumer(client *client, subscriptionName string, opts ...ConsumerOption) (*consumer, error) {
+	options := defaultConsumerOptions()
+	for _, opt := range opts {
+		opt(options)
 	}
+	options.SubscriptionName = subscriptionName
 
 	if options.SubscriptionName == "" {
 		return nil, newError(SubscriptionNotFound, "subscription name is required for consumer")
 	}
 
-	if options.ReceiverQueueSize == 0 {
-		options.ReceiverQueueSize = 1000
+	if options.Topic == "" && options.Topics == nil && options.TopicsPattern == "" {
+		return nil, newError(TopicNotFound, "topic is required")
 	}
 
 	if options.TopicsPattern != "" {
@@ -74,7 +82,7 @@ func newConsumer(client *client, options *ConsumerOptions) (*consumer, error) {
 	return nil, newError(ResultInvalidTopicName, "topic name is required for consumer")
 }
 
-func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string) (*consumer, error) {
+func singleTopicSubscribe(client *client, options *consumerOptions, topic string) (*consumer, error) {
 	c := &consumer{
 		topicName: topic,
 		log:       log.WithField("topic", topic),

@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
@@ -40,9 +41,24 @@ func getHashingFunction(s HashingScheme) func(string) uint32 {
 	}
 }
 
-func newProducer(client *client, options *ProducerOptions) (*producer, error) {
-	if options.Topic == "" {
+const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
+
+func defaultProducerOptions() *producerOptions {
+	return &producerOptions{
+		BatchingMaxPublishDelay: defaultBatchingMaxPublishDelay,
+		MaxPendingMessages:      1000,
+	}
+}
+
+func newProducer(client *client, topic string, opts ...ProducerOption) (*producer, error) {
+	if topic == "" {
 		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
+	}
+
+	options := defaultProducerOptions()
+	options.Topic = topic
+	for _, opt := range opts {
+		opt(options)
 	}
 
 	p := &producer{

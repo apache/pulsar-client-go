@@ -46,7 +46,7 @@ type TopicMetadata interface {
 	NumPartitions() uint32
 }
 
-type ProducerOptions struct {
+type producerOptions struct {
 	// Topic specify the topic this producer will be publishing on.
 	// This argument is required when constructing the producer.
 	Topic string
@@ -126,6 +126,85 @@ type ProducerOptions struct {
 	// BatchingMaxMessages set the maximum number of messages permitted in a batch. (default: 1000) If set to a value greater than 1,
 	// messages will be queued until this threshold is reached or batch interval has elapsed
 	BatchingMaxMessages uint
+}
+
+type ProducerOption func(*producerOptions)
+
+func WithName(name string) ProducerOption {
+	return func(options *producerOptions) {
+		options.Name = name
+	}
+}
+
+func WithProducerProperties(properties map[string]string) ProducerOption {
+	return func(options *producerOptions) {
+		if options.Properties == nil {
+			options.Properties = make(map[string]string, 0)
+		}
+		for k, v := range properties {
+			options.Properties[k] = v
+		}
+	}
+}
+
+func WithSendTimeout(sendTimeout time.Duration) ProducerOption {
+	return func(options *producerOptions) {
+		options.SendTimeout = sendTimeout
+	}
+}
+
+func WithMaxPendingMessages(maxPendingMessages int) ProducerOption {
+	return func(options *producerOptions) {
+		options.MaxPendingMessages = maxPendingMessages
+	}
+}
+
+func WithMaxPendingMessagesAcrossPartitions(maxPendingMessagesAcrossPartitions int) ProducerOption {
+	return func(options *producerOptions) {
+		options.MaxPendingMessagesAcrossPartitions = maxPendingMessagesAcrossPartitions
+	}
+}
+
+func WithBlockIfQueueFull(blockIfQueueFull bool) ProducerOption {
+	return func(options *producerOptions) {
+		options.BlockIfQueueFull = blockIfQueueFull
+	}
+}
+
+func WithHashingScheme(hashingScheme HashingScheme) ProducerOption {
+	return func(options *producerOptions) {
+		options.HashingScheme = hashingScheme
+	}
+}
+
+func WithCompressionType(compressionType CompressionType) ProducerOption {
+	return func(options *producerOptions) {
+		options.CompressionType = compressionType
+	}
+}
+
+func WithMessageRouter(router func(*ProducerMessage, TopicMetadata) int) ProducerOption {
+	return func(options *producerOptions) {
+		options.MessageRouter = router
+	}
+}
+
+func WithBatching(batch bool) ProducerOption {
+	return func(options *producerOptions) {
+		options.DisableBatching = !batch
+	}
+}
+
+func WithBatchingMaxPublishDelay(batchingMaxPublishDelay time.Duration) ProducerOption {
+	return func(options *producerOptions) {
+		options.BatchingMaxPublishDelay = batchingMaxPublishDelay
+	}
+}
+
+func WithBatchingMaxMessages(batchingMaxMessages uint) ProducerOption {
+	return func(options *producerOptions) {
+		options.BatchingMaxMessages = batchingMaxMessages
+	}
 }
 
 // Producer is used to publish messages on a topic

@@ -25,11 +25,10 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/util"
+	log "github.com/sirupsen/logrus"
 )
 
 type producerState int
@@ -48,7 +47,7 @@ type partitionProducer struct {
 	log    *log.Entry
 	cnx    internal.Connection
 
-	options             *ProducerOptions
+	options             *producerOptions
 	producerName        *string
 	producerID          uint64
 	batchBuilder        *internal.BatchBuilder
@@ -65,23 +64,9 @@ type partitionProducer struct {
 	partitionIdx int
 }
 
-const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
+func newPartitionProducer(client *client, topic string, options *producerOptions, partitionIdx int) (*partitionProducer, error) {
 
-func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (*partitionProducer, error) {
-
-	var batchingMaxPublishDelay time.Duration
-	if options.BatchingMaxPublishDelay != 0 {
-		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
-	} else {
-		batchingMaxPublishDelay = defaultBatchingMaxPublishDelay
-	}
-
-	var maxPendingMessages int
-	if options.MaxPendingMessages == 0 {
-		maxPendingMessages = 1000
-	} else {
-		maxPendingMessages = options.MaxPendingMessages
-	}
+	maxPendingMessages := options.MaxPendingMessages
 
 	p := &partitionProducer{
 		state:            producerInit,
@@ -91,7 +76,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, 1),
-		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
+		batchFlushTicker: time.NewTicker(options.BatchingMaxPublishDelay),
 		publishSemaphore: make(util.Semaphore, maxPendingMessages),
 		pendingQueue:     util.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,

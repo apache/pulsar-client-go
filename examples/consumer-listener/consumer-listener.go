@@ -25,7 +25,7 @@ import (
 )
 
 func main() {
-	client, err := pulsar.NewClient(pulsar.ClientOptions{URL: "pulsar://localhost:6650"})
+	client, err := pulsar.NewClient("pulsar://localhost:6650")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -34,15 +34,9 @@ func main() {
 
 	channel := make(chan pulsar.ConsumerMessage, 100)
 
-	options := pulsar.ConsumerOptions{
-		Topic:            "topic-1",
-		SubscriptionName: "my-subscription",
-		Type:             pulsar.Shared,
-	}
-
-	options.MessageChannel = channel
-
-	consumer, err := client.Subscribe(options)
+	consumer, err := client.Subscribe(pulsar.WithSubscriptionName("my-subscription"), pulsar.WithTopics("topic-1"),
+		pulsar.WithSubscriptionType(pulsar.Shared),
+		pulsar.WithMessageChannel(channel))
 	if err != nil {
 		log.Fatal(err)
 	}

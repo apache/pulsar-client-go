@@ -21,10 +21,11 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pkg/auth"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
-func NewClient(options ClientOptions) (Client, error) {
-	return newClient(options)
+func NewClient(url string, opts ...ClientOption) (Client, error) {
+	return newClient(url, opts...)
 }
 
 // Opaque interface that represents the authentication credentials
@@ -70,28 +71,51 @@ type ClientOptions struct {
 
 	// Configure the authentication provider. (default: no authentication)
 	// Example: `Authentication: NewAuthenticationTLS("my-cert.pem", "my-key.pem")`
-	Authentication
+	Authentication auth.Provider
 
-	// Set the path to the trusted TLS certificate file
-	TLSTrustCertsFilePath string
+	TlsConfig *internal.TLSOptions
+}
 
-	// Configure whether the Pulsar client accept untrusted TLS certificate from broker (default: false)
-	TLSAllowInsecureConnection bool
+type ClientOption func(*ClientOptions)
 
-	// Configure whether the Pulsar client verify the validity of the host name from broker (default: false)
-	TLSValidateHostname bool
+func WithConnectionTimeout(timeout time.Duration) ClientOption {
+	return func(options *ClientOptions) {
+		options.ConnectionTimeout = timeout
+	}
+}
+
+func WithOperationTimeout(timeout time.Duration) ClientOption {
+	return func(options *ClientOptions) {
+		options.OperationTimeout = timeout
+	}
+}
+
+func WithAuthentication(authProvider auth.Provider) ClientOption {
+	return func(options *ClientOptions) {
+		options.Authentication = authProvider
+	}
+}
+
+func WithTLS(trustCertsFilePath string, allowInsecureConnection bool, validateHostname bool) ClientOption {
+	return func(options *ClientOptions) {
+		options.TlsConfig = &internal.TLSOptions{
+			AllowInsecureConnection: allowInsecureConnection,
+			TrustCertsFilePath:      trustCertsFilePath,
+			ValidateHostname:        validateHostname,
+		}
+	}
 }
 
 type Client interface {
 	// Create the producer instance
 	// This method will block until the producer is created successfully
-	CreateProducer(ProducerOptions) (Producer, error)
+	CreateProducer(topic string, opt ...ProducerOption) (Producer, error)
 
 	// Create a `Consumer` by subscribing to a topic.
 	//
 	// If the subscription does not exist, a new subscription will be created and all messages published after the
 	// creation will be retained until acknowledged, even if the consumer is not connected
-	Subscribe(ConsumerOptions) (Consumer, error)
+	Subscribe(opts ...ConsumerOption) (Consumer, error)
 
 	// Create a Reader instance.
 	// This method will block until the reader is created successfully.

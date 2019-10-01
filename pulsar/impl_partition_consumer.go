@@ -50,7 +50,7 @@ type partitionConsumer struct {
 	log    *log.Entry
 	cnx    internal.Connection
 
-	options      *ConsumerOptions
+	options      *consumerOptions
 	consumerName *string
 	consumerID   uint64
 	subQueue     chan ConsumerMessage
@@ -66,7 +66,7 @@ type partitionConsumer struct {
 	partitionNum int
 }
 
-func newPartitionConsumer(client *client, topic string, options *ConsumerOptions, partitionID, partitionNum int, ch chan<- ConsumerMessage) (*partitionConsumer, error) {
+func newPartitionConsumer(client *client, topic string, options *consumerOptions, partitionID, partitionNum int, ch chan<- ConsumerMessage) (*partitionConsumer, error) {
 	c := &partitionConsumer{
 		state:             consumerInit,
 		client:            client,
@@ -126,7 +126,7 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 	return c, nil
 }
 
-func (pc *partitionConsumer) setDefault(options *ConsumerOptions) {
+func (pc *partitionConsumer) setDefault(options *consumerOptions) {
 	if options.ReceiverQueueSize <= 0 {
 		options.ReceiverQueueSize = 1000
 	}
