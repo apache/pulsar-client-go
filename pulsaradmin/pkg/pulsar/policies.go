@@ -23,54 +23,53 @@ const (
 )
 
 type Policies struct {
-	AuthPolicies                          AuthPolicies                          `json:"auth_policies"`
-	ReplicationClusters                   []string                              `json:"replication_clusters"`
-	Bundles                               *BundlesData                          `json:"bundles"`
-	BacklogQuotaMap                       map[BacklogQuotaType]BacklogQuota     `json:"backlog_quota_map"`
-	TopicDispatchRate                     map[string]DispatchRate               `json:"topicDispatchRate"`
-	SubscriptionDispatchRate              map[string]DispatchRate               `json:"subscriptionDispatchRate"`
-	ReplicatorDispatchRate                map[string]DispatchRate               `json:"replicatorDispatchRate"`
-	ClusterSubscribeRate                  map[string]SubscribeRate              `json:"clusterSubscribeRate"`
-	Persistence                           *PersistencePolicies                  `json:"persistence"`
-	DeduplicationEnabled                  bool                                  `json:"deduplicationEnabled"`
-	LatencyStatsSampleRate                map[string]int                        `json:"latency_stats_sample_rate"`
-	MessageTtlInSeconds                   int                                   `json:"message_ttl_in_seconds"`
-	RetentionPolicies                     *RetentionPolicies                    `json:"retention_policies"`
-	Deleted                               bool                                  `json:"deleted"`
-	AntiAffinityGroup                     string                                `json:"antiAffinityGroup"`
-	EncryptionRequired                    bool                                  `json:"encryption_required"`
-	SubscriptionAuthMode                  SubscriptionAuthMode                  `json:"subscription_auth_mode"`
-	MaxProducersPerTopic                  int                                   `json:"max_producers_per_topic"`
-	MaxConsumersPerTopic                  int                                   `json:"max_consumers_per_topic"`
-	MaxConsumersPerSubscription           int                                   `json:"max_consumers_per_subscription"`
-	CompactionThreshold                   int64                                 `json:"compaction_threshold"`
-	OffloadThreshold                      int64                                 `json:"offload_threshold"`
-	OffloadDeletionLagMs                  int64                                 `json:"offload_deletion_lag_ms"`
-	SchemaAutoUpdateCompatibilityStrategy SchemaAutoUpdateCompatibilityStrategy `json:"schema_auto_update_compatibility_strategy"`
-	SchemaValidationEnforced              bool                                  `json:"schema_validation_enforced"`
+	Bundles                     *BundlesData                      `json:"bundles"`
+	Persistence                 *PersistencePolicies              `json:"persistence"`
+	RetentionPolicies           *RetentionPolicies                `json:"retention_policies"`
+	SchemaValidationEnforced    bool                              `json:"schema_validation_enforced"`
+	DeduplicationEnabled        bool                              `json:"deduplicationEnabled"`
+	Deleted                     bool                              `json:"deleted"`
+	EncryptionRequired          bool                              `json:"encryption_required"`
+	MessageTTLInSeconds         int                               `json:"message_ttl_in_seconds"`
+	MaxProducersPerTopic        int                               `json:"max_producers_per_topic"`
+	MaxConsumersPerTopic        int                               `json:"max_consumers_per_topic"`
+	MaxConsumersPerSubscription int                               `json:"max_consumers_per_subscription"`
+	CompactionThreshold         int64                             `json:"compaction_threshold"`
+	OffloadThreshold            int64                             `json:"offload_threshold"`
+	OffloadDeletionLagMs        int64                             `json:"offload_deletion_lag_ms"`
+	AntiAffinityGroup           string                            `json:"antiAffinityGroup"`
+	ReplicationClusters         []string                          `json:"replication_clusters"`
+	LatencyStatsSampleRate      map[string]int                    `json:"latency_stats_sample_rate"`
+	BacklogQuotaMap             map[BacklogQuotaType]BacklogQuota `json:"backlog_quota_map"`
+	TopicDispatchRate           map[string]DispatchRate           `json:"topicDispatchRate"`
+	SubscriptionDispatchRate    map[string]DispatchRate           `json:"subscriptionDispatchRate"`
+	ReplicatorDispatchRate      map[string]DispatchRate           `json:"replicatorDispatchRate"`
+	ClusterSubscribeRate        map[string]SubscribeRate          `json:"clusterSubscribeRate"`
+	SchemaCompatibilityStrategy SchemaCompatibilityStrategy       `json:"schema_auto_update_compatibility_strategy"`
+	AuthPolicies                AuthPolicies                      `json:"auth_policies"`
+	SubscriptionAuthMode        SubscriptionAuthMode              `json:"subscription_auth_mode"`
 }
 
 func NewDefaultPolicies() *Policies {
 	return &Policies{
-		AuthPolicies:                          *NewAuthPolicies(),
-		ReplicationClusters:                   make([]string, 0, 10),
-		BacklogQuotaMap:                       make(map[BacklogQuotaType]BacklogQuota),
-		TopicDispatchRate:                     make(map[string]DispatchRate),
-		SubscriptionDispatchRate:              make(map[string]DispatchRate),
-		ReplicatorDispatchRate:                make(map[string]DispatchRate),
-		ClusterSubscribeRate:                  make(map[string]SubscribeRate),
-		LatencyStatsSampleRate:                make(map[string]int),
-		MessageTtlInSeconds:                   0,
-		Deleted:                               false,
-		EncryptionRequired:                    false,
-		SubscriptionAuthMode:                  None,
-		MaxProducersPerTopic:                  0,
-		MaxConsumersPerSubscription:           0,
-		MaxConsumersPerTopic:                  0,
-		CompactionThreshold:                   0,
-		OffloadThreshold:                      -1,
-		SchemaAutoUpdateCompatibilityStrategy: Full,
-		SchemaValidationEnforced:              false,
+		AuthPolicies:                *NewAuthPolicies(),
+		ReplicationClusters:         make([]string, 0, 10),
+		BacklogQuotaMap:             make(map[BacklogQuotaType]BacklogQuota),
+		TopicDispatchRate:           make(map[string]DispatchRate),
+		SubscriptionDispatchRate:    make(map[string]DispatchRate),
+		ReplicatorDispatchRate:      make(map[string]DispatchRate),
+		ClusterSubscribeRate:        make(map[string]SubscribeRate),
+		LatencyStatsSampleRate:      make(map[string]int),
+		MessageTTLInSeconds:         0,
+		Deleted:                     false,
+		EncryptionRequired:          false,
+		SubscriptionAuthMode:        None,
+		MaxProducersPerTopic:        0,
+		MaxConsumersPerSubscription: 0,
+		MaxConsumersPerTopic:        0,
+		CompactionThreshold:         0,
+		OffloadThreshold:            -1,
+		SchemaCompatibilityStrategy: Full,
+		SchemaValidationEnforced:    false,
 	}
 }
-

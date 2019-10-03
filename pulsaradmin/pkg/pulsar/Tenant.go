@@ -26,30 +26,30 @@ type Tenants interface {
 }
 
 type tenants struct {
-	client *client
+	client   *client
 	basePath string
 }
 
 func (c *client) Tenants() Tenants {
 	return &tenants{
-		client: c,
+		client:   c,
 		basePath: "/tenants",
 	}
 }
 
 func (c *tenants) Create(data TenantData) error {
 	endpoint := c.client.endpoint(c.basePath, data.Name)
-	return c.client.put(endpoint, &data, nil)
+	return c.client.put(endpoint, &data)
 }
 
 func (c *tenants) Delete(name string) error {
 	endpoint := c.client.endpoint(c.basePath, name)
-	return c.client.delete(endpoint, nil)
+	return c.client.delete(endpoint)
 }
 
 func (c *tenants) Update(data TenantData) error {
 	endpoint := c.client.endpoint(c.basePath, data.Name)
-	return c.client.post(endpoint, &data, nil)
+	return c.client.post(endpoint, &data)
 }
 
 func (c *tenants) List() ([]string, error) {

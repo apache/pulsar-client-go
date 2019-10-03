@@ -19,16 +19,17 @@ package pulsar
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 const (
-	PUBLIC_TENANT            = "public"
-	DEFAULT_NAMESPACE        = "default"
-	PARTITIONED_TOPIC_SUFFIX = "-partition-"
+	PUBLICTENANT           = "public"
+	DEFAULTNAMESPACE       = "default"
+	PARTITIONEDTOPICSUFFIX = "-partition-"
 )
 
 type TopicName struct {
@@ -50,11 +51,12 @@ func GetTopicName(completeName string) (*TopicName, error) {
 	// - <tenant>/<namespace>/<topic>
 	if !strings.Contains(completeName, "://") {
 		parts := strings.Split(completeName, "/")
-		if len(parts) == 3 {
+		switch len(parts) {
+		case 3:
 			completeName = persistent.String() + "://" + completeName
-		} else if len(parts) == 1 {
-			completeName = persistent.String() + "://" + PUBLIC_TENANT + "/" + DEFAULT_NAMESPACE + "/" + parts[0]
-		} else {
+		case 1:
+			completeName = persistent.String() + "://" + PUBLICTENANT + "/" + DEFAULTNAMESPACE + "/" + parts[0]
+		default:
 			return nil, errors.Errorf("Invalid short topic name '%s', it should be "+
 				"in the format of <tenant>/<namespace>/<topic> or <topic>", completeName)
 		}
@@ -79,12 +81,12 @@ func GetTopicName(completeName string) (*TopicName, error) {
 		topicname.topic = parts[2]
 		topicname.partitionIndex = getPartitionIndex(completeName)
 	} else {
-		return nil, errors.Errorf("Invalid topic name '%s', it should be in the format of "+
+		return nil, errors.Errorf("invalid topic name '%s', it should be in the format of "+
 			"<tenant>/<namespace>/<topic>", rest)
 	}
 
 	if topicname.topic == "" {
-		return nil, errors.New("Topic name can not be empty.")
+		return nil, errors.New("topic name can not be empty")
 	}
 
 	n, err := GetNameSpaceName(topicname.tenant, topicname.namespace)
@@ -118,19 +120,19 @@ func (t *TopicName) GetLocalName() string {
 
 func (t *TopicName) GetPartition(index int) (*TopicName, error) {
 	if index < 0 {
-		return nil, errors.New("Invalid partition index number.")
+		return nil, errors.New("invalid partition index number")
 	}
 
-	if strings.Contains(t.String(), PARTITIONED_TOPIC_SUFFIX) {
+	if strings.Contains(t.String(), PARTITIONEDTOPICSUFFIX) {
 		return t, nil
 	}
 
-	topicNameWithPartition := t.String() + PARTITIONED_TOPIC_SUFFIX + strconv.Itoa(index)
+	topicNameWithPartition := t.String() + PARTITIONEDTOPICSUFFIX + strconv.Itoa(index)
 	return GetTopicName(topicNameWithPartition)
 }
 
 func getPartitionIndex(topic string) int {
-	if strings.Contains(topic, PARTITIONED_TOPIC_SUFFIX) {
+	if strings.Contains(topic, PARTITIONEDTOPICSUFFIX) {
 		parts := strings.Split(topic, "-")
 		index, err := strconv.Atoi(parts[len(parts)-1])
 		if err == nil {

@@ -17,23 +17,22 @@
 
 package pulsar
 
-const WindowConfigKey  = "__WINDOWCONFIGS__"
+const WindowConfigKey = "__WINDOWCONFIGS__"
 
 type WindowConfig struct {
-    WindowLengthCount             int
-    WindowLengthDurationMs        int64
-    SlidingIntervalCount          int
-    SlidingIntervalDurationMs     int64
-    LateDataTopic                 string
-    MaxLagMs                      int64
-    WatermarkEmitIntervalMs       int64
-    TimestampExtractorClassName   string
-    ActualWindowFunctionClassName string
+	WindowLengthCount             int
+	WindowLengthDurationMs        int64
+	SlidingIntervalCount          int
+	SlidingIntervalDurationMs     int64
+	LateDataTopic                 string
+	MaxLagMs                      int64
+	WatermarkEmitIntervalMs       int64
+	TimestampExtractorClassName   string
+	ActualWindowFunctionClassName string
 }
 
 func NewDefaultWindowConfing() *WindowConfig {
-    windowConfig := &WindowConfig{}
+	windowConfig := &WindowConfig{}
 
-    return windowConfig
+	return windowConfig
 }
-

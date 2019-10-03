@@ -18,8 +18,9 @@
 package pulsar
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetNamespaceName(t *testing.T) {
@@ -29,7 +30,7 @@ func TestGetNamespaceName(t *testing.T) {
 
 	empty, err := GetNamespaceName("")
 	assert.NotNil(t, err)
-	assert.Equal(t, "The namespace complete name is empty.", err.Error())
+	assert.Equal(t, "the namespace complete name is empty", err.Error())
 	assert.Nil(t, empty)
 
 	empty, err = GetNamespaceName("/")

@@ -24,7 +24,7 @@ type FunctionStatus struct {
 }
 
 type FunctionInstanceStatus struct {
-	InstanceId int                        `json:"instanceId"`
+	InstanceID int                        `json:"instanceId"`
 	Status     FunctionInstanceStatusData `json:"status"`
 }
 
@@ -40,14 +40,10 @@ type FunctionInstanceStatusData struct {
 	LatestSystemExceptions   []ExceptionInformation `json:"latestSystemExceptions"`
 	AverageLatency           float64                `json:"averageLatency"`
 	LastInvocationTime       int64                  `json:"lastInvocationTime"`
-	WorkerId                 string                 `json:"workerId"`
+	WorkerID                 string                 `json:"workerId"`
 }
 
 type ExceptionInformation struct {
 	ExceptionString string `json:"exceptionString"`
 	TimestampMs     int64  `json:"timestampMs"`
-}
-
-func (fs *FunctionStatus) AddInstance(functionInstanceStatus FunctionInstanceStatus) {
-	fs.Instances = append(fs.Instances, functionInstanceStatus)
 }

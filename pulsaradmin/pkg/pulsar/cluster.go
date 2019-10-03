@@ -61,17 +61,17 @@ func (c *clusters) Get(name string) (ClusterData, error) {
 
 func (c *clusters) Create(cdata ClusterData) error {
 	endpoint := c.client.endpoint(c.basePath, cdata.Name)
-	return c.client.put(endpoint, &cdata, nil)
+	return c.client.put(endpoint, &cdata)
 }
 
 func (c *clusters) Delete(name string) error {
 	endpoint := c.client.endpoint(c.basePath, name)
-	return c.client.delete(endpoint, nil)
+	return c.client.delete(endpoint)
 }
 
 func (c *clusters) Update(cdata ClusterData) error {
 	endpoint := c.client.endpoint(c.basePath, cdata.Name)
-	return c.client.post(endpoint, &cdata, nil)
+	return c.client.post(endpoint, &cdata)
 }
 
 func (c *clusters) GetPeerClusters(name string) ([]string, error) {
@@ -83,12 +83,12 @@ func (c *clusters) GetPeerClusters(name string) ([]string, error) {
 
 func (c *clusters) UpdatePeerClusters(cluster string, peerClusters []string) error {
 	endpoint := c.client.endpoint(c.basePath, cluster, "peers")
-	return c.client.post(endpoint, peerClusters, nil)
+	return c.client.post(endpoint, peerClusters)
 }
 
 func (c *clusters) CreateFailureDomain(data FailureDomainData) error {
 	endpoint := c.client.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.client.post(endpoint, &data, nil)
+	return c.client.post(endpoint, &data)
 }
 
 func (c *clusters) GetFailureDomain(clusterName string, domainName string) (FailureDomainData, error) {
@@ -107,9 +107,9 @@ func (c *clusters) ListFailureDomains(clusterName string) (FailureDomainMap, err
 
 func (c *clusters) DeleteFailureDomain(data FailureDomainData) error {
 	endpoint := c.client.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.client.delete(endpoint, nil)
+	return c.client.delete(endpoint)
 }
 func (c *clusters) UpdateFailureDomain(data FailureDomainData) error {
 	endpoint := c.client.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.client.post(endpoint, &data, nil)
+	return c.client.post(endpoint, &data)
 }

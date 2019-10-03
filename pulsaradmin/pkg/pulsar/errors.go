@@ -22,8 +22,8 @@ import "fmt"
 const unknownErrorReason = "Unknown pulsar error"
 
 type Error struct {
-	Reason 	string `json:"reason"`
-	Code	int
+	Reason string `json:"reason"`
+	Code   int
 }
 
 func (e Error) Error() string {

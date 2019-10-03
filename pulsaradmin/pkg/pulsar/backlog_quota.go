@@ -36,7 +36,7 @@ type BacklogQuotaType string
 const DestinationStorage BacklogQuotaType = "destination_storage"
 
 const (
-	ProducerRequestHold RetentionPolicy = "producer_request_hold"
-	ProducerException RetentionPolicy = "producer_exception"
+	ProducerRequestHold     RetentionPolicy = "producer_request_hold"
+	ProducerException       RetentionPolicy = "producer_exception"
 	ConsumerBacklogEviction RetentionPolicy = "consumer_backlog_eviction"
 )

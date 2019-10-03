@@ -18,8 +18,9 @@
 package pulsar
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestApiVersion_String(t *testing.T) {

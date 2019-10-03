@@ -24,16 +24,8 @@ type PersistencePolicies struct {
 	ManagedLedgerMaxMarkDeleteRate float64 `json:"managedLedgerMaxMarkDeleteRate"`
 }
 
-func NewDefaultPersistencePolicies() *PersistencePolicies {
-	return &PersistencePolicies{
-		BookkeeperEnsemble:             2,
-		BookkeeperWriteQuorum:          2,
-		BookkeeperAckQuorum:            2,
-		ManagedLedgerMaxMarkDeleteRate: 0.0,
-	}
-}
-
-func NewPersistencePolicies(bookkeeperEnsemble, bookkeeperWriteQuorum, bookkeeperAckQuorum int, managedLedgerMaxMarkDeleteRate float64) PersistencePolicies {
+func NewPersistencePolicies(bookkeeperEnsemble, bookkeeperWriteQuorum, bookkeeperAckQuorum int,
+	managedLedgerMaxMarkDeleteRate float64) PersistencePolicies {
 	return PersistencePolicies{
 		BookkeeperEnsemble:             bookkeeperEnsemble,
 		BookkeeperWriteQuorum:          bookkeeperWriteQuorum,
@@ -45,11 +37,4 @@ func NewPersistencePolicies(bookkeeperEnsemble, bookkeeperWriteQuorum, bookkeepe
 type BookieAffinityGroupData struct {
 	BookkeeperAffinityGroupPrimary   string `json:"bookkeeperAffinityGroupPrimary"`
 	BookkeeperAffinityGroupSecondary string `json:"bookkeeperAffinityGroupSecondary"`
-}
-
-func NewBookieAffinityGroupData(bookkeeperAffinityGroupPrimary, bookkeeperAffinityGroupSecondary string) BookieAffinityGroupData {
-	return BookieAffinityGroupData{
-		BookkeeperAffinityGroupPrimary:   bookkeeperAffinityGroupPrimary,
-		BookkeeperAffinityGroupSecondary: bookkeeperAffinityGroupSecondary,
-	}
 }

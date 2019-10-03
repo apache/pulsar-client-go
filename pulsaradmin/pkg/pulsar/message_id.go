@@ -17,8 +17,8 @@
 
 package pulsar
 
-type MessageId struct {
-	LedgerId         int64
-	EntryId          int64
-	PartitionedIndex int
+type MessageID struct {
+	LedgerID         int64 `json:"ledgerId"`
+	EntryID          int64 `json:"entryId"`
+	PartitionedIndex int   `json:"partitionedIndex"`
 }

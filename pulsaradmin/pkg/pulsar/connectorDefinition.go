@@ -19,17 +19,17 @@ package pulsar
 
 // Basic information about a Pulsar connector
 type ConnectorDefinition struct {
-    // The name of the connector type
-    Name string `json:"name"`
+	// The name of the connector type
+	Name string `json:"name"`
 
-    // Description to be used for user help
-    Description string `json:"description"`
+	// Description to be used for user help
+	Description string `json:"description"`
 
-    // The class name for the connector source implementation
-    // <p>If not defined, it will be assumed this connector cannot act as a data source
-    SourceClass string `json:"sourceClass"`
+	// The class name for the connector source implementation
+	// <p>If not defined, it will be assumed this connector cannot act as a data source
+	SourceClass string `json:"sourceClass"`
 
-    // The class name for the connector sink implementation
-    // <p>If not defined, it will be assumed this connector cannot act as a data sink
-    SinkClass string `json:"sinkClass"`
+	// The class name for the connector sink implementation
+	// <p>If not defined, it will be assumed this connector cannot act as a data sink
+	SinkClass string `json:"sinkClass"`
 }

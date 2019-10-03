@@ -18,42 +18,26 @@
 package pulsar
 
 type SourceStatus struct {
-    NumInstances int `json:"numInstances"`
-    NumRunning int `json:"numRunning"`
-
-    Instances []*SourceInstanceStatus `json:"instances"`
+	NumInstances int                     `json:"numInstances"`
+	NumRunning   int                     `json:"numRunning"`
+	Instances    []*SourceInstanceStatus `json:"instances"`
 }
 
 type SourceInstanceStatus struct {
-    InstanceId int `json:"instanceId"`
-
-    Status SourceInstanceStatusData `json:"status"`
+	InstanceID int                      `json:"instanceId"`
+	Status     SourceInstanceStatusData `json:"status"`
 }
 
 type SourceInstanceStatusData struct {
-    Running bool `json:"running"`
-
-    Err string `json:"error"`
-
-    NumRestarts int64 `json:"numRestarts"`
-
-    NumReceivedFromSource int64 `json:"numReceivedFromSource"`
-
-    NumSystemExceptions int64 `json:"numSystemExceptions"`
-
-    LatestSystemExceptions []ExceptionInformation `json:"latestSystemExceptions"`
-
-    NumSourceExceptions int64 `json:"numSourceExceptions"`
-
-    LatestSourceExceptions []ExceptionInformation `json:"latestSourceExceptions"`
-
-    NumWritten int64 `json:"numWritten"`
-
-    LastReceivedTime int64 `json:"lastReceivedTime"`
-
-    WorkerId string `json:"workerId"`
-}
-
-func (ss *SourceStatus)AddInstance(sourceInstanceStatus *SourceInstanceStatus)  {
-    ss.Instances = append(ss.Instances, sourceInstanceStatus)
+	Running                bool                   `json:"running"`
+	Err                    string                 `json:"error"`
+	NumRestarts            int64                  `json:"numRestarts"`
+	NumReceivedFromSource  int64                  `json:"numReceivedFromSource"`
+	NumSystemExceptions    int64                  `json:"numSystemExceptions"`
+	LatestSystemExceptions []ExceptionInformation `json:"latestSystemExceptions"`
+	NumSourceExceptions    int64                  `json:"numSourceExceptions"`
+	LatestSourceExceptions []ExceptionInformation `json:"latestSourceExceptions"`
+	NumWritten             int64                  `json:"numWritten"`
+	LastReceivedTime       int64                  `json:"lastReceivedTime"`
+	WorkerID               string                 `json:"workerId"`
 }
