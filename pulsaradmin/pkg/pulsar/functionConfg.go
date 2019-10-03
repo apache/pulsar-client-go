@@ -18,60 +18,60 @@
 package pulsar
 
 const (
-    JavaRuntime = "JAVA"
-    PythonRuntime = "PYTHON"
-    GoRuntime = "GO"
+	JavaRuntime   = "JAVA"
+	PythonRuntime = "PYTHON"
+	GoRuntime     = "GO"
 )
 
 type FunctionConfig struct {
-    // Any flags that you want to pass to the runtime.
-    // note that in thread mode, these flags will have no impact
-    RuntimeFlags string `json:"runtimeFlags" yaml:"runtimeFlags"`
+	TimeoutMs     *int64  `json:"timeoutMs" yaml:"timeoutMs"`
+	TopicsPattern *string `json:"topicsPattern" yaml:"topicsPattern"`
+	// Whether the subscriptions the functions created/used should be deleted when the functions is deleted
+	CleanupSubscription bool `json:"cleanupSubscription" yaml:"cleanupSubscription"`
+	RetainOrdering      bool `json:"retainOrdering" yaml:"retainOrdering"`
+	AutoAck             bool `json:"autoAck" yaml:"autoAck"`
+	Parallelism         int  `json:"parallelism" yaml:"parallelism"`
+	MaxMessageRetries   int  `json:"maxMessageRetries" yaml:"maxMessageRetries"`
 
-    Tenant    string `json:"tenant" yaml:"tenant"`
-    Namespace string `json:"namespace" yaml:"namespace"`
-    Name      string `json:"name" yaml:"name"`
-    ClassName string `json:"className" yaml:"className"`
+	Output string `json:"output" yaml:"output"`
 
-    Inputs             []string          `json:"inputs" yaml:"inputs"`
-    CustomSerdeInputs  map[string]string `json:"customSerdeInputs" yaml:"customSerdeInputs"`
-    TopicsPattern      *string           `json:"topicsPattern" yaml:"topicsPattern"`
-    CustomSchemaInputs map[string]string `json:"customSchemaInputs" yaml:"customSchemaInputs"`
+	OutputSerdeClassName string `json:"outputSerdeClassName" yaml:"outputSerdeClassName"`
+	LogTopic             string `json:"logTopic" yaml:"logTopic"`
+	ProcessingGuarantees string `json:"processingGuarantees" yaml:"processingGuarantees"`
 
-    // A generalized way of specifying inputs
-    InputSpecs map[string]ConsumerConfig `json:"inputSpecs" yaml:"inputSpecs"`
+	// Represents either a builtin schema type (eg: 'avro', 'json', etc) or the class name for a Schema implementation
+	OutputSchemaType string `json:"outputSchemaType" yaml:"outputSchemaType"`
 
-    Output string `json:"output" yaml:"output"`
+	Runtime         string `json:"runtime" yaml:"runtime"`
+	DeadLetterTopic string `json:"deadLetterTopic" yaml:"deadLetterTopic"`
+	SubName         string `json:"subName" yaml:"subName"`
+	FQFN            string `json:"fqfn" yaml:"fqfn"`
+	Jar             string `json:"jar" yaml:"jar"`
+	Py              string `json:"py" yaml:"py"`
+	Go              string `json:"go" yaml:"go"`
+	// Any flags that you want to pass to the runtime.
+	// note that in thread mode, these flags will have no impact
+	RuntimeFlags string `json:"runtimeFlags" yaml:"runtimeFlags"`
 
-    // Represents either a builtin schema type (eg: 'avro', 'json', ect) or the class name for a Schema implementation
-    OutputSchemaType string `json:"outputSchemaType" yaml:"outputSchemaType"`
+	Tenant    string `json:"tenant" yaml:"tenant"`
+	Namespace string `json:"namespace" yaml:"namespace"`
+	Name      string `json:"name" yaml:"name"`
+	ClassName string `json:"className" yaml:"className"`
 
-    OutputSerdeClassName string                 `json:"outputSerdeClassName" yaml:"outputSerdeClassName"`
-    LogTopic             string                 `json:"logTopic" yaml:"logTopic"`
-    ProcessingGuarantees string                 `json:"processingGuarantees" yaml:"processingGuarantees"`
-    RetainOrdering       bool                   `json:"retainOrdering" yaml:"retainOrdering"`
-    UserConfig           map[string]interface{} `json:"userConfig" yaml:"userConfig"`
+	Resources          *Resources             `json:"resources" yaml:"resources"`
+	WindowConfig       *WindowConfig          `json:"windowConfig" yaml:"windowConfig"`
+	Inputs             []string               `json:"inputs" yaml:"inputs"`
+	UserConfig         map[string]interface{} `json:"userConfig" yaml:"userConfig"`
+	CustomSerdeInputs  map[string]string      `json:"customSerdeInputs" yaml:"customSerdeInputs"`
+	CustomSchemaInputs map[string]string      `json:"customSchemaInputs" yaml:"customSchemaInputs"`
 
-    // This is a map of secretName(aka how the secret is going to be
-    // accessed in the function via context) to an object that
-    // encapsulates how the secret is fetched by the underlying
-    // secrets provider. The type of an value here can be found by the
-    // SecretProviderConfigurator.getSecretObjectType() method.
-    Secrets map[string]interface{} `json:"secrets" yaml:"secrets"`
+	// A generalized way of specifying inputs
+	InputSpecs map[string]ConsumerConfig `json:"inputSpecs" yaml:"inputSpecs"`
 
-    Runtime           string        `json:"runtime" yaml:"runtime"`
-    AutoAck           bool          `json:"autoAck" yaml:"autoAck"`
-    MaxMessageRetries int           `json:"maxMessageRetries" yaml:"maxMessageRetries"`
-    DeadLetterTopic   string        `json:"deadLetterTopic" yaml:"deadLetterTopic"`
-    SubName           string        `json:"subName" yaml:"subName"`
-    Parallelism       int           `json:"parallelism" yaml:"parallelism"`
-    Resources         *Resources    `json:"resources" yaml:"resources"`
-    FQFN              string        `json:"fqfn" yaml:"fqfn"`
-    WindowConfig      *WindowConfig `json:"windowConfig" yaml:"windowConfig"`
-    TimeoutMs         *int64        `json:"timeoutMs" yaml:"timeoutMs"`
-    Jar               string        `json:"jar" yaml:"jar"`
-    Py                string        `json:"py" yaml:"py"`
-    Go                string        `json:"go" yaml:"go"`
-    // Whether the subscriptions the functions created/used should be deleted when the functions is deleted
-    CleanupSubscription bool `json:"cleanupSubscription" yaml:"cleanupSubscription"`
+	// This is a map of secretName(aka how the secret is going to be
+	// accessed in the function via context) to an object that
+	// encapsulates how the secret is fetched by the underlying
+	// secrets provider. The type of an value here can be found by the
+	// SecretProviderConfigurator.getSecretObjectType() method.
+	Secrets map[string]interface{} `json:"secrets" yaml:"secrets"`
 }

@@ -18,39 +18,20 @@
 package pulsar
 
 type Resources struct {
-    CPU  float64 `json:"cpu"`
-    Disk int64   `json:"disk"`
-    Ram  int64   `json:"ram"`
+	CPU  float64 `json:"cpu"`
+	Disk int64   `json:"disk"`
+	RAM  int64   `json:"ram"`
 }
 
 func NewDefaultResources() *Resources {
-    resources:= &Resources{
-        //Default cpu is 1 core
-        CPU: 1,
-        // Default memory is 1GB
-        Disk: 1073741824,
-        // Default disk is 10GB
-        Ram: 10737418240,
-    }
+	resources := &Resources{
+		//Default cpu is 1 core
+		CPU: 1,
+		// Default memory is 1GB
+		Disk: 1073741824,
+		// Default disk is 10GB
+		RAM: 10737418240,
+	}
 
-    return resources
-}
-
-func NewResources(resources *Resources) *Resources {
-    if resources == nil {
-        return NewDefaultResources()
-    }
-
-    if resources.CPU == 0 {
-        resources.CPU = 1
-    }
-
-    if resources.Disk == 0 {
-        resources.Disk = 1073741824
-    }
-
-    if resources.Ram == 0 {
-        resources.Ram = 10737418240
-    }
-    return resources
+	return resources
 }

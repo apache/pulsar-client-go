@@ -17,17 +17,17 @@
 
 package pulsar
 
-type ApiVersion int
+type APIVersion int
 
 const (
-	V1 ApiVersion = iota
+	V1 APIVersion = iota
 	V2
 	V3
 )
 
-const DefaultApiVersion = "v2"
+const DefaultAPIVersion = "v2"
 
-func (v ApiVersion) String() string {
+func (v APIVersion) String() string {
 	switch v {
 	case V1:
 		return ""
@@ -37,5 +37,5 @@ func (v ApiVersion) String() string {
 		return "v3"
 	}
 
-	return DefaultApiVersion
+	return DefaultAPIVersion
 }

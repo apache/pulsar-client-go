@@ -117,7 +117,7 @@ func (s *schemas) DeleteSchema(topic string) error {
 
 	fmt.Println(endpoint)
 
-	return s.client.delete(endpoint, nil)
+	return s.client.delete(endpoint)
 }
 
 func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload PostSchemaPayload) error {
@@ -129,5 +129,5 @@ func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload PostSchemaPa
 	endpoint := s.client.endpoint(s.basePath, topicName.tenant, topicName.namespace,
 		topicName.GetEncodedTopic(), "schema")
 
-	return s.client.post(endpoint, &schemaPayload, nil)
+	return s.client.post(endpoint, &schemaPayload)
 }

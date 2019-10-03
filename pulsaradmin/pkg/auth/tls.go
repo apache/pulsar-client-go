@@ -19,13 +19,13 @@ package auth
 
 import "crypto/tls"
 
-type TlsAuthProvider struct {
+type TLSAuthProvider struct {
 	certificatePath string
 	privateKeyPath  string
 }
 
 // NewAuthenticationTLSWithParams initialize the authentication provider with map param.
-func NewAuthenticationTLSWithParams(params map[string]string) *TlsAuthProvider {
+func NewAuthenticationTLSWithParams(params map[string]string) *TLSAuthProvider {
 	return NewAuthenticationTLS(
 		params["tlsCertFile"],
 		params["tlsKeyFile"],
@@ -33,24 +33,24 @@ func NewAuthenticationTLSWithParams(params map[string]string) *TlsAuthProvider {
 }
 
 // NewAuthenticationTLS initialize the authentication provider
-func NewAuthenticationTLS(certificatePath string, privateKeyPath string) *TlsAuthProvider {
-	return &TlsAuthProvider{
+func NewAuthenticationTLS(certificatePath string, privateKeyPath string) *TLSAuthProvider {
+	return &TLSAuthProvider{
 		certificatePath: certificatePath,
 		privateKeyPath:  privateKeyPath,
 	}
 }
 
-func (p *TlsAuthProvider) Init() error {
+func (p *TLSAuthProvider) Init() error {
 	// Try to read certificates immediately to provide better error at startup
 	_, err := p.GetTLSCertificate()
 	return err
 }
 
-func (p *TlsAuthProvider) Name() string {
+func (p *TLSAuthProvider) Name() string {
 	return "tls"
 }
 
-func (p *TlsAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
+func (p *TLSAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
 	cert, err := tls.LoadX509KeyPair(p.certificatePath, p.privateKeyPath)
 	return &cert, err
 }

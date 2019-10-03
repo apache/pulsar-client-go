@@ -46,7 +46,7 @@ type FunctionStats struct {
 type FunctionInstanceStats struct {
 	FunctionInstanceStatsDataBase
 
-	InstanceId int64 `json:"instanceId"`
+	InstanceID int64 `json:"instanceId"`
 
 	Metrics FunctionInstanceStatsData `json:"metrics"`
 }
@@ -129,14 +129,14 @@ func (fs *FunctionStats) CalculateOverall() *FunctionStats {
 
 	// calculate average from sum
 	if nonNullInstances > 0 {
-		fs.AvgProcessLatency = fs.AvgProcessLatency / float64(nonNullInstances)
+		fs.AvgProcessLatency /= float64(nonNullInstances)
 	} else {
 		fs.AvgProcessLatency = 0
 	}
 
 	// calculate 1min average from sum
 	if nonNullInstancesOneMin > 0 {
-		fs.OneMin.AvgProcessLatency = fs.OneMin.AvgProcessLatency / float64(nonNullInstancesOneMin)
+		fs.OneMin.AvgProcessLatency /= float64(nonNullInstancesOneMin)
 	} else {
 		fs.AvgProcessLatency = 0
 	}

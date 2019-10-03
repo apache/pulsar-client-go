@@ -18,8 +18,8 @@
 package pulsar
 
 type ConsumerConfig struct {
-    SchemaType        string
-    SerdeClassName    string
-    IsRegexPattern    bool
-    ReceiverQueueSize int
+	SchemaType        string
+	SerdeClassName    string
+	IsRegexPattern    bool
+	ReceiverQueueSize int
 }

@@ -19,9 +19,10 @@ package pulsar
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
 	"regexp"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
 type NameSpaceName struct {
@@ -30,14 +31,14 @@ type NameSpaceName struct {
 }
 
 func GetNameSpaceName(tenant, namespace string) (*NameSpaceName, error) {
-	return GetNamespaceName(fmt.Sprintf("%s/%s", tenant,namespace))
+	return GetNamespaceName(fmt.Sprintf("%s/%s", tenant, namespace))
 }
 
 func GetNamespaceName(completeName string) (*NameSpaceName, error) {
 	var n NameSpaceName
 
 	if completeName == "" {
-		return nil, errors.New("The namespace complete name is empty.")
+		return nil, errors.New("the namespace complete name is empty")
 	}
 
 	parts := strings.Split(completeName, "/")

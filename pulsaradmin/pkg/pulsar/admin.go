@@ -40,13 +40,13 @@ const (
 
 // Config is used to configure the admin client
 type Config struct {
-	WebServiceUrl string
-	HttpClient    *http.Client
-	ApiVersion    ApiVersion
+	WebServiceURL string
+	HTTPClient    *http.Client
+	APIVersion    APIVersion
 
-	Auth       *auth.TlsAuthProvider
+	Auth       *auth.TLSAuthProvider
 	AuthParams string
-	TlsOptions *TLSOptions
+	TLSOptions *TLSOptions
 }
 
 type TLSOptions struct {
@@ -57,10 +57,10 @@ type TLSOptions struct {
 // DefaultConfig returns a default configuration for the pulsar admin client
 func DefaultConfig() *Config {
 	config := &Config{
-		WebServiceUrl: DefaultWebServiceURL,
-		HttpClient:    http.DefaultClient,
+		WebServiceURL: DefaultWebServiceURL,
+		HTTPClient:    http.DefaultClient,
 
-		TlsOptions: &TLSOptions{
+		TLSOptions: &TLSOptions{
 			AllowInsecureConnection: false,
 		},
 	}
@@ -80,12 +80,12 @@ type Client interface {
 }
 
 type client struct {
-	webServiceUrl string
+	webServiceURL string
 	apiVersion    string
 	httpClient    *http.Client
 
 	// TLS config
-	auth       *auth.TlsAuthProvider
+	auth       *auth.TLSAuthProvider
 	authParams string
 	tlsOptions *TLSOptions
 	transport  *http.Transport
@@ -93,18 +93,18 @@ type client struct {
 
 // New returns a new client
 func New(config *Config) (Client, error) {
-	if len(config.WebServiceUrl) == 0 {
-		config.WebServiceUrl = DefaultWebServiceURL
+	if len(config.WebServiceURL) == 0 {
+		config.WebServiceURL = DefaultWebServiceURL
 	}
 
 	c := &client{
-		apiVersion:    config.ApiVersion.String(),
-		webServiceUrl: config.WebServiceUrl,
+		apiVersion:    config.APIVersion.String(),
+		webServiceURL: config.WebServiceURL,
 	}
 
-	if strings.HasPrefix(c.webServiceUrl, "https://") {
+	if strings.HasPrefix(c.webServiceURL, "https://") {
 		c.authParams = config.AuthParams
-		c.tlsOptions = config.TlsOptions
+		c.tlsOptions = config.TLSOptions
 		mapAuthParams := make(map[string]string)
 
 		err := json.Unmarshal([]byte(c.authParams), &mapAuthParams)
@@ -158,13 +158,14 @@ func (c *client) getTLSConfig() (*tls.Config, error) {
 }
 
 func (c *client) endpoint(componentPath string, parts ...string) string {
-	return path.Join(makeHttpPath(c.apiVersion, componentPath), endpoint(parts...))
+	return path.Join(makeHTTPPath(c.apiVersion, componentPath), endpoint(parts...))
 }
 
 // get is used to do a GET request against an endpoint
 // and deserialize the response into an interface
 
-func (c *client) getWithQueryParams(endpoint string, obj interface{}, params map[string]string, decode bool) ([]byte, error) {
+func (c *client) getWithQueryParams(endpoint string, obj interface{}, params map[string]string,
+	decode bool) ([]byte, error) {
 
 	req, err := c.newRequest(http.MethodGet, endpoint)
 	if err != nil {
@@ -186,7 +187,7 @@ func (c *client) getWithQueryParams(endpoint string, obj interface{}, params map
 	defer safeRespClose(resp)
 
 	if obj != nil {
-		if err := decodeJsonBody(resp, &obj); err != nil {
+		if err := decodeJSONBody(resp, &obj); err != nil {
 			return nil, err
 		}
 	} else if !decode {
@@ -205,8 +206,8 @@ func (c *client) get(endpoint string, obj interface{}) error {
 	return err
 }
 
-func (c *client) put(endpoint string, in, obj interface{}) error {
-	return c.putWithQueryParams(endpoint, in, obj, nil)
+func (c *client) put(endpoint string, in interface{}) error {
+	return c.putWithQueryParams(endpoint, in, nil, nil)
 }
 
 func (c *client) putWithQueryParams(endpoint string, in, obj interface{}, params map[string]string) error {
@@ -231,7 +232,7 @@ func (c *client) putWithQueryParams(endpoint string, in, obj interface{}, params
 	defer safeRespClose(resp)
 
 	if obj != nil {
-		if err := decodeJsonBody(resp, &obj); err != nil {
+		if err := decodeJSONBody(resp, &obj); err != nil {
 			return err
 		}
 	}
@@ -239,8 +240,8 @@ func (c *client) putWithQueryParams(endpoint string, in, obj interface{}, params
 	return nil
 }
 
-func (c *client) delete(endpoint string, obj interface{}) error {
-	return c.deleteWithQueryParams(endpoint, obj, nil)
+func (c *client) delete(endpoint string) error {
+	return c.deleteWithQueryParams(endpoint, nil, nil)
 }
 
 func (c *client) deleteWithQueryParams(endpoint string, obj interface{}, params map[string]string) error {
@@ -264,7 +265,7 @@ func (c *client) deleteWithQueryParams(endpoint string, obj interface{}, params 
 	defer safeRespClose(resp)
 
 	if obj != nil {
-		if err := decodeJsonBody(resp, &obj); err != nil {
+		if err := decodeJSONBody(resp, &obj); err != nil {
 			return err
 		}
 	}
@@ -272,50 +273,42 @@ func (c *client) deleteWithQueryParams(endpoint string, obj interface{}, params 
 	return nil
 }
 
-func (c *client) post(endpoint string, in, obj interface{}) error {
+func (c *client) post(endpoint string, in interface{}) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err
 	}
 	req.obj = in
+
+	// nolint
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err
 	}
 	defer safeRespClose(resp)
-	if obj != nil {
-		if err := decodeJsonBody(resp, &obj); err != nil {
-			return err
-		}
-	}
+
 	return nil
 }
 
-func (c *client) putWithMultiPart(endpoint string, in, obj interface{}, body io.Reader, contentType string) error {
+func (c *client) putWithMultiPart(endpoint string, body io.Reader, contentType string) error {
 	req, err := c.newRequest(http.MethodPut, endpoint)
 	if err != nil {
 		return err
 	}
-	req.obj = in
 	req.body = body
 	req.contentType = contentType
 
+	// nolint
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err
 	}
 	defer safeRespClose(resp)
 
-	if obj != nil {
-		if err := decodeJsonBody(resp, &obj); err != nil {
-			return err
-		}
-	}
-
 	return nil
 }
 
-func (c *client) postWithMultiPart(endpoint string, in, obj interface{}, body io.Reader, contentType string) error {
+func (c *client) postWithMultiPart(endpoint string, in interface{}, body io.Reader, contentType string) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err
@@ -324,17 +317,12 @@ func (c *client) postWithMultiPart(endpoint string, in, obj interface{}, body io
 	req.body = body
 	req.contentType = contentType
 
+	// nolint
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err
 	}
 	defer safeRespClose(resp)
-
-	if obj != nil {
-		if err := decodeJsonBody(resp, &obj); err != nil {
-			return err
-		}
-	}
 
 	return nil
 }
@@ -354,7 +342,7 @@ func (r *request) toHTTP() (*http.Request, error) {
 
 	// add a request body if there is one
 	if r.body == nil && r.obj != nil {
-		body, err := encodeJsonBody(r.obj)
+		body, err := encodeJSONBody(r.obj)
 		if err != nil {
 			return nil, err
 		}
@@ -373,7 +361,7 @@ func (r *request) toHTTP() (*http.Request, error) {
 }
 
 func (c *client) newRequest(method, path string) (*request, error) {
-	base, _ := url.Parse(c.webServiceUrl)
+	base, _ := url.Parse(c.webServiceURL)
 	u, err := url.Parse(path)
 	if err != nil {
 		return nil, err
@@ -424,8 +412,8 @@ func (c *client) doRequest(r *request) (*http.Response, error) {
 	return hc.Do(req)
 }
 
-// decodeJsonBody is used to JSON encode a body
-func encodeJsonBody(obj interface{}) (io.Reader, error) {
+// encodeJSONBody is used to JSON encode a body
+func encodeJSONBody(obj interface{}) (io.Reader, error) {
 	buf := bytes.NewBuffer(nil)
 	enc := json.NewEncoder(buf)
 	if err := enc.Encode(obj); err != nil {
@@ -434,18 +422,17 @@ func encodeJsonBody(obj interface{}) (io.Reader, error) {
 	return buf, nil
 }
 
-// decodeJsonBody is used to JSON decode a body
-func decodeJsonBody(resp *http.Response, out interface{}) error {
+// decodeJSONBody is used to JSON decode a body
+func decodeJSONBody(resp *http.Response, out interface{}) error {
 	dec := json.NewDecoder(resp.Body)
 	return dec.Decode(out)
 }
 
-// safeRespClose is used to close a respone body
+// safeRespClose is used to close a response body
 func safeRespClose(resp *http.Response) {
 	if resp != nil {
-		if err := resp.Body.Close(); err != nil {
-			// ignore error since it is closing a response body
-		}
+		// ignore error since it is closing a response body
+		_ = resp.Body.Close()
 	}
 }
 

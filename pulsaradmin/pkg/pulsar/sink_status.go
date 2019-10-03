@@ -18,55 +18,50 @@
 package pulsar
 
 type SinkStatus struct {
-    // The total number of sink instances that ought to be running
-    NumInstances int `json:"numInstances"`
-    // The number of source instances that are actually running
-    NumRunning int `json:"numRunning"`
+	// The total number of sink instances that ought to be running
+	NumInstances int `json:"numInstances"`
 
-    Instances []*SinkInstanceStatus `json:"instances"`
+	// The number of source instances that are actually running
+	NumRunning int `json:"numRunning"`
+
+	Instances []*SinkInstanceStatus `json:"instances"`
 }
 
 type SinkInstanceStatus struct {
-    InstanceId int `json:"instanceId"`
-
-    Status SourceInstanceStatusData `json:"status"`
+	InstanceID int                      `json:"instanceId"`
+	Status     SourceInstanceStatusData `json:"status"`
 }
 
 type SinkInstanceStatusData struct {
-    // Is this instance running?
-    Running bool `json:"running"`
+	// Is this instance running?
+	Running bool `json:"running"`
 
-    // Do we have any error while running this instance
-    Err string `json:"error"`
+	// Do we have any error while running this instance
+	Err string `json:"error"`
 
-    // Number of times this instance has restarted
-    NumRestarts int64 `json:"numRestarts"`
+	// Number of times this instance has restarted
+	NumRestarts int64 `json:"numRestarts"`
 
-    // Number of messages read from Pulsar
-    NumReadFromPulsar int64 `json:"numReadFromPulsar"`
+	// Number of messages read from Pulsar
+	NumReadFromPulsar int64 `json:"numReadFromPulsar"`
 
-    // Number of times there was a system exception handling messages
-    NumSystemExceptions int64 `json:"numSystemExceptions"`
+	// Number of times there was a system exception handling messages
+	NumSystemExceptions int64 `json:"numSystemExceptions"`
 
-    // A list of the most recent system exceptions
-    LatestSystemExceptions []ExceptionInformation `json:"latestSystemExceptions"`
+	// A list of the most recent system exceptions
+	LatestSystemExceptions []ExceptionInformation `json:"latestSystemExceptions"`
 
-    // Number of times there was a sink exception
-    NumSinkExceptions int64 `json:"numSinkExceptions"`
+	// Number of times there was a sink exception
+	NumSinkExceptions int64 `json:"numSinkExceptions"`
 
-    // A list of the most recent sink exceptions
-    LatestSinkExceptions []ExceptionInformation `json:"latestSinkExceptions"`
+	// A list of the most recent sink exceptions
+	LatestSinkExceptions []ExceptionInformation `json:"latestSinkExceptions"`
 
-    // Number of messages written to sink
-    NumWrittenToSink int64 `json:"numWrittenToSink"`
+	// Number of messages written to sink
+	NumWrittenToSink int64 `json:"numWrittenToSink"`
 
-    // When was the last time we received a message from Pulsar
-    LastReceivedTime int64 `json:"lastReceivedTime"`
+	// When was the last time we received a message from Pulsar
+	LastReceivedTime int64 `json:"lastReceivedTime"`
 
-    WorkerId string `json:"workerId"`
+	WorkerID string `json:"workerId"`
 }
-
-func (ss *SinkStatus)AddInstance(sinkInstanceStatus *SinkInstanceStatus)  {
-    ss.Instances = append(ss.Instances, sinkInstanceStatus)
-}
-

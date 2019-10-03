@@ -29,52 +29,51 @@ type ClusterData struct {
 
 // FunctionData information for a Pulsar Function
 type FunctionData struct {
-	FQFN                      string  `json:"fqfn"`
-	Tenant                    string  `json:"tenant"`
-	Namespace                 string  `json:"namespace"`
-	FuncName                  string  `json:"functionName"`
-	InstanceID                string  `json:"instance_id"`
-	ClassName                 string  `json:"className"`
-	Jar                       string  `json:"jarFile"`
-	Py                        string  `json:"pyFile"`
-	Go                        string  `json:"goFile"`
-	Inputs                    string  `json:"inputs"`
-	TopicsPattern             string  `json:"topicsPattern"`
-	Output                    string  `json:"output"`
-	LogTopic                  string  `json:"logTopic"`
-	SchemaType                string  `json:"schemaType"`
-	CustomSerDeInputs         string  `json:"customSerdeInputString"`
-	CustomSchemaInput         string  `json:"customSchemaInputString"`
-	OutputSerDeClassName      string  `json:"outputSerdeClassName"`
-	FunctionConfigFile        string  `json:"fnConfigFile"`
-	ProcessingGuarantees      string  `json:"processingGuarantees"`
-	UserConfig                string  `json:"userConfigString"`
-	RetainOrdering            bool    `json:"retainOrdering"`
-	SubsName                  string  `json:"subsName"`
-	Parallelism               int     `json:"parallelism"`
-	CPU                       float64 `json:"cpu"`
+	UpdateAuthData       bool `json:"updateAuthData"`
+	RetainOrdering       bool `json:"retainOrdering"`
+	Watch                bool `json:"watch"`
+	AutoAck              bool `json:"autoAck"`
+	Parallelism          int  `json:"parallelism"`
+	WindowLengthCount    int  `json:"windowLengthCount"`
+	SlidingIntervalCount int  `json:"slidingIntervalCount"`
+	MaxMessageRetries    int  `json:"maxMessageRetries"`
+
+	TimeoutMs                 int64   `json:"timeoutMs"`
+	SlidingIntervalDurationMs int64   `json:"slidingIntervalDurationMs"`
+	WindowLengthDurationMs    int64   `json:"windowLengthDurationMs"`
 	RAM                       int64   `json:"ram"`
 	Disk                      int64   `json:"disk"`
-	WindowLengthCount         int     `json:"windowLengthCount"`
-	WindowLengthDurationMs    int64   `json:"windowLengthDurationMs"`
-	SlidingIntervalCount      int     `json:"slidingIntervalCount"`
-	SlidingIntervalDurationMs int64   `json:"slidingIntervalDurationMs"`
-	AutoAck                   bool    `json:"autoAck"`
-	TimeoutMs                 int64   `json:"timeoutMs"`
-	MaxMessageRetries         int     `json:"maxMessageRetries"`
+	CPU                       float64 `json:"cpu"`
+	SubsName                  string  `json:"subsName"`
 	DeadLetterTopic           string  `json:"deadLetterTopic"`
+	Key                       string  `json:"key"`
+	State                     string  `json:"state"`
+	TriggerValue              string  `json:"triggerValue"`
+	TriggerFile               string  `json:"triggerFile"`
+	Topic                     string  `json:"topic"`
 
-	Key          string `json:"key"`
-	Watch        bool   `json:"watch"`
-	State        string `json:"state"`
-	TriggerValue string `json:"triggerValue"`
-	TriggerFile  string `json:"triggerFile"`
-	Topic        string `json:"topic"`
-
-	UpdateAuthData bool `json:"updateAuthData"`
-
-	FuncConf     *FunctionConfig `json:"-"`
-	UserCodeFile string          `json:"-"`
+	UserCodeFile         string          `json:"-"`
+	FQFN                 string          `json:"fqfn"`
+	Tenant               string          `json:"tenant"`
+	Namespace            string          `json:"namespace"`
+	FuncName             string          `json:"functionName"`
+	InstanceID           string          `json:"instance_id"`
+	ClassName            string          `json:"className"`
+	Jar                  string          `json:"jarFile"`
+	Py                   string          `json:"pyFile"`
+	Go                   string          `json:"goFile"`
+	Inputs               string          `json:"inputs"`
+	TopicsPattern        string          `json:"topicsPattern"`
+	Output               string          `json:"output"`
+	LogTopic             string          `json:"logTopic"`
+	SchemaType           string          `json:"schemaType"`
+	CustomSerDeInputs    string          `json:"customSerdeInputString"`
+	CustomSchemaInput    string          `json:"customSchemaInputString"`
+	OutputSerDeClassName string          `json:"outputSerdeClassName"`
+	FunctionConfigFile   string          `json:"fnConfigFile"`
+	ProcessingGuarantees string          `json:"processingGuarantees"`
+	UserConfig           string          `json:"userConfigString"`
+	FuncConf             *FunctionConfig `json:"-"`
 }
 
 // Failure Domain information
@@ -118,32 +117,30 @@ type SourceData struct {
 }
 
 type SinkData struct {
-	Tenant                  string  `json:"tenant"`
-	Namespace               string  `json:"namespace"`
-	Name                    string  `json:"name"`
-	SinkType                string  `json:"sinkType"`
-	Inputs                  string  `json:"inputs"`
-	TopicsPattern           string  `json:"topicsPattern"`
-	SubsName                string  `json:"subsName"`
-	CustomSerdeInputString  string  `json:"customSerdeInputString"`
-	CustomSchemaInputString string  `json:"customSchemaInputString"`
-	ProcessingGuarantees    string  `json:"processingGuarantees"`
-	RetainOrdering          bool    `json:"retainOrdering"`
-	Parallelism             int     `json:"parallelism"`
-	Archive                 string  `json:"archive"`
-	ClassName               string  `json:"className"`
-	SinkConfigFile          string  `json:"sinkConfigFile"`
-	CPU                     float64 `json:"cpu"`
-	RAM                     int64   `json:"ram"`
-	Disk                    int64   `json:"disk"`
-	SinkConfigString        string  `json:"sinkConfigString"`
-	AutoAck                 bool    `json:"autoAck"`
-	TimeoutMs               int64   `json:"timeoutMs"`
-
-	SinkConf   *SinkConfig `json:"-"`
-	InstanceID string      `json:"instanceId"`
-
-	UpdateAuthData bool `json:"updateAuthData"`
+	UpdateAuthData          bool        `json:"updateAuthData"`
+	RetainOrdering          bool        `json:"retainOrdering"`
+	AutoAck                 bool        `json:"autoAck"`
+	Parallelism             int         `json:"parallelism"`
+	RAM                     int64       `json:"ram"`
+	Disk                    int64       `json:"disk"`
+	TimeoutMs               int64       `json:"timeoutMs"`
+	CPU                     float64     `json:"cpu"`
+	Tenant                  string      `json:"tenant"`
+	Namespace               string      `json:"namespace"`
+	Name                    string      `json:"name"`
+	SinkType                string      `json:"sinkType"`
+	Inputs                  string      `json:"inputs"`
+	TopicsPattern           string      `json:"topicsPattern"`
+	SubsName                string      `json:"subsName"`
+	CustomSerdeInputString  string      `json:"customSerdeInputString"`
+	CustomSchemaInputString string      `json:"customSchemaInputString"`
+	ProcessingGuarantees    string      `json:"processingGuarantees"`
+	Archive                 string      `json:"archive"`
+	ClassName               string      `json:"className"`
+	SinkConfigFile          string      `json:"sinkConfigFile"`
+	SinkConfigString        string      `json:"sinkConfigString"`
+	InstanceID              string      `json:"instanceId"`
+	SinkConf                *SinkConfig `json:"-"`
 }
 
 // Topic data
@@ -159,24 +156,25 @@ type ManagedLedgerInfo struct {
 	TerminatedPosition PositionInfo          `json:"terminatedPosition"`
 	Cursors            map[string]CursorInfo `json:"cursors"`
 }
-  type NamespacesData struct {
+
+type NamespacesData struct {
+	Enable                         bool     `json:"enable"`
+	Unload                         bool     `json:"unload"`
 	NumBundles                     int      `json:"numBundles"`
-	Clusters                       []string `json:"clusters"`
-	ClusterIds                     string   `json:"clusterIds"`
+	BookkeeperEnsemble             int      `json:"bookkeeperEnsemble"`
+	BookkeeperWriteQuorum          int      `json:"bookkeeperWriteQuorum"`
 	MessageTTL                     int      `json:"messageTTL"`
+	BookkeeperAckQuorum            int      `json:"bookkeeperAckQuorum"`
+	ManagedLedgerMaxMarkDeleteRate float64  `json:"managedLedgerMaxMarkDeleteRate"`
+	ClusterIds                     string   `json:"clusterIds"`
 	RetentionTimeStr               string   `json:"retentionTimeStr"`
 	LimitStr                       string   `json:"limitStr"`
 	PolicyStr                      string   `json:"policyStr"`
 	AntiAffinityGroup              string   `json:"antiAffinityGroup"`
 	Tenant                         string   `json:"tenant"`
 	Cluster                        string   `json:"cluster"`
-	BookkeeperEnsemble             int      `json:"bookkeeperEnsemble"`
-	BookkeeperWriteQuorum          int      `json:"bookkeeperWriteQuorum"`
-	BookkeeperAckQuorum            int      `json:"bookkeeperAckQuorum"`
-	ManagedLedgerMaxMarkDeleteRate float64  `json:"managedLedgerMaxMarkDeleteRate"`
-	Enable                         bool     `json:"enable"`
 	Bundle                         string   `json:"bundle"`
-	Unload                         bool     `json:"unload"`
+	Clusters                       []string `json:"clusters"`
 }
 
 type TopicStats struct {
@@ -193,7 +191,7 @@ type TopicStats struct {
 }
 
 type PublisherStats struct {
-	ProducerId      int64             `json:"producerId"`
+	ProducerID      int64             `json:"producerId"`
 	MsgRateIn       float64           `json:"msgRateIn"`
 	MsgThroughputIn float64           `json:"msgThroughputIn"`
 	AverageMsgSize  float64           `json:"averageMsgSize"`
@@ -201,39 +199,39 @@ type PublisherStats struct {
 }
 
 type SubscriptionStats struct {
+	BlockedSubscriptionOnUnackedMsgs bool            `json:"blockedSubscriptionOnUnackedMsgs"`
+	IsReplicated                     bool            `json:"isReplicated"`
 	MsgRateOut                       float64         `json:"msgRateOut"`
 	MsgThroughputOut                 float64         `json:"msgThroughputOut"`
 	MsgRateRedeliver                 float64         `json:"msgRateRedeliver"`
 	MsgRateExpired                   float64         `json:"msgRateExpired"`
 	MsgBacklog                       int64           `json:"msgBacklog"`
-	BlockedSubscriptionOnUnackedMsgs bool            `json:"blockedSubscriptionOnUnackedMsgs"`
 	MsgDelayed                       int64           `json:"msgDelayed"`
-	unAckedMessages                  int64           `json:"unackedMessages"`
+	UnAckedMessages                  int64           `json:"unackedMessages"`
 	SubType                          string          `json:"type"`
 	ActiveConsumerName               string          `json:"activeConsumerName"`
 	Consumers                        []ConsumerStats `json:"consumers"`
-	IsReplicated                     bool            `json:"isReplicated"`
 }
 
 type ConsumerStats struct {
-	ConsumerName                 string            `json:"consumerName"`
+	BlockedConsumerOnUnAckedMsgs bool              `json:"blockedConsumerOnUnackedMsgs"`
+	AvailablePermits             int               `json:"availablePermits"`
+	UnAckedMessages              int               `json:"unackedMessages"`
 	MsgRateOut                   float64           `json:"msgRateOut"`
 	MsgThroughputOut             float64           `json:"msgThroughputOut"`
 	MsgRateRedeliver             float64           `json:"msgRateRedeliver"`
-	AvailablePermits             int               `json:"availablePermits"`
-	UnAckedMessages              int               `json:"unackedMessages"`
-	BlockedConsumerOnUnAckedMsgs bool              `json:"blockedConsumerOnUnackedMsgs"`
+	ConsumerName                 string            `json:"consumerName"`
 	Metadata                     map[string]string `json:"metadata"`
 }
 
 type ReplicatorStats struct {
+	Connected                 bool    `json:"connected"`
 	MsgRateIn                 float64 `json:"msgRateIn"`
 	MsgRateOut                float64 `json:"msgRateOut"`
 	MsgThroughputIn           float64 `json:"msgThroughputIn"`
 	MsgThroughputOut          float64 `json:"msgThroughputOut"`
 	MsgRateExpired            float64 `json:"msgRateExpired"`
 	ReplicationBacklog        int64   `json:"replicationBacklog"`
-	Connected                 bool    `json:"connected"`
 	ReplicationDelayInSeconds int64   `json:"replicationDelayInSeconds"`
 	InboundConnection         string  `json:"inboundConnection"`
 	InboundConnectedSince     string  `json:"inboundConnectedSince"`
@@ -242,6 +240,8 @@ type ReplicatorStats struct {
 }
 
 type PersistentTopicInternalStats struct {
+	WaitingCursorsCount                int                    `json:"waitingCursorsCount"`
+	PendingAddEntriesCount             int                    `json:"pendingAddEntriesCount"`
 	EntriesAddedCounter                int64                  `json:"entriesAddedCounter"`
 	NumberOfEntries                    int64                  `json:"numberOfEntries"`
 	TotalSize                          int64                  `json:"totalSize"`
@@ -249,8 +249,6 @@ type PersistentTopicInternalStats struct {
 	CurrentLedgerSize                  int64                  `json:"currentLedgerSize"`
 	LastLedgerCreatedTimestamp         string                 `json:"lastLedgerCreatedTimestamp"`
 	LastLedgerCreationFailureTimestamp string                 `json:"lastLedgerCreationFailureTimestamp"`
-	WaitingCursorsCount                int                    `json:"waitingCursorsCount"`
-	PendingAddEntriesCount             int                    `json:"pendingAddEntriesCount"`
 	LastConfirmedEntry                 string                 `json:"lastConfirmedEntry"`
 	State                              string                 `json:"state"`
 	Ledgers                            []LedgerInfo           `json:"ledgers"`
@@ -258,7 +256,7 @@ type PersistentTopicInternalStats struct {
 }
 
 type LedgerInfo struct {
-	LedgerId  int64 `json:"ledgerId"`
+	LedgerID  int64 `json:"ledgerId"`
 	Entries   int64 `json:"entries"`
 	Size      int64 `json:"size"`
 	Timestamp int64 `json:"timestamp"`
@@ -268,21 +266,21 @@ type CursorInfo struct {
 	Version                   int                `json:"version"`
 	CreationDate              string             `json:"creationDate"`
 	ModificationDate          string             `json:"modificationDate"`
-	CursorsLedgerId           int64              `json:"cursorsLedgerId"`
+	CursorsLedgerID           int64              `json:"cursorsLedgerId"`
 	MarkDelete                PositionInfo       `json:"markDelete"`
 	IndividualDeletedMessages []MessageRangeInfo `json:"individualDeletedMessages"`
 	Properties                map[string]int64
 }
 
 type PositionInfo struct {
-	LedgerId int64 `json:"ledgerId"`
-	EntryId  int64 `json:"entryId"`
+	LedgerID int64 `json:"ledgerId"`
+	EntryID  int64 `json:"entryId"`
 }
 
 type MessageRangeInfo struct {
-	From PositionInfo `json:"from"`
-	To   PositionInfo `json:"to"`
-	Offloaded bool  `json:"offloaded"`
+	From      PositionInfo `json:"from"`
+	To        PositionInfo `json:"to"`
+	Offloaded bool         `json:"offloaded"`
 }
 
 type CursorStats struct {
@@ -327,8 +325,8 @@ type SchemaData struct {
 }
 
 type LookupData struct {
-	BrokerUrl    string `json:"brokerUrl"`
-	BrokerUrlTls string `json:"brokerUrlTls"`
-	HttpUrl      string `json:"httpUrl"`
-	HttpUrlTls   string `json:"httpUrlTls"`
+	BrokerURL    string `json:"brokerUrl"`
+	BrokerURLTLS string `json:"brokerUrlTls"`
+	HTTPURL      string `json:"httpUrl"`
+	HTTPURLTLS   string `json:"httpUrlTls"`
 }

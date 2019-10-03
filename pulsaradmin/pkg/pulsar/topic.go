@@ -34,7 +34,7 @@ type Topics interface {
 	RevokePermission(TopicName, string) error
 	Lookup(TopicName) (LookupData, error)
 	GetBundleRange(TopicName) (string, error)
-	GetLastMessageId(TopicName) (MessageId, error)
+	GetLastMessageID(TopicName) (MessageID, error)
 	GetStats(TopicName) (TopicStats, error)
 	GetInternalStats(TopicName) (PersistentTopicInternalStats, error)
 	GetPartitionedStats(TopicName, bool) (PartitionedTopicStats, error)
@@ -63,7 +63,7 @@ func (t *topics) Create(topic TopicName, partitions int) error {
 	if partitions == 0 {
 		endpoint = t.client.endpoint(t.basePath, topic.GetRestPath())
 	}
-	return t.client.put(endpoint, partitions, nil)
+	return t.client.put(endpoint, partitions)
 }
 
 func (t *topics) Delete(topic TopicName, force bool, nonPartitioned bool) error {
@@ -79,7 +79,7 @@ func (t *topics) Delete(topic TopicName, force bool, nonPartitioned bool) error 
 
 func (t *topics) Update(topic TopicName, partitions int) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "partitions")
-	return t.client.post(endpoint, partitions, nil)
+	return t.client.post(endpoint, partitions)
 }
 
 func (t *topics) GetMetadata(topic TopicName) (PartitionedTopicMetadata, error) {
@@ -137,7 +137,7 @@ func (t *topics) GetInternalInfo(topic TopicName) (ManagedLedgerInfo, error) {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "internal-info")
 	var info ManagedLedgerInfo
 	err := t.client.get(endpoint, &info)
-	return  info, err
+	return info, err
 }
 
 func (t *topics) GetPermissions(topic TopicName) (map[string][]AuthAction, error) {
@@ -149,16 +149,16 @@ func (t *topics) GetPermissions(topic TopicName) (map[string][]AuthAction, error
 
 func (t *topics) GrantPermission(topic TopicName, role string, action []AuthAction) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
-	var s []string
+	s := []string{}
 	for _, v := range action {
 		s = append(s, v.String())
 	}
-	return t.client.post(endpoint, s, nil)
+	return t.client.post(endpoint, s)
 }
 
 func (t *topics) RevokePermission(topic TopicName, role string) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
-	return t.client.delete(endpoint, nil)
+	return t.client.delete(endpoint)
 }
 
 func (t *topics) Lookup(topic TopicName) (LookupData, error) {
@@ -174,11 +174,11 @@ func (t *topics) GetBundleRange(topic TopicName) (string, error) {
 	return string(data), err
 }
 
-func (t *topics) GetLastMessageId(topic TopicName) (MessageId, error) {
-	var messageId MessageId
+func (t *topics) GetLastMessageID(topic TopicName) (MessageID, error) {
+	var messageID MessageID
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "lastMessageId")
-	err := t.client.get(endpoint, &messageId)
-	return messageId, err
+	err := t.client.get(endpoint, &messageID)
+	return messageID, err
 }
 
 func (t *topics) GetStats(topic TopicName) (TopicStats, error) {

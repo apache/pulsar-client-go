@@ -18,9 +18,10 @@
 package pulsar
 
 import (
-	"github.com/stretchr/testify/assert"
 	"net/url"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestGetTopicName(t *testing.T) {
@@ -40,11 +41,12 @@ func TestGetTopicName(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "non-persistent://tenant/namespace/success", success.String())
 
-	fail, err := GetTopicName("://tenant.namespace.topic")
+	_, err = GetTopicName("://tenant.namespace.topic")
 	assert.NotNil(t, err)
-	assert.Equal(t, "The domain only can be specified as 'persistent' or 'non-persistent'. Input domain is ''.", err.Error())
+	assert.Equal(t, "The domain only can be specified as 'persistent' or 'non-persistent'."+
+		" Input domain is ''.", err.Error())
 
-	fail, err = GetTopicName("default/fail")
+	fail, err := GetTopicName("default/fail")
 	assert.NotNil(t, err)
 	assert.Equal(t, "Invalid short topic name 'default/fail', it should be in the "+
 		"format of <tenant>/<namespace>/<topic> or <topic>", err.Error())
@@ -63,13 +65,13 @@ func TestGetTopicName(t *testing.T) {
 
 	fail, err = GetTopicName("persistent://tenant/namespace")
 	assert.NotNil(t, err)
-	assert.Equal(t, "Invalid topic name 'tenant/namespace', it should be in the format "+
+	assert.Equal(t, "invalid topic name 'tenant/namespace', it should be in the format "+
 		"of <tenant>/<namespace>/<topic>", err.Error())
 	assert.Nil(t, fail)
 
 	fail, err = GetTopicName("persistent://tenant/namespace/")
 	assert.NotNil(t, err)
-	assert.Equal(t, "Topic name can not be empty.", err.Error())
+	assert.Equal(t, "topic name can not be empty", err.Error())
 	assert.Nil(t, fail)
 }
 
