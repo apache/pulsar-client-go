@@ -138,10 +138,10 @@ func (t *UnackedMessageTracker) Start(ackTimeoutMillis int64) {
 	defer t.cmu.Unlock()
 	t.timeout = time.NewTicker((time.Duration(ackTimeoutMillis)) * time.Millisecond)
 
-	go t.handlerCmd(ackTimeoutMillis)
+	go t.handlerCmd()
 }
 
-func (t *UnackedMessageTracker) handlerCmd(ackTimeoutMillis int64) {
+func (t *UnackedMessageTracker) handlerCmd() {
 	for {
 		select {
 		case tick := <-t.timeout.C:
