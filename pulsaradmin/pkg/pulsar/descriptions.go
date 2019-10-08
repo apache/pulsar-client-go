@@ -17,7 +17,9 @@
 
 package pulsar
 
-import "strings"
+import (
+	"strings"
+)
 
 var SPACES = "    "
 var USEDFOR = "USED FOR:"
@@ -47,13 +49,11 @@ func (desc *LongDescription) ToString() string {
 		SPACES + desc.CommandUsedFor + "\n\n" +
 		PERMISSION + "\n" +
 		SPACES + desc.CommandPermission + "\n\n" +
-		EXAMPLES + "\n" +
-		desc.exampleToString() +
 		OUTPUT + "\n" +
 		desc.outputToString()
 }
 
-func (desc *LongDescription) exampleToString() string {
+func (desc *LongDescription) ExampleToString() string {
 	var result string
 	for _, v := range desc.CommandExamples {
 		result += SPACES + "#" + v.Desc + "\n" + SPACES + v.Command + "\n\n"
