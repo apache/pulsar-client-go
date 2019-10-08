@@ -22,7 +22,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
-	`sync/atomic`
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
@@ -274,11 +274,9 @@ func (pc *partitionConsumer) increaseAvailablePermits() error {
 		if err != nil {
 			pc.log.Errorf("Send flow cmd error:%s", err.Error())
 			atomic.SwapUint32(&pc.receivedSinceFlow, 0)
-			//pc.receivedSinceFlow = 0
 			return err
 		}
 		atomic.SwapUint32(&pc.receivedSinceFlow, 0)
-		//pc.receivedSinceFlow = 0
 	}
 	return nil
 }
@@ -344,11 +342,8 @@ CONSUMER:
 
 					err := pc.messageProcessed(tmpMsg.ID())
 					if err != nil {
-						fmt.Println("hello error....")
 						continue CONSUMER
-						//return err
 					}
-					fmt.Printf("In receiveAsync, big chan size:%d\n", len(msgs))
 
 					continue
 				}
@@ -646,8 +641,6 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 			MessagePermits: proto.Uint32(permits),
 		})
 
-	fmt.Printf("Send flow cmd to broker, consumerID: %d, permits: %d \n", pc.consumerID, permits)
-
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to unsubscribe consumer")
 		return err
@@ -683,8 +676,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 
 		pc.log.Debugf("receive message form broker, payload is:%s", string(payload))
-
-		fmt.Printf("From broker receive msg: %s , consumerID:{%d}\n", string(payload), pc.consumerID)
 		select {
 		case pc.subQueue <- consumerMsg:
 			fmt.Printf("sub queue size is: %d, consumerID: {%d}\n", len(pc.subQueue), pc.consumerID)
