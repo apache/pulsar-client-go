@@ -850,6 +850,7 @@ func TestConsumer_Flow(t *testing.T) {
 		SubscriptionName:  "sub-1",
 		ReceiverQueueSize: 4,
 	})
+	assert.Nil(t, err)
 
 	for msgNum := 0; msgNum < 100; msgNum++ {
 		if err := producer.Send(ctx, &ProducerMessage{
