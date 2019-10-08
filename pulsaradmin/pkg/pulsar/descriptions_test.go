@@ -30,7 +30,7 @@ func TestLongDescription_exampleToString(t *testing.T) {
 		Command: "command",
 	}
 	desc.CommandExamples = []Example{example}
-	res := desc.exampleToString()
+	res := desc.ExampleToString()
 
 	expect := "    #command description\n" +
 		"    command\n\n"
@@ -56,9 +56,6 @@ func TestLongDescription_ToString(t *testing.T) {
 		"    " + desc.CommandUsedFor + "\n\n" +
 		"REQUIRED PERMISSION:\n" +
 		"    " + desc.CommandPermission + "\n\n" +
-		"EXAMPLES:\n" +
-		"    " + "#" + example.Desc + "\n" +
-		"    " + example.Command + "\n\n" +
 		"OUTPUT:\n" +
 		"    " + "#" + out.Desc + "\n" +
 		"    " + "Out line 1" + "\n" +
