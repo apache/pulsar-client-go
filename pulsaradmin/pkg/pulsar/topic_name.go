@@ -106,6 +106,10 @@ func (t *TopicName) GetDomain() TopicDomain {
 	return t.domain
 }
 
+func (t *TopicName) IsPersistent() bool {
+	return t.domain == persistent
+}
+
 func (t *TopicName) GetRestPath() string {
 	return fmt.Sprintf("%s/%s/%s/%s", t.domain, t.tenant, t.namespace, t.GetEncodedTopic())
 }
