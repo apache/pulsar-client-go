@@ -36,7 +36,7 @@ func ParseAuthAction(action string) (AuthAction, error) {
 	case "functions":
 		return functionsAuth, nil
 	default:
-		return "", errors.Errorf("The auth action  only can be specified as 'produce', "+
+		return "", errors.Errorf("The auth action only can be specified as 'produce', "+
 			"'consume', or 'functions'. Invalid auth action '%s'", action)
 	}
 }
