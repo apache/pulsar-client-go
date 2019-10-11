@@ -38,6 +38,7 @@ type Topics interface {
 	GetStats(TopicName) (TopicStats, error)
 	GetInternalStats(TopicName) (PersistentTopicInternalStats, error)
 	GetPartitionedStats(TopicName, bool) (PartitionedTopicStats, error)
+	Terminate(TopicName) (MessageID, error)
 	Offload(TopicName, MessageID) error
 	OffloadStatus(TopicName) (OffloadProcessStatus, error)
 	Unload(TopicName) error
@@ -208,6 +209,13 @@ func (t *topics) GetPartitionedStats(topic TopicName, perPartition bool) (Partit
 	}
 	_, err := t.client.getWithQueryParams(endpoint, &stats, params, true)
 	return stats, err
+}
+
+func (t *topics) Terminate(topic TopicName) (MessageID, error) {
+	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "terminate")
+	var messageID MessageID
+	err := t.client.postWithObj(endpoint, "", &messageID)
+	return messageID, err
 }
 
 func (t *topics) Offload(topic TopicName, messageID MessageID) error {

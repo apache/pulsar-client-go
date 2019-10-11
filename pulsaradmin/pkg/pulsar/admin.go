@@ -274,6 +274,10 @@ func (c *client) deleteWithQueryParams(endpoint string, obj interface{}, params 
 }
 
 func (c *client) post(endpoint string, in interface{}) error {
+	return c.postWithObj(endpoint, in, nil)
+}
+
+func (c *client) postWithObj(endpoint string, in, obj interface{}) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err
@@ -286,6 +290,11 @@ func (c *client) post(endpoint string, in interface{}) error {
 		return err
 	}
 	defer safeRespClose(resp)
+	if obj != nil {
+		if err := decodeJSONBody(resp, &obj); err != nil {
+			return err
+		}
+	}
 
 	return nil
 }
