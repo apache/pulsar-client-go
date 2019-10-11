@@ -478,127 +478,127 @@ RECEIVE:
 	}
 }
 
-func TestConsumerAckTimeout(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
-	assert.Nil(t, err)
-	defer client.Close()
-
-	topic := "test-ack-timeout-topic-1"
-	ctx := context.Background()
-
-	// create consumer
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "my-sub1",
-		Type:             Shared,
-		AckTimeout:       5 * 1000,
-	})
-	assert.Nil(t, err)
-	defer consumer.Close()
-
-	// create consumer1
-	consumer1, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "my-sub2",
-		Type:             Shared,
-		AckTimeout:       5 * 1000,
-	})
-	assert.Nil(t, err)
-	defer consumer1.Close()
-
-	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
-	assert.Nil(t, err)
-	defer producer.Close()
-
-	// send 10 messages
-	for i := 0; i < 10; i++ {
-		if err := producer.Send(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}); err != nil {
-			log.Fatal(err)
-		}
-	}
-
-	// consumer receive 10 messages
-	payloadList := make([]string, 0, 10)
-	for i := 0; i < 10; i++ {
-		msg, err := consumer.Receive(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
-		payloadList = append(payloadList, string(msg.Payload()))
-
-		// not ack message
-	}
-	assert.Equal(t, 10, len(payloadList))
-
-	// consumer1 receive 10 messages
-	for i := 0; i < 10; i++ {
-		msg, err := consumer1.Receive(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		payloadList = append(payloadList, string(msg.Payload()))
-
-		// ack half of the messages
-		if i%2 == 0 {
-			err = consumer1.Ack(msg)
-			assert.Nil(t, err)
-		}
-	}
-
-	// wait ack timeout
-	time.Sleep(6 * time.Second)
-
-	fmt.Println("start redeliver messages...")
-
-	payloadList = make([]string, 0, 10)
-	// consumer receive messages again
-	for i := 0; i < 10; i++ {
-		msg, err := consumer.Receive(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
-		payloadList = append(payloadList, string(msg.Payload()))
-
-		// ack message
-		if err := consumer.Ack(msg); err != nil {
-			log.Fatal(err)
-		}
-	}
-	assert.Equal(t, 10, len(payloadList))
-
-	payloadList = make([]string, 0, 5)
-	// consumer1 receive messages again
-	go func() {
-		for i := 0; i < 10; i++ {
-			msg, err := consumer1.Receive(context.Background())
-			if err != nil {
-				log.Fatal(err)
-			}
-
-			expectMsg := fmt.Sprintf("hello-%d", i)
-			fmt.Printf("redeliver messages, payload is:%s\n", expectMsg)
-			payloadList = append(payloadList, string(msg.Payload()))
-
-			// ack message
-			if err := consumer1.Ack(msg); err != nil {
-				log.Fatal(err)
-			}
-		}
-		assert.Equal(t, 5, len(payloadList))
-	}()
-
-	// sleep 2 seconds, wait gorutine receive messages.
-	time.Sleep(time.Second * 2)
-}
+//func TestConsumerAckTimeout(t *testing.T) {
+//	client, err := NewClient(ClientOptions{
+//		URL: lookupURL,
+//	})
+//	assert.Nil(t, err)
+//	defer client.Close()
+//
+//	topic := "test-ack-timeout-topic-1"
+//	ctx := context.Background()
+//
+//	// create consumer
+//	consumer, err := client.Subscribe(ConsumerOptions{
+//		Topic:            topic,
+//		SubscriptionName: "my-sub1",
+//		Type:             Shared,
+//		AckTimeout:       5 * 1000,
+//	})
+//	assert.Nil(t, err)
+//	defer consumer.Close()
+//
+//	// create consumer1
+//	consumer1, err := client.Subscribe(ConsumerOptions{
+//		Topic:            topic,
+//		SubscriptionName: "my-sub2",
+//		Type:             Shared,
+//		AckTimeout:       5 * 1000,
+//	})
+//	assert.Nil(t, err)
+//	defer consumer1.Close()
+//
+//	// create producer
+//	producer, err := client.CreateProducer(ProducerOptions{
+//		Topic:           topic,
+//		DisableBatching: true,
+//	})
+//	assert.Nil(t, err)
+//	defer producer.Close()
+//
+//	// send 10 messages
+//	for i := 0; i < 10; i++ {
+//		if err := producer.Send(ctx, &ProducerMessage{
+//			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+//		}); err != nil {
+//			log.Fatal(err)
+//		}
+//	}
+//
+//	// consumer receive 10 messages
+//	payloadList := make([]string, 0, 10)
+//	for i := 0; i < 10; i++ {
+//		msg, err := consumer.Receive(context.Background())
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//		payloadList = append(payloadList, string(msg.Payload()))
+//
+//		// not ack message
+//	}
+//	assert.Equal(t, 10, len(payloadList))
+//
+//	// consumer1 receive 10 messages
+//	for i := 0; i < 10; i++ {
+//		msg, err := consumer1.Receive(context.Background())
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//
+//		payloadList = append(payloadList, string(msg.Payload()))
+//
+//		// ack half of the messages
+//		if i%2 == 0 {
+//			err = consumer1.Ack(msg)
+//			assert.Nil(t, err)
+//		}
+//	}
+//
+//	// wait ack timeout
+//	time.Sleep(6 * time.Second)
+//
+//	fmt.Println("start redeliver messages...")
+//
+//	payloadList = make([]string, 0, 10)
+//	// consumer receive messages again
+//	for i := 0; i < 10; i++ {
+//		msg, err := consumer.Receive(context.Background())
+//		if err != nil {
+//			log.Fatal(err)
+//		}
+//		payloadList = append(payloadList, string(msg.Payload()))
+//
+//		// ack message
+//		if err := consumer.Ack(msg); err != nil {
+//			log.Fatal(err)
+//		}
+//	}
+//	assert.Equal(t, 10, len(payloadList))
+//
+//	payloadList = make([]string, 0, 5)
+//	// consumer1 receive messages again
+//	go func() {
+//		for i := 0; i < 10; i++ {
+//			msg, err := consumer1.Receive(context.Background())
+//			if err != nil {
+//				log.Fatal(err)
+//			}
+//
+//			expectMsg := fmt.Sprintf("hello-%d", i)
+//			fmt.Printf("redeliver messages, payload is:%s\n", expectMsg)
+//			payloadList = append(payloadList, string(msg.Payload()))
+//
+//			// ack message
+//			if err := consumer1.Ack(msg); err != nil {
+//				log.Fatal(err)
+//			}
+//		}
+//		assert.Equal(t, 5, len(payloadList))
+//	}()
+//
+//	// sleep 2 seconds, wait gorutine receive messages.
+//	time.Sleep(time.Second * 2)
+//}
 
 func TestConsumer_ReceiveAsyncWithCallback(t *testing.T) {
 	client, err := NewClient(ClientOptions{

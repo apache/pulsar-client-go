@@ -678,26 +678,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		pc.log.Debugf("receive message form broker, payload is:%s", string(payload))
 		select {
 		case pc.subQueue <- consumerMsg:
-			fmt.Printf("sub queue size is: %d, consumerID: {%d}\n", len(pc.subQueue), pc.consumerID)
+			pc.log.Infof("sub queue size is: %d, consumerID: {%d}\n", len(pc.subQueue), pc.consumerID)
 			return nil
-		//default:
-		//	//Add messageId to redeliverMessages buffer, avoiding duplicates.
-		//	newMid := response.GetMessageId()
-		//	var dup bool
-		//
-		//	pc.omu.Lock()
-		//	for _, mid := range pc.redeliverMessages {
-		//		if proto.Equal(mid, newMid) {
-		//			dup = true
-		//			break
-		//		}
-		//	}
-		//
-		//	if !dup {
-		//		pc.redeliverMessages = append(pc.redeliverMessages, newMid)
-		//	}
-		//	pc.omu.Unlock()
-		//	return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
 		}
 	}
 
