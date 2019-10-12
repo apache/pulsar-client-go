@@ -54,15 +54,16 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	var tlsConfig *internal.TLSOptions
-	if url.Scheme == "pulsar" {
+	switch url.Scheme {
+	case "pulsar":
 		tlsConfig = nil
-	} else if url.Scheme == "pulsar+ssl" {
+	case "pulsar+ssl":
 		tlsConfig = &internal.TLSOptions{
 			AllowInsecureConnection: options.TLSAllowInsecureConnection,
 			TrustCertsFilePath:      options.TLSTrustCertsFilePath,
 			ValidateHostname:        options.TLSValidateHostname,
 		}
-	} else {
+	default:
 		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
 

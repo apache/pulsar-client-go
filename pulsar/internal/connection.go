@@ -28,11 +28,12 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+	log "github.com/sirupsen/logrus"
+
 	"github.com/apache/pulsar-client-go/pkg/auth"
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/util"
-	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
 )
 
 type TLSOptions struct {
@@ -356,6 +357,9 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 
 	case pb.BaseCommand_MESSAGE:
 		err = c.handleMessage(cmd.GetMessage(), headersAndPayload)
+		if err != nil {
+			c.Close()
+		}
 	case pb.BaseCommand_PING:
 		c.handlePing()
 	case pb.BaseCommand_PONG:
@@ -364,9 +368,7 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
 
 	default:
-		if err != nil {
-			c.log.Errorf("Received invalid command type: %s", cmd.Type)
-		}
+		c.log.Errorf("Received invalid command type: %s", cmd.Type)
 		c.Close()
 	}
 }

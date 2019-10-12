@@ -237,7 +237,12 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		smm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}
 
-	sequenceID := internal.GetAndAdd(p.sequenceIDGenerator, 1)
+	var sequenceID uint64
+	if msg.SequenceID != nil {
+		sequenceID = uint64(*msg.SequenceID)
+	} else {
+		sequenceID = internal.GetAndAdd(p.sequenceIDGenerator, 1)
+	}
 
 	if sendAsBatch {
 		ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters)
