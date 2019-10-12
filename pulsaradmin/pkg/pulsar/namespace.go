@@ -71,6 +71,24 @@ type Namespaces interface {
 	// Remove a backlog quota policy from a namespace
 	RemoveBacklogQuota(namespace string) error
 
+	// Set maxConsumersPerSubscription for a namespace.
+	SetMaxConsumersPerSubscription(namespace NameSpaceName, max int) error
+
+	// Get the maxConsumersPerSubscription for a namespace.
+	GetMaxConsumersPerSubscription(namespace NameSpaceName) (int, error)
+
+	// Set maxConsumersPerTopic for a namespace.
+	SetMaxConsumersPerTopic(namespace NameSpaceName, max int) error
+
+	// Get the maxProducersPerTopic for a namespace.
+	GetMaxConsumersPerTopic(namespace NameSpaceName) (int, error)
+
+	// Set maxProducersPerTopic for a namespace.
+	SetMaxProducersPerTopic(namespace NameSpaceName, max int) error
+
+	// Get the maxProducersPerTopic for a namespace.
+	GetMaxProducersPerTopic(namespace NameSpaceName) (int, error)
+
 	// Get the replication clusters for a namespace
 	GetNamespaceReplicationClusters(namespace string) ([]string, error)
 
@@ -341,6 +359,48 @@ func (n *namespaces) RemoveBacklogQuota(namespace string) error {
 		"backlogQuotaType": string(DestinationStorage),
 	}
 	return n.client.deleteWithQueryParams(endpoint, nil, params)
+}
+
+func (n *namespaces) SetMaxConsumersPerSubscription(namespace NameSpaceName, max int) error {
+	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
+	return n.client.post(endpoint, max)
+}
+
+func (n *namespaces) GetMaxConsumersPerSubscription(namespace NameSpaceName) (int, error) {
+	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
+	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	if err != nil {
+		return -1, err
+	}
+	return strconv.Atoi(string(b))
+}
+
+func (n *namespaces) SetMaxConsumersPerTopic(namespace NameSpaceName, max int) error {
+	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
+	return n.client.post(endpoint, max)
+}
+
+func (n *namespaces) GetMaxConsumersPerTopic(namespace NameSpaceName) (int, error) {
+	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
+	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	if err != nil {
+		return -1, err
+	}
+	return strconv.Atoi(string(b))
+}
+
+func (n *namespaces) SetMaxProducersPerTopic(namespace NameSpaceName, max int) error {
+	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
+	return n.client.post(endpoint, max)
+}
+
+func (n *namespaces) GetMaxProducersPerTopic(namespace NameSpaceName) (int, error) {
+	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
+	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	if err != nil {
+		return -1, err
+	}
+	return strconv.Atoi(string(b))
 }
 
 func (n *namespaces) GetNamespaceReplicationClusters(namespace string) ([]string, error) {
