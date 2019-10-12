@@ -64,7 +64,9 @@ var otherCheck = regexp.MustCompile(`#
 #
 `)
 
-var skip = map[string]bool{}
+var skip = map[string]bool{
+	"pkg/pb/PulsarApi.pb.go":true,
+}
 
 func TestLicense(t *testing.T) {
 	err := filepath.Walk(".", func(path string, fi os.FileInfo, err error) error {
