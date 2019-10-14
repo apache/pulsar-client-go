@@ -23,10 +23,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/golang/protobuf/proto"
+
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/util"
-	"github.com/golang/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -293,7 +294,12 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
 	p.internalFlushCurrentBatch()
 
-	pi := p.pendingQueue.PeekLast().(*pendingItem)
+	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
+	if !ok {
+		fr.waitGroup.Done()
+		return
+	}
+
 	pi.sendRequests = append(pi.sendRequests, &sendRequest{
 		msg: nil,
 		callback: func(id MessageID, message *ProducerMessage, e error) {
@@ -349,12 +355,14 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
-	pi := p.pendingQueue.Peek().(*pendingItem)
+	pi, ok := p.pendingQueue.Peek().(*pendingItem)
 
-	if pi == nil {
+	if !ok {
 		p.log.Warnf("Received ack for %v although the pending queue is empty", response.GetMessageId())
 		return
-	} else if pi.sequenceID != response.GetSequenceId() {
+	}
+
+	if pi.sequenceID != response.GetSequenceId() {
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		return
