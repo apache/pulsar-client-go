@@ -60,7 +60,7 @@ type SinkInstanceStatusData struct {
 	// Number of messages written to sink
 	NumWrittenToSink int64 `json:"numWrittenToSink"`
 
-	// When was the last time we received a message from Pulsar
+	// When was the last time we received a Message from Pulsar
 	LastReceivedTime int64 `json:"lastReceivedTime"`
 
 	WorkerID string `json:"workerId"`

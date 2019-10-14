@@ -144,7 +144,7 @@ type Namespaces interface {
 	DeleteNamespaceAntiAffinityGroup(namespace string) error
 
 	// Set the deduplication status for all topics within a namespace
-	// When deduplication is enabled, the broker will prevent to store the same message multiple times
+	// When deduplication is enabled, the broker will prevent to store the same Message multiple times
 	SetDeduplicationStatus(namespace string, enableDeduplication bool) error
 
 	// Set the persistence configuration for all the topics on a namespace
@@ -202,19 +202,19 @@ type Namespaces interface {
 	// Clear backlog for all topics on a namespace
 	ClearNamespaceBacklog(namespace NameSpaceName) error
 
-	// Set replicator-message-dispatch-rate (Replicators under this namespace
+	// Set replicator-Message-dispatch-rate (Replicators under this namespace
 	// can dispatch this many messages per second)
 	SetReplicatorDispatchRate(namespace NameSpaceName, rate DispatchRate) error
 
-	// Get replicator-message-dispatch-rate (Replicators under this namespace
+	// Get replicator-Message-dispatch-rate (Replicators under this namespace
 	// can dispatch this many messages per second)
 	GetReplicatorDispatchRate(namespace NameSpaceName) (DispatchRate, error)
 
-	// Set subscription-message-dispatch-rate (subscriptions under this namespace
+	// Set subscription-Message-dispatch-rate (subscriptions under this namespace
 	// can dispatch this many messages per second)
 	SetSubscriptionDispatchRate(namespace NameSpaceName, rate DispatchRate) error
 
-	// Get subscription-message-dispatch-rate (subscriptions under this namespace
+	// Get subscription-Message-dispatch-rate (subscriptions under this namespace
 	// can dispatch this many messages per second)
 	GetSubscriptionDispatchRate(namespace NameSpaceName) (DispatchRate, error)
 
@@ -224,10 +224,10 @@ type Namespaces interface {
 	// Get namespace-subscribe-rate (topics under this namespace allow subscribe times per consumer in a period)
 	GetSubscribeRate(namespace NameSpaceName) (SubscribeRate, error)
 
-	// Set message-dispatch-rate (topics under this namespace can dispatch this many messages per second)
+	// Set Message-dispatch-rate (topics under this namespace can dispatch this many messages per second)
 	SetDispatchRate(namespace NameSpaceName, rate DispatchRate) error
 
-	// Get message-dispatch-rate (topics under this namespace can dispatch this many messages per second)
+	// Get Message-dispatch-rate (topics under this namespace can dispatch this many messages per second)
 	GetDispatchRate(namespace NameSpaceName) (DispatchRate, error)
 }
 

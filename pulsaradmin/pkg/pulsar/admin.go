@@ -73,6 +73,7 @@ type Client interface {
 	Functions() Functions
 	Tenants() Tenants
 	Topics() Topics
+	Subscriptions() Subscriptions
 	Sources() Sources
 	Sinks() Sinks
 	Namespaces() Namespaces
