@@ -331,6 +331,12 @@ type LookupData struct {
 	HTTPURLTLS   string `json:"httpUrlTls"`
 }
 
+type BrokerData struct {
+	URL         string `json:"brokerUrl"`
+	ConfigName  string `json:"configName"`
+	ConfigValue string `json:"configValue"`
+}
+
 type BrokerStatsData struct {
 	Indent bool `json:"indent"`
 }

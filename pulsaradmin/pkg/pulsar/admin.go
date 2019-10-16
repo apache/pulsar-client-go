@@ -78,6 +78,7 @@ type Client interface {
 	Sinks() Sinks
 	Namespaces() Namespaces
 	Schemas() Schema
+	Brokers() Brokers
 	BrokerStats() BrokerStats
 }
 
