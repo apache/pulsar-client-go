@@ -330,3 +330,7 @@ type LookupData struct {
 	HTTPURL      string `json:"httpUrl"`
 	HTTPURLTLS   string `json:"httpUrlTls"`
 }
+
+type BrokerStatsData struct {
+	Indent bool `json:"indent"`
+}
