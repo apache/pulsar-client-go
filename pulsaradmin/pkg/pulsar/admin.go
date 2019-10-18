@@ -23,7 +23,6 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -38,6 +37,8 @@ const (
 	DefaultWebServiceURL = "http://localhost:8080"
 )
 
+var ReleaseVersion = "None"
+
 // Config is used to configure the admin client
 type Config struct {
 	WebServiceURL string
@@ -47,8 +48,7 @@ type Config struct {
 	Auth       *auth.TLSAuthProvider
 	AuthParams string
 	TLSOptions *TLSOptions
-
-	TokenAuth *auth.TokenAuthProvider
+	TokenAuth  *auth.TokenAuthProvider
 }
 
 type TLSOptions struct {
@@ -88,6 +88,7 @@ type client struct {
 	webServiceURL string
 	apiVersion    string
 	httpClient    *http.Client
+	versionInfo   string
 
 	// TLS config
 	auth       *auth.TLSAuthProvider
@@ -107,6 +108,7 @@ func New(config *Config) (Client, error) {
 	c := &client{
 		apiVersion:    config.APIVersion.String(),
 		webServiceURL: config.WebServiceURL,
+		versionInfo:   ReleaseVersion,
 		tokenAuth:     config.TokenAuth,
 	}
 
@@ -397,9 +399,8 @@ func (c *client) newRequest(method, path string) (*request, error) {
 	return req, nil
 }
 
-// TODO: add pulsarctl version
 func (c *client) useragent() string {
-	return fmt.Sprintf("pulsarctl (go)")
+	return c.versionInfo
 }
 
 func (c *client) doRequest(r *request) (*http.Response, error) {
