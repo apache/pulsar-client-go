@@ -47,6 +47,8 @@ type Config struct {
 	Auth       *auth.TLSAuthProvider
 	AuthParams string
 	TLSOptions *TLSOptions
+
+	TokenAuth *auth.TokenAuthProvider
 }
 
 type TLSOptions struct {
@@ -92,6 +94,8 @@ type client struct {
 	authParams string
 	tlsOptions *TLSOptions
 	transport  *http.Transport
+
+	tokenAuth *auth.TokenAuthProvider
 }
 
 // New returns a new client
@@ -103,6 +107,7 @@ func New(config *Config) (Client, error) {
 	c := &client{
 		apiVersion:    config.APIVersion.String(),
 		webServiceURL: config.WebServiceURL,
+		tokenAuth:     config.TokenAuth,
 	}
 
 	if strings.HasPrefix(c.webServiceURL, "https://") {
@@ -409,6 +414,11 @@ func (c *client) doRequest(r *request) (*http.Response, error) {
 		// add default headers
 		req.Header.Set("Content-Type", "application/json")
 		req.Header.Set("Accept", "application/json")
+	}
+
+	if c.tokenAuth != nil {
+		data, _ := c.tokenAuth.GetData()
+		req.Header.Set("Authorization", "Bearer "+string(data))
 	}
 
 	req.Header.Set("User-Agent", c.useragent())
