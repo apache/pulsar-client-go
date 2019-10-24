@@ -348,3 +348,14 @@ type BrokerData struct {
 type BrokerStatsData struct {
 	Indent bool `json:"indent"`
 }
+
+type ResourceQuotaData struct {
+	Names        string `json:"names"`
+	Bundle       string `json:"bundle"`
+	MsgRateIn    int64  `json:"msgRateIn"`
+	MsgRateOut   int64  `json:"msgRateOut"`
+	BandwidthIn  int64  `json:"bandwidthIn"`
+	BandwidthOut int64  `json:"bandwidthOut"`
+	Memory       int64  `json:"memory"`
+	Dynamic      bool   `json:"dynamic"`
+}
