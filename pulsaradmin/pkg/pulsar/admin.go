@@ -85,6 +85,7 @@ type Client interface {
 	Sinks() Sinks
 	Namespaces() Namespaces
 	Schemas() Schema
+	NsIsolationPolicy() NsIsolationPolicy
 	Brokers() Brokers
 	BrokerStats() BrokerStats
 }
