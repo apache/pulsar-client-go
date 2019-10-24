@@ -88,6 +88,7 @@ type Client interface {
 	NsIsolationPolicy() NsIsolationPolicy
 	Brokers() Brokers
 	BrokerStats() BrokerStats
+	ResourceQuotas() ResourceQuotas
 	FunctionsWorker() FunctionsWorker
 }
 
