@@ -26,12 +26,14 @@ var USEDFOR = "USED FOR:"
 var PERMISSION = "REQUIRED PERMISSION:"
 var EXAMPLES = "EXAMPLES:"
 var OUTPUT = "OUTPUT:"
+var SCOPE = "SCOPE:"
 
 type LongDescription struct {
 	CommandUsedFor    string
 	CommandPermission string
 	CommandExamples   []Example
 	CommandOutput     []Output
+	CommandScope      string
 }
 
 type Example struct {
@@ -45,12 +47,19 @@ type Output struct {
 }
 
 func (desc *LongDescription) ToString() string {
-	return USEDFOR + "\n" +
+	out := USEDFOR + "\n" +
 		SPACES + desc.CommandUsedFor + "\n\n" +
 		PERMISSION + "\n" +
 		SPACES + desc.CommandPermission + "\n\n" +
 		OUTPUT + "\n" +
 		desc.outputToString()
+
+	if desc.CommandScope != "" {
+		out += SCOPE + "\n" +
+			SPACES + desc.CommandScope + "\n\n"
+	}
+
+	return out
 }
 
 func (desc *LongDescription) ExampleToString() string {
