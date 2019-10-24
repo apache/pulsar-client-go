@@ -331,6 +331,14 @@ type LookupData struct {
 	HTTPURLTLS   string `json:"httpUrlTls"`
 }
 
+type NsIsolationPoliciesData struct {
+	Namespaces                 []string `json:"namespaces"`
+	Primary                    []string `json:"primary"`
+	Secondary                  []string `json:"secondary"`
+	AutoFailoverPolicyTypeName string   `json:"autoFailoverPolicyTypeName"`
+	AutoFailoverPolicyParams   string   `json:"autoFailoverPolicyParams"`
+}
+
 type BrokerData struct {
 	URL         string `json:"brokerUrl"`
 	ConfigName  string `json:"configName"`
