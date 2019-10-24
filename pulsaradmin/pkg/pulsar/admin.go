@@ -29,12 +29,14 @@ import (
 	"net/url"
 	"path"
 	"strings"
+	"time"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/auth"
 )
 
 const (
-	DefaultWebServiceURL = "http://localhost:8080"
+	DefaultWebServiceURL       = "http://localhost:8080"
+	DefaultHTTPTimeOutDuration = 5 * time.Minute
 )
 
 var ReleaseVersion = "None"
@@ -42,6 +44,7 @@ var ReleaseVersion = "None"
 // Config is used to configure the admin client
 type Config struct {
 	WebServiceURL string
+	HTTPTimeout   time.Duration
 	HTTPClient    *http.Client
 	APIVersion    APIVersion
 
@@ -60,7 +63,9 @@ type TLSOptions struct {
 func DefaultConfig() *Config {
 	config := &Config{
 		WebServiceURL: DefaultWebServiceURL,
-		HTTPClient:    http.DefaultClient,
+		HTTPClient: &http.Client{
+			Timeout: DefaultHTTPTimeOutDuration,
+		},
 
 		TLSOptions: &TLSOptions{
 			AllowInsecureConnection: false,
@@ -129,6 +134,7 @@ func New(config *Config) (Client, error) {
 		}
 
 		c.transport = &http.Transport{
+			TLSHandshakeTimeout: 15 * time.Second,
 			MaxIdleConnsPerHost: 10,
 			TLSClientConfig:     tlsConf,
 		}
@@ -426,8 +432,11 @@ func (c *client) doRequest(r *request) (*http.Response, error) {
 
 	hc := c.httpClient
 	if hc == nil {
-		hc = http.DefaultClient
+		hc = &http.Client{
+			Timeout: DefaultHTTPTimeOutDuration,
+		}
 	}
+
 	if c.transport != nil {
 		hc.Transport = c.transport
 	}
