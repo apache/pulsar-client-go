@@ -17,11 +17,21 @@
 
 package pulsar
 
+// Tenants is admin interface for tenants management
 type Tenants interface {
+	// Create a new tenant
 	Create(TenantData) error
+
+	// Delete an existing tenant
 	Delete(string) error
+
+	// Update the admins for a tenant
 	Update(TenantData) error
+
+	//List returns the list of tenants
 	List() ([]string, error)
+
+	// Get returns the config of the tenant.
 	Get(string) (TenantData, error)
 }
 
@@ -30,6 +40,7 @@ type tenants struct {
 	basePath string
 }
 
+// Tenants is used to access the tenants endpoints
 func (c *client) Tenants() Tenants {
 	return &tenants{
 		client:   c,

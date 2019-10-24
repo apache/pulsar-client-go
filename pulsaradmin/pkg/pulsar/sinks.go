@@ -29,56 +29,57 @@ import (
 	"strings"
 )
 
+// Sinks is admin interface for sinks management
 type Sinks interface {
-	// Get the list of all the Pulsar Sinks.
+	// ListSinks returns the list of all the Pulsar Sinks.
 	ListSinks(tenant, namespace string) ([]string, error)
 
-	// Get the configuration for the specified sink
+	// GetSink returns the configuration for the specified sink
 	GetSink(tenant, namespace, Sink string) (SinkConfig, error)
 
-	// Create a new sink
+	// CreateSink creates a new sink
 	CreateSink(config *SinkConfig, fileName string) error
 
-	// Create a new sink by providing url from which fun-pkg can be downloaded. supported url: http/file
+	// CreateSinkWithURL creates a new sink by providing url from which fun-pkg can be downloaded. supported url: http/file
 	CreateSinkWithURL(config *SinkConfig, pkgURL string) error
 
-	// Update the configuration for a sink.
+	// UpdateSink updates the configuration for a sink.
 	UpdateSink(config *SinkConfig, fileName string, options *UpdateOptions) error
 
-	// Update a sink by providing url from which fun-pkg can be downloaded. supported url: http/file
+	// UpdateSinkWithURL updates a sink by providing url from which fun-pkg can be downloaded. supported url: http/file
 	UpdateSinkWithURL(config *SinkConfig, pkgURL string, options *UpdateOptions) error
 
-	// Delete an existing sink
+	// DeleteSink deletes an existing sink
 	DeleteSink(tenant, namespace, Sink string) error
 
-	// Gets the current status of a sink.
+	// GetSinkStatus returns the current status of a sink.
 	GetSinkStatus(tenant, namespace, Sink string) (SinkStatus, error)
 
-	// Gets the current status of a sink instance.
+	// GetSinkStatusWithID returns the current status of a sink instance.
 	GetSinkStatusWithID(tenant, namespace, Sink string, id int) (SinkInstanceStatusData, error)
 
-	// Restart all sink instances
+	// RestartSink restarts all sink instances
 	RestartSink(tenant, namespace, Sink string) error
 
-	// Restart sink instance
+	// RestartSinkWithID restarts sink instance
 	RestartSinkWithID(tenant, namespace, Sink string, id int) error
 
-	// Stop all sink instances
+	// StopSink stops all sink instances
 	StopSink(tenant, namespace, Sink string) error
 
-	// Stop sink instance
+	// StopSinkWithID stops sink instance
 	StopSinkWithID(tenant, namespace, Sink string, id int) error
 
-	// Start all sink instances
+	// StartSink starts all sink instances
 	StartSink(tenant, namespace, Sink string) error
 
-	// Start sink instance
+	// StartSinkWithID starts sink instance
 	StartSinkWithID(tenant, namespace, Sink string, id int) error
 
-	// Fetches a list of supported Pulsar IO sinks currently running in cluster mode
+	// GetBuiltInSinks fetches a list of supported Pulsar IO sinks currently running in cluster mode
 	GetBuiltInSinks() ([]*ConnectorDefinition, error)
 
-	// Reload the available built-in connectors, include Source and Sink
+	// ReloadBuiltInSinks reload the available built-in connectors, include Source and Sink
 	ReloadBuiltInSinks() error
 }
 
@@ -87,6 +88,7 @@ type sinks struct {
 	basePath string
 }
 
+// Sinks is used to access the sinks endpoints
 func (c *client) Sinks() Sinks {
 	return &sinks{
 		client:   c,

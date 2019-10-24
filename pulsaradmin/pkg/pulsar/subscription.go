@@ -30,16 +30,42 @@ import (
 	"github.com/golang/protobuf/proto"
 )
 
+// Subscriptions is admin interface for subscriptions management
 type Subscriptions interface {
+	// Create a new subscription on a topic
 	Create(TopicName, string, MessageID) error
+
+	// Delete a subscription.
+	// Delete a persistent subscription from a topic. There should not be any active consumers on the subscription
 	Delete(TopicName, string) error
+
+	// List returns the list of subscriptions
 	List(TopicName) ([]string, error)
+
+	// ResetCursorToMessageID resets cursor position on a topic subscription
+	// @param
+	// messageID reset subscription to messageId (or previous nearest messageId if given messageId is not valid)
 	ResetCursorToMessageID(TopicName, string, MessageID) error
+
+	// ResetCursorToTimestamp resets cursor position on a topic subscription
+	// @param
+	// time reset subscription to position closest to time in ms since epoch
 	ResetCursorToTimestamp(TopicName, string, int64) error
+
+	// ClearBacklog skips all messages on a topic subscription
 	ClearBacklog(TopicName, string) error
+
+	// SkipMessages skips messages on a topic subscription
 	SkipMessages(TopicName, string, int64) error
+
+	// ExpireMessages expires all messages older than given N (expireTimeInSeconds) seconds for a given subscription
 	ExpireMessages(TopicName, string, int64) error
+
+	// ExpireAllMessages expires all messages older than given N (expireTimeInSeconds) seconds for all
+	// subscriptions of the persistent-topic
 	ExpireAllMessages(TopicName, int64) error
+
+	// PeekMessages peeks messages from a topic subscription
 	PeekMessages(TopicName, string, int) ([]*Message, error)
 }
 
@@ -49,6 +75,7 @@ type subscriptions struct {
 	SubPath  string
 }
 
+// Subscriptions is used to access the subscriptions endpoints
 func (c *client) Subscriptions() Subscriptions {
 	return &subscriptions{
 		client:   c,
