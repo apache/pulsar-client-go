@@ -23,186 +23,197 @@ import (
 	"strings"
 )
 
+// Namespaces is admin interface for namespaces management
 type Namespaces interface {
-	// Get the list of all the namespaces for a certain tenant
+	// GetNamespaces returns the list of all the namespaces for a certain tenant
 	GetNamespaces(tenant string) ([]string, error)
 
-	// Get the list of all the topics under a certain namespace
+	// GetTopics returns the list of all the topics under a certain namespace
 	GetTopics(namespace string) ([]string, error)
 
-	// Get the dump all the policies specified for a namespace
+	// GetPolicies returns the dump all the policies specified for a namespace
 	GetPolicies(namespace string) (*Policies, error)
 
-	// Creates a new empty namespace with no policies attached
+	// CreateNamespace creates a new empty namespace with no policies attached
 	CreateNamespace(namespace string) error
 
-	// Creates a new empty namespace with no policies attached
+	// CreateNsWithNumBundles creates a new empty namespace with no policies attached
 	CreateNsWithNumBundles(namespace string, numBundles int) error
 
-	// Creates a new namespace with the specified policies
+	// CreateNsWithPolices creates a new namespace with the specified policies
 	CreateNsWithPolices(namespace string, polices Policies) error
 
-	// Creates a new empty namespace with no policies attached
+	// CreateNsWithBundlesData creates a new empty namespace with no policies attached
 	CreateNsWithBundlesData(namespace string, bundleData *BundlesData) error
 
-	// Delete an existing namespace
+	// DeleteNamespace deletes an existing namespace
 	DeleteNamespace(namespace string) error
 
-	// Delete an existing bundle in a namespace
+	// DeleteNamespaceBundle deletes an existing bundle in a namespace
 	DeleteNamespaceBundle(namespace string, bundleRange string) error
 
-	// Set the messages Time to Live for all the topics within a namespace
+	// SetNamespaceMessageTTL sets the messages Time to Live for all the topics within a namespace
 	SetNamespaceMessageTTL(namespace string, ttlInSeconds int) error
 
-	// Get the message TTL for a namespace
+	// GetNamespaceMessageTTL returns the message TTL for a namespace
 	GetNamespaceMessageTTL(namespace string) (int, error)
 
-	// Get the retention configuration for a namespace
+	// GetRetention returns the retention configuration for a namespace
 	GetRetention(namespace string) (*RetentionPolicies, error)
 
-	// Set the retention configuration for all the topics on a namespace
+	// SetRetention sets the retention configuration for all the topics on a namespace
 	SetRetention(namespace string, policy RetentionPolicies) error
 
-	// Get backlog quota map on a namespace
+	// GetBacklogQuotaMap returns backlog quota map on a namespace
 	GetBacklogQuotaMap(namespace string) (map[BacklogQuotaType]BacklogQuota, error)
 
-	// Set a backlog quota for all the topics on a namespace
+	// SetBacklogQuota sets a backlog quota for all the topics on a namespace
 	SetBacklogQuota(namespace string, backlogQuota BacklogQuota) error
 
-	// Remove a backlog quota policy from a namespace
+	// RemoveBacklogQuota removes a backlog quota policy from a namespace
 	RemoveBacklogQuota(namespace string) error
 
-	// Set schema validation enforced for namespace
+	// SetSchemaValidationEnforced sets schema validation enforced for namespace
 	SetSchemaValidationEnforced(namespace NameSpaceName, schemaValidationEnforced bool) error
 
-	// Get schema validation enforced for namespace
+	// GetSchemaValidationEnforced returns schema validation enforced for namespace
 	GetSchemaValidationEnforced(namespace NameSpaceName) (bool, error)
 
-	// Set the strategy used to check the a new schema provided by a producer is compatible with the current schema
-	// before it is installed
+	// SetSchemaAutoUpdateCompatibilityStrategy sets the strategy used to check the a new schema provided
+	// by a producer is compatible with the current schema before it is installed
 	SetSchemaAutoUpdateCompatibilityStrategy(namespace NameSpaceName, strategy SchemaCompatibilityStrategy) error
 
-	// Get the strategy used to check the a new schema provided by a producer is compatible with the current schema
-	// before it is installed
+	// GetSchemaAutoUpdateCompatibilityStrategy returns the strategy used to check the a new schema provided
+	// by a producer is compatible with the current schema before it is installed
 	GetSchemaAutoUpdateCompatibilityStrategy(namespace NameSpaceName) (SchemaCompatibilityStrategy, error)
 
-	// Clear the offload deletion lag for a namespace.
+	// ClearOffloadDeleteLag clears the offload deletion lag for a namespace.
 	ClearOffloadDeleteLag(namespace NameSpaceName) error
 
-	// Set the offload deletion lag for a namespace
+	// SetOffloadDeleteLag sets the offload deletion lag for a namespace
 	SetOffloadDeleteLag(namespace NameSpaceName, timeMs int64) error
 
-	// Get the offload deletion lag for a namespace, in milliseconds
+	// GetOffloadDeleteLag returns the offload deletion lag for a namespace, in milliseconds
 	GetOffloadDeleteLag(namespace NameSpaceName) (int64, error)
 
-	// Set the offloadThreshold for a namespace
+	// SetOffloadThreshold sets the offloadThreshold for a namespace
 	SetOffloadThreshold(namespace NameSpaceName, threshold int64) error
 
-	// Get the offloadThreshold for a namespace
+	// GetOffloadThreshold returns the offloadThreshold for a namespace
 	GetOffloadThreshold(namespace NameSpaceName) (int64, error)
 
-	// Set the compactionThreshold for a namespace
+	// SetCompactionThreshold sets the compactionThreshold for a namespace
 	SetCompactionThreshold(namespace NameSpaceName, threshold int64) error
 
-	// Get the compactionThreshold for a namespace
+	// GetCompactionThreshold returns the compactionThreshold for a namespace
 	GetCompactionThreshold(namespace NameSpaceName) (int64, error)
 
-	// Set maxConsumersPerSubscription for a namespace.
+	// SetMaxConsumersPerSubscription sets maxConsumersPerSubscription for a namespace.
 	SetMaxConsumersPerSubscription(namespace NameSpaceName, max int) error
 
-	// Get the maxConsumersPerSubscription for a namespace.
+	// GetMaxConsumersPerSubscription returns the maxConsumersPerSubscription for a namespace.
 	GetMaxConsumersPerSubscription(namespace NameSpaceName) (int, error)
 
-	// Set maxConsumersPerTopic for a namespace.
+	// SetMaxConsumersPerTopic sets maxConsumersPerTopic for a namespace.
 	SetMaxConsumersPerTopic(namespace NameSpaceName, max int) error
 
-	// Get the maxProducersPerTopic for a namespace.
+	// GetMaxConsumersPerTopic returns the maxProducersPerTopic for a namespace.
 	GetMaxConsumersPerTopic(namespace NameSpaceName) (int, error)
 
-	// Set maxProducersPerTopic for a namespace.
+	// SetMaxProducersPerTopic sets maxProducersPerTopic for a namespace.
 	SetMaxProducersPerTopic(namespace NameSpaceName, max int) error
 
-	// Get the maxProducersPerTopic for a namespace.
+	// GetMaxProducersPerTopic returns the maxProducersPerTopic for a namespace.
 	GetMaxProducersPerTopic(namespace NameSpaceName) (int, error)
 
-	// Get the replication clusters for a namespace
+	// GetNamespaceReplicationClusters returns the replication clusters for a namespace
 	GetNamespaceReplicationClusters(namespace string) ([]string, error)
 
-	// Set the replication clusters for a namespace
+	// SetNamespaceReplicationClusters returns the replication clusters for a namespace
 	SetNamespaceReplicationClusters(namespace string, clusterIds []string) error
 
-	// Set anti-affinity group name for a namespace
+	// SetNamespaceAntiAffinityGroup sets anti-affinity group name for a namespace
 	SetNamespaceAntiAffinityGroup(namespace string, namespaceAntiAffinityGroup string) error
 
-	// Get all namespaces that grouped with given anti-affinity group
+	// GetAntiAffinityNamespaces returns all namespaces that grouped with given anti-affinity group
 	GetAntiAffinityNamespaces(tenant, cluster, namespaceAntiAffinityGroup string) ([]string, error)
 
-	// Get anti-affinity group name for a namespace
+	// GetNamespaceAntiAffinityGroup returns anti-affinity group name for a namespace
 	GetNamespaceAntiAffinityGroup(namespace string) (string, error)
 
-	// Delete anti-affinity group name for a namespace
+	// DeleteNamespaceAntiAffinityGroup deletes anti-affinity group name for a namespace
 	DeleteNamespaceAntiAffinityGroup(namespace string) error
 
-	// Set the deduplication status for all topics within a namespace
+	// SetDeduplicationStatus sets the deduplication status for all topics within a namespace
 	// When deduplication is enabled, the broker will prevent to store the same Message multiple times
 	SetDeduplicationStatus(namespace string, enableDeduplication bool) error
 
-	// Set the persistence configuration for all the topics on a namespace
+	// SetPersistence sets the persistence configuration for all the topics on a namespace
 	SetPersistence(namespace string, persistence PersistencePolicies) error
 
-	// Get the persistence configuration for a namespace
+	// GetPersistence returns the persistence configuration for a namespace
 	GetPersistence(namespace string) (*PersistencePolicies, error)
 
-	// Set bookie affinity group for a namespace to isolate namespace write to bookies that are
+	// SetBookieAffinityGroup sets bookie affinity group for a namespace to isolate namespace write to bookies that are
 	// part of given affinity group
 	SetBookieAffinityGroup(namespace string, bookieAffinityGroup BookieAffinityGroupData) error
 
-	// Delete bookie affinity group configured for a namespace
+	// DeleteBookieAffinityGroup deletes bookie affinity group configured for a namespace
 	DeleteBookieAffinityGroup(namespace string) error
 
-	// Get bookie affinity group configured for a namespace
+	// GetBookieAffinityGroup returns bookie affinity group configured for a namespace
 	GetBookieAffinityGroup(namespace string) (*BookieAffinityGroupData, error)
 
 	// Unload a namespace from the current serving broker
 	Unload(namespace string) error
 
-	// Unload namespace bundle
+	// UnloadNamespaceBundle unloads namespace bundle
 	UnloadNamespaceBundle(namespace, bundle string) error
 
-	// Split namespace bundle
+	// SplitNamespaceBundle splits namespace bundle
 	SplitNamespaceBundle(namespace, bundle string, unloadSplitBundles bool) error
 
+	// GetNamespacePermissions returns permissions on a namespace
 	GetNamespacePermissions(namespace NameSpaceName) (map[string][]AuthAction, error)
+
+	// GrantNamespacePermission grants permission on a namespace.
 	GrantNamespacePermission(namespace NameSpaceName, role string, action []AuthAction) error
+
+	// RevokeNamespacePermission revokes permissions on a namespace.
 	RevokeNamespacePermission(namespace NameSpaceName, role string) error
+
+	// GrantSubPermission grants permission to role to access subscription's admin-api
 	GrantSubPermission(namespace NameSpaceName, sName string, roles []string) error
+
+	// RevokeSubPermission revoke permissions on a subscription's admin-api access
 	RevokeSubPermission(namespace NameSpaceName, sName, role string) error
 
-	// Set the given subscription auth mode on all topics on a namespace
+	// SetSubscriptionAuthMode sets the given subscription auth mode on all topics on a namespace
 	SetSubscriptionAuthMode(namespace NameSpaceName, mode SubscriptionAuthMode) error
 
-	// Set the encryption required status for all topics within a namespace
+	// SetEncryptionRequiredStatus sets the encryption required status for all topics within a namespace
 	SetEncryptionRequiredStatus(namespace NameSpaceName, encrypt bool) error
 
-	// Unsubscribe the given subscription on all topics on a namespace
+	// UnsubscribeNamespace unsubscribe the given subscription on all topics on a namespace
 	UnsubscribeNamespace(namespace NameSpaceName, sName string) error
 
-	// Unsubscribe the given subscription on all topics on a namespace bundle
+	// UnsubscribeNamespaceBundle unsubscribe the given subscription on all topics on a namespace bundle
 	UnsubscribeNamespaceBundle(namespace NameSpaceName, bundle, sName string) error
 
-	// Clear backlog for a given subscription on all topics on a namespace bundle
+	// ClearNamespaceBundleBacklogForSubscription clears backlog for a given subscription on all
+	// topics on a namespace bundle
 	ClearNamespaceBundleBacklogForSubscription(namespace NameSpaceName, bundle, sName string) error
 
-	// Clear backlog for all topics on a namespace bundle
+	// ClearNamespaceBundleBacklog clears backlog for all topics on a namespace bundle
 	ClearNamespaceBundleBacklog(namespace NameSpaceName, bundle string) error
 
-	// Clear backlog for a given subscription on all topics on a namespace
+	// ClearNamespaceBacklogForSubscription clears backlog for a given subscription on all topics on a namespace
 	ClearNamespaceBacklogForSubscription(namespace NameSpaceName, sName string) error
 
-	// Clear backlog for all topics on a namespace
+	// ClearNamespaceBacklog clears backlog for all topics on a namespace
 	ClearNamespaceBacklog(namespace NameSpaceName) error
 
-	// Set replicator-Message-dispatch-rate (Replicators under this namespace
+	// SetReplicatorDispatchRate sets replicator-Message-dispatch-rate (Replicators under this namespace
 	// can dispatch this many messages per second)
 	SetReplicatorDispatchRate(namespace NameSpaceName, rate DispatchRate) error
 
@@ -210,24 +221,27 @@ type Namespaces interface {
 	// can dispatch this many messages per second)
 	GetReplicatorDispatchRate(namespace NameSpaceName) (DispatchRate, error)
 
-	// Set subscription-Message-dispatch-rate (subscriptions under this namespace
+	// SetSubscriptionDispatchRate sets subscription-Message-dispatch-rate (subscriptions under this namespace
 	// can dispatch this many messages per second)
 	SetSubscriptionDispatchRate(namespace NameSpaceName, rate DispatchRate) error
 
-	// Get subscription-Message-dispatch-rate (subscriptions under this namespace
+	// GetSubscriptionDispatchRate returns subscription-Message-dispatch-rate (subscriptions under this namespace
 	// can dispatch this many messages per second)
 	GetSubscriptionDispatchRate(namespace NameSpaceName) (DispatchRate, error)
 
-	// Set namespace-subscribe-rate (topics under this namespace will limit by subscribeRate)
+	// SetSubscribeRate sets namespace-subscribe-rate (topics under this namespace will limit by subscribeRate)
 	SetSubscribeRate(namespace NameSpaceName, rate SubscribeRate) error
 
-	// Get namespace-subscribe-rate (topics under this namespace allow subscribe times per consumer in a period)
+	// GetSubscribeRate returns namespace-subscribe-rate (topics under this namespace allow subscribe
+	// times per consumer in a period)
 	GetSubscribeRate(namespace NameSpaceName) (SubscribeRate, error)
 
-	// Set Message-dispatch-rate (topics under this namespace can dispatch this many messages per second)
+	// SetDispatchRate sets Message-dispatch-rate (topics under this namespace can dispatch
+	// this many messages per second)
 	SetDispatchRate(namespace NameSpaceName, rate DispatchRate) error
 
-	// Get Message-dispatch-rate (topics under this namespace can dispatch this many messages per second)
+	// GetDispatchRate returns Message-dispatch-rate (topics under this namespace can dispatch
+	// this many messages per second)
 	GetDispatchRate(namespace NameSpaceName) (DispatchRate, error)
 }
 
@@ -236,6 +250,7 @@ type namespaces struct {
 	basePath string
 }
 
+// Namespaces is used to access the namespaces endpoints
 func (c *client) Namespaces() Namespaces {
 	return &namespaces{
 		client:   c,

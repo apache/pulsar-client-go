@@ -17,18 +17,21 @@
 
 package pulsar
 
+// BrokerStats is admin interface for broker stats management
 type BrokerStats interface {
-	// Returns Monitoring metrics
+	// GetMetrics returns Monitoring metrics
 	GetMetrics() ([]Metrics, error)
 
-	// Requests JSON string server mbean dump
+	// GetMBeans requests JSON string server mbean dump
 	GetMBeans() ([]Metrics, error)
 
-	// Returns JSON string topics stats
+	// GetTopics returns JSON string topics stats
 	GetTopics() (string, error)
 
+	// GetLoadReport returns load report of broker
 	GetLoadReport() (*LocalBrokerData, error)
 
+	// GetAllocatorStats returns stats from broker
 	GetAllocatorStats(allocatorName string) (*AllocatorStats, error)
 }
 
@@ -37,6 +40,7 @@ type brokerStats struct {
 	basePath string
 }
 
+// BrokerStats is used to access the broker stats endpoints
 func (c *client) BrokerStats() BrokerStats {
 	return &brokerStats{
 		client:   c,

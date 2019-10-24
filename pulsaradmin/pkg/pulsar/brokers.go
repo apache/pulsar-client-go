@@ -23,34 +23,35 @@ import (
 	"strings"
 )
 
+// Brokers is admin interface for brokers management
 type Brokers interface {
-	// Get the list of active brokers in the cluster.
+	// GetActiveBrokers returns the list of active brokers in the cluster.
 	GetActiveBrokers(cluster string) ([]string, error)
 
-	// Get list of updatable configuration name
+	// GetDynamicConfigurationNames returns list of updatable configuration name
 	GetDynamicConfigurationNames() ([]string, error)
 
-	// Get the map of owned namespaces and their status from a single broker in the cluster
+	// GetOwnedNamespaces returns the map of owned namespaces and their status from a single broker in the cluster
 	GetOwnedNamespaces(cluster, brokerURL string) (map[string]NamespaceOwnershipStatus, error)
 
-	// It updates dynamic configuration value in to Zk that triggers watch on
+	// UpdateDynamicConfiguration updates dynamic configuration value in to Zk that triggers watch on
 	// brokers and all brokers can update {@link ServiceConfiguration} value locally
 	UpdateDynamicConfiguration(configName, configValue string) error
 
-	// It deletes dynamic configuration value in to Zk. It will not impact current value
+	// DeleteDynamicConfiguration deletes dynamic configuration value in to Zk. It will not impact current value
 	// in broker but next time when broker restarts, it applies value from configuration file only.
 	DeleteDynamicConfiguration(configName string) error
 
-	// Get values of runtime configuration
+	// GetRuntimeConfigurations returns values of runtime configuration
 	GetRuntimeConfigurations() (map[string]string, error)
 
-	// Get the internal configuration data
+	// GetInternalConfigurationData returns the internal configuration data
 	GetInternalConfigurationData() (*InternalConfigurationData, error)
 
-	// Get values of all overridden dynamic-configs
+	// GetAllDynamicConfigurations returns values of all overridden dynamic-configs
 	GetAllDynamicConfigurations() (map[string]string, error)
 
-	// Run a health check on the broker
+	// HealthCheck run a health check on the broker
 	HealthCheck() error
 }
 
@@ -59,6 +60,7 @@ type broker struct {
 	basePath string
 }
 
+// Brokers is used to access the brokers endpoints
 func (c *client) Brokers() Brokers {
 	return &broker{
 		client:   c,

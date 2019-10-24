@@ -17,20 +17,42 @@
 
 package pulsar
 
-// Clusters  is used to access the cluster endpoints.
-
+// Clusters is admin interface for clusters management
 type Clusters interface {
+	// List returns the list of clusters
 	List() ([]string, error)
+
+	// Get the configuration data for the specified cluster
 	Get(string) (ClusterData, error)
+
+	// Create a new cluster
 	Create(ClusterData) error
+
+	// Delete an existing cluster
 	Delete(string) error
+
+	// Update the configuration for a cluster
 	Update(ClusterData) error
+
+	// UpdatePeerClusters updates peer cluster names.
 	UpdatePeerClusters(string, []string) error
+
+	// GetPeerClusters returns peer-cluster names
 	GetPeerClusters(string) ([]string, error)
+
+	// CreateFailureDomain creates a domain into cluster
 	CreateFailureDomain(FailureDomainData) error
+
+	// GetFailureDomain returns the domain registered into a cluster
 	GetFailureDomain(clusterName, domainName string) (FailureDomainData, error)
+
+	// ListFailureDomains returns all registered domains in cluster
 	ListFailureDomains(string) (FailureDomainMap, error)
+
+	// DeleteFailureDomain deletes a domain in cluster
 	DeleteFailureDomain(FailureDomainData) error
+
+	// UpdateFailureDomain updates a domain into cluster
 	UpdateFailureDomain(FailureDomainData) error
 }
 
@@ -39,6 +61,7 @@ type clusters struct {
 	basePath string
 }
 
+// Clusters is used to access the cluster endpoints.
 func (c *client) Clusters() Clusters {
 	return &clusters{
 		client:   c,

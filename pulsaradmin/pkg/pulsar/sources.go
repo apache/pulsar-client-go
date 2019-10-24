@@ -29,56 +29,58 @@ import (
 	"strings"
 )
 
+// Sources is admin interface for sources management
 type Sources interface {
-	// Get the list of all the Pulsar Sources.
+	// ListSources returns the list of all the Pulsar Sources.
 	ListSources(tenant, namespace string) ([]string, error)
 
-	// Get the configuration for the specified source
+	// GetSource return the configuration for the specified source
 	GetSource(tenant, namespace, source string) (SourceConfig, error)
 
-	// Create a new source
+	// CreateSource creates a new source
 	CreateSource(config *SourceConfig, fileName string) error
 
-	// Create a new source by providing url from which fun-pkg can be downloaded. supported url: http/file
+	// CreateSourceWithURL creates a new source by providing url from which fun-pkg can be downloaded.
+	// supported url: http/file
 	CreateSourceWithURL(config *SourceConfig, pkgURL string) error
 
-	// Update the configuration for a source.
+	// UpdateSource updates the configuration for a source.
 	UpdateSource(config *SourceConfig, fileName string, options *UpdateOptions) error
 
-	// Update a source by providing url from which fun-pkg can be downloaded. supported url: http/file
+	// UpdateSourceWithURL updates a source by providing url from which fun-pkg can be downloaded. supported url: http/file
 	UpdateSourceWithURL(config *SourceConfig, pkgURL string, options *UpdateOptions) error
 
-	// Delete an existing source
+	// DeleteSource deletes an existing source
 	DeleteSource(tenant, namespace, source string) error
 
-	// Gets the current status of a source.
+	// GetSourceStatus returns the current status of a source.
 	GetSourceStatus(tenant, namespace, source string) (SourceStatus, error)
 
-	// Gets the current status of a source instance.
+	// GetSourceStatusWithID returns the current status of a source instance.
 	GetSourceStatusWithID(tenant, namespace, source string, id int) (SourceInstanceStatusData, error)
 
-	// Restart all source instances
+	// RestartSource restarts all source instances
 	RestartSource(tenant, namespace, source string) error
 
-	// Restart source instance
+	// RestartSourceWithID restarts source instance
 	RestartSourceWithID(tenant, namespace, source string, id int) error
 
-	// Stop all source instances
+	// StopSource stops all source instances
 	StopSource(tenant, namespace, source string) error
 
-	// Stop source instance
+	// StopSourceWithID stops source instance
 	StopSourceWithID(tenant, namespace, source string, id int) error
 
-	// Start all source instances
+	// StartSource starts all source instances
 	StartSource(tenant, namespace, source string) error
 
-	// Start source instance
+	// StartSourceWithID starts source instance
 	StartSourceWithID(tenant, namespace, source string, id int) error
 
-	// Fetches a list of supported Pulsar IO sources currently running in cluster mode
+	// GetBuiltInSources fetches a list of supported Pulsar IO sources currently running in cluster mode
 	GetBuiltInSources() ([]*ConnectorDefinition, error)
 
-	// Reload the available built-in connectors, include Source and Sink
+	// ReloadBuiltInSources reloads the available built-in connectors, include Source and Sink
 	ReloadBuiltInSources() error
 }
 
@@ -87,6 +89,7 @@ type sources struct {
 	basePath string
 }
 
+// Sources is used to access the sources endpoints
 func (c *client) Sources() Sources {
 	return &sources{
 		client:   c,

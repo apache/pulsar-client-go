@@ -22,20 +22,21 @@ import (
 	"strconv"
 )
 
+// Schema is admin interface for schema management
 type Schema interface {
-	// Retrieve the latest schema of a topic
+	// GetSchemaInfo retrieves the latest schema of a topic
 	GetSchemaInfo(topic string) (*SchemaInfo, error)
 
-	// Retrieve the latest schema with version of a topic
+	// GetSchemaInfoWithVersion retrieves the latest schema with version of a topic
 	GetSchemaInfoWithVersion(topic string) (*SchemaInfoWithVersion, error)
 
-	// Retrieve the schema of a topic at a given <tt>version</tt>
+	// GetSchemaInfoByVersion retrieves the schema of a topic at a given <tt>version</tt>
 	GetSchemaInfoByVersion(topic string, version int64) (*SchemaInfo, error)
 
-	// Delete the schema associated with a given <tt>topic</tt>
+	// DeleteSchema deletes the schema associated with a given <tt>topic</tt>
 	DeleteSchema(topic string) error
 
-	// Create a schema for a given <tt>topic</tt>
+	// CreateSchemaByPayload creates a schema for a given <tt>topic</tt>
 	CreateSchemaByPayload(topic string, schemaPayload PostSchemaPayload) error
 }
 
@@ -44,6 +45,7 @@ type schemas struct {
 	basePath string
 }
 
+// Schemas is used to access the schemas endpoints
 func (c *client) Schemas() Schema {
 	return &schemas{
 		client:   c,

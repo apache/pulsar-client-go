@@ -29,11 +29,13 @@ import (
 	"strings"
 )
 
+// Functions is admin interface for functions management
 type Functions interface {
-	// Create a new function.
+	// CreateFunc create a new function.
 	CreateFunc(data *FunctionConfig, fileName string) error
 
-	// Create a new function by providing url from which fun-pkg can be downloaded. supported url: http/file
+	// CreateFuncWithURL create a new function by providing url from which fun-pkg can be downloaded.
+	// supported url: http/file
 	// eg:
 	//  File: file:/dir/fileName.jar
 	//  Http: http://www.repo.com/fileName.jar
@@ -44,61 +46,61 @@ type Functions interface {
 	//      url from which pkg can be downloaded
 	CreateFuncWithURL(data *FunctionConfig, pkgURL string) error
 
-	// Stop all function instances
+	// StopFunction stop all function instances
 	StopFunction(tenant, namespace, name string) error
 
-	// Stop function instance
+	// StopFunctionWithID stop function instance
 	StopFunctionWithID(tenant, namespace, name string, instanceID int) error
 
-	// Delete an existing function
+	// DeleteFunction delete an existing function
 	DeleteFunction(tenant, namespace, name string) error
 
-	// Start all function instances
+	// StartFunction start all function instances
 	StartFunction(tenant, namespace, name string) error
 
-	// Start function instance
+	// StartFunctionWithID start function instance
 	StartFunctionWithID(tenant, namespace, name string, instanceID int) error
 
-	// Restart all function instances
+	// RestartFunction restart all function instances
 	RestartFunction(tenant, namespace, name string) error
 
-	// Restart function instance
+	// RestartFunctionWithID restart function instance
 	RestartFunctionWithID(tenant, namespace, name string, instanceID int) error
 
-	// Get the list of functions
+	// GetFunctions returns the list of functions
 	GetFunctions(tenant, namespace string) ([]string, error)
 
-	// Get the configuration for the specified function
+	// GetFunction returns the configuration for the specified function
 	GetFunction(tenant, namespace, name string) (FunctionConfig, error)
 
-	// Gets the current status of a function
+	// GetFunctionStatus returns the current status of a function
 	GetFunctionStatus(tenant, namespace, name string) (FunctionStatus, error)
 
-	// Gets the current status of a function instance
+	// GetFunctionStatusWithInstanceID returns the current status of a function instance
 	GetFunctionStatusWithInstanceID(tenant, namespace, name string, instanceID int) (FunctionInstanceStatusData, error)
 
-	// Gets the current stats of a function
+	// GetFunctionStats returns the current stats of a function
 	GetFunctionStats(tenant, namespace, name string) (FunctionStats, error)
 
-	// Gets the current stats of a function instance
+	// GetFunctionStatsWithInstanceID gets the current stats of a function instance
 	GetFunctionStatsWithInstanceID(tenant, namespace, name string, instanceID int) (FunctionInstanceStatsData, error)
 
-	// Fetch the current state associated with a Pulsar Function
+	// GetFunctionState fetch the current state associated with a Pulsar Function
 	//
 	// Response Example:
 	// 		{ "value : 12, version : 2"}
 	GetFunctionState(tenant, namespace, name, key string) (FunctionState, error)
 
-	// Puts the given state associated with a Pulsar Function
+	// PutFunctionState puts the given state associated with a Pulsar Function
 	PutFunctionState(tenant, namespace, name string, state FunctionState) error
 
-	// Triggers the function by writing to the input topic
+	// TriggerFunction triggers the function by writing to the input topic
 	TriggerFunction(tenant, namespace, name, topic, triggerValue, triggerFile string) (string, error)
 
-	// Update the configuration for a function.
+	// UpdateFunction updates the configuration for a function.
 	UpdateFunction(functionConfig *FunctionConfig, fileName string, updateOptions *UpdateOptions) error
 
-	// Update the configuration for a function.
+	// UpdateFunctionWithURL updates the configuration for a function.
 	//
 	// Update a function by providing url from which fun-pkg can be downloaded. supported url: http/file
 	// eg:
@@ -112,6 +114,7 @@ type functions struct {
 	basePath string
 }
 
+// Functions is used to access the functions endpoints
 func (c *client) Functions() Functions {
 	return &functions{
 		client:   c,

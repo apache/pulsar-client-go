@@ -22,27 +22,78 @@ import (
 	"strconv"
 )
 
+// Topics is admin interface for topics management
 type Topics interface {
+	// Create a topic
 	Create(TopicName, int) error
+
+	// Delete a topic
 	Delete(TopicName, bool, bool) error
+
+	// Update number of partitions of a non-global partitioned topic
+	// It requires partitioned-topic to be already exist and number of new partitions must be greater than existing
+	// number of partitions. Decrementing number of partitions requires deletion of topic which is not supported.
 	Update(TopicName, int) error
+
+	// GetMetadata returns metadata of a partitioned topic
 	GetMetadata(TopicName) (PartitionedTopicMetadata, error)
+
+	// List returns the list of topics under a namespace
 	List(NameSpaceName) ([]string, []string, error)
+
+	// GetInternalInfo returns the internal metadata info for the topic
 	GetInternalInfo(TopicName) (ManagedLedgerInfo, error)
+
+	// GetPermissions returns permissions on a topic
+	// Retrieve the effective permissions for a topic. These permissions are defined by the permissions set at the
+	// namespace level combined (union) with any eventual specific permission set on the topic.
 	GetPermissions(TopicName) (map[string][]AuthAction, error)
+
+	// GrantPermission grants a new permission to a client role on a single topic
 	GrantPermission(TopicName, string, []AuthAction) error
+
+	// RevokePermission revokes permissions to a client role on a single topic. If the permission
+	// was not set at the topic level, but rather at the namespace level, this operation will
+	// return an error (HTTP status code 412).
 	RevokePermission(TopicName, string) error
+
+	// Lookup a topic returns the broker URL that serves the topic
 	Lookup(TopicName) (LookupData, error)
+
+	// GetBundleRange returns a bundle range of a topic
 	GetBundleRange(TopicName) (string, error)
+
+	// GetLastMessageID returns the last commit message Id of a topic
 	GetLastMessageID(TopicName) (MessageID, error)
+
+	// GetStats returns the stats for the topic
+	// All the rates are computed over a 1 minute window and are relative the last completed 1 minute period
 	GetStats(TopicName) (TopicStats, error)
+
+	// GetInternalStats returns the internal stats for the topic.
 	GetInternalStats(TopicName) (PersistentTopicInternalStats, error)
+
+	// GetPartitionedStats returns the stats for the partitioned topic
+	// All the rates are computed over a 1 minute window and are relative the last completed 1 minute period
 	GetPartitionedStats(TopicName, bool) (PartitionedTopicStats, error)
+
+	// Terminate the topic and prevent any more messages being published on it
 	Terminate(TopicName) (MessageID, error)
+
+	// Offload triggers offloading messages in topic to longterm storage
 	Offload(TopicName, MessageID) error
+
+	// OffloadStatus checks the status of an ongoing offloading operation for a topic
 	OffloadStatus(TopicName) (OffloadProcessStatus, error)
+
+	// Unload a topic
 	Unload(TopicName) error
+
+	// Compact triggers compaction to run for a topic. A single topic can only have one instance of compaction
+	// running at any time. Any attempt to trigger another will be met with a ConflictException.
 	Compact(TopicName) error
+
+	// CompactStatus checks the status of an ongoing compaction for a topic
 	CompactStatus(TopicName) (LongRunningProcessStatus, error)
 }
 
@@ -54,6 +105,7 @@ type topics struct {
 	lookupPath        string
 }
 
+// Topics is used to access the topics endpoints
 func (c *client) Topics() Topics {
 	return &topics{
 		client:            c,
