@@ -88,6 +88,7 @@ type Client interface {
 	NsIsolationPolicy() NsIsolationPolicy
 	Brokers() Brokers
 	BrokerStats() BrokerStats
+	FunctionsWorker() FunctionsWorker
 }
 
 type client struct {
