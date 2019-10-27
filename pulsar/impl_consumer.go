@@ -102,7 +102,6 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 		// newPartitionConsumer can modify the shared options struct causing a race condition
 		cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
 		go func(partitionIdx int, partitionTopic string) {
-			//cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
 			ch <- ConsumerError{
 				err:       err,
 				partition: partitionIdx,
