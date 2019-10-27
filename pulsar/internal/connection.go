@@ -155,7 +155,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		auth:                 auth,
 
 		incomingRequestsCh: make(chan *request),
-		writeRequestsCh:    make(chan []byte, 100),
+		writeRequestsCh:    make(chan []byte),
 		listeners:          make(map[uint64]ConnectionListener),
 		consumerHandlers:   make(map[uint64]ConsumerHandler),
 	}
