@@ -20,9 +20,10 @@ package pulsar
 import (
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/golang/protobuf/proto"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/pkg/pb"
 )
 
 func TestUnackedMessageTracker(t *testing.T) {
