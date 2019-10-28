@@ -98,10 +98,12 @@ func singleTopicSubscribe(client *client, options *ConsumerOptions, topic string
 	ch := make(chan ConsumerError, numPartitions)
 
 	for partitionIdx, partitionTopic := range partitions {
+		// this needs to be created outside in the same go routine since
+		// newPartitionConsumer can modify the shared options struct causing a race condition
+		cons, err := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
 		go func(partitionIdx int, partitionTopic string) {
-			cons, e := newPartitionConsumer(client, partitionTopic, options, partitionIdx, numPartitions, c.queue)
 			ch <- ConsumerError{
-				err:       e,
+				err:       err,
 				partition: partitionIdx,
 				cons:      cons,
 			}
@@ -141,8 +143,8 @@ func (c *consumer) Subscription() string {
 
 func (c *consumer) Unsubscribe() error {
 	var errMsg string
-	for _, c := range c.consumers {
-		if err := c.Unsubscribe(); err != nil {
+	for _, consumer := range c.consumers {
+		if err := consumer.Unsubscribe(); err != nil {
 			errMsg += fmt.Sprintf("topic %s, subscription %s: %s", c.Topic(), c.Subscription(), err)
 		}
 	}
