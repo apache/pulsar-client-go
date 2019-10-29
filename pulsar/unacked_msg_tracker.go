@@ -21,11 +21,12 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/golang/protobuf/proto"
 
 	set "github.com/deckarep/golang-set"
 	log "github.com/sirupsen/logrus"
+
+	"github.com/apache/pulsar-client-go/pkg/pb"
 )
 
 type UnackedMessageTracker struct {
@@ -146,6 +147,7 @@ func (t *UnackedMessageTracker) handlerCmd() {
 		select {
 		case tick := <-t.timeout.C:
 			if t.isAckTimeout() {
+				t.cmu.Lock()
 				log.Debugf(" %d messages have timed-out", t.oldOpenSet.Cardinality())
 				messageIds := make([]*pb.MessageIdData, 0)
 
@@ -153,10 +155,10 @@ func (t *UnackedMessageTracker) handlerCmd() {
 					messageIds = append(messageIds, i.(*pb.MessageIdData))
 					return false
 				})
-
 				log.Debugf("messageID length is:%d", len(messageIds))
 
 				t.oldOpenSet.Clear()
+				t.cmu.Unlock()
 
 				if t.pcs != nil {
 					messageIdsMap := make(map[int32][]*pb.MessageIdData)

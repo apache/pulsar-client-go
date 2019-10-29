@@ -25,11 +25,11 @@ import (
 
 	"github.com/golang/protobuf/proto"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/util"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type producerState int
@@ -263,6 +263,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 }
 
 type pendingItem struct {
+	sync.Mutex
 	batchData    []byte
 	sequenceID   uint64
 	sendRequests []interface{}
@@ -291,13 +292,19 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		return
 	}
 
-	pi.sendRequests = append(pi.sendRequests, &sendRequest{
+	sendReq := &sendRequest{
 		msg: nil,
 		callback: func(id MessageID, message *ProducerMessage, e error) {
 			fr.err = e
 			fr.waitGroup.Done()
 		},
-	})
+	}
+
+	// lock the pending request while adding requests
+	// since the ReceivedSendReceipt func iterates over this list
+	pi.Lock()
+	pi.sendRequests = append(pi.sendRequests, sendReq)
+	pi.Unlock()
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) error {
@@ -361,6 +368,10 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
+
+	// lock the pending item while sending the requests
+	pi.Lock()
+	defer pi.Unlock()
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
 		if sr.msg != nil {
