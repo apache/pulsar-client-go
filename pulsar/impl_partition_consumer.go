@@ -135,6 +135,17 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 	c.log.Info("Created consumer")
 	c.state = consumerReady
 
+	// In here, open a gorutine to receive data asynchronously from the subConsumer,
+	// filling the queue channel of the current consumer.
+	if partitionNum > 1 {
+		go func() {
+			err = c.ReceiveAsync(context.Background(), ch)
+			if err != nil {
+				return
+			}
+		}()
+	}
+
 	go c.runEventsLoop()
 
 	return c, nil
