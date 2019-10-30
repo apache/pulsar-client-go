@@ -43,11 +43,6 @@ const (
 	consumerClosed
 )
 
-var (
-	subType  pb.CommandSubscribe_SubType
-	position pb.CommandSubscribe_InitialPosition
-)
-
 type partitionConsumer struct {
 	state  consumerState
 	client *client
@@ -98,30 +93,12 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 		c.consumerName = &options.Name
 	}
 
-	switch options.Type {
-	case Exclusive:
-		subType = pb.CommandSubscribe_Exclusive
-	case Failover:
-		subType = pb.CommandSubscribe_Failover
-	case Shared:
-		subType = pb.CommandSubscribe_Shared
-	case KeyShared:
-		subType = pb.CommandSubscribe_Key_Shared
-	}
-
 	if options.Type == Shared || options.Type == KeyShared {
 		if options.AckTimeout != 0 {
 			c.unAckTracker = NewUnackedMessageTracker()
 			c.unAckTracker.pcs = append(c.unAckTracker.pcs, c)
 			c.unAckTracker.Start(int64(options.AckTimeout))
 		}
-	}
-
-	switch options.SubscriptionInitPos {
-	case Latest:
-		position = pb.CommandSubscribe_Latest
-	case Earliest:
-		position = pb.CommandSubscribe_Earliest
 	}
 
 	err := c.grabCnx()
@@ -157,9 +134,6 @@ func (pc *partitionConsumer) setDefault(options *ConsumerOptions) {
 	if options.AckTimeout == 0 {
 		options.AckTimeout = time.Second * 30
 	}
-
-	position = pb.CommandSubscribe_Latest
-	subType = pb.CommandSubscribe_Exclusive
 }
 
 func (pc *partitionConsumer) grabCnx() error {
@@ -168,8 +142,10 @@ func (pc *partitionConsumer) grabCnx() error {
 		pc.log.WithError(err).Warn("Failed to lookup topic")
 		return err
 	}
-
 	pc.log.Debugf("Lookup result: %v", lr)
+
+	subType := toProtoSubType(pc.options.Type)
+	initialPosition := toProtoInitialPosition(pc.options.SubscriptionInitPos)
 	requestID := pc.client.rpcClient.NewRequestID()
 	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
 		pb.BaseCommand_SUBSCRIBE, &pb.CommandSubscribe{
@@ -179,7 +155,7 @@ func (pc *partitionConsumer) grabCnx() error {
 			Subscription:    proto.String(pc.options.SubscriptionName),
 			ConsumerId:      proto.Uint64(pc.consumerID),
 			ConsumerName:    proto.String(pc.options.Name),
-			InitialPosition: position.Enum(),
+			InitialPosition: initialPosition.Enum(),
 			Schema:          nil,
 		})
 
