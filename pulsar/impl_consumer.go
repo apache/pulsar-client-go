@@ -288,3 +288,29 @@ func (c *consumer) RedeliverUnackedMessages() error {
 	}
 	return nil
 }
+
+func toProtoSubType(st SubscriptionType) pb.CommandSubscribe_SubType {
+	switch st {
+	case Exclusive:
+		return pb.CommandSubscribe_Exclusive
+	case Shared:
+		return pb.CommandSubscribe_Shared
+	case Failover:
+		return pb.CommandSubscribe_Failover
+	case KeyShared:
+		return pb.CommandSubscribe_Key_Shared
+	}
+
+	return pb.CommandSubscribe_Exclusive
+}
+
+func toProtoInitialPosition(p InitialPosition) pb.CommandSubscribe_InitialPosition {
+	switch p {
+	case Latest:
+		return pb.CommandSubscribe_Latest
+	case Earliest:
+		return pb.CommandSubscribe_Earliest
+	}
+
+	return pb.CommandSubscribe_Latest
+}
