@@ -17,18 +17,22 @@
 
 package pulsar
 
+import (
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
+)
+
 type ResourceQuotas interface {
 	// Get default resource quota for new resource bundles.
-	GetDefaultResourceQuota() (*ResourceQuota, error)
+	GetDefaultResourceQuota() (*utils.ResourceQuota, error)
 
 	// Set default resource quota for new namespace bundles.
-	SetDefaultResourceQuota(quota ResourceQuota) error
+	SetDefaultResourceQuota(quota utils.ResourceQuota) error
 
 	// Get resource quota of a namespace bundle.
-	GetNamespaceBundleResourceQuota(namespace, bundle string) (*ResourceQuota, error)
+	GetNamespaceBundleResourceQuota(namespace, bundle string) (*utils.ResourceQuota, error)
 
 	// Set resource quota for a namespace bundle.
-	SetNamespaceBundleResourceQuota(namespace, bundle string, quota ResourceQuota) error
+	SetNamespaceBundleResourceQuota(namespace, bundle string, quota utils.ResourceQuota) error
 
 	// Reset resource quota for a namespace bundle to default value.
 	ResetNamespaceBundleResourceQuota(namespace, bundle string) error
@@ -46,9 +50,9 @@ func (c *client) ResourceQuotas() ResourceQuotas {
 	}
 }
 
-func (r *resource) GetDefaultResourceQuota() (*ResourceQuota, error) {
+func (r *resource) GetDefaultResourceQuota() (*utils.ResourceQuota, error) {
 	endpoint := r.client.endpoint(r.basePath)
-	var quota ResourceQuota
+	var quota utils.ResourceQuota
 	err := r.client.get(endpoint, &quota)
 	if err != nil {
 		return nil, err
@@ -56,14 +60,14 @@ func (r *resource) GetDefaultResourceQuota() (*ResourceQuota, error) {
 	return &quota, nil
 }
 
-func (r *resource) SetDefaultResourceQuota(quota ResourceQuota) error {
+func (r *resource) SetDefaultResourceQuota(quota utils.ResourceQuota) error {
 	endpoint := r.client.endpoint(r.basePath)
 	return r.client.post(endpoint, &quota)
 }
 
-func (r *resource) GetNamespaceBundleResourceQuota(namespace, bundle string) (*ResourceQuota, error) {
+func (r *resource) GetNamespaceBundleResourceQuota(namespace, bundle string) (*utils.ResourceQuota, error) {
 	endpoint := r.client.endpoint(r.basePath, namespace, bundle)
-	var quota ResourceQuota
+	var quota utils.ResourceQuota
 	err := r.client.get(endpoint, &quota)
 	if err != nil {
 		return nil, err
@@ -71,7 +75,7 @@ func (r *resource) GetNamespaceBundleResourceQuota(namespace, bundle string) (*R
 	return &quota, nil
 }
 
-func (r *resource) SetNamespaceBundleResourceQuota(namespace, bundle string, quota ResourceQuota) error {
+func (r *resource) SetNamespaceBundleResourceQuota(namespace, bundle string, quota utils.ResourceQuota) error {
 	endpoint := r.client.endpoint(r.basePath, namespace, bundle)
 	return r.client.post(endpoint, &quota)
 }

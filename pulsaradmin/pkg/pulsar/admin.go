@@ -32,6 +32,8 @@ import (
 	"time"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/auth"
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common"
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 )
 
 const (
@@ -46,7 +48,7 @@ type Config struct {
 	WebServiceURL string
 	HTTPTimeout   time.Duration
 	HTTPClient    *http.Client
-	APIVersion    APIVersion
+	APIVersion    common.APIVersion
 
 	Auth       *auth.TLSAuthProvider
 	AuthParams string
@@ -177,7 +179,7 @@ func (c *client) getTLSConfig() (*tls.Config, error) {
 }
 
 func (c *client) endpoint(componentPath string, parts ...string) string {
-	return path.Join(makeHTTPPath(c.apiVersion, componentPath), endpoint(parts...))
+	return path.Join(utils.MakeHTTPPath(c.apiVersion, componentPath), endpoint(parts...))
 }
 
 // get is used to do a GET request against an endpoint
@@ -473,7 +475,7 @@ func safeRespClose(resp *http.Response) {
 
 // responseError is used to parse a response into a pulsar error
 func responseError(resp *http.Response) error {
-	var e Error
+	var e common.Error
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		e.Reason = err.Error()
@@ -486,7 +488,7 @@ func responseError(resp *http.Response) error {
 	e.Code = resp.StatusCode
 
 	if e.Reason == "" {
-		e.Reason = unknownErrorReason
+		e.Reason = common.UnknownErrorReason
 	}
 
 	return e

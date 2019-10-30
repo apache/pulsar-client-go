@@ -27,12 +27,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 )
 
 // Functions is admin interface for functions management
 type Functions interface {
 	// CreateFunc create a new function.
-	CreateFunc(data *FunctionConfig, fileName string) error
+	CreateFunc(data *utils.FunctionConfig, fileName string) error
 
 	// CreateFuncWithURL create a new function by providing url from which fun-pkg can be downloaded.
 	// supported url: http/file
@@ -44,7 +46,7 @@ type Functions interface {
 	//      the function configuration object
 	// @param pkgURL
 	//      url from which pkg can be downloaded
-	CreateFuncWithURL(data *FunctionConfig, pkgURL string) error
+	CreateFuncWithURL(data *utils.FunctionConfig, pkgURL string) error
 
 	// StopFunction stop all function instances
 	StopFunction(tenant, namespace, name string) error
@@ -71,34 +73,35 @@ type Functions interface {
 	GetFunctions(tenant, namespace string) ([]string, error)
 
 	// GetFunction returns the configuration for the specified function
-	GetFunction(tenant, namespace, name string) (FunctionConfig, error)
+	GetFunction(tenant, namespace, name string) (utils.FunctionConfig, error)
 
 	// GetFunctionStatus returns the current status of a function
-	GetFunctionStatus(tenant, namespace, name string) (FunctionStatus, error)
+	GetFunctionStatus(tenant, namespace, name string) (utils.FunctionStatus, error)
 
 	// GetFunctionStatusWithInstanceID returns the current status of a function instance
-	GetFunctionStatusWithInstanceID(tenant, namespace, name string, instanceID int) (FunctionInstanceStatusData, error)
+	GetFunctionStatusWithInstanceID(tenant, namespace, name string, instanceID int) (
+		utils.FunctionInstanceStatusData, error)
 
 	// GetFunctionStats returns the current stats of a function
-	GetFunctionStats(tenant, namespace, name string) (FunctionStats, error)
+	GetFunctionStats(tenant, namespace, name string) (utils.FunctionStats, error)
 
 	// GetFunctionStatsWithInstanceID gets the current stats of a function instance
-	GetFunctionStatsWithInstanceID(tenant, namespace, name string, instanceID int) (FunctionInstanceStatsData, error)
+	GetFunctionStatsWithInstanceID(tenant, namespace, name string, instanceID int) (utils.FunctionInstanceStatsData, error)
 
 	// GetFunctionState fetch the current state associated with a Pulsar Function
 	//
 	// Response Example:
 	// 		{ "value : 12, version : 2"}
-	GetFunctionState(tenant, namespace, name, key string) (FunctionState, error)
+	GetFunctionState(tenant, namespace, name, key string) (utils.FunctionState, error)
 
 	// PutFunctionState puts the given state associated with a Pulsar Function
-	PutFunctionState(tenant, namespace, name string, state FunctionState) error
+	PutFunctionState(tenant, namespace, name string, state utils.FunctionState) error
 
 	// TriggerFunction triggers the function by writing to the input topic
 	TriggerFunction(tenant, namespace, name, topic, triggerValue, triggerFile string) (string, error)
 
 	// UpdateFunction updates the configuration for a function.
-	UpdateFunction(functionConfig *FunctionConfig, fileName string, updateOptions *UpdateOptions) error
+	UpdateFunction(functionConfig *utils.FunctionConfig, fileName string, updateOptions *utils.UpdateOptions) error
 
 	// UpdateFunctionWithURL updates the configuration for a function.
 	//
@@ -106,7 +109,7 @@ type Functions interface {
 	// eg:
 	// File: file:/dir/fileName.jar
 	// Http: http://www.repo.com/fileName.jar
-	UpdateFunctionWithURL(functionConfig *FunctionConfig, pkgURL string, updateOptions *UpdateOptions) error
+	UpdateFunctionWithURL(functionConfig *utils.FunctionConfig, pkgURL string, updateOptions *utils.UpdateOptions) error
 }
 
 type functions struct {
@@ -136,7 +139,7 @@ func (f *functions) createTextFromFiled(w *multipart.Writer, value string) (io.W
 	return w.CreatePart(h)
 }
 
-func (f *functions) CreateFunc(funcConf *FunctionConfig, fileName string) error {
+func (f *functions) CreateFunc(funcConf *utils.FunctionConfig, fileName string) error {
 	endpoint := f.client.endpoint(f.basePath, funcConf.Tenant, funcConf.Namespace, funcConf.Name)
 
 	// buffer to store our request as bytes
@@ -195,7 +198,7 @@ func (f *functions) CreateFunc(funcConf *FunctionConfig, fileName string) error 
 	return nil
 }
 
-func (f *functions) CreateFuncWithURL(funcConf *FunctionConfig, pkgURL string) error {
+func (f *functions) CreateFuncWithURL(funcConf *utils.FunctionConfig, pkgURL string) error {
 	endpoint := f.client.endpoint(f.basePath, funcConf.Tenant, funcConf.Namespace, funcConf.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -288,15 +291,15 @@ func (f *functions) GetFunctions(tenant, namespace string) ([]string, error) {
 	return functions, err
 }
 
-func (f *functions) GetFunction(tenant, namespace, name string) (FunctionConfig, error) {
-	var functionConfig FunctionConfig
+func (f *functions) GetFunction(tenant, namespace, name string) (utils.FunctionConfig, error) {
+	var functionConfig utils.FunctionConfig
 	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name)
 	err := f.client.get(endpoint, &functionConfig)
 	return functionConfig, err
 }
 
-func (f *functions) UpdateFunction(functionConfig *FunctionConfig, fileName string,
-	updateOptions *UpdateOptions) error {
+func (f *functions) UpdateFunction(functionConfig *utils.FunctionConfig, fileName string,
+	updateOptions *utils.UpdateOptions) error {
 	endpoint := f.client.endpoint(f.basePath, functionConfig.Tenant, functionConfig.Namespace, functionConfig.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -371,8 +374,8 @@ func (f *functions) UpdateFunction(functionConfig *FunctionConfig, fileName stri
 	return nil
 }
 
-func (f *functions) UpdateFunctionWithURL(functionConfig *FunctionConfig, pkgURL string,
-	updateOptions *UpdateOptions) error {
+func (f *functions) UpdateFunctionWithURL(functionConfig *utils.FunctionConfig, pkgURL string,
+	updateOptions *utils.UpdateOptions) error {
 	endpoint := f.client.endpoint(f.basePath, functionConfig.Tenant, functionConfig.Namespace, functionConfig.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -436,46 +439,46 @@ func (f *functions) UpdateFunctionWithURL(functionConfig *FunctionConfig, pkgURL
 	return nil
 }
 
-func (f *functions) GetFunctionStatus(tenant, namespace, name string) (FunctionStatus, error) {
-	var functionStatus FunctionStatus
+func (f *functions) GetFunctionStatus(tenant, namespace, name string) (utils.FunctionStatus, error) {
+	var functionStatus utils.FunctionStatus
 	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name)
 	err := f.client.get(endpoint+"/status", &functionStatus)
 	return functionStatus, err
 }
 
 func (f *functions) GetFunctionStatusWithInstanceID(tenant, namespace, name string,
-	instanceID int) (FunctionInstanceStatusData, error) {
-	var functionInstanceStatusData FunctionInstanceStatusData
+	instanceID int) (utils.FunctionInstanceStatusData, error) {
+	var functionInstanceStatusData utils.FunctionInstanceStatusData
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, id)
 	err := f.client.get(endpoint+"/status", &functionInstanceStatusData)
 	return functionInstanceStatusData, err
 }
 
-func (f *functions) GetFunctionStats(tenant, namespace, name string) (FunctionStats, error) {
-	var functionStats FunctionStats
+func (f *functions) GetFunctionStats(tenant, namespace, name string) (utils.FunctionStats, error) {
+	var functionStats utils.FunctionStats
 	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name)
 	err := f.client.get(endpoint+"/stats", &functionStats)
 	return functionStats, err
 }
 
 func (f *functions) GetFunctionStatsWithInstanceID(tenant, namespace, name string,
-	instanceID int) (FunctionInstanceStatsData, error) {
-	var functionInstanceStatsData FunctionInstanceStatsData
+	instanceID int) (utils.FunctionInstanceStatsData, error) {
+	var functionInstanceStatsData utils.FunctionInstanceStatsData
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, id)
 	err := f.client.get(endpoint+"/stats", &functionInstanceStatsData)
 	return functionInstanceStatsData, err
 }
 
-func (f *functions) GetFunctionState(tenant, namespace, name, key string) (FunctionState, error) {
-	var functionState FunctionState
+func (f *functions) GetFunctionState(tenant, namespace, name, key string) (utils.FunctionState, error) {
+	var functionState utils.FunctionState
 	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, "state", key)
 	err := f.client.get(endpoint, &functionState)
 	return functionState, err
 }
 
-func (f *functions) PutFunctionState(tenant, namespace, name string, state FunctionState) error {
+func (f *functions) PutFunctionState(tenant, namespace, name string, state utils.FunctionState) error {
 	endpoint := f.client.endpoint(f.basePath, tenant, namespace, name, "state", state.Key)
 
 	// buffer to store our request as bytes

@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 )
 
 // Brokers is admin interface for brokers management
@@ -32,7 +34,7 @@ type Brokers interface {
 	GetDynamicConfigurationNames() ([]string, error)
 
 	// GetOwnedNamespaces returns the map of owned namespaces and their status from a single broker in the cluster
-	GetOwnedNamespaces(cluster, brokerURL string) (map[string]NamespaceOwnershipStatus, error)
+	GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils.NamespaceOwnershipStatus, error)
 
 	// UpdateDynamicConfiguration updates dynamic configuration value in to Zk that triggers watch on
 	// brokers and all brokers can update {@link ServiceConfiguration} value locally
@@ -46,7 +48,7 @@ type Brokers interface {
 	GetRuntimeConfigurations() (map[string]string, error)
 
 	// GetInternalConfigurationData returns the internal configuration data
-	GetInternalConfigurationData() (*InternalConfigurationData, error)
+	GetInternalConfigurationData() (*utils.InternalConfigurationData, error)
 
 	// GetAllDynamicConfigurations returns values of all overridden dynamic-configs
 	GetAllDynamicConfigurations() (map[string]string, error)
@@ -88,9 +90,9 @@ func (b *broker) GetDynamicConfigurationNames() ([]string, error) {
 	return res, nil
 }
 
-func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]NamespaceOwnershipStatus, error) {
+func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils.NamespaceOwnershipStatus, error) {
 	endpoint := b.client.endpoint(b.basePath, cluster, brokerURL, "ownedNamespaces")
-	var res map[string]NamespaceOwnershipStatus
+	var res map[string]utils.NamespaceOwnershipStatus
 	err := b.client.get(endpoint, &res)
 	if err != nil {
 		return nil, err
@@ -119,9 +121,9 @@ func (b *broker) GetRuntimeConfigurations() (map[string]string, error) {
 	return res, nil
 }
 
-func (b *broker) GetInternalConfigurationData() (*InternalConfigurationData, error) {
+func (b *broker) GetInternalConfigurationData() (*utils.InternalConfigurationData, error) {
 	endpoint := b.client.endpoint(b.basePath, "/internal-configuration")
-	var res InternalConfigurationData
+	var res utils.InternalConfigurationData
 	err := b.client.get(endpoint, &res)
 	if err != nil {
 		return nil, err

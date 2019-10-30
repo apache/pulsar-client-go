@@ -17,18 +17,22 @@
 
 package pulsar
 
+import (
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
+)
+
 type FunctionsWorker interface {
 	// Get all functions stats on a worker
-	GetFunctionsStats() ([]*WorkerFunctionInstanceStats, error)
+	GetFunctionsStats() ([]*utils.WorkerFunctionInstanceStats, error)
 
 	// Get worker metrics
-	GetMetrics() ([]*Metrics, error)
+	GetMetrics() ([]*utils.Metrics, error)
 
 	// Get List of all workers belonging to this cluster
-	GetCluster() ([]*WorkerInfo, error)
+	GetCluster() ([]*utils.WorkerInfo, error)
 
 	// Get the worker who is the leader of the clusterv
-	GetClusterLeader() (*WorkerInfo, error)
+	GetClusterLeader() (*utils.WorkerInfo, error)
 
 	// Get the function assignment among the cluster
 	GetAssignments() (map[string][]string, error)
@@ -48,9 +52,9 @@ func (c *client) FunctionsWorker() FunctionsWorker {
 	}
 }
 
-func (w *worker) GetFunctionsStats() ([]*WorkerFunctionInstanceStats, error) {
+func (w *worker) GetFunctionsStats() ([]*utils.WorkerFunctionInstanceStats, error) {
 	endpoint := w.client.endpoint(w.workerStatsPath, "functionsmetrics")
-	var workerStats []*WorkerFunctionInstanceStats
+	var workerStats []*utils.WorkerFunctionInstanceStats
 	err := w.client.get(endpoint, &workerStats)
 	if err != nil {
 		return nil, err
@@ -58,9 +62,9 @@ func (w *worker) GetFunctionsStats() ([]*WorkerFunctionInstanceStats, error) {
 	return workerStats, nil
 }
 
-func (w *worker) GetMetrics() ([]*Metrics, error) {
+func (w *worker) GetMetrics() ([]*utils.Metrics, error) {
 	endpoint := w.client.endpoint(w.workerStatsPath, "metrics")
-	var metrics []*Metrics
+	var metrics []*utils.Metrics
 	err := w.client.get(endpoint, &metrics)
 	if err != nil {
 		return nil, err
@@ -68,9 +72,9 @@ func (w *worker) GetMetrics() ([]*Metrics, error) {
 	return metrics, nil
 }
 
-func (w *worker) GetCluster() ([]*WorkerInfo, error) {
+func (w *worker) GetCluster() ([]*utils.WorkerInfo, error) {
 	endpoint := w.client.endpoint(w.workerPath, "cluster")
-	var workersInfo []*WorkerInfo
+	var workersInfo []*utils.WorkerInfo
 	err := w.client.get(endpoint, &workersInfo)
 	if err != nil {
 		return nil, err
@@ -78,9 +82,9 @@ func (w *worker) GetCluster() ([]*WorkerInfo, error) {
 	return workersInfo, nil
 }
 
-func (w *worker) GetClusterLeader() (*WorkerInfo, error) {
+func (w *worker) GetClusterLeader() (*utils.WorkerInfo, error) {
 	endpoint := w.client.endpoint(w.workerPath, "cluster", "leader")
-	var workerInfo WorkerInfo
+	var workerInfo utils.WorkerInfo
 	err := w.client.get(endpoint, &workerInfo)
 	if err != nil {
 		return nil, err

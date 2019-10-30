@@ -27,6 +27,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 )
 
 // Sinks is admin interface for sinks management
@@ -35,28 +37,28 @@ type Sinks interface {
 	ListSinks(tenant, namespace string) ([]string, error)
 
 	// GetSink returns the configuration for the specified sink
-	GetSink(tenant, namespace, Sink string) (SinkConfig, error)
+	GetSink(tenant, namespace, Sink string) (utils.SinkConfig, error)
 
 	// CreateSink creates a new sink
-	CreateSink(config *SinkConfig, fileName string) error
+	CreateSink(config *utils.SinkConfig, fileName string) error
 
 	// CreateSinkWithURL creates a new sink by providing url from which fun-pkg can be downloaded. supported url: http/file
-	CreateSinkWithURL(config *SinkConfig, pkgURL string) error
+	CreateSinkWithURL(config *utils.SinkConfig, pkgURL string) error
 
 	// UpdateSink updates the configuration for a sink.
-	UpdateSink(config *SinkConfig, fileName string, options *UpdateOptions) error
+	UpdateSink(config *utils.SinkConfig, fileName string, options *utils.UpdateOptions) error
 
 	// UpdateSinkWithURL updates a sink by providing url from which fun-pkg can be downloaded. supported url: http/file
-	UpdateSinkWithURL(config *SinkConfig, pkgURL string, options *UpdateOptions) error
+	UpdateSinkWithURL(config *utils.SinkConfig, pkgURL string, options *utils.UpdateOptions) error
 
 	// DeleteSink deletes an existing sink
 	DeleteSink(tenant, namespace, Sink string) error
 
 	// GetSinkStatus returns the current status of a sink.
-	GetSinkStatus(tenant, namespace, Sink string) (SinkStatus, error)
+	GetSinkStatus(tenant, namespace, Sink string) (utils.SinkStatus, error)
 
 	// GetSinkStatusWithID returns the current status of a sink instance.
-	GetSinkStatusWithID(tenant, namespace, Sink string, id int) (SinkInstanceStatusData, error)
+	GetSinkStatusWithID(tenant, namespace, Sink string, id int) (utils.SinkInstanceStatusData, error)
 
 	// RestartSink restarts all sink instances
 	RestartSink(tenant, namespace, Sink string) error
@@ -77,7 +79,7 @@ type Sinks interface {
 	StartSinkWithID(tenant, namespace, Sink string, id int) error
 
 	// GetBuiltInSinks fetches a list of supported Pulsar IO sinks currently running in cluster mode
-	GetBuiltInSinks() ([]*ConnectorDefinition, error)
+	GetBuiltInSinks() ([]*utils.ConnectorDefinition, error)
 
 	// ReloadBuiltInSinks reload the available built-in connectors, include Source and Sink
 	ReloadBuiltInSinks() error
@@ -117,14 +119,14 @@ func (s *sinks) ListSinks(tenant, namespace string) ([]string, error) {
 	return sinks, err
 }
 
-func (s *sinks) GetSink(tenant, namespace, sink string) (SinkConfig, error) {
-	var sinkConfig SinkConfig
+func (s *sinks) GetSink(tenant, namespace, sink string) (utils.SinkConfig, error) {
+	var sinkConfig utils.SinkConfig
 	endpoint := s.client.endpoint(s.basePath, tenant, namespace, sink)
 	err := s.client.get(endpoint, &sinkConfig)
 	return sinkConfig, err
 }
 
-func (s *sinks) CreateSink(config *SinkConfig, fileName string) error {
+func (s *sinks) CreateSink(config *utils.SinkConfig, fileName string) error {
 	endpoint := s.client.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
 
 	// buffer to store our request as bytes
@@ -182,7 +184,7 @@ func (s *sinks) CreateSink(config *SinkConfig, fileName string) error {
 	return nil
 }
 
-func (s *sinks) CreateSinkWithURL(config *SinkConfig, pkgURL string) error {
+func (s *sinks) CreateSinkWithURL(config *utils.SinkConfig, pkgURL string) error {
 	endpoint := s.client.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -227,7 +229,7 @@ func (s *sinks) CreateSinkWithURL(config *SinkConfig, pkgURL string) error {
 	return nil
 }
 
-func (s *sinks) UpdateSink(config *SinkConfig, fileName string, updateOptions *UpdateOptions) error {
+func (s *sinks) UpdateSink(config *utils.SinkConfig, fileName string, updateOptions *utils.UpdateOptions) error {
 	endpoint := s.client.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -302,7 +304,7 @@ func (s *sinks) UpdateSink(config *SinkConfig, fileName string, updateOptions *U
 	return nil
 }
 
-func (s *sinks) UpdateSinkWithURL(config *SinkConfig, pkgURL string, updateOptions *UpdateOptions) error {
+func (s *sinks) UpdateSinkWithURL(config *utils.SinkConfig, pkgURL string, updateOptions *utils.UpdateOptions) error {
 	endpoint := s.client.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -371,15 +373,15 @@ func (s *sinks) DeleteSink(tenant, namespace, sink string) error {
 	return s.client.delete(endpoint)
 }
 
-func (s *sinks) GetSinkStatus(tenant, namespace, sink string) (SinkStatus, error) {
-	var sinkStatus SinkStatus
+func (s *sinks) GetSinkStatus(tenant, namespace, sink string) (utils.SinkStatus, error) {
+	var sinkStatus utils.SinkStatus
 	endpoint := s.client.endpoint(s.basePath, tenant, namespace, sink)
 	err := s.client.get(endpoint+"/status", &sinkStatus)
 	return sinkStatus, err
 }
 
-func (s *sinks) GetSinkStatusWithID(tenant, namespace, sink string, id int) (SinkInstanceStatusData, error) {
-	var sinkInstanceStatusData SinkInstanceStatusData
+func (s *sinks) GetSinkStatusWithID(tenant, namespace, sink string, id int) (utils.SinkInstanceStatusData, error) {
+	var sinkInstanceStatusData utils.SinkInstanceStatusData
 	instanceID := fmt.Sprintf("%d", id)
 	endpoint := s.client.endpoint(s.basePath, tenant, namespace, sink, instanceID)
 	err := s.client.get(endpoint+"/status", &sinkInstanceStatusData)
@@ -422,8 +424,8 @@ func (s *sinks) StartSinkWithID(tenant, namespace, sink string, instanceID int) 
 	return s.client.post(endpoint+"/start", "")
 }
 
-func (s *sinks) GetBuiltInSinks() ([]*ConnectorDefinition, error) {
-	var connectorDefinition []*ConnectorDefinition
+func (s *sinks) GetBuiltInSinks() ([]*utils.ConnectorDefinition, error) {
+	var connectorDefinition []*utils.ConnectorDefinition
 	endpoint := s.client.endpoint(s.basePath, "builtinSinks")
 	err := s.client.get(endpoint, &connectorDefinition)
 	return connectorDefinition, err

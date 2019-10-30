@@ -21,6 +21,9 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common"
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 )
 
 // Namespaces is admin interface for namespaces management
@@ -32,7 +35,7 @@ type Namespaces interface {
 	GetTopics(namespace string) ([]string, error)
 
 	// GetPolicies returns the dump all the policies specified for a namespace
-	GetPolicies(namespace string) (*Policies, error)
+	GetPolicies(namespace string) (*utils.Policies, error)
 
 	// CreateNamespace creates a new empty namespace with no policies attached
 	CreateNamespace(namespace string) error
@@ -41,10 +44,10 @@ type Namespaces interface {
 	CreateNsWithNumBundles(namespace string, numBundles int) error
 
 	// CreateNsWithPolices creates a new namespace with the specified policies
-	CreateNsWithPolices(namespace string, polices Policies) error
+	CreateNsWithPolices(namespace string, polices utils.Policies) error
 
 	// CreateNsWithBundlesData creates a new empty namespace with no policies attached
-	CreateNsWithBundlesData(namespace string, bundleData *BundlesData) error
+	CreateNsWithBundlesData(namespace string, bundleData *utils.BundlesData) error
 
 	// DeleteNamespace deletes an existing namespace
 	DeleteNamespace(namespace string) error
@@ -59,72 +62,73 @@ type Namespaces interface {
 	GetNamespaceMessageTTL(namespace string) (int, error)
 
 	// GetRetention returns the retention configuration for a namespace
-	GetRetention(namespace string) (*RetentionPolicies, error)
+	GetRetention(namespace string) (*utils.RetentionPolicies, error)
 
 	// SetRetention sets the retention configuration for all the topics on a namespace
-	SetRetention(namespace string, policy RetentionPolicies) error
+	SetRetention(namespace string, policy utils.RetentionPolicies) error
 
 	// GetBacklogQuotaMap returns backlog quota map on a namespace
-	GetBacklogQuotaMap(namespace string) (map[BacklogQuotaType]BacklogQuota, error)
+	GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
 
 	// SetBacklogQuota sets a backlog quota for all the topics on a namespace
-	SetBacklogQuota(namespace string, backlogQuota BacklogQuota) error
+	SetBacklogQuota(namespace string, backlogQuota utils.BacklogQuota) error
 
 	// RemoveBacklogQuota removes a backlog quota policy from a namespace
 	RemoveBacklogQuota(namespace string) error
 
 	// SetSchemaValidationEnforced sets schema validation enforced for namespace
-	SetSchemaValidationEnforced(namespace NameSpaceName, schemaValidationEnforced bool) error
+	SetSchemaValidationEnforced(namespace utils.NameSpaceName, schemaValidationEnforced bool) error
 
 	// GetSchemaValidationEnforced returns schema validation enforced for namespace
-	GetSchemaValidationEnforced(namespace NameSpaceName) (bool, error)
+	GetSchemaValidationEnforced(namespace utils.NameSpaceName) (bool, error)
 
 	// SetSchemaAutoUpdateCompatibilityStrategy sets the strategy used to check the a new schema provided
 	// by a producer is compatible with the current schema before it is installed
-	SetSchemaAutoUpdateCompatibilityStrategy(namespace NameSpaceName, strategy SchemaCompatibilityStrategy) error
+	SetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName,
+		strategy utils.SchemaCompatibilityStrategy) error
 
 	// GetSchemaAutoUpdateCompatibilityStrategy returns the strategy used to check the a new schema provided
 	// by a producer is compatible with the current schema before it is installed
-	GetSchemaAutoUpdateCompatibilityStrategy(namespace NameSpaceName) (SchemaCompatibilityStrategy, error)
+	GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName) (utils.SchemaCompatibilityStrategy, error)
 
 	// ClearOffloadDeleteLag clears the offload deletion lag for a namespace.
-	ClearOffloadDeleteLag(namespace NameSpaceName) error
+	ClearOffloadDeleteLag(namespace utils.NameSpaceName) error
 
 	// SetOffloadDeleteLag sets the offload deletion lag for a namespace
-	SetOffloadDeleteLag(namespace NameSpaceName, timeMs int64) error
+	SetOffloadDeleteLag(namespace utils.NameSpaceName, timeMs int64) error
 
 	// GetOffloadDeleteLag returns the offload deletion lag for a namespace, in milliseconds
-	GetOffloadDeleteLag(namespace NameSpaceName) (int64, error)
+	GetOffloadDeleteLag(namespace utils.NameSpaceName) (int64, error)
 
 	// SetOffloadThreshold sets the offloadThreshold for a namespace
-	SetOffloadThreshold(namespace NameSpaceName, threshold int64) error
+	SetOffloadThreshold(namespace utils.NameSpaceName, threshold int64) error
 
 	// GetOffloadThreshold returns the offloadThreshold for a namespace
-	GetOffloadThreshold(namespace NameSpaceName) (int64, error)
+	GetOffloadThreshold(namespace utils.NameSpaceName) (int64, error)
 
 	// SetCompactionThreshold sets the compactionThreshold for a namespace
-	SetCompactionThreshold(namespace NameSpaceName, threshold int64) error
+	SetCompactionThreshold(namespace utils.NameSpaceName, threshold int64) error
 
 	// GetCompactionThreshold returns the compactionThreshold for a namespace
-	GetCompactionThreshold(namespace NameSpaceName) (int64, error)
+	GetCompactionThreshold(namespace utils.NameSpaceName) (int64, error)
 
 	// SetMaxConsumersPerSubscription sets maxConsumersPerSubscription for a namespace.
-	SetMaxConsumersPerSubscription(namespace NameSpaceName, max int) error
+	SetMaxConsumersPerSubscription(namespace utils.NameSpaceName, max int) error
 
 	// GetMaxConsumersPerSubscription returns the maxConsumersPerSubscription for a namespace.
-	GetMaxConsumersPerSubscription(namespace NameSpaceName) (int, error)
+	GetMaxConsumersPerSubscription(namespace utils.NameSpaceName) (int, error)
 
 	// SetMaxConsumersPerTopic sets maxConsumersPerTopic for a namespace.
-	SetMaxConsumersPerTopic(namespace NameSpaceName, max int) error
+	SetMaxConsumersPerTopic(namespace utils.NameSpaceName, max int) error
 
 	// GetMaxConsumersPerTopic returns the maxProducersPerTopic for a namespace.
-	GetMaxConsumersPerTopic(namespace NameSpaceName) (int, error)
+	GetMaxConsumersPerTopic(namespace utils.NameSpaceName) (int, error)
 
 	// SetMaxProducersPerTopic sets maxProducersPerTopic for a namespace.
-	SetMaxProducersPerTopic(namespace NameSpaceName, max int) error
+	SetMaxProducersPerTopic(namespace utils.NameSpaceName, max int) error
 
 	// GetMaxProducersPerTopic returns the maxProducersPerTopic for a namespace.
-	GetMaxProducersPerTopic(namespace NameSpaceName) (int, error)
+	GetMaxProducersPerTopic(namespace utils.NameSpaceName) (int, error)
 
 	// GetNamespaceReplicationClusters returns the replication clusters for a namespace
 	GetNamespaceReplicationClusters(namespace string) ([]string, error)
@@ -149,20 +153,20 @@ type Namespaces interface {
 	SetDeduplicationStatus(namespace string, enableDeduplication bool) error
 
 	// SetPersistence sets the persistence configuration for all the topics on a namespace
-	SetPersistence(namespace string, persistence PersistencePolicies) error
+	SetPersistence(namespace string, persistence utils.PersistencePolicies) error
 
 	// GetPersistence returns the persistence configuration for a namespace
-	GetPersistence(namespace string) (*PersistencePolicies, error)
+	GetPersistence(namespace string) (*utils.PersistencePolicies, error)
 
 	// SetBookieAffinityGroup sets bookie affinity group for a namespace to isolate namespace write to bookies that are
 	// part of given affinity group
-	SetBookieAffinityGroup(namespace string, bookieAffinityGroup BookieAffinityGroupData) error
+	SetBookieAffinityGroup(namespace string, bookieAffinityGroup utils.BookieAffinityGroupData) error
 
 	// DeleteBookieAffinityGroup deletes bookie affinity group configured for a namespace
 	DeleteBookieAffinityGroup(namespace string) error
 
 	// GetBookieAffinityGroup returns bookie affinity group configured for a namespace
-	GetBookieAffinityGroup(namespace string) (*BookieAffinityGroupData, error)
+	GetBookieAffinityGroup(namespace string) (*utils.BookieAffinityGroupData, error)
 
 	// Unload a namespace from the current serving broker
 	Unload(namespace string) error
@@ -174,75 +178,75 @@ type Namespaces interface {
 	SplitNamespaceBundle(namespace, bundle string, unloadSplitBundles bool) error
 
 	// GetNamespacePermissions returns permissions on a namespace
-	GetNamespacePermissions(namespace NameSpaceName) (map[string][]AuthAction, error)
+	GetNamespacePermissions(namespace utils.NameSpaceName) (map[string][]common.AuthAction, error)
 
 	// GrantNamespacePermission grants permission on a namespace.
-	GrantNamespacePermission(namespace NameSpaceName, role string, action []AuthAction) error
+	GrantNamespacePermission(namespace utils.NameSpaceName, role string, action []common.AuthAction) error
 
 	// RevokeNamespacePermission revokes permissions on a namespace.
-	RevokeNamespacePermission(namespace NameSpaceName, role string) error
+	RevokeNamespacePermission(namespace utils.NameSpaceName, role string) error
 
 	// GrantSubPermission grants permission to role to access subscription's admin-api
-	GrantSubPermission(namespace NameSpaceName, sName string, roles []string) error
+	GrantSubPermission(namespace utils.NameSpaceName, sName string, roles []string) error
 
 	// RevokeSubPermission revoke permissions on a subscription's admin-api access
-	RevokeSubPermission(namespace NameSpaceName, sName, role string) error
+	RevokeSubPermission(namespace utils.NameSpaceName, sName, role string) error
 
 	// SetSubscriptionAuthMode sets the given subscription auth mode on all topics on a namespace
-	SetSubscriptionAuthMode(namespace NameSpaceName, mode SubscriptionAuthMode) error
+	SetSubscriptionAuthMode(namespace utils.NameSpaceName, mode utils.SubscriptionAuthMode) error
 
 	// SetEncryptionRequiredStatus sets the encryption required status for all topics within a namespace
-	SetEncryptionRequiredStatus(namespace NameSpaceName, encrypt bool) error
+	SetEncryptionRequiredStatus(namespace utils.NameSpaceName, encrypt bool) error
 
 	// UnsubscribeNamespace unsubscribe the given subscription on all topics on a namespace
-	UnsubscribeNamespace(namespace NameSpaceName, sName string) error
+	UnsubscribeNamespace(namespace utils.NameSpaceName, sName string) error
 
 	// UnsubscribeNamespaceBundle unsubscribe the given subscription on all topics on a namespace bundle
-	UnsubscribeNamespaceBundle(namespace NameSpaceName, bundle, sName string) error
+	UnsubscribeNamespaceBundle(namespace utils.NameSpaceName, bundle, sName string) error
 
 	// ClearNamespaceBundleBacklogForSubscription clears backlog for a given subscription on all
 	// topics on a namespace bundle
-	ClearNamespaceBundleBacklogForSubscription(namespace NameSpaceName, bundle, sName string) error
+	ClearNamespaceBundleBacklogForSubscription(namespace utils.NameSpaceName, bundle, sName string) error
 
 	// ClearNamespaceBundleBacklog clears backlog for all topics on a namespace bundle
-	ClearNamespaceBundleBacklog(namespace NameSpaceName, bundle string) error
+	ClearNamespaceBundleBacklog(namespace utils.NameSpaceName, bundle string) error
 
 	// ClearNamespaceBacklogForSubscription clears backlog for a given subscription on all topics on a namespace
-	ClearNamespaceBacklogForSubscription(namespace NameSpaceName, sName string) error
+	ClearNamespaceBacklogForSubscription(namespace utils.NameSpaceName, sName string) error
 
 	// ClearNamespaceBacklog clears backlog for all topics on a namespace
-	ClearNamespaceBacklog(namespace NameSpaceName) error
+	ClearNamespaceBacklog(namespace utils.NameSpaceName) error
 
 	// SetReplicatorDispatchRate sets replicator-Message-dispatch-rate (Replicators under this namespace
 	// can dispatch this many messages per second)
-	SetReplicatorDispatchRate(namespace NameSpaceName, rate DispatchRate) error
+	SetReplicatorDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error
 
 	// Get replicator-Message-dispatch-rate (Replicators under this namespace
 	// can dispatch this many messages per second)
-	GetReplicatorDispatchRate(namespace NameSpaceName) (DispatchRate, error)
+	GetReplicatorDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error)
 
 	// SetSubscriptionDispatchRate sets subscription-Message-dispatch-rate (subscriptions under this namespace
 	// can dispatch this many messages per second)
-	SetSubscriptionDispatchRate(namespace NameSpaceName, rate DispatchRate) error
+	SetSubscriptionDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error
 
 	// GetSubscriptionDispatchRate returns subscription-Message-dispatch-rate (subscriptions under this namespace
 	// can dispatch this many messages per second)
-	GetSubscriptionDispatchRate(namespace NameSpaceName) (DispatchRate, error)
+	GetSubscriptionDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error)
 
 	// SetSubscribeRate sets namespace-subscribe-rate (topics under this namespace will limit by subscribeRate)
-	SetSubscribeRate(namespace NameSpaceName, rate SubscribeRate) error
+	SetSubscribeRate(namespace utils.NameSpaceName, rate utils.SubscribeRate) error
 
 	// GetSubscribeRate returns namespace-subscribe-rate (topics under this namespace allow subscribe
 	// times per consumer in a period)
-	GetSubscribeRate(namespace NameSpaceName) (SubscribeRate, error)
+	GetSubscribeRate(namespace utils.NameSpaceName) (utils.SubscribeRate, error)
 
 	// SetDispatchRate sets Message-dispatch-rate (topics under this namespace can dispatch
 	// this many messages per second)
-	SetDispatchRate(namespace NameSpaceName, rate DispatchRate) error
+	SetDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error
 
 	// GetDispatchRate returns Message-dispatch-rate (topics under this namespace can dispatch
 	// this many messages per second)
-	GetDispatchRate(namespace NameSpaceName) (DispatchRate, error)
+	GetDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error)
 }
 
 type namespaces struct {
@@ -267,7 +271,7 @@ func (n *namespaces) GetNamespaces(tenant string) ([]string, error) {
 
 func (n *namespaces) GetTopics(namespace string) ([]string, error) {
 	var topics []string
-	ns, err := GetNamespaceName(namespace)
+	ns, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -276,9 +280,9 @@ func (n *namespaces) GetTopics(namespace string) ([]string, error) {
 	return topics, err
 }
 
-func (n *namespaces) GetPolicies(namespace string) (*Policies, error) {
-	var police Policies
-	ns, err := GetNamespaceName(namespace)
+func (n *namespaces) GetPolicies(namespace string) (*utils.Policies, error) {
+	var police utils.Policies
+	ns, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -288,11 +292,11 @@ func (n *namespaces) GetPolicies(namespace string) (*Policies, error) {
 }
 
 func (n *namespaces) CreateNsWithNumBundles(namespace string, numBundles int) error {
-	return n.CreateNsWithBundlesData(namespace, NewBundlesDataWithNumBundles(numBundles))
+	return n.CreateNsWithBundlesData(namespace, utils.NewBundlesDataWithNumBundles(numBundles))
 }
 
-func (n *namespaces) CreateNsWithPolices(namespace string, policies Policies) error {
-	ns, err := GetNamespaceName(namespace)
+func (n *namespaces) CreateNsWithPolices(namespace string, policies utils.Policies) error {
+	ns, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -300,20 +304,20 @@ func (n *namespaces) CreateNsWithPolices(namespace string, policies Policies) er
 	return n.client.put(endpoint, &policies)
 }
 
-func (n *namespaces) CreateNsWithBundlesData(namespace string, bundleData *BundlesData) error {
-	ns, err := GetNamespaceName(namespace)
+func (n *namespaces) CreateNsWithBundlesData(namespace string, bundleData *utils.BundlesData) error {
+	ns, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
 	endpoint := n.client.endpoint(n.basePath, ns.String())
-	polices := new(Policies)
+	polices := new(utils.Policies)
 	polices.Bundles = bundleData
 
 	return n.client.put(endpoint, &polices)
 }
 
 func (n *namespaces) CreateNamespace(namespace string) error {
-	ns, err := GetNamespaceName(namespace)
+	ns, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -322,7 +326,7 @@ func (n *namespaces) CreateNamespace(namespace string) error {
 }
 
 func (n *namespaces) DeleteNamespace(namespace string) error {
-	ns, err := GetNamespaceName(namespace)
+	ns, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -331,7 +335,7 @@ func (n *namespaces) DeleteNamespace(namespace string) error {
 }
 
 func (n *namespaces) DeleteNamespaceBundle(namespace string, bundleRange string) error {
-	ns, err := GetNamespaceName(namespace)
+	ns, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -341,7 +345,7 @@ func (n *namespaces) DeleteNamespaceBundle(namespace string, bundleRange string)
 
 func (n *namespaces) GetNamespaceMessageTTL(namespace string) (int, error) {
 	var ttl int
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return 0, err
 	}
@@ -351,7 +355,7 @@ func (n *namespaces) GetNamespaceMessageTTL(namespace string) (int, error) {
 }
 
 func (n *namespaces) SetNamespaceMessageTTL(namespace string, ttlInSeconds int) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -360,8 +364,8 @@ func (n *namespaces) SetNamespaceMessageTTL(namespace string, ttlInSeconds int) 
 	return n.client.post(endpoint, &ttlInSeconds)
 }
 
-func (n *namespaces) SetRetention(namespace string, policy RetentionPolicies) error {
-	nsName, err := GetNamespaceName(namespace)
+func (n *namespaces) SetRetention(namespace string, policy utils.RetentionPolicies) error {
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -369,9 +373,9 @@ func (n *namespaces) SetRetention(namespace string, policy RetentionPolicies) er
 	return n.client.post(endpoint, &policy)
 }
 
-func (n *namespaces) GetRetention(namespace string) (*RetentionPolicies, error) {
-	var policy RetentionPolicies
-	nsName, err := GetNamespaceName(namespace)
+func (n *namespaces) GetRetention(namespace string) (*utils.RetentionPolicies, error) {
+	var policy utils.RetentionPolicies
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -380,9 +384,9 @@ func (n *namespaces) GetRetention(namespace string) (*RetentionPolicies, error) 
 	return &policy, err
 }
 
-func (n *namespaces) GetBacklogQuotaMap(namespace string) (map[BacklogQuotaType]BacklogQuota, error) {
-	var backlogQuotaMap map[BacklogQuotaType]BacklogQuota
-	nsName, err := GetNamespaceName(namespace)
+func (n *namespaces) GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuotaType]utils.BacklogQuota, error) {
+	var backlogQuotaMap map[utils.BacklogQuotaType]utils.BacklogQuota
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -391,8 +395,8 @@ func (n *namespaces) GetBacklogQuotaMap(namespace string) (map[BacklogQuotaType]
 	return backlogQuotaMap, err
 }
 
-func (n *namespaces) SetBacklogQuota(namespace string, backlogQuota BacklogQuota) error {
-	nsName, err := GetNamespaceName(namespace)
+func (n *namespaces) SetBacklogQuota(namespace string, backlogQuota utils.BacklogQuota) error {
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -401,23 +405,23 @@ func (n *namespaces) SetBacklogQuota(namespace string, backlogQuota BacklogQuota
 }
 
 func (n *namespaces) RemoveBacklogQuota(namespace string) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
 	endpoint := n.client.endpoint(n.basePath, nsName.String(), "backlogQuota")
 	params := map[string]string{
-		"backlogQuotaType": string(DestinationStorage),
+		"backlogQuotaType": string(utils.DestinationStorage),
 	}
 	return n.client.deleteWithQueryParams(endpoint, nil, params)
 }
 
-func (n *namespaces) SetSchemaValidationEnforced(namespace NameSpaceName, schemaValidationEnforced bool) error {
+func (n *namespaces) SetSchemaValidationEnforced(namespace utils.NameSpaceName, schemaValidationEnforced bool) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "schemaValidationEnforced")
 	return n.client.post(endpoint, schemaValidationEnforced)
 }
 
-func (n *namespaces) GetSchemaValidationEnforced(namespace NameSpaceName) (bool, error) {
+func (n *namespaces) GetSchemaValidationEnforced(namespace utils.NameSpaceName) (bool, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "schemaValidationEnforced")
 	r, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
@@ -426,38 +430,38 @@ func (n *namespaces) GetSchemaValidationEnforced(namespace NameSpaceName) (bool,
 	return strconv.ParseBool(string(r))
 }
 
-func (n *namespaces) SetSchemaAutoUpdateCompatibilityStrategy(namespace NameSpaceName,
-	strategy SchemaCompatibilityStrategy) error {
+func (n *namespaces) SetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName,
+	strategy utils.SchemaCompatibilityStrategy) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "schemaAutoUpdateCompatibilityStrategy")
 	return n.client.put(endpoint, strategy.String())
 }
 
-func (n *namespaces) GetSchemaAutoUpdateCompatibilityStrategy(namespace NameSpaceName) (SchemaCompatibilityStrategy,
-	error) {
+func (n *namespaces) GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName) (
+	utils.SchemaCompatibilityStrategy, error) {
 
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "schemaAutoUpdateCompatibilityStrategy")
 	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return "", err
 	}
-	s, err := ParseSchemaAutoUpdateCompatibilityStrategy(strings.ReplaceAll(string(b), "\"", ""))
+	s, err := utils.ParseSchemaAutoUpdateCompatibilityStrategy(strings.ReplaceAll(string(b), "\"", ""))
 	if err != nil {
 		return "", err
 	}
 	return s, nil
 }
 
-func (n *namespaces) ClearOffloadDeleteLag(namespace NameSpaceName) error {
+func (n *namespaces) ClearOffloadDeleteLag(namespace utils.NameSpaceName) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
 	return n.client.delete(endpoint)
 }
 
-func (n *namespaces) SetOffloadDeleteLag(namespace NameSpaceName, timeMs int64) error {
+func (n *namespaces) SetOffloadDeleteLag(namespace utils.NameSpaceName, timeMs int64) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
 	return n.client.put(endpoint, timeMs)
 }
 
-func (n *namespaces) GetOffloadDeleteLag(namespace NameSpaceName) (int64, error) {
+func (n *namespaces) GetOffloadDeleteLag(namespace utils.NameSpaceName) (int64, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
 	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
@@ -466,12 +470,12 @@ func (n *namespaces) GetOffloadDeleteLag(namespace NameSpaceName) (int64, error)
 	return strconv.ParseInt(string(b), 10, 64)
 }
 
-func (n *namespaces) SetMaxConsumersPerSubscription(namespace NameSpaceName, max int) error {
+func (n *namespaces) SetMaxConsumersPerSubscription(namespace utils.NameSpaceName, max int) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
 	return n.client.post(endpoint, max)
 }
 
-func (n *namespaces) GetMaxConsumersPerSubscription(namespace NameSpaceName) (int, error) {
+func (n *namespaces) GetMaxConsumersPerSubscription(namespace utils.NameSpaceName) (int, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
 	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
@@ -480,12 +484,12 @@ func (n *namespaces) GetMaxConsumersPerSubscription(namespace NameSpaceName) (in
 	return strconv.Atoi(string(b))
 }
 
-func (n *namespaces) SetOffloadThreshold(namespace NameSpaceName, threshold int64) error {
+func (n *namespaces) SetOffloadThreshold(namespace utils.NameSpaceName, threshold int64) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadThreshold")
 	return n.client.put(endpoint, threshold)
 }
 
-func (n *namespaces) GetOffloadThreshold(namespace NameSpaceName) (int64, error) {
+func (n *namespaces) GetOffloadThreshold(namespace utils.NameSpaceName) (int64, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadThreshold")
 	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
@@ -494,12 +498,12 @@ func (n *namespaces) GetOffloadThreshold(namespace NameSpaceName) (int64, error)
 	return strconv.ParseInt(string(b), 10, 64)
 }
 
-func (n *namespaces) SetMaxConsumersPerTopic(namespace NameSpaceName, max int) error {
+func (n *namespaces) SetMaxConsumersPerTopic(namespace utils.NameSpaceName, max int) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
 	return n.client.post(endpoint, max)
 }
 
-func (n *namespaces) GetMaxConsumersPerTopic(namespace NameSpaceName) (int, error) {
+func (n *namespaces) GetMaxConsumersPerTopic(namespace utils.NameSpaceName) (int, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
 	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
@@ -508,12 +512,12 @@ func (n *namespaces) GetMaxConsumersPerTopic(namespace NameSpaceName) (int, erro
 	return strconv.Atoi(string(b))
 }
 
-func (n *namespaces) SetCompactionThreshold(namespace NameSpaceName, threshold int64) error {
+func (n *namespaces) SetCompactionThreshold(namespace utils.NameSpaceName, threshold int64) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "compactionThreshold")
 	return n.client.put(endpoint, threshold)
 }
 
-func (n *namespaces) GetCompactionThreshold(namespace NameSpaceName) (int64, error) {
+func (n *namespaces) GetCompactionThreshold(namespace utils.NameSpaceName) (int64, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "compactionThreshold")
 	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
@@ -522,12 +526,12 @@ func (n *namespaces) GetCompactionThreshold(namespace NameSpaceName) (int64, err
 	return strconv.ParseInt(string(b), 10, 64)
 }
 
-func (n *namespaces) SetMaxProducersPerTopic(namespace NameSpaceName, max int) error {
+func (n *namespaces) SetMaxProducersPerTopic(namespace utils.NameSpaceName, max int) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
 	return n.client.post(endpoint, max)
 }
 
-func (n *namespaces) GetMaxProducersPerTopic(namespace NameSpaceName) (int, error) {
+func (n *namespaces) GetMaxProducersPerTopic(namespace utils.NameSpaceName) (int, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
 	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
@@ -538,7 +542,7 @@ func (n *namespaces) GetMaxProducersPerTopic(namespace NameSpaceName) (int, erro
 
 func (n *namespaces) GetNamespaceReplicationClusters(namespace string) ([]string, error) {
 	var data []string
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -548,7 +552,7 @@ func (n *namespaces) GetNamespaceReplicationClusters(namespace string) ([]string
 }
 
 func (n *namespaces) SetNamespaceReplicationClusters(namespace string, clusterIds []string) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -557,7 +561,7 @@ func (n *namespaces) SetNamespaceReplicationClusters(namespace string, clusterId
 }
 
 func (n *namespaces) SetNamespaceAntiAffinityGroup(namespace string, namespaceAntiAffinityGroup string) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -576,7 +580,7 @@ func (n *namespaces) GetAntiAffinityNamespaces(tenant, cluster, namespaceAntiAff
 }
 
 func (n *namespaces) GetNamespaceAntiAffinityGroup(namespace string) (string, error) {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return "", err
 	}
@@ -586,7 +590,7 @@ func (n *namespaces) GetNamespaceAntiAffinityGroup(namespace string) (string, er
 }
 
 func (n *namespaces) DeleteNamespaceAntiAffinityGroup(namespace string) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -595,7 +599,7 @@ func (n *namespaces) DeleteNamespaceAntiAffinityGroup(namespace string) error {
 }
 
 func (n *namespaces) SetDeduplicationStatus(namespace string, enableDeduplication bool) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -603,8 +607,8 @@ func (n *namespaces) SetDeduplicationStatus(namespace string, enableDeduplicatio
 	return n.client.post(endpoint, enableDeduplication)
 }
 
-func (n *namespaces) SetPersistence(namespace string, persistence PersistencePolicies) error {
-	nsName, err := GetNamespaceName(namespace)
+func (n *namespaces) SetPersistence(namespace string, persistence utils.PersistencePolicies) error {
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -612,8 +616,8 @@ func (n *namespaces) SetPersistence(namespace string, persistence PersistencePol
 	return n.client.post(endpoint, &persistence)
 }
 
-func (n *namespaces) SetBookieAffinityGroup(namespace string, bookieAffinityGroup BookieAffinityGroupData) error {
-	nsName, err := GetNamespaceName(namespace)
+func (n *namespaces) SetBookieAffinityGroup(namespace string, bookieAffinityGroup utils.BookieAffinityGroupData) error {
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -622,7 +626,7 @@ func (n *namespaces) SetBookieAffinityGroup(namespace string, bookieAffinityGrou
 }
 
 func (n *namespaces) DeleteBookieAffinityGroup(namespace string) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -630,9 +634,9 @@ func (n *namespaces) DeleteBookieAffinityGroup(namespace string) error {
 	return n.client.delete(endpoint)
 }
 
-func (n *namespaces) GetBookieAffinityGroup(namespace string) (*BookieAffinityGroupData, error) {
-	var data BookieAffinityGroupData
-	nsName, err := GetNamespaceName(namespace)
+func (n *namespaces) GetBookieAffinityGroup(namespace string) (*utils.BookieAffinityGroupData, error) {
+	var data utils.BookieAffinityGroupData
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -641,9 +645,9 @@ func (n *namespaces) GetBookieAffinityGroup(namespace string) (*BookieAffinityGr
 	return &data, err
 }
 
-func (n *namespaces) GetPersistence(namespace string) (*PersistencePolicies, error) {
-	var persistence PersistencePolicies
-	nsName, err := GetNamespaceName(namespace)
+func (n *namespaces) GetPersistence(namespace string) (*utils.PersistencePolicies, error) {
+	var persistence utils.PersistencePolicies
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return nil, err
 	}
@@ -653,7 +657,7 @@ func (n *namespaces) GetPersistence(namespace string) (*PersistencePolicies, err
 }
 
 func (n *namespaces) Unload(namespace string) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -662,7 +666,7 @@ func (n *namespaces) Unload(namespace string) error {
 }
 
 func (n *namespaces) UnloadNamespaceBundle(namespace, bundle string) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -671,7 +675,7 @@ func (n *namespaces) UnloadNamespaceBundle(namespace, bundle string) error {
 }
 
 func (n *namespaces) SplitNamespaceBundle(namespace, bundle string, unloadSplitBundles bool) error {
-	nsName, err := GetNamespaceName(namespace)
+	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
@@ -682,14 +686,15 @@ func (n *namespaces) SplitNamespaceBundle(namespace, bundle string, unloadSplitB
 	return n.client.putWithQueryParams(endpoint, "", nil, params)
 }
 
-func (n *namespaces) GetNamespacePermissions(namespace NameSpaceName) (map[string][]AuthAction, error) {
+func (n *namespaces) GetNamespacePermissions(namespace utils.NameSpaceName) (map[string][]common.AuthAction, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions")
-	var permissions map[string][]AuthAction
+	var permissions map[string][]common.AuthAction
 	err := n.client.get(endpoint, &permissions)
 	return permissions, err
 }
 
-func (n *namespaces) GrantNamespacePermission(namespace NameSpaceName, role string, action []AuthAction) error {
+func (n *namespaces) GrantNamespacePermission(namespace utils.NameSpaceName, role string,
+	action []common.AuthAction) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions", role)
 	s := make([]string, 0)
 	for _, v := range action {
@@ -698,107 +703,108 @@ func (n *namespaces) GrantNamespacePermission(namespace NameSpaceName, role stri
 	return n.client.post(endpoint, s)
 }
 
-func (n *namespaces) RevokeNamespacePermission(namespace NameSpaceName, role string) error {
+func (n *namespaces) RevokeNamespacePermission(namespace utils.NameSpaceName, role string) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions", role)
 	return n.client.delete(endpoint)
 }
 
-func (n *namespaces) GrantSubPermission(namespace NameSpaceName, sName string, roles []string) error {
+func (n *namespaces) GrantSubPermission(namespace utils.NameSpaceName, sName string, roles []string) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions",
 		"subscription", sName)
 	return n.client.post(endpoint, roles)
 }
 
-func (n *namespaces) RevokeSubPermission(namespace NameSpaceName, sName, role string) error {
+func (n *namespaces) RevokeSubPermission(namespace utils.NameSpaceName, sName, role string) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions",
 		"subscription", sName, role)
 	return n.client.delete(endpoint)
 }
 
-func (n *namespaces) SetSubscriptionAuthMode(namespace NameSpaceName, mode SubscriptionAuthMode) error {
+func (n *namespaces) SetSubscriptionAuthMode(namespace utils.NameSpaceName, mode utils.SubscriptionAuthMode) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscriptionAuthMode")
 	return n.client.post(endpoint, mode.String())
 }
 
-func (n *namespaces) SetEncryptionRequiredStatus(namespace NameSpaceName, encrypt bool) error {
+func (n *namespaces) SetEncryptionRequiredStatus(namespace utils.NameSpaceName, encrypt bool) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "encryptionRequired")
 	return n.client.post(endpoint, strconv.FormatBool(encrypt))
 }
 
-func (n *namespaces) UnsubscribeNamespace(namespace NameSpaceName, sName string) error {
+func (n *namespaces) UnsubscribeNamespace(namespace utils.NameSpaceName, sName string) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "unsubscribe", url.QueryEscape(sName))
 	return n.client.post(endpoint, "")
 }
 
-func (n *namespaces) UnsubscribeNamespaceBundle(namespace NameSpaceName, bundle, sName string) error {
+func (n *namespaces) UnsubscribeNamespaceBundle(namespace utils.NameSpaceName, bundle, sName string) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), bundle, "unsubscribe", url.QueryEscape(sName))
 	return n.client.post(endpoint, "")
 }
 
-func (n *namespaces) ClearNamespaceBundleBacklogForSubscription(namespace NameSpaceName, bundle, sName string) error {
+func (n *namespaces) ClearNamespaceBundleBacklogForSubscription(namespace utils.NameSpaceName,
+	bundle, sName string) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), bundle, "clearBacklog", url.QueryEscape(sName))
 	return n.client.post(endpoint, "")
 }
 
-func (n *namespaces) ClearNamespaceBundleBacklog(namespace NameSpaceName, bundle string) error {
+func (n *namespaces) ClearNamespaceBundleBacklog(namespace utils.NameSpaceName, bundle string) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), bundle, "clearBacklog")
 	return n.client.post(endpoint, "")
 }
 
-func (n *namespaces) ClearNamespaceBacklogForSubscription(namespace NameSpaceName, sName string) error {
+func (n *namespaces) ClearNamespaceBacklogForSubscription(namespace utils.NameSpaceName, sName string) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "clearBacklog", url.QueryEscape(sName))
 	return n.client.post(endpoint, "")
 }
 
-func (n *namespaces) ClearNamespaceBacklog(namespace NameSpaceName) error {
+func (n *namespaces) ClearNamespaceBacklog(namespace utils.NameSpaceName) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "clearBacklog")
 	return n.client.post(endpoint, "")
 }
 
-func (n *namespaces) SetReplicatorDispatchRate(namespace NameSpaceName, rate DispatchRate) error {
+func (n *namespaces) SetReplicatorDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "replicatorDispatchRate")
 	return n.client.post(endpoint, rate)
 }
 
-func (n *namespaces) GetReplicatorDispatchRate(namespace NameSpaceName) (DispatchRate, error) {
+func (n *namespaces) GetReplicatorDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "replicatorDispatchRate")
-	var rate DispatchRate
+	var rate utils.DispatchRate
 	err := n.client.get(endpoint, &rate)
 	return rate, err
 }
 
-func (n *namespaces) SetSubscriptionDispatchRate(namespace NameSpaceName, rate DispatchRate) error {
+func (n *namespaces) SetSubscriptionDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscriptionDispatchRate")
 	return n.client.post(endpoint, rate)
 }
 
-func (n *namespaces) GetSubscriptionDispatchRate(namespace NameSpaceName) (DispatchRate, error) {
+func (n *namespaces) GetSubscriptionDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscriptionDispatchRate")
-	var rate DispatchRate
+	var rate utils.DispatchRate
 	err := n.client.get(endpoint, &rate)
 	return rate, err
 }
 
-func (n *namespaces) SetSubscribeRate(namespace NameSpaceName, rate SubscribeRate) error {
+func (n *namespaces) SetSubscribeRate(namespace utils.NameSpaceName, rate utils.SubscribeRate) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscribeRate")
 	return n.client.post(endpoint, rate)
 }
 
-func (n *namespaces) GetSubscribeRate(namespace NameSpaceName) (SubscribeRate, error) {
+func (n *namespaces) GetSubscribeRate(namespace utils.NameSpaceName) (utils.SubscribeRate, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscribeRate")
-	var rate SubscribeRate
+	var rate utils.SubscribeRate
 	err := n.client.get(endpoint, &rate)
 	return rate, err
 }
 
-func (n *namespaces) SetDispatchRate(namespace NameSpaceName, rate DispatchRate) error {
+func (n *namespaces) SetDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "dispatchRate")
 	return n.client.post(endpoint, rate)
 }
 
-func (n *namespaces) GetDispatchRate(namespace NameSpaceName) (DispatchRate, error) {
+func (n *namespaces) GetDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error) {
 	endpoint := n.client.endpoint(n.basePath, namespace.String(), "dispatchRate")
-	var rate DispatchRate
+	var rate utils.DispatchRate
 	err := n.client.get(endpoint, &rate)
 	return rate, err
 }

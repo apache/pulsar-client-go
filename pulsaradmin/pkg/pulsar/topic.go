@@ -20,81 +20,84 @@ package pulsar
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common"
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 )
 
 // Topics is admin interface for topics management
 type Topics interface {
 	// Create a topic
-	Create(TopicName, int) error
+	Create(utils.TopicName, int) error
 
 	// Delete a topic
-	Delete(TopicName, bool, bool) error
+	Delete(utils.TopicName, bool, bool) error
 
 	// Update number of partitions of a non-global partitioned topic
 	// It requires partitioned-topic to be already exist and number of new partitions must be greater than existing
 	// number of partitions. Decrementing number of partitions requires deletion of topic which is not supported.
-	Update(TopicName, int) error
+	Update(utils.TopicName, int) error
 
 	// GetMetadata returns metadata of a partitioned topic
-	GetMetadata(TopicName) (PartitionedTopicMetadata, error)
+	GetMetadata(utils.TopicName) (utils.PartitionedTopicMetadata, error)
 
 	// List returns the list of topics under a namespace
-	List(NameSpaceName) ([]string, []string, error)
+	List(utils.NameSpaceName) ([]string, []string, error)
 
 	// GetInternalInfo returns the internal metadata info for the topic
-	GetInternalInfo(TopicName) (ManagedLedgerInfo, error)
+	GetInternalInfo(utils.TopicName) (utils.ManagedLedgerInfo, error)
 
 	// GetPermissions returns permissions on a topic
 	// Retrieve the effective permissions for a topic. These permissions are defined by the permissions set at the
 	// namespace level combined (union) with any eventual specific permission set on the topic.
-	GetPermissions(TopicName) (map[string][]AuthAction, error)
+	GetPermissions(utils.TopicName) (map[string][]common.AuthAction, error)
 
 	// GrantPermission grants a new permission to a client role on a single topic
-	GrantPermission(TopicName, string, []AuthAction) error
+	GrantPermission(utils.TopicName, string, []common.AuthAction) error
 
 	// RevokePermission revokes permissions to a client role on a single topic. If the permission
 	// was not set at the topic level, but rather at the namespace level, this operation will
 	// return an error (HTTP status code 412).
-	RevokePermission(TopicName, string) error
+	RevokePermission(utils.TopicName, string) error
 
 	// Lookup a topic returns the broker URL that serves the topic
-	Lookup(TopicName) (LookupData, error)
+	Lookup(utils.TopicName) (utils.LookupData, error)
 
 	// GetBundleRange returns a bundle range of a topic
-	GetBundleRange(TopicName) (string, error)
+	GetBundleRange(utils.TopicName) (string, error)
 
 	// GetLastMessageID returns the last commit message Id of a topic
-	GetLastMessageID(TopicName) (MessageID, error)
+	GetLastMessageID(utils.TopicName) (utils.MessageID, error)
 
 	// GetStats returns the stats for the topic
 	// All the rates are computed over a 1 minute window and are relative the last completed 1 minute period
-	GetStats(TopicName) (TopicStats, error)
+	GetStats(utils.TopicName) (utils.TopicStats, error)
 
 	// GetInternalStats returns the internal stats for the topic.
-	GetInternalStats(TopicName) (PersistentTopicInternalStats, error)
+	GetInternalStats(utils.TopicName) (utils.PersistentTopicInternalStats, error)
 
 	// GetPartitionedStats returns the stats for the partitioned topic
 	// All the rates are computed over a 1 minute window and are relative the last completed 1 minute period
-	GetPartitionedStats(TopicName, bool) (PartitionedTopicStats, error)
+	GetPartitionedStats(utils.TopicName, bool) (utils.PartitionedTopicStats, error)
 
 	// Terminate the topic and prevent any more messages being published on it
-	Terminate(TopicName) (MessageID, error)
+	Terminate(utils.TopicName) (utils.MessageID, error)
 
 	// Offload triggers offloading messages in topic to longterm storage
-	Offload(TopicName, MessageID) error
+	Offload(utils.TopicName, utils.MessageID) error
 
 	// OffloadStatus checks the status of an ongoing offloading operation for a topic
-	OffloadStatus(TopicName) (OffloadProcessStatus, error)
+	OffloadStatus(utils.TopicName) (utils.OffloadProcessStatus, error)
 
 	// Unload a topic
-	Unload(TopicName) error
+	Unload(utils.TopicName) error
 
 	// Compact triggers compaction to run for a topic. A single topic can only have one instance of compaction
 	// running at any time. Any attempt to trigger another will be met with a ConflictException.
-	Compact(TopicName) error
+	Compact(utils.TopicName) error
 
 	// CompactStatus checks the status of an ongoing compaction for a topic
-	CompactStatus(TopicName) (LongRunningProcessStatus, error)
+	CompactStatus(utils.TopicName) (utils.LongRunningProcessStatus, error)
 }
 
 type topics struct {
@@ -116,7 +119,7 @@ func (c *client) Topics() Topics {
 	}
 }
 
-func (t *topics) Create(topic TopicName, partitions int) error {
+func (t *topics) Create(topic utils.TopicName, partitions int) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "partitions")
 	if partitions == 0 {
 		endpoint = t.client.endpoint(t.basePath, topic.GetRestPath())
@@ -124,7 +127,7 @@ func (t *topics) Create(topic TopicName, partitions int) error {
 	return t.client.put(endpoint, partitions)
 }
 
-func (t *topics) Delete(topic TopicName, force bool, nonPartitioned bool) error {
+func (t *topics) Delete(topic utils.TopicName, force bool, nonPartitioned bool) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "partitions")
 	if nonPartitioned {
 		endpoint = t.client.endpoint(t.basePath, topic.GetRestPath())
@@ -135,19 +138,19 @@ func (t *topics) Delete(topic TopicName, force bool, nonPartitioned bool) error 
 	return t.client.deleteWithQueryParams(endpoint, nil, params)
 }
 
-func (t *topics) Update(topic TopicName, partitions int) error {
+func (t *topics) Update(topic utils.TopicName, partitions int) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "partitions")
 	return t.client.post(endpoint, partitions)
 }
 
-func (t *topics) GetMetadata(topic TopicName) (PartitionedTopicMetadata, error) {
+func (t *topics) GetMetadata(topic utils.TopicName) (utils.PartitionedTopicMetadata, error) {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "partitions")
-	var partitionedMeta PartitionedTopicMetadata
+	var partitionedMeta utils.PartitionedTopicMetadata
 	err := t.client.get(endpoint, &partitionedMeta)
 	return partitionedMeta, err
 }
 
-func (t *topics) List(namespace NameSpaceName) ([]string, []string, error) {
+func (t *topics) List(namespace utils.NameSpaceName) ([]string, []string, error) {
 	var partitionedTopics, nonPartitionedTopics []string
 	partitionedTopicsChan := make(chan []string)
 	nonPartitionedTopicsChan := make(chan []string)
@@ -191,21 +194,21 @@ func (t *topics) getTopics(endpoint string, out chan<- []string, err chan<- erro
 	out <- topics
 }
 
-func (t *topics) GetInternalInfo(topic TopicName) (ManagedLedgerInfo, error) {
+func (t *topics) GetInternalInfo(topic utils.TopicName) (utils.ManagedLedgerInfo, error) {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "internal-info")
-	var info ManagedLedgerInfo
+	var info utils.ManagedLedgerInfo
 	err := t.client.get(endpoint, &info)
 	return info, err
 }
 
-func (t *topics) GetPermissions(topic TopicName) (map[string][]AuthAction, error) {
-	var permissions map[string][]AuthAction
+func (t *topics) GetPermissions(topic utils.TopicName) (map[string][]common.AuthAction, error) {
+	var permissions map[string][]common.AuthAction
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "permissions")
 	err := t.client.get(endpoint, &permissions)
 	return permissions, err
 }
 
-func (t *topics) GrantPermission(topic TopicName, role string, action []AuthAction) error {
+func (t *topics) GrantPermission(topic utils.TopicName, role string, action []common.AuthAction) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
 	s := []string{}
 	for _, v := range action {
@@ -214,47 +217,47 @@ func (t *topics) GrantPermission(topic TopicName, role string, action []AuthActi
 	return t.client.post(endpoint, s)
 }
 
-func (t *topics) RevokePermission(topic TopicName, role string) error {
+func (t *topics) RevokePermission(topic utils.TopicName, role string) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
 	return t.client.delete(endpoint)
 }
 
-func (t *topics) Lookup(topic TopicName) (LookupData, error) {
-	var lookup LookupData
+func (t *topics) Lookup(topic utils.TopicName) (utils.LookupData, error) {
+	var lookup utils.LookupData
 	endpoint := fmt.Sprintf("%s/%s", t.lookupPath, topic.GetRestPath())
 	err := t.client.get(endpoint, &lookup)
 	return lookup, err
 }
 
-func (t *topics) GetBundleRange(topic TopicName) (string, error) {
+func (t *topics) GetBundleRange(topic utils.TopicName) (string, error) {
 	endpoint := fmt.Sprintf("%s/%s/%s", t.lookupPath, topic.GetRestPath(), "bundle")
 	data, err := t.client.getWithQueryParams(endpoint, nil, nil, false)
 	return string(data), err
 }
 
-func (t *topics) GetLastMessageID(topic TopicName) (MessageID, error) {
-	var messageID MessageID
+func (t *topics) GetLastMessageID(topic utils.TopicName) (utils.MessageID, error) {
+	var messageID utils.MessageID
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "lastMessageId")
 	err := t.client.get(endpoint, &messageID)
 	return messageID, err
 }
 
-func (t *topics) GetStats(topic TopicName) (TopicStats, error) {
-	var stats TopicStats
+func (t *topics) GetStats(topic utils.TopicName) (utils.TopicStats, error) {
+	var stats utils.TopicStats
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "stats")
 	err := t.client.get(endpoint, &stats)
 	return stats, err
 }
 
-func (t *topics) GetInternalStats(topic TopicName) (PersistentTopicInternalStats, error) {
-	var stats PersistentTopicInternalStats
+func (t *topics) GetInternalStats(topic utils.TopicName) (utils.PersistentTopicInternalStats, error) {
+	var stats utils.PersistentTopicInternalStats
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "internalStats")
 	err := t.client.get(endpoint, &stats)
 	return stats, err
 }
 
-func (t *topics) GetPartitionedStats(topic TopicName, perPartition bool) (PartitionedTopicStats, error) {
-	var stats PartitionedTopicStats
+func (t *topics) GetPartitionedStats(topic utils.TopicName, perPartition bool) (utils.PartitionedTopicStats, error) {
+	var stats utils.PartitionedTopicStats
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "partitioned-stats")
 	params := map[string]string{
 		"perPartition": strconv.FormatBool(perPartition),
@@ -263,38 +266,38 @@ func (t *topics) GetPartitionedStats(topic TopicName, perPartition bool) (Partit
 	return stats, err
 }
 
-func (t *topics) Terminate(topic TopicName) (MessageID, error) {
+func (t *topics) Terminate(topic utils.TopicName) (utils.MessageID, error) {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "terminate")
-	var messageID MessageID
+	var messageID utils.MessageID
 	err := t.client.postWithObj(endpoint, "", &messageID)
 	return messageID, err
 }
 
-func (t *topics) Offload(topic TopicName, messageID MessageID) error {
+func (t *topics) Offload(topic utils.TopicName, messageID utils.MessageID) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "offload")
 	return t.client.put(endpoint, messageID)
 }
 
-func (t *topics) OffloadStatus(topic TopicName) (OffloadProcessStatus, error) {
+func (t *topics) OffloadStatus(topic utils.TopicName) (utils.OffloadProcessStatus, error) {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "offload")
-	var status OffloadProcessStatus
+	var status utils.OffloadProcessStatus
 	err := t.client.get(endpoint, &status)
 	return status, err
 }
 
-func (t *topics) Unload(topic TopicName) error {
+func (t *topics) Unload(topic utils.TopicName) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "unload")
 	return t.client.put(endpoint, "")
 }
 
-func (t *topics) Compact(topic TopicName) error {
+func (t *topics) Compact(topic utils.TopicName) error {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "compaction")
 	return t.client.put(endpoint, "")
 }
 
-func (t *topics) CompactStatus(topic TopicName) (LongRunningProcessStatus, error) {
+func (t *topics) CompactStatus(topic utils.TopicName) (utils.LongRunningProcessStatus, error) {
 	endpoint := t.client.endpoint(t.basePath, topic.GetRestPath(), "compaction")
-	var status LongRunningProcessStatus
+	var status utils.LongRunningProcessStatus
 	err := t.client.get(endpoint, &status)
 	return status, err
 }
