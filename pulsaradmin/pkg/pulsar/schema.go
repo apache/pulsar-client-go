@@ -20,24 +20,26 @@ package pulsar
 import (
 	"fmt"
 	"strconv"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 )
 
 // Schema is admin interface for schema management
 type Schema interface {
 	// GetSchemaInfo retrieves the latest schema of a topic
-	GetSchemaInfo(topic string) (*SchemaInfo, error)
+	GetSchemaInfo(topic string) (*utils.SchemaInfo, error)
 
 	// GetSchemaInfoWithVersion retrieves the latest schema with version of a topic
-	GetSchemaInfoWithVersion(topic string) (*SchemaInfoWithVersion, error)
+	GetSchemaInfoWithVersion(topic string) (*utils.SchemaInfoWithVersion, error)
 
 	// GetSchemaInfoByVersion retrieves the schema of a topic at a given <tt>version</tt>
-	GetSchemaInfoByVersion(topic string, version int64) (*SchemaInfo, error)
+	GetSchemaInfoByVersion(topic string, version int64) (*utils.SchemaInfo, error)
 
 	// DeleteSchema deletes the schema associated with a given <tt>topic</tt>
 	DeleteSchema(topic string) error
 
 	// CreateSchemaByPayload creates a schema for a given <tt>topic</tt>
-	CreateSchemaByPayload(topic string, schemaPayload PostSchemaPayload) error
+	CreateSchemaByPayload(topic string, schemaPayload utils.PostSchemaPayload) error
 }
 
 type schemas struct {
@@ -53,30 +55,31 @@ func (c *client) Schemas() Schema {
 	}
 }
 
-func (s *schemas) GetSchemaInfo(topic string) (*SchemaInfo, error) {
-	topicName, err := GetTopicName(topic)
+func (s *schemas) GetSchemaInfo(topic string) (*utils.SchemaInfo, error) {
+	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return nil, err
 	}
-	var response GetSchemaResponse
-	endpoint := s.client.endpoint(s.basePath, topicName.tenant, topicName.namespace, topicName.GetEncodedTopic(), "schema")
+	var response utils.GetSchemaResponse
+	endpoint := s.client.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
+		topicName.GetEncodedTopic(), "schema")
 
 	err = s.client.get(endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
 
-	info := convertGetSchemaResponseToSchemaInfo(topicName, response)
+	info := utils.ConvertGetSchemaResponseToSchemaInfo(topicName, response)
 	return info, nil
 }
 
-func (s *schemas) GetSchemaInfoWithVersion(topic string) (*SchemaInfoWithVersion, error) {
-	topicName, err := GetTopicName(topic)
+func (s *schemas) GetSchemaInfoWithVersion(topic string) (*utils.SchemaInfoWithVersion, error) {
+	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return nil, err
 	}
-	var response GetSchemaResponse
-	endpoint := s.client.endpoint(s.basePath, topicName.tenant, topicName.namespace,
+	var response utils.GetSchemaResponse
+	endpoint := s.client.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetEncodedTopic(), "schema")
 
 	err = s.client.get(endpoint, &response)
@@ -85,18 +88,18 @@ func (s *schemas) GetSchemaInfoWithVersion(topic string) (*SchemaInfoWithVersion
 		return nil, err
 	}
 
-	info := convertGetSchemaResponseToSchemaInfoWithVersion(topicName, response)
+	info := utils.ConvertGetSchemaResponseToSchemaInfoWithVersion(topicName, response)
 	return info, nil
 }
 
-func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*SchemaInfo, error) {
-	topicName, err := GetTopicName(topic)
+func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*utils.SchemaInfo, error) {
+	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return nil, err
 	}
 
-	var response GetSchemaResponse
-	endpoint := s.client.endpoint(s.basePath, topicName.tenant, topicName.namespace, topicName.GetEncodedTopic(),
+	var response utils.GetSchemaResponse
+	endpoint := s.client.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(), topicName.GetEncodedTopic(),
 		"schema", strconv.FormatInt(version, 10))
 
 	err = s.client.get(endpoint, &response)
@@ -104,17 +107,17 @@ func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*SchemaIn
 		return nil, err
 	}
 
-	info := convertGetSchemaResponseToSchemaInfo(topicName, response)
+	info := utils.ConvertGetSchemaResponseToSchemaInfo(topicName, response)
 	return info, nil
 }
 
 func (s *schemas) DeleteSchema(topic string) error {
-	topicName, err := GetTopicName(topic)
+	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return err
 	}
 
-	endpoint := s.client.endpoint(s.basePath, topicName.tenant, topicName.namespace,
+	endpoint := s.client.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetEncodedTopic(), "schema")
 
 	fmt.Println(endpoint)
@@ -122,13 +125,13 @@ func (s *schemas) DeleteSchema(topic string) error {
 	return s.client.delete(endpoint)
 }
 
-func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload PostSchemaPayload) error {
-	topicName, err := GetTopicName(topic)
+func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload utils.PostSchemaPayload) error {
+	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return err
 	}
 
-	endpoint := s.client.endpoint(s.basePath, topicName.tenant, topicName.namespace,
+	endpoint := s.client.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetEncodedTopic(), "schema")
 
 	return s.client.post(endpoint, &schemaPayload)

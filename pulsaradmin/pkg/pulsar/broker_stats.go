@@ -17,22 +17,26 @@
 
 package pulsar
 
+import (
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
+)
+
 // BrokerStats is admin interface for broker stats management
 type BrokerStats interface {
 	// GetMetrics returns Monitoring metrics
-	GetMetrics() ([]Metrics, error)
+	GetMetrics() ([]utils.Metrics, error)
 
 	// GetMBeans requests JSON string server mbean dump
-	GetMBeans() ([]Metrics, error)
+	GetMBeans() ([]utils.Metrics, error)
 
 	// GetTopics returns JSON string topics stats
 	GetTopics() (string, error)
 
 	// GetLoadReport returns load report of broker
-	GetLoadReport() (*LocalBrokerData, error)
+	GetLoadReport() (*utils.LocalBrokerData, error)
 
 	// GetAllocatorStats returns stats from broker
-	GetAllocatorStats(allocatorName string) (*AllocatorStats, error)
+	GetAllocatorStats(allocatorName string) (*utils.AllocatorStats, error)
 }
 
 type brokerStats struct {
@@ -48,9 +52,9 @@ func (c *client) BrokerStats() BrokerStats {
 	}
 }
 
-func (bs *brokerStats) GetMetrics() ([]Metrics, error) {
+func (bs *brokerStats) GetMetrics() ([]utils.Metrics, error) {
 	endpoint := bs.client.endpoint(bs.basePath, "/metrics")
-	var response []Metrics
+	var response []utils.Metrics
 	err := bs.client.get(endpoint, &response)
 	if err != nil {
 		return nil, err
@@ -59,9 +63,9 @@ func (bs *brokerStats) GetMetrics() ([]Metrics, error) {
 	return response, nil
 }
 
-func (bs *brokerStats) GetMBeans() ([]Metrics, error) {
+func (bs *brokerStats) GetMBeans() ([]utils.Metrics, error) {
 	endpoint := bs.client.endpoint(bs.basePath, "/mbeans")
-	var response []Metrics
+	var response []utils.Metrics
 	err := bs.client.get(endpoint, &response)
 	if err != nil {
 		return nil, err
@@ -80,9 +84,9 @@ func (bs *brokerStats) GetTopics() (string, error) {
 	return string(buf), nil
 }
 
-func (bs *brokerStats) GetLoadReport() (*LocalBrokerData, error) {
+func (bs *brokerStats) GetLoadReport() (*utils.LocalBrokerData, error) {
 	endpoint := bs.client.endpoint(bs.basePath, "/load-report")
-	response := NewLocalBrokerData()
+	response := utils.NewLocalBrokerData()
 	err := bs.client.get(endpoint, &response)
 	if err != nil {
 		return nil, nil
@@ -90,9 +94,9 @@ func (bs *brokerStats) GetLoadReport() (*LocalBrokerData, error) {
 	return &response, nil
 }
 
-func (bs *brokerStats) GetAllocatorStats(allocatorName string) (*AllocatorStats, error) {
+func (bs *brokerStats) GetAllocatorStats(allocatorName string) (*utils.AllocatorStats, error) {
 	endpoint := bs.client.endpoint(bs.basePath, "/allocator-stats", allocatorName)
-	var allocatorStats AllocatorStats
+	var allocatorStats utils.AllocatorStats
 	err := bs.client.get(endpoint, &allocatorStats)
 	if err != nil {
 		return nil, err

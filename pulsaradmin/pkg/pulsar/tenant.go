@@ -17,22 +17,26 @@
 
 package pulsar
 
+import (
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
+)
+
 // Tenants is admin interface for tenants management
 type Tenants interface {
 	// Create a new tenant
-	Create(TenantData) error
+	Create(utils.TenantData) error
 
 	// Delete an existing tenant
 	Delete(string) error
 
 	// Update the admins for a tenant
-	Update(TenantData) error
+	Update(utils.TenantData) error
 
 	//List returns the list of tenants
 	List() ([]string, error)
 
 	// Get returns the config of the tenant.
-	Get(string) (TenantData, error)
+	Get(string) (utils.TenantData, error)
 }
 
 type tenants struct {
@@ -48,7 +52,7 @@ func (c *client) Tenants() Tenants {
 	}
 }
 
-func (c *tenants) Create(data TenantData) error {
+func (c *tenants) Create(data utils.TenantData) error {
 	endpoint := c.client.endpoint(c.basePath, data.Name)
 	return c.client.put(endpoint, &data)
 }
@@ -58,7 +62,7 @@ func (c *tenants) Delete(name string) error {
 	return c.client.delete(endpoint)
 }
 
-func (c *tenants) Update(data TenantData) error {
+func (c *tenants) Update(data utils.TenantData) error {
 	endpoint := c.client.endpoint(c.basePath, data.Name)
 	return c.client.post(endpoint, &data)
 }
@@ -70,8 +74,8 @@ func (c *tenants) List() ([]string, error) {
 	return tenantList, err
 }
 
-func (c *tenants) Get(name string) (TenantData, error) {
-	var data TenantData
+func (c *tenants) Get(name string) (utils.TenantData, error) {
+	var data utils.TenantData
 	endpoint := c.client.endpoint(c.basePath, name)
 	err := c.client.get(endpoint, &data)
 	return data, err
