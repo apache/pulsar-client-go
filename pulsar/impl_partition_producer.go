@@ -176,7 +176,7 @@ func (p *partitionProducer) ConnectionClosed() {
 func (p *partitionProducer) reconnectToBroker() {
 	p.log.Info("Reconnecting to broker")
 	backoff := internal.Backoff{}
-	// Delay one secnd to reconnect
+	// Delay one second to reconnect
 	time.Sleep(1 * time.Second)
 	for {
 		if p.state != producerReady {
