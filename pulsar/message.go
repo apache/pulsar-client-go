@@ -17,7 +17,10 @@
 
 package pulsar
 
-import "time"
+import (
+	"math"
+	"time"
+)
 
 // ProducerMessage abstraction used in Pulsar producer
 type ProducerMessage struct {
@@ -79,10 +82,12 @@ func DeserializeMessageID(data []byte) (MessageID, error) {
 	return deserializeMessageID(data)
 }
 
-var (
-	// EarliestMessage messageID that points to the earliest message available in a topic
-	EarliestMessage = earliestMessageID()
+// EarliestMessageID returns a messageID that points to the earliest message available in a topic
+func EarliestMessageID() MessageID {
+	return newMessageID(-1, -1, -1, -1)
+}
 
-	// LatestMessage messageID that points to the latest message
-	LatestMessage = latestMessageID()
-)
+// LatestMessage returns a messageID that points to the latest message
+func LatestMessageID() MessageID {
+	return newMessageID(math.MaxInt64, math.MaxInt64, -1, -1)
+}

@@ -18,30 +18,32 @@
 package pulsar
 
 import (
+	"math/big"
+	"strings"
+	"sync"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/golang/protobuf/proto"
-)
 
-func earliestMessageID() MessageID {
-	return newMessageID(-1, -1, -1, -1)
-}
+	"github.com/apache/pulsar-client-go/pkg/pb"
+)
 
 type messageID struct {
 	ledgerID     int64
 	entryID      int64
 	batchIdx     int
 	partitionIdx int
+
+	tracker *ackTracker
 }
 
-func newMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int) MessageID {
-	return &messageID{
-		ledgerID:     ledgerID,
-		entryID:      entryID,
-		batchIdx:     batchIdx,
-		partitionIdx: partitionIdx,
+func (id *messageID) ack() bool {
+	if id.tracker != nil && id.batchIdx > -1 {
+		id.tracker.ack(id.batchIdx)
+		return id.tracker.cleared()
 	}
+
+	return true
 }
 
 func (id *messageID) Serialize() []byte {
@@ -70,10 +72,24 @@ func deserializeMessageID(data []byte) (MessageID, error) {
 	return id, nil
 }
 
-const maxLong int64 = 0x7fffffffffffffff
+func newMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int) MessageID {
+	return &messageID{
+		ledgerID:     ledgerID,
+		entryID:      entryID,
+		batchIdx:     batchIdx,
+		partitionIdx: partitionIdx,
+	}
+}
 
-func latestMessageID() MessageID {
-	return newMessageID(maxLong, maxLong, -1, -1)
+func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int,
+	tracker *ackTracker) *messageID {
+	return &messageID{
+		ledgerID:     ledgerID,
+		entryID:      entryID,
+		batchIdx:     batchIdx,
+		partitionIdx: partitionIdx,
+		tracker:      tracker,
+	}
 }
 
 func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
@@ -125,4 +141,37 @@ func (msg *message) EventTime() time.Time {
 
 func (msg *message) Key() string {
 	return msg.key
+}
+
+func newAckTracker(size int) *ackTracker {
+	var batchIDs *big.Int
+	if size <= 64 {
+		shift := uint32(64 - size)
+		setBits := ^uint64(0) >> shift
+		batchIDs = new(big.Int).SetUint64(setBits)
+	} else {
+		batchIDs, _ = new(big.Int).SetString(strings.Repeat("1", size), 2)
+	}
+	return &ackTracker{
+		size:     size,
+		batchIDs: batchIDs,
+	}
+}
+
+type ackTracker struct {
+	sync.Mutex
+	size     int
+	batchIDs *big.Int
+}
+
+func (t *ackTracker) ack(batchID int) {
+	t.Lock()
+	defer t.Unlock()
+	t.batchIDs = t.batchIDs.SetBit(t.batchIDs, batchID, 0)
+}
+
+func (t *ackTracker) cleared() bool {
+	t.Lock()
+	defer t.Unlock()
+	return len(t.batchIDs.Bits()) == 0
 }
