@@ -693,24 +693,22 @@ func (pc *partitionConsumer) ConnectionClosed() {
 }
 
 func (pc *partitionConsumer) reconnectToBroker() {
-	pc.log.Info("Reconnecting to broker")
-	backoff := new(internal.Backoff)
+	backoff := internal.Backoff{}
 	for {
 		if pc.state != consumerReady {
 			// Consumer is already closing
 			return
 		}
 
+		d := backoff.Next()
+		pc.log.Info("Reconnecting to broker in ", d)
+		time.Sleep(d)
+
 		err := pc.grabCnx()
 		if err == nil {
 			// Successfully reconnected
-			pc.log.Info("Successfully reconnected")
+			pc.log.Info("Reconnected consumer to broker")
 			return
 		}
-
-		d := backoff.Next()
-		pc.log.Info("Retrying reconnection after ", d)
-
-		time.Sleep(d)
 	}
 }

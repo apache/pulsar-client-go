@@ -84,14 +84,17 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 		Cnx: cnx,
 	}
 
+	var rpcErr error = nil
+
 	// TODO: Handle errors with disconnections
-	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
+	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
 		rpcResult.Response = response
+		rpcErr = err
 		wg.Done()
 	})
 
 	wg.Wait()
-	return rpcResult, nil
+	return rpcResult, rpcErr
 }
 
 func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
@@ -103,13 +106,15 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 		Cnx: cnx,
 	}
 
-	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
+	var rpcErr error = nil
+	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
 		rpcResult.Response = response
+		rpcErr = err
 		wg.Done()
 	})
 
 	wg.Wait()
-	return rpcResult, nil
+	return rpcResult, rpcErr
 }
 
 func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
@@ -118,7 +123,7 @@ func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, requestID uint64, cmdType
 		Cnx: cnx,
 	}
 
-	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand) {
+	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
 		rpcResult.Response = response
 	})
 
