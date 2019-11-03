@@ -39,8 +39,7 @@ type messageID struct {
 
 func (id *messageID) ack() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
-		id.tracker.ack(id.batchIdx)
-		return id.tracker.cleared()
+		return id.tracker.ack(id.batchIdx)
 	}
 
 	return true
@@ -164,13 +163,14 @@ type ackTracker struct {
 	batchIDs *big.Int
 }
 
-func (t *ackTracker) ack(batchID int) {
+func (t *ackTracker) ack(batchID int) bool {
 	t.Lock()
 	defer t.Unlock()
 	t.batchIDs = t.batchIDs.SetBit(t.batchIDs, batchID, 0)
+	return len(t.batchIDs.Bits()) == 0
 }
 
-func (t *ackTracker) cleared() bool {
+func (t *ackTracker) completed() bool {
 	t.Lock()
 	defer t.Unlock()
 	return len(t.batchIDs.Bits()) == 0
