@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"net"
 	"net/url"
@@ -55,7 +56,7 @@ type ConnectionListener interface {
 
 // Connection is a interface of client cnx.
 type Connection interface {
-	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand))
+	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	WriteData(data []byte)
 	RegisterListener(id uint64, listener ConnectionListener)
 	UnregisterListener(id uint64)
@@ -103,7 +104,7 @@ const keepAliveInterval = 30 * time.Second
 type request struct {
 	id       uint64
 	cmd      *pb.BaseCommand
-	callback func(command *pb.BaseCommand)
+	callback func(command *pb.BaseCommand, err error)
 }
 
 type connection struct {
@@ -116,8 +117,8 @@ type connection struct {
 	cnx          net.Conn
 
 	writeBufferLock sync.Mutex
-	writeBuffer          Buffer
-	reader               *connectionReader
+	writeBuffer     Buffer
+	reader          *connectionReader
 
 	lastDataReceivedLock sync.Mutex
 	lastDataReceivedTime time.Time
@@ -135,7 +136,7 @@ type connection struct {
 	listeners   map[uint64]ConnectionListener
 
 	consumerHandlersLock sync.RWMutex
-	consumerHandlers map[uint64]ConsumerHandler
+	consumerHandlers     map[uint64]ConsumerHandler
 
 	tlsOptions *TLSOptions
 	auth       auth.Provider
@@ -362,11 +363,8 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []by
 		c.handleResponse(cmd.GetSchemaResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_ERROR:
-		if cmd.Error != nil {
-			c.log.Errorf("Error: %s, Error Message: %s", cmd.Error.GetError(), cmd.Error.GetMessage())
-			c.Close()
-			return
-		}
+		c.handleResponseError(cmd.GetError())
+
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
 	case pb.BaseCommand_CLOSE_CONSUMER:
@@ -399,7 +397,7 @@ func (c *connection) Write(data []byte) {
 	c.writeRequestsCh <- data
 }
 
-func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand)) {
+func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand, err error)) {
 	c.incomingRequestsCh <- &request{
 		id:       requestID,
 		cmd:      req,
@@ -424,7 +422,24 @@ func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) 
 
 	delete(c.pendingReqs, requestID)
 	c.mapMutex.RUnlock()
-	request.callback(response)
+	request.callback(response, nil)
+}
+
+func (c *connection) handleResponseError(serverError *pb.CommandError) {
+	requestID := serverError.GetRequestId()
+	c.mapMutex.RLock()
+	request, ok := c.pendingReqs[requestID]
+	if !ok {
+		c.log.Warnf("Received unexpected error response for request %d of type %s",
+			requestID, serverError.GetError())
+		return
+	}
+
+	delete(c.pendingReqs, requestID)
+	c.mapMutex.RUnlock()
+
+	request.callback(nil,
+		errors.New(fmt.Sprintf("server error: %s: %s", serverError.GetError(), serverError.GetMessage())))
 }
 
 func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
