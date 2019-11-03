@@ -24,12 +24,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pkg/pb"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/util"
 	"github.com/golang/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/util"
 )
 
 const maxRedeliverUnacknowledged = 1000
@@ -600,56 +601,82 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload []byte) error {
-	msgID := response.GetMessageId()
+	pbMsgID := response.GetMessageId()
 
-	id := newMessageID(int64(msgID.GetLedgerId()), int64(msgID.GetEntryId()),
-		int(msgID.GetBatchIndex()), pc.partitionIdx)
+	reader := internal.NewMessageReader(headersAndPayload)
 
-	msgMeta, payloadList, err := internal.ParseMessage(headersAndPayload)
+	msgMeta, err := reader.ReadMessageMetadata()
 	if err != nil {
-		return fmt.Errorf("parse message error:%s", err)
+		// TODO send discardCorruptedMessage
+		return err
 	}
 
-	for _, payload := range payloadList {
-		msg := &message{
-			publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-			eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-			key:         msgMeta.GetPartitionKey(),
-			properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
-			topic:       pc.topic,
-			msgID:       id,
-			payLoad:     payload,
+	numMsgs := 1
+	if msgMeta.NumMessagesInBatch != nil {
+		numMsgs = int(msgMeta.GetNumMessagesInBatch())
+	}
+	for i := 0; i < numMsgs; i++ {
+		ssm, payload, err := reader.ReadMessage()
+		if err != nil {
+			// TODO send
+			return err
 		}
 
-		consumerMsg := ConsumerMessage{
-			Message:  msg,
-			Consumer: pc,
+		msgID := newMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), i, pc.partitionIdx)
+		var msg Message
+		if ssm == nil {
+			msg = &message{
+				publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+				key:         msgMeta.GetPartitionKey(),
+				properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
+				topic:       pc.topic,
+				msgID:       msgID,
+				payLoad:     payload,
+			}
+		} else {
+			msg = &message{
+				publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:   timeFromUnixTimestampMillis(ssm.GetEventTime()),
+				key:         ssm.GetPartitionKey(),
+				properties:  internal.ConvertToStringMap(ssm.GetProperties()),
+				topic:       pc.topic,
+				msgID:       msgID,
+				payLoad:     payload,
+			}
 		}
 
-		select {
-		case pc.subQueue <- consumerMsg:
-			//Add messageId to redeliverMessages buffer, avoiding duplicates.
-			newMid := response.GetMessageId()
-			var dup bool
-
-			pc.omu.Lock()
-			for _, mid := range pc.redeliverMessages {
-				if proto.Equal(mid, newMid) {
-					dup = true
-					break
-				}
-			}
-
-			if !dup {
-				pc.redeliverMessages = append(pc.redeliverMessages, newMid)
-			}
-			pc.omu.Unlock()
-			continue
-		default:
-			return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
+		if err := pc.dispatchMessage(msg, pbMsgID); err != nil {
+			// TODO handle error
+			return err
 		}
 	}
 
+	return nil
+}
+
+
+func (pc *partitionConsumer) dispatchMessage(msg Message, msgID *pb.MessageIdData) error {
+	select {
+	case pc.subQueue <- ConsumerMessage{Consumer:pc, Message:msg}:
+		//Add messageId to redeliverMessages buffer, avoiding duplicates.
+		var dup bool
+
+		pc.omu.Lock()
+		for _, mid := range pc.redeliverMessages {
+			if proto.Equal(mid, msgID) {
+				dup = true
+				break
+			}
+		}
+
+		if !dup {
+			pc.redeliverMessages = append(pc.redeliverMessages, msgID)
+		}
+		pc.omu.Unlock()
+	default:
+		return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
+	}
 	return nil
 }
 
