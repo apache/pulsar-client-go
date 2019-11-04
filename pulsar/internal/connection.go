@@ -66,7 +66,7 @@ type Connection interface {
 }
 
 type ConsumerHandler interface {
-	MessageReceived(response *pb.CommandMessage, headersAndPayload []byte) error
+	MessageReceived(response *pb.CommandMessage, headersAndPayload Buffer) error
 
 	// ConnectionClosed close the TCP connection.
 	ConnectionClosed()
@@ -107,6 +107,11 @@ type request struct {
 	callback func(command *pb.BaseCommand, err error)
 }
 
+type incomingCmd struct {
+	cmd               *pb.BaseCommand
+	headersAndPayload Buffer
+}
+
 type connection struct {
 	sync.Mutex
 	cond  *sync.Cond
@@ -129,9 +134,9 @@ type connection struct {
 	requestIDGenerator uint64
 
 	incomingRequestsCh chan *request
+	incomingCmdCh     chan *incomingCmd
 	writeRequestsCh    chan []byte
 
-	mapMutex    sync.RWMutex
 	pendingReqs map[uint64]*request
 	listeners   map[uint64]ConnectionListener
 
@@ -156,6 +161,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		auth:                 auth,
 
 		incomingRequestsCh: make(chan *request),
+		incomingCmdCh:      make(chan *incomingCmd),
 		writeRequestsCh:    make(chan []byte),
 		listeners:          make(map[uint64]ConnectionListener),
 		consumerHandlers:   make(map[uint64]ConsumerHandler),
@@ -280,10 +286,11 @@ func (c *connection) run() {
 			if req == nil {
 				return
 			}
-			c.mapMutex.Lock()
 			c.pendingReqs[req.id] = req
-			c.mapMutex.Unlock()
 			c.writeCommand(req.cmd)
+
+		case cmd := <- c.incomingCmdCh:
+			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
 
 		case data := <-c.writeRequestsCh:
 			if data == nil {
@@ -331,7 +338,11 @@ func (c *connection) writeCommand(cmd proto.Message) {
 	c.internalWriteData(data)
 }
 
-func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload []byte) {
+func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
+	c.incomingCmdCh <- &incomingCmd{cmd, headersAndPayload}
+}
+
+func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
 	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.setLastDataReceived(time.Now())
 	var err error
@@ -406,14 +417,11 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand, callback
 }
 
 func (c *connection) internalSendRequest(req *request) {
-	c.mapMutex.Lock()
 	c.pendingReqs[req.id] = req
-	c.mapMutex.Unlock()
 	c.writeCommand(req.cmd)
 }
 
 func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
-	c.mapMutex.RLock()
 	request, ok := c.pendingReqs[requestID]
 	if !ok {
 		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
@@ -421,13 +429,11 @@ func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) 
 	}
 
 	delete(c.pendingReqs, requestID)
-	c.mapMutex.RUnlock()
 	request.callback(response, nil)
 }
 
 func (c *connection) handleResponseError(serverError *pb.CommandError) {
 	requestID := serverError.GetRequestId()
-	c.mapMutex.RLock()
 	request, ok := c.pendingReqs[requestID]
 	if !ok {
 		c.log.Warnf("Received unexpected error response for request %d of type %s",
@@ -436,7 +442,6 @@ func (c *connection) handleResponseError(serverError *pb.CommandError) {
 	}
 
 	delete(c.pendingReqs, requestID)
-	c.mapMutex.RUnlock()
 
 	request.callback(nil,
 		errors.New(fmt.Sprintf("server error: %s: %s", serverError.GetError(), serverError.GetMessage())))
@@ -451,7 +456,7 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	}
 }
 
-func (c *connection) handleMessage(response *pb.CommandMessage, payload []byte) error {
+func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) error {
 	c.log.Debug("Got Message: ", response)
 	consumerID := response.GetConsumerId()
 	if consumer, ok := c.consumerHandler(consumerID); ok {
