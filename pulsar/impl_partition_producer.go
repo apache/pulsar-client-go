@@ -165,7 +165,6 @@ func (p *partitionProducer) ConnectionClosed() {
 }
 
 func (p *partitionProducer) reconnectToBroker() {
-	p.log.Info("Reconnecting to broker")
 	backoff := internal.Backoff{}
 	for {
 		if p.state != producerReady {
@@ -173,16 +172,16 @@ func (p *partitionProducer) reconnectToBroker() {
 			return
 		}
 
+		d := backoff.Next()
+		p.log.Info("Reconnecting to broker in ", d)
+		time.Sleep(d)
+
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
+			p.log.Info("Reconnected producer to broker")
 			return
 		}
-
-		d := backoff.Next()
-		p.log.Info("Retrying reconnection after ", d)
-
-		time.Sleep(d)
 	}
 }
 

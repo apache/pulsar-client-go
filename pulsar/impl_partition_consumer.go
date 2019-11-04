@@ -25,12 +25,13 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pkg/pb"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/util"
 	"github.com/golang/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/util"
 )
 
 const maxRedeliverUnacknowledged = 1000
@@ -42,11 +43,6 @@ const (
 	consumerReady
 	consumerClosing
 	consumerClosed
-)
-
-var (
-	subType  pb.CommandSubscribe_SubType
-	position pb.CommandSubscribe_InitialPosition
 )
 
 type partitionConsumer struct {
@@ -100,30 +96,12 @@ func newPartitionConsumer(client *client, topic string, options *ConsumerOptions
 		c.consumerName = &options.Name
 	}
 
-	switch options.Type {
-	case Exclusive:
-		subType = pb.CommandSubscribe_Exclusive
-	case Failover:
-		subType = pb.CommandSubscribe_Failover
-	case Shared:
-		subType = pb.CommandSubscribe_Shared
-	case KeyShared:
-		subType = pb.CommandSubscribe_Key_Shared
-	}
-
 	if options.Type == Shared || options.Type == KeyShared {
 		if options.AckTimeout != 0 {
 			c.unAckTracker = NewUnackedMessageTracker()
 			c.unAckTracker.pcs = append(c.unAckTracker.pcs, c)
 			c.unAckTracker.Start(int64(options.AckTimeout))
 		}
-	}
-
-	switch options.SubscriptionInitPos {
-	case Latest:
-		position = pb.CommandSubscribe_Latest
-	case Earliest:
-		position = pb.CommandSubscribe_Earliest
 	}
 
 	err := c.grabCnx()
@@ -159,9 +137,6 @@ func (pc *partitionConsumer) setDefault(options *ConsumerOptions) {
 	if options.AckTimeout == 0 {
 		options.AckTimeout = time.Second * 30
 	}
-
-	position = pb.CommandSubscribe_Latest
-	subType = pb.CommandSubscribe_Exclusive
 }
 
 func (pc *partitionConsumer) getMessageFromSubConsumer(ctx context.Context, ch chan<- ConsumerMessage) {
@@ -178,8 +153,10 @@ func (pc *partitionConsumer) grabCnx() error {
 		pc.log.WithError(err).Warn("Failed to lookup topic")
 		return err
 	}
-
 	pc.log.Debugf("Lookup result: %v, consumerID: %d", lr.LogicalAddr, pc.consumerID)
+
+	subType := toProtoSubType(pc.options.Type)
+	initialPosition := toProtoInitialPosition(pc.options.SubscriptionInitPos)
 	requestID := pc.client.rpcClient.NewRequestID()
 	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
 		pb.BaseCommand_SUBSCRIBE, &pb.CommandSubscribe{
@@ -189,7 +166,7 @@ func (pc *partitionConsumer) grabCnx() error {
 			Subscription:    proto.String(pc.options.SubscriptionName),
 			ConsumerId:      proto.Uint64(pc.consumerID),
 			ConsumerName:    proto.String(pc.options.Name),
-			InitialPosition: position.Enum(),
+			InitialPosition: initialPosition.Enum(),
 			Schema:          nil,
 		})
 
@@ -320,50 +297,24 @@ func (pc *partitionConsumer) Receive(ctx context.Context) (message Message, err 
 }
 
 func (pc *partitionConsumer) ReceiveAsync(ctx context.Context, msgs chan<- ConsumerMessage) error {
-	// Send flow request after 1/2 of the queue
-	// has been consumed
-	highWater := uint32(cap(pc.subQueue)) / 2
-
-	drain := func() {
-		for {
-			select {
-			case tmpMsg := <-pc.subQueue:
-				msgs <- tmpMsg
-			default:
-				return
-			}
-		}
-	}
-
-CONSUMER:
 	for {
-		// ensure that the message queue is empty
-		drain()
+		select {
+		case tmpMsg, ok := <-pc.subQueue:
+			if ok {
+				msgs <- tmpMsg
 
-		// request half the buffer's capacity
-		if err := pc.internalFlow(highWater); err != nil {
-			continue CONSUMER
-		}
-
-		for {
-			select {
-			case tmpMsg, ok := <-pc.subQueue:
-				if ok {
-					msgs <- tmpMsg
-
-					err := pc.messageProcessed(tmpMsg.ID())
-					if err != nil {
-						continue CONSUMER
-					}
-
-					continue
+				err := pc.messageProcessed(tmpMsg.ID())
+				if err != nil {
+					return err
 				}
-			case <-ctx.Done():
-				return ctx.Err()
+
+				continue
 			}
+			break
+		case <-ctx.Done():
+			return ctx.Err()
 		}
 	}
-
 }
 
 func (pc *partitionConsumer) ReceiveAsyncWithCallback(ctx context.Context, callback func(msg Message, err error)) {
@@ -660,40 +611,82 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload []byte) error {
-	msgID := response.GetMessageId()
+	pbMsgID := response.GetMessageId()
 
-	id := newMessageID(int64(msgID.GetLedgerId()), int64(msgID.GetEntryId()),
-		int(msgID.GetBatchIndex()), pc.partitionIdx)
+	reader := internal.NewMessageReader(headersAndPayload)
 
-	msgMeta, payloadList, err := internal.ParseMessage(headersAndPayload)
+	msgMeta, err := reader.ReadMessageMetadata()
 	if err != nil {
-		return fmt.Errorf("parse message error:%s", err)
+		// TODO send discardCorruptedMessage
+		return err
 	}
 
-	for _, payload := range payloadList {
-		msg := &message{
-			publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-			eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-			key:         msgMeta.GetPartitionKey(),
-			properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
-			topic:       pc.topic,
-			msgID:       id,
-			payLoad:     payload,
+	numMsgs := 1
+	if msgMeta.NumMessagesInBatch != nil {
+		numMsgs = int(msgMeta.GetNumMessagesInBatch())
+	}
+	for i := 0; i < numMsgs; i++ {
+		ssm, payload, err := reader.ReadMessage()
+		if err != nil {
+			// TODO send
+			return err
 		}
 
-		consumerMsg := ConsumerMessage{
-			Message:  msg,
-			Consumer: pc,
+		msgID := newMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), i, pc.partitionIdx)
+		var msg Message
+		if ssm == nil {
+			msg = &message{
+				publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+				key:         msgMeta.GetPartitionKey(),
+				properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
+				topic:       pc.topic,
+				msgID:       msgID,
+				payLoad:     payload,
+			}
+		} else {
+			msg = &message{
+				publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:   timeFromUnixTimestampMillis(ssm.GetEventTime()),
+				key:         ssm.GetPartitionKey(),
+				properties:  internal.ConvertToStringMap(ssm.GetProperties()),
+				topic:       pc.topic,
+				msgID:       msgID,
+				payLoad:     payload,
+			}
 		}
 
-		pc.log.Debugf("receive message form broker, payload is:%s", string(payload))
-		select {
-		case pc.subQueue <- consumerMsg:
-			pc.log.Infof("sub queue size is: %d, consumerID: {%d}\n", len(pc.subQueue), pc.consumerID)
-			return nil
+		if err := pc.dispatchMessage(msg, pbMsgID); err != nil {
+			// TODO handle error
+			return err
 		}
 	}
 
+	return nil
+}
+
+
+func (pc *partitionConsumer) dispatchMessage(msg Message, msgID *pb.MessageIdData) error {
+	select {
+	case pc.subQueue <- ConsumerMessage{Consumer:pc, Message:msg}:
+		//Add messageId to redeliverMessages buffer, avoiding duplicates.
+		var dup bool
+
+		pc.omu.Lock()
+		for _, mid := range pc.redeliverMessages {
+			if proto.Equal(mid, msgID) {
+				dup = true
+				break
+			}
+		}
+
+		if !dup {
+			pc.redeliverMessages = append(pc.redeliverMessages, msgID)
+		}
+		pc.omu.Unlock()
+	default:
+		return fmt.Errorf("consumer message channel on topic %s is full (capacity = %d)", pc.Topic(), cap(pc.options.MessageChannel))
+	}
 	return nil
 }
 
@@ -737,24 +730,22 @@ func (pc *partitionConsumer) ConnectionClosed() {
 }
 
 func (pc *partitionConsumer) reconnectToBroker() {
-	pc.log.Info("Reconnecting to broker")
-	backoff := new(internal.Backoff)
+	backoff := internal.Backoff{}
 	for {
 		if pc.state != consumerReady {
 			// Consumer is already closing
 			return
 		}
 
+		d := backoff.Next()
+		pc.log.Info("Reconnecting to broker in ", d)
+		time.Sleep(d)
+
 		err := pc.grabCnx()
 		if err == nil {
 			// Successfully reconnected
-			pc.log.Info("Successfully reconnected")
+			pc.log.Info("Reconnected consumer to broker")
 			return
 		}
-
-		d := backoff.Next()
-		pc.log.Info("Retrying reconnection after ", d)
-
-		time.Sleep(d)
 	}
 }

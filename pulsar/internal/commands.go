@@ -20,12 +20,14 @@ package internal
 import (
 	"bytes"
 	"encoding/binary"
+	"errors"
 	"fmt"
-	"io"
+
+	"github.com/golang/protobuf/proto"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
-	"github.com/golang/protobuf/proto"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -33,6 +35,114 @@ const (
 	MaxFrameSize        = 5 * 1024 * 1024
 	magicCrc32c  uint16 = 0x0e01
 )
+
+// ErrCorruptedMessage is the error returned by ReadMessageData when it has detected corrupted data.
+// The data is considered corrupted if it's missing a header, a checksum mismatch or there
+// was an error when unmarshalling the message metadata.
+var ErrCorruptedMessage = errors.New("corrupted message")
+
+// ErrEOM is the error returned by ReadMessage when no more input is available.
+var ErrEOM = errors.New("EOF")
+
+func NewMessageReader(headersAndPayload []byte) *MessageReader {
+	return &MessageReader{
+		buffer: bytes.NewBuffer(headersAndPayload),
+	}
+}
+
+// MessageReader provides helper methods to parse
+// the metadata and messages from the binary format
+// Wire format for a messages
+//
+// Old format (single message)
+// [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
+//
+// Batch format
+// [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [METADATA_SIZE][METADATA][PAYLOAD] [METADATA_SIZE][METADATA][PAYLOAD]
+//
+type MessageReader struct {
+	buffer *bytes.Buffer
+	// true if we are parsing a batched message - set after parsing the message metadata
+	batched bool
+}
+
+
+// ReadChecksum
+func (r *MessageReader) readChecksum() (uint32, error) {
+	if r.buffer.Len() < 6 {
+		return 0, errors.New("missing message header")
+	}
+	// reader magic number
+	magicNumber := binary.BigEndian.Uint16(r.buffer.Next(2))
+	if magicNumber != magicCrc32c {
+		return 0, ErrCorruptedMessage
+	}
+	checksum := binary.BigEndian.Uint32(r.buffer.Next(4))
+	return checksum, nil
+}
+
+
+func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
+	// Wire format
+	// [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA]
+
+	// read checksum
+	checksum, err := r.readChecksum()
+	if err != nil {
+		return nil, err
+	}
+
+	// validate checksum
+	computedChecksum := Crc32cCheckSum(r.buffer.Bytes())
+	if checksum != computedChecksum {
+		return nil, fmt.Errorf("checksum mismatch received: 0x%x computed: 0x%x", checksum, computedChecksum)
+	}
+
+	size := int(binary.BigEndian.Uint32(r.buffer.Next(4)))
+	data := r.buffer.Next(size)
+	var meta pb.MessageMetadata
+	if err := proto.Unmarshal(data, &meta); err != nil {
+		return nil, ErrCorruptedMessage
+	}
+
+	if meta.NumMessagesInBatch != nil {
+		r.batched = true
+	}
+
+	return &meta, nil
+}
+
+func (r *MessageReader) ReadMessage() (*pb.SingleMessageMetadata, []byte, error) {
+	if r.buffer.Len() == 0 {
+		return nil, nil, ErrEOM
+	}
+	if !r.batched {
+		return r.readMessage()
+	}
+
+	return r.readSingleMessage()
+}
+
+func (r *MessageReader) readMessage() (*pb.SingleMessageMetadata, []byte, error) {
+	// Wire format
+	// [PAYLOAD]
+
+	return nil, r.buffer.Next(r.buffer.Len()), nil
+}
+
+func (r *MessageReader) readSingleMessage() (*pb.SingleMessageMetadata, []byte, error) {
+	// Wire format
+	// [METADATA_SIZE][METADATA][PAYLOAD]
+
+	size := int(binary.BigEndian.Uint32(r.buffer.Next(4)))
+	var meta pb.SingleMessageMetadata
+	if err := proto.Unmarshal(r.buffer.Next(size), &meta); err != nil {
+		return nil, nil, err
+	}
+
+	return &meta, r.buffer.Next(int(meta.GetPayloadSize())), nil
+}
+
 
 func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand {
 	cmd := &pb.BaseCommand{
@@ -87,142 +197,6 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.Write(payload)
 }
 
-func ParseMessage(headersAndPayload []byte) (msgMeta *pb.MessageMetadata, payloadList [][]byte, err error) {
-	// reusable buffer for 4-byte uint32s
-	buf32 := make([]byte, 4)
-	r := bytes.NewReader(headersAndPayload)
-	// Wrap our reader so that we can only read
-	// bytes from our frame
-	lr := &io.LimitedReader{
-		N: int64(len(headersAndPayload)),
-		R: r,
-	}
-	// There are 3 possibilities for the following fields:
-	//  - EOF: If so, this is a "simple" command. No more parsing required.
-	//  - 2-byte magic number: Indicates the following 4 bytes are a checksum
-	//  - 4-byte metadata size
-
-	// The message may optionally stop here. If so,
-	// this is a "simple" command.
-	if lr.N <= 0 {
-		return nil, nil, nil
-	}
-
-	// Optionally, the next 2 bytes may be the magicNumber. If
-	// so, it indicates that the following 4 bytes are a checksum.
-	// If not, the following 2 bytes (plus the 2 bytes already read),
-	// are the metadataSize, which is why a 4 byte buffer is used.
-	if _, err = io.ReadFull(lr, buf32); err != nil {
-		return nil, nil, err
-	}
-
-	// Check for magicNumber which indicates a checksum
-	var chksum CheckSum
-	var expectedChksum []byte
-
-	magicNumber := make([]byte, 2)
-	binary.BigEndian.PutUint16(magicNumber, magicCrc32c)
-	if magicNumber[0] == buf32[0] && magicNumber[1] == buf32[1] {
-		expectedChksum = make([]byte, 4)
-
-		// We already read the 2-byte magicNumber and the
-		// initial 2 bytes of the checksum
-		expectedChksum[0] = buf32[2]
-		expectedChksum[1] = buf32[3]
-
-		// Read the remaining 2 bytes of the checksum
-		if _, err = io.ReadFull(lr, expectedChksum[2:]); err != nil {
-			return nil, nil, err
-		}
-
-		// Use a tee reader to compute the checksum
-		// of everything consumed after this point
-		lr.R = io.TeeReader(lr.R, &chksum)
-
-		// Fill buffer with metadata size, which is what it
-		// would already contain if there were no magic number / checksum
-		if _, err = io.ReadFull(lr, buf32); err != nil {
-			return nil, nil, err
-		}
-	}
-
-	// Read metadataSize
-	metadataSize := binary.BigEndian.Uint32(buf32)
-	// guard against allocating large buffer
-	if metadataSize > MaxFrameSize {
-		return nil, nil, fmt.Errorf("frame metadata size (%d) "+
-			"cannot b greater than max frame size (%d)", metadataSize, MaxFrameSize)
-	}
-
-	// Read protobuf encoded metadata
-	metaBuf := make([]byte, metadataSize)
-	if _, err = io.ReadFull(lr, metaBuf); err != nil {
-		return nil, nil, err
-	}
-	msgMeta = new(pb.MessageMetadata)
-	if err = proto.Unmarshal(metaBuf, msgMeta); err != nil {
-		return nil, nil, err
-	}
-
-	numMsg := msgMeta.GetNumMessagesInBatch()
-
-	if numMsg > 0 && msgMeta.NumMessagesInBatch != nil {
-		payloads := make([]byte, lr.N)
-		if _, err = io.ReadFull(lr, payloads); err != nil {
-			return nil, nil, err
-		}
-
-		singleMessages, e := decodeBatchPayload(payloads, numMsg)
-		if e != nil {
-			return nil, nil, e
-		}
-
-		payloadList = make([][]byte, 0, numMsg)
-		for _, singleMsg := range singleMessages {
-			msgMeta.PartitionKey = singleMsg.SingleMeta.PartitionKey
-			msgMeta.Properties = singleMsg.SingleMeta.Properties
-			msgMeta.EventTime = singleMsg.SingleMeta.EventTime
-			payloadList = append(payloadList, singleMsg.SinglePayload)
-		}
-
-		if err = computeChecksum(chksum, expectedChksum); err != nil {
-			return nil, nil, err
-		}
-		return msgMeta, payloadList, nil
-	}
-	// Anything left in the frame is considered
-	// the payload and can be any sequence of bytes.
-	payloadList = make([][]byte, 0, 10)
-	if lr.N > 0 {
-		// guard against allocating large buffer
-		if lr.N > MaxFrameSize {
-			return nil, nil, fmt.Errorf("frame payload size (%d) cannot be greater than max frame size (%d)", lr.N, MaxFrameSize)
-		}
-
-		payload := make([]byte, lr.N)
-		if _, err = io.ReadFull(lr, payload); err != nil {
-			return nil, nil, err
-		}
-
-		payloadList = append(payloadList, payload)
-	}
-
-	if err = computeChecksum(chksum, expectedChksum); err != nil {
-		return nil, nil, err
-	}
-
-	return msgMeta, payloadList, nil
-}
-
-func computeChecksum(chksum CheckSum, expectedChksum []byte) error {
-	computed := chksum.compute()
-	if !bytes.Equal(computed, expectedChksum) {
-		return fmt.Errorf("checksum mismatch: computed (0x%X) does "+
-			"not match given checksum (0x%X)", computed, expectedChksum)
-	}
-	return nil
-}
-
 func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageMetadata, payload []byte) {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
@@ -270,50 +244,6 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	wb.PutUint32(checksum, checksumIdx)
 }
 
-// singleMessage represents one of the elements of the batch type payload
-type singleMessage struct {
-	SingleMetaSize uint32
-	SingleMeta     *pb.SingleMessageMetadata
-	SinglePayload  []byte
-}
-
-// decodeBatchPayload parses the payload of the batch type
-// If the producer uses the batch function, msg.Payload will be a singleMessage array structure.
-func decodeBatchPayload(bp []byte, batchNum int32) ([]*singleMessage, error) {
-	buf32 := make([]byte, 4)
-	rdBuf := bytes.NewReader(bp)
-	singleMsgList := make([]*singleMessage, 0, batchNum)
-	for i := int32(0); i < batchNum; i++ {
-		// singleMetaSize
-		if _, err := io.ReadFull(rdBuf, buf32); err != nil {
-			return nil, err
-		}
-		singleMetaSize := binary.BigEndian.Uint32(buf32)
-
-		// singleMeta
-		singleMetaBuf := make([]byte, singleMetaSize)
-		if _, err := io.ReadFull(rdBuf, singleMetaBuf); err != nil {
-			return nil, err
-		}
-		singleMeta := new(pb.SingleMessageMetadata)
-		if err := proto.Unmarshal(singleMetaBuf, singleMeta); err != nil {
-			return nil, err
-		}
-		// payload
-		singlePayload := make([]byte, singleMeta.GetPayloadSize())
-		if _, err := io.ReadFull(rdBuf, singlePayload); err != nil {
-			return nil, err
-		}
-		singleMsg := &singleMessage{
-			SingleMetaSize: singleMetaSize,
-			SingleMeta:     singleMeta,
-			SinglePayload:  singlePayload,
-		}
-
-		singleMsgList = append(singleMsgList, singleMsg)
-	}
-	return singleMsgList, nil
-}
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte
 func ConvertFromStringMap(m map[string]string) []*pb.KeyValue {
