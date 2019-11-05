@@ -31,7 +31,7 @@ type FunctionConfig struct {
 	RetainOrdering      bool `json:"retainOrdering" yaml:"retainOrdering"`
 	AutoAck             bool `json:"autoAck" yaml:"autoAck"`
 	Parallelism         int  `json:"parallelism" yaml:"parallelism"`
-	MaxMessageRetries   int  `json:"maxMessageRetries" yaml:"maxMessageRetries"`
+	MaxMessageRetries   *int `json:"maxMessageRetries" yaml:"maxMessageRetries"`
 
 	Output string `json:"output" yaml:"output"`
 
@@ -42,13 +42,13 @@ type FunctionConfig struct {
 	// Represents either a builtin schema type (eg: 'avro', 'json', etc) or the class name for a Schema implementation
 	OutputSchemaType string `json:"outputSchemaType" yaml:"outputSchemaType"`
 
-	Runtime         string `json:"runtime" yaml:"runtime"`
-	DeadLetterTopic string `json:"deadLetterTopic" yaml:"deadLetterTopic"`
-	SubName         string `json:"subName" yaml:"subName"`
-	FQFN            string `json:"fqfn" yaml:"fqfn"`
-	Jar             string `json:"jar" yaml:"jar"`
-	Py              string `json:"py" yaml:"py"`
-	Go              string `json:"go" yaml:"go"`
+	Runtime         string  `json:"runtime" yaml:"runtime"`
+	DeadLetterTopic string  `json:"deadLetterTopic" yaml:"deadLetterTopic"`
+	SubName         string  `json:"subName" yaml:"subName"`
+	FQFN            string  `json:"fqfn" yaml:"fqfn"`
+	Jar             *string `json:"jar" yaml:"jar"`
+	Py              *string `json:"py" yaml:"py"`
+	Go              *string `json:"go" yaml:"go"`
 	// Any flags that you want to pass to the runtime.
 	// note that in thread mode, these flags will have no impact
 	RuntimeFlags string `json:"runtimeFlags" yaml:"runtimeFlags"`
