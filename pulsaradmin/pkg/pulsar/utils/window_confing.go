@@ -20,15 +20,15 @@ package utils
 const WindowConfigKey = "__WINDOWCONFIGS__"
 
 type WindowConfig struct {
-	WindowLengthCount             int
-	WindowLengthDurationMs        int64
-	SlidingIntervalCount          int
-	SlidingIntervalDurationMs     int64
-	LateDataTopic                 string
-	MaxLagMs                      int64
-	WatermarkEmitIntervalMs       int64
-	TimestampExtractorClassName   string
-	ActualWindowFunctionClassName string
+	WindowLengthCount             *int    `json:"windowLengthCount" yaml:"windowLengthCount"`
+	WindowLengthDurationMs        *int64  `json:"windowLengthDurationMs" yaml:"windowLengthDurationMs"`
+	SlidingIntervalCount          *int    `json:"slidingIntervalCount" yaml:"slidingIntervalCount"`
+	SlidingIntervalDurationMs     *int64  `json:"slidingIntervalDurationMs" yaml:"slidingIntervalDurationMs"`
+	LateDataTopic                 *string `json:"lateDataTopic" yaml:"lateDataTopic"`
+	MaxLagMs                      *int64  `json:"maxLagMs" yaml:"maxLagMs"`
+	WatermarkEmitIntervalMs       *int64  `json:"watermarkEmitIntervalMs" yaml:"watermarkEmitIntervalMs"`
+	TimestampExtractorClassName   *string `json:"timestampExtractorClassName" yaml:"timestampExtractorClassName"`
+	ActualWindowFunctionClassName *string `json:"actualWindowFunctionClassName" yaml:"actualWindowFunctionClassName"`
 }
 
 func NewDefaultWindowConfing() *WindowConfig {
