@@ -55,7 +55,7 @@ func (r *connectionReader) readFromConnection() {
 	}
 }
 
-func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndPayload []byte, err error) {
+func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndPayload Buffer, err error) {
 	// First, we need to read the frame size
 	if r.buffer.ReadableBytes() < 4 {
 		if r.buffer.ReadableBytes() == 0 {
@@ -92,8 +92,8 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 	// Also read the eventual payload
 	headersAndPayloadSize := frameSize - (cmdSize + 4)
 	if cmdSize+4 < frameSize {
-		headersAndPayload = make([]byte, headersAndPayloadSize)
-		copy(headersAndPayload, r.buffer.Read(headersAndPayloadSize))
+		headersAndPayload = NewBuffer(int(headersAndPayloadSize))
+		headersAndPayload.Write(r.buffer.Read(headersAndPayloadSize))
 	}
 	return cmd, headersAndPayload, nil
 }

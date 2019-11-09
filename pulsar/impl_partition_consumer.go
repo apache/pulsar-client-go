@@ -600,11 +600,9 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 	return nil
 }
 
-func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload []byte) error {
+func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
 	pbMsgID := response.GetMessageId()
-
-	reader := internal.NewMessageReader(headersAndPayload)
-
+	reader := internal.NewMessageReader(headersAndPayload.ReadableSlice())
 	msgMeta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		// TODO send discardCorruptedMessage
