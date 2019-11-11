@@ -174,7 +174,7 @@ func (t *UnackedMessageTracker) handlerCmd() {
 								MessageIds: messageIdsMap[int32(index)],
 							}
 
-							_, err := subConsumer.client.rpcClient.RequestOnCnx(subConsumer.cnx, requestID,
+							_, err := subConsumer.client.rpcClient.RequestOnCnx(subConsumer.conn, requestID,
 								pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, cmd)
 							if err != nil {
 								subConsumer.log.WithError(err).Error("Failed to unsubscribe consumer")

@@ -31,6 +31,9 @@ type RPCResult struct {
 	Cnx      Connection
 }
 
+// RequestID for a request when there is no expected response
+const RequestIDNoResponse = uint64(0)
+
 type RPCClient interface {
 	// Create a new unique request id
 	NewRequestID() uint64

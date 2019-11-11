@@ -15,27 +15,35 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package util
+package pulsar
 
 import (
 	"fmt"
-	"strings"
-	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/apache/pulsar-client-go/pkg/pb"
 )
 
-func TestIsNil(t *testing.T) {
-	var a interface{}
-	var b interface{} = (*int)(nil)
-
-	assert.True(t, a == nil)
-	assert.False(t, b == nil)
+// NewUnexpectedErrMsg instantiates an ErrUnexpectedMsg error.
+// Optionally provide a list of IDs associated with the message
+// for additional context in the error message.
+func newUnexpectedErrMsg(msgType pb.BaseCommand_Type, ids ...interface{}) *unexpectedErrMsg {
+	return &unexpectedErrMsg{
+		msgType: msgType,
+		ids:     ids,
+	}
 }
 
-func TestRemoveDuplicateElement(t *testing.T) {
-	s := []string{"hello", "world", "hello", "golang", "hello", "ruby", "php", "java"}
-	resList := RemoveDuplicateElement(s)
-	res := fmt.Sprintf("%s", resList)
-	assert.Equal(t, 1, strings.Count(res, "hello"))
+// UnexpectedErrMsg is returned when an unexpected message is received.
+type unexpectedErrMsg struct {
+	msgType pb.BaseCommand_Type
+	ids     []interface{}
+}
+
+// Error satisfies the error interface.
+func (e *unexpectedErrMsg) Error() string {
+	msg := fmt.Sprintf("received unexpected message of type %q", e.msgType.String())
+	for _, id := range e.ids {
+		msg += fmt.Sprintf(" consumerID=%v", id)
+	}
+	return msg
 }
