@@ -18,8 +18,6 @@
 package internal
 
 import (
-	"bytes"
-	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -44,10 +42,14 @@ var ErrCorruptedMessage = errors.New("corrupted message")
 // ErrEOM is the error returned by ReadMessage when no more input is available.
 var ErrEOM = errors.New("EOF")
 
-func NewMessageReader(headersAndPayload []byte) *MessageReader {
+func NewMessageReader(headersAndPayload Buffer) *MessageReader {
 	return &MessageReader{
-		buffer: bytes.NewBuffer(headersAndPayload),
+		buffer: headersAndPayload,
 	}
+}
+
+func NewMessageReaderFromArray(headersAndPayload []byte) *MessageReader {
+	return NewMessageReader(NewBufferWrapper(headersAndPayload))
 }
 
 // MessageReader provides helper methods to parse
@@ -61,7 +63,7 @@ func NewMessageReader(headersAndPayload []byte) *MessageReader {
 // [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [METADATA_SIZE][METADATA][PAYLOAD] [METADATA_SIZE][METADATA][PAYLOAD]
 //
 type MessageReader struct {
-	buffer *bytes.Buffer
+	buffer Buffer
 	// true if we are parsing a batched message - set after parsing the message metadata
 	batched bool
 }
@@ -69,15 +71,15 @@ type MessageReader struct {
 
 // ReadChecksum
 func (r *MessageReader) readChecksum() (uint32, error) {
-	if r.buffer.Len() < 6 {
+	if r.buffer.ReadableBytes() < 6 {
 		return 0, errors.New("missing message header")
 	}
 	// reader magic number
-	magicNumber := binary.BigEndian.Uint16(r.buffer.Next(2))
+	magicNumber := r.buffer.ReadUint16()
 	if magicNumber != magicCrc32c {
 		return 0, ErrCorruptedMessage
 	}
-	checksum := binary.BigEndian.Uint32(r.buffer.Next(4))
+	checksum := r.buffer.ReadUint32()
 	return checksum, nil
 }
 
@@ -93,13 +95,13 @@ func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
 	}
 
 	// validate checksum
-	computedChecksum := Crc32cCheckSum(r.buffer.Bytes())
+	computedChecksum := Crc32cCheckSum(r.buffer.ReadableSlice())
 	if checksum != computedChecksum {
 		return nil, fmt.Errorf("checksum mismatch received: 0x%x computed: 0x%x", checksum, computedChecksum)
 	}
 
-	size := int(binary.BigEndian.Uint32(r.buffer.Next(4)))
-	data := r.buffer.Next(size)
+	size := r.buffer.ReadUint32()
+	data := r.buffer.Read(size)
 	var meta pb.MessageMetadata
 	if err := proto.Unmarshal(data, &meta); err != nil {
 		return nil, ErrCorruptedMessage
@@ -113,7 +115,7 @@ func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
 }
 
 func (r *MessageReader) ReadMessage() (*pb.SingleMessageMetadata, []byte, error) {
-	if r.buffer.Len() == 0 {
+	if r.buffer.ReadableBytes() == 0 {
 		return nil, nil, ErrEOM
 	}
 	if !r.batched {
@@ -127,20 +129,20 @@ func (r *MessageReader) readMessage() (*pb.SingleMessageMetadata, []byte, error)
 	// Wire format
 	// [PAYLOAD]
 
-	return nil, r.buffer.Next(r.buffer.Len()), nil
+	return nil, r.buffer.Read(r.buffer.ReadableBytes()), nil
 }
 
 func (r *MessageReader) readSingleMessage() (*pb.SingleMessageMetadata, []byte, error) {
 	// Wire format
 	// [METADATA_SIZE][METADATA][PAYLOAD]
 
-	size := int(binary.BigEndian.Uint32(r.buffer.Next(4)))
+	size := r.buffer.ReadUint32()
 	var meta pb.SingleMessageMetadata
-	if err := proto.Unmarshal(r.buffer.Next(size), &meta); err != nil {
+	if err := proto.Unmarshal(r.buffer.Read(size), &meta); err != nil {
 		return nil, nil, err
 	}
 
-	return &meta, r.buffer.Next(int(meta.GetPayloadSize())), nil
+	return &meta, r.buffer.Read(uint32(meta.GetPayloadSize())), nil
 }
 
 

@@ -41,7 +41,7 @@ func TestConvertStringMap(t *testing.T) {
 
 func TestReadMessageMetadata(t *testing.T) {
 	// read old style message (not batched)
-	reader := NewMessageReader(rawCompatSingleMessage)
+	reader := NewMessageReaderFromArray(rawCompatSingleMessage)
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestReadMessageMetadata(t *testing.T) {
 	assert.Equal(t, "2", props[1].GetValue())
 
 	// read message with batch of 1
-	reader = NewMessageReader(rawBatchMessage1)
+	reader = NewMessageReaderFromArray(rawBatchMessage1)
 	meta, err = reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestReadMessageMetadata(t *testing.T) {
 	assert.Equal(t, 1, int(meta.GetNumMessagesInBatch()))
 
 	// read message with batch of 10
-	reader = NewMessageReader(rawBatchMessage10)
+	reader = NewMessageReaderFromArray(rawBatchMessage10)
 	meta, err = reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +73,7 @@ func TestReadMessageMetadata(t *testing.T) {
 
 
 func TestReadMessageOldFormat(t *testing.T) {
-	reader := NewMessageReader(rawCompatSingleMessage)
+	reader := NewMessageReaderFromArray(rawCompatSingleMessage)
 	_, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestReadMessageOldFormat(t *testing.T) {
 
 
 func TestReadMessagesBatchSize1(t *testing.T) {
-	reader := NewMessageReader(rawBatchMessage1)
+	reader := NewMessageReaderFromArray(rawBatchMessage1)
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestReadMessagesBatchSize1(t *testing.T) {
 
 
 func TestReadMessagesBatchSize10(t *testing.T) {
-	reader := NewMessageReader(rawBatchMessage10)
+	reader := NewMessageReaderFromArray(rawBatchMessage10)
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)

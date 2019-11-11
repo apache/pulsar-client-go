@@ -199,7 +199,7 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
 	pbMsgID := response.GetMessageId()
 
-	reader := internal.NewMessageReader(headersAndPayload.ReadableSlice())
+	reader := internal.NewMessageReader(headersAndPayload)
 	msgMeta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		// TODO send discardCorruptedMessage

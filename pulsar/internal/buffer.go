@@ -84,6 +84,14 @@ func NewBuffer(size int) Buffer {
 	}
 }
 
+func NewBufferWrapper(buf []byte) Buffer {
+	return &buffer{
+		data:      buf,
+		readerIdx: 0,
+		writerIdx: uint32(len(buf)),
+	}
+}
+
 func (b *buffer) ReadableBytes() uint32 {
 	return b.writerIdx - b.readerIdx
 }
