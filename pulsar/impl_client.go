@@ -21,12 +21,13 @@ import (
 	"fmt"
 	"net/url"
 
-	"github.com/apache/pulsar-client-go/pkg/auth"
-	"github.com/apache/pulsar-client-go/pkg/pb"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/pkg/errors"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/apache/pulsar-client-go/pkg/auth"
+	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 type client struct {
@@ -97,7 +98,7 @@ func (client *client) CreateProducer(options ProducerOptions) (Producer, error) 
 }
 
 func (client *client) Subscribe(options ConsumerOptions) (Consumer, error) {
-	consumer, err := newConsumer(client, &options)
+	consumer, err := newConsumer(client, options)
 	if err != nil {
 		return nil, err
 	}
