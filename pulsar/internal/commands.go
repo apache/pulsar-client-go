@@ -48,6 +48,10 @@ func NewMessageReader(headersAndPayload Buffer) *MessageReader {
 	}
 }
 
+func NewMessageReaderFromArray(headersAndPayload []byte) *MessageReader {
+	return NewMessageReader(NewBufferWrapper(headersAndPayload))
+}
+
 // MessageReader provides helper methods to parse
 // the metadata and messages from the binary format
 // Wire format for a messages

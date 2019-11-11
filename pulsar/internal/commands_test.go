@@ -41,7 +41,7 @@ func TestConvertStringMap(t *testing.T) {
 
 func TestReadMessageMetadata(t *testing.T) {
 	// read old style message (not batched)
-	reader := NewMessageReader(rawCompatSingleMessage)
+	reader := NewMessageReaderFromArray(rawCompatSingleMessage)
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -55,7 +55,7 @@ func TestReadMessageMetadata(t *testing.T) {
 	assert.Equal(t, "2", props[1].GetValue())
 
 	// read message with batch of 1
-	reader = NewMessageReader(rawBatchMessage1)
+	reader = NewMessageReaderFromArray(rawBatchMessage1)
 	meta, err = reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -63,7 +63,7 @@ func TestReadMessageMetadata(t *testing.T) {
 	assert.Equal(t, 1, int(meta.GetNumMessagesInBatch()))
 
 	// read message with batch of 10
-	reader = NewMessageReader(rawBatchMessage10)
+	reader = NewMessageReaderFromArray(rawBatchMessage10)
 	meta, err = reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -73,7 +73,7 @@ func TestReadMessageMetadata(t *testing.T) {
 
 
 func TestReadMessageOldFormat(t *testing.T) {
-	reader := NewMessageReader(rawCompatSingleMessage)
+	reader := NewMessageReaderFromArray(rawCompatSingleMessage)
 	_, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -93,7 +93,7 @@ func TestReadMessageOldFormat(t *testing.T) {
 
 
 func TestReadMessagesBatchSize1(t *testing.T) {
-	reader := NewMessageReader(rawBatchMessage1)
+	reader := NewMessageReaderFromArray(rawBatchMessage1)
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -115,7 +115,7 @@ func TestReadMessagesBatchSize1(t *testing.T) {
 
 
 func TestReadMessagesBatchSize10(t *testing.T) {
-	reader := NewMessageReader(rawBatchMessage10)
+	reader := NewMessageReaderFromArray(rawBatchMessage10)
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -139,7 +139,7 @@ func TestReadMessagesBatchSize10(t *testing.T) {
 // Raw single message in old format
 // metadata properties:<key:"a" value:"1" > properties:<key:"b" value:"2" >
 // payload = "hello"
-var rawCompatSingleMessage = NewBufferWrapper([]byte{
+var rawCompatSingleMessage = []byte{
 	0x0e, 0x01, 0x08, 0x36, 0xb4, 0x66, 0x00, 0x00,
 	0x00, 0x31, 0x0a, 0x0f, 0x73, 0x74, 0x61, 0x6e,
 	0x64, 0x61, 0x6c, 0x6f, 0x6e, 0x65, 0x2d, 0x37,
@@ -148,12 +148,12 @@ var rawCompatSingleMessage = NewBufferWrapper([]byte{
 	0x61, 0x12, 0x01, 0x31, 0x22, 0x06, 0x0a, 0x01,
 	0x62, 0x12, 0x01, 0x32, 0x48, 0x05, 0x60, 0x05,
 	0x82, 0x01, 0x00, 0x68, 0x65, 0x6c, 0x6c, 0x6f,
-})
+}
 
 // Message with batch of 1
 // singe message metadata properties:<key:"a" value:"1" > properties:<key:"b" value:"2" >
 // payload = "hello"
-var rawBatchMessage1 = NewBufferWrapper([]byte{
+var rawBatchMessage1 = []byte{
 	0x0e, 0x01, 0x1f, 0x80, 0x09, 0x68, 0x00, 0x00,
 	0x00, 0x1f, 0x0a, 0x0f, 0x73, 0x74, 0x61, 0x6e,
 	0x64, 0x61, 0x6c, 0x6f, 0x6e, 0x65, 0x2d, 0x37,
@@ -163,12 +163,12 @@ var rawBatchMessage1 = NewBufferWrapper([]byte{
 	0x01, 0x61, 0x12, 0x01, 0x31, 0x0a, 0x06, 0x0a,
 	0x01, 0x62, 0x12, 0x01, 0x32, 0x18, 0x05, 0x28,
 	0x05, 0x40, 0x00, 0x68, 0x65, 0x6c, 0x6c, 0x6f,
-})
+}
 
 // Message with batch of 10
 // singe message metadata properties:<key:"a" value:"1" > properties:<key:"b" value:"2" >
 // payload = "hello"
-var rawBatchMessage10 = NewBufferWrapper([]byte{
+var rawBatchMessage10 = []byte{
 	0x0e, 0x01, 0x7b, 0x28, 0x8c, 0x08,
 	0x00, 0x00, 0x00, 0x1f, 0x0a, 0x0f, 0x73, 0x74,
 	0x61, 0x6e, 0x64, 0x61, 0x6c, 0x6f, 0x6e, 0x65,
@@ -214,4 +214,4 @@ var rawBatchMessage10 = NewBufferWrapper([]byte{
 	0x0a, 0x01, 0x62, 0x12, 0x01, 0x32, 0x18, 0x05,
 	0x28, 0x05, 0x40, 0x09, 0x68, 0x65, 0x6c, 0x6c,
 	0x6f,
-})
+}
