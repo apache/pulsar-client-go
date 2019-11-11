@@ -34,8 +34,6 @@ import (
 var ErrConsumerClosed = errors.New("consumer closed")
 
 type consumer struct {
-	topic string
-
 	options ConsumerOptions
 
 	consumers []*partitionConsumer
@@ -88,7 +86,6 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage) (Consumer, error) {
 	consumer := &consumer{
-		topic:     topic,
 		messageCh: messageCh,
 		errorCh:   make(chan error),
 		log:       log.WithField("topic", topic),
@@ -165,10 +162,6 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	return consumer, nil
 }
 
-func (c *consumer) Topic() string {
-	return c.topic
-}
-
 func (c *consumer) Subscription() string {
 	return c.options.SubscriptionName
 }
@@ -177,7 +170,7 @@ func (c *consumer) Unsubscribe() error {
 	var errMsg string
 	for _, consumer := range c.consumers {
 		if err := consumer.Unsubscribe(); err != nil {
-			errMsg += fmt.Sprintf("topic %s, subscription %s: %s", c.Topic(), c.Subscription(), err)
+			errMsg += fmt.Sprintf("topic %s, subscription %s: %s", consumer.topic, c.Subscription(), err)
 		}
 	}
 	if errMsg != "" {
