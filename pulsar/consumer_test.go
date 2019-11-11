@@ -238,9 +238,9 @@ func TestConsumerSubscriptionEarliestPosition(t *testing.T) {
 
 	// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:               topicName,
-		SubscriptionName:    subName,
-		SubscriptionInitPos: SubscriptionPositionEarliest,
+		Topic:                       topicName,
+		SubscriptionName:            subName,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -297,7 +297,7 @@ func TestConsumerKeyShared(t *testing.T) {
 	receivedConsumer2 := 0
 	for (receivedConsumer1 + receivedConsumer2) < 10 {
 		select {
-		case cm, ok := <-consumer1.Messages():
+		case cm, ok := <-consumer1.Chan():
 			if !ok {
 				break
 			}
@@ -305,7 +305,7 @@ func TestConsumerKeyShared(t *testing.T) {
 			if err := consumer1.Ack(cm.Message); err != nil {
 				log.Fatal(err)
 			}
-		case cm, ok := <-consumer2.Messages():
+		case cm, ok := <-consumer2.Chan():
 			if !ok {
 				break
 			}
@@ -459,7 +459,7 @@ func TestConsumerShared(t *testing.T) {
 	messages := make(map[string]struct{})
 	for readMsgs < 10 {
 		select {
-		case cm, ok := <-consumer1.Messages():
+		case cm, ok := <-consumer1.Chan():
 			if !ok {
 				break
 			}
@@ -470,7 +470,7 @@ func TestConsumerShared(t *testing.T) {
 			if err := consumer1.Ack(cm.Message); err != nil {
 				log.Fatal(err)
 			}
-		case cm, ok := <-consumer2.Messages():
+		case cm, ok := <-consumer2.Chan():
 			if !ok {
 				break
 			}

@@ -41,6 +41,7 @@ const (
 
 type partitionConsumerOpts struct {
 	topic               string
+	consumerName        string
 	subscription        string
 	subscriptionType    SubscriptionType
 	subscriptionInitPos SubscriptionInitialPosition
@@ -88,6 +89,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		client:         client,
 		options:        options,
 		topic:          options.topic,
+		name:           options.consumerName,
 		consumerID:     client.rpcClient.NewConsumerID(),
 		partitionIdx:   options.partitionIdx,
 		eventsCh:       make(chan interface{}, 3),
@@ -98,13 +100,13 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		closeCh:        make(chan struct{}),
 		log:            log.WithField("topic", options.topic),
 	}
+	pc.log = pc.log.WithField("name", pc.name).WithField("subscription", options.subscription)
 
 	err := pc.grabConn()
 	if err != nil {
 		log.WithError(err).Errorf("Failed to create consumer")
 		return nil, err
 	}
-	pc.log = pc.log.WithField("name", pc.name)
 	pc.log.Info("Created consumer")
 	pc.state = consumerReady
 
@@ -279,7 +281,7 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 // and manages the flow control
 func (pc *partitionConsumer) dispatcher() {
 	defer func() {
-		pc.log.Infof("consumer=%d exiting dispatch loop", pc.consumerID)
+		pc.log.Info("exiting dispatch loop")
 	}()
 	var messages []*message
 	for {
@@ -384,7 +386,7 @@ type closeRequest struct {
 
 func (pc *partitionConsumer) runEventsLoop() {
 	defer func() {
-		pc.log.Infof("consumer=%d exiting events loop", pc.consumerID)
+		pc.log.Info("exiting events loop")
 	}()
 	for {
 		select {
@@ -420,11 +422,11 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		ConsumerId: proto.Uint64(pc.consumerID),
 		RequestId:  proto.Uint64(requestID),
 	}
-	_, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, requestID, pb.BaseCommand_CLOSE_CONSUMER, cmdClose)
+	_, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_CLOSE_CONSUMER, cmdClose)
 	if err != nil {
 		req.err = err
 	} else {
-		pc.log.Infof("Closed consumer=%d", pc.consumerID)
+		pc.log.Info("Closed consumer")
 		pc.state = consumerClosed
 		pc.conn.DeleteConsumeHandler(pc.consumerID)
 		close(pc.closeCh)

@@ -93,7 +93,7 @@ type ConsumerOptions struct {
 
 	// InitialPosition at which the cursor will be set when subscribe
 	// Default is `Latest`
-	SubscriptionInitPos SubscriptionInitialPosition
+	SubscriptionInitialPosition
 
 	// Sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
@@ -141,8 +141,8 @@ type Consumer interface {
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)
 
-	// Messages returns a channel to consumer messages from
-	Messages() <-chan ConsumerMessage
+	// Chan returns a channel to consume messages from
+	Chan() <-chan ConsumerMessage
 
 	// Ack the consumption of a single message
 	Ack(Message) error

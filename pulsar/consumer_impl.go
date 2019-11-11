@@ -21,7 +21,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 
@@ -106,6 +108,11 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 		consumer  *partitionConsumer
 	}
 
+	consumerName := options.Name
+	if consumerName == "" {
+		consumerName = generateRandomName()
+	}
+
 	receiverQueueSize := options.ReceiverQueueSize
 	var wg sync.WaitGroup
 	ch := make(chan ConsumerError, numPartitions)
@@ -115,9 +122,10 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 			defer wg.Done()
 			opts := &partitionConsumerOpts{
 				topic:               pt,
+				consumerName:        consumerName,
 				subscription:        options.SubscriptionName,
 				subscriptionType:    options.Type,
-				subscriptionInitPos: options.SubscriptionInitPos,
+				subscriptionInitPos: options.SubscriptionInitialPosition,
 				partitionIdx:        idx,
 				receiverQueueSize:   receiverQueueSize,
 			}
@@ -144,7 +152,8 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	}
 
 	if err != nil {
-		// Since there were some failures, cleanup all the partitions that succeeded in creating the consumer
+		// Since there were some failures,
+		// cleanup all the partitions that succeeded in creating the consumer
 		for _, c := range consumer.consumers {
 			if c != nil {
 				_ = c.Close()
@@ -178,7 +187,6 @@ func (c *consumer) Unsubscribe() error {
 }
 
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
-	//fmt.Println("recv chan", c.messageCh)
 	for {
 		select {
 		case cm, ok := <-c.messageCh:
@@ -193,7 +201,7 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 }
 
 // Messages
-func (c *consumer) Messages() <-chan ConsumerMessage {
+func (c *consumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh
 }
 
@@ -210,8 +218,10 @@ func (c *consumer) AckID(msgID MessageID) error {
 	}
 
 	partition := mid.partitionIdx
+	// did we receive a valid partition index?
 	if partition < 0 || partition >= len(c.consumers) {
-		return c.consumers[0].AckID(msgID)
+		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
 	}
 	return c.consumers[partition].AckID(msgID)
 }
@@ -228,6 +238,17 @@ func (c *consumer) Close() error {
 	wg.Wait()
 
 	return nil
+}
+
+var random = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+func generateRandomName() string {
+	chars := "abcdefghijklmnopqrstuvwxyz"
+	bytes := make([]byte, 5)
+	for i := range bytes {
+		bytes[i] = chars[random.Intn(len(chars))]
+	}
+	return string(bytes)
 }
 
 func toProtoSubType(st SubscriptionType) pb.CommandSubscribe_SubType {
