@@ -18,15 +18,15 @@
 package main
 
 import (
-	"context"
 	"encoding/json"
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/spf13/cobra"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/apache/pulsar-client-go/pulsar"
 )
 
 // ConsumeArgs define the parameters required by consume
@@ -36,24 +36,31 @@ type ConsumeArgs struct {
 	ReceiverQueueSize int
 }
 
-var consumeArgs ConsumeArgs
+func newConsumerCommand() *cobra.Command {
+	consumeArgs := ConsumeArgs{}
+	cmd := &cobra.Command{
+		Use:   "consume <topic>",
+		Short: "Consume from topic",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			stop := stopCh()
+			if FlagProfile {
+				RunProfiling(stop)
+			}
+			consumeArgs.Topic = args[0]
+			consume(&consumeArgs, stop)
+		},
+	}
 
-var cmdConsume = &cobra.Command{
-	Use:   "consume <topic>",
-	Short: "Consume from topic",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		consumeArgs.Topic = args[0]
-		consume()
-	},
+	flags := cmd.Flags()
+	flags.StringVarP(&consumeArgs.SubscriptionName, "subscription", "s", "sub", "Subscription name")
+	flags.IntVarP(&consumeArgs.ReceiverQueueSize, "receiver-queue-size", "r", 1000, "Receiver queue size")
+
+	return cmd
 }
 
-func initConsumer() {
-	cmdConsume.Flags().StringVarP(&consumeArgs.SubscriptionName, "subscription", "s", "sub", "Subscription name")
-	cmdConsume.Flags().IntVarP(&consumeArgs.ReceiverQueueSize, "receiver-queue-size", "r", 1000, "Receiver queue size")
-}
-
-func consume() {
+func consume(consumeArgs *ConsumeArgs, stop <-chan struct{}) {
+	log.Info("flag profile:", FlagProfile)
 	b, _ := json.MarshalIndent(clientArgs, "", "  ")
 	log.Info("Client config: ", string(b))
 	b, _ = json.MarshalIndent(consumeArgs, "", "  ")
@@ -80,32 +87,24 @@ func consume() {
 
 	defer consumer.Close()
 
-	ctx := context.Background()
-
-	var msgReceived int64
-	var bytesReceived int64
-
-	go func() {
-		for {
-			msg, err := consumer.Receive(ctx)
-			if err != nil {
-				return
-			}
-
-			atomic.AddInt64(&msgReceived, 1)
-			atomic.AddInt64(&bytesReceived, int64(len(msg.Payload())))
-
-			if err := consumer.Ack(msg); err != nil {
-				return
-			}
-		}
-	}()
+	// keep message stats
+	msgReceived := int64(0)
+	bytesReceived := int64(0)
 
 	// Print stats of the consume rate
 	tick := time.NewTicker(10 * time.Second)
 
 	for {
 		select {
+		case cm, ok := <-consumer.Chan():
+			if !ok {
+				return
+			}
+			msgReceived++
+			bytesReceived += int64(len(cm.Message.Payload()))
+			if err := consumer.Ack(cm.Message); err != nil {
+				return
+			}
 		case <-tick.C:
 			currentMsgReceived := atomic.SwapInt64(&msgReceived, 0)
 			currentBytesReceived := atomic.SwapInt64(&bytesReceived, 0)
@@ -114,6 +113,8 @@ func consume() {
 
 			log.Infof(`Stats - Consume rate: %6.1f msg/s - %6.1f Mbps`,
 				msgRate, bytesRate*8/1024/1024)
+		case <-stop:
+			return
 		}
 	}
 }

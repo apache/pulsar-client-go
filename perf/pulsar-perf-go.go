@@ -18,15 +18,22 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"net"
 	"net/http"
 	_ "net/http/pprof"
+	"os"
+	"os/signal"
 
 	"github.com/spf13/cobra"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/apache/pulsar-client-go/pulsar"
 )
+
+// global flags
+var FlagProfile bool
 
 type ClientArgs struct {
 	ServiceURL string
@@ -34,34 +41,85 @@ type ClientArgs struct {
 
 var clientArgs ClientArgs
 
-func main() {
-	// use `go tool pprof http://localhost:3000/debug/pprof/profile` to get pprof file(cpu info)
-	// use `go tool pprof http://localhost:3000/debug/pprof/heap` to get inuse_space file
-	go func() {
-		listenAddr := net.JoinHostPort("localhost", "3000")
-		fmt.Printf("Profile server listening on %s\n", listenAddr)
-		profileRedirect := http.RedirectHandler("/debug/pprof", http.StatusSeeOther)
-		http.Handle("/", profileRedirect)
-		err := fmt.Errorf("%v", http.ListenAndServe(listenAddr, nil))
-		fmt.Println(err.Error())
-	}()
+func NewClient() (pulsar.Client, error) {
+	clientOpts := pulsar.ClientOptions{
+		URL: clientArgs.ServiceURL,
+	}
+	return pulsar.NewClient(clientOpts)
+}
 
+func initLogger(debug bool) {
 	log.SetFormatter(&log.TextFormatter{
 		FullTimestamp:   true,
 		TimestampFormat: "15:04:05.000",
 	})
-	log.SetLevel(log.InfoLevel)
+	level := log.InfoLevel
+	if debug {
+		level = log.DebugLevel
+	}
+	log.SetLevel(level)
+}
 
-	initProducer()
-	initConsumer()
+func main() {
+	rootCmd := &cobra.Command{
+		Use: "pulsar-perf-go",
+	}
 
-	var rootCmd = &cobra.Command{Use: "pulsar-perf-go"}
-	rootCmd.Flags().StringVarP(&clientArgs.ServiceURL, "service-url", "u",
+	flags := rootCmd.PersistentFlags()
+	flags.BoolVar(&FlagProfile, "profile", false, "enable profiling")
+	flags.StringVarP(&clientArgs.ServiceURL, "service-url", "u",
 		"pulsar://localhost:6650", "The Pulsar service URL")
-	rootCmd.AddCommand(cmdProduce, cmdConsume)
+
+	rootCmd.AddCommand(newProducerCommand())
+	rootCmd.AddCommand(newConsumerCommand())
 
 	err := rootCmd.Execute()
 	if err != nil {
-		panic("execute root cmd error, please check.")
+		fmt.Fprintf(os.Stderr, "executing command error=%+v\n", err)
+		os.Exit(1)
 	}
+}
+
+func stopCh() <-chan struct{} {
+	stop := make(chan struct{})
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, os.Interrupt)
+	go func() {
+		for {
+			select {
+			case <-signalCh:
+				close(stop)
+			}
+		}
+	}()
+	return stop
+}
+
+func RunProfiling(stop <-chan struct{}) {
+	go func() {
+		if err := serveProfiling("0.0.0.0:6060", stop); err != nil && err != http.ErrServerClosed {
+			log.WithError(err).Error("Unable to start debug profiling server")
+		}
+	}()
+}
+
+// use `go tool pprof http://addr/debug/pprof/profile` to get pprof file(cpu info)
+// use `go tool pprof http://addr/debug/pprof/heap` to get inuse_space file
+func serveProfiling(addr string, stop <-chan struct{}) error {
+	s := http.Server{
+		Addr:    addr,
+		Handler: http.DefaultServeMux,
+	}
+	go func() {
+		<-stop
+		log.Infof("Shutting down pprof server")
+		s.Shutdown(context.Background())
+	}()
+
+	fmt.Printf("Starting pprof server at: %s\n", addr)
+	fmt.Printf("  use `go tool pprof http://%s/debug/pprof/prof` to get pprof file(cpu info)\n", addr)
+	fmt.Printf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file\n", addr)
+	fmt.Println()
+
+	return s.ListenAndServe()
 }
