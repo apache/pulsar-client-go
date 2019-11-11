@@ -44,3 +44,60 @@ func TestMessageId(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, id)
 }
+
+func TestAckTracker(t *testing.T) {
+	tracker := newAckTracker(1)
+	assert.Equal(t, true, tracker.ack(0))
+
+	// test 64
+	tracker = newAckTracker(64)
+	for i := 0; i < 64; i++ {
+		if i < 63 {
+			assert.Equal(t, false, tracker.ack(i))
+		} else {
+			assert.Equal(t, true, tracker.ack(i))
+		}
+	}
+	assert.Equal(t, true, tracker.completed())
+
+	// test large number 1000
+	tracker = newAckTracker(1000)
+	for i := 0; i < 1000; i++ {
+		if i < 999 {
+			assert.Equal(t, false, tracker.ack(i))
+		} else {
+			assert.Equal(t, true, tracker.ack(i))
+		}
+
+	}
+	assert.Equal(t, true, tracker.completed())
+}
+
+func TestAckingMessageIDBatchOne(t *testing.T) {
+	tracker := newAckTracker(1)
+	msgId := newTrackingMessageID(1, 1, 0, 0, tracker)
+	assert.Equal(t, true, msgId.ack())
+	assert.Equal(t, true, tracker.completed())
+}
+
+func TestAckingMessageIDBatchTwo(t *testing.T) {
+	tracker := newAckTracker(2)
+	ids := []*messageID{
+		newTrackingMessageID(1, 1, 0, 0, tracker),
+		newTrackingMessageID(1, 1, 1, 0, tracker),
+	}
+
+	assert.Equal(t, false, ids[0].ack())
+	assert.Equal(t, true, ids[1].ack())
+	assert.Equal(t, true, tracker.completed())
+
+	// try reverse order
+	tracker = newAckTracker(2)
+	ids = []*messageID{
+		newTrackingMessageID(1, 1, 0, 0, tracker),
+		newTrackingMessageID(1, 1, 1, 0, tracker),
+	}
+	assert.Equal(t, false, ids[1].ack())
+	assert.Equal(t, true, ids[0].ack())
+	assert.Equal(t, true, tracker.completed())
+}
