@@ -23,6 +23,8 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"strings"
+	"testing"
 	"time"
 )
 
@@ -62,4 +64,22 @@ func httpPut(url string, body interface{}) {
 		log.Fatal(err)
 	}
 	resp.Body.Close()
+}
+
+func makeHTTPCall(t *testing.T, method string, urls string, body string) {
+	client := http.Client{}
+
+	req, err := http.NewRequest(method, urls, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+
+	res, err := client.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
 }

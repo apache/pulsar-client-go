@@ -34,7 +34,6 @@ import (
 
 	"github.com/apache/pulsar-client-go/pkg/auth"
 	"github.com/apache/pulsar-client-go/pkg/pb"
-	"github.com/apache/pulsar-client-go/util"
 )
 
 type TLSOptions struct {
@@ -286,7 +285,10 @@ func (c *connection) run() {
 			if req == nil {
 				return
 			}
-			c.pendingReqs[req.id] = req
+			// does this request expect a response?
+			if req.id != RequestIDNoResponse {
+				c.pendingReqs[req.id] = req
+			}
 			c.writeCommand(req.cmd)
 
 		case cmd := <- c.incomingCmdCh:
@@ -509,9 +511,7 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	c.log.Infof("Broker notification of Closed consumer: %d", closeConsumer.GetConsumerId())
 	consumerID := closeConsumer.GetConsumerId()
 	if consumer, ok := c.consumerHandler(consumerID); ok {
-		if !util.IsNil(consumer) {
-			consumer.ConnectionClosed()
-		}
+		consumer.ConnectionClosed()
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
 	}
@@ -564,9 +564,14 @@ func (c *connection) Close() {
 		listener.ConnectionClosed()
 	}
 
+	consumerHandlers := make(map[uint64]ConsumerHandler)
 	c.consumerHandlersLock.RLock()
-	defer c.consumerHandlersLock.RUnlock()
-	for _, handler := range c.consumerHandlers {
+	for id, handler := range c.consumerHandlers {
+		consumerHandlers[id] = handler
+	}
+	c.consumerHandlersLock.RUnlock()
+
+	for _, handler := range consumerHandlers {
 		handler.ConnectionClosed()
 	}
 }
