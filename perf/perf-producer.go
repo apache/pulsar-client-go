@@ -22,12 +22,13 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/beefsack/go-rate"
 	"github.com/bmizerany/perks/quantile"
 	"github.com/spf13/cobra"
 
 	log "github.com/sirupsen/logrus"
+
+	"github.com/apache/pulsar-client-go/pulsar"
 )
 
 // ProduceArgs define the parameters required by produce
@@ -39,39 +40,46 @@ type ProduceArgs struct {
 	ProducerQueueSize  int
 }
 
-var produceArgs ProduceArgs
+func newProducerCommand() *cobra.Command {
+	produceArgs := ProduceArgs{}
+	cmd := &cobra.Command{
+		Use:   "produce ",
+		Short: "Produce on a topic and measure performance",
+		Args:  cobra.ExactArgs(1),
+		Run: func(cmd *cobra.Command, args []string) {
+			stop := stopCh()
+			if FlagProfile {
+				RunProfiling(stop)
+			}
+			produceArgs.Topic = args[0]
+			produce(&produceArgs, stop)
+		},
+	}
 
-var cmdProduce = &cobra.Command{
-	Use:   "produce ",
-	Short: "Produce on a topic and measure performance",
-	Args:  cobra.ExactArgs(1),
-	Run: func(cmd *cobra.Command, args []string) {
-		produceArgs.Topic = args[0]
-		produce()
-	},
+	// add flags
+	flags := cmd.Flags()
+	flags.IntVarP(&produceArgs.Rate, "rate", "r", 100,
+		"Publish rate. Set to 0 to go unthrottled")
+	flags.IntVarP(&produceArgs.BatchingTimeMillis, "batching-time", "b", 1,
+		"Batching grouping time in millis")
+	flags.IntVarP(&produceArgs.MessageSize, "size", "s", 1024,
+		"Message size")
+	flags.IntVarP(&produceArgs.ProducerQueueSize, "queue-size", "q", 1000,
+		"Produce queue size")
+
+	return cmd
 }
 
-func initProducer() {
-	cmdProduce.Flags().IntVarP(&produceArgs.Rate, "rate", "r", 100, "Publish rate. Set to 0 to go unthrottled")
-	cmdProduce.Flags().IntVarP(&produceArgs.BatchingTimeMillis, "batching-time", "b", 1, "Batching grouping time in millis")
-	cmdProduce.Flags().IntVarP(&produceArgs.MessageSize, "size", "s", 1024, "Message size")
-	cmdProduce.Flags().IntVarP(&produceArgs.ProducerQueueSize, "queue-size", "q", 1000, "Produce queue size")
-}
-
-func produce() {
+func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 	b, _ := json.MarshalIndent(clientArgs, "", "  ")
 	log.Info("Client config: ", string(b))
 	b, _ = json.MarshalIndent(produceArgs, "", "  ")
 	log.Info("Producer config: ", string(b))
 
-	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL: clientArgs.ServiceURL,
-	})
-
+	client, err := NewClient()
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	defer client.Close()
 
 	producer, err := client.CreateProducer(pulsar.ProducerOptions{
@@ -84,7 +92,6 @@ func produce() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	defer producer.Close()
 
 	ctx := context.Background()
@@ -100,6 +107,12 @@ func produce() {
 		}
 
 		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+
 			if rateLimiter != nil {
 				rateLimiter.Wait()
 			}
@@ -126,6 +139,8 @@ func produce() {
 
 	for {
 		select {
+		case <-stop:
+			return
 		case <-tick.C:
 			messageRate := float64(messagesPublished) / float64(10)
 			log.Infof(`Stats - Publish rate: %6.1f msg/s - %6.1f Mbps - Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f`,
