@@ -148,10 +148,12 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 }
 
 func (pc *partitionConsumer) AckID(msgID *messageID) {
-	req := &ackRequest{
-		msgID: msgID,
+	if msgID != nil && msgID.ack() {
+		req := &ackRequest{
+			msgID: msgID,
+		}
+		pc.eventsCh <- req
 	}
-	pc.eventsCh <- req
 }
 
 func (pc *partitionConsumer) NackID(msgID *messageID) {
@@ -228,6 +230,11 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
 	messages := make([]*message, numMsgs)
+	var ackTracker *ackTracker
+	// are there multiple messages in this batch?
+	if numMsgs > 1 {
+		ackTracker = newAckTracker(numMsgs)
+	}
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
 		if err != nil {
@@ -235,7 +242,12 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return err
 		}
 
-		msgID := newMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), i, pc.partitionIdx)
+		msgID := newTrackingMessageID(
+			int64(pbMsgID.GetLedgerId()),
+			int64(pbMsgID.GetEntryId()),
+			i,
+			pc.partitionIdx,
+			ackTracker)
 		var msg *message
 		if smm != nil {
 			msg = &message{
