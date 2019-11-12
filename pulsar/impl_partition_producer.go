@@ -29,7 +29,6 @@ import (
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/util"
 )
 
 type producerState int
@@ -58,8 +57,8 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	eventsChan chan interface{}
 
-	publishSemaphore util.Semaphore
-	pendingQueue     util.BlockingQueue
+	publishSemaphore internal.Semaphore
+	pendingQueue     internal.BlockingQueue
 	lastSequenceID   int64
 
 	partitionIdx int
@@ -92,8 +91,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
-		publishSemaphore: make(util.Semaphore, maxPendingMessages),
-		pendingQueue:     util.NewBlockingQueue(maxPendingMessages),
+		publishSemaphore: make(internal.Semaphore, maxPendingMessages),
+		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
 		partitionIdx:     partitionIdx,
 	}

@@ -20,12 +20,12 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"net/http"
 	"sync"
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/util"
 	"github.com/stretchr/testify/assert"
 
 	log "github.com/sirupsen/logrus"
@@ -124,7 +124,7 @@ func TestProducerAsyncSend(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	wg.Add(10)
-	errors := util.NewBlockingQueue(10)
+	errors := internal.NewBlockingQueue(10)
 
 	for i := 0; i < 10; i++ {
 		producer.SendAsync(context.Background(), &ProducerMessage{
@@ -306,7 +306,7 @@ func TestFlushInProducer(t *testing.T) {
 
 	wg := sync.WaitGroup{}
 	wg.Add(5)
-	errors := util.NewBlockingQueue(10)
+	errors := internal.NewBlockingQueue(10)
 	for i := 0; i < numOfMessages/2; i++ {
 		messageContent := prefix + fmt.Sprintf("%d", i)
 		producer.SendAsync(ctx, &ProducerMessage{
@@ -404,7 +404,7 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	prefix := "msg-batch-async-"
 	wg := sync.WaitGroup{}
 	wg.Add(5)
-	errors := util.NewBlockingQueue(5)
+	errors := internal.NewBlockingQueue(5)
 	for i := 0; i < numOfMessages/2; i++ {
 		messageContent := prefix + fmt.Sprintf("%d", i)
 		producer.SendAsync(ctx, &ProducerMessage{
