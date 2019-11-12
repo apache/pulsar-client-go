@@ -146,9 +146,9 @@ func (p *producer) LastSequenceID() int64 {
 
 func (p *producer) Flush() error {
 	for _, pp := range p.producers {
-		 if err :=  pp.Flush(); err != nil {
-		 	return err
-		 }
+		if err := pp.Flush(); err != nil {
+			return err
+		}
 
 	}
 	return nil

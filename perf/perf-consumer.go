@@ -101,9 +101,7 @@ func consume(consumeArgs *ConsumeArgs, stop <-chan struct{}) {
 			}
 			msgReceived++
 			bytesReceived += int64(len(cm.Message.Payload()))
-			if err := consumer.Ack(cm.Message); err != nil {
-				return
-			}
+			consumer.Ack(cm.Message)
 		case <-tick.C:
 			currentMsgReceived := atomic.SwapInt64(&msgReceived, 0)
 			currentBytesReceived := atomic.SwapInt64(&bytesReceived, 0)
