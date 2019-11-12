@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package util
+package internal
 
 // Semaphore is a channel of bool, used to receive a bool type semaphore.
 type Semaphore chan bool
