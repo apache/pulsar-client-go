@@ -60,7 +60,6 @@ func newConsumerCommand() *cobra.Command {
 }
 
 func consume(consumeArgs *ConsumeArgs, stop <-chan struct{}) {
-	log.Info("flag profile:", FlagProfile)
 	b, _ := json.MarshalIndent(clientArgs, "", "  ")
 	log.Info("Client config: ", string(b))
 	b, _ = json.MarshalIndent(consumeArgs, "", "  ")

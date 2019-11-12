@@ -34,6 +34,7 @@ import (
 
 // global flags
 var FlagProfile bool
+var flagDebug bool
 
 type ClientArgs struct {
 	ServiceURL string
@@ -62,11 +63,15 @@ func initLogger(debug bool) {
 
 func main() {
 	rootCmd := &cobra.Command{
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			initLogger(flagDebug)
+		},
 		Use: "pulsar-perf-go",
 	}
 
 	flags := rootCmd.PersistentFlags()
 	flags.BoolVar(&FlagProfile, "profile", false, "enable profiling")
+	flags.BoolVar(&flagDebug, "debug", false, "enable debug output")
 	flags.StringVarP(&clientArgs.ServiceURL, "service-url", "u",
 		"pulsar://localhost:6650", "The Pulsar service URL")
 
