@@ -27,7 +27,7 @@ import (
 
 type nackMockedConsumer struct {
 	sync.Mutex
-	cond *sync.Cond
+	cond   *sync.Cond
 	msgIds []messageID
 }
 
@@ -44,7 +44,7 @@ func (nmc *nackMockedConsumer) Redeliver(msgIds []messageID) {
 	nmc.Unlock()
 }
 
-func (nmc *nackMockedConsumer) Wait() []messageID{
+func (nmc *nackMockedConsumer) Wait() []messageID {
 	nmc.Lock()
 	defer nmc.Unlock()
 	nmc.cond.Wait()
@@ -55,18 +55,18 @@ func (nmc *nackMockedConsumer) Wait() []messageID{
 func TestNacksTracker(t *testing.T) {
 	nmc := &nackMockedConsumer{}
 	nmc.cond = sync.NewCond(nmc)
-	nacks := newNegativeAcksTracker(nmc, 1 * time.Second)
+	nacks := newNegativeAcksTracker(nmc, 1*time.Second)
 
 	nacks.Add(&messageID{
-		ledgerID:     1,
-		entryID:      1,
-		batchIdx:     1,
+		ledgerID: 1,
+		entryID:  1,
+		batchIdx: 1,
 	})
 
 	nacks.Add(&messageID{
-		ledgerID:     2,
-		entryID:      2,
-		batchIdx:     1,
+		ledgerID: 2,
+		entryID:  2,
+		batchIdx: 1,
 	})
 
 	msgIds := nmc.Wait()
@@ -83,30 +83,30 @@ func TestNacksTracker(t *testing.T) {
 func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := &nackMockedConsumer{}
 	nmc.cond = sync.NewCond(nmc)
-	nacks := newNegativeAcksTracker(nmc, 1 * time.Second)
+	nacks := newNegativeAcksTracker(nmc, 1*time.Second)
 
 	nacks.Add(&messageID{
-		ledgerID:     1,
-		entryID:      1,
-		batchIdx:     1,
+		ledgerID: 1,
+		entryID:  1,
+		batchIdx: 1,
 	})
 
 	nacks.Add(&messageID{
-		ledgerID:     1,
-		entryID:      1,
-		batchIdx:     2,
+		ledgerID: 1,
+		entryID:  1,
+		batchIdx: 2,
 	})
 
 	nacks.Add(&messageID{
-		ledgerID:     1,
-		entryID:      1,
-		batchIdx:     3,
+		ledgerID: 1,
+		entryID:  1,
+		batchIdx: 3,
 	})
 
 	nacks.Add(&messageID{
-		ledgerID:     2,
-		entryID:      2,
-		batchIdx:     1,
+		ledgerID: 2,
+		entryID:  2,
+		batchIdx: 1,
 	})
 
 	msgIds := nmc.Wait()

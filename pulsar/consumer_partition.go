@@ -149,7 +149,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 
 func (pc *partitionConsumer) AckID(msgID *messageID) {
 	req := &ackRequest{
-		msgID:  msgID,
+		msgID: msgID,
 	}
 	pc.eventsCh <- req
 }
@@ -201,7 +201,7 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	messageIDs := make([]*pb.MessageIdData, 1)
 	messageIDs[0] = &pb.MessageIdData{
 		LedgerId: proto.Uint64(uint64(msgId.ledgerID)),
-		EntryId: proto.Uint64(uint64(msgId.entryID)),
+		EntryId:  proto.Uint64(uint64(msgId.entryID)),
 	}
 	requestID := internal.RequestIDNoResponse
 	cmdAck := &pb.CommandAck{
@@ -386,7 +386,7 @@ func (pc *partitionConsumer) dispatcher() {
 }
 
 type ackRequest struct {
-	msgID  *messageID
+	msgID *messageID
 }
 
 type unsubscribeRequest struct {

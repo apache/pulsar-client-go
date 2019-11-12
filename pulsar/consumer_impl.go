@@ -214,7 +214,7 @@ func (c *consumer) Ack(msg Message) {
 }
 
 // Ack the consumption of a single message, identified by its MessageID
-func (c *consumer) AckID(msgID MessageID)  {
+func (c *consumer) AckID(msgID MessageID) {
 	mid, ok := msgID.(*messageID)
 	if !ok {
 		c.log.Warnf("invalid message id type")
