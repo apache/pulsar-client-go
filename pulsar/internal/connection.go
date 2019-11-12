@@ -56,6 +56,7 @@ type ConnectionListener interface {
 // Connection is a interface of client cnx.
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
+	SendRequestNoWait(req *pb.BaseCommand)
 	WriteData(data []byte)
 	RegisterListener(id uint64, listener ConnectionListener)
 	UnregisterListener(id uint64)
@@ -101,7 +102,7 @@ func (s connectionState) String() string {
 const keepAliveInterval = 30 * time.Second
 
 type request struct {
-	id       uint64
+	id       *uint64
 	cmd      *pb.BaseCommand
 	callback func(command *pb.BaseCommand, err error)
 }
@@ -133,7 +134,7 @@ type connection struct {
 	requestIDGenerator uint64
 
 	incomingRequestsCh chan *request
-	incomingCmdCh     chan *incomingCmd
+	incomingCmdCh      chan *incomingCmd
 	writeRequestsCh    chan []byte
 
 	pendingReqs map[uint64]*request
@@ -285,13 +286,9 @@ func (c *connection) run() {
 			if req == nil {
 				return
 			}
-			// does this request expect a response?
-			if req.id != RequestIDNoResponse {
-				c.pendingReqs[req.id] = req
-			}
-			c.writeCommand(req.cmd)
+			c.internalSendRequest(req)
 
-		case cmd := <- c.incomingCmdCh:
+		case cmd := <-c.incomingCmdCh:
 			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
 
 		case data := <-c.writeRequestsCh:
@@ -412,14 +409,24 @@ func (c *connection) Write(data []byte) {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand, err error)) {
 	c.incomingRequestsCh <- &request{
-		id:       requestID,
+		id:       &requestID,
 		cmd:      req,
 		callback: callback,
 	}
 }
 
+func (c *connection) SendRequestNoWait(req *pb.BaseCommand) {
+	c.incomingRequestsCh <- &request{
+		id:       nil,
+		cmd:      req,
+		callback: nil,
+	}
+}
+
 func (c *connection) internalSendRequest(req *request) {
-	c.pendingReqs[req.id] = req
+	if req.id != nil {
+		c.pendingReqs[*req.id] = req
+	}
 	c.writeCommand(req.cmd)
 }
 
@@ -477,7 +484,7 @@ func (c *connection) lastDataReceived() time.Time {
 	c.lastDataReceivedLock.Lock()
 	defer c.lastDataReceivedLock.Unlock()
 	t := c.lastDataReceivedTime
-	return t;
+	return t
 }
 
 func (c *connection) setLastDataReceived(t time.Time) {

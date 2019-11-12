@@ -68,7 +68,6 @@ type MessageReader struct {
 	batched bool
 }
 
-
 // ReadChecksum
 func (r *MessageReader) readChecksum() (uint32, error) {
 	if r.buffer.ReadableBytes() < 6 {
@@ -82,7 +81,6 @@ func (r *MessageReader) readChecksum() (uint32, error) {
 	checksum := r.buffer.ReadUint32()
 	return checksum, nil
 }
-
 
 func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
 	// Wire format
@@ -144,7 +142,6 @@ func (r *MessageReader) readSingleMessage() (*pb.SingleMessageMetadata, []byte, 
 
 	return &meta, r.buffer.Read(uint32(meta.GetPayloadSize())), nil
 }
-
 
 func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand {
 	cmd := &pb.BaseCommand{
@@ -245,7 +242,6 @@ func serializeBatch(wb Buffer, cmdSend *pb.BaseCommand, msgMetadata *pb.MessageM
 	// set computed checksum
 	wb.PutUint32(checksum, checksumIdx)
 }
-
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte
 func ConvertFromStringMap(m map[string]string) []*pb.KeyValue {
