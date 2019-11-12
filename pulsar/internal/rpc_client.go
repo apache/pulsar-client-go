@@ -31,9 +31,6 @@ type RPCResult struct {
 	Cnx      Connection
 }
 
-// RequestID for a request when there is no expected response
-const RequestIDNoResponse = uint64(0)
-
 type RPCClient interface {
 	// Create a new unique request id
 	NewRequestID() uint64
@@ -48,7 +45,7 @@ type RPCClient interface {
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	RequestOnCnxNoWait(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+	RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message)
 
 	RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 }
@@ -120,17 +117,8 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 	return rpcResult, rpcErr
 }
 
-func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
-	rpcResult := &RPCResult{
-		Cnx: cnx,
-	}
-
-	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
-		rpcResult.Response = response
-	})
-
-	return rpcResult, nil
+func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) {
+	cnx.SendRequestNoWait(baseCommand(cmdType, message))
 }
 
 func (c *rpcClient) NewRequestID() uint64 {

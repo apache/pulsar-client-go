@@ -174,8 +174,7 @@ func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
 		}
 	}
 
-	requestID := internal.RequestIDNoResponse
-	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, requestID,
+	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn,
 		pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
 			ConsumerId: proto.Uint64(pc.consumerID),
 			MessageIds: msgIdDataList,
@@ -203,14 +202,14 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		LedgerId: proto.Uint64(uint64(msgId.ledgerID)),
 		EntryId:  proto.Uint64(uint64(msgId.entryID)),
 	}
-	requestID := internal.RequestIDNoResponse
+
 	cmdAck := &pb.CommandAck{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		MessageId:  messageIDs,
 		AckType:    pb.CommandAck_Individual.Enum(),
 	}
 
-	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, requestID, pb.BaseCommand_ACK, cmdAck)
+	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, pb.BaseCommand_ACK, cmdAck)
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
@@ -281,15 +280,11 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 		return fmt.Errorf("invalid number of permits requested: %d", permits)
 	}
 
-	requestID := internal.RequestIDNoResponse
 	cmdFlow := &pb.CommandFlow{
 		ConsumerId:     proto.Uint64(pc.consumerID),
 		MessagePermits: proto.Uint32(permits),
 	}
-	_, err := pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, requestID, pb.BaseCommand_FLOW, cmdFlow)
-	if err != nil {
-		return err
-	}
+	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, pb.BaseCommand_FLOW, cmdFlow)
 
 	return nil
 }
