@@ -218,6 +218,7 @@ func (c *consumer) AckID(msgID MessageID)  {
 	mid, ok := msgID.(*messageID)
 	if !ok {
 		c.log.Warnf("invalid message id type")
+		return
 	}
 
 	partition := mid.partitionIdx
@@ -225,6 +226,7 @@ func (c *consumer) AckID(msgID MessageID)  {
 	if partition < 0 || partition >= len(c.consumers) {
 		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
+		return
 	}
 	c.consumers[partition].AckID(mid)
 }
@@ -237,6 +239,7 @@ func (c *consumer) NackID(msgID MessageID) {
 	mid, ok := msgID.(*messageID)
 	if !ok {
 		c.log.Warnf("invalid message id type")
+		return
 	}
 
 	partition := mid.partitionIdx
@@ -244,6 +247,7 @@ func (c *consumer) NackID(msgID MessageID) {
 	if partition < 0 || partition >= len(c.consumers) {
 		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
+		return
 	}
 
 	c.consumers[partition].NackID(mid)
