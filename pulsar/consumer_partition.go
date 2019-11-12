@@ -47,6 +47,7 @@ type partitionConsumerOpts struct {
 	subscriptionInitPos SubscriptionInitialPosition
 	partitionIdx        int
 	receiverQueueSize   int
+	nackRedeliveryDelay time.Duration
 }
 
 type partitionConsumer struct {
@@ -78,6 +79,8 @@ type partitionConsumer struct {
 	connectedCh chan struct{}
 	closeCh     chan struct{}
 
+	nackTracker *negativeAcksTracker
+
 	log *log.Entry
 }
 
@@ -101,6 +104,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		log:            log.WithField("topic", options.topic),
 	}
 	pc.log = pc.log.WithField("name", pc.name).WithField("subscription", options.subscription)
+	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay)
 
 	err := pc.grabConn()
 	if err != nil {
@@ -143,19 +147,39 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
 }
 
-func (pc *partitionConsumer) Ack(msg Message) error {
-	return pc.AckID(msg.ID())
-}
-
-func (pc *partitionConsumer) AckID(msgID MessageID) error {
+func (pc *partitionConsumer) AckID(msgID *messageID) {
 	req := &ackRequest{
-		doneCh: make(chan struct{}),
 		msgID:  msgID,
 	}
 	pc.eventsCh <- req
+}
 
-	<-req.doneCh
-	return req.err
+func (pc *partitionConsumer) NackID(msgID *messageID) {
+	pc.nackTracker.Add(msgID)
+}
+
+func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
+	pc.eventsCh <- &redeliveryRequest{msgIds}
+}
+
+func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
+	msgIds := req.msgIds
+	pc.log.Debug("Request redelivery after negative ack for messages", msgIds)
+
+	msgIdDataList := make([]*pb.MessageIdData, len(msgIds))
+	for i := 0; i < len(msgIds); i++ {
+		msgIdDataList[i] = &pb.MessageIdData{
+			LedgerId: proto.Uint64(uint64(msgIds[i].ledgerID)),
+			EntryId:  proto.Uint64(uint64(msgIds[i].entryID)),
+		}
+	}
+
+	requestID := internal.RequestIDNoResponse
+	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, requestID,
+		pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
+			ConsumerId: proto.Uint64(pc.consumerID),
+			MessageIds: msgIdDataList,
+		})
 }
 
 func (pc *partitionConsumer) Close() error {
@@ -172,28 +196,21 @@ func (pc *partitionConsumer) Close() error {
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
-	defer close(req.doneCh)
+	msgId := req.msgID
 
-	id := &pb.MessageIdData{}
-	messageIDs := make([]*pb.MessageIdData, 0)
-	err := proto.Unmarshal(req.msgID.Serialize(), id)
-	if err != nil {
-		pc.log.WithError(err).Error("unable to serialize message id")
-		req.err = err
+	messageIDs := make([]*pb.MessageIdData, 1)
+	messageIDs[0] = &pb.MessageIdData{
+		LedgerId: proto.Uint64(uint64(msgId.ledgerID)),
+		EntryId: proto.Uint64(uint64(msgId.entryID)),
 	}
-
-	messageIDs = append(messageIDs, id)
 	requestID := internal.RequestIDNoResponse
 	cmdAck := &pb.CommandAck{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		MessageId:  messageIDs,
 		AckType:    pb.CommandAck_Individual.Enum(),
 	}
-	_, err = pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, requestID, pb.BaseCommand_ACK, cmdAck)
-	if err != nil {
-		pc.log.WithError(err).Errorf("failed to ack message_id=%s", id)
-		req.err = err
-	}
+
+	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, requestID, pb.BaseCommand_ACK, cmdAck)
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
@@ -369,9 +386,7 @@ func (pc *partitionConsumer) dispatcher() {
 }
 
 type ackRequest struct {
-	doneCh chan struct{}
-	msgID  MessageID
-	err    error
+	msgID  *messageID
 }
 
 type unsubscribeRequest struct {
@@ -382,6 +397,10 @@ type unsubscribeRequest struct {
 type closeRequest struct {
 	doneCh chan struct{}
 	err    error
+}
+
+type redeliveryRequest struct {
+	msgIds []messageID
 }
 
 func (pc *partitionConsumer) runEventsLoop() {
@@ -396,6 +415,8 @@ func (pc *partitionConsumer) runEventsLoop() {
 			switch v := i.(type) {
 			case *ackRequest:
 				pc.internalAck(v)
+			case *redeliveryRequest:
+				pc.internalRedeliver(v)
 			case *unsubscribeRequest:
 				pc.internalUnsubscribe(v)
 			case *connectionClosed:
@@ -429,6 +450,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		pc.log.Info("Closed consumer")
 		pc.state = consumerClosed
 		pc.conn.DeleteConsumeHandler(pc.consumerID)
+		pc.nackTracker.Close()
 		close(pc.closeCh)
 	}
 }

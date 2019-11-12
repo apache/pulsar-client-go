@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"time"
 )
 
 // Pair of a Consumer and Message
@@ -106,6 +107,10 @@ type ConsumerOptions struct {
 	// ReceiverQueueSize(int) if the total exceeds this value (default: 50000).
 	MaxTotalReceiverQueueSizeAcrossPartitions int
 
+	// The delay after which to redeliver the messages that failed to be
+	// processed. Default is 1min. (See `Consumer.Nack()`)
+	NackRedeliveryDelay *time.Duration
+
 	// Set the consumer name.
 	Name string
 
@@ -136,10 +141,28 @@ type Consumer interface {
 	Chan() <-chan ConsumerMessage
 
 	// Ack the consumption of a single message
-	Ack(Message) error
+	Ack(Message)
 
 	// AckID the consumption of a single message, identified by its MessageID
-	AckID(MessageID) error
+	AckID(MessageID)
+
+	// Acknowledge the failure to process a single message.
+	//
+	// When a message is "negatively acked" it will be marked for redelivery after
+	// some fixed delay. The delay is configurable when constructing the consumer
+	// with ConsumerOptions.NAckRedeliveryDelay .
+	//
+	// This call is not blocking.
+	Nack(Message)
+
+	// Acknowledge the failure to process a single message.
+	//
+	// When a message is "negatively acked" it will be marked for redelivery after
+	// some fixed delay. The delay is configurable when constructing the consumer
+	// with ConsumerOptions.NackRedeliveryDelay .
+	//
+	// This call is not blocking.
+	NackID(MessageID)
 
 	// Close the consumer and stop the broker to push more messages
 	Close() error

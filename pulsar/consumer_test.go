@@ -90,9 +90,7 @@ func TestProducerConsumer(t *testing.T) {
 		assert.Equal(t, expectProperties, msg.Properties())
 
 		// ack message
-		if err := consumer.Ack(msg); err != nil {
-			log.Fatal(err)
-		}
+		consumer.Ack(msg)
 	}
 }
 
@@ -163,8 +161,7 @@ func TestBatchMessageReceive(t *testing.T) {
 	for i := 0; i < numOfMessages; i++ {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
-		err = consumer.Ack(msg)
-		assert.Nil(t, err)
+		consumer.Ack(msg)
 		count++
 	}
 
@@ -301,17 +298,13 @@ func TestConsumerKeyShared(t *testing.T) {
 				break
 			}
 			receivedConsumer1++
-			if err := consumer1.Ack(cm.Message); err != nil {
-				log.Fatal(err)
-			}
+			consumer1.Ack(cm.Message)
 		case cm, ok := <-consumer2.Chan():
 			if !ok {
 				break
 			}
 			receivedConsumer2++
-			if err := consumer2.Ack(cm.Message); err != nil {
-				log.Fatal(err)
-			}
+			consumer2.Ack(cm.Message)
 		}
 	}
 
@@ -372,9 +365,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
 			msg.ID(), string(msg.Payload()))
 
-		if err := consumer.Ack(msg); err != nil {
-			assert.Nil(t, err)
-		}
+		consumer.Ack(msg)
 	}
 
 	assert.Equal(t, len(msgs), 10)
@@ -465,9 +456,7 @@ func TestConsumerShared(t *testing.T) {
 			payload := string(cm.Message.Payload())
 			messages[payload] = struct{}{}
 			fmt.Printf("consumer1 msg id is: %v, value is: %s\n", cm.Message.ID(), payload)
-			if err := consumer1.Ack(cm.Message); err != nil {
-				log.Fatal(err)
-			}
+			consumer1.Ack(cm.Message)
 		case cm, ok := <-consumer2.Chan():
 			if !ok {
 				break
@@ -476,9 +465,7 @@ func TestConsumerShared(t *testing.T) {
 			payload := string(cm.Message.Payload())
 			messages[payload] = struct{}{}
 			fmt.Printf("consumer2 msg id is: %v, value is: %s\n", cm.Message.ID(), payload)
-			if err := consumer2.Ack(cm.Message); err != nil {
-				log.Fatal(err)
-			}
+			consumer2.Ack(cm.Message)
 		}
 	}
 

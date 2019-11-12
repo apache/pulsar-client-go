@@ -33,6 +33,8 @@ import (
 
 var ErrConsumerClosed = errors.New("consumer closed")
 
+const defaultNackRedeliveryDelay = 1 * time.Minute
+
 type consumer struct {
 	options ConsumerOptions
 
@@ -117,6 +119,13 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 		wg.Add(1)
 		go func(idx int, pt string) {
 			defer wg.Done()
+
+			var nackRedeliveryDelay time.Duration
+			if options.NackRedeliveryDelay == nil {
+				nackRedeliveryDelay = defaultNackRedeliveryDelay
+			} else {
+				nackRedeliveryDelay = *options.NackRedeliveryDelay
+			}
 			opts := &partitionConsumerOpts{
 				topic:               pt,
 				consumerName:        consumerName,
@@ -125,6 +134,7 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 				subscriptionInitPos: options.SubscriptionInitialPosition,
 				partitionIdx:        idx,
 				receiverQueueSize:   receiverQueueSize,
+				nackRedeliveryDelay: nackRedeliveryDelay,
 			}
 			cons, err := newPartitionConsumer(consumer, client, opts, messageCh)
 			ch <- ConsumerError{
@@ -199,24 +209,44 @@ func (c *consumer) Chan() <-chan ConsumerMessage {
 }
 
 // Ack the consumption of a single message
-func (c *consumer) Ack(msg Message) error {
-	return c.AckID(msg.ID())
+func (c *consumer) Ack(msg Message) {
+	c.AckID(msg.ID())
 }
 
 // Ack the consumption of a single message, identified by its MessageID
-func (c *consumer) AckID(msgID MessageID) error {
+func (c *consumer) AckID(msgID MessageID)  {
 	mid, ok := msgID.(*messageID)
 	if !ok {
-		return fmt.Errorf("invalid message id type")
+		c.log.Warnf("invalid message id type")
 	}
 
 	partition := mid.partitionIdx
 	// did we receive a valid partition index?
 	if partition < 0 || partition >= len(c.consumers) {
-		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
 	}
-	return c.consumers[partition].AckID(msgID)
+	c.consumers[partition].AckID(mid)
+}
+
+func (c *consumer) Nack(msg Message) {
+	c.AckID(msg.ID())
+}
+
+func (c *consumer) NackID(msgID MessageID) {
+	mid, ok := msgID.(*messageID)
+	if !ok {
+		c.log.Warnf("invalid message id type")
+	}
+
+	partition := mid.partitionIdx
+	// did we receive a valid partition index?
+	if partition < 0 || partition >= len(c.consumers) {
+		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
+	}
+
+	c.consumers[partition].NackID(mid)
 }
 
 func (c *consumer) Close() error {

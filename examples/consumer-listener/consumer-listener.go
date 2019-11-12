@@ -57,8 +57,6 @@ func main() {
 		fmt.Printf("Received message  msgId: %v -- content: '%s'\n",
 			msg.ID(), string(msg.Payload()))
 
-		if err := consumer.Ack(msg); err != nil {
-			log.Fatal(err)
-		}
+		consumer.Ack(msg)
 	}
 }

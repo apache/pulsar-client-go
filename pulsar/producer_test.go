@@ -434,8 +434,7 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
 			msg.ID(), string(msg.Payload()))
 		assert.Nil(t, err)
-		err = consumer.Ack(msg)
-		assert.Nil(t, err)
+		consumer.Ack(msg)
 		msgCount++
 	}
 	assert.Equal(t, msgCount, numOfMessages/2)
