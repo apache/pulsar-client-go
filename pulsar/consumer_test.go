@@ -149,7 +149,6 @@ func TestBatchMessageReceive(t *testing.T) {
 		SubscriptionName: subName,
 	})
 	assert.Nil(t, err)
-	assert.Equal(t, topicName, consumer.Topic())
 	count := 0
 
 	for i := 0; i < numOfMessages; i++ {
@@ -397,7 +396,6 @@ func TestConsumerReceiveTimeout(t *testing.T) {
 		Topic:            topic,
 		SubscriptionName: "my-sub1",
 		Type:             Shared,
-		AckTimeout:       5 * 1000,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()

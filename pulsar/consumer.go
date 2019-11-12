@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"time"
 )
 
 // Pair of a Consumer and Message
@@ -82,11 +81,6 @@ type ConsumerOptions struct {
 	// This properties will be visible in the topic stats
 	Properties map[string]string
 
-	// Set the timeout for unacked messages
-	// Message not acknowledged within the give time, will be replayed by the broker to the same or a different consumer
-	// Default is 0, which means message are not being replayed based on ack time
-	AckTimeout time.Duration
-
 	// Select the subscription type to be used when subscribing to the topic.
 	// Default is `Exclusive`
 	Type SubscriptionType
@@ -128,9 +122,6 @@ type ConsumerOptions struct {
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
 type Consumer interface {
-	// Topic get the topic for the consumer
-	Topic() string
-
 	// Subscription get a subscription for the consumer
 	Subscription() string
 
