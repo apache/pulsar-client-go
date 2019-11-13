@@ -109,7 +109,7 @@ type ConsumerOptions struct {
 
 	// The delay after which to redeliver the messages that failed to be
 	// processed. Default is 1min. (See `Consumer.Nack()`)
-	NackRedeliveryDelay *time.Duration
+	NackRedeliveryDelay time.Duration
 
 	// Set the consumer name.
 	Name string

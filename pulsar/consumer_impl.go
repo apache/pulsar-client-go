@@ -121,10 +121,10 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 			defer wg.Done()
 
 			var nackRedeliveryDelay time.Duration
-			if options.NackRedeliveryDelay == nil {
+			if options.NackRedeliveryDelay == 0 {
 				nackRedeliveryDelay = defaultNackRedeliveryDelay
 			} else {
-				nackRedeliveryDelay = *options.NackRedeliveryDelay
+				nackRedeliveryDelay = options.NackRedeliveryDelay
 			}
 			opts := &partitionConsumerOpts{
 				topic:               pt,
@@ -232,7 +232,7 @@ func (c *consumer) AckID(msgID MessageID) {
 }
 
 func (c *consumer) Nack(msg Message) {
-	c.AckID(msg.ID())
+	c.NackID(msg.ID())
 }
 
 func (c *consumer) NackID(msgID MessageID) {
