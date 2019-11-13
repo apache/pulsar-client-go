@@ -61,82 +61,82 @@ type Clusters interface {
 }
 
 type clusters struct {
-	client   *client
+	pulsar   *pulsarClient
 	basePath string
 }
 
 // Clusters is used to access the cluster endpoints.
-func (c *client) Clusters() Clusters {
+func (c *pulsarClient) Clusters() Clusters {
 	return &clusters{
-		client:   c,
+		pulsar:   c,
 		basePath: "/clusters",
 	}
 }
 
 func (c *clusters) List() ([]string, error) {
 	var clusters []string
-	err := c.client.get(c.client.endpoint(c.basePath), &clusters)
+	err := c.pulsar.Client.Get(c.pulsar.endpoint(c.basePath), &clusters)
 	return clusters, err
 }
 
 func (c *clusters) Get(name string) (utils.ClusterData, error) {
 	cdata := utils.ClusterData{}
-	endpoint := c.client.endpoint(c.basePath, name)
-	err := c.client.get(endpoint, &cdata)
+	endpoint := c.pulsar.endpoint(c.basePath, name)
+	err := c.pulsar.Client.Get(endpoint, &cdata)
 	return cdata, err
 }
 
 func (c *clusters) Create(cdata utils.ClusterData) error {
-	endpoint := c.client.endpoint(c.basePath, cdata.Name)
-	return c.client.put(endpoint, &cdata)
+	endpoint := c.pulsar.endpoint(c.basePath, cdata.Name)
+	return c.pulsar.Client.Put(endpoint, &cdata)
 }
 
 func (c *clusters) Delete(name string) error {
-	endpoint := c.client.endpoint(c.basePath, name)
-	return c.client.delete(endpoint)
+	endpoint := c.pulsar.endpoint(c.basePath, name)
+	return c.pulsar.Client.Delete(endpoint)
 }
 
 func (c *clusters) Update(cdata utils.ClusterData) error {
-	endpoint := c.client.endpoint(c.basePath, cdata.Name)
-	return c.client.post(endpoint, &cdata)
+	endpoint := c.pulsar.endpoint(c.basePath, cdata.Name)
+	return c.pulsar.Client.Post(endpoint, &cdata)
 }
 
 func (c *clusters) GetPeerClusters(name string) ([]string, error) {
 	var peerClusters []string
-	endpoint := c.client.endpoint(c.basePath, name, "peers")
-	err := c.client.get(endpoint, &peerClusters)
+	endpoint := c.pulsar.endpoint(c.basePath, name, "peers")
+	err := c.pulsar.Client.Get(endpoint, &peerClusters)
 	return peerClusters, err
 }
 
 func (c *clusters) UpdatePeerClusters(cluster string, peerClusters []string) error {
-	endpoint := c.client.endpoint(c.basePath, cluster, "peers")
-	return c.client.post(endpoint, peerClusters)
+	endpoint := c.pulsar.endpoint(c.basePath, cluster, "peers")
+	return c.pulsar.Client.Post(endpoint, peerClusters)
 }
 
 func (c *clusters) CreateFailureDomain(data utils.FailureDomainData) error {
-	endpoint := c.client.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.client.post(endpoint, &data)
+	endpoint := c.pulsar.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
+	return c.pulsar.Client.Post(endpoint, &data)
 }
 
 func (c *clusters) GetFailureDomain(clusterName string, domainName string) (utils.FailureDomainData, error) {
 	var res utils.FailureDomainData
-	endpoint := c.client.endpoint(c.basePath, clusterName, "failureDomains", domainName)
-	err := c.client.get(endpoint, &res)
+	endpoint := c.pulsar.endpoint(c.basePath, clusterName, "failureDomains", domainName)
+	err := c.pulsar.Client.Get(endpoint, &res)
 	return res, err
 }
 
 func (c *clusters) ListFailureDomains(clusterName string) (utils.FailureDomainMap, error) {
 	var domainData utils.FailureDomainMap
-	endpoint := c.client.endpoint(c.basePath, clusterName, "failureDomains")
-	err := c.client.get(endpoint, &domainData)
+	endpoint := c.pulsar.endpoint(c.basePath, clusterName, "failureDomains")
+	err := c.pulsar.Client.Get(endpoint, &domainData)
 	return domainData, err
 }
 
 func (c *clusters) DeleteFailureDomain(data utils.FailureDomainData) error {
-	endpoint := c.client.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.client.delete(endpoint)
+	endpoint := c.pulsar.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
+	return c.pulsar.Client.Delete(endpoint)
 }
 func (c *clusters) UpdateFailureDomain(data utils.FailureDomainData) error {
-	endpoint := c.client.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.client.post(endpoint, &data)
+	endpoint := c.pulsar.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
+	return c.pulsar.Client.Post(endpoint, &data)
 }

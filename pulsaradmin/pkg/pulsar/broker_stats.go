@@ -40,22 +40,22 @@ type BrokerStats interface {
 }
 
 type brokerStats struct {
-	client   *client
+	pulsar   *pulsarClient
 	basePath string
 }
 
 // BrokerStats is used to access the broker stats endpoints
-func (c *client) BrokerStats() BrokerStats {
+func (c *pulsarClient) BrokerStats() BrokerStats {
 	return &brokerStats{
-		client:   c,
+		pulsar:   c,
 		basePath: "/broker-stats",
 	}
 }
 
 func (bs *brokerStats) GetMetrics() ([]utils.Metrics, error) {
-	endpoint := bs.client.endpoint(bs.basePath, "/metrics")
+	endpoint := bs.pulsar.endpoint(bs.basePath, "/metrics")
 	var response []utils.Metrics
-	err := bs.client.get(endpoint, &response)
+	err := bs.pulsar.Client.Get(endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -64,9 +64,9 @@ func (bs *brokerStats) GetMetrics() ([]utils.Metrics, error) {
 }
 
 func (bs *brokerStats) GetMBeans() ([]utils.Metrics, error) {
-	endpoint := bs.client.endpoint(bs.basePath, "/mbeans")
+	endpoint := bs.pulsar.endpoint(bs.basePath, "/mbeans")
 	var response []utils.Metrics
-	err := bs.client.get(endpoint, &response)
+	err := bs.pulsar.Client.Get(endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +75,8 @@ func (bs *brokerStats) GetMBeans() ([]utils.Metrics, error) {
 }
 
 func (bs *brokerStats) GetTopics() (string, error) {
-	endpoint := bs.client.endpoint(bs.basePath, "/topics")
-	buf, err := bs.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := bs.pulsar.endpoint(bs.basePath, "/topics")
+	buf, err := bs.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return "", err
 	}
@@ -85,9 +85,9 @@ func (bs *brokerStats) GetTopics() (string, error) {
 }
 
 func (bs *brokerStats) GetLoadReport() (*utils.LocalBrokerData, error) {
-	endpoint := bs.client.endpoint(bs.basePath, "/load-report")
+	endpoint := bs.pulsar.endpoint(bs.basePath, "/load-report")
 	response := utils.NewLocalBrokerData()
-	err := bs.client.get(endpoint, &response)
+	err := bs.pulsar.Client.Get(endpoint, &response)
 	if err != nil {
 		return nil, nil
 	}
@@ -95,9 +95,9 @@ func (bs *brokerStats) GetLoadReport() (*utils.LocalBrokerData, error) {
 }
 
 func (bs *brokerStats) GetAllocatorStats(allocatorName string) (*utils.AllocatorStats, error) {
-	endpoint := bs.client.endpoint(bs.basePath, "/allocator-stats", allocatorName)
+	endpoint := bs.pulsar.endpoint(bs.basePath, "/allocator-stats", allocatorName)
 	var allocatorStats utils.AllocatorStats
-	err := bs.client.get(endpoint, &allocatorStats)
+	err := bs.pulsar.Client.Get(endpoint, &allocatorStats)
 	if err != nil {
 		return nil, err
 	}

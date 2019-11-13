@@ -28,18 +28,6 @@ type TokenAuthProvider struct {
 	tokenSupplier func() (string, error)
 }
 
-// NewAuthenticationTokenWithParams return a interface of Provider with string map.
-func NewAuthenticationTokenWithParams(params map[string]string) (*TokenAuthProvider, error) {
-	switch {
-	case params["token"] != "":
-		return NewAuthenticationToken(params["token"]), nil
-	case params["file"] != "":
-		return NewAuthenticationTokenFromFile(params["file"]), nil
-	default:
-		return nil, errors.New("missing configuration for token auth")
-	}
-}
-
 // NewAuthenticationToken return a interface of Provider with a string token.
 func NewAuthenticationToken(token string) *TokenAuthProvider {
 	return &TokenAuthProvider{
@@ -82,4 +70,18 @@ func (p *TokenAuthProvider) GetData() ([]byte, error) {
 		return nil, err
 	}
 	return []byte(t), nil
+}
+
+func (p *TokenAuthProvider) HasDataForHTTP() bool {
+	return true
+}
+
+func (p *TokenAuthProvider) GetHTTPHeaders() (map[string]string, error) {
+	data, err := p.GetData()
+	if err != nil {
+		return nil, err
+	}
+	headers := make(map[string]string)
+	headers["Authorization"] = "Bearer " + string(data)
+	return headers, nil
 }
