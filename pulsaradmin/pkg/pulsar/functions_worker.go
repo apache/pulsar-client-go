@@ -39,23 +39,23 @@ type FunctionsWorker interface {
 }
 
 type worker struct {
-	client          *client
+	pulsar          *pulsarClient
 	workerPath      string
 	workerStatsPath string
 }
 
-func (c *client) FunctionsWorker() FunctionsWorker {
+func (c *pulsarClient) FunctionsWorker() FunctionsWorker {
 	return &worker{
-		client:          c,
+		pulsar:          c,
 		workerPath:      "/worker",
 		workerStatsPath: "/worker-stats",
 	}
 }
 
 func (w *worker) GetFunctionsStats() ([]*utils.WorkerFunctionInstanceStats, error) {
-	endpoint := w.client.endpoint(w.workerStatsPath, "functionsmetrics")
+	endpoint := w.pulsar.endpoint(w.workerStatsPath, "functionsmetrics")
 	var workerStats []*utils.WorkerFunctionInstanceStats
-	err := w.client.get(endpoint, &workerStats)
+	err := w.pulsar.Client.Get(endpoint, &workerStats)
 	if err != nil {
 		return nil, err
 	}
@@ -63,9 +63,9 @@ func (w *worker) GetFunctionsStats() ([]*utils.WorkerFunctionInstanceStats, erro
 }
 
 func (w *worker) GetMetrics() ([]*utils.Metrics, error) {
-	endpoint := w.client.endpoint(w.workerStatsPath, "metrics")
+	endpoint := w.pulsar.endpoint(w.workerStatsPath, "metrics")
 	var metrics []*utils.Metrics
-	err := w.client.get(endpoint, &metrics)
+	err := w.pulsar.Client.Get(endpoint, &metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -73,9 +73,9 @@ func (w *worker) GetMetrics() ([]*utils.Metrics, error) {
 }
 
 func (w *worker) GetCluster() ([]*utils.WorkerInfo, error) {
-	endpoint := w.client.endpoint(w.workerPath, "cluster")
+	endpoint := w.pulsar.endpoint(w.workerPath, "cluster")
 	var workersInfo []*utils.WorkerInfo
-	err := w.client.get(endpoint, &workersInfo)
+	err := w.pulsar.Client.Get(endpoint, &workersInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -83,9 +83,9 @@ func (w *worker) GetCluster() ([]*utils.WorkerInfo, error) {
 }
 
 func (w *worker) GetClusterLeader() (*utils.WorkerInfo, error) {
-	endpoint := w.client.endpoint(w.workerPath, "cluster", "leader")
+	endpoint := w.pulsar.endpoint(w.workerPath, "cluster", "leader")
 	var workerInfo utils.WorkerInfo
-	err := w.client.get(endpoint, &workerInfo)
+	err := w.pulsar.Client.Get(endpoint, &workerInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -93,9 +93,9 @@ func (w *worker) GetClusterLeader() (*utils.WorkerInfo, error) {
 }
 
 func (w *worker) GetAssignments() (map[string][]string, error) {
-	endpoint := w.client.endpoint(w.workerPath, "assignments")
+	endpoint := w.pulsar.endpoint(w.workerPath, "assignments")
 	var assignments map[string][]string
-	err := w.client.get(endpoint, &assignments)
+	err := w.pulsar.Client.Get(endpoint, &assignments)
 	if err != nil {
 		return nil, err
 	}

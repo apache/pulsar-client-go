@@ -40,43 +40,43 @@ type Tenants interface {
 }
 
 type tenants struct {
-	client   *client
+	pulsar   *pulsarClient
 	basePath string
 }
 
 // Tenants is used to access the tenants endpoints
-func (c *client) Tenants() Tenants {
+func (c *pulsarClient) Tenants() Tenants {
 	return &tenants{
-		client:   c,
+		pulsar:   c,
 		basePath: "/tenants",
 	}
 }
 
 func (c *tenants) Create(data utils.TenantData) error {
-	endpoint := c.client.endpoint(c.basePath, data.Name)
-	return c.client.put(endpoint, &data)
+	endpoint := c.pulsar.endpoint(c.basePath, data.Name)
+	return c.pulsar.Client.Put(endpoint, &data)
 }
 
 func (c *tenants) Delete(name string) error {
-	endpoint := c.client.endpoint(c.basePath, name)
-	return c.client.delete(endpoint)
+	endpoint := c.pulsar.endpoint(c.basePath, name)
+	return c.pulsar.Client.Delete(endpoint)
 }
 
 func (c *tenants) Update(data utils.TenantData) error {
-	endpoint := c.client.endpoint(c.basePath, data.Name)
-	return c.client.post(endpoint, &data)
+	endpoint := c.pulsar.endpoint(c.basePath, data.Name)
+	return c.pulsar.Client.Post(endpoint, &data)
 }
 
 func (c *tenants) List() ([]string, error) {
 	var tenantList []string
-	endpoint := c.client.endpoint(c.basePath, "")
-	err := c.client.get(endpoint, &tenantList)
+	endpoint := c.pulsar.endpoint(c.basePath, "")
+	err := c.pulsar.Client.Get(endpoint, &tenantList)
 	return tenantList, err
 }
 
 func (c *tenants) Get(name string) (utils.TenantData, error) {
 	var data utils.TenantData
-	endpoint := c.client.endpoint(c.basePath, name)
-	err := c.client.get(endpoint, &data)
+	endpoint := c.pulsar.endpoint(c.basePath, name)
+	err := c.pulsar.Client.Get(endpoint, &data)
 	return data, err
 }

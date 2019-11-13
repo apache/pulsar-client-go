@@ -250,22 +250,22 @@ type Namespaces interface {
 }
 
 type namespaces struct {
-	client   *client
+	pulsar   *pulsarClient
 	basePath string
 }
 
 // Namespaces is used to access the namespaces endpoints
-func (c *client) Namespaces() Namespaces {
+func (c *pulsarClient) Namespaces() Namespaces {
 	return &namespaces{
-		client:   c,
+		pulsar:   c,
 		basePath: "/namespaces",
 	}
 }
 
 func (n *namespaces) GetNamespaces(tenant string) ([]string, error) {
 	var namespaces []string
-	endpoint := n.client.endpoint(n.basePath, tenant)
-	err := n.client.get(endpoint, &namespaces)
+	endpoint := n.pulsar.endpoint(n.basePath, tenant)
+	err := n.pulsar.Client.Get(endpoint, &namespaces)
 	return namespaces, err
 }
 
@@ -275,8 +275,8 @@ func (n *namespaces) GetTopics(namespace string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	endpoint := n.client.endpoint(n.basePath, ns.String(), "topics")
-	err = n.client.get(endpoint, &topics)
+	endpoint := n.pulsar.endpoint(n.basePath, ns.String(), "topics")
+	err = n.pulsar.Client.Get(endpoint, &topics)
 	return topics, err
 }
 
@@ -286,8 +286,8 @@ func (n *namespaces) GetPolicies(namespace string) (*utils.Policies, error) {
 	if err != nil {
 		return nil, err
 	}
-	endpoint := n.client.endpoint(n.basePath, ns.String())
-	err = n.client.get(endpoint, &police)
+	endpoint := n.pulsar.endpoint(n.basePath, ns.String())
+	err = n.pulsar.Client.Get(endpoint, &police)
 	return &police, err
 }
 
@@ -300,8 +300,8 @@ func (n *namespaces) CreateNsWithPolices(namespace string, policies utils.Polici
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, ns.String())
-	return n.client.put(endpoint, &policies)
+	endpoint := n.pulsar.endpoint(n.basePath, ns.String())
+	return n.pulsar.Client.Put(endpoint, &policies)
 }
 
 func (n *namespaces) CreateNsWithBundlesData(namespace string, bundleData *utils.BundlesData) error {
@@ -309,11 +309,11 @@ func (n *namespaces) CreateNsWithBundlesData(namespace string, bundleData *utils
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, ns.String())
+	endpoint := n.pulsar.endpoint(n.basePath, ns.String())
 	polices := new(utils.Policies)
 	polices.Bundles = bundleData
 
-	return n.client.put(endpoint, &polices)
+	return n.pulsar.Client.Put(endpoint, &polices)
 }
 
 func (n *namespaces) CreateNamespace(namespace string) error {
@@ -321,8 +321,8 @@ func (n *namespaces) CreateNamespace(namespace string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, ns.String())
-	return n.client.put(endpoint, nil)
+	endpoint := n.pulsar.endpoint(n.basePath, ns.String())
+	return n.pulsar.Client.Put(endpoint, nil)
 }
 
 func (n *namespaces) DeleteNamespace(namespace string) error {
@@ -330,8 +330,8 @@ func (n *namespaces) DeleteNamespace(namespace string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, ns.String())
-	return n.client.delete(endpoint)
+	endpoint := n.pulsar.endpoint(n.basePath, ns.String())
+	return n.pulsar.Client.Delete(endpoint)
 }
 
 func (n *namespaces) DeleteNamespaceBundle(namespace string, bundleRange string) error {
@@ -339,8 +339,8 @@ func (n *namespaces) DeleteNamespaceBundle(namespace string, bundleRange string)
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, ns.String(), bundleRange)
-	return n.client.delete(endpoint)
+	endpoint := n.pulsar.endpoint(n.basePath, ns.String(), bundleRange)
+	return n.pulsar.Client.Delete(endpoint)
 }
 
 func (n *namespaces) GetNamespaceMessageTTL(namespace string) (int, error) {
@@ -349,8 +349,8 @@ func (n *namespaces) GetNamespaceMessageTTL(namespace string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "messageTTL")
-	err = n.client.get(endpoint, &ttl)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "messageTTL")
+	err = n.pulsar.Client.Get(endpoint, &ttl)
 	return ttl, err
 }
 
@@ -360,8 +360,8 @@ func (n *namespaces) SetNamespaceMessageTTL(namespace string, ttlInSeconds int) 
 		return err
 	}
 
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "messageTTL")
-	return n.client.post(endpoint, &ttlInSeconds)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "messageTTL")
+	return n.pulsar.Client.Post(endpoint, &ttlInSeconds)
 }
 
 func (n *namespaces) SetRetention(namespace string, policy utils.RetentionPolicies) error {
@@ -369,8 +369,8 @@ func (n *namespaces) SetRetention(namespace string, policy utils.RetentionPolici
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "retention")
-	return n.client.post(endpoint, &policy)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "retention")
+	return n.pulsar.Client.Post(endpoint, &policy)
 }
 
 func (n *namespaces) GetRetention(namespace string) (*utils.RetentionPolicies, error) {
@@ -379,8 +379,8 @@ func (n *namespaces) GetRetention(namespace string) (*utils.RetentionPolicies, e
 	if err != nil {
 		return nil, err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "retention")
-	err = n.client.get(endpoint, &policy)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "retention")
+	err = n.pulsar.Client.Get(endpoint, &policy)
 	return &policy, err
 }
 
@@ -390,8 +390,8 @@ func (n *namespaces) GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuot
 	if err != nil {
 		return nil, err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "backlogQuotaMap")
-	err = n.client.get(endpoint, &backlogQuotaMap)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "backlogQuotaMap")
+	err = n.pulsar.Client.Get(endpoint, &backlogQuotaMap)
 	return backlogQuotaMap, err
 }
 
@@ -400,8 +400,8 @@ func (n *namespaces) SetBacklogQuota(namespace string, backlogQuota utils.Backlo
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "backlogQuota")
-	return n.client.post(endpoint, &backlogQuota)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "backlogQuota")
+	return n.pulsar.Client.Post(endpoint, &backlogQuota)
 }
 
 func (n *namespaces) RemoveBacklogQuota(namespace string) error {
@@ -409,21 +409,21 @@ func (n *namespaces) RemoveBacklogQuota(namespace string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "backlogQuota")
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "backlogQuota")
 	params := map[string]string{
 		"backlogQuotaType": string(utils.DestinationStorage),
 	}
-	return n.client.deleteWithQueryParams(endpoint, nil, params)
+	return n.pulsar.Client.DeleteWithQueryParams(endpoint, params)
 }
 
 func (n *namespaces) SetSchemaValidationEnforced(namespace utils.NameSpaceName, schemaValidationEnforced bool) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "schemaValidationEnforced")
-	return n.client.post(endpoint, schemaValidationEnforced)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "schemaValidationEnforced")
+	return n.pulsar.Client.Post(endpoint, schemaValidationEnforced)
 }
 
 func (n *namespaces) GetSchemaValidationEnforced(namespace utils.NameSpaceName) (bool, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "schemaValidationEnforced")
-	r, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "schemaValidationEnforced")
+	r, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return false, err
 	}
@@ -432,15 +432,15 @@ func (n *namespaces) GetSchemaValidationEnforced(namespace utils.NameSpaceName) 
 
 func (n *namespaces) SetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName,
 	strategy utils.SchemaCompatibilityStrategy) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "schemaAutoUpdateCompatibilityStrategy")
-	return n.client.put(endpoint, strategy.String())
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "schemaAutoUpdateCompatibilityStrategy")
+	return n.pulsar.Client.Put(endpoint, strategy.String())
 }
 
 func (n *namespaces) GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName) (
 	utils.SchemaCompatibilityStrategy, error) {
 
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "schemaAutoUpdateCompatibilityStrategy")
-	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "schemaAutoUpdateCompatibilityStrategy")
+	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return "", err
 	}
@@ -452,18 +452,18 @@ func (n *namespaces) GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.Na
 }
 
 func (n *namespaces) ClearOffloadDeleteLag(namespace utils.NameSpaceName) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
-	return n.client.delete(endpoint)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
+	return n.pulsar.Client.Delete(endpoint)
 }
 
 func (n *namespaces) SetOffloadDeleteLag(namespace utils.NameSpaceName, timeMs int64) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
-	return n.client.put(endpoint, timeMs)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
+	return n.pulsar.Client.Put(endpoint, timeMs)
 }
 
 func (n *namespaces) GetOffloadDeleteLag(namespace utils.NameSpaceName) (int64, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
-	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
+	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return -1, err
 	}
@@ -471,13 +471,13 @@ func (n *namespaces) GetOffloadDeleteLag(namespace utils.NameSpaceName) (int64, 
 }
 
 func (n *namespaces) SetMaxConsumersPerSubscription(namespace utils.NameSpaceName, max int) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
-	return n.client.post(endpoint, max)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
+	return n.pulsar.Client.Post(endpoint, max)
 }
 
 func (n *namespaces) GetMaxConsumersPerSubscription(namespace utils.NameSpaceName) (int, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
-	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
+	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return -1, err
 	}
@@ -485,13 +485,13 @@ func (n *namespaces) GetMaxConsumersPerSubscription(namespace utils.NameSpaceNam
 }
 
 func (n *namespaces) SetOffloadThreshold(namespace utils.NameSpaceName, threshold int64) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadThreshold")
-	return n.client.put(endpoint, threshold)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadThreshold")
+	return n.pulsar.Client.Put(endpoint, threshold)
 }
 
 func (n *namespaces) GetOffloadThreshold(namespace utils.NameSpaceName) (int64, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "offloadThreshold")
-	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadThreshold")
+	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return -1, err
 	}
@@ -499,13 +499,13 @@ func (n *namespaces) GetOffloadThreshold(namespace utils.NameSpaceName) (int64, 
 }
 
 func (n *namespaces) SetMaxConsumersPerTopic(namespace utils.NameSpaceName, max int) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
-	return n.client.post(endpoint, max)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
+	return n.pulsar.Client.Post(endpoint, max)
 }
 
 func (n *namespaces) GetMaxConsumersPerTopic(namespace utils.NameSpaceName) (int, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
-	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
+	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return -1, err
 	}
@@ -513,13 +513,13 @@ func (n *namespaces) GetMaxConsumersPerTopic(namespace utils.NameSpaceName) (int
 }
 
 func (n *namespaces) SetCompactionThreshold(namespace utils.NameSpaceName, threshold int64) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "compactionThreshold")
-	return n.client.put(endpoint, threshold)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "compactionThreshold")
+	return n.pulsar.Client.Put(endpoint, threshold)
 }
 
 func (n *namespaces) GetCompactionThreshold(namespace utils.NameSpaceName) (int64, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "compactionThreshold")
-	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "compactionThreshold")
+	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return -1, err
 	}
@@ -527,13 +527,13 @@ func (n *namespaces) GetCompactionThreshold(namespace utils.NameSpaceName) (int6
 }
 
 func (n *namespaces) SetMaxProducersPerTopic(namespace utils.NameSpaceName, max int) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
-	return n.client.post(endpoint, max)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
+	return n.pulsar.Client.Post(endpoint, max)
 }
 
 func (n *namespaces) GetMaxProducersPerTopic(namespace utils.NameSpaceName) (int, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
-	b, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
+	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return -1, err
 	}
@@ -546,8 +546,8 @@ func (n *namespaces) GetNamespaceReplicationClusters(namespace string) ([]string
 	if err != nil {
 		return nil, err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "replication")
-	err = n.client.get(endpoint, &data)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "replication")
+	err = n.pulsar.Client.Get(endpoint, &data)
 	return data, err
 }
 
@@ -556,8 +556,8 @@ func (n *namespaces) SetNamespaceReplicationClusters(namespace string, clusterId
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "replication")
-	return n.client.post(endpoint, &clusterIds)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "replication")
+	return n.pulsar.Client.Post(endpoint, &clusterIds)
 }
 
 func (n *namespaces) SetNamespaceAntiAffinityGroup(namespace string, namespaceAntiAffinityGroup string) error {
@@ -565,17 +565,17 @@ func (n *namespaces) SetNamespaceAntiAffinityGroup(namespace string, namespaceAn
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "antiAffinity")
-	return n.client.post(endpoint, namespaceAntiAffinityGroup)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "antiAffinity")
+	return n.pulsar.Client.Post(endpoint, namespaceAntiAffinityGroup)
 }
 
 func (n *namespaces) GetAntiAffinityNamespaces(tenant, cluster, namespaceAntiAffinityGroup string) ([]string, error) {
 	var data []string
-	endpoint := n.client.endpoint(n.basePath, cluster, "antiAffinity", namespaceAntiAffinityGroup)
+	endpoint := n.pulsar.endpoint(n.basePath, cluster, "antiAffinity", namespaceAntiAffinityGroup)
 	params := map[string]string{
 		"property": tenant,
 	}
-	_, err := n.client.getWithQueryParams(endpoint, &data, params, false)
+	_, err := n.pulsar.Client.GetWithQueryParams(endpoint, &data, params, false)
 	return data, err
 }
 
@@ -584,8 +584,8 @@ func (n *namespaces) GetNamespaceAntiAffinityGroup(namespace string) (string, er
 	if err != nil {
 		return "", err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "antiAffinity")
-	data, err := n.client.getWithQueryParams(endpoint, nil, nil, false)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "antiAffinity")
+	data, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	return string(data), err
 }
 
@@ -594,8 +594,8 @@ func (n *namespaces) DeleteNamespaceAntiAffinityGroup(namespace string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "antiAffinity")
-	return n.client.delete(endpoint)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "antiAffinity")
+	return n.pulsar.Client.Delete(endpoint)
 }
 
 func (n *namespaces) SetDeduplicationStatus(namespace string, enableDeduplication bool) error {
@@ -603,8 +603,8 @@ func (n *namespaces) SetDeduplicationStatus(namespace string, enableDeduplicatio
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "deduplication")
-	return n.client.post(endpoint, enableDeduplication)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "deduplication")
+	return n.pulsar.Client.Post(endpoint, enableDeduplication)
 }
 
 func (n *namespaces) SetPersistence(namespace string, persistence utils.PersistencePolicies) error {
@@ -612,8 +612,8 @@ func (n *namespaces) SetPersistence(namespace string, persistence utils.Persiste
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "persistence")
-	return n.client.post(endpoint, &persistence)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence")
+	return n.pulsar.Client.Post(endpoint, &persistence)
 }
 
 func (n *namespaces) SetBookieAffinityGroup(namespace string, bookieAffinityGroup utils.BookieAffinityGroupData) error {
@@ -621,8 +621,8 @@ func (n *namespaces) SetBookieAffinityGroup(namespace string, bookieAffinityGrou
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "persistence", "bookieAffinity")
-	return n.client.post(endpoint, &bookieAffinityGroup)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence", "bookieAffinity")
+	return n.pulsar.Client.Post(endpoint, &bookieAffinityGroup)
 }
 
 func (n *namespaces) DeleteBookieAffinityGroup(namespace string) error {
@@ -630,8 +630,8 @@ func (n *namespaces) DeleteBookieAffinityGroup(namespace string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "persistence", "bookieAffinity")
-	return n.client.delete(endpoint)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence", "bookieAffinity")
+	return n.pulsar.Client.Delete(endpoint)
 }
 
 func (n *namespaces) GetBookieAffinityGroup(namespace string) (*utils.BookieAffinityGroupData, error) {
@@ -640,8 +640,8 @@ func (n *namespaces) GetBookieAffinityGroup(namespace string) (*utils.BookieAffi
 	if err != nil {
 		return nil, err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "persistence", "bookieAffinity")
-	err = n.client.get(endpoint, &data)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence", "bookieAffinity")
+	err = n.pulsar.Client.Get(endpoint, &data)
 	return &data, err
 }
 
@@ -651,8 +651,8 @@ func (n *namespaces) GetPersistence(namespace string) (*utils.PersistencePolicie
 	if err != nil {
 		return nil, err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "persistence")
-	err = n.client.get(endpoint, &persistence)
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence")
+	err = n.pulsar.Client.Get(endpoint, &persistence)
 	return &persistence, err
 }
 
@@ -661,8 +661,8 @@ func (n *namespaces) Unload(namespace string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), "unload")
-	return n.client.put(endpoint, "")
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "unload")
+	return n.pulsar.Client.Put(endpoint, "")
 }
 
 func (n *namespaces) UnloadNamespaceBundle(namespace, bundle string) error {
@@ -670,8 +670,8 @@ func (n *namespaces) UnloadNamespaceBundle(namespace, bundle string) error {
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), bundle, "unload")
-	return n.client.put(endpoint, "")
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), bundle, "unload")
+	return n.pulsar.Client.Put(endpoint, "")
 }
 
 func (n *namespaces) SplitNamespaceBundle(namespace, bundle string, unloadSplitBundles bool) error {
@@ -679,132 +679,132 @@ func (n *namespaces) SplitNamespaceBundle(namespace, bundle string, unloadSplitB
 	if err != nil {
 		return err
 	}
-	endpoint := n.client.endpoint(n.basePath, nsName.String(), bundle, "split")
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), bundle, "split")
 	params := map[string]string{
 		"unload": strconv.FormatBool(unloadSplitBundles),
 	}
-	return n.client.putWithQueryParams(endpoint, "", nil, params)
+	return n.pulsar.Client.PutWithQueryParams(endpoint, "", nil, params)
 }
 
 func (n *namespaces) GetNamespacePermissions(namespace utils.NameSpaceName) (map[string][]common.AuthAction, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions")
 	var permissions map[string][]common.AuthAction
-	err := n.client.get(endpoint, &permissions)
+	err := n.pulsar.Client.Get(endpoint, &permissions)
 	return permissions, err
 }
 
 func (n *namespaces) GrantNamespacePermission(namespace utils.NameSpaceName, role string,
 	action []common.AuthAction) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions", role)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions", role)
 	s := make([]string, 0)
 	for _, v := range action {
 		s = append(s, v.String())
 	}
-	return n.client.post(endpoint, s)
+	return n.pulsar.Client.Post(endpoint, s)
 }
 
 func (n *namespaces) RevokeNamespacePermission(namespace utils.NameSpaceName, role string) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions", role)
-	return n.client.delete(endpoint)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions", role)
+	return n.pulsar.Client.Delete(endpoint)
 }
 
 func (n *namespaces) GrantSubPermission(namespace utils.NameSpaceName, sName string, roles []string) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions",
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions",
 		"subscription", sName)
-	return n.client.post(endpoint, roles)
+	return n.pulsar.Client.Post(endpoint, roles)
 }
 
 func (n *namespaces) RevokeSubPermission(namespace utils.NameSpaceName, sName, role string) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "permissions",
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions",
 		"subscription", sName, role)
-	return n.client.delete(endpoint)
+	return n.pulsar.Client.Delete(endpoint)
 }
 
 func (n *namespaces) SetSubscriptionAuthMode(namespace utils.NameSpaceName, mode utils.SubscriptionAuthMode) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscriptionAuthMode")
-	return n.client.post(endpoint, mode.String())
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionAuthMode")
+	return n.pulsar.Client.Post(endpoint, mode.String())
 }
 
 func (n *namespaces) SetEncryptionRequiredStatus(namespace utils.NameSpaceName, encrypt bool) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "encryptionRequired")
-	return n.client.post(endpoint, strconv.FormatBool(encrypt))
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "encryptionRequired")
+	return n.pulsar.Client.Post(endpoint, strconv.FormatBool(encrypt))
 }
 
 func (n *namespaces) UnsubscribeNamespace(namespace utils.NameSpaceName, sName string) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "unsubscribe", url.QueryEscape(sName))
-	return n.client.post(endpoint, "")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "unsubscribe", url.QueryEscape(sName))
+	return n.pulsar.Client.Post(endpoint, "")
 }
 
 func (n *namespaces) UnsubscribeNamespaceBundle(namespace utils.NameSpaceName, bundle, sName string) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), bundle, "unsubscribe", url.QueryEscape(sName))
-	return n.client.post(endpoint, "")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), bundle, "unsubscribe", url.QueryEscape(sName))
+	return n.pulsar.Client.Post(endpoint, "")
 }
 
 func (n *namespaces) ClearNamespaceBundleBacklogForSubscription(namespace utils.NameSpaceName,
 	bundle, sName string) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), bundle, "clearBacklog", url.QueryEscape(sName))
-	return n.client.post(endpoint, "")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), bundle, "clearBacklog", url.QueryEscape(sName))
+	return n.pulsar.Client.Post(endpoint, "")
 }
 
 func (n *namespaces) ClearNamespaceBundleBacklog(namespace utils.NameSpaceName, bundle string) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), bundle, "clearBacklog")
-	return n.client.post(endpoint, "")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), bundle, "clearBacklog")
+	return n.pulsar.Client.Post(endpoint, "")
 }
 
 func (n *namespaces) ClearNamespaceBacklogForSubscription(namespace utils.NameSpaceName, sName string) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "clearBacklog", url.QueryEscape(sName))
-	return n.client.post(endpoint, "")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "clearBacklog", url.QueryEscape(sName))
+	return n.pulsar.Client.Post(endpoint, "")
 }
 
 func (n *namespaces) ClearNamespaceBacklog(namespace utils.NameSpaceName) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "clearBacklog")
-	return n.client.post(endpoint, "")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "clearBacklog")
+	return n.pulsar.Client.Post(endpoint, "")
 }
 
 func (n *namespaces) SetReplicatorDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "replicatorDispatchRate")
-	return n.client.post(endpoint, rate)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "replicatorDispatchRate")
+	return n.pulsar.Client.Post(endpoint, rate)
 }
 
 func (n *namespaces) GetReplicatorDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "replicatorDispatchRate")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "replicatorDispatchRate")
 	var rate utils.DispatchRate
-	err := n.client.get(endpoint, &rate)
+	err := n.pulsar.Client.Get(endpoint, &rate)
 	return rate, err
 }
 
 func (n *namespaces) SetSubscriptionDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscriptionDispatchRate")
-	return n.client.post(endpoint, rate)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionDispatchRate")
+	return n.pulsar.Client.Post(endpoint, rate)
 }
 
 func (n *namespaces) GetSubscriptionDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscriptionDispatchRate")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionDispatchRate")
 	var rate utils.DispatchRate
-	err := n.client.get(endpoint, &rate)
+	err := n.pulsar.Client.Get(endpoint, &rate)
 	return rate, err
 }
 
 func (n *namespaces) SetSubscribeRate(namespace utils.NameSpaceName, rate utils.SubscribeRate) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscribeRate")
-	return n.client.post(endpoint, rate)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscribeRate")
+	return n.pulsar.Client.Post(endpoint, rate)
 }
 
 func (n *namespaces) GetSubscribeRate(namespace utils.NameSpaceName) (utils.SubscribeRate, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "subscribeRate")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscribeRate")
 	var rate utils.SubscribeRate
-	err := n.client.get(endpoint, &rate)
+	err := n.pulsar.Client.Get(endpoint, &rate)
 	return rate, err
 }
 
 func (n *namespaces) SetDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "dispatchRate")
-	return n.client.post(endpoint, rate)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "dispatchRate")
+	return n.pulsar.Client.Post(endpoint, rate)
 }
 
 func (n *namespaces) GetDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error) {
-	endpoint := n.client.endpoint(n.basePath, namespace.String(), "dispatchRate")
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "dispatchRate")
 	var rate utils.DispatchRate
-	err := n.client.get(endpoint, &rate)
+	err := n.pulsar.Client.Get(endpoint, &rate)
 	return rate, err
 }
