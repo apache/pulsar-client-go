@@ -344,7 +344,6 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buff
 func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
 	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.setLastDataReceived(time.Now())
-	var err error
 
 	switch *cmd.Type {
 	case pb.BaseCommand_SUCCESS:
@@ -386,10 +385,8 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	case pb.BaseCommand_SEND_ERROR:
 
 	case pb.BaseCommand_MESSAGE:
-		err = c.handleMessage(cmd.GetMessage(), headersAndPayload)
-		if err != nil {
-			c.Close()
-		}
+		c.handleMessage(cmd.GetMessage(), headersAndPayload)
+
 	case pb.BaseCommand_PING:
 		c.handlePing()
 	case pb.BaseCommand_PONG:
@@ -465,19 +462,17 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	}
 }
 
-func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) error {
+func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) {
 	c.log.Debug("Got Message: ", response)
 	consumerID := response.GetConsumerId()
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		err := consumer.MessageReceived(response, payload)
 		if err != nil {
 			c.log.WithField("consumerID", consumerID).Error("handle message err: ", response.MessageId)
-			return errors.New("handler not found")
 		}
 	} else {
 		c.log.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)
 	}
-	return nil
 }
 
 func (c *connection) lastDataReceived() time.Time {
