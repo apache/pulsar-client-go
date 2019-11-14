@@ -414,7 +414,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	})
 
 	if err != nil {
-		req.err = err
+		p.log.WithError(err).Warn("Failed to close producer")
 	} else {
 		p.log.Info("Closed producer")
 		p.state = producerClosed
@@ -440,20 +440,19 @@ func (p *partitionProducer) Flush() error {
 	return cp.err
 }
 
-func (p *partitionProducer) Close() error {
+func (p *partitionProducer) Close() {
 	if p.state != producerReady {
 		// Producer is closing
-		return nil
+		return
 	}
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	cp := &closeProducer{&wg, nil}
+	cp := &closeProducer{&wg}
 	p.eventsChan <- cp
 
 	wg.Wait()
-	return cp.err
 }
 
 type sendRequest struct {
@@ -465,7 +464,6 @@ type sendRequest struct {
 
 type closeProducer struct {
 	waitGroup *sync.WaitGroup
-	err       error
 }
 
 type flushRequest struct {

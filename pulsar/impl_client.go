@@ -143,12 +143,8 @@ func (client *client) TopicPartitions(topic string) ([]string, error) {
 	return []string{topicName.Name}, nil
 }
 
-func (client *client) Close() error {
+func (client *client) Close() {
 	for handler := range client.handlers {
-		if err := handler.Close(); err != nil {
-			return err
-		}
+		handler.Close()
 	}
-
-	return nil
 }

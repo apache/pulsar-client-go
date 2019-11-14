@@ -163,7 +163,7 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 		// cleanup all the partitions that succeeded in creating the consumer
 		for _, c := range consumer.consumers {
 			if c != nil {
-				_ = c.Close()
+				c.Close()
 			}
 		}
 		return nil, err
@@ -253,7 +253,7 @@ func (c *consumer) NackID(msgID MessageID) {
 	c.consumers[partition].NackID(mid)
 }
 
-func (c *consumer) Close() error {
+func (c *consumer) Close() {
 	var wg sync.WaitGroup
 	for i := range c.consumers {
 		wg.Add(1)
@@ -263,8 +263,6 @@ func (c *consumer) Close() error {
 		}(c.consumers[i])
 	}
 	wg.Wait()
-
-	return nil
 }
 
 var random = rand.New(rand.NewSource(time.Now().UnixNano()))

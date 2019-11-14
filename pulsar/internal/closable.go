@@ -18,5 +18,5 @@
 package internal
 
 type Closable interface {
-	Close() error
+	Close()
 }

@@ -47,8 +47,7 @@ func TestTLSConnectionCAError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTLSInsecureConnection(t *testing.T) {
@@ -65,8 +64,7 @@ func TestTLSInsecureConnection(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTLSConnection(t *testing.T) {
@@ -83,8 +81,7 @@ func TestTLSConnection(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTLSConnectionHostNameVerification(t *testing.T) {
@@ -102,8 +99,7 @@ func TestTLSConnectionHostNameVerification(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTLSConnectionHostNameVerificationError(t *testing.T) {
@@ -121,8 +117,7 @@ func TestTLSConnectionHostNameVerificationError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTLSAuthError(t *testing.T) {
@@ -139,8 +134,7 @@ func TestTLSAuthError(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTLSAuth(t *testing.T) {
@@ -158,8 +152,7 @@ func TestTLSAuth(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTokenAuth(t *testing.T) {
@@ -179,8 +172,7 @@ func TestTokenAuth(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTokenAuthFromFile(t *testing.T) {
@@ -197,8 +189,7 @@ func TestTokenAuthFromFile(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
-	err = client.Close()
-	assert.NoError(t, err)
+	client.Close()
 }
 
 func TestTopicPartitions(t *testing.T) {
