@@ -143,6 +143,10 @@ func (r *MessageReader) readSingleMessage() (*pb.SingleMessageMetadata, []byte, 
 	return &meta, r.buffer.Read(uint32(meta.GetPayloadSize())), nil
 }
 
+func (r *MessageReader) ResetBuffer(buffer Buffer) {
+	r.buffer = buffer
+}
+
 func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand {
 	cmd := &pb.BaseCommand{
 		Type: &cmdType,

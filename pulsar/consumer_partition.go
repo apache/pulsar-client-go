@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"github.com/apache/pulsar-client-go/pkg/compression"
 	"math"
 	"time"
 
@@ -28,6 +29,15 @@ import (
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+)
+
+var (
+	compressionProviders = map[pb.CompressionType]compression.Provider{
+		pb.CompressionType_NONE: compression.NoopProvider,
+		pb.CompressionType_LZ4:  compression.Lz4Provider,
+		pb.CompressionType_ZLIB: compression.ZLibProvider,
+		pb.CompressionType_ZSTD: compression.ZStdProvider,
+	}
 )
 
 type consumerState int
@@ -220,9 +230,18 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	reader := internal.NewMessageReader(headersAndPayload)
 	msgMeta, err := reader.ReadMessageMetadata()
 	if err != nil {
-		// TODO send discardCorruptedMessage
+		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_ChecksumMismatch)
 		return err
 	}
+
+	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, headersAndPayload)
+	if err != nil {
+		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
+		return err
+	}
+
+	// Reset the reader on the uncompressed buffer
+	reader.ResetBuffer(uncompressedHeadersAndPayload)
 
 	numMsgs := 1
 	if msgMeta.NumMessagesInBatch != nil {
@@ -237,7 +256,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
 		if err != nil {
-			// TODO send corrupted message
+			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
 		}
 
@@ -536,4 +555,35 @@ func (pc *partitionConsumer) grabConn() error {
 	default:
 		return newUnexpectedErrMsg(msgType, requestID)
 	}
+}
+
+func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload internal.Buffer) (internal.Buffer, error) {
+	provider, ok := compressionProviders[msgMeta.GetCompression()]
+	if !ok {
+		err := fmt.Errorf("Unsupported compression type: %v", msgMeta.GetCompression())
+		pc.log.WithError(err).Error("Failed to decompress message.")
+		return nil, err
+	}
+
+	uncompressed, err := provider.Decompress(payload.ReadableSlice(), int(msgMeta.GetUncompressedSize()))
+	if err != nil {
+		return nil, err
+	} else {
+		return internal.NewBufferWrapper(uncompressed), nil
+	}
+}
+
+func (pc *partitionConsumer) discardCorruptedMessage(msgId *pb.MessageIdData, validationError pb.CommandAck_ValidationError) {
+	pc.log.WithFields(log.Fields{
+		"msgId":           msgId,
+		"validationError": validationError,
+	}).Error("Discarding corrupted message")
+
+	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn,
+		pb.BaseCommand_ACK, &pb.CommandAck{
+			ConsumerId:      proto.Uint64(pc.consumerID),
+			MessageId:       []*pb.MessageIdData{msgId},
+			AckType:         pb.CommandAck_Individual.Enum(),
+			ValidationError: validationError.Enum(),
+		})
 }
