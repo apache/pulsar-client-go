@@ -28,8 +28,6 @@ import (
 )
 
 type multiTopicConsumer struct {
-	lock sync.RWMutex
-
 	options ConsumerOptions
 
 	messageCh chan ConsumerMessage
