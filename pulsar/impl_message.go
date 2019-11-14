@@ -34,14 +34,30 @@ type messageID struct {
 	batchIdx     int
 	partitionIdx int
 
-	tracker *ackTracker
+	tracker  *ackTracker
+	consumer acker
+}
+
+func (id *messageID) Ack() {
+	if id.consumer == nil {
+		return
+	}
+	if id.ack() {
+		id.consumer.AckID(id)
+	}
+}
+
+func (id *messageID) Nack() {
+	if id.consumer == nil {
+		return
+	}
+	id.consumer.NackID(id)
 }
 
 func (id *messageID) ack() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
 		return id.tracker.ack(id.batchIdx)
 	}
-
 	return true
 }
 
@@ -164,6 +180,9 @@ type ackTracker struct {
 }
 
 func (t *ackTracker) ack(batchID int) bool {
+	if batchID < 0 {
+		return true
+	}
 	t.Lock()
 	defer t.Unlock()
 	t.batchIDs = t.batchIDs.SetBit(t.batchIDs, batchID, 0)

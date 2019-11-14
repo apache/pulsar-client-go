@@ -20,7 +20,10 @@ package pulsar
 import (
 	"fmt"
 
+	pkgerrors "github.com/pkg/errors"
+
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 // NewUnexpectedErrMsg instantiates an ErrUnexpectedMsg error.
@@ -46,4 +49,15 @@ func (e *unexpectedErrMsg) Error() string {
 		msg += fmt.Sprintf(" consumerID=%v", id)
 	}
 	return msg
+}
+
+func validateTopicNames(topics ...string) error {
+	var errs error
+	for _, t := range topics {
+		if _, err := internal.ParseTopicName(t); err != nil {
+			errs = pkgerrors.Wrapf(err, "invalid topic name: %s", t)
+		}
+	}
+
+	return errs
 }

@@ -265,6 +265,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			i,
 			pc.partitionIdx,
 			ackTracker)
+		// set the consumer so we know how to ack the message id
+		msgID.consumer = pc
 		var msg *message
 		if smm != nil {
 			msg = &message{

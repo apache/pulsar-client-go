@@ -28,12 +28,16 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 var ErrConsumerClosed = errors.New("consumer closed")
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
+
+type acker interface {
+	AckID(id *messageID)
+	NackID(id *messageID)
+}
 
 type consumer struct {
 	options ConsumerOptions
@@ -75,18 +79,26 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			topic = options.Topics[0]
 		}
 
-		if _, err := internal.ParseTopicName(topic); err != nil {
+		if err := validateTopicNames(topic); err != nil {
 			return nil, err
 		}
 
 		return topicSubscribe(client, options, topic, messageCh)
 	}
 
+	if len(options.Topics) > 1 {
+		if err := validateTopicNames(options.Topics...); err != nil {
+			return nil, err
+		}
+
+		return newMultiTopicConsumer(client, options, options.Topics, messageCh)
+	}
+
 	return nil, newError(ResultInvalidTopicName, "topic name is required for consumer")
 }
 
-func topicSubscribe(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage) (Consumer, error) {
+func internalTopicSubscribe(client *client, options ConsumerOptions, topic string,
+	messageCh chan ConsumerMessage) (*consumer, error) {
 	consumer := &consumer{
 		messageCh: messageCh,
 		errorCh:   make(chan error),
@@ -172,6 +184,11 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	return consumer, nil
 }
 
+func topicSubscribe(client *client, options ConsumerOptions, topic string,
+	messageCh chan ConsumerMessage) (Consumer, error) {
+	return internalTopicSubscribe(client, options, topic, messageCh)
+}
+
 func (c *consumer) Subscription() string {
 	return c.options.SubscriptionName
 }
@@ -221,6 +238,11 @@ func (c *consumer) AckID(msgID MessageID) {
 		return
 	}
 
+	if mid.consumer != nil {
+		mid.Ack()
+		return
+	}
+
 	partition := mid.partitionIdx
 	// did we receive a valid partition index?
 	if partition < 0 || partition >= len(c.consumers) {
@@ -239,6 +261,11 @@ func (c *consumer) NackID(msgID MessageID) {
 	mid, ok := msgID.(*messageID)
 	if !ok {
 		c.log.Warnf("invalid message id type")
+		return
+	}
+
+	if mid.consumer != nil {
+		mid.Nack()
 		return
 	}
 
@@ -265,13 +292,22 @@ func (c *consumer) Close() {
 	wg.Wait()
 }
 
-var random = rand.New(rand.NewSource(time.Now().UnixNano()))
+var r = &random{
+	R: rand.New(rand.NewSource(time.Now().UnixNano())),
+}
+
+type random struct {
+	sync.Mutex
+	R *rand.Rand
+}
 
 func generateRandomName() string {
+	r.Lock()
+	defer r.Unlock()
 	chars := "abcdefghijklmnopqrstuvwxyz"
 	bytes := make([]byte, 5)
 	for i := range bytes {
-		bytes[i] = chars[random.Intn(len(chars))]
+		bytes[i] = chars[r.R.Intn(len(chars))]
 	}
 	return string(bytes)
 }
