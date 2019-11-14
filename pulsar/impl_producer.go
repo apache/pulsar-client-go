@@ -19,8 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"fmt"
-	"github.com/pkg/errors"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
@@ -102,7 +100,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		// Since there were some failures, cleanup all the partitions that succeeded in creating the producers
 		for _, producer := range p.producers {
 			if producer != nil {
-				_ = producer.Close()
+				producer.Close()
 			}
 		}
 		return nil, err
@@ -154,13 +152,8 @@ func (p *producer) Flush() error {
 	return nil
 }
 
-func (p *producer) Close() error {
-	var errs error
+func (p *producer) Close() {
 	for _, pp := range p.producers {
-		if err := pp.Close(); err != nil {
-			errs = errors.Wrap(err, fmt.Sprintf("unable to close producer %s", p.Name()))
-		}
-
+		pp.Close()
 	}
-	return errs
 }

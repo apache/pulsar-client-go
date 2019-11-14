@@ -165,5 +165,5 @@ type Consumer interface {
 	NackID(MessageID)
 
 	// Close the consumer and stop the broker to push more messages
-	Close() error
+	Close()
 }

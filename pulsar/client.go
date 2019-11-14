@@ -108,5 +108,5 @@ type Client interface {
 	TopicPartitions(topic string) ([]string, error)
 
 	// Close the Client and free associated resources
-	Close() error
+	Close()
 }

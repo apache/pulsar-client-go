@@ -162,5 +162,5 @@ type Producer interface {
 	// Close the producer and releases resources allocated
 	// No more writes will be accepted from this producer. Waits until all pending write request are persisted. In case
 	// of errors, pending writes will not be retried.
-	Close() error
+	Close()
 }

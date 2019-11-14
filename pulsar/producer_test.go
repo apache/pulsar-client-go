@@ -85,6 +85,7 @@ func TestSimpleProducer(t *testing.T) {
 		URL: serviceURL,
 	})
 	assert.NoError(t, err)
+	defer client.Close()
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: newTopicName(),
@@ -92,6 +93,7 @@ func TestSimpleProducer(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
+	defer producer.Close()
 
 	for i := 0; i < 10; i++ {
 		err = producer.Send(context.Background(), &ProducerMessage{
@@ -100,12 +102,6 @@ func TestSimpleProducer(t *testing.T) {
 
 		assert.NoError(t, err)
 	}
-
-	err = producer.Close()
-	assert.NoError(t, err)
-
-	err = client.Close()
-	assert.NoError(t, err)
 }
 
 func TestProducerAsyncSend(t *testing.T) {
@@ -113,6 +109,7 @@ func TestProducerAsyncSend(t *testing.T) {
 		URL: serviceURL,
 	})
 	assert.NoError(t, err)
+	defer client.Close()
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:                   newTopicName(),
@@ -121,6 +118,7 @@ func TestProducerAsyncSend(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
+	defer producer.Close()
 
 	wg := sync.WaitGroup{}
 	wg.Add(10)
@@ -148,12 +146,6 @@ func TestProducerAsyncSend(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, 0, errors.Size())
-
-	err = producer.Close()
-	assert.NoError(t, err)
-
-	err = client.Close()
-	assert.NoError(t, err)
 }
 
 func TestProducerCompression(t *testing.T) {
@@ -176,6 +168,7 @@ func TestProducerCompression(t *testing.T) {
 				URL: serviceURL,
 			})
 			assert.NoError(t, err)
+			defer client.Close()
 
 			producer, err := client.CreateProducer(ProducerOptions{
 				Topic:           newTopicName(),
@@ -184,6 +177,7 @@ func TestProducerCompression(t *testing.T) {
 
 			assert.NoError(t, err)
 			assert.NotNil(t, producer)
+			defer producer.Close()
 
 			for i := 0; i < 10; i++ {
 				err = producer.Send(context.Background(), &ProducerMessage{
@@ -192,12 +186,6 @@ func TestProducerCompression(t *testing.T) {
 
 				assert.NoError(t, err)
 			}
-
-			err = producer.Close()
-			assert.NoError(t, err)
-
-			err = client.Close()
-			assert.NoError(t, err)
 		})
 	}
 }
@@ -207,6 +195,7 @@ func TestProducerLastSequenceID(t *testing.T) {
 		URL: serviceURL,
 	})
 	assert.NoError(t, err)
+	defer client.Close()
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: newTopicName(),
@@ -214,6 +203,7 @@ func TestProducerLastSequenceID(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
+	defer producer.Close()
 
 	assert.Equal(t, int64(-1), producer.LastSequenceID())
 
@@ -225,12 +215,6 @@ func TestProducerLastSequenceID(t *testing.T) {
 		assert.NoError(t, err)
 		assert.Equal(t, int64(i), producer.LastSequenceID())
 	}
-
-	err = producer.Close()
-	assert.NoError(t, err)
-
-	err = client.Close()
-	assert.NoError(t, err)
 }
 
 func TestEventTime(t *testing.T) {

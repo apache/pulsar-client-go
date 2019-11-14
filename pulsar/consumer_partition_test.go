@@ -28,8 +28,8 @@ import (
 func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:          make(chan []*message, 1),
-		eventsCh:         eventsCh,
+		queueCh:  make(chan []*message, 1),
+		eventsCh: eventsCh,
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
@@ -46,8 +46,8 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	// ack the message id
 	pc.AckID(messages[0].msgID.(*messageID))
 
-	select{
-	case <- eventsCh:
+	select {
+	case <-eventsCh:
 	default:
 		t.Error("Expected an ack request to be triggered!")
 	}
@@ -56,8 +56,8 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:          make(chan []*message, 1),
-		eventsCh:         eventsCh,
+		queueCh:  make(chan []*message, 1),
+		eventsCh: eventsCh,
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
@@ -74,8 +74,8 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	// ack the message id
 	pc.AckID(messages[0].msgID.(*messageID))
 
-	select{
-	case <- eventsCh:
+	select {
+	case <-eventsCh:
 	default:
 		t.Error("Expected an ack request to be triggered!")
 	}
@@ -84,8 +84,8 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:          make(chan []*message, 1),
-		eventsCh:         eventsCh,
+		queueCh:  make(chan []*message, 1),
+		eventsCh: eventsCh,
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
@@ -104,8 +104,8 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		pc.AckID(messages[i].msgID.(*messageID))
 	}
 
-	select{
-	case <- eventsCh:
+	select {
+	case <-eventsCh:
 		t.Error("The message id should not be acked!")
 	default:
 	}
@@ -113,8 +113,8 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	// ack last message
 	pc.AckID(messages[9].msgID.(*messageID))
 
-	select{
-	case <- eventsCh:
+	select {
+	case <-eventsCh:
 	default:
 		t.Error("Expected an ack request to be triggered!")
 	}

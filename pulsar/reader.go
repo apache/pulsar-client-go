@@ -79,5 +79,5 @@ type Reader interface {
 	HasNext() (bool, error)
 
 	// Close the reader and stop the broker to push more messages
-	Close() error
+	Close()
 }

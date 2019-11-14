@@ -183,9 +183,9 @@ func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
 		})
 }
 
-func (pc *partitionConsumer) Close() error {
+func (pc *partitionConsumer) Close() {
 	if pc.state != consumerReady {
-		return nil
+		return
 	}
 
 	req := &closeRequest{doneCh: make(chan struct{})}
@@ -193,7 +193,6 @@ func (pc *partitionConsumer) Close() error {
 
 	// wait for request to finish
 	<-req.doneCh
-	return req.err
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
@@ -403,7 +402,6 @@ type unsubscribeRequest struct {
 
 type closeRequest struct {
 	doneCh chan struct{}
-	err    error
 }
 
 type redeliveryRequest struct {
@@ -452,14 +450,15 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	}
 	_, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_CLOSE_CONSUMER, cmdClose)
 	if err != nil {
-		req.err = err
+		pc.log.WithError(err).Warn("Failed to close consumer")
 	} else {
 		pc.log.Info("Closed consumer")
-		pc.state = consumerClosed
-		pc.conn.DeleteConsumeHandler(pc.consumerID)
-		pc.nackTracker.Close()
-		close(pc.closeCh)
 	}
+
+	pc.state = consumerClosed
+	pc.conn.DeleteConsumeHandler(pc.consumerID)
+	pc.nackTracker.Close()
+	close(pc.closeCh)
 }
 
 func (pc *partitionConsumer) reconnectToBroker() {

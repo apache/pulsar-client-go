@@ -593,8 +593,7 @@ func TestConsumerAck(t *testing.T) {
 		}
 	}
 
-	err = consumer.Close()
-	assert.Nil(t, err)
+	consumer.Close()
 
 	// Subscribe again
 	consumer, err = client.Subscribe(ConsumerOptions{
