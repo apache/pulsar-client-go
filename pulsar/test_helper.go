@@ -47,7 +47,7 @@ func newAuthTopicName() string {
 }
 
 func httpPut(url string, body interface{}) {
-	client := http.Client{}
+	client := http.DefaultClient
 
 	data, _ := json.Marshal(body)
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(data))
@@ -63,7 +63,9 @@ func httpPut(url string, body interface{}) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	resp.Body.Close()
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
 }
 
 func makeHTTPCall(t *testing.T, method string, urls string, body string) {
@@ -81,5 +83,7 @@ func makeHTTPCall(t *testing.T, method string, urls string, body string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	if res.Body != nil {
+		_ = res.Body.Close()
+	}
 }
