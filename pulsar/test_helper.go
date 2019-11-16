@@ -21,11 +21,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"net/http"
 	"strings"
 	"testing"
 	"time"
+
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
@@ -73,7 +74,7 @@ func httpDelete(urls ...string) error {
 	}
 	for _, url := range urls {
 		if err := doFn(url); err != nil {
-			err = errors.Wrap(err, "unable to delete url: "+url)
+			err = pkgerrors.Wrap(err, "unable to delete url: "+url)
 		}
 	}
 	return errs

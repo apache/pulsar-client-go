@@ -18,11 +18,11 @@
 package pulsar
 
 import (
+	"errors"
 	"fmt"
-	"github.com/golang/protobuf/proto"
 	"net/url"
 
-	"github.com/pkg/errors"
+	"github.com/golang/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
 
