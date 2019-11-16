@@ -300,8 +300,6 @@ func TestNamespaceTopics(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 2, len(topics))
-
-	//time.Sleep(60 * time.Second)
 }
 
 func anonymousNamespacePolicy() map[string]interface{} {
