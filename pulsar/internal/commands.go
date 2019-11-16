@@ -182,6 +182,8 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.Unsubscribe = msg.(*pb.CommandUnsubscribe)
 	case pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES:
 		cmd.RedeliverUnacknowledgedMessages = msg.(*pb.CommandRedeliverUnacknowledgedMessages)
+	case pb.BaseCommand_GET_TOPICS_OF_NAMESPACE:
+		cmd.GetTopicsOfNamespace = msg.(*pb.CommandGetTopicsOfNamespace)
 	default:
 		log.Panic("Missing command type: ", cmdType)
 	}

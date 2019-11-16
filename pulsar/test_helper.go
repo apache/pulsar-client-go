@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
+	"github.com/pkg/errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -46,13 +46,46 @@ func newAuthTopicName() string {
 	return fmt.Sprintf("private/auth/my-topic-%v", time.Now().Nanosecond())
 }
 
-func httpPut(url string, body interface{}) {
+func httpDelete(urls ...string) error {
+	client := http.DefaultClient
+	var errs error
+	doFn := func(url string) error {
+		req, err := http.NewRequest(http.MethodDelete, url, nil)
+		if err != nil {
+			return err
+		}
+
+		req.Header = map[string][]string{
+			"Content-Type": {"application/json"},
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode > 299 {
+			return fmt.Errorf("failed to delete topic status code: %d", resp.StatusCode)
+		}
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil
+	}
+	for _, url := range urls {
+		if err := doFn(url); err != nil {
+			err = errors.Wrap(err, "unable to delete url: "+url)
+		}
+	}
+	return errs
+}
+
+func httpPut(url string, body interface{}) error {
 	client := http.DefaultClient
 
 	data, _ := json.Marshal(body)
 	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(data))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	req.Header = map[string][]string{
@@ -61,17 +94,18 @@ func httpPut(url string, body interface{}) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if resp.Body != nil {
 		_ = resp.Body.Close()
 	}
+	return nil
 }
 
-func makeHTTPCall(t *testing.T, method string, urls string, body string) {
+func makeHTTPCall(t *testing.T, method string, url string, body string) {
 	client := http.Client{}
 
-	req, err := http.NewRequest(method, urls, strings.NewReader(body))
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

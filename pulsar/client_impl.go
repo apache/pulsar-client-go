@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"github.com/golang/protobuf/proto"
 	"net/url"
 
 	"github.com/pkg/errors"
@@ -89,36 +90,36 @@ func newClient(options ClientOptions) (Client, error) {
 	return c, nil
 }
 
-func (client *client) CreateProducer(options ProducerOptions) (Producer, error) {
-	producer, err := newProducer(client, &options)
+func (c *client) CreateProducer(options ProducerOptions) (Producer, error) {
+	producer, err := newProducer(c, &options)
 	if err == nil {
-		client.handlers[producer] = true
+		c.handlers[producer] = true
 	}
 	return producer, err
 }
 
-func (client *client) Subscribe(options ConsumerOptions) (Consumer, error) {
-	consumer, err := newConsumer(client, options)
+func (c *client) Subscribe(options ConsumerOptions) (Consumer, error) {
+	consumer, err := newConsumer(c, options)
 	if err != nil {
 		return nil, err
 	}
-	client.handlers[consumer] = true
+	c.handlers[consumer] = true
 	return consumer, nil
 }
 
-func (client *client) CreateReader(options ReaderOptions) (Reader, error) {
+func (c *client) CreateReader(options ReaderOptions) (Reader, error) {
 	// TODO: Implement reader
 	return nil, nil
 }
 
-func (client *client) TopicPartitions(topic string) ([]string, error) {
+func (c *client) TopicPartitions(topic string) ([]string, error) {
 	topicName, err := internal.ParseTopicName(topic)
 	if err != nil {
 		return nil, err
 	}
 
-	id := client.rpcClient.NewRequestID()
-	res, err := client.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_PARTITIONED_METADATA,
+	id := c.rpcClient.NewRequestID()
+	res, err := c.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_PARTITIONED_METADATA,
 		&pb.CommandPartitionedTopicMetadata{
 			RequestId: &id,
 			Topic:     &topicName.Name,
@@ -143,8 +144,26 @@ func (client *client) TopicPartitions(topic string) ([]string, error) {
 	return []string{topicName.Name}, nil
 }
 
-func (client *client) Close() {
-	for handler := range client.handlers {
+func (c *client) Close() {
+	for handler := range c.handlers {
 		handler.Close()
 	}
+}
+
+func (c *client) namespaceTopics(namespace string) ([]string, error) {
+	id := c.rpcClient.NewRequestID()
+	req := &pb.CommandGetTopicsOfNamespace{
+		RequestId: proto.Uint64(id),
+		Namespace: proto.String(namespace),
+		Mode:      pb.CommandGetTopicsOfNamespace_PERSISTENT.Enum(),
+	}
+	res, err := c.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_GET_TOPICS_OF_NAMESPACE, req)
+	if err != nil {
+		return nil, err
+	}
+	if res.Response.Error != nil {
+		return []string{}, newError(ResultLookupError, res.Response.GetError().String())
+	}
+
+	return res.Response.GetTopicsOfNamespaceResponse.GetTopics(), nil
 }
