@@ -19,10 +19,9 @@ package pulsar
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestClient(t *testing.T) {
@@ -201,7 +200,7 @@ func TestTopicPartitions(t *testing.T) {
 	defer client.Close()
 
 	// Create topic with 5 partitions
-	httpPut("http://localhost:8080/admin/v2/persistent/public/default/TestGetTopicPartitions/partitions",
+	httpPut("admin/v2/persistent/public/default/TestGetTopicPartitions/partitions",
 		5)
 
 	partitionedTopic := "persistent://public/default/TestGetTopicPartitions"
@@ -243,27 +242,26 @@ func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 func TestNamespaceTopics(t *testing.T) {
 	name := generateRandomName()
 	namespace := fmt.Sprintf("public/%s", name)
-	namespaceUrl := fmt.Sprintf("http://localhost:8080/admin/v2/namespaces/%s", namespace)
-	err := httpPut(namespaceUrl, nil)
+	namespaceUrl := fmt.Sprintf("admin/v2/namespaces/%s", namespace)
+	err := httpPut(namespaceUrl, anonymousNamespacePolicy())
 	if err != nil {
 		t.Fatal()
 	}
 	defer func() {
-		_ = httpDelete(fmt.Sprintf("http://localhost:8080/admin/v2/namespaces/%s", namespace))
+		_ = httpDelete(fmt.Sprintf("admin/v2/namespaces/%s", namespace))
 	}()
 
 	// create topics
 	topic1 := fmt.Sprintf("%s/topic-1", namespace)
-	if err := httpPut("http://localhost:8080/admin/v2/persistent/"+topic1, nil); err != nil {
+	if err := httpPut("admin/v2/persistent/"+topic1, nil); err != nil {
 		t.Fatal(err)
 	}
 	topic2 := fmt.Sprintf("%s/topic-2", namespace)
-	if err := httpPut("http://localhost:8080/admin/v2/persistent/"+topic2, namespace); err != nil {
+	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		_ = httpDelete("http://localhost:8080/admin/v2/persistent/"+topic1,
-			"http://localhost:8080/admin/v2/persistent/"+topic2)
+		_ = httpDelete("admin/v2/persistent/"+topic1, "admin/v2/persistent/"+topic2)
 	}()
 
 	c, err := NewClient(ClientOptions{
@@ -302,4 +300,17 @@ func TestNamespaceTopics(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, 2, len(topics))
+
+	//time.Sleep(60 * time.Second)
+}
+
+func anonymousNamespacePolicy() map[string]interface{} {
+	return map[string]interface{}{
+		"auth_policies": map[string]interface{}{
+			"namespace_auth": map[string]interface{}{
+				"anonymous": []string{"produce", "consume"},
+			},
+		},
+		"replication_clusters": []string{"standalone"},
+	}
 }

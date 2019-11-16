@@ -399,8 +399,8 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
+	defer req.waitGroup.Done()
 	if p.state != producerReady {
-		req.waitGroup.Done()
 		return
 	}
 
@@ -417,12 +417,11 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.WithError(err).Warn("Failed to close producer")
 	} else {
 		p.log.Info("Closed producer")
-		p.state = producerClosed
-		p.cnx.UnregisterListener(p.producerID)
-		p.batchFlushTicker.Stop()
 	}
 
-	req.waitGroup.Done()
+	p.state = producerClosed
+	p.cnx.UnregisterListener(p.producerID)
+	p.batchFlushTicker.Stop()
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {

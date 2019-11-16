@@ -71,7 +71,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 
 	type ProducerError struct {
 		partition int
-		prod      *partitionProducer
+		prod      Producer
 		err       error
 	}
 
@@ -92,9 +92,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		pe, ok := <-c
 		if ok {
 			err = pe.err
-			if pe.err != nil {
-				p.producers[pe.partition] = pe.prod
-			}
+			p.producers[pe.partition] = pe.prod
 		}
 	}
 

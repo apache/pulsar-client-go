@@ -22,6 +22,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"path"
 	"strings"
 	"testing"
 	"time"
@@ -32,6 +33,8 @@ import (
 const (
 	serviceURL    = "pulsar://localhost:6650"
 	serviceURLTLS = "pulsar+ssl://localhost:6651"
+
+	webServiceURL = "http://localhost:8080"
 
 	caCertsPath       = "../integration-tests/certs/cacert.pem"
 	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"
@@ -47,11 +50,16 @@ func newAuthTopicName() string {
 	return fmt.Sprintf("private/auth/my-topic-%v", time.Now().Nanosecond())
 }
 
-func httpDelete(urls ...string) error {
+func testEndpoint(parts ...string) string {
+	return webServiceURL + "/" + path.Join(parts...)
+}
+
+func httpDelete(requestPaths ...string) error {
 	client := http.DefaultClient
 	var errs error
-	doFn := func(url string) error {
-		req, err := http.NewRequest(http.MethodDelete, url, nil)
+	doFn := func(requestPath string) error {
+		endpoint := testEndpoint(requestPath)
+		req, err := http.NewRequest(http.MethodDelete, endpoint, nil)
 		if err != nil {
 			return err
 		}
@@ -72,19 +80,20 @@ func httpDelete(urls ...string) error {
 		}
 		return nil
 	}
-	for _, url := range urls {
-		if err := doFn(url); err != nil {
-			err = pkgerrors.Wrap(err, "unable to delete url: "+url)
+	for _, requestPath := range requestPaths {
+		if err := doFn(requestPath); err != nil {
+			err = pkgerrors.Wrapf(err, "unable to delete url: %s"+requestPath)
 		}
 	}
 	return errs
 }
 
-func httpPut(url string, body interface{}) error {
+func httpPut(requestPath string, body interface{}) error {
 	client := http.DefaultClient
 
 	data, _ := json.Marshal(body)
-	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(data))
+	endpoint := testEndpoint(requestPath)
+	req, err := http.NewRequest(http.MethodPut, endpoint, bytes.NewReader(data))
 	if err != nil {
 		return err
 	}
