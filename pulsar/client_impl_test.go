@@ -19,10 +19,9 @@ package pulsar
 
 import (
 	"fmt"
+	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"testing"
-
-	"github.com/stretchr/testify/assert"
 )
 
 func TestClient(t *testing.T) {
@@ -201,7 +200,7 @@ func TestTopicPartitions(t *testing.T) {
 	defer client.Close()
 
 	// Create topic with 5 partitions
-	httpPut("http://localhost:8080/admin/v2/persistent/public/default/TestGetTopicPartitions/partitions",
+	httpPut("admin/v2/persistent/public/default/TestGetTopicPartitions/partitions",
 		5)
 
 	partitionedTopic := "persistent://public/default/TestGetTopicPartitions"
@@ -221,4 +220,95 @@ func TestTopicPartitions(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, len(partitions), 1)
 	assert.Equal(t, partitions[0], topic)
+}
+
+func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
+	c, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	if err != nil {
+		t.Errorf("failed to create client error: %+v", err)
+		return
+	}
+	defer c.Close()
+	ci := c.(*client)
+
+	// fetch from namespace that does not exist
+	name := generateRandomName()
+	topics, err := ci.namespaceTopics(fmt.Sprintf("%s/%s", name, name))
+	assert.Equal(t, 0, len(topics))
+}
+
+func TestNamespaceTopics(t *testing.T) {
+	name := generateRandomName()
+	namespace := fmt.Sprintf("public/%s", name)
+	namespaceUrl := fmt.Sprintf("admin/v2/namespaces/%s", namespace)
+	err := httpPut(namespaceUrl, anonymousNamespacePolicy())
+	if err != nil {
+		t.Fatal()
+	}
+	defer func() {
+		_ = httpDelete(fmt.Sprintf("admin/v2/namespaces/%s", namespace))
+	}()
+
+	// create topics
+	topic1 := fmt.Sprintf("%s/topic-1", namespace)
+	if err := httpPut("admin/v2/persistent/"+topic1, nil); err != nil {
+		t.Fatal(err)
+	}
+	topic2 := fmt.Sprintf("%s/topic-2", namespace)
+	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = httpDelete("admin/v2/persistent/"+topic1, "admin/v2/persistent/"+topic2)
+	}()
+
+	c, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	if err != nil {
+		t.Errorf("failed to create client error: %+v", err)
+		return
+	}
+	defer c.Close()
+	ci := c.(*client)
+
+	topics, err := ci.namespaceTopics(namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 2, len(topics))
+
+	// add a non-persistent topic
+	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	topics, err = ci.namespaceTopics(namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 2, len(topics))
+}
+
+func anonymousNamespacePolicy() map[string]interface{} {
+	return map[string]interface{}{
+		"auth_policies": map[string]interface{}{
+			"namespace_auth": map[string]interface{}{
+				"anonymous": []string{"produce", "consume"},
+			},
+		},
+		"replication_clusters": []string{"standalone"},
+	}
 }

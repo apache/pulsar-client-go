@@ -21,16 +21,20 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
+	"path"
 	"strings"
 	"testing"
 	"time"
+
+	pkgerrors "github.com/pkg/errors"
 )
 
 const (
 	serviceURL    = "pulsar://localhost:6650"
 	serviceURLTLS = "pulsar+ssl://localhost:6651"
+
+	webServiceURL = "http://localhost:8080"
 
 	caCertsPath       = "../integration-tests/certs/cacert.pem"
 	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"
@@ -46,13 +50,52 @@ func newAuthTopicName() string {
 	return fmt.Sprintf("private/auth/my-topic-%v", time.Now().Nanosecond())
 }
 
-func httpPut(url string, body interface{}) {
+func testEndpoint(parts ...string) string {
+	return webServiceURL + "/" + path.Join(parts...)
+}
+
+func httpDelete(requestPaths ...string) error {
+	client := http.DefaultClient
+	var errs error
+	doFn := func(requestPath string) error {
+		endpoint := testEndpoint(requestPath)
+		req, err := http.NewRequest(http.MethodDelete, endpoint, nil)
+		if err != nil {
+			return err
+		}
+
+		req.Header = map[string][]string{
+			"Content-Type": {"application/json"},
+		}
+
+		resp, err := client.Do(req)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode > 299 {
+			return fmt.Errorf("failed to delete topic status code: %d", resp.StatusCode)
+		}
+		if resp.Body != nil {
+			_ = resp.Body.Close()
+		}
+		return nil
+	}
+	for _, requestPath := range requestPaths {
+		if err := doFn(requestPath); err != nil {
+			err = pkgerrors.Wrapf(err, "unable to delete url: %s"+requestPath)
+		}
+	}
+	return errs
+}
+
+func httpPut(requestPath string, body interface{}) error {
 	client := http.DefaultClient
 
 	data, _ := json.Marshal(body)
-	req, err := http.NewRequest(http.MethodPut, url, bytes.NewReader(data))
+	endpoint := testEndpoint(requestPath)
+	req, err := http.NewRequest(http.MethodPut, endpoint, bytes.NewReader(data))
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 
 	req.Header = map[string][]string{
@@ -61,17 +104,18 @@ func httpPut(url string, body interface{}) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		log.Fatal(err)
+		return err
 	}
 	if resp.Body != nil {
 		_ = resp.Body.Close()
 	}
+	return nil
 }
 
-func makeHTTPCall(t *testing.T, method string, urls string, body string) {
+func makeHTTPCall(t *testing.T, method string, url string, body string) {
 	client := http.Client{}
 
-	req, err := http.NewRequest(method, urls, strings.NewReader(body))
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

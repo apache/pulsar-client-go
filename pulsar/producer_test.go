@@ -426,7 +426,10 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 
 func TestMessageRouter(t *testing.T) {
 	// Create topic with 5 partitions
-	httpPut("http://localhost:8080/admin/v2/persistent/public/default/my-partitioned-topic/partitions", 5)
+	err := httpPut("admin/v2/persistent/public/default/my-partitioned-topic/partitions", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
 	})
