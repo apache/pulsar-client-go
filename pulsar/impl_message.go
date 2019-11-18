@@ -61,6 +61,28 @@ func (id *messageID) ack() bool {
 	return true
 }
 
+func (id *messageID) greater(other *messageID) bool {
+	if id.ledgerID != other.ledgerID {
+		return id.ledgerID > other.ledgerID
+	}
+
+	if id.entryID != other.entryID {
+		return id.entryID > other.entryID
+	}
+
+	return id.batchIdx > other.batchIdx
+}
+
+func (id *messageID) equal(other *messageID) bool {
+	return id.ledgerID == other.ledgerID &&
+			id.entryID == other.entryID &&
+			id.batchIdx == other.batchIdx
+}
+
+func (id *messageID) greaterEqual(other *messageID) bool {
+	return id.equal(other) || id.greater(other)
+}
+
 func (id *messageID) Serialize() []byte {
 	msgID := &pb.MessageIdData{
 		LedgerId:   proto.Uint64(uint64(id.ledgerID)),

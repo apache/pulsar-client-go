@@ -49,6 +49,17 @@ const (
 	consumerClosed
 )
 
+type subscriptionMode int
+
+const (
+	// Make the subscription to be backed by a durable cursor that will retain messages and persist the current
+	// position
+	durable subscriptionMode = iota
+
+	// Lightweight subscription mode that doesn't have a durable cursor associated
+	nonDurable
+)
+
 type partitionConsumerOpts struct {
 	topic               string
 	consumerName        string
@@ -59,6 +70,11 @@ type partitionConsumerOpts struct {
 	receiverQueueSize   int
 	nackRedeliveryDelay time.Duration
 	metadata            map[string]string
+	replicateSubscriptionState bool
+	startMessageID             *messageID
+	startMessageIDInclusive    bool
+	subscriptionMode           subscriptionMode
+	readCompacted              bool
 }
 
 type partitionConsumer struct {
@@ -83,8 +99,10 @@ type partitionConsumer struct {
 	availablePermits int32
 
 	// the size of the queue channel for buffering messages
-	queueSize int32
-	queueCh   chan []*message
+	queueSize       int32
+	queueCh         chan []*message
+	startMessageID  *messageID
+	lastDequeuedMsg *messageID
 
 	eventsCh    chan interface{}
 	connectedCh chan struct{}
@@ -109,6 +127,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		eventsCh:       make(chan interface{}, 3),
 		queueSize:      int32(options.receiverQueueSize),
 		queueCh:        make(chan []*message, options.receiverQueueSize),
+		startMessageID: options.startMessageID,
 		connectedCh:    make(chan struct{}),
 		messageCh:      messageCh,
 		closeCh:        make(chan struct{}),
@@ -247,7 +266,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	if msgMeta.NumMessagesInBatch != nil {
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
-	messages := make([]*message, numMsgs)
+	messages := make([]*message, 0)
 	var ackTracker *ackTracker
 	// are there multiple messages in this batch?
 	if numMsgs > 1 {
@@ -266,6 +285,12 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			i,
 			pc.partitionIdx,
 			ackTracker)
+
+		if pc.messageShouldBeDiscarded(msgID) {
+			pc.AckID(msgID)
+			continue
+		}
+
 		// set the consumer so we know how to ack the message id
 		msgID.consumer = pc
 		var msg *message
@@ -291,12 +316,25 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			}
 		}
 
-		messages[i] = msg
+		messages = append(messages, msg)
 	}
 
 	// send messages to the dispatcher
 	pc.queueCh <- messages
 	return nil
+}
+
+func (pc *partitionConsumer) messageShouldBeDiscarded(msgID *messageID) bool {
+	if pc.startMessageID == nil {
+		return false
+	}
+
+	if pc.options.startMessageIDInclusive {
+		return pc.startMessageID.greater(msgID)
+	} else {
+		// Non inclusive
+		return pc.startMessageID.greaterEqual(msgID)
+	}
 }
 
 func (pc *partitionConsumer) ConnectionClosed() {
@@ -326,7 +364,7 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 // and manages the flow control
 func (pc *partitionConsumer) dispatcher() {
 	defer func() {
-		pc.log.Info("exiting dispatch loop")
+		pc.log.Debug("exiting dispatch loop")
 	}()
 	var messages []*message
 	for {
@@ -356,20 +394,7 @@ func (pc *partitionConsumer) dispatcher() {
 			}
 			pc.log.Debug("dispatcher received connection event")
 
-			// drain messages
 			messages = nil
-
-			// drain the message queue on any new connection by sending a
-			// special nil message to the channel so we know when to stop dropping messages
-			go func() {
-				pc.queueCh <- nil
-			}()
-			for m := range pc.queueCh {
-				// the queue has been drained
-				if m == nil {
-					break
-				}
-			}
 
 			// reset available permits
 			pc.availablePermits = 0
@@ -432,7 +457,7 @@ type redeliveryRequest struct {
 
 func (pc *partitionConsumer) runEventsLoop() {
 	defer func() {
-		pc.log.Info("exiting events loop")
+		pc.log.Debug("exiting events loop")
 	}()
 	for {
 		select {
@@ -516,15 +541,28 @@ func (pc *partitionConsumer) grabConn() error {
 	initialPosition := toProtoInitialPosition(pc.options.subscriptionInitPos)
 	requestID := pc.client.rpcClient.NewRequestID()
 	cmdSubscribe := &pb.CommandSubscribe{
-		RequestId:       proto.Uint64(requestID),
-		Topic:           proto.String(pc.topic),
-		SubType:         subType.Enum(),
-		Subscription:    proto.String(pc.options.subscription),
-		ConsumerId:      proto.Uint64(pc.consumerID),
-		ConsumerName:    proto.String(pc.name),
-		InitialPosition: initialPosition.Enum(),
-		Schema:          nil,
+		Topic:                      proto.String(pc.topic),
+		Subscription:               proto.String(pc.options.subscription),
+		SubType:                    subType.Enum(),
+		ConsumerId:                 proto.Uint64(pc.consumerID),
+		RequestId:                  proto.Uint64(requestID),
+		ConsumerName:               proto.String(pc.name),
+		PriorityLevel:              nil,
+		Durable:                    proto.Bool(pc.options.subscriptionMode == durable),
+		Metadata:                   internal.ConvertFromStringMap(pc.options.metadata),
+		ReadCompacted:              proto.Bool(pc.options.readCompacted),
+		Schema:                     nil,
+		InitialPosition:            initialPosition.Enum(),
+		ReplicateSubscriptionState: proto.Bool(pc.options.replicateSubscriptionState),
+
 	}
+
+	pc.startMessageID = pc.clearReceiverQueue()
+	if pc.options.subscriptionMode != durable {
+		// For regular subscriptions the broker will determine the restarting point
+		cmdSubscribe.StartMessageId = convertToMessageIdData(pc.startMessageID)
+	}
+
 	if len(pc.options.metadata) > 0 {
 		cmdSubscribe.Metadata = toKeyValues(pc.options.metadata)
 	}
@@ -562,6 +600,58 @@ func (pc *partitionConsumer) grabConn() error {
 	}
 }
 
+/**
+ * Clear the internal receiver queue and returns the message id of what was the 1st message in the queue that was
+ * not seen by the application
+ */
+func (pc *partitionConsumer) clearReceiverQueue() *messageID {
+	var nextMessageInQueue *messageID = nil
+
+	// drain the message queue on any new connection by sending a
+	// special nil message to the channel so we know when to stop dropping messages
+	go func() {
+		pc.queueCh <- nil
+	}()
+	for m := range pc.queueCh {
+		// the queue has been drained
+		if m == nil {
+			break
+		} else if nextMessageInQueue == nil {
+			nextMessageInQueue = m[0].msgID.(*messageID)
+		}
+	}
+
+	if nextMessageInQueue != nil {
+		return getPreviousMessage(nextMessageInQueue)
+	} else if pc.lastDequeuedMsg != nil {
+		// If the queue was empty we need to restart from the message just after the last one that has been dequeued
+		// in the past
+		return pc.lastDequeuedMsg
+	} else {
+		// No message was received or dequeued by this consumer. Next message would still be the startMessageId
+		return pc.startMessageID
+	}
+}
+
+func getPreviousMessage(mid *messageID) *messageID {
+	if mid.batchIdx >= 0 {
+		return &messageID{
+			ledgerID: mid.ledgerID,
+			entryID: mid.entryID,
+			batchIdx: mid.batchIdx - 1,
+			partitionIdx: mid.partitionIdx,
+		}
+	} else {
+		// Get on previous message in previous entry
+		return &messageID{
+			ledgerID: mid.ledgerID,
+			entryID: mid.entryID - 1,
+			batchIdx: mid.batchIdx,
+			partitionIdx: mid.partitionIdx,
+		}
+	}
+}
+
 func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload internal.Buffer) (internal.Buffer, error) {
 	provider, ok := compressionProviders[msgMeta.GetCompression()]
 	if !ok {
@@ -592,4 +682,15 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 			AckType:         pb.CommandAck_Individual.Enum(),
 			ValidationError: validationError.Enum(),
 		})
+}
+
+func convertToMessageIdData(msgId *messageID) *pb.MessageIdData {
+	if msgId == nil {
+		return nil
+	}
+
+	return &pb.MessageIdData{
+		LedgerId:   proto.Uint64(uint64(msgId.ledgerID)),
+		EntryId:    proto.Uint64(uint64(msgId.entryID)),
+	}
 }

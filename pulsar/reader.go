@@ -34,6 +34,10 @@ type ReaderOptions struct {
 	// Name set the reader name.
 	Name string
 
+	// Attach a set of application defined properties to the reader
+	// This properties will be visible in the topic stats
+	Properties map[string]string
+
 	// StartMessageID initial reader positioning is done by specifying a message id. The options are:
 	//  * `pulsar.EarliestMessage` : Start reading from the earliest message available in the topic
 	//  * `pulsar.LatestMessage` : Start reading from the end topic, only getting messages published after the
@@ -42,6 +46,10 @@ type ReaderOptions struct {
 	//                  specific position. The first message to be read will be the message next to the specified
 	//                  messageID
 	StartMessageID MessageID
+
+	// If true, the reader will start at the `StartMessageID`, included.
+	// Default is `false` and the reader will start from the "next" message
+	StartMessageIDInclusive bool
 
 	// MessageChannel sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
@@ -76,7 +84,7 @@ type Reader interface {
 	Next(context.Context) (Message, error)
 
 	// HasNext check if there is any message available to read from the current position
-	HasNext() (bool, error)
+	HasNext() bool
 
 	// Close the reader and stop the broker to push more messages
 	Close()
