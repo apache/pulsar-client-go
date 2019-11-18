@@ -15,36 +15,45 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// +build cgo
-
-// If CGO is enabled, use ZSTD library that links with official
-// C based zstd. This can perform both compression and decompression.
-
 package compression
 
 import (
-	zstd "github.com/valyala/gozstd"
+	"bytes"
+	"github.com/klauspost/compress/zstd"
+	"github.com/pkg/errors"
 )
 
-// NewZStdProvider returns a Provider interface.
+type zstdProvider struct {
+	encoder *zstd.Encoder
+}
+
 func NewZStdProvider() Provider {
-	return newCGoZStdProvider()
+	p := &zstdProvider{}
+	p.encoder, _ = zstd.NewWriter(nil)
+	return p
 }
 
-type zstdProvider struct{}
-
-func newCGoZStdProvider() Provider {
-	return &zstdProvider{}
-}
-
-func (zstdProvider) CanCompress() bool {
+func (p *zstdProvider) CanCompress() bool {
 	return true
 }
 
-func (zstdProvider) Compress(data []byte) []byte {
-	return zstd.Compress(nil, data)
+func (p *zstdProvider) Compress(data []byte) []byte {
+	return p.encoder.EncodeAll(data, []byte{})
 }
 
-func (zstdProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	return zstd.Decompress(nil, compressedData)
+func (p* zstdProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
+	d, err := zstd.NewReader(bytes.NewReader(compressedData))
+	if err != nil {
+		return nil, err
+	}
+
+	uncompressed := make([]byte, originalSize)
+	size, err := d.Read(uncompressed)
+	if err != nil {
+		return nil, err
+	} else if size != originalSize {
+		return nil, errors.New("Invalid uncompressed size")
+	} else {
+		return uncompressed, nil
+	}
 }
