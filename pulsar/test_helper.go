@@ -131,3 +131,19 @@ func makeHTTPCall(t *testing.T, method string, url string, body string) {
 		_ = res.Body.Close()
 	}
 }
+
+func createNamespace(namespace string, policy map[string]interface{}) error {
+	return httpPut("admin/v2/namespaces/"+namespace, policy)
+}
+
+func deleteNamespace(namespace string) error {
+	return httpDelete("admin/v2/namespaces/" + namespace)
+}
+
+func createTopic(topic string) error {
+	return httpPut("admin/v2/persistent/"+topic, nil)
+}
+
+func deleteTopic(topic string) error {
+	return httpDelete("admin/v2/persistent/" + fmt.Sprintf("%s?force=true", topic))
+}

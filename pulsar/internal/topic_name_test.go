@@ -82,3 +82,22 @@ func TestParseTopicNameErrors(t *testing.T) {
 	_, err = ParseTopicName("persistent://my-tenant/my-cluster/my-ns/my-topic-partition-xyz/invalid")
 	assert.NotNil(t, err)
 }
+
+func TestTopicNameWithoutPartitionPart(t *testing.T) {
+	tests := []struct{
+		tn TopicName
+		expected string
+	}{
+		{
+			tn: TopicName{Name:"persistent://public/default/my-topic", Partition:-1},
+			expected: "persistent://public/default/my-topic",
+		},
+		{
+			tn: TopicName{Name:"persistent://public/default/my-topic-partition-0", Partition:0},
+			expected: "persistent://public/default/my-topic",
+		},
+	}
+	for _, test := range tests {
+		assert.Equal(t, test.expected, TopicNameWithoutPartitionPart(&test.tn))
+	}
+}

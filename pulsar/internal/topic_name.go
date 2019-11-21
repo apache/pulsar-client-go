@@ -97,6 +97,17 @@ func ParseTopicName(topic string) (*TopicName, error) {
 	return tn, nil
 }
 
+func TopicNameWithoutPartitionPart(tn *TopicName) string {
+	if tn.Partition < 0 {
+		return tn.Name
+	}
+	idx := strings.LastIndex(tn.Name, partitionedTopicSuffix)
+	if idx > 0 {
+		return tn.Name[:idx]
+	}
+	return tn.Name
+}
+
 func getPartitionIndex(topic string) (int, error) {
 	if strings.Contains(topic, partitionedTopicSuffix) {
 		idx := strings.LastIndex(topic, "-") + 1

@@ -18,7 +18,6 @@
 package pulsar
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -48,7 +47,18 @@ func TestMultiTopicConsumerReceive(t *testing.T) {
 
 	// produce messages
 	for i, topic := range topics {
-		if err := produceHelloMessages(client, topic, 5, fmt.Sprintf("topic-%d", i+1)); err != nil {
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:           topic,
+			DisableBatching: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = genMessages(p, 5, func(idx int) string {
+			return fmt.Sprintf("topic-%d-hello-%d", i+1, idx)
+		})
+		p.Close()
+		if err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -68,26 +78,4 @@ func TestMultiTopicConsumerReceive(t *testing.T) {
 		}
 	}
 	assert.Equal(t, receivedTopic1, receivedTopic2)
-}
-
-func produceHelloMessages(client Client, topic string, numMessages int, prefix string) error {
-	p, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
-	if err != nil {
-		return err
-	}
-	defer p.Close()
-	ctx := context.Background()
-	for i := 0; i < numMessages; i++ {
-		m := &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("%s-hello-%d", prefix, i)),
-		}
-		if err := p.Send(ctx, m); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

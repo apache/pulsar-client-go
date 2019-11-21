@@ -74,6 +74,9 @@ type ConsumerOptions struct {
 	// Either a topic, a list of topics or a topics pattern are required when subscribing
 	TopicsPattern string
 
+	// Specify the interval in which to poll for new partitions or new topics if using a TopicsPattern.
+	AutoDiscoveryPeriod time.Duration
+
 	// Specify the subscription name for this consumer
 	// This argument is required when subscribing
 	SubscriptionName string
