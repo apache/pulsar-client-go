@@ -174,7 +174,7 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 	}
 
 	rc.discover()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	consumers = cloneConsumers(rc)
 	assert.Equal(t, 1, len(consumers))
@@ -185,7 +185,7 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 	}
 
 	rc.discover()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	consumers = cloneConsumers(rc)
 	assert.Equal(t, 0, len(consumers))
@@ -221,7 +221,7 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 	defer deleteTopic(myTopic)
 
 	rc.discover()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	consumers = cloneConsumers(rc)
 	assert.Equal(t, 0, len(consumers))
@@ -234,7 +234,7 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 	}
 
 	rc.discover()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	consumers = cloneConsumers(rc)
 	assert.Equal(t, 1, len(consumers))
@@ -243,7 +243,7 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 	err = deleteTopic(fooTopic)
 
 	rc.discover()
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(300 * time.Millisecond)
 
 	consumers = cloneConsumers(rc)
 	assert.Equal(t, 0, len(consumers))
