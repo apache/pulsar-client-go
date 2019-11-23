@@ -28,6 +28,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pkg/pb"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 var ErrConsumerClosed = errors.New("consumer closed")
@@ -92,6 +93,19 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh)
+	}
+
+	if options.TopicsPattern != "" {
+		tn, err := internal.ParseTopicName(options.TopicsPattern)
+		if err != nil {
+			return nil, err
+		}
+
+		pattern, err := extractTopicPattern(tn)
+		if err != nil {
+			return nil, err
+		}
+		return newRegexConsumer(client, options, tn, pattern, messageCh)
 	}
 
 	return nil, newError(ResultInvalidTopicName, "topic name is required for consumer")
