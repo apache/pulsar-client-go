@@ -43,7 +43,7 @@ If some libs cannot be downloaded when you enter the `go mod download` command, 
 
 ## Fork
 
-Before contributing, you need to fork [pulsar-client-go](https://github.com/apache/pulsar) to your github repository.
+Before contributing, you need to fork [pulsar-client-go](https://github.com/apache/pulsar-client-go) to your github repository.
 
 ## Contribution flow
 
