@@ -91,7 +91,9 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	for i := 0; i < numPartitions; i++ {
 		pe, ok := <-c
 		if ok {
-			err = pe.err
+			if pe.err != nil {
+				err = pe.err
+			}
 			p.producers[pe.partition] = pe.prod
 		}
 	}
