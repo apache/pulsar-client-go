@@ -309,7 +309,13 @@ func (c *connection) WriteData(data []byte) {
 
 func (c *connection) internalWriteData(data []byte) {
 	c.log.Debug("Write data: ", len(data))
-	if _, err := c.cnx.Write(data); err != nil {
+	err := c.cnx.SetWriteDeadline(time.Now().Add(time.Second * 15))
+
+	if err != nil {
+		c.log.WithError(err).Warn("Failed to SetWriteDeadline")
+	}
+
+	if _, err = c.cnx.Write(data); err != nil {
 		c.log.WithError(err).Warn("Failed to write on connection")
 		c.Close()
 	}
