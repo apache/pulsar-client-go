@@ -87,7 +87,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 	consumers := make(map[string]Consumer, len(topics))
 	for ce := range subscriber(c, topics, opts, msgCh) {
 		if ce.err != nil {
-			errs = pkgerrors.Wrapf(err, "unable to subscribe to topic=%s", ce.topic)
+			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
 			consumers[ce.topic] = ce.consumer
 		}
@@ -351,15 +351,15 @@ func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan Consum
 	}()
 
 	for _, t := range topics {
-		go func() {
+		go func(topic string) {
 			defer wg.Done()
-			c, err := internalTopicSubscribe(c, opts, t, ch)
+			c, err := internalTopicSubscribe(c, opts, topic, ch)
 			consumerErrorCh <- consumerError{
 				err:      err,
 				topic:    t,
 				consumer: c,
 			}
-		}()
+		}(t)
 	}
 
 	return consumerErrorCh

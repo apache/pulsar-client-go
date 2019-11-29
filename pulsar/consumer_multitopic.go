@@ -32,7 +32,7 @@ type multiTopicConsumer struct {
 
 	messageCh chan ConsumerMessage
 
-	consumers map[string]*consumer
+	consumers map[string]Consumer
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
@@ -45,52 +45,30 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 	mtc := &multiTopicConsumer{
 		options:   options,
 		messageCh: messageCh,
-		consumers: make(map[string]*consumer, len(topics)),
+		consumers: make(map[string]Consumer, len(topics)),
 		closeCh:   make(chan struct{}),
 		log:       &log.Entry{},
 	}
 
-	type ConsumerError struct {
-		err      error
-		topic    string
-		consumer *consumer
-	}
-
-	var wg sync.WaitGroup
-	wg.Add(len(topics))
-	ch := make(chan ConsumerError, len(topics))
-	for i := range topics {
-		go func(t string) {
-			defer wg.Done()
-			c, err := internalTopicSubscribe(client, options, t, messageCh)
-			ch <- ConsumerError{
-				err:      err,
-				topic:    t,
-				consumer: c,
-			}
-		}(topics[i])
-	}
-
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-
 	var errs error
-	for ce := range ch {
+	consumers := make(map[string]Consumer, len(topics))
+	for ce := range subscriber(client, topics, options, messageCh) {
 		if ce.err != nil {
-			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s subscription=%s",
-				ce.topic, options.SubscriptionName)
+			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
-			mtc.consumers[ce.topic] = ce.consumer
+			consumers[ce.topic] = ce.consumer
 		}
 	}
 
 	if errs != nil {
-		for _, c := range mtc.consumers {
+		for _, c := range consumers {
 			c.Close()
 		}
 		return nil, errs
+	}
+
+	for t, c := range consumers {
+		mtc.consumers[t] = c
 	}
 
 	return mtc, nil
@@ -102,10 +80,10 @@ func (c *multiTopicConsumer) Subscription() string {
 
 func (c *multiTopicConsumer) Unsubscribe() error {
 	var errs error
-	for _, consumer := range c.consumers {
+	for t, consumer := range c.consumers {
 		if err := consumer.Unsubscribe(); err != nil {
 			msg := fmt.Sprintf("unable to unsubscribe from topic=%s subscription=%s",
-				consumer.options.Topic, c.Subscription())
+				t, c.Subscription())
 			errs = pkgerrors.Wrap(err, msg)
 		}
 	}
@@ -178,7 +156,7 @@ func (c *multiTopicConsumer) Close() {
 		var wg sync.WaitGroup
 		wg.Add(len(c.consumers))
 		for _, con := range c.consumers {
-			go func(consumer *consumer) {
+			go func(consumer Consumer) {
 				defer wg.Done()
 				consumer.Close()
 			}(con)
