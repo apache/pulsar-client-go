@@ -100,6 +100,7 @@ func (s connectionState) String() string {
 }
 
 const keepAliveInterval = 30 * time.Second
+const writeDeadline = 15 * time.Second
 
 type request struct {
 	id       *uint64
@@ -309,7 +310,7 @@ func (c *connection) WriteData(data []byte) {
 
 func (c *connection) internalWriteData(data []byte) {
 	c.log.Debug("Write data: ", len(data))
-	err := c.cnx.SetWriteDeadline(time.Now().Add(time.Second * 15))
+	err := c.cnx.SetWriteDeadline(time.Now().Add(writeDeadline))
 
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to SetWriteDeadline")
