@@ -51,24 +51,19 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 	}
 
 	var errs error
-	consumers := make(map[string]Consumer, len(topics))
 	for ce := range subscriber(client, topics, options, messageCh) {
 		if ce.err != nil {
 			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
-			consumers[ce.topic] = ce.consumer
+			mtc.consumers[ce.topic] = ce.consumer
 		}
 	}
 
 	if errs != nil {
-		for _, c := range consumers {
+		for _, c := range mtc.consumers {
 			c.Close()
 		}
 		return nil, errs
-	}
-
-	for t, c := range consumers {
-		mtc.consumers[t] = c
 	}
 
 	return mtc, nil
