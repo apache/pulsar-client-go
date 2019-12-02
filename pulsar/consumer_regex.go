@@ -84,24 +84,19 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 	}
 
 	var errs error
-	consumers := make(map[string]Consumer, len(topics))
 	for ce := range subscriber(c, topics, opts, msgCh) {
 		if ce.err != nil {
-			errs = pkgerrors.Wrapf(err, "unable to subscribe to topic=%s", ce.topic)
+			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
-			consumers[ce.topic] = ce.consumer
+			rc.consumers[ce.topic] = ce.consumer
 		}
 	}
 
 	if errs != nil {
-		for _, c := range consumers {
+		for _, c := range rc.consumers {
 			c.Close()
 		}
 		return nil, errs
-	}
-
-	for t, c := range consumers {
-		rc.consumers[t] = c
 	}
 
 	// set up timer
@@ -351,15 +346,15 @@ func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan Consum
 	}()
 
 	for _, t := range topics {
-		go func() {
+		go func(topic string) {
 			defer wg.Done()
-			c, err := internalTopicSubscribe(c, opts, t, ch)
+			c, err := internalTopicSubscribe(c, opts, topic, ch)
 			consumerErrorCh <- consumerError{
 				err:      err,
 				topic:    t,
 				consumer: c,
 			}
-		}()
+		}(t)
 	}
 
 	return consumerErrorCh
