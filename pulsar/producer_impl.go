@@ -93,8 +93,9 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		if ok {
 			if pe.err != nil {
 				err = pe.err
+			} else {
+				p.producers[pe.partition] = pe.prod
 			}
-			p.producers[pe.partition] = pe.prod
 		}
 	}
 

@@ -495,3 +495,31 @@ func TestNonPersistentTopic(t *testing.T) {
 	assert.Nil(t, err)
 	defer consumer.Close()
 }
+
+func TestProducerDuplicateNameOnSameTopic(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	topicName := newTopicName()
+	producerName := "my-producer"
+
+	p1, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+		Name:  producerName,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p1.Close()
+
+	_, err = client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+		Name:  producerName,
+	})
+	assert.NotNil(t, err, "expected error when creating producer with same name")
+}
