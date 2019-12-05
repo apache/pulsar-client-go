@@ -107,7 +107,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		return nil, err
 	}
 
-	p.log = p.log.WithField("name", *p.producerName)
+	p.log = p.log.WithField("name", p.producerName)
 	p.log.Info("Created producer")
 	p.state = producerReady
 
