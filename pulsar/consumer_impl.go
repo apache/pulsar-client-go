@@ -114,6 +114,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 func internalTopicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage) (*consumer, error) {
 	consumer := &consumer{
+		options:   options,
 		messageCh: messageCh,
 		errorCh:   make(chan error),
 		log:       log.WithField("topic", topic),
