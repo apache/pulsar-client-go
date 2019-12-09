@@ -49,6 +49,7 @@ type Client interface {
 	BrokerStats() BrokerStats
 	ResourceQuotas() ResourceQuotas
 	FunctionsWorker() FunctionsWorker
+	Token() Token
 }
 
 type pulsarClient struct {
