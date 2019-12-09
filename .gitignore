@@ -11,3 +11,7 @@
 *.out
 
 perf/perf
+
+
+# dummy executable in root dir
+pulsar-client-go
