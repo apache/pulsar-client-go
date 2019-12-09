@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package main
+package license_test
 
 import (
 	"io/ioutil"
@@ -65,11 +65,11 @@ var otherCheck = regexp.MustCompile(`#
 `)
 
 var skip = map[string]bool{
-	"pkg/pb/PulsarApi.pb.go": true,
+	"../pkg/pb/PulsarApi.pb.go": true,
 }
 
 func TestLicense(t *testing.T) {
-	err := filepath.Walk(".", func(path string, fi os.FileInfo, err error) error {
+	err := filepath.Walk("../.", func(path string, fi os.FileInfo, err error) error {
 		if skip[path] {
 			return nil
 		}
