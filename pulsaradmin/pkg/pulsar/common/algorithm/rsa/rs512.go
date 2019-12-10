@@ -22,9 +22,15 @@ import (
 	"crypto/rsa"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common/algorithm/keypair"
+
+	"github.com/pkg/errors"
 )
 
 type RS512 struct{}
+
+func (p *RS512) GenerateSecret() ([]byte, error) {
+	return nil, errors.New("unsupported operation")
+}
 
 func (p *RS512) GenerateKeyPair() (*keypair.KeyPair, error) {
 	pri, err := rsa.GenerateKey(rand.Reader, 4096)
