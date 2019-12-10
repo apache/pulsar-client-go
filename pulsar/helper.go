@@ -22,6 +22,8 @@ import (
 
 	pkgerrors "github.com/pkg/errors"
 
+	"github.com/golang/protobuf/proto"
+
 	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
@@ -60,4 +62,17 @@ func validateTopicNames(topics ...string) error {
 	}
 
 	return errs
+}
+
+func toKeyValues(metadata map[string]string) []*pb.KeyValue {
+	kvs := make([]*pb.KeyValue, 0, len(metadata))
+	for k, v := range metadata {
+		kv := &pb.KeyValue{
+			Key:   proto.String(k),
+			Value: proto.String(v),
+		}
+		kvs = append(kvs, kv)
+	}
+
+	return kvs
 }

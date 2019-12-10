@@ -21,6 +21,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"path"
 	"strings"
@@ -54,61 +57,63 @@ func testEndpoint(parts ...string) string {
 	return webServiceURL + "/" + path.Join(parts...)
 }
 
+func jsonHeaders() http.Header {
+	headers := http.Header{}
+	headers.Add("Content-Type", "application/json")
+	headers.Add("Accept", "application/json")
+	return headers
+}
+
 func httpDelete(requestPaths ...string) error {
-	client := http.DefaultClient
 	var errs error
-	doFn := func(requestPath string) error {
-		endpoint := testEndpoint(requestPath)
-		req, err := http.NewRequest(http.MethodDelete, endpoint, nil)
-		if err != nil {
-			return err
-		}
-
-		req.Header = map[string][]string{
-			"Content-Type": {"application/json"},
-		}
-
-		resp, err := client.Do(req)
-		if err != nil {
-			return err
-		}
-		if resp.StatusCode > 299 {
-			return fmt.Errorf("failed to delete topic status code: %d", resp.StatusCode)
-		}
-		if resp.Body != nil {
-			_ = resp.Body.Close()
-		}
-		return nil
-	}
 	for _, requestPath := range requestPaths {
-		if err := doFn(requestPath); err != nil {
-			err = pkgerrors.Wrapf(err, "unable to delete url: %s"+requestPath)
+		if err := httpDo(http.MethodDelete, requestPath, nil, nil); err != nil {
+			errs = pkgerrors.Wrapf(err, "unable to delete url: %s"+requestPath)
 		}
 	}
 	return errs
 }
 
 func httpPut(requestPath string, body interface{}) error {
-	client := http.DefaultClient
+	return httpDo(http.MethodPut, requestPath, body, nil)
+}
 
-	data, _ := json.Marshal(body)
+func httpGet(requestPath string, out interface{}) error {
+	return httpDo(http.MethodGet, requestPath, nil, out)
+}
+
+func httpDo(method string, requestPath string, in interface{}, out interface{}) error {
+	client := http.DefaultClient
 	endpoint := testEndpoint(requestPath)
-	req, err := http.NewRequest(http.MethodPut, endpoint, bytes.NewReader(data))
+	var body io.Reader
+	inBytes, err := json.Marshal(in)
+	if err != nil {
+		return err
+	}
+	body = bytes.NewReader(inBytes)
+	req, err := http.NewRequest(method, endpoint, body)
 	if err != nil {
 		return err
 	}
 
-	req.Header = map[string][]string{
-		"Content-Type": {"application/json"},
-	}
-
+	req.Header = jsonHeaders()
 	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}
-	if resp.Body != nil {
-		_ = resp.Body.Close()
+	defer resp.Body.Close()
+	if resp.StatusCode > 299 || resp.StatusCode < 200 {
+		return fmt.Errorf("http error status code: %d", resp.StatusCode)
 	}
+
+	if out != nil {
+		outBytes, err := ioutil.ReadAll(resp.Body)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(outBytes, out)
+	}
+
 	return nil
 }
 
@@ -146,4 +151,19 @@ func createTopic(topic string) error {
 
 func deleteTopic(topic string) error {
 	return httpDelete("admin/v2/persistent/" + fmt.Sprintf("%s?force=true", topic))
+}
+
+func topicStats(topic string) (map[string]interface{}, error) {
+	var metadata map[string]interface{}
+	err := httpGet("admin/v2/persistent/"+topicPath(topic)+"/stats", &metadata)
+	return metadata, err
+}
+
+func topicPath(topic string) string {
+	tn, _ := internal.ParseTopicName(topic)
+	idx := strings.LastIndex(tn.Name, "/")
+	if idx > 0 {
+		return tn.Namespace + "/" + tn.Name[idx:]
+	}
+	return tn.Name
 }

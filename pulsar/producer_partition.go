@@ -125,16 +125,19 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.log.Debug("Lookup result: ", lr)
 	id := p.client.rpcClient.NewRequestID()
-	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, &pb.CommandProducer{
-		RequestId:    &id,
-		Topic:        &p.topic,
+	cmdProducer := &pb.CommandProducer{
+		RequestId:    proto.Uint64(id),
+		Topic:        proto.String(p.topic),
 		Encrypted:    nil,
-		Metadata:     nil,
-		ProducerId:   &p.producerID,
+		ProducerId:   proto.Uint64(p.producerID),
 		ProducerName: p.producerName,
 		Schema:       nil,
-	})
+	}
+	if len(p.options.Properties) > 0 {
+		cmdProducer.Metadata = toKeyValues(p.options.Properties)
+	}
 
+	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer")
 		return err
