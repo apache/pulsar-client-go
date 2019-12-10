@@ -25,6 +25,9 @@ import (
 type Token interface {
 	// CreateKeyPair is used to create public and private key pair using the given signature algorithm
 	CreateKeyPair(algorithm.Algorithm) (*keypair.KeyPair, error)
+
+	// CreateSecretKey is used for creating a secret key
+	CreateSecretKey(algorithm.Algorithm) ([]byte, error)
 }
 
 type token struct {
@@ -43,4 +46,12 @@ func (c *token) CreateKeyPair(signatureAlgorithm algorithm.Algorithm) (*keypair.
 		return nil, err
 	}
 	return sa.GenerateKeyPair()
+}
+
+func (c *token) CreateSecretKey(signatureAlgorithm algorithm.Algorithm) ([]byte, error) {
+	sa, err := algorithm.GetSignatureAlgorithm(signatureAlgorithm)
+	if err != nil {
+		return nil, err
+	}
+	return sa.GenerateSecret()
 }

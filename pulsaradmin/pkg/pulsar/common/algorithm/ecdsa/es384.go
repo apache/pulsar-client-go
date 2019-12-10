@@ -23,9 +23,15 @@ import (
 	"crypto/rand"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common/algorithm/keypair"
+
+	"github.com/pkg/errors"
 )
 
 type ES384 struct{}
+
+func (h *ES384) GenerateSecret() ([]byte, error) {
+	return nil, errors.New("unsupported operation")
+}
 
 func (h *ES384) GenerateKeyPair() (*keypair.KeyPair, error) {
 	pri, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
