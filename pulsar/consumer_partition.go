@@ -58,6 +58,7 @@ type partitionConsumerOpts struct {
 	partitionIdx        int
 	receiverQueueSize   int
 	nackRedeliveryDelay time.Duration
+	metadata            map[string]string
 }
 
 type partitionConsumer struct {
@@ -523,6 +524,9 @@ func (pc *partitionConsumer) grabConn() error {
 		ConsumerName:    proto.String(pc.name),
 		InitialPosition: initialPosition.Enum(),
 		Schema:          nil,
+	}
+	if len(pc.options.metadata) > 0 {
+		cmdSubscribe.Metadata = toKeyValues(pc.options.metadata)
 	}
 
 	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,

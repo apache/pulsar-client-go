@@ -523,3 +523,38 @@ func TestProducerDuplicateNameOnSameTopic(t *testing.T) {
 	})
 	assert.NotNil(t, err, "expected error when creating producer with same name")
 }
+
+func TestProducerMetadata(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	topic := newTopicName()
+	props := map[string]string{
+		"key1": "value1",
+	}
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:      topic,
+		Name:       "my-producer",
+		Properties: props,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+	stats, err := topicStats(topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	meta := stats["publishers"].([]interface{})[0].(map[string]interface{})["metadata"].(map[string]interface{})
+	assert.Equal(t, len(props), len(meta))
+	for k, v := range props {
+		mv := meta[k].(string)
+		assert.Equal(t, v, mv)
+	}
+}

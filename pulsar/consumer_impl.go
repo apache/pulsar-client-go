@@ -140,6 +140,7 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 	}
 
 	receiverQueueSize := options.ReceiverQueueSize
+	metadata := options.Properties
 	var wg sync.WaitGroup
 	ch := make(chan ConsumerError, numPartitions)
 	wg.Add(numPartitions)
@@ -162,6 +163,7 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 				partitionIdx:        idx,
 				receiverQueueSize:   receiverQueueSize,
 				nackRedeliveryDelay: nackRedeliveryDelay,
+				metadata:            metadata,
 			}
 			cons, err := newPartitionConsumer(consumer, client, opts, messageCh)
 			ch <- ConsumerError{
