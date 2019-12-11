@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"sort"
+	"sync"
 	"testing"
 	"time"
 
@@ -29,6 +30,8 @@ const testNackDelay = 300 * time.Millisecond
 
 type nackMockedConsumer struct {
 	ch chan messageID
+	closed bool
+	lock sync.Mutex
 	msgIds []messageID
 }
 
@@ -40,12 +43,20 @@ func newNackMockedConsumer() *nackMockedConsumer {
 		// since the client ticks at at interval of delay / 3
 		// wait another interval to ensure we get all messages
 		time.Sleep(testNackDelay + 101 * time.Millisecond)
+		t.lock.Lock()
+		defer t.lock.Unlock()
+		t.closed = true
 		close(t.ch)
 	}()
 	return t
 }
 
 func (nmc *nackMockedConsumer) Redeliver(msgIds []messageID) {
+	nmc.lock.Lock()
+	defer nmc.lock.Unlock()
+	if nmc.closed {
+		return
+	}
 	for _, id := range msgIds {
 		nmc.ch <- id
 	}
