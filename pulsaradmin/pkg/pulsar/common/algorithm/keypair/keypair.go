@@ -65,6 +65,27 @@ func (k *KeyPair) EncodedPrivateKey() ([]byte, error) {
 	return nil, errors.New("unknown error")
 }
 
+// DecodePrivateKey parses the private key to a KeyPair
+func DecodePrivateKey(keyType KeyType, privateKey []byte) (*KeyPair, error) {
+	switch keyType {
+	case RSA:
+		key, err := x509.ParsePKCS1PrivateKey(privateKey)
+		if err != nil {
+			k, e := x509.ParsePKCS8PrivateKey(privateKey)
+			return New(keyType, k), e
+		}
+		return New(keyType, key), nil
+	case ECDSA:
+		key, err := x509.ParseECPrivateKey(privateKey)
+		if err != nil {
+			k, e := x509.ParsePKCS8PrivateKey(privateKey)
+			return New(keyType, k), e
+		}
+		return New(ECDSA, key), nil
+	}
+	return nil, errors.New("unknown error")
+}
+
 // EncodedPublicKey gets the encoded public key
 func (k *KeyPair) EncodedPublicKey() ([]byte, error) {
 	switch k.keyType {

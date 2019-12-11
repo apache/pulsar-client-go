@@ -34,7 +34,7 @@ func (h *ES384) GenerateSecret() ([]byte, error) {
 }
 
 func (h *ES384) GenerateKeyPair() (*keypair.KeyPair, error) {
-	pri, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	pri, err := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	if err != nil {
 		return nil, err
 	}

@@ -38,6 +38,9 @@ const (
 	ES256 Algorithm = "ES256"
 	ES384 Algorithm = "ES384"
 	ES512 Algorithm = "ES512"
+	PS256 Algorithm = "PS256"
+	PS384 Algorithm = "PS384"
+	PS512 Algorithm = "PS512"
 )
 
 var algorithmMap = map[Algorithm]SignatureAlgorithm{

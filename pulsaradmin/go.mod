@@ -4,6 +4,7 @@ go 1.12
 
 require (
 	github.com/davecgh/go-spew v1.1.1
+	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/fatih/color v1.7.0 // indirect
 	github.com/golang/protobuf v1.3.1
 	github.com/google/go-cmp v0.3.1 // indirect
