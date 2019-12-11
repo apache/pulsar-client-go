@@ -20,6 +20,8 @@ package pulsar
 import (
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common/algorithm/algorithm"
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common/algorithm/keypair"
+
+	"github.com/dgrijalva/jwt-go"
 )
 
 type Token interface {
@@ -28,6 +30,10 @@ type Token interface {
 
 	// CreateSecretKey is used for creating a secret key
 	CreateSecretKey(algorithm.Algorithm) ([]byte, error)
+
+	// Create creates a token object using the specified signature algorithm, private key,
+	// object and the expire time
+	Create(algorithm.Algorithm, interface{}, string, int64) (string, error)
 }
 
 type token struct {
@@ -40,7 +46,7 @@ func (c *pulsarClient) Token() Token {
 	}
 }
 
-func (c *token) CreateKeyPair(signatureAlgorithm algorithm.Algorithm) (*keypair.KeyPair, error) {
+func (t *token) CreateKeyPair(signatureAlgorithm algorithm.Algorithm) (*keypair.KeyPair, error) {
 	sa, err := algorithm.GetSignatureAlgorithm(signatureAlgorithm)
 	if err != nil {
 		return nil, err
@@ -48,10 +54,54 @@ func (c *token) CreateKeyPair(signatureAlgorithm algorithm.Algorithm) (*keypair.
 	return sa.GenerateKeyPair()
 }
 
-func (c *token) CreateSecretKey(signatureAlgorithm algorithm.Algorithm) ([]byte, error) {
+func (t *token) CreateSecretKey(signatureAlgorithm algorithm.Algorithm) ([]byte, error) {
 	sa, err := algorithm.GetSignatureAlgorithm(signatureAlgorithm)
 	if err != nil {
 		return nil, err
 	}
 	return sa.GenerateSecret()
+}
+
+func (t *token) Create(algorithm algorithm.Algorithm, signKey interface{}, subject string,
+	expireTime int64) (string, error) {
+
+	claims := &jwt.StandardClaims{
+		Subject:   subject,
+		ExpiresAt: expireTime,
+	}
+	signMethod := parseAlgorithmToJwtSignMethod(algorithm)
+	tokenString := jwt.NewWithClaims(signMethod, claims)
+
+	return tokenString.SignedString(signKey)
+}
+
+func parseAlgorithmToJwtSignMethod(a algorithm.Algorithm) jwt.SigningMethod {
+	switch a {
+	case algorithm.HS256:
+		return jwt.SigningMethodHS256
+	case algorithm.HS384:
+		return jwt.SigningMethodHS384
+	case algorithm.HS512:
+		return jwt.SigningMethodHS512
+	case algorithm.RS256:
+		return jwt.SigningMethodRS256
+	case algorithm.RS384:
+		return jwt.SigningMethodRS384
+	case algorithm.RS512:
+		return jwt.SigningMethodRS512
+	case algorithm.ES256:
+		return jwt.SigningMethodES256
+	case algorithm.ES384:
+		return jwt.SigningMethodES384
+	case algorithm.ES512:
+		return jwt.SigningMethodES512
+	case algorithm.PS256:
+		return jwt.SigningMethodPS256
+	case algorithm.PS384:
+		return jwt.SigningMethodPS384
+	case algorithm.PS512:
+		return jwt.SigningMethodPS512
+	default:
+		return jwt.SigningMethodRS256
+	}
 }
