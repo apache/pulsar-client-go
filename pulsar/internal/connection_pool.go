@@ -53,7 +53,13 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	cachedCnx, found := p.pool.Load(logicalAddr.Host)
 	if found {
 		cnx := cachedCnx.(*connection)
-		log.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
+		cnx.Lock()
+		// stash these vars, so we can release the lock ASAP
+		// (without using a defer, which holds it until the end of the func)
+		logicalAddr = cnx.logicalAddr
+		physicalAddr = cnx.physicalAddr
+		cnx.Unlock()
+		log.Debug("Found connection in cache:", logicalAddr, physicalAddr)
 
 		if err := cnx.waitUntilReady(); err == nil {
 			// Connection is ready to be used
@@ -61,7 +67,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		}
 		// The cached connection is failed
 		p.pool.Delete(logicalAddr.Host)
-		log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
+		log.Debug("Removed failed connection from pool:", logicalAddr, physicalAddr)
 	}
 
 	// Try to create a new connection
