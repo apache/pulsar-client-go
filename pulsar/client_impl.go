@@ -93,7 +93,7 @@ func newClient(options ClientOptions) (Client, error) {
 func (c *client) CreateProducer(options ProducerOptions) (Producer, error) {
 	producer, err := newProducer(c, &options)
 	if err == nil {
-		c.handlers.Set(producer, true)
+		c.handlers.Add(producer)
 	}
 	return producer, err
 }
@@ -103,7 +103,7 @@ func (c *client) Subscribe(options ConsumerOptions) (Consumer, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.handlers.Set(consumer, true)
+	c.handlers.Add(consumer)
 	return consumer, nil
 }
 

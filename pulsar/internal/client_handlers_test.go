@@ -29,7 +29,7 @@ func TestClientHandlers(t *testing.T) {
 	assert.Equal(t, h.handlers, map[Closable]bool{})
 
 	closable := &testClosable{false}
-	h.Set(closable, true)
+	h.Add(closable)
 	assert.True(t, h.Val(closable))
 
 	h.Close()

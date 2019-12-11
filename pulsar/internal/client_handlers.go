@@ -31,10 +31,10 @@ func NewClientHandlers() ClientHandlers {
 		l:        &sync.RWMutex{},
 	}
 }
-func (h *ClientHandlers) Set(c Closable, b bool) {
+func (h *ClientHandlers) Add(c Closable) {
 	h.l.Lock()
 	defer h.l.Unlock()
-	h.handlers[c] = b
+	h.handlers[c] = true
 }
 func (h *ClientHandlers) Val(c Closable) bool {
 	h.l.RLock()
