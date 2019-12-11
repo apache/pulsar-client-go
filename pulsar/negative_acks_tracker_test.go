@@ -40,7 +40,7 @@ func newNackMockedConsumer() *nackMockedConsumer {
 		ch: make(chan messageID, 10),
 	}
 	go func() {
-		// since the client ticks at at interval of delay / 3
+		// since the client ticks at an interval of delay / 3
 		// wait another interval to ensure we get all messages
 		time.Sleep(testNackDelay + 101 * time.Millisecond)
 		t.lock.Lock()
