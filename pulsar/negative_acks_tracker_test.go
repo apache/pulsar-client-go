@@ -18,43 +18,41 @@
 package pulsar
 
 import (
-	"github.com/stretchr/testify/assert"
 	"sort"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 type nackMockedConsumer struct {
-	sync.Mutex
-	cond   *sync.Cond
+	ch chan []messageID
 	msgIds []messageID
 }
 
+func newNackMockedConsumer() *nackMockedConsumer {
+	return  &nackMockedConsumer{
+		ch: make(chan []messageID),
+	}
+}
+
 func (nmc *nackMockedConsumer) Redeliver(msgIds []messageID) {
-	nmc.Lock()
 	if nmc.msgIds == nil {
 		nmc.msgIds = msgIds
 		sort.Slice(msgIds, func(i, j int) bool {
 			return msgIds[i].ledgerID < msgIds[j].entryID
 		})
-		nmc.cond.Signal()
 	}
 
-	nmc.Unlock()
+	nmc.ch <- nmc.msgIds
 }
 
-func (nmc *nackMockedConsumer) Wait() []messageID {
-	nmc.Lock()
-	defer nmc.Unlock()
-	nmc.cond.Wait()
-
-	return nmc.msgIds
+func (nmc *nackMockedConsumer) Wait() <- chan []messageID {
+	return nmc.ch
 }
 
 func TestNacksTracker(t *testing.T) {
-	nmc := &nackMockedConsumer{}
-	nmc.cond = sync.NewCond(nmc)
+	nmc := newNackMockedConsumer()
 	nacks := newNegativeAcksTracker(nmc, 1*time.Second)
 
 	nacks.Add(&messageID{
@@ -69,7 +67,7 @@ func TestNacksTracker(t *testing.T) {
 		batchIdx: 1,
 	})
 
-	msgIds := nmc.Wait()
+	msgIds := <-nmc.Wait()
 
 	assert.Equal(t, 2, len(msgIds))
 	assert.Equal(t, int64(1), msgIds[0].ledgerID)
@@ -81,8 +79,7 @@ func TestNacksTracker(t *testing.T) {
 }
 
 func TestNacksWithBatchesTracker(t *testing.T) {
-	nmc := &nackMockedConsumer{}
-	nmc.cond = sync.NewCond(nmc)
+	nmc := newNackMockedConsumer()
 	nacks := newNegativeAcksTracker(nmc, 1*time.Second)
 
 	nacks.Add(&messageID{
@@ -109,7 +106,7 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 		batchIdx: 1,
 	})
 
-	msgIds := nmc.Wait()
+	msgIds := <-nmc.Wait()
 
 	assert.Equal(t, 2, len(msgIds))
 	assert.Equal(t, int64(1), msgIds[0].ledgerID)
