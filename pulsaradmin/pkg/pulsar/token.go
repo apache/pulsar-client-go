@@ -22,6 +22,7 @@ import (
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common/algorithm/keypair"
 
 	"github.com/dgrijalva/jwt-go"
+	"github.com/pkg/errors"
 )
 
 type Token interface {
@@ -34,6 +35,9 @@ type Token interface {
 	// Create creates a token object using the specified signature algorithm, private key,
 	// object and the expire time
 	Create(algorithm.Algorithm, interface{}, string, int64) (string, error)
+
+	// Validate a token is valid or not
+	Validate(algorithm.Algorithm, string, interface{}) (string, int64, error)
 }
 
 type token struct {
@@ -73,6 +77,27 @@ func (t *token) Create(algorithm algorithm.Algorithm, signKey interface{}, subje
 	tokenString := jwt.NewWithClaims(signMethod, claims)
 
 	return tokenString.SignedString(signKey)
+}
+
+func (t *token) Validate(algorithm algorithm.Algorithm, tokenString string,
+	signKey interface{}) (string, int64, error) {
+
+	// verify the signature algorithm
+	parsedToken, err := jwt.ParseWithClaims(tokenString, &jwt.StandardClaims{},
+		func(jt *jwt.Token) (i interface{}, e error) {
+			signMethod := parseAlgorithmToJwtSignMethod(algorithm)
+			if jt.Method != signMethod {
+				return nil, errors.Errorf("unexpected signing method: %s", algorithm)
+			}
+			return signKey, nil
+		})
+
+	// get the subject and the expire time
+	if claim, ok := parsedToken.Claims.(*jwt.StandardClaims); parsedToken.Valid && ok {
+		return claim.Subject, claim.ExpiresAt, nil
+	}
+
+	return "", 0, err
 }
 
 func parseAlgorithmToJwtSignMethod(a algorithm.Algorithm) jwt.SigningMethod {
