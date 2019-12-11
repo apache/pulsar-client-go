@@ -39,7 +39,7 @@ type client struct {
 	lookupService internal.LookupService
 	auth          auth.Provider
 
-	handlers            map[internal.Closable]bool
+	handlers            internal.ClientHandlers
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
 }
@@ -86,14 +86,14 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 	c.rpcClient = internal.NewRPCClient(url, c.cnxPool)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url)
-	c.handlers = make(map[internal.Closable]bool)
+	c.handlers = internal.NewClientHandlers()
 	return c, nil
 }
 
 func (c *client) CreateProducer(options ProducerOptions) (Producer, error) {
 	producer, err := newProducer(c, &options)
 	if err == nil {
-		c.handlers[producer] = true
+		c.handlers.Add(producer)
 	}
 	return producer, err
 }
@@ -103,7 +103,7 @@ func (c *client) Subscribe(options ConsumerOptions) (Consumer, error) {
 	if err != nil {
 		return nil, err
 	}
-	c.handlers[consumer] = true
+	c.handlers.Add(consumer)
 	return consumer, nil
 }
 
@@ -145,9 +145,7 @@ func (c *client) TopicPartitions(topic string) ([]string, error) {
 }
 
 func (c *client) Close() {
-	for handler := range c.handlers {
-		handler.Close()
-	}
+	c.handlers.Close()
 }
 
 func (c *client) namespaceTopics(namespace string) ([]string, error) {
