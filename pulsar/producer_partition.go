@@ -256,10 +256,17 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if sendAsBatch {
-		ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters)
-		if ok == false {
+		added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters)
+		if !added {
 			// The current batch is full.. flush it and retry
 			p.internalFlushCurrentBatch()
+
+			// after flushing try again to add the current payload
+			if ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request, msg.ReplicationClusters); !ok {
+				p.log.WithField("size", len(msg.Payload)).
+					WithField("sequenceID", sequenceID).
+					Error("unable to send message")
+			}
 		}
 	} else {
 		// Send individually

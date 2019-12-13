@@ -787,7 +787,8 @@ func TestConsumerMetadata(t *testing.T) {
 		t.Fatal(err)
 	}
 	subs := stats["subscriptions"].(map[string]interface{})
-	meta := subs["my-sub"].(map[string]interface{})["consumers"].([]interface{})[0].(map[string]interface{})["metadata"].(map[string]interface{})
+	cons := subs["my-sub"].(map[string]interface{})["consumers"].([]interface{})[0].(map[string]interface{})
+	meta := cons["metadata"].(map[string]interface{})
 	assert.Equal(t, len(props), len(meta))
 	for k, v := range props {
 		mv := meta[k].(string)

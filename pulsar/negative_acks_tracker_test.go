@@ -29,9 +29,9 @@ import (
 const testNackDelay = 300 * time.Millisecond
 
 type nackMockedConsumer struct {
-	ch chan messageID
+	ch     chan messageID
 	closed bool
-	lock sync.Mutex
+	lock   sync.Mutex
 	msgIds []messageID
 }
 
@@ -42,7 +42,7 @@ func newNackMockedConsumer() *nackMockedConsumer {
 	go func() {
 		// since the client ticks at an interval of delay / 3
 		// wait another interval to ensure we get all messages
-		time.Sleep(testNackDelay + 101 * time.Millisecond)
+		time.Sleep(testNackDelay + 101*time.Millisecond)
 		t.lock.Lock()
 		defer t.lock.Unlock()
 		t.closed = true
@@ -69,7 +69,7 @@ func sortMessageIds(msgIds []messageID) []messageID {
 	return msgIds
 }
 
-func (nmc *nackMockedConsumer) Wait() <- chan messageID {
+func (nmc *nackMockedConsumer) Wait() <-chan messageID {
 	return nmc.ch
 }
 
