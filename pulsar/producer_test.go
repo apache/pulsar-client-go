@@ -559,7 +559,7 @@ func TestProducerMetadata(t *testing.T) {
 	}
 }
 
-// test for issues #76 and #114
+// test for issues #76, #114 and #123
 func TestBatchMessageFlushing(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
