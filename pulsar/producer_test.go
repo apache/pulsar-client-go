@@ -613,7 +613,8 @@ func TestBatchMessageFlushing(t *testing.T) {
 			if published == 2 {
 				keepGoing = false
 			}
-		case <-time.After(defaultBatchingMaxPublishDelay * 3):
+		case <-time.After(defaultBatchingMaxPublishDelay * 10):
+			fmt.Println("TestBatchMessageFlushing timeout waiting to publish messages")
 			keepGoing = false
 		}
 	}
