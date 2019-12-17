@@ -558,3 +558,66 @@ func TestProducerMetadata(t *testing.T) {
 		assert.Equal(t, v, mv)
 	}
 }
+
+// test for issues #76, #114 and #123
+func TestBatchMessageFlushing(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	topic := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer producer.Close()
+
+	maxBytes := internal.MaxBatchSize
+	genbytes := func(n int) []byte {
+		c := []byte("a")[0]
+		bytes := make([]byte, n)
+		for i := 0; i < n; i++ {
+			bytes[i] = c
+		}
+		return bytes
+	}
+
+	msgs := [][]byte{
+		genbytes(maxBytes - 10),
+		genbytes(11),
+	}
+
+	ch := make(chan struct{}, 2)
+	ctx := context.Background()
+	for _, msg := range msgs {
+		msg := &ProducerMessage{
+			Payload: msg,
+		}
+		producer.SendAsync(ctx, msg, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			ch <- struct{}{}
+		})
+	}
+
+	published := 0
+	keepGoing := true
+	for keepGoing {
+		select {
+		case <-ch:
+			published++
+			if published == 2 {
+				keepGoing = false
+			}
+		case <-time.After(defaultBatchingMaxPublishDelay * 10):
+			fmt.Println("TestBatchMessageFlushing timeout waiting to publish messages")
+			keepGoing = false
+		}
+	}
+
+	assert.Equal(t, 2, published, "expected to publish two messages")
+}
