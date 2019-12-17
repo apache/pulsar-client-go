@@ -206,21 +206,21 @@
 This projects includes binary packages with the following licenses:
 
 The Apache Software License, Version 2.0
-  * cobra -- github.com/spf13/cobra v0.0.3
-  * mousetrap -- github.com/inconshreveable/mousetrap v1.0.0 // indirect
+  * github.com/spf13/cobra v0.0.3 -- distribution/license/LICENSE-cobra.txt
+  * github.com/inconshreveable/mousetrap v1.0.0  -- distribution/license/LICENSE-mousetrap.txt
 
 MIT License
-  * testify -- github.com/stretchr/testify v1.3.0
-  * logrus -- github.com/sirupsen/logrus v1.4.1
+  * github.com/stretchr/testify v1.3.0 -- distribution/license/LICENSE-testify.txt
+  * github.com/sirupsen/logrus v1.4.1 -- distribution/license/LICENSE-logrus.txt
 
 GNU GENERAL PUBLIC LICENSE Version 3
-  * go-rate -- github.com/beefsack/go-rate v0.0.0-20180408011153-efa7637bb9b6
+  * github.com/beefsack/go-rate v0.0.0-20180408011153-efa7637bb9b6 -- distribution/license/LICENSE-go-rate.txt
 
 BSD License
-  * compress -- github.com/klauspost/compress v1.9.2
-  * errors -- github.com/pkg/errors v0.8.1
-  * go-cmp -- github.com/google/go-cmp v0.3.0 // indirect
-  * lz4 -- github.com/pierrec/lz4 v2.0.5+incompatible
-  * protobuf -- github.com/golang/protobuf v1.3.1
-  * pflag -- github.com/spf13/pflag v1.0.3 // indirect
-  * perks -- github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
+  * github.com/klauspost/compress v1.9.2 -- distribution/license/LICENSE-compress.txt
+  * github.com/pkg/errors v0.8.1 -- distribution/license/LICENSE-errors.txt
+  * github.com/google/go-cmp v0.3.0 -- distribution/license/LICENSE-go-cmp.txt
+  * github.com/pierrec/lz4 v2.0.5+incompatible -- distribution/license/LICENSE-lz4.txt
+  * github.com/golang/protobuf v1.3.1 -- distribution/license/LICENSE-protobuf.txt
+  * github.com/spf13/pflag v1.0.3 -- distribution/license/LICENSE-pflag.txt
+  * github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b -- distribution/license/LICENSE-perks.txt
