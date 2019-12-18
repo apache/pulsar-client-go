@@ -465,7 +465,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	pc.state = consumerClosing
 	pc.log.Infof("Closing consumer=%d", pc.consumerID)
 
-	requestID := pc.client.rpcClient.NewConsumerID()
+	requestID := pc.client.rpcClient.NewRequestID()
 	cmdClose := &pb.CommandCloseConsumer{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		RequestId:  proto.Uint64(requestID),
