@@ -40,7 +40,8 @@ func NewAuthenticationTokenWithParams(params map[string]string) (Provider, error
 	}
 }
 
-// NewAuthenticationToken return a interface of Provider with a string token.
+// Return a token auth provider that will use the specified token to
+// talk with Pulsar brokers
 func NewAuthenticationToken(token string) Provider {
 	return &tokenAuthProvider{
 		tokenSupplier: func() (string, error) {
@@ -49,6 +50,15 @@ func NewAuthenticationToken(token string) Provider {
 			}
 			return token, nil
 		},
+	}
+}
+
+// Return a token auth provider that get the token data from a user supplied
+// function. The function is invoked each time the client library needs to
+// use a token in talking with Pulsar brokers
+func NewAuthenticationTokenFromSupplier(tokenSupplier func() (string, error)) Provider {
+	return &tokenAuthProvider{
+		tokenSupplier: tokenSupplier,
 	}
 }
 
