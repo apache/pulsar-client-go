@@ -136,7 +136,6 @@ func TestBatchMessageReceive(t *testing.T) {
 		Topic:               topicName,
 		BatchingMaxMessages: uint(batchSize),
 		DisableBatching:     false,
-		BlockIfQueueFull:    true,
 	})
 	assert.Nil(t, err)
 	assert.Equal(t, topicName, producer.Topic())
