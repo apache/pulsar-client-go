@@ -34,6 +34,7 @@ import (
 
 const (
 	defaultConnectionTimeout = 30*time.Second
+	defaultOperationTimeout = 30*time.Second
 )
 
 type client struct {
@@ -91,10 +92,15 @@ func newClient(options ClientOptions) (Client, error) {
 		connectionTimeout = defaultConnectionTimeout
 	}
 
+	operationTimeout := options.OperationTimeout
+	if operationTimeout.Nanoseconds() == 0 {
+		operationTimeout = defaultOperationTimeout
+	}
+
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout),
 	}
-	c.rpcClient = internal.NewRPCClient(url, c.cnxPool)
+	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url)
 	c.handlers = internal.NewClientHandlers()
 	return c, nil
