@@ -70,19 +70,7 @@ type ProducerOptions struct {
 	SendTimeout time.Duration
 
 	// MaxPendingMessages set the max size of the queue holding the messages pending to receive an acknowledgment from the broker.
-	// When the queue is full, by default, all calls to Producer.send() and Producer.sendAsync() will fail
-	// unless `BlockIfQueueFull` is set to true. Use BlockIfQueueFull(boolean) to change the blocking behavior.
 	MaxPendingMessages int
-
-	// MaxPendingMessagesAcrossPartitions set the number of max pending messages across all the partitions
-	// This setting will be used to lower the max pending messages for each partition
-	// `MaxPendingMessages(int)`, if the total exceeds the configured value.
-	MaxPendingMessagesAcrossPartitions int
-
-	// BlockIfQueueFull set whether the `Producer.Send()` and `Producer.sendAsync()` operations should block when the outgoing
-	// message queue is full. Default is `false`. If set to `false`, send operations will immediately fail with
-	// `ProducerQueueIsFullError` when there is no space left in pending queue.
-	BlockIfQueueFull bool
 
 	// HashingScheme change the `HashingScheme` used to chose the partition on where to publish a particular message.
 	// Standard hashing functions available are:

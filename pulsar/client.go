@@ -49,12 +49,6 @@ func NewAuthenticationTLS(certificatePath string, privateKeyPath string) Authent
 	return auth.NewAuthenticationTLS(certificatePath, privateKeyPath)
 }
 
-// Create new Athenz Authentication provider with configuration in JSON form
-func NewAuthenticationAthenz(authParams string) Authentication {
-	// TODO: return newAuthenticationAthenz(authParams)
-	return nil
-}
-
 // Builder interface that is used to construct a Pulsar Client instance.
 type ClientOptions struct {
 	// Configure the service URL for the Pulsar service.

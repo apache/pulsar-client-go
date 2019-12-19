@@ -269,7 +269,6 @@ func TestFlushInProducer(t *testing.T) {
 		DisableBatching:         false,
 		BatchingMaxMessages:     uint(numOfMessages),
 		BatchingMaxPublishDelay: time.Second * 10,
-		BlockIfQueueFull:        true,
 		Properties: map[string]string{
 			"producer-name": "test-producer-name",
 			"producer-id":   "test-producer-id",
@@ -380,7 +379,6 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 		DisableBatching:         false,
 		BatchingMaxMessages:     uint(numOfMessages / numberOfPartitions),
 		BatchingMaxPublishDelay: time.Second * 10,
-		BlockIfQueueFull:        true,
 	})
 	defer producer.Close()
 
