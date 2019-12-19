@@ -86,7 +86,6 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 		Topic:                   produceArgs.Topic,
 		MaxPendingMessages:      produceArgs.ProducerQueueSize,
 		BatchingMaxPublishDelay: time.Millisecond * time.Duration(produceArgs.BatchingTimeMillis),
-		SendTimeout:             0,
 	})
 	if err != nil {
 		log.Fatal(err)
