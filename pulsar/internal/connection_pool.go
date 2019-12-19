@@ -20,6 +20,7 @@ package internal
 import (
 	"net/url"
 	"sync"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 
@@ -36,16 +37,18 @@ type ConnectionPool interface {
 }
 
 type connectionPool struct {
-	pool       sync.Map
-	tlsOptions *TLSOptions
-	auth       auth.Provider
+	pool              sync.Map
+	connectionTimeout time.Duration
+	tlsOptions        *TLSOptions
+	auth              auth.Provider
 }
 
 // NewConnectionPool init connection pool.
-func NewConnectionPool(tlsOptions *TLSOptions, auth auth.Provider) ConnectionPool {
+func NewConnectionPool(tlsOptions *TLSOptions, auth auth.Provider, connectionTimeout time.Duration) ConnectionPool {
 	return &connectionPool{
-		tlsOptions: tlsOptions,
-		auth:       auth,
+		tlsOptions:        tlsOptions,
+		auth:              auth,
+		connectionTimeout: connectionTimeout,
 	}
 }
 

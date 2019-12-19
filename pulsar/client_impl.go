@@ -82,7 +82,7 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider),
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, options.ConnectionTimeout),
 	}
 	c.rpcClient = internal.NewRPCClient(url, c.cnxPool)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url)
