@@ -90,12 +90,8 @@ func stopCh() <-chan struct{} {
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, os.Interrupt)
 	go func() {
-		for {
-			select {
-			case <-signalCh:
-				close(stop)
-			}
-		}
+		<-signalCh
+		close(stop)
 	}()
 	return stop
 }
@@ -122,8 +118,8 @@ func serveProfiling(addr string, stop <-chan struct{}) error {
 	}()
 
 	fmt.Printf("Starting pprof server at: %s\n", addr)
-	fmt.Printf("  use `go tool pprof http://%s/debug/pprof/prof` to get pprof file(cpu info)\n", addr)
-	fmt.Printf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file\n", addr)
+	fmt.Printf("  use go tool pprof http://%s/debug/pprof/prof to get pprof file(cpu info)\n", addr)
+	fmt.Printf("  use go tool pprof http://%s/debug/pprof/heap to get inuse_space file\n", addr)
 	fmt.Println()
 
 	return s.ListenAndServe()
