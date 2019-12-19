@@ -26,9 +26,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/apache/pulsar-client-go/pkg/compression"
-	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 )
 
 var (
