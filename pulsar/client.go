@@ -39,9 +39,10 @@ func NewAuthenticationToken(token string) Authentication {
 	return auth.NewAuthenticationToken(token)
 }
 
-// Return a token auth provider that get the token data from a user supplied
-// function. The function is invoked each time the client library needs to
-// use a token in talking with Pulsar brokers
+// NewAuthenticationTokenFromSupplier returns a token auth provider that
+// gets the token data from a user supplied function. The function is
+// invoked each time the client library needs to use a token in talking
+// with Pulsar brokers
 func NewAuthenticationTokenFromSupplier(tokenSupplier func() (string, error)) Authentication {
 	return auth.NewAuthenticationTokenFromSupplier(tokenSupplier)
 }
