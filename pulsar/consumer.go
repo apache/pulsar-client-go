@@ -105,11 +105,6 @@ type ConsumerOptions struct {
 	// Set to -1 to disable prefetching in consumer
 	ReceiverQueueSize int
 
-	// Set the max total receiver queue size across partitions.
-	// This setting will be used to reduce the receiver queue size for individual partitions
-	// ReceiverQueueSize(int) if the total exceeds this value (default: 50000).
-	MaxTotalReceiverQueueSizeAcrossPartitions int
-
 	// The delay after which to redeliver the messages that failed to be
 	// processed. Default is 1min. (See `Consumer.Nack()`)
 	NackRedeliveryDelay time.Duration
