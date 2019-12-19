@@ -181,9 +181,9 @@ func TestTokenAuthWithSupplier(t *testing.T) {
 			token, err := ioutil.ReadFile(tokenFilePath)
 			if err != nil {
 				return "", err
-			} else {
-				return string(token), nil
 			}
+
+			return string(token), nil
 		}),
 	})
 	assert.NoError(t, err)
