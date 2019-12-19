@@ -155,6 +155,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 	connectionTimeout time.Duration, auth auth.Provider) *connection {
 	cnx := &connection{
 		state:                connectionInit,
+		connectionTimeout:    connectionTimeout,
 		logicalAddr:          logicalAddr,
 		physicalAddr:         physicalAddr,
 		writeBuffer:          NewBuffer(4096),

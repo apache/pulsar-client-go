@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"time"
 
 	"github.com/golang/protobuf/proto"
 
@@ -29,6 +30,10 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
+)
+
+const (
+	defaultConnectionTimeout = 30*time.Second
 )
 
 type client struct {
@@ -81,8 +86,13 @@ func newClient(options ClientOptions) (Client, error) {
 		}
 	}
 
+	connectionTimeout := options.ConnectionTimeout
+	if connectionTimeout.Nanoseconds() == 0 {
+		connectionTimeout = defaultConnectionTimeout
+	}
+
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, options.ConnectionTimeout),
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout),
 	}
 	c.rpcClient = internal.NewRPCClient(url, c.cnxPool)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url)
