@@ -268,7 +268,7 @@ func (c *regexConsumer) knownTopics() []string {
 	defer c.consumersLock.Unlock()
 	topics := make([]string, len(c.consumers))
 	n := 0
-	for t, _ := range c.consumers {
+	for t := range c.consumers {
 		topics[n] = t
 		n++
 	}

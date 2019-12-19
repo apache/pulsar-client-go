@@ -34,5 +34,19 @@ go build -o pulsar-perf ./perf
 go test -race -coverprofile=/tmp/coverage -timeout=1h ./...
 go tool cover -html=/tmp/coverage -o coverage.html
 
+## Check format
+set +x # Hide all the subcommands outputs
+GO_FILES=$(find . -name '*.go' | xargs)
+FILES_WITH_BAD_FMT=$(gofmt -s -l $GO_FILES)
+
+if [ -n "$FILES_WITH_BAD_FMT" ]
+then
+      echo "--- Invalid formatting on files: $FILES_WITH_BAD_FMT"
+      echo "----------------------------------------------------"
+      # Print diff
+      gofmt -s -d $GO_FILES
+      exit 1
+fi
+
 ./pulsar-test-service-stop.sh
 

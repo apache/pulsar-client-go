@@ -126,11 +126,11 @@ func (p *partitionProducer) grabCnx() error {
 	p.log.Debug("Lookup result: ", lr)
 	id := p.client.rpcClient.NewRequestID()
 	cmdProducer := &pb.CommandProducer{
-		RequestId:    proto.Uint64(id),
-		Topic:        proto.String(p.topic),
-		Encrypted:    nil,
-		ProducerId:   proto.Uint64(p.producerID),
-		Schema:       nil,
+		RequestId:  proto.Uint64(id),
+		Topic:      proto.String(p.topic),
+		Encrypted:  nil,
+		ProducerId: proto.Uint64(p.producerID),
+		Schema:     nil,
 	}
 
 	if p.producerName != "" {

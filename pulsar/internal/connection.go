@@ -295,7 +295,7 @@ func (c *connection) run() {
 
 	for {
 		select {
-		case <- c.closeCh:
+		case <-c.closeCh:
 			c.Close()
 			return
 
@@ -323,7 +323,7 @@ func (c *connection) run() {
 func (c *connection) runPingCheck() {
 	for {
 		select {
-		case <- c.closeCh:
+		case <-c.closeCh:
 			return
 		case _ = <-c.pingCheckTicker.C:
 			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
@@ -579,8 +579,8 @@ func (c *connection) TriggerClose() {
 	}
 
 	select {
-		case <- c.closeCh:
-			return
+	case <-c.closeCh:
+		return
 	default:
 		close(c.closeCh)
 	}
@@ -689,7 +689,6 @@ func (c *connection) consumerHandler(id uint64) (ConsumerHandler, bool) {
 	return h, ok
 }
 
-func (c *connection) ID() (string) {
+func (c *connection) ID() string {
 	return fmt.Sprintf("%s -> %s", c.cnx.LocalAddr(), c.cnx.RemoteAddr())
 }
-

@@ -176,7 +176,7 @@ func TestTokenAuth(t *testing.T) {
 
 func TestTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:            serviceURL,
+		URL: serviceURL,
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
 			token, err := ioutil.ReadFile(tokenFilePath)
 			if err != nil {
