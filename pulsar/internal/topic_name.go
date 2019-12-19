@@ -44,9 +44,10 @@ func ParseTopicName(topic string) (*TopicName, error) {
 	if !strings.Contains(topic, "://") {
 		// The short topic name can be:
 		// - <topic>
-		// - <property>/<namespace>/<topic>
+		// - <tenant>/<namespace>/<topic>
+		// - <tenant>/<cluster>/<namespace>/<topic>
 		parts := strings.Split(topic, "/")
-		if len(parts) == 3 {
+		if len(parts) == 3 || len(parts) == 4 {
 			topic = "persistent://" + topic
 		} else if len(parts) == 1 {
 			topic = "persistent://" + publicTenant + "/" + defaultNamespace + "/" + parts[0]
