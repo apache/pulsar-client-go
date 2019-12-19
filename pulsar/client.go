@@ -39,6 +39,14 @@ func NewAuthenticationToken(token string) Authentication {
 	return auth.NewAuthenticationToken(token)
 }
 
+// NewAuthenticationTokenFromSupplier returns a token auth provider that
+// gets the token data from a user supplied function. The function is
+// invoked each time the client library needs to use a token in talking
+// with Pulsar brokers
+func NewAuthenticationTokenFromSupplier(tokenSupplier func() (string, error)) Authentication {
+	return auth.NewAuthenticationTokenFromSupplier(tokenSupplier)
+}
+
 // Create new Authentication provider with specified auth token from a file
 func NewAuthenticationTokenFromFile(tokenFilePath string) Authentication {
 	return auth.NewAuthenticationTokenFromFile(tokenFilePath)

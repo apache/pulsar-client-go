@@ -174,6 +174,30 @@ func TestTokenAuth(t *testing.T) {
 	client.Close()
 }
 
+func TestTokenAuthWithSupplier(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:            serviceURL,
+		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
+			token, err := ioutil.ReadFile(tokenFilePath)
+			if err != nil {
+				return "", err
+			}
+
+			return string(token), nil
+		}),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
 func TestTokenAuthFromFile(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL:            serviceURL,
