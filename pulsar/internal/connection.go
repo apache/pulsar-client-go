@@ -62,6 +62,7 @@ type Connection interface {
 	UnregisterListener(id uint64)
 	AddConsumeHandler(id uint64, handler ConsumerHandler)
 	DeleteConsumeHandler(id uint64)
+	ID() string
 	Close()
 }
 
@@ -128,6 +129,7 @@ type connection struct {
 	lastDataReceivedLock sync.Mutex
 	lastDataReceivedTime time.Time
 	pingTicker           *time.Ticker
+	pingCheckTicker      *time.Ticker
 
 	log *log.Entry
 
@@ -135,6 +137,7 @@ type connection struct {
 
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
+	closeCh            chan interface{}
 	writeRequestsCh    chan []byte
 
 	pendingReqs map[uint64]*request
@@ -157,12 +160,14 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
+		pingCheckTicker:      time.NewTicker(keepAliveInterval),
 		tlsOptions:           tlsOptions,
 		auth:                 auth,
 
-		incomingRequestsCh: make(chan *request),
-		incomingCmdCh:      make(chan *incomingCmd),
-		writeRequestsCh:    make(chan []byte),
+		closeCh:            make(chan interface{}),
+		incomingRequestsCh: make(chan *request, 10),
+		incomingCmdCh:      make(chan *incomingCmd, 10),
+		writeRequestsCh:    make(chan []byte, 10),
 		listeners:          make(map[uint64]ConnectionListener),
 		consumerHandlers:   make(map[uint64]ConsumerHandler),
 	}
@@ -236,6 +241,10 @@ func (c *connection) doHandshake() bool {
 		return false
 	}
 
+	// During the initial handshake, the internal keep alive is not
+	// active yet, so we need to timeout write and read requests
+	c.cnx.SetDeadline(time.Now().Add(keepAliveInterval))
+
 	c.writeCommand(baseCommand(pb.BaseCommand_CONNECT, &pb.CommandConnect{
 		ProtocolVersion: &version,
 		ClientVersion:   proto.String("Pulsar Go 0.1"),
@@ -248,6 +257,9 @@ func (c *connection) doHandshake() bool {
 		c.log.WithError(err).Warn("Failed to perform initial handshake")
 		return false
 	}
+
+	// Reset the deadline so that we don't use read timeouts
+	c.cnx.SetDeadline(time.Time{})
 
 	if cmd.Connected == nil {
 		c.log.Warnf("Failed to perform initial handshake - Expecting 'Connected' cmd, got '%s'",
@@ -279,9 +291,14 @@ func (c *connection) waitUntilReady() error {
 func (c *connection) run() {
 	// All reads come from the reader goroutine
 	go c.reader.readFromConnection()
+	go c.runPingCheck()
 
 	for {
 		select {
+		case <- c.closeCh:
+			c.Close()
+			return
+
 		case req := <-c.incomingRequestsCh:
 			if req == nil {
 				return
@@ -299,6 +316,23 @@ func (c *connection) run() {
 
 		case _ = <-c.pingTicker.C:
 			c.sendPing()
+		}
+	}
+}
+
+func (c *connection) runPingCheck() {
+	for {
+		select {
+		case <- c.closeCh:
+			return
+		case _ = <-c.pingCheckTicker.C:
+			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
+				// We have not received a response to the previous Ping request, the
+				// connection to broker is stale
+				c.log.Warn("Detected stale connection to broker")
+				c.TriggerClose()
+				return
+			}
 		}
 	}
 }
@@ -489,23 +523,16 @@ func (c *connection) setLastDataReceived(t time.Time) {
 }
 
 func (c *connection) sendPing() {
-	if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
-		// We have not received a response to the previous Ping request, the
-		// connection to broker is stale
-		c.log.Info("Detected stale connection to broker")
-		c.Close()
-		return
-	}
-
 	c.log.Debug("Sending PING")
 	c.writeCommand(baseCommand(pb.BaseCommand_PING, &pb.CommandPing{}))
 }
 
 func (c *connection) handlePong() {
-	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
+	c.log.Debug("Received PONG response")
 }
 
 func (c *connection) handlePing() {
+	c.log.Debug("Responding to PING request")
 	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
 }
 
@@ -543,6 +570,23 @@ func (c *connection) UnregisterListener(id uint64) {
 	delete(c.listeners, id)
 }
 
+// Triggers the connection close by forcing the socket to close and
+// broadcasting the notification on the close channel
+func (c *connection) TriggerClose() {
+	cnx := c.cnx
+	if cnx != nil {
+		cnx.Close()
+	}
+
+	select {
+		case <- c.closeCh:
+			return
+	default:
+		close(c.closeCh)
+	}
+
+}
+
 func (c *connection) Close() {
 	c.Lock()
 	defer c.Unlock()
@@ -559,11 +603,14 @@ func (c *connection) Close() {
 		c.cnx.Close()
 	}
 	c.pingTicker.Stop()
-	close(c.incomingRequestsCh)
-	close(c.writeRequestsCh)
+	c.pingCheckTicker.Stop()
 
 	for _, listener := range c.listeners {
 		listener.ConnectionClosed()
+	}
+
+	for _, req := range c.pendingReqs {
+		req.callback(nil, errors.New("connection closed"))
 	}
 
 	consumerHandlers := make(map[uint64]ConsumerHandler)
@@ -641,3 +688,8 @@ func (c *connection) consumerHandler(id uint64) (ConsumerHandler, bool) {
 	h, ok := c.consumerHandlers[id]
 	return h, ok
 }
+
+func (c *connection) ID() (string) {
+	return fmt.Sprintf("%s -> %s", c.cnx.LocalAddr(), c.cnx.RemoteAddr())
+}
+
