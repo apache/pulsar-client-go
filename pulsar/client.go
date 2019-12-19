@@ -20,7 +20,7 @@ package pulsar
 import (
 	"time"
 
-	"github.com/apache/pulsar-client-go/pkg/auth"
+	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 )
 
 func NewClient(options ClientOptions) (Client, error) {

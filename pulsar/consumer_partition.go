@@ -26,9 +26,9 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/apache/pulsar-client-go/pkg/compression"
-	"github.com/apache/pulsar-client-go/pkg/pb"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 )
 
 var (
@@ -465,7 +465,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	pc.state = consumerClosing
 	pc.log.Infof("Closing consumer=%d", pc.consumerID)
 
-	requestID := pc.client.rpcClient.NewConsumerID()
+	requestID := pc.client.rpcClient.NewRequestID()
 	cmdClose := &pb.CommandCloseConsumer{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		RequestId:  proto.Uint64(requestID),

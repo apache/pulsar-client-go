@@ -61,6 +61,12 @@ func TestParseTopicName(t *testing.T) {
 	assert.Equal(t, "persistent://my-tenant/my-cluster/my-ns/my-topic", topic.Name)
 	assert.Equal(t, "my-tenant/my-cluster/my-ns", topic.Namespace)
 	assert.Equal(t, -1, topic.Partition)
+
+	topic, err = ParseTopicName("my-tenant/my-cluster/my-ns/my-topic")
+	assert.Nil(t, err)
+	assert.Equal(t, "persistent://my-tenant/my-cluster/my-ns/my-topic", topic.Name)
+	assert.Equal(t, "my-tenant/my-cluster/my-ns", topic.Namespace)
+	assert.Equal(t, -1, topic.Partition)
 }
 
 func TestParseTopicNameErrors(t *testing.T) {
@@ -84,16 +90,16 @@ func TestParseTopicNameErrors(t *testing.T) {
 }
 
 func TestTopicNameWithoutPartitionPart(t *testing.T) {
-	tests := []struct{
-		tn TopicName
+	tests := []struct {
+		tn       TopicName
 		expected string
 	}{
 		{
-			tn: TopicName{Name:"persistent://public/default/my-topic", Partition:-1},
+			tn:       TopicName{Name: "persistent://public/default/my-topic", Partition: -1},
 			expected: "persistent://public/default/my-topic",
 		},
 		{
-			tn: TopicName{Name:"persistent://public/default/my-topic-partition-0", Partition:0},
+			tn:       TopicName{Name: "persistent://public/default/my-topic-partition-0", Partition: 0},
 			expected: "persistent://public/default/my-topic",
 		},
 	}

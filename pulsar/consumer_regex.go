@@ -351,7 +351,7 @@ func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan Consum
 			c, err := internalTopicSubscribe(c, opts, topic, ch)
 			consumerErrorCh <- consumerError{
 				err:      err,
-				topic:    t,
+				topic:    topic,
 				consumer: c,
 			}
 		}(t)
