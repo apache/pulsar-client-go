@@ -48,7 +48,7 @@ type partitionProducer struct {
 	cnx    internal.Connection
 
 	options             *ProducerOptions
-	producerName        *string
+	producerName        string
 	producerID          uint64
 	batchBuilder        *internal.BatchBuilder
 	sequenceIDGenerator *uint64
@@ -89,7 +89,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		topic:            topic,
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
-		eventsChan:       make(chan interface{}, 1),
+		eventsChan:       make(chan interface{}, 10),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: make(internal.Semaphore, maxPendingMessages),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -98,7 +98,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	if options.Name != "" {
-		p.producerName = &options.Name
+		p.producerName = options.Name
 	}
 
 	err := p.grabCnx()
@@ -107,8 +107,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		return nil, err
 	}
 
-	p.log = p.log.WithField("name", p.producerName)
-	p.log.Info("Created producer")
+	p.log = p.log.WithField("producer_name", p.producerName)
+	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
 	p.state = producerReady
 
 	go p.runEventsLoop()
@@ -130,9 +130,13 @@ func (p *partitionProducer) grabCnx() error {
 		Topic:        proto.String(p.topic),
 		Encrypted:    nil,
 		ProducerId:   proto.Uint64(p.producerID),
-		ProducerName: p.producerName,
 		Schema:       nil,
 	}
+
+	if p.producerName != "" {
+		cmdProducer.ProducerName = proto.String(p.producerName)
+	}
+
 	if len(p.options.Properties) > 0 {
 		cmdProducer.Metadata = toKeyValues(p.options.Properties)
 	}
@@ -143,21 +147,22 @@ func (p *partitionProducer) grabCnx() error {
 		return err
 	}
 
-	p.producerName = res.Response.ProducerSuccess.ProducerName
+	p.producerName = res.Response.ProducerSuccess.GetProducerName()
 	if p.batchBuilder == nil {
-		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, *p.producerName,
+		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, p.producerName,
 			p.producerID, pb.CompressionType(p.options.CompressionType))
 		if err != nil {
 			return err
 		}
 	}
+
 	if p.sequenceIDGenerator == nil {
 		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
 		p.sequenceIDGenerator = &nextSequenceID
 	}
 	p.cnx = res.Cnx
 	p.cnx.RegisterListener(p.producerID, p)
-	p.log.WithField("cnx", res.Cnx).Debug("Connected producer")
+	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
 
 	if p.pendingQueue.Size() > 0 {
 		p.log.Infof("Resending %d pending batches", p.pendingQueue.Size())
@@ -172,6 +177,7 @@ type connectionClosed struct{}
 
 func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine
+	p.log.WithField("cnx", p.cnx.ID()).Warn("Connection was closed")
 	p.eventsChan <- &connectionClosed{}
 }
 
@@ -190,7 +196,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
-			p.log.Info("Reconnected producer to broker")
+			p.log.WithField("cnx", p.cnx.ID()).Info("Reconnected producer to broker")
 			return
 		}
 	}
@@ -223,7 +229,7 @@ func (p *partitionProducer) Topic() string {
 }
 
 func (p *partitionProducer) Name() string {
-	return *p.producerName
+	return p.producerName
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
