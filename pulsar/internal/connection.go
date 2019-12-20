@@ -115,8 +115,9 @@ type incomingCmd struct {
 
 type connection struct {
 	sync.Mutex
-	cond  *sync.Cond
-	state connectionState
+	cond              *sync.Cond
+	state             connectionState
+	connectionTimeout time.Duration
 
 	logicalAddr  *url.URL
 	physicalAddr *url.URL
@@ -150,9 +151,11 @@ type connection struct {
 	auth       auth.Provider
 }
 
-func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions, auth auth.Provider) *connection {
+func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
+	connectionTimeout time.Duration, auth auth.Provider) *connection {
 	cnx := &connection{
 		state:                connectionInit,
+		connectionTimeout:    connectionTimeout,
 		logicalAddr:          logicalAddr,
 		physicalAddr:         physicalAddr,
 		writeBuffer:          NewBuffer(4096),
@@ -202,7 +205,7 @@ func (c *connection) connect() bool {
 
 	if c.tlsOptions == nil {
 		// Clear text connection
-		cnx, err = net.Dial("tcp", c.physicalAddr.Host)
+		cnx, err = net.DialTimeout("tcp", c.physicalAddr.Host, c.connectionTimeout)
 	} else {
 		// TLS connection
 		tlsConfig, err = c.getTLSConfig()
@@ -211,7 +214,8 @@ func (c *connection) connect() bool {
 			return false
 		}
 
-		cnx, err = tls.Dial("tcp", c.physicalAddr.Host, tlsConfig)
+		d := &net.Dialer{Timeout: c.connectionTimeout}
+		cnx, err = tls.DialWithDialer(d, "tcp", c.physicalAddr.Host, tlsConfig)
 	}
 
 	if err != nil {
