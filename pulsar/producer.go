@@ -63,12 +63,6 @@ type ProducerOptions struct {
 	// This properties will be visible in the topic stats
 	Properties map[string]string
 
-	// SendTimeout set the send timeout (default: 30 seconds)
-	// If a message is not acknowledged by the server before the sendTimeout expires, an error will be reported.
-	// Setting the timeout to -1, will set the timeout to infinity, which can be useful when using Pulsar's message
-	// duplication feature.
-	SendTimeout time.Duration
-
 	// MaxPendingMessages set the max size of the queue holding the messages pending to receive an acknowledgment from the broker.
 	MaxPendingMessages int
 
