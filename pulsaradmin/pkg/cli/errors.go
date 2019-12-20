@@ -19,7 +19,7 @@ package cli
 
 import "fmt"
 
-const unknownErrorReason = "Unknown pulsar error"
+const unknownErrorReason = "Unknown error"
 
 // Error is a admin error type
 type Error struct {

@@ -359,7 +359,7 @@ func safeRespClose(resp *http.Response) {
 	}
 }
 
-// responseError is used to parse a response into a pulsar error
+// responseError is used to parse a response into a client error
 func responseError(resp *http.Response) error {
 	var e Error
 	body, err := ioutil.ReadAll(resp.Body)
@@ -369,7 +369,10 @@ func responseError(resp *http.Response) error {
 		return e
 	}
 
-	json.Unmarshal(body, &e)
+	err = json.Unmarshal(body, &e)
+	if err != nil {
+		e.Reason = string(body)
+	}
 
 	e.Code = resp.StatusCode
 
