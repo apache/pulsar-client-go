@@ -65,10 +65,10 @@ func (c *Client) doRequest(r *request) (*http.Response, error) {
 
 	if r.contentType != "" {
 		req.Header.Set("Content-Type", r.contentType)
-	} else {
-		// add default headers
+	} else if req.Body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
+
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.useragent())
 
