@@ -45,8 +45,8 @@ const (
 	// If that consumer disconnects, one of the other connected consumers will start receiving messages.
 	Failover
 
-	// KeyShared subscription mode, multiple consumer will be able to use the same subscription and all messages with the same key
-	// will be dispatched to only one consumer
+	// KeyShared subscription mode, multiple consumer will be able to use the same
+	// subscription and all messages with the same key will be dispatched to only one consumer
 	KeyShared
 )
 

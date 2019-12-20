@@ -578,7 +578,8 @@ func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload int
 	}
 }
 
-func (pc *partitionConsumer) discardCorruptedMessage(msgId *pb.MessageIdData, validationError pb.CommandAck_ValidationError) {
+func (pc *partitionConsumer) discardCorruptedMessage(msgId *pb.MessageIdData,
+	validationError pb.CommandAck_ValidationError) {
 	pc.log.WithFields(log.Fields{
 		"msgId":           msgId,
 		"validationError": validationError,

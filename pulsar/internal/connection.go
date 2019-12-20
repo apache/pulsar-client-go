@@ -442,7 +442,8 @@ func (c *connection) Write(data []byte) {
 	c.writeRequestsCh <- data
 }
 
-func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand, err error)) {
+func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
+	callback func(command *pb.BaseCommand, err error)) {
 	c.incomingRequestsCh <- &request{
 		id:       &requestID,
 		cmd:      req,
