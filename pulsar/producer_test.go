@@ -20,12 +20,12 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"net/http"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
 
 	log "github.com/sirupsen/logrus"
@@ -380,6 +380,7 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 		BatchingMaxMessages:     uint(numOfMessages / numberOfPartitions),
 		BatchingMaxPublishDelay: time.Second * 10,
 	})
+	assert.Nil(t, err)
 	defer producer.Close()
 
 	// send 5 messages

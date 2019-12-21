@@ -41,14 +41,12 @@ type acker interface {
 }
 
 type consumer struct {
-	options ConsumerOptions
-
+	options   ConsumerOptions
 	consumers []*partitionConsumer
 
 	// channel used to deliver message to clients
 	messageCh chan ConsumerMessage
-
-	closeCh chan struct{}
+	// channel used to receive error messages
 	errorCh chan error
 
 	log *log.Entry

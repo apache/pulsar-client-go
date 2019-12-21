@@ -123,7 +123,7 @@ func TestTopicsDiff(t *testing.T) {
 	assert.Equal(t, []string{}, topicsDiff(topics1, topics2))
 }
 
-func runWithClientNamespace(t *testing.T, fn func(*testing.T, Client, string)) func(*testing.T) {
+func runWithClientNamespace(fn func(*testing.T, Client, string)) func(*testing.T) {
 	return func(t *testing.T) {
 		ns := fmt.Sprintf("public/%s", generateRandomName())
 		err := createNamespace(ns, anonymousNamespacePolicy())
@@ -141,8 +141,8 @@ func runWithClientNamespace(t *testing.T, fn func(*testing.T, Client, string)) f
 }
 
 func TestRegexConsumerDiscover(t *testing.T) {
-	t.Run("PatternAll", runWithClientNamespace(t, runRegexConsumerDiscoverPatternAll))
-	t.Run("PatternFoo", runWithClientNamespace(t, runRegexConsumerDiscoverPatternFoo))
+	t.Run("PatternAll", runWithClientNamespace(runRegexConsumerDiscoverPatternAll))
+	t.Run("PatternFoo", runWithClientNamespace(runRegexConsumerDiscoverPatternFoo))
 }
 
 func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string) {
@@ -241,6 +241,7 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 
 	// delete the topic
 	err = deleteTopic(fooTopic)
+	assert.Nil(t, err)
 
 	rc.discover()
 	time.Sleep(300 * time.Millisecond)
@@ -250,8 +251,8 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 }
 
 func TestRegexConsumer(t *testing.T) {
-	t.Run("MatchOneTopic", runWithClientNamespace(t, runRegexConsumerMatchOneTopic))
-	t.Run("AddTopic", runWithClientNamespace(t, runRegexConsumerAddMatchingTopic))
+	t.Run("MatchOneTopic", runWithClientNamespace(runRegexConsumerMatchOneTopic))
+	t.Run("AddTopic", runWithClientNamespace(runRegexConsumerAddMatchingTopic))
 }
 
 func runRegexConsumerMatchOneTopic(t *testing.T, c Client, namespace string) {

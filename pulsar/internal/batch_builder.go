@@ -104,7 +104,7 @@ func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 }
 
 // Add will add single message to batch.
-func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint64, payload []byte,
+func (bb *BatchBuilder) Add(metadata proto.Message, sequenceID uint64, payload []byte,
 	callback interface{}, replicateTo []string) bool {
 	if replicateTo != nil && bb.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,

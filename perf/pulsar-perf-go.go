@@ -32,7 +32,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar"
 )
 
-// global flags
+// FlagProfile is a global flag
 var FlagProfile bool
 var flagDebug bool
 

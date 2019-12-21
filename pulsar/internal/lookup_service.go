@@ -54,7 +54,8 @@ func NewLookupService(rpcClient RPCClient, serviceURL *url.URL) LookupService {
 	}
 }
 
-func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (logicalAddress *url.URL, physicalAddress *url.URL, err error) {
+func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (logicalAddress *url.URL,
+	physicalAddress *url.URL, err error) {
 	logicalAddress, err = url.ParseRequestURI(lr.GetBrokerServiceUrl())
 	if err != nil {
 		return nil, nil, err

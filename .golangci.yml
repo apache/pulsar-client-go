@@ -9,7 +9,6 @@ linters:
   enable:
     - bodyclose
     - deadcode
-    - gocritic
     - goimports
     - golint
     - gosimple
@@ -23,7 +22,6 @@ linters:
     - typecheck
     - unconvert
     - unparam
-    - unused
     - varcheck
     - lll
     - prealloc

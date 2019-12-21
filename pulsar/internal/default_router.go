@@ -40,7 +40,8 @@ func NewSystemClock() Clock {
 
 // NewDefaultRouter set the message routing mode for the partitioned producer.
 // Default routing mode is round-robin routing.
-func NewDefaultRouter(clock Clock, hashFunc func(string) uint32, maxBatchingDelay time.Duration) func(string, uint32) int {
+func NewDefaultRouter(clock Clock, hashFunc func(string) uint32,
+	maxBatchingDelay time.Duration) func(string, uint32) int {
 	state := &defaultRouter{
 		clock:            clock,
 		shiftIdx:         rand.Uint32(),

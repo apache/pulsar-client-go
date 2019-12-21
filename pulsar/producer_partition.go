@@ -66,8 +66,8 @@ type partitionProducer struct {
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
 
-func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (*partitionProducer, error) {
-
+func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (
+	*partitionProducer, error) {
 	var batchingMaxPublishDelay time.Duration
 	if options.BatchingMaxPublishDelay != 0 {
 		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
@@ -126,11 +126,11 @@ func (p *partitionProducer) grabCnx() error {
 	p.log.Debug("Lookup result: ", lr)
 	id := p.client.rpcClient.NewRequestID()
 	cmdProducer := &pb.CommandProducer{
-		RequestId:    proto.Uint64(id),
-		Topic:        proto.String(p.topic),
-		Encrypted:    nil,
-		ProducerId:   proto.Uint64(p.producerID),
-		Schema:       nil,
+		RequestId:  proto.Uint64(id),
+		Topic:      proto.String(p.topic),
+		Encrypted:  nil,
+		ProducerId: proto.Uint64(p.producerID),
+		Schema:     nil,
 	}
 
 	if p.producerName != "" {
@@ -218,7 +218,7 @@ func (p *partitionProducer) runEventsLoop() {
 				return
 			}
 
-		case _ = <-p.batchFlushTicker.C:
+		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
 		}
 	}

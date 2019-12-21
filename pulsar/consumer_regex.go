@@ -69,7 +69,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 		namespace: tn.Namespace,
 		pattern:   pattern,
 
-		consumers:     make(map[string]Consumer, 0),
+		consumers:     make(map[string]Consumer),
 		subscribeCh:   make(chan []string, 1),
 		unsubscribeCh: make(chan []string, 1),
 
@@ -268,7 +268,7 @@ func (c *regexConsumer) knownTopics() []string {
 	defer c.consumersLock.Unlock()
 	topics := make([]string, len(c.consumers))
 	n := 0
-	for t, _ := range c.consumers {
+	for t := range c.consumers {
 		topics[n] = t
 		n++
 	}

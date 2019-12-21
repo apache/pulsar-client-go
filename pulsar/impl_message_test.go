@@ -75,8 +75,8 @@ func TestAckTracker(t *testing.T) {
 
 func TestAckingMessageIDBatchOne(t *testing.T) {
 	tracker := newAckTracker(1)
-	msgId := newTrackingMessageID(1, 1, 0, 0, tracker)
-	assert.Equal(t, true, msgId.ack())
+	msgID := newTrackingMessageID(1, 1, 0, 0, tracker)
+	assert.Equal(t, true, msgID.ack())
 	assert.Equal(t, true, tracker.completed())
 }
 

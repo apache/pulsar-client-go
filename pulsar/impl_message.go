@@ -114,12 +114,6 @@ func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 	return time.Unix(seconds, nanos)
 }
 
-func timeToUnixTimestampMillis(t time.Time) uint64 {
-	nanos := t.UnixNano()
-	millis := nanos / int64(time.Millisecond)
-	return uint64(millis)
-}
-
 type message struct {
 	publishTime time.Time
 	eventTime   time.Time

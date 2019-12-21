@@ -129,7 +129,8 @@ func (p *producer) Send(ctx context.Context, msg *ProducerMessage) error {
 	return p.producers[partition].Send(ctx, msg)
 }
 
-func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage, callback func(MessageID, *ProducerMessage, error)) {
+func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage,
+	callback func(MessageID, *ProducerMessage, error)) {
 	partition := p.messageRouter(msg, p)
 	p.producers[partition].SendAsync(ctx, msg, callback)
 }
