@@ -29,9 +29,6 @@ go mod download
 go build ./pulsar
 go build -o pulsar-perf ./perf
 
-# Project code style check
-docker run --rm -v $(pwd):/app -w /app golangci/golangci-lint:v1.21.0 golangci-lint run -c ./.golangci.yml ./...
-
 ./pulsar-test-service-start.sh
 
 go test -race -coverprofile=/tmp/coverage -timeout=1h ./...

@@ -20,6 +20,9 @@
 
 set -e -x
 
+# Project code style check
+docker run --rm -v $(pwd):/app -w /app golangci/golangci-lint:v1.21.0 golangci-lint run -c ./.golangci.yml ./...
+
 SRC_DIR=$(git rev-parse --show-toplevel)
 cd ${SRC_DIR}
 
