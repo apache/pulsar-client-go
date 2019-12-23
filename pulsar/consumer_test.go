@@ -794,3 +794,36 @@ func TestConsumerMetadata(t *testing.T) {
 		assert.Equal(t, v, mv)
 	}
 }
+
+// Test for issue #140
+// Don't block on receive if the consumer has been closed
+func TestConsumerReceiveErrAfterClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	topicName := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer.Close()
+
+	errorCh := make(chan error)
+	go func() {
+		_, err = consumer.Receive(context.Background())
+		errorCh <- err
+	}()
+	select {
+	case <-time.After(200 * time.Millisecond):
+	case err = <-errorCh:
+	}
+	assert.Equal(t, ErrConsumerClosed, err)
+}
