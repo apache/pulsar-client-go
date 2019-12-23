@@ -336,25 +336,27 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 	pi.Unlock()
 }
 
-func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) error {
+func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
 	var err error
+	var msgId MessageID
 
 	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
 		err = e
+		msgId = ID
 		wg.Done()
 	}, true)
 
 	// When sending synchronously we flush immediately to avoid
 	// the increased latency and reduced throughput of batching
 	if err = p.Flush(); err != nil {
-		return err
+		return nil, err
 	}
 
 	wg.Wait()
-	return err
+	return msgId, err
 }
 
 func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
