@@ -30,8 +30,7 @@ go build ./pulsar
 go build -o pulsar-perf ./perf
 
 # Project code style check
-wget -O - -q https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s v1.18.0
-./bin/golangci-lint run -c ./.golangci.yml ./...
+docker run --rm -v $(pwd):/app -w /app golangci/golangci-lint:v1.21.0 golangci-lint run -c ./.golangci.yml ./...
 
 ./pulsar-test-service-start.sh
 
