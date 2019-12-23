@@ -124,7 +124,7 @@ func (p *producer) NumPartitions() uint32 {
 	return uint32(len(p.producers))
 }
 
-func (p *producer) Send(ctx context.Context, msg *ProducerMessage) error {
+func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
 	partition := p.messageRouter(msg, p)
 	return p.producers[partition].Send(ctx, msg)
 }
