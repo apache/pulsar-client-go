@@ -31,7 +31,7 @@ go build -o pulsar-perf ./perf
 
 ./pulsar-test-service-start.sh
 
-go test -race -coverprofile=/tmp/coverage -timeout=20min ./...
+go test -race -coverprofile=/tmp/coverage -timeout=20m ./...
 go tool cover -html=/tmp/coverage -o coverage.html
 
 ./pulsar-test-service-stop.sh
