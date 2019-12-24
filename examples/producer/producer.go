@@ -48,10 +48,12 @@ func main() {
 	ctx := context.Background()
 
 	for i := 0; i < 10; i++ {
-		if err := producer.Send(ctx, &pulsar.ProducerMessage{
+		if msgId, err := producer.Send(ctx, &pulsar.ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
 			log.Fatal(err)
+		} else {
+			log.Println("Published message: ", msgId)
 		}
 	}
 }

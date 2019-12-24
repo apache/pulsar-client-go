@@ -125,7 +125,7 @@ type Producer interface {
 	// This call will be blocking until is successfully acknowledged by the Pulsar broker.
 	// Example:
 	// producer.Send(ctx, pulsar.ProducerMessage{ Payload: myPayload })
-	Send(context.Context, *ProducerMessage) error
+	Send(context.Context, *ProducerMessage) (MessageID, error)
 
 	// SendAsync a message in asynchronous mode
 	// The callback will report back the message being published and

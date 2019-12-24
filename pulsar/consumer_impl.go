@@ -46,8 +46,10 @@ type consumer struct {
 
 	// channel used to deliver message to clients
 	messageCh chan ConsumerMessage
-	// channel used to receive error messages
-	errorCh chan error
+
+	closeOnce sync.Once
+	closeCh   chan struct{}
+	errorCh   chan error
 
 	log *log.Entry
 }
@@ -114,6 +116,7 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 	consumer := &consumer{
 		options:   options,
 		messageCh: messageCh,
+		closeCh:   make(chan struct{}),
 		errorCh:   make(chan error),
 		log:       log.WithField("topic", topic),
 	}
@@ -224,6 +227,8 @@ func (c *consumer) Unsubscribe() error {
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {
+		case <-c.closeCh:
+			return nil, ErrConsumerClosed
 		case cm, ok := <-c.messageCh:
 			if !ok {
 				return nil, ErrConsumerClosed
@@ -296,15 +301,18 @@ func (c *consumer) NackID(msgID MessageID) {
 }
 
 func (c *consumer) Close() {
-	var wg sync.WaitGroup
-	for i := range c.consumers {
-		wg.Add(1)
-		go func(pc *partitionConsumer) {
-			defer wg.Done()
-			pc.Close()
-		}(c.consumers[i])
-	}
-	wg.Wait()
+	c.closeOnce.Do(func() {
+		var wg sync.WaitGroup
+		for i := range c.consumers {
+			wg.Add(1)
+			go func(pc *partitionConsumer) {
+				defer wg.Done()
+				pc.Close()
+			}(c.consumers[i])
+		}
+		wg.Wait()
+		close(c.closeCh)
+	})
 }
 
 var r = &random{

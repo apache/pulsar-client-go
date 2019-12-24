@@ -18,9 +18,11 @@
 package internal
 
 import (
+	"errors"
 	"net/url"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 	"github.com/golang/protobuf/proto"
@@ -53,15 +55,17 @@ type RPCClient interface {
 type rpcClient struct {
 	serviceURL          *url.URL
 	pool                ConnectionPool
+	requestTimeout      time.Duration
 	requestIDGenerator  uint64
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
 }
 
-func NewRPCClient(serviceURL *url.URL, pool ConnectionPool) RPCClient {
+func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.Duration) RPCClient {
 	return &rpcClient{
-		serviceURL: serviceURL,
-		pool:       pool,
+		serviceURL:     serviceURL,
+		pool:           pool,
+		requestTimeout: requestTimeout,
 	}
 }
 
@@ -78,24 +82,27 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 		return nil, err
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	rpcResult := &RPCResult{
-		Cnx: cnx,
+	type Res struct {
+		*RPCResult
+		error
 	}
-
-	var rpcErr error
+	ch := make(chan Res)
 
 	// TODO: Handle errors with disconnections
 	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
-		rpcResult.Response = response
-		rpcErr = err
-		wg.Done()
+		ch <- Res{&RPCResult{
+			Cnx:      cnx,
+			Response: response,
+		}, err}
+		close(ch)
 	})
 
-	wg.Wait()
-	return rpcResult, rpcErr
+	select {
+	case res := <-ch:
+		return res.RPCResult, res.error
+	case <-time.After(c.requestTimeout):
+		return nil, errors.New("request timed out")
+	}
 }
 
 func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,

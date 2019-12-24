@@ -63,7 +63,7 @@ func TestProducerConsumer(t *testing.T) {
 
 	// send 10 messages
 	for i := 0; i < 10; i++ {
-		if err := producer.Send(ctx, &ProducerMessage{
+		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 			Key:     "pulsar",
 			Properties: map[string]string{
@@ -153,7 +153,7 @@ func TestBatchMessageReceive(t *testing.T) {
 		msg := &ProducerMessage{
 			Payload: []byte(messageContent),
 		}
-		err := producer.Send(ctx, msg)
+		_, err := producer.Send(ctx, msg)
 		assert.Nil(t, err)
 	}
 
@@ -221,12 +221,12 @@ func TestConsumerSubscriptionEarliestPosition(t *testing.T) {
 
 	// send message
 	ctx := context.Background()
-	err = producer.Send(ctx, &ProducerMessage{
+	_, err = producer.Send(ctx, &ProducerMessage{
 		Payload: []byte("msg-1-content-1"),
 	})
 	assert.Nil(t, err)
 
-	err = producer.Send(ctx, &ProducerMessage{
+	_, err = producer.Send(ctx, &ProducerMessage{
 		Payload: []byte("msg-1-content-2"),
 	})
 	assert.Nil(t, err)
@@ -281,7 +281,7 @@ func TestConsumerKeyShared(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
-		err := producer.Send(ctx, &ProducerMessage{
+		_, err := producer.Send(ctx, &ProducerMessage{
 			Key:     fmt.Sprintf("key-shared-%d", i%3),
 			Payload: []byte(fmt.Sprintf("value-%d", i)),
 		})
@@ -348,7 +348,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
-		err := producer.Send(ctx, &ProducerMessage{
+		_, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
 		assert.Nil(t, err)
@@ -435,7 +435,7 @@ func TestConsumerShared(t *testing.T) {
 
 	// send 10 messages with unique payloads
 	for i := 0; i < 10; i++ {
-		if err := producer.Send(context.Background(), &ProducerMessage{
+		if _, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
 			log.Fatal(err)
@@ -496,7 +496,7 @@ func TestConsumerEventTime(t *testing.T) {
 	defer consumer.Close()
 
 	et := timeFromUnixTimestampMillis(uint64(5))
-	err = producer.Send(ctx, &ProducerMessage{
+	_, err = producer.Send(ctx, &ProducerMessage{
 		Payload:   []byte("test"),
 		EventTime: &et,
 	})
@@ -533,7 +533,7 @@ func TestConsumerFlow(t *testing.T) {
 	assert.Nil(t, err)
 
 	for msgNum := 0; msgNum < 100; msgNum++ {
-		if err := producer.Send(ctx, &ProducerMessage{
+		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-content-%d", msgNum)),
 		}); err != nil {
 			t.Fatal(err)
@@ -574,7 +574,7 @@ func TestConsumerAck(t *testing.T) {
 	const N = 100
 
 	for i := 0; i < N; i++ {
-		if err := producer.Send(ctx, &ProducerMessage{
+		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
 		}); err != nil {
 			t.Fatal(err)
@@ -641,7 +641,7 @@ func TestConsumerNack(t *testing.T) {
 	const N = 100
 
 	for i := 0; i < N; i++ {
-		if err := producer.Send(ctx, &ProducerMessage{
+		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
 		}); err != nil {
 			t.Fatal(err)
@@ -701,7 +701,7 @@ func TestConsumerCompression(t *testing.T) {
 	const N = 100
 
 	for i := 0; i < N; i++ {
-		if err := producer.Send(ctx, &ProducerMessage{
+		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
 		}); err != nil {
 			t.Fatal(err)
@@ -793,4 +793,37 @@ func TestConsumerMetadata(t *testing.T) {
 		mv := meta[k].(string)
 		assert.Equal(t, v, mv)
 	}
+}
+
+// Test for issue #140
+// Don't block on receive if the consumer has been closed
+func TestConsumerReceiveErrAfterClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	topicName := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	consumer.Close()
+
+	errorCh := make(chan error)
+	go func() {
+		_, err = consumer.Receive(context.Background())
+		errorCh <- err
+	}()
+	select {
+	case <-time.After(200 * time.Millisecond):
+	case err = <-errorCh:
+	}
+	assert.Equal(t, ErrConsumerClosed, err)
 }

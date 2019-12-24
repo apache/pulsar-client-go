@@ -96,11 +96,12 @@ func TestSimpleProducer(t *testing.T) {
 	defer producer.Close()
 
 	for i := 0; i < 10; i++ {
-		err = producer.Send(context.Background(), &ProducerMessage{
+		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte("hello"),
 		})
 
 		assert.NoError(t, err)
+		assert.NotNil(t, ID)
 	}
 }
 
@@ -180,11 +181,12 @@ func TestProducerCompression(t *testing.T) {
 			defer producer.Close()
 
 			for i := 0; i < 10; i++ {
-				err = producer.Send(context.Background(), &ProducerMessage{
+				ID, err := producer.Send(context.Background(), &ProducerMessage{
 					Payload: []byte("hello"),
 				})
 
 				assert.NoError(t, err)
+				assert.NotNil(t, ID)
 			}
 		})
 	}
@@ -208,11 +210,12 @@ func TestProducerLastSequenceID(t *testing.T) {
 	assert.Equal(t, int64(-1), producer.LastSequenceID())
 
 	for i := 0; i < 10; i++ {
-		err = producer.Send(context.Background(), &ProducerMessage{
+		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte("hello"),
 		})
 
 		assert.NoError(t, err)
+		assert.NotNil(t, ID)
 		assert.Equal(t, int64(i), producer.LastSequenceID())
 	}
 }
@@ -239,11 +242,12 @@ func TestEventTime(t *testing.T) {
 	defer consumer.Close()
 
 	eventTime := timeFromUnixTimestampMillis(uint64(1565161612))
-	err = producer.Send(context.Background(), &ProducerMessage{
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
 		Payload:   []byte(fmt.Sprintf("test-event-time")),
 		EventTime: &eventTime,
 	})
 	assert.Nil(t, err)
+	assert.NotNil(t, ID)
 
 	msg, err := consumer.Receive(context.Background())
 	assert.Nil(t, err)
@@ -458,10 +462,11 @@ func TestMessageRouter(t *testing.T) {
 
 	ctx := context.Background()
 
-	err = producer.Send(ctx, &ProducerMessage{
+	ID, err := producer.Send(ctx, &ProducerMessage{
 		Payload: []byte("hello"),
 	})
 	assert.Nil(t, err)
+	assert.NotNil(t, ID)
 
 	fmt.Println("PUBLISHED")
 

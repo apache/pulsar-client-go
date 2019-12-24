@@ -364,7 +364,7 @@ func genMessages(p Producer, num int, msgFn func(idx int) string) error {
 		m := &ProducerMessage{
 			Payload: []byte(msgFn(i)),
 		}
-		if err := p.Send(ctx, m); err != nil {
+		if _, err := p.Send(ctx, m); err != nil {
 			return err
 		}
 	}
