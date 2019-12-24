@@ -65,15 +65,21 @@ func TestMultiTopicConsumerReceive(t *testing.T) {
 
 	receivedTopic1 := 0
 	receivedTopic2 := 0
-	for receivedTopic1+receivedTopic2 < 10 {
-		for cm := range consumer.Chan() {
-			msg := string(cm.Payload())
-			if strings.HasPrefix(msg, "topic-1") {
-				receivedTopic1++
-			} else if strings.HasPrefix(msg, "topic-2") {
-				receivedTopic2++
+	// nolint
+	for receivedTopic1+receivedTopic2 < 20 {
+		select {
+		case cm, ok := <-consumer.Chan():
+			if ok {
+				msg := string(cm.Payload())
+				if strings.HasPrefix(msg, "topic-1") {
+					receivedTopic1++
+				} else if strings.HasPrefix(msg, "topic-2") {
+					receivedTopic2++
+				}
+				consumer.Ack(cm.Message)
+			} else {
+				t.Fail()
 			}
-			consumer.Ack(cm.Message)
 		}
 	}
 	assert.Equal(t, receivedTopic1, receivedTopic2)
