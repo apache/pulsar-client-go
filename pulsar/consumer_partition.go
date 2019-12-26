@@ -530,7 +530,7 @@ func (pc *partitionConsumer) grabConn() error {
 	}
 
 	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
-		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
+		pb.BaseCommand_SUBSCRIBE, cmdSubscribe, lr.ConnectingThroughProxy)
 
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
