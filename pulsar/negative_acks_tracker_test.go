@@ -32,7 +32,6 @@ type nackMockedConsumer struct {
 	ch     chan messageID
 	closed bool
 	lock   sync.Mutex
-	msgIds []messageID
 }
 
 func newNackMockedConsumer() *nackMockedConsumer {

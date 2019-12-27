@@ -299,7 +299,7 @@ func (c *connection) run() {
 
 	for {
 		select {
-		case <- c.closeCh:
+		case <-c.closeCh:
 			c.Close()
 			return
 
@@ -318,7 +318,7 @@ func (c *connection) run() {
 			}
 			c.internalWriteData(data)
 
-		case _ = <-c.pingTicker.C:
+		case <-c.pingTicker.C:
 			c.sendPing()
 		}
 	}
@@ -327,9 +327,9 @@ func (c *connection) run() {
 func (c *connection) runPingCheck() {
 	for {
 		select {
-		case <- c.closeCh:
+		case <-c.closeCh:
 			return
-		case _ = <-c.pingCheckTicker.C:
+		case <-c.pingCheckTicker.C:
 			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
@@ -442,7 +442,8 @@ func (c *connection) Write(data []byte) {
 	c.writeRequestsCh <- data
 }
 
-func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(command *pb.BaseCommand, err error)) {
+func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
+	callback func(command *pb.BaseCommand, err error)) {
 	c.incomingRequestsCh <- &request{
 		id:       &requestID,
 		cmd:      req,
@@ -487,8 +488,8 @@ func (c *connection) handleResponseError(serverError *pb.CommandError) {
 
 	delete(c.pendingReqs, requestID)
 
-	request.callback(nil,
-		errors.New(fmt.Sprintf("server error: %s: %s", serverError.GetError(), serverError.GetMessage())))
+	errMsg := fmt.Sprintf("server error: %s: %s", serverError.GetError(), serverError.GetMessage())
+	request.callback(nil, errors.New(errMsg))
 }
 
 func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
@@ -583,8 +584,8 @@ func (c *connection) TriggerClose() {
 	}
 
 	select {
-		case <- c.closeCh:
-			return
+	case <-c.closeCh:
+		return
 	default:
 		close(c.closeCh)
 	}
@@ -693,7 +694,6 @@ func (c *connection) consumerHandler(id uint64) (ConsumerHandler, bool) {
 	return h, ok
 }
 
-func (c *connection) ID() (string) {
+func (c *connection) ID() string {
 	return fmt.Sprintf("%s -> %s", c.cnx.LocalAddr(), c.cnx.RemoteAddr())
 }
-

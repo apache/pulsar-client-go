@@ -63,7 +63,8 @@ type ProducerOptions struct {
 	// This properties will be visible in the topic stats
 	Properties map[string]string
 
-	// MaxPendingMessages set the max size of the queue holding the messages pending to receive an acknowledgment from the broker.
+	// MaxPendingMessages set the max size of the queue holding the messages pending to receive an
+	// acknowledgment from the broker.
 	MaxPendingMessages int
 
 	// HashingScheme change the `HashingScheme` used to chose the partition on where to publish a particular message.
@@ -101,12 +102,14 @@ type ProducerOptions struct {
 	// Setting `DisableBatching: true` will make the producer to send messages individually
 	DisableBatching bool
 
-	// BatchingMaxPublishDelay set the time period within which the messages sent will be batched (default: 10ms) if batch messages are
-	// enabled. If set to a non zero value, messages will be queued until this time interval or until
+	// BatchingMaxPublishDelay set the time period within which the messages sent will be batched (default: 10ms)
+	// if batch messages are enabled. If set to a non zero value, messages will be queued until this time
+	// interval or until
 	BatchingMaxPublishDelay time.Duration
 
-	// BatchingMaxMessages set the maximum number of messages permitted in a batch. (default: 1000) If set to a value greater than 1,
-	// messages will be queued until this threshold is reached or batch interval has elapsed
+	// BatchingMaxMessages set the maximum number of messages permitted in a batch. (default: 1000)
+	// If set to a value greater than 1, messages will be queued until this threshold is reached or
+	// batch interval has elapsed.
 	BatchingMaxMessages uint
 }
 

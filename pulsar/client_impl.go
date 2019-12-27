@@ -33,21 +33,15 @@ import (
 )
 
 const (
-	defaultConnectionTimeout = 30*time.Second
-	defaultOperationTimeout = 30*time.Second
+	defaultConnectionTimeout = 30 * time.Second
+	defaultOperationTimeout  = 30 * time.Second
 )
 
 type client struct {
-	options ClientOptions
-
 	cnxPool       internal.ConnectionPool
 	rpcClient     internal.RPCClient
+	handlers      internal.ClientHandlers
 	lookupService internal.LookupService
-	auth          auth.Provider
-
-	handlers            internal.ClientHandlers
-	producerIDGenerator uint64
-	consumerIDGenerator uint64
 }
 
 func newClient(options ClientOptions) (Client, error) {

@@ -41,8 +41,7 @@ type acker interface {
 }
 
 type consumer struct {
-	options ConsumerOptions
-
+	options   ConsumerOptions
 	consumers []*partitionConsumer
 
 	// channel used to deliver message to clients

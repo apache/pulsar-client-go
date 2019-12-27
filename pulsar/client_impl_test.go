@@ -19,9 +19,10 @@ package pulsar
 
 import (
 	"fmt"
-	"github.com/stretchr/testify/assert"
 	"io/ioutil"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestClient(t *testing.T) {
@@ -176,7 +177,7 @@ func TestTokenAuth(t *testing.T) {
 
 func TestTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:            serviceURL,
+		URL: serviceURL,
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
 			token, err := ioutil.ReadFile(tokenFilePath)
 			if err != nil {
@@ -224,8 +225,8 @@ func TestTopicPartitions(t *testing.T) {
 	defer client.Close()
 
 	// Create topic with 5 partitions
-	httpPut("admin/v2/persistent/public/default/TestGetTopicPartitions/partitions",
-		5)
+	err = httpPut("admin/v2/persistent/public/default/TestGetTopicPartitions/partitions", 5)
+	assert.Nil(t, err)
 
 	partitionedTopic := "persistent://public/default/TestGetTopicPartitions"
 
@@ -260,14 +261,15 @@ func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 	// fetch from namespace that does not exist
 	name := generateRandomName()
 	topics, err := ci.namespaceTopics(fmt.Sprintf("%s/%s", name, name))
+	assert.Nil(t, err)
 	assert.Equal(t, 0, len(topics))
 }
 
 func TestNamespaceTopics(t *testing.T) {
 	name := generateRandomName()
 	namespace := fmt.Sprintf("public/%s", name)
-	namespaceUrl := fmt.Sprintf("admin/v2/namespaces/%s", namespace)
-	err := httpPut(namespaceUrl, anonymousNamespacePolicy())
+	namespaceURL := fmt.Sprintf("admin/v2/namespaces/%s", namespace)
+	err := httpPut(namespaceURL, anonymousNamespacePolicy())
 	if err != nil {
 		t.Fatal()
 	}

@@ -141,7 +141,8 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 			return
 		case <-tick.C:
 			messageRate := float64(messagesPublished) / float64(10)
-			log.Infof(`Stats - Publish rate: %6.1f msg/s - %6.1f Mbps - Latency ms: 50%% %5.1f - 95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f`,
+			log.Infof(`Stats - Publish rate: %6.1f msg/s - %6.1f Mbps - 
+				Latency ms: 50%% %5.1f -95%% %5.1f - 99%% %5.1f - 99.9%% %5.1f - max %6.1f`,
 				messageRate,
 				messageRate*float64(produceArgs.MessageSize)/1024/1024*8,
 				q.Query(0.5)*1000,

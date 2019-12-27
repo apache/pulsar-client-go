@@ -59,7 +59,8 @@ type Message interface {
 	// The message id can be used to univocally refer to a message without having the keep the entire payload in memory.
 	ID() MessageID
 
-	// PublishTime get the publish time of this message. The publish time is the timestamp that a client publish the message.
+	// PublishTime get the publish time of this message. The publish time is the timestamp that a client
+	// publish the message.
 	PublishTime() time.Time
 
 	// EventTime get the event time associated with this message. It is typically set by the applications via

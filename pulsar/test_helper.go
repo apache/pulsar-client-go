@@ -21,7 +21,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -29,6 +28,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 
 	pkgerrors "github.com/pkg/errors"
 )
@@ -139,10 +140,6 @@ func makeHTTPCall(t *testing.T, method string, url string, body string) {
 
 func createNamespace(namespace string, policy map[string]interface{}) error {
 	return httpPut("admin/v2/namespaces/"+namespace, policy)
-}
-
-func deleteNamespace(namespace string) error {
-	return httpDelete("admin/v2/namespaces/" + namespace)
 }
 
 func createTopic(topic string) error {

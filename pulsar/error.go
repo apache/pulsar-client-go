@@ -38,9 +38,11 @@ const (
 	// ResultConnectError means failed to connect to broker
 	ResultConnectError
 
-	//ReadError                      Result = 6  // Failed to read from socket
-	//AuthenticationError            Result = 7  // Authentication failed on broker
-	//AuthorizationError             Result = 8  // Client is not authorized to create producer/consumer
+	// ReadError means failed to read from socket
+	//ReadError                      Result = 6
+	// AuthenticationError means authentication failed on broker
+	//AuthenticationError            Result = 7
+	//AuthorizationError             Result = 8
 	//ErrorGettingAuthenticationData Result = 9  // Client cannot find authorization data
 	//BrokerMetadataError            Result = 10 // Broker failed in updating metadata
 	//BrokerPersistenceError         Result = 11 // Broker failed to persist entry
@@ -53,8 +55,10 @@ const (
 	//ConsumerNotInitialized         Result = 17 // Consumer is not initialized
 	//ProducerNotInitialized         Result = 18 // Producer is not initialized
 	//TooManyLookupRequestException  Result = 19 // Too Many concurrent LookupRequest
-	//InvalidUrl                            Result = 21 // Client Initialized with Invalid Broker Url (VIP Url passed to Client Constructor)
-	//ServiceUnitNotReady                   Result = 22 // Service Unit unloaded between client did lookup and producer/consumer got created
+	// InvalidUrl means Client Initialized with Invalid Broker Url (VIP Url passed to Client Constructor)
+	//InvalidUrl                            Result = 21
+	// ServiceUnitNotReady unloaded between client did lookup and producer/consumer got created
+	//ServiceUnitNotReady                   Result = 22
 	//OperationNotSupported                 Result = 23
 	//ProducerBlockedQuotaExceededError     Result = 24 // Producer is blocked
 	//ProducerBlockedQuotaExceededException Result = 25 // Producer is getting exception
@@ -63,7 +67,8 @@ const (
 	TopicNotFound        Result = 28 // Topic not found
 	SubscriptionNotFound Result = 29 // Subscription not found
 	//ConsumerNotFound                      Result = 30 // Consumer not found
-	//UnsupportedVersionError               Result = 31 // Error when an older client/version doesn't support a required feature
+	// UnsupportedVersionError when an older client/version doesn't support a required feature
+	//UnsupportedVersionError               Result = 31
 	//TopicTerminated                       Result = 32 // Topic was already terminated
 	//CryptoError                           Result = 33 // Error when crypto operation fails
 )

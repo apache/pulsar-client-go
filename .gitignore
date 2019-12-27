@@ -11,3 +11,5 @@
 *.out
 
 perf/perf
+pulsar-perf
+bin

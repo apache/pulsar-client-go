@@ -179,9 +179,9 @@ func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
 	msgIds := req.msgIds
 	pc.log.Debug("Request redelivery after negative ack for messages", msgIds)
 
-	msgIdDataList := make([]*pb.MessageIdData, len(msgIds))
+	msgIDDataList := make([]*pb.MessageIdData, len(msgIds))
 	for i := 0; i < len(msgIds); i++ {
-		msgIdDataList[i] = &pb.MessageIdData{
+		msgIDDataList[i] = &pb.MessageIdData{
 			LedgerId: proto.Uint64(uint64(msgIds[i].ledgerID)),
 			EntryId:  proto.Uint64(uint64(msgIds[i].entryID)),
 		}
@@ -190,7 +190,7 @@ func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
 	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn,
 		pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
 			ConsumerId: proto.Uint64(pc.consumerID),
-			MessageIds: msgIdDataList,
+			MessageIds: msgIDDataList,
 		})
 }
 
@@ -207,12 +207,12 @@ func (pc *partitionConsumer) Close() {
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
-	msgId := req.msgID
+	msgID := req.msgID
 
 	messageIDs := make([]*pb.MessageIdData, 1)
 	messageIDs[0] = &pb.MessageIdData{
-		LedgerId: proto.Uint64(uint64(msgId.ledgerID)),
-		EntryId:  proto.Uint64(uint64(msgId.entryID)),
+		LedgerId: proto.Uint64(uint64(msgID.ledgerID)),
+		EntryId:  proto.Uint64(uint64(msgID.entryID)),
 	}
 
 	cmdAck := &pb.CommandAck{
@@ -565,7 +565,7 @@ func (pc *partitionConsumer) grabConn() error {
 func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload internal.Buffer) (internal.Buffer, error) {
 	provider, ok := compressionProviders[msgMeta.GetCompression()]
 	if !ok {
-		err := fmt.Errorf("Unsupported compression type: %v", msgMeta.GetCompression())
+		err := fmt.Errorf("unsupported compression type: %v", msgMeta.GetCompression())
 		pc.log.WithError(err).Error("Failed to decompress message.")
 		return nil, err
 	}
@@ -573,21 +573,22 @@ func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload int
 	uncompressed, err := provider.Decompress(payload.ReadableSlice(), int(msgMeta.GetUncompressedSize()))
 	if err != nil {
 		return nil, err
-	} else {
-		return internal.NewBufferWrapper(uncompressed), nil
 	}
+
+	return internal.NewBufferWrapper(uncompressed), nil
 }
 
-func (pc *partitionConsumer) discardCorruptedMessage(msgId *pb.MessageIdData, validationError pb.CommandAck_ValidationError) {
+func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
+	validationError pb.CommandAck_ValidationError) {
 	pc.log.WithFields(log.Fields{
-		"msgId":           msgId,
+		"msgId":           msgID,
 		"validationError": validationError,
 	}).Error("Discarding corrupted message")
 
 	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn,
 		pb.BaseCommand_ACK, &pb.CommandAck{
 			ConsumerId:      proto.Uint64(pc.consumerID),
-			MessageId:       []*pb.MessageIdData{msgId},
+			MessageId:       []*pb.MessageIdData{msgID},
 			AckType:         pb.CommandAck_Individual.Enum(),
 			ValidationError: validationError.Enum(),
 		})

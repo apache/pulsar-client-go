@@ -2,29 +2,27 @@
 # https://github.com/golangci/golangci-lint#install
 # We can execute `golangci-lint run` for code checking.
 run:
-  tests: true
-  skip-dirs:
-    - _examples
-
-output:
-  print-issued-lines: false
+  deadline: 6m
 
 linters:
-  enable-all: true
-  disable:
-    - maligned
-    - megacheck
+  disable-all: true
+  enable:
+    - bodyclose
+    - deadcode
+    - goimports
+    - golint
+    - gosimple
+    - govet
+    - ineffassign
+    - interfacer
+    - misspell
+    - staticcheck
+    - structcheck
+    - stylecheck
+    - typecheck
+    - unconvert
+    - unparam
+    - varcheck
     - lll
-    - gocyclo
-    - gochecknoglobals
-
-linters-settings:
-  govet:
-    check-shadowing: true
-  gocyclo:
-    min-complexity: 10
-  dupl:
-    threshold: 100
-  goconst:
-    min-len: 8
-    min-occurrences: 3
+    - prealloc
+    - maligned

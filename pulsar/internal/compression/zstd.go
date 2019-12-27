@@ -19,6 +19,7 @@ package compression
 
 import (
 	"bytes"
+
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/errors"
 )
@@ -41,7 +42,7 @@ func (p *zstdProvider) Compress(data []byte) []byte {
 	return p.encoder.EncodeAll(data, []byte{})
 }
 
-func (p* zstdProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
+func (p *zstdProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
 	d, err := zstd.NewReader(bytes.NewReader(compressedData))
 	if err != nil {
 		return nil, err

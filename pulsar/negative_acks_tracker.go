@@ -18,9 +18,10 @@
 package pulsar
 
 import (
-	log "github.com/sirupsen/logrus"
 	"sync"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type redeliveryConsumer interface {
@@ -53,7 +54,7 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration) *negativ
 func (t *negativeAcksTracker) Add(msgID *messageID) {
 	// Always clear up the batch index since we want to track the nack
 	// for the entire batch
-	batchMsgId := messageID{
+	batchMsgID := messageID{
 		ledgerID: msgID.ledgerID,
 		entryID:  msgID.entryID,
 		batchIdx: 0,
@@ -62,14 +63,14 @@ func (t *negativeAcksTracker) Add(msgID *messageID) {
 	t.Lock()
 	defer t.Unlock()
 
-	_, present := t.negativeAcks[batchMsgId]
+	_, present := t.negativeAcks[batchMsgID]
 	if present {
 		// The batch is already being tracked
 		return
-	} else {
-		targetTime := time.Now().Add(t.delay)
-		t.negativeAcks[batchMsgId] = targetTime
 	}
+
+	targetTime := time.Now().Add(t.delay)
+	t.negativeAcks[batchMsgID] = targetTime
 }
 
 func (t *negativeAcksTracker) track() {

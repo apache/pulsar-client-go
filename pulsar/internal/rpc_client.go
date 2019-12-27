@@ -69,7 +69,8 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.
 	}
 }
 
-func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RPCResult, error) {
 	return c.Request(c.serviceURL, c.serviceURL, requestID, cmdType, message)
 }
 
@@ -81,7 +82,10 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 		return nil, err
 	}
 
-	type Res struct {*RPCResult; error}
+	type Res struct {
+		*RPCResult
+		error
+	}
 	ch := make(chan Res)
 
 	// TODO: Handle errors with disconnections
@@ -110,7 +114,7 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 		Cnx: cnx,
 	}
 
-	var rpcErr error = nil
+	var rpcErr error
 	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
 		rpcResult.Response = response
 		rpcErr = err
