@@ -69,7 +69,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	}
 
 	// Try to create a new connection
-	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host,
+	newCnx, wasCached := p.pool.LoadOrStore(fmt.Sprintf("%s:%v", logicalAddr.Host, connectingThroughProxy),
 		newConnection(logicalAddr, physicalAddr, p.tlsOptions, p.connectionTimeout, p.auth, connectingThroughProxy))
 	cnx := newCnx.(*connection)
 	if !wasCached {
