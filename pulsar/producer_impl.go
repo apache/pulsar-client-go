@@ -24,6 +24,7 @@ import (
 )
 
 type producer struct {
+	client *client
 	topic         string
 	producers     []Producer
 	messageRouter func(*ProducerMessage, TopicMetadata) int
@@ -47,6 +48,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 
 	p := &producer{
 		topic: options.Topic,
+		client: client,
 	}
 
 	if options.MessageRouter == nil {
@@ -160,4 +162,5 @@ func (p *producer) Close() {
 	for _, pp := range p.producers {
 		pp.Close()
 	}
+	p.client.handlers.Del(p)
 }
