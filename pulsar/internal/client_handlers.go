@@ -40,9 +40,7 @@ func (h *ClientHandlers) Add(c Closable) {
 func (h *ClientHandlers) Del(c Closable) {
 	h.l.Lock()
 	defer h.l.Unlock()
-	if _, has := h.handlers[c]; has {
-		delete(h.handlers, c)
-	}
+	delete(h.handlers, c)
 }
 
 func (h *ClientHandlers) Val(c Closable) bool {

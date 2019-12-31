@@ -24,7 +24,7 @@ import (
 )
 
 type producer struct {
-	client *client
+	client        *client
 	topic         string
 	producers     []Producer
 	messageRouter func(*ProducerMessage, TopicMetadata) int
@@ -47,7 +47,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	}
 
 	p := &producer{
-		topic: options.Topic,
+		topic:  options.Topic,
 		client: client,
 	}
 
