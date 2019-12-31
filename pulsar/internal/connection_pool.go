@@ -53,7 +53,8 @@ func NewConnectionPool(tlsOptions *TLSOptions, auth auth.Provider, connectionTim
 	}
 }
 
-func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL, connectingThroughProxy bool) (Connection, error) {
+func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL,
+	connectingThroughProxy bool) (Connection, error) {
 	cachedCnx, found := p.pool.Load(fmt.Sprintf("%s:%v", logicalAddr.Host, connectingThroughProxy))
 	if found {
 		cnx := cachedCnx.(*connection)

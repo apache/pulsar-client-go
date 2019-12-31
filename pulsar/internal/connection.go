@@ -119,10 +119,10 @@ type connection struct {
 	state             connectionState
 	connectionTimeout time.Duration
 
-	logicalAddr  *url.URL
-	physicalAddr *url.URL
+	logicalAddr            *url.URL
+	physicalAddr           *url.URL
 	connectingThroughProxy bool
-	cnx          net.Conn
+	cnx                    net.Conn
 
 	writeBufferLock sync.Mutex
 	writeBuffer     Buffer
@@ -155,19 +155,19 @@ type connection struct {
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
 	connectionTimeout time.Duration, auth auth.Provider, connectingThroughProxy bool) *connection {
 	cnx := &connection{
-		state:                connectionInit,
-		connectionTimeout:    connectionTimeout,
-		logicalAddr:          logicalAddr,
-		physicalAddr:         physicalAddr,
+		state:                  connectionInit,
+		connectionTimeout:      connectionTimeout,
+		logicalAddr:            logicalAddr,
+		physicalAddr:           physicalAddr,
 		connectingThroughProxy: connectingThroughProxy,
-		writeBuffer:          NewBuffer(4096),
-		log:                  log.WithField("remote_addr", physicalAddr),
-		pendingReqs:          make(map[uint64]*request),
-		lastDataReceivedTime: time.Now(),
-		pingTicker:           time.NewTicker(keepAliveInterval),
-		pingCheckTicker:      time.NewTicker(keepAliveInterval),
-		tlsOptions:           tlsOptions,
-		auth:                 auth,
+		writeBuffer:            NewBuffer(4096),
+		log:                    log.WithField("remote_addr", physicalAddr),
+		pendingReqs:            make(map[uint64]*request),
+		lastDataReceivedTime:   time.Now(),
+		pingTicker:             time.NewTicker(keepAliveInterval),
+		pingCheckTicker:        time.NewTicker(keepAliveInterval),
+		tlsOptions:             tlsOptions,
+		auth:                   auth,
 
 		closeCh:            make(chan interface{}),
 		incomingRequestsCh: make(chan *request, 10),
@@ -256,7 +256,7 @@ func (c *connection) doHandshake() bool {
 		AuthMethodName:  proto.String(c.auth.Name()),
 		AuthData:        authData,
 	}
-	if c.connectingThroughProxy{
+	if c.connectingThroughProxy {
 		cmdConnect.ProxyToBrokerUrl = proto.String(c.logicalAddr.Host)
 	}
 	c.writeCommand(baseCommand(pb.BaseCommand_CONNECT, cmdConnect))
