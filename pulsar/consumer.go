@@ -135,6 +135,10 @@ type Consumer interface {
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)
 
+	// Receive a single message.
+	// This calls blocks until a message is available or timeout.
+	ReceiveBlock(context.Context, time.Duration) (Message, error)
+
 	// Chan returns a channel to consume messages from
 	Chan() <-chan ConsumerMessage
 

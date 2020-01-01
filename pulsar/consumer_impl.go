@@ -240,6 +240,12 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	}
 }
 
+func (c *consumer) ReceiveBlock(ctx context.Context, timeout time.Duration) (message Message, err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return c.Receive(ctx)
+}
+
 // Messages
 func (c *consumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh

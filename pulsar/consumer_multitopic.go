@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	pkgerrors "github.com/pkg/errors"
 
@@ -99,6 +100,12 @@ func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err 
 			return nil, ctx.Err()
 		}
 	}
+}
+
+func (c *multiTopicConsumer) ReceiveBlock(ctx context.Context, timeout time.Duration) (message Message, err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return c.Receive(ctx)
 }
 
 // Messages

@@ -146,6 +146,12 @@ func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error
 	}
 }
 
+func (c *regexConsumer) ReceiveBlock(ctx context.Context, timeout time.Duration) (message Message, err error) {
+	ctx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return c.Receive(ctx)
+}
+
 // Chan
 func (c *regexConsumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh
