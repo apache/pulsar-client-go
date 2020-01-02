@@ -68,7 +68,7 @@ func TestReader(t *testing.T) {
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
+		Topic: topic,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -132,7 +132,7 @@ func TestReaderOnSpecificMessage(t *testing.T) {
 	defer producer.Close()
 
 	// send 10 messages
-	msgIDs := [10]MessageID {}
+	msgIDs := [10]MessageID{}
 	for i := 0; i < 10; i++ {
 		msgID, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
@@ -160,11 +160,10 @@ func TestReaderOnSpecificMessage(t *testing.T) {
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
 	}
 
-
 	// create reader on 5th message (included)
 	readerInclusive, err := client.CreateReader(ReaderOptions{
-		Topic:          topic,
-		StartMessageID: msgIDs[4],
+		Topic:                   topic,
+		StartMessageID:          msgIDs[4],
 		StartMessageIDInclusive: true,
 	})
 
@@ -203,7 +202,7 @@ func TestReaderOnSpecificMessageWithBatching(t *testing.T) {
 	defer producer.Close()
 
 	// send 10 messages
-	msgIDs := [10]MessageID {}
+	msgIDs := [10]MessageID{}
 	for i := 0; i < 10; i++ {
 		idx := i
 
@@ -239,8 +238,8 @@ func TestReaderOnSpecificMessageWithBatching(t *testing.T) {
 
 	// create reader on 5th message (included)
 	readerInclusive, err := client.CreateReader(ReaderOptions{
-		Topic:          topic,
-		StartMessageID: msgIDs[4],
+		Topic:                   topic,
+		StartMessageID:          msgIDs[4],
 		StartMessageIDInclusive: true,
 	})
 
@@ -256,7 +255,6 @@ func TestReaderOnSpecificMessageWithBatching(t *testing.T) {
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
 	}
 }
-
 
 func TestReaderOnLatestWithBatching(t *testing.T) {
 	client, err := NewClient(ClientOptions{
@@ -280,7 +278,7 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 	defer producer.Close()
 
 	// send 10 messages
-	msgIDs := [10]MessageID {}
+	msgIDs := [10]MessageID{}
 	for i := 0; i < 10; i++ {
 		idx := i
 
@@ -298,8 +296,8 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 
 	// create reader on 5th message (not included)
 	reader, err := client.CreateReader(ReaderOptions{
-		Topic:          topic,
-		StartMessageID: LatestMessageID(),
+		Topic:                   topic,
+		StartMessageID:          LatestMessageID(),
 		StartMessageIDInclusive: false,
 	})
 
@@ -307,9 +305,9 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 	defer reader.Close()
 
 	// Reader should yield no message since it's at the end of the topic
-	ctx, _ = context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	msg, err := reader.Next(ctx)
 	assert.Error(t, err)
 	assert.Nil(t, msg)
+	cancel()
 }
-

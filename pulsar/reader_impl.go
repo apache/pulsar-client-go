@@ -30,9 +30,6 @@ type reader struct {
 	messageCh chan ConsumerMessage
 }
 
-
-
-
 func newReader(client *client, options ReaderOptions) (Reader, error) {
 	if options.Topic == "" {
 		return nil, newError(ResultInvalidConfiguration, "Topic is required")
@@ -77,10 +74,10 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err
-	} else {
-		reader.pc = pc
-		return reader, nil
 	}
+
+	reader.pc = pc
+	return reader, nil
 }
 
 func (r *reader) Topic() string {
@@ -127,7 +124,7 @@ func (r *reader) Close() {
 
 func (r *reader) hasMoreMessages(lastMessageInBroker, lastDequeuedMessage *messageID) bool {
 	//if lastMessageInBroker.ledgerID > lastDequeuedMessage.ledgerID && lastMessageInBroker.entryID != -1 {
-		return true
+	return true
 	//} else {
 	//	// Make sure batching message can be read completely.
 	//	return *lastMessageInBroker == *lastDequeuedMessage &&

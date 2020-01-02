@@ -61,15 +61,15 @@ const (
 )
 
 type partitionConsumerOpts struct {
-	topic               string
-	consumerName        string
-	subscription        string
-	subscriptionType    SubscriptionType
-	subscriptionInitPos SubscriptionInitialPosition
-	partitionIdx        int
-	receiverQueueSize   int
-	nackRedeliveryDelay time.Duration
-	metadata            map[string]string
+	topic                      string
+	consumerName               string
+	subscription               string
+	subscriptionType           SubscriptionType
+	subscriptionInitPos        SubscriptionInitialPosition
+	partitionIdx               int
+	receiverQueueSize          int
+	nackRedeliveryDelay        time.Duration
+	metadata                   map[string]string
 	replicateSubscriptionState bool
 	startMessageID             *messageID
 	startMessageIDInclusive    bool
@@ -331,10 +331,10 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID *messageID) bool {
 
 	if pc.options.startMessageIDInclusive {
 		return pc.startMessageID.greater(msgID)
-	} else {
-		// Non inclusive
-		return pc.startMessageID.greaterEqual(msgID)
 	}
+
+	// Non inclusive
+	return pc.startMessageID.greaterEqual(msgID)
 }
 
 func (pc *partitionConsumer) ConnectionClosed() {
@@ -554,7 +554,6 @@ func (pc *partitionConsumer) grabConn() error {
 		Schema:                     nil,
 		InitialPosition:            initialPosition.Enum(),
 		ReplicateSubscriptionState: proto.Bool(pc.options.replicateSubscriptionState),
-
 	}
 
 	pc.startMessageID = pc.clearReceiverQueue()
@@ -636,19 +635,19 @@ func (pc *partitionConsumer) clearReceiverQueue() *messageID {
 func getPreviousMessage(mid *messageID) *messageID {
 	if mid.batchIdx >= 0 {
 		return &messageID{
-			ledgerID: mid.ledgerID,
-			entryID: mid.entryID,
-			batchIdx: mid.batchIdx - 1,
+			ledgerID:     mid.ledgerID,
+			entryID:      mid.entryID,
+			batchIdx:     mid.batchIdx - 1,
 			partitionIdx: mid.partitionIdx,
 		}
-	} else {
-		// Get on previous message in previous entry
-		return &messageID{
-			ledgerID: mid.ledgerID,
-			entryID: mid.entryID - 1,
-			batchIdx: mid.batchIdx,
-			partitionIdx: mid.partitionIdx,
-		}
+	}
+
+	// Get on previous message in previous entry
+	return &messageID{
+		ledgerID:     mid.ledgerID,
+		entryID:      mid.entryID - 1,
+		batchIdx:     mid.batchIdx,
+		partitionIdx: mid.partitionIdx,
 	}
 }
 
@@ -690,7 +689,7 @@ func convertToMessageIdData(msgId *messageID) *pb.MessageIdData {
 	}
 
 	return &pb.MessageIdData{
-		LedgerId:   proto.Uint64(uint64(msgId.ledgerID)),
-		EntryId:    proto.Uint64(uint64(msgId.entryID)),
+		LedgerId: proto.Uint64(uint64(msgId.ledgerID)),
+		EntryId:  proto.Uint64(uint64(msgId.entryID)),
 	}
 }

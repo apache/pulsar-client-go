@@ -75,8 +75,8 @@ func (id *messageID) greater(other *messageID) bool {
 
 func (id *messageID) equal(other *messageID) bool {
 	return id.ledgerID == other.ledgerID &&
-			id.entryID == other.entryID &&
-			id.batchIdx == other.batchIdx
+		id.entryID == other.entryID &&
+		id.batchIdx == other.batchIdx
 }
 
 func (id *messageID) greaterEqual(other *messageID) bool {
