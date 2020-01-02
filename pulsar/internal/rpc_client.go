@@ -19,6 +19,7 @@ package internal
 
 import (
 	"errors"
+	`fmt`
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -76,8 +77,8 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message, connectingThroughProxy bool) (*RPCResult, error) {
-	// TODO: Add retry logic in case of connection issues
-	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr, connectingThroughProxy)
+
+	cnx, err := c.getConn(logicalAddr, physicalAddr, connectingThroughProxy)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +89,7 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	}
 	ch := make(chan Res)
 
-	// TODO: Handle errors with disconnections
+	// TODO: in here, the error of callback always nil
 	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
 		ch <- Res{&RPCResult{
 			Cnx:      cnx,
@@ -103,6 +104,25 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	case <-time.After(c.requestTimeout):
 		return nil, errors.New("request timed out")
 	}
+}
+
+func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL, connectingThroughProxy bool) (Connection, error){
+	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr, connectingThroughProxy)
+	backoff := new(Backoff)
+	var retryTime time.Duration
+	if err != nil {
+		for retryTime < c.requestTimeout {
+			retryTime = backoff.Next()
+			fmt.Printf("Reconnecting to broker in {%v} \n", retryTime)
+			time.Sleep(retryTime)
+			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr, connectingThroughProxy)
+			if err == nil {
+				fmt.Printf("retry connection success...\n")
+				break
+			}
+		}
+	}
+	return cnx, nil
 }
 
 func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,

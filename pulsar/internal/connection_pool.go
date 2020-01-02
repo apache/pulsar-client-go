@@ -65,7 +65,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 			return cnx, nil
 		}
 		// The cached connection is failed
-		p.pool.Delete(logicalAddr.Host)
+		p.pool.Delete(fmt.Sprintf("%s:%v", logicalAddr.Host, connectingThroughProxy))
 		log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
 	}
 
