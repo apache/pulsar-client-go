@@ -19,7 +19,6 @@ package internal
 
 import (
 	"errors"
-	`fmt`
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -27,6 +26,8 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 	"github.com/golang/protobuf/proto"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type RPCResult struct {
@@ -60,6 +61,8 @@ type rpcClient struct {
 	requestIDGenerator  uint64
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
+
+	log *log.Entry
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.Duration) RPCClient {
@@ -67,6 +70,7 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
+		log:            log.WithField("serviceURL", serviceURL),
 	}
 }
 
@@ -113,14 +117,15 @@ func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL, connect
 	if err != nil {
 		for retryTime < c.requestTimeout {
 			retryTime = backoff.Next()
-			fmt.Printf("Reconnecting to broker in {%v} \n", retryTime)
+			c.log.Debugf("Reconnecting to broker in {%v}", retryTime)
 			time.Sleep(retryTime)
 			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr, connectingThroughProxy)
 			if err == nil {
-				fmt.Printf("retry connection success...\n")
-				break
+				c.log.Debugf("retry connection success")
+				return cnx, nil
 			}
 		}
+		return nil, err
 	}
 	return cnx, nil
 }
