@@ -110,7 +110,8 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	}
 }
 
-func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL, connectingThroughProxy bool) (Connection, error){
+func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL,
+	connectingThroughProxy bool) (Connection, error) {
 	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr, connectingThroughProxy)
 	backoff := new(Backoff)
 	var retryTime time.Duration
