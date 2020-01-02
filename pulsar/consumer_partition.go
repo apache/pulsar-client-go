@@ -559,7 +559,7 @@ func (pc *partitionConsumer) grabConn() error {
 	pc.startMessageID = pc.clearReceiverQueue()
 	if pc.options.subscriptionMode != durable {
 		// For regular subscriptions the broker will determine the restarting point
-		cmdSubscribe.StartMessageId = convertToMessageIdData(pc.startMessageID)
+		cmdSubscribe.StartMessageId = convertToMessageIDData(pc.startMessageID)
 	}
 
 	if len(pc.options.metadata) > 0 {
@@ -683,7 +683,7 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 		})
 }
 
-func convertToMessageIdData(msgId *messageID) *pb.MessageIdData {
+func convertToMessageIDData(msgId *messageID) *pb.MessageIdData {
 	if msgId == nil {
 		return nil
 	}
