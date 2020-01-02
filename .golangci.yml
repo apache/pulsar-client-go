@@ -25,4 +25,3 @@ linters:
     - varcheck
     - lll
     - prealloc
-    - maligned
