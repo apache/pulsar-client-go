@@ -20,6 +20,7 @@ package pulsar
 import (
 	"fmt"
 	"math"
+	"sync"
 	"time"
 
 	"github.com/golang/protobuf/proto"
@@ -104,9 +105,10 @@ type partitionConsumer struct {
 	startMessageID  *messageID
 	lastDequeuedMsg *messageID
 
-	eventsCh    chan interface{}
-	connectedCh chan struct{}
-	closeCh     chan struct{}
+	eventsCh     chan interface{}
+	connectedCh  chan struct{}
+	closeCh      chan struct{}
+	clearQueueCh chan func(id *messageID)
 
 	nackTracker *negativeAcksTracker
 
@@ -131,6 +133,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		connectedCh:    make(chan struct{}),
 		messageCh:      messageCh,
 		closeCh:        make(chan struct{}),
+		clearQueueCh:   make(chan func(id *messageID)),
 		log:            log.WithField("topic", options.topic),
 	}
 	pc.log = pc.log.WithField("name", pc.name).WithField("subscription", options.subscription)
@@ -462,6 +465,24 @@ func (pc *partitionConsumer) dispatcher() {
 					pc.log.WithError(err).Error("unable to send permits")
 				}
 			}
+
+		case clearQueueCb := <-pc.clearQueueCh:
+			// drain the message queue on any new connection by sending a
+			// special nil message to the channel so we know when to stop dropping messages
+			var nextMessageInQueue *messageID = nil
+			go func() {
+				pc.queueCh <- nil
+			}()
+			for m := range pc.queueCh {
+				// the queue has been drained
+				if m == nil {
+					break
+				} else if nextMessageInQueue == nil {
+					nextMessageInQueue = m[0].msgID.(*messageID)
+				}
+			}
+
+			clearQueueCb(nextMessageInQueue)
 		}
 	}
 }
@@ -635,26 +656,26 @@ func (pc *partitionConsumer) grabConn() error {
 	}
 }
 
+func (pc *partitionConsumer) clearQueueAndGetNextMessage() *messageID {
+	wg := &sync.WaitGroup{}
+	wg.Add(1)
+	var msgID *messageID
+
+	pc.clearQueueCh<- func(id *messageID) {
+		msgID = id
+		wg.Done()
+	}
+
+	wg.Wait()
+	return msgID
+}
+
 /**
  * Clear the internal receiver queue and returns the message id of what was the 1st message in the queue that was
  * not seen by the application
  */
 func (pc *partitionConsumer) clearReceiverQueue() *messageID {
-	var nextMessageInQueue *messageID = nil
-
-	// drain the message queue on any new connection by sending a
-	// special nil message to the channel so we know when to stop dropping messages
-	go func() {
-		pc.queueCh <- nil
-	}()
-	for m := range pc.queueCh {
-		// the queue has been drained
-		if m == nil {
-			break
-		} else if nextMessageInQueue == nil {
-			nextMessageInQueue = m[0].msgID.(*messageID)
-		}
-	}
+	nextMessageInQueue := pc.clearQueueAndGetNextMessage()
 
 	if nextMessageInQueue != nil {
 		return getPreviousMessage(nextMessageInQueue)
