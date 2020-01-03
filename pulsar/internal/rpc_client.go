@@ -45,7 +45,7 @@ type RPCClient interface {
 	RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-		cmdType pb.BaseCommand_Type, message proto.Message, connectingThroughProxy bool) (*RPCResult, error)
+		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message)
 
@@ -71,13 +71,13 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.
 
 func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
-	return c.Request(c.serviceURL, c.serviceURL, requestID, cmdType, message, false)
+	return c.Request(c.serviceURL, c.serviceURL, requestID, cmdType, message)
 }
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message, connectingThroughProxy bool) (*RPCResult, error) {
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	// TODO: Add retry logic in case of connection issues
-	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr, connectingThroughProxy)
+	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
 	if err != nil {
 		return nil, err
 	}
