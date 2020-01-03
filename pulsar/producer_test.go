@@ -666,8 +666,8 @@ func TestDelayRelative(t *testing.T) {
 	msg, err = consumer.Receive(ctx)
 	assert.Nil(t, err)
 	assert.NotNil(t, msg)
+	canc()
 }
-
 
 func TestDelayAbsolute(t *testing.T) {
 	client, err := NewClient(ClientOptions{
@@ -709,4 +709,5 @@ func TestDelayAbsolute(t *testing.T) {
 	msg, err = consumer.Receive(ctx)
 	assert.Nil(t, err)
 	assert.NotNil(t, msg)
+	canc()
 }

@@ -243,8 +243,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	sendAsBatch := !p.options.DisableBatching &&
-					msg.ReplicationClusters == nil &&
-					deliverAt.UnixNano() == 0
+		msg.ReplicationClusters == nil &&
+		deliverAt.UnixNano() == 0
 
 	smm := &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int(len(msg.Payload)),
@@ -271,14 +271,14 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	if sendAsBatch {
 		added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-									msg.ReplicationClusters, deliverAt)
+			msg.ReplicationClusters, deliverAt)
 		if !added {
 			// The current batch is full.. flush it and retry
 			p.internalFlushCurrentBatch()
 
 			// after flushing try again to add the current payload
 			if ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-										msg.ReplicationClusters, deliverAt); !ok {
+				msg.ReplicationClusters, deliverAt); !ok {
 				p.log.WithField("size", len(msg.Payload)).
 					WithField("sequenceID", sequenceID).
 					WithField("properties", msg.Properties).
@@ -288,7 +288,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	} else {
 		// Send individually
 		if added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-										msg.ReplicationClusters, deliverAt); !added {
+			msg.ReplicationClusters, deliverAt); !added {
 			p.log.WithField("size", len(msg.Payload)).
 				WithField("sequenceID", sequenceID).
 				WithField("properties", msg.Properties).
