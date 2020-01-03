@@ -661,7 +661,7 @@ func (pc *partitionConsumer) clearQueueAndGetNextMessage() *messageID {
 	wg.Add(1)
 	var msgID *messageID
 
-	pc.clearQueueCh<- func(id *messageID) {
+	pc.clearQueueCh <- func(id *messageID) {
 		msgID = id
 		wg.Done()
 	}
