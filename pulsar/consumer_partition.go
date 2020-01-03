@@ -177,6 +177,33 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
 }
 
+func (pc *partitionConsumer) getLastMessageID() (*messageID, error) {
+	req := &getLastMsgIdRequest{doneCh: make(chan struct{})}
+	pc.eventsCh <- req
+
+	// wait for the request to complete
+	<-req.doneCh
+	return req.msgId, req.err
+}
+
+func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIdRequest) {
+	defer close(req.doneCh)
+
+	requestID := pc.client.rpcClient.NewRequestID()
+	cmdGetLastMessageID := &pb.CommandGetLastMessageId{
+		RequestId:  proto.Uint64(requestID),
+		ConsumerId: proto.Uint64(pc.consumerID),
+	}
+	res, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_GET_LAST_MESSAGE_ID, cmdGetLastMessageID)
+	if err != nil {
+		pc.log.WithError(err).Error("Failed to get last message id")
+		req.err = err
+	} else {
+		id := res.Response.GetLastMessageIdResponse.GetLastMessageId()
+		req.msgId = convertToMessageID(id)
+	}
+}
+
 func (pc *partitionConsumer) AckID(msgID *messageID) {
 	if msgID != nil && msgID.ack() {
 		req := &ackRequest{
@@ -455,6 +482,12 @@ type redeliveryRequest struct {
 	msgIds []messageID
 }
 
+type getLastMsgIdRequest struct {
+	doneCh chan struct{}
+	msgId  *messageID
+	err    error
+}
+
 func (pc *partitionConsumer) runEventsLoop() {
 	defer func() {
 		pc.log.Debug("exiting events loop")
@@ -471,6 +504,8 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.internalRedeliver(v)
 			case *unsubscribeRequest:
 				pc.internalUnsubscribe(v)
+			case *getLastMsgIdRequest:
+				pc.internalGetLastMessageID(v)
 			case *connectionClosed:
 				pc.reconnectToBroker()
 			case *closeRequest:
@@ -692,4 +727,21 @@ func convertToMessageIDData(msgId *messageID) *pb.MessageIdData {
 		LedgerId: proto.Uint64(uint64(msgId.ledgerID)),
 		EntryId:  proto.Uint64(uint64(msgId.entryID)),
 	}
+}
+
+func convertToMessageID(id *pb.MessageIdData) *messageID {
+	if id == nil {
+		return nil
+	}
+
+	msgID := &messageID{
+		ledgerID: int64(*id.LedgerId),
+		entryID:  int64(*id.EntryId),
+	}
+
+	if id.BatchIndex != nil {
+		msgID.batchIdx = int(*id.BatchIndex)
+	}
+
+	return msgID
 }

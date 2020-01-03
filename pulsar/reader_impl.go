@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -26,8 +27,11 @@ const (
 )
 
 type reader struct {
-	pc        *partitionConsumer
-	messageCh chan ConsumerMessage
+	pc                  *partitionConsumer
+	messageCh           chan ConsumerMessage
+	lastMessageInBroker *messageID
+
+	log *log.Entry
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -67,6 +71,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
+		log:       log.WithField("topic", options.Topic),
 	}
 
 	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh)
@@ -94,7 +99,9 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
-			r.pc.AckID(cm.Message.ID().(*messageID))
+			msgID := cm.Message.ID().(*messageID)
+			r.pc.lastDequeuedMsg = msgID
+			r.pc.AckID(msgID)
 			return cm.Message, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -103,31 +110,37 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 }
 
 func (r *reader) HasNext() bool {
-	return false
+	if r.lastMessageInBroker != nil && r.hasMoreMessages() {
+		return true
+	}
+
+	for {
+		lastMsgID, err := r.pc.getLastMessageID()
+		if err != nil {
+			r.log.WithError(err).Error("Failed to get last message id from broker")
+			continue
+		} else {
+			r.lastMessageInBroker = lastMsgID
+			break
+		}
+	}
+
+	return r.hasMoreMessages()
+}
+
+func (r *reader) hasMoreMessages() bool {
+	if r.pc.lastDequeuedMsg != nil {
+		return r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg)
+	}
+
+	if r.pc.options.startMessageIDInclusive {
+		return r.lastMessageInBroker.greaterEqual(r.pc.startMessageID)
+	}
+
+	// Non-inclusive
+	return r.lastMessageInBroker.greater(r.pc.startMessageID)
 }
 
 func (r *reader) Close() {
 	r.pc.Close()
-}
-
-//
-//private boolean hasMoreMessages(MessageId lastMessageIdInBroker, MessageId lastDequeuedMessage) {
-//if (lastMessageIdInBroker.compareTo(lastDequeuedMessage) > 0 &&
-//((MessageIdImpl)lastMessageIdInBroker).getEntryId() != -1) {
-//return true;
-//} else {
-//// Make sure batching message can be read completely.
-//return lastMessageIdInBroker.compareTo(lastDequeuedMessage) == 0
-//&& incomingMessages.size() > 0;
-//}
-//}
-
-func (r *reader) hasMoreMessages(lastMessageInBroker, lastDequeuedMessage *messageID) bool {
-	//if lastMessageInBroker.ledgerID > lastDequeuedMessage.ledgerID && lastMessageInBroker.entryID != -1 {
-	return true
-	//} else {
-	//	// Make sure batching message can be read completely.
-	//	return *lastMessageInBroker == *lastDequeuedMessage &&
-	//
-	//}
 }
