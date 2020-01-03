@@ -657,6 +657,9 @@ func (pc *partitionConsumer) grabConn() error {
 }
 
 func (pc *partitionConsumer) clearQueueAndGetNextMessage() *messageID {
+	if pc.state != consumerReady {
+		return nil
+	}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
 	var msgID *messageID
