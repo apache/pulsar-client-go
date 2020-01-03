@@ -178,15 +178,15 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 }
 
 func (pc *partitionConsumer) getLastMessageID() (*messageID, error) {
-	req := &getLastMsgIdRequest{doneCh: make(chan struct{})}
+	req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
 	pc.eventsCh <- req
 
 	// wait for the request to complete
 	<-req.doneCh
-	return req.msgId, req.err
+	return req.msgID, req.err
 }
 
-func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIdRequest) {
+func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) {
 	defer close(req.doneCh)
 
 	requestID := pc.client.rpcClient.NewRequestID()
@@ -194,13 +194,14 @@ func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIdRequest) 
 		RequestId:  proto.Uint64(requestID),
 		ConsumerId: proto.Uint64(pc.consumerID),
 	}
-	res, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_GET_LAST_MESSAGE_ID, cmdGetLastMessageID)
+	res, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID,
+		pb.BaseCommand_GET_LAST_MESSAGE_ID, cmdGetLastMessageID)
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to get last message id")
 		req.err = err
 	} else {
 		id := res.Response.GetLastMessageIdResponse.GetLastMessageId()
-		req.msgId = convertToMessageID(id)
+		req.msgID = convertToMessageID(id)
 	}
 }
 
@@ -482,9 +483,9 @@ type redeliveryRequest struct {
 	msgIds []messageID
 }
 
-type getLastMsgIdRequest struct {
+type getLastMsgIDRequest struct {
 	doneCh chan struct{}
-	msgId  *messageID
+	msgID  *messageID
 	err    error
 }
 
@@ -504,7 +505,7 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.internalRedeliver(v)
 			case *unsubscribeRequest:
 				pc.internalUnsubscribe(v)
-			case *getLastMsgIdRequest:
+			case *getLastMsgIDRequest:
 				pc.internalGetLastMessageID(v)
 			case *connectionClosed:
 				pc.reconnectToBroker()
@@ -705,7 +706,7 @@ func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload int
 func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 	validationError pb.CommandAck_ValidationError) {
 	pc.log.WithFields(log.Fields{
-		"msgId":           msgID,
+		"msgID":           msgID,
 		"validationError": validationError,
 	}).Error("Discarding corrupted message")
 
@@ -718,14 +719,14 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 		})
 }
 
-func convertToMessageIDData(msgId *messageID) *pb.MessageIdData {
-	if msgId == nil {
+func convertToMessageIDData(msgID *messageID) *pb.MessageIdData {
+	if msgID == nil {
 		return nil
 	}
 
 	return &pb.MessageIdData{
-		LedgerId: proto.Uint64(uint64(msgId.ledgerID)),
-		EntryId:  proto.Uint64(uint64(msgId.entryID)),
+		LedgerId: proto.Uint64(uint64(msgID.ledgerID)),
+		EntryId:  proto.Uint64(uint64(msgID.entryID)),
 	}
 }
 

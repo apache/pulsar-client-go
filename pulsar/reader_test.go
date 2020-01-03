@@ -312,7 +312,6 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 	cancel()
 }
 
-
 func TestReaderHasNext(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -358,9 +357,8 @@ func TestReaderHasNext(t *testing.T) {
 		expectMsg := fmt.Sprintf("hello-%d", i)
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
 
-		i += 1
+		i++
 	}
 
 	assert.Equal(t, 10, i)
 }
-
