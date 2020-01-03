@@ -119,9 +119,9 @@ type connection struct {
 	state             connectionState
 	connectionTimeout time.Duration
 
-	logicalAddr            *url.URL
-	physicalAddr           *url.URL
-	cnx                    net.Conn
+	logicalAddr  *url.URL
+	physicalAddr *url.URL
+	cnx          net.Conn
 
 	writeBufferLock sync.Mutex
 	writeBuffer     Buffer
@@ -154,18 +154,18 @@ type connection struct {
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
 	connectionTimeout time.Duration, auth auth.Provider) *connection {
 	cnx := &connection{
-		state:                  connectionInit,
-		connectionTimeout:      connectionTimeout,
-		logicalAddr:            logicalAddr,
-		physicalAddr:           physicalAddr,
-		writeBuffer:            NewBuffer(4096),
-		log:                    log.WithField("remote_addr", physicalAddr),
-		pendingReqs:            make(map[uint64]*request),
-		lastDataReceivedTime:   time.Now(),
-		pingTicker:             time.NewTicker(keepAliveInterval),
-		pingCheckTicker:        time.NewTicker(keepAliveInterval),
-		tlsOptions:             tlsOptions,
-		auth:                   auth,
+		state:                connectionInit,
+		connectionTimeout:    connectionTimeout,
+		logicalAddr:          logicalAddr,
+		physicalAddr:         physicalAddr,
+		writeBuffer:          NewBuffer(4096),
+		log:                  log.WithField("remote_addr", physicalAddr),
+		pendingReqs:          make(map[uint64]*request),
+		lastDataReceivedTime: time.Now(),
+		pingTicker:           time.NewTicker(keepAliveInterval),
+		pingCheckTicker:      time.NewTicker(keepAliveInterval),
+		tlsOptions:           tlsOptions,
+		auth:                 auth,
 
 		closeCh:            make(chan interface{}),
 		incomingRequestsCh: make(chan *request, 10),

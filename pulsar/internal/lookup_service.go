@@ -30,8 +30,8 @@ import (
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
 type LookupResult struct {
-	LogicalAddr            *url.URL
-	PhysicalAddr           *url.URL
+	LogicalAddr  *url.URL
+	PhysicalAddr *url.URL
 }
 
 // LookupService is a interface of lookup service.
@@ -123,8 +123,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			}
 
 			return &LookupResult{
-				LogicalAddr:            logicalAddress,
-				PhysicalAddr:           physicalAddress,
+				LogicalAddr:  logicalAddress,
+				PhysicalAddr: physicalAddress,
 			}, nil
 
 		case pb.CommandLookupTopicResponse_Failed:
