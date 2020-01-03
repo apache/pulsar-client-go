@@ -625,3 +625,88 @@ func TestBatchMessageFlushing(t *testing.T) {
 
 	assert.Equal(t, 2, published, "expected to publish two messages")
 }
+
+func TestDelayRelative(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "subName",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload:      []byte(fmt.Sprintf("test")),
+		DeliverAfter: 3 * time.Second,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, ID)
+
+	ctx, canc := context.WithTimeout(context.Background(), 1*time.Second)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Error(t, err)
+	assert.Nil(t, msg)
+	canc()
+
+	ctx, canc = context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err = consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+}
+
+
+func TestDelayAbsolute(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "subName",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload:   []byte(fmt.Sprintf("test")),
+		DeliverAt: time.Now().Add(3 * time.Second),
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, ID)
+
+	ctx, canc := context.WithTimeout(context.Background(), 1*time.Second)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Error(t, err)
+	assert.Nil(t, msg)
+	canc()
+
+	ctx, canc = context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err = consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+}

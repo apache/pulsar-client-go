@@ -41,6 +41,18 @@ type ProducerMessage struct {
 
 	// SequenceID set the sequence id to assign to the current message
 	SequenceID *int64
+
+	// Request to deliver the message only after the specified relative delay.
+	// Note: messages are only delivered with delay when a consumer is consuming
+	//     through a `SubscriptionType=Shared` subscription. With other subscription
+	//     types, the messages will still be delivered immediately.
+	DeliverAfter time.Duration
+
+	// Deliver the message only at or after the specified absolute timestamp.
+	// Note: messages are only delivered with delay when a consumer is consuming
+	//     through a `SubscriptionType=Shared` subscription. With other subscription
+	//     types, the messages will still be delivered immediately.
+	DeliverAt time.Time
 }
 
 // Message abstraction used in Pulsar
