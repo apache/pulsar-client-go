@@ -550,16 +550,19 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	consumerID := closeConsumer.GetConsumerId()
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ConnectionClosed()
+		delete(c.listeners, consumerID)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
 	}
 }
 
 func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer) {
-	c.log.Infof("Broker notification of Closed consumer: %d", closeProducer.GetProducerId())
+	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
+
 	if producer, ok := c.listeners[producerID]; ok {
 		producer.ConnectionClosed()
+		delete(c.listeners, producerID)
 	} else {
 		c.log.WithField("producerID", producerID).Warn("Producer with ID not found while closing producer")
 	}
