@@ -181,7 +181,7 @@ func safeRespClose(resp *http.Response) {
 const (
 	PublishTimeHeader = "X-Pulsar-Publish-Time"
 	BatchHeader       = "X-Pulsar-Num-Batch-Message"
-	PropertyPrefix    = "X-Pulsar-PROPERTY-"
+	PropertyPrefix    = "X-Pulsar-Property-"
 )
 
 func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, error) {
