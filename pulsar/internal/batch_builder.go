@@ -105,7 +105,7 @@ func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 
 // Add will add single message to batch.
 func (bb *BatchBuilder) Add(metadata proto.Message, sequenceID uint64, payload []byte,
-	callback interface{}, replicateTo []string) bool {
+	callback interface{}, replicateTo []string, deliverAt time.Time) bool {
 	if replicateTo != nil && bb.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
 		// then we need to force the current batch to flush and send the message individually
@@ -125,6 +125,10 @@ func (bb *BatchBuilder) Add(metadata proto.Message, sequenceID uint64, payload [
 		bb.msgMetadata.SequenceId = proto.Uint64(sequenceID)
 		bb.msgMetadata.ProducerName = &bb.producerName
 		bb.msgMetadata.ReplicateTo = replicateTo
+
+		if deliverAt.UnixNano() > 0 {
+			bb.msgMetadata.DeliverAtTime = proto.Int64(int64(TimestampMillis(deliverAt)))
+		}
 
 		bb.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
 	}
