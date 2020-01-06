@@ -47,7 +47,7 @@ type RPCClient interface {
 	RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-		cmdType pb.BaseCommand_Type, message proto.Message, connectingThroughProxy bool) (*RPCResult, error)
+		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message)
 
@@ -76,13 +76,12 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.
 
 func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
-	return c.Request(c.serviceURL, c.serviceURL, requestID, cmdType, message, false)
+	return c.Request(c.serviceURL, c.serviceURL, requestID, cmdType, message)
 }
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message, connectingThroughProxy bool) (*RPCResult, error) {
-
-	cnx, err := c.getConn(logicalAddr, physicalAddr, connectingThroughProxy)
+		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	cnx, err := c.getConn(logicalAddr, physicalAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -110,9 +109,8 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	}
 }
 
-func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL,
-	connectingThroughProxy bool) (Connection, error) {
-	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr, connectingThroughProxy)
+func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
+	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
 	backoff := new(Backoff)
 	var retryTime time.Duration
 	if err != nil {
@@ -120,7 +118,7 @@ func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL,
 			retryTime = backoff.Next()
 			c.log.Debugf("Reconnecting to broker in {%v}", retryTime)
 			time.Sleep(retryTime)
-			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr, connectingThroughProxy)
+			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr)
 			if err == nil {
 				c.log.Debugf("retry connection success")
 				return cnx, nil

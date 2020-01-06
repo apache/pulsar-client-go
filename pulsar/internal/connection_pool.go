@@ -18,7 +18,6 @@
 package internal
 
 import (
-	"fmt"
 	"net/url"
 	"sync"
 	"time"
@@ -31,7 +30,7 @@ import (
 // ConnectionPool is a interface of connection pool.
 type ConnectionPool interface {
 	// GetConnection get a connection from ConnectionPool.
-	GetConnection(logicalAddr *url.URL, physicalAddr *url.URL, connectingThroughProxy bool) (Connection, error)
+	GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error)
 
 	// Close all the connections in the pool
 	Close()
@@ -53,9 +52,8 @@ func NewConnectionPool(tlsOptions *TLSOptions, auth auth.Provider, connectionTim
 	}
 }
 
-func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL,
-	connectingThroughProxy bool) (Connection, error) {
-	cachedCnx, found := p.pool.Load(fmt.Sprintf("%s:%v", logicalAddr.Host, connectingThroughProxy))
+func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
+	cachedCnx, found := p.pool.Load(logicalAddr.Host)
 	if found {
 		cnx := cachedCnx.(*connection)
 		log.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
@@ -70,8 +68,8 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	}
 
 	// Try to create a new connection
-	newCnx, wasCached := p.pool.LoadOrStore(fmt.Sprintf("%s:%v", logicalAddr.Host, connectingThroughProxy),
-		newConnection(logicalAddr, physicalAddr, p.tlsOptions, p.connectionTimeout, p.auth, connectingThroughProxy))
+	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host,
+		newConnection(logicalAddr, physicalAddr, p.tlsOptions, p.connectionTimeout, p.auth))
 	cnx := newCnx.(*connection)
 	if !wasCached {
 		cnx.start()

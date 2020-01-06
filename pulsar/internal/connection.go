@@ -119,10 +119,9 @@ type connection struct {
 	state             connectionState
 	connectionTimeout time.Duration
 
-	logicalAddr            *url.URL
-	physicalAddr           *url.URL
-	connectingThroughProxy bool
-	cnx                    net.Conn
+	logicalAddr  *url.URL
+	physicalAddr *url.URL
+	cnx          net.Conn
 
 	writeBufferLock sync.Mutex
 	writeBuffer     Buffer
@@ -153,21 +152,20 @@ type connection struct {
 }
 
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
-	connectionTimeout time.Duration, auth auth.Provider, connectingThroughProxy bool) *connection {
+	connectionTimeout time.Duration, auth auth.Provider) *connection {
 	cnx := &connection{
-		state:                  connectionInit,
-		connectionTimeout:      connectionTimeout,
-		logicalAddr:            logicalAddr,
-		physicalAddr:           physicalAddr,
-		connectingThroughProxy: connectingThroughProxy,
-		writeBuffer:            NewBuffer(4096),
-		log:                    log.WithField("remote_addr", physicalAddr),
-		pendingReqs:            make(map[uint64]*request),
-		lastDataReceivedTime:   time.Now(),
-		pingTicker:             time.NewTicker(keepAliveInterval),
-		pingCheckTicker:        time.NewTicker(keepAliveInterval),
-		tlsOptions:             tlsOptions,
-		auth:                   auth,
+		state:                connectionInit,
+		connectionTimeout:    connectionTimeout,
+		logicalAddr:          logicalAddr,
+		physicalAddr:         physicalAddr,
+		writeBuffer:          NewBuffer(4096),
+		log:                  log.WithField("remote_addr", physicalAddr),
+		pendingReqs:          make(map[uint64]*request),
+		lastDataReceivedTime: time.Now(),
+		pingTicker:           time.NewTicker(keepAliveInterval),
+		pingCheckTicker:      time.NewTicker(keepAliveInterval),
+		tlsOptions:           tlsOptions,
+		auth:                 auth,
 
 		closeCh:            make(chan interface{}),
 		incomingRequestsCh: make(chan *request, 10),
@@ -256,7 +254,8 @@ func (c *connection) doHandshake() bool {
 		AuthMethodName:  proto.String(c.auth.Name()),
 		AuthData:        authData,
 	}
-	if c.connectingThroughProxy {
+
+	if c.logicalAddr.Host != c.physicalAddr.Host {
 		cmdConnect.ProxyToBrokerUrl = proto.String(c.logicalAddr.Host)
 	}
 	c.writeCommand(baseCommand(pb.BaseCommand_CONNECT, cmdConnect))
@@ -550,16 +549,19 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	consumerID := closeConsumer.GetConsumerId()
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ConnectionClosed()
+		delete(c.listeners, consumerID)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
 	}
 }
 
 func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer) {
-	c.log.Infof("Broker notification of Closed consumer: %d", closeProducer.GetProducerId())
+	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
+
 	if producer, ok := c.listeners[producerID]; ok {
 		producer.ConnectionClosed()
+		delete(c.listeners, producerID)
 	} else {
 		c.log.WithField("producerID", producerID).Warn("Producer with ID not found while closing producer")
 	}

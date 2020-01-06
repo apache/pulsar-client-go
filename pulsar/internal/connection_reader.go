@@ -50,7 +50,11 @@ func (r *connectionReader) readFromConnection() {
 		}
 
 		// Process
-		r.cnx.log.Debug("Got command! ", cmd, " with payload ", headersAndPayload)
+		var payloadLen uint32 = 0
+		if headersAndPayload != nil {
+			payloadLen = headersAndPayload.ReadableBytes()
+		}
+		r.cnx.log.Debug("Got command! ", cmd, " with payload size: ", payloadLen)
 		r.cnx.receivedCommand(cmd, headersAndPayload)
 	}
 }
@@ -77,7 +81,8 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 
 	// Next, we read the rest of the frame
 	if r.buffer.ReadableBytes() < frameSize {
-		if !r.readAtLeast(frameSize) {
+		remainingBytes := frameSize - r.buffer.ReadableBytes()
+		if !r.readAtLeast(remainingBytes) {
 			return nil, nil, errors.New("Short read when reading frame")
 		}
 	}
