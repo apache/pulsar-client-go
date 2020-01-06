@@ -156,15 +156,19 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 				nackRedeliveryDelay = options.NackRedeliveryDelay
 			}
 			opts := &partitionConsumerOpts{
-				topic:               pt,
-				consumerName:        consumerName,
-				subscription:        options.SubscriptionName,
-				subscriptionType:    options.Type,
-				subscriptionInitPos: options.SubscriptionInitialPosition,
-				partitionIdx:        idx,
-				receiverQueueSize:   receiverQueueSize,
-				nackRedeliveryDelay: nackRedeliveryDelay,
-				metadata:            metadata,
+				topic:                      pt,
+				consumerName:               consumerName,
+				subscription:               options.SubscriptionName,
+				subscriptionType:           options.Type,
+				subscriptionInitPos:        options.SubscriptionInitialPosition,
+				partitionIdx:               idx,
+				receiverQueueSize:          receiverQueueSize,
+				nackRedeliveryDelay:        nackRedeliveryDelay,
+				metadata:                   metadata,
+				replicateSubscriptionState: options.ReplicateSubscriptionState,
+				startMessageID:             nil,
+				subscriptionMode:           durable,
+				readCompacted:              options.ReadCompacted,
 			}
 			cons, err := newPartitionConsumer(consumer, client, opts, messageCh)
 			ch <- ConsumerError{

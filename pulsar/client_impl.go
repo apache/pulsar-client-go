@@ -118,8 +118,12 @@ func (c *client) Subscribe(options ConsumerOptions) (Consumer, error) {
 }
 
 func (c *client) CreateReader(options ReaderOptions) (Reader, error) {
-	// TODO: Implement reader
-	return nil, nil
+	reader, err := newReader(c, options)
+	if err != nil {
+		return nil, err
+	}
+	c.handlers.Add(reader)
+	return reader, nil
 }
 
 func (c *client) TopicPartitions(topic string) ([]string, error) {

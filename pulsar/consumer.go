@@ -121,6 +121,9 @@ type ConsumerOptions struct {
 	//  failure or exclusive subscriptions). Attempting to enable it on subscriptions to a non-persistent topics or on a
 	//  shared subscription, will lead to the subscription call throwing a PulsarClientException.
 	ReadCompacted bool
+
+	// Mark the subscription as replicated to keep it in sync across clusters
+	ReplicateSubscriptionState bool
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
