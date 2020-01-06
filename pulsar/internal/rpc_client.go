@@ -26,6 +26,8 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 	"github.com/golang/protobuf/proto"
+
+	log "github.com/sirupsen/logrus"
 )
 
 type RPCResult struct {
@@ -59,6 +61,8 @@ type rpcClient struct {
 	requestIDGenerator  uint64
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
+
+	log *log.Entry
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.Duration) RPCClient {
@@ -66,6 +70,7 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
+		log:            log.WithField("serviceURL", serviceURL),
 	}
 }
 
@@ -76,8 +81,7 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	// TODO: Add retry logic in case of connection issues
-	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
+	cnx, err := c.getConn(logicalAddr, physicalAddr)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +92,7 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	}
 	ch := make(chan Res)
 
-	// TODO: Handle errors with disconnections
+	// TODO: in here, the error of callback always nil
 	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
 		ch <- Res{&RPCResult{
 			Cnx:      cnx,
@@ -103,6 +107,26 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	case <-time.After(c.requestTimeout):
 		return nil, errors.New("request timed out")
 	}
+}
+
+func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
+	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
+	backoff := new(Backoff)
+	var retryTime time.Duration
+	if err != nil {
+		for retryTime < c.requestTimeout {
+			retryTime = backoff.Next()
+			c.log.Debugf("Reconnecting to broker in {%v}", retryTime)
+			time.Sleep(retryTime)
+			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr)
+			if err == nil {
+				c.log.Debugf("retry connection success")
+				return cnx, nil
+			}
+		}
+		return nil, err
+	}
+	return cnx, nil
 }
 
 func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
