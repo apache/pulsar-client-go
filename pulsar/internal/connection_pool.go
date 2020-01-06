@@ -68,11 +68,13 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	}
 
 	// Try to create a new connection
-	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host,
-		newConnection(logicalAddr, physicalAddr, p.tlsOptions, p.connectionTimeout, p.auth))
+	newConnection := newConnection(logicalAddr, physicalAddr, p.tlsOptions, p.connectionTimeout, p.auth)
+	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host, newConnection)
 	cnx := newCnx.(*connection)
 	if !wasCached {
 		cnx.start()
+	} else {
+		newConnection.Close()
 	}
 
 	if err := cnx.waitUntilReady(); err != nil {
