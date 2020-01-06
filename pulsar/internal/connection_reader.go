@@ -50,7 +50,7 @@ func (r *connectionReader) readFromConnection() {
 		}
 
 		// Process
-		var payloadLen uint32 = 0
+		var payloadLen uint32
 		if headersAndPayload != nil {
 			payloadLen = headersAndPayload.ReadableBytes()
 		}

@@ -80,7 +80,7 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 }
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	cnx, err := c.getConn(logicalAddr, physicalAddr)
 	if err != nil {
 		return nil, err
