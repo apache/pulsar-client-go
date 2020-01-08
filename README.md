@@ -64,7 +64,7 @@ producer, err := client.CreateProducer(pulsar.ProducerOptions{
 	Topic: "my-topic",
 })
 
-err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+_, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 	Payload: []byte("hello"),
 })
 
