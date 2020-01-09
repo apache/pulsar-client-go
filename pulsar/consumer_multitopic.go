@@ -160,3 +160,14 @@ func (c *multiTopicConsumer) Close() {
 		close(c.closeCh)
 	})
 }
+
+func (c *multiTopicConsumer) Seek(msgID MessageID) error {
+	var errs error
+	for topic, consumer := range c.consumers {
+		if err := consumer.Seek(msgID); err != nil {
+			msg := fmt.Sprintf("unable to apply seek, topic=%s msg=%s", topic, msgID.Serialize())
+			errs = pkgerrors.Wrap(err, msg)
+		}
+	}
+	return errs
+}

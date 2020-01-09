@@ -146,8 +146,9 @@ func TestBatchMessageReceive(t *testing.T) {
 		SubscriptionName: subName,
 	})
 	assert.Nil(t, err)
-	count := 0
+	defer consumer.Close()
 
+	count := 0
 	for i := 0; i < numOfMessages; i++ {
 		messageContent := prefix + fmt.Sprintf("%d", i)
 		msg := &ProducerMessage{
@@ -531,6 +532,7 @@ func TestConsumerFlow(t *testing.T) {
 		ReceiverQueueSize: 4,
 	})
 	assert.Nil(t, err)
+	defer consumer.Close()
 
 	for msgNum := 0; msgNum < 100; msgNum++ {
 		if _, err := producer.Send(ctx, &ProducerMessage{
@@ -637,6 +639,7 @@ func TestConsumerNack(t *testing.T) {
 		NackRedeliveryDelay: 1 * time.Second,
 	})
 	assert.Nil(t, err)
+	defer consumer.Close()
 
 	const N = 100
 
@@ -697,6 +700,7 @@ func TestConsumerCompression(t *testing.T) {
 		SubscriptionName: "sub-1",
 	})
 	assert.Nil(t, err)
+	defer consumer.Close()
 
 	const N = 100
 
@@ -740,6 +744,7 @@ func TestConsumerCompressionWithBatches(t *testing.T) {
 		SubscriptionName: "sub-1",
 	})
 	assert.Nil(t, err)
+	defer consumer.Close()
 
 	const N = 100
 
@@ -757,6 +762,58 @@ func TestConsumerCompressionWithBatches(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 		consumer.Ack(msg)
 	}
+}
+
+func TestConsumerSeek(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	const N = 10
+	var seekID MessageID
+	for i := 0; i < 10; i++ {
+		id, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+
+		if i == 4 {
+			seekID = id
+		}
+	}
+
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+
+	err = consumer.Seek(seekID)
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, "hello-4", string(msg.Payload()))
 }
 
 func TestConsumerMetadata(t *testing.T) {

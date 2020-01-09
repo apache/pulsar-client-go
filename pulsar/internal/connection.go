@@ -417,6 +417,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
+
 	case pb.BaseCommand_CLOSE_CONSUMER:
 		c.handleCloseConsumer(cmd.GetCloseConsumer())
 
