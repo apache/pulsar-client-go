@@ -22,7 +22,7 @@ jobs:
           ./bin/golangci-lint --version
 
       - name: Build
-        run: go build .
+        run: go build ./pulsar
 
       - name: CheckStyle
         run: |
