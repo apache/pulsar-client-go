@@ -28,7 +28,7 @@ func TestClientHandlers(t *testing.T) {
 	assert.NotNil(t, h.l)
 	assert.Equal(t, h.handlers, map[Closable]bool{})
 
-	closable := &testClosable{false}
+	closable := &testClosable{h: &h, closed:false}
 	h.Add(closable)
 	assert.True(t, h.Val(closable))
 
@@ -37,10 +37,40 @@ func TestClientHandlers(t *testing.T) {
 	assert.True(t, closable.closed)
 }
 
+func TestClientHandlers_Del(t *testing.T) {
+	h := NewClientHandlers()
+	assert.NotNil(t, h.l)
+	assert.Equal(t, h.handlers, map[Closable]bool{})
+
+	closable1 := &testClosable{h: &h, closed:false}
+	h.Add(closable1)
+
+	closable2 := &testClosable{h: &h, closed:false}
+	h.Add(closable2)
+
+	assert.Len(t, h.handlers, 2)
+	assert.True(t, h.Val(closable1))
+	assert.True(t, h.Val(closable2))
+
+	closable1.Close()
+	assert.False(t, h.Val(closable1))
+	assert.True(t, h.Val(closable2))
+	assert.Len(t, h.handlers, 1)
+
+	h.Close()
+	t.Log("closable1 is: closed ", closable1.closed)
+	t.Log("closable2 is: closed ", closable2.closed)
+	assert.True(t, closable1.closed)
+	assert.True(t, closable2.closed)
+	assert.Len(t, h.handlers, 0)
+}
+
 type testClosable struct {
+	h *ClientHandlers
 	closed bool
 }
 
 func (t *testClosable) Close() {
 	t.closed = true
+	t.h.Del(t)
 }
