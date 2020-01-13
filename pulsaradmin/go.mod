@@ -10,6 +10,7 @@ require (
 	github.com/google/go-cmp v0.3.1 // indirect
 	github.com/kris-nova/logger v0.0.0-20181127235838-fd0d87064b06
 	github.com/kris-nova/lolgopher v0.0.0-20180921204813-313b3abb0d9b // indirect
+	github.com/magiconair/properties v1.8.0
 	github.com/mattn/go-colorable v0.1.2 // indirect
 	github.com/mattn/go-runewidth v0.0.4 // indirect
 	github.com/olekukonko/tablewriter v0.0.1
@@ -19,4 +20,5 @@ require (
 	github.com/stretchr/testify v1.3.0
 	github.com/testcontainers/testcontainers-go v0.0.10
 	gopkg.in/yaml.v2 v2.2.2
+	gotest.tools v0.0.0-20181223230014-1083505acf35
 )
