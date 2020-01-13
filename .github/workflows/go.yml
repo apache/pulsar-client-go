@@ -7,14 +7,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
 
-    - name: Set up Go 1.13
+    - name: Set up Go 1.12
       uses: actions/setup-go@v1
       with:
-        go-version: 1.13
+        go-version: 1.12
       id: go
 
     - name: Check out code into the Go module directory
       uses: actions/checkout@v1
 
     - name: Test
-      run: docker-ci.sh
+      run: |
+        ./docker-ci.sh
