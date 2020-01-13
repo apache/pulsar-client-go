@@ -272,10 +272,8 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 	defer close(seek.doneCh)
 
 	if pc.state == consumerClosing || pc.state == consumerClosed {
-		err := fmt.Errorf("the consumer %s was already closed when seeking the subscription %s of the topic "+
-			"%s to the message %s", pc.name, pc.options.subscription, pc.topic, seek.msgID.Serialize())
-		pc.log.WithError(err).Error("Consumer was already closed")
-		seek.err = err
+		pc.log.Error("Consumer was already closed")
+		return
 	}
 
 	id := &pb.MessageIdData{}
@@ -291,6 +289,7 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 		RequestId:  proto.Uint64(requestID),
 		MessageId:  id,
 	}
+
 	_, err = pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_SEEK, cmdSeek)
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to reset to message id")
