@@ -469,7 +469,7 @@ func (pc *partitionConsumer) dispatcher() {
 		case clearQueueCb := <-pc.clearQueueCh:
 			// drain the message queue on any new connection by sending a
 			// special nil message to the channel so we know when to stop dropping messages
-			var nextMessageInQueue *messageID = nil
+			var nextMessageInQueue *messageID
 			go func() {
 				pc.queueCh <- nil
 			}()
