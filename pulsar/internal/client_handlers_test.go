@@ -28,7 +28,7 @@ func TestClientHandlers(t *testing.T) {
 	assert.NotNil(t, h.l)
 	assert.Equal(t, h.handlers, map[Closable]bool{})
 
-	closable := &testClosable{h: &h, closed:false}
+	closable := &testClosable{h: &h, closed: false}
 	h.Add(closable)
 	assert.True(t, h.Val(closable))
 
@@ -42,10 +42,10 @@ func TestClientHandlers_Del(t *testing.T) {
 	assert.NotNil(t, h.l)
 	assert.Equal(t, h.handlers, map[Closable]bool{})
 
-	closable1 := &testClosable{h: &h, closed:false}
+	closable1 := &testClosable{h: &h, closed: false}
 	h.Add(closable1)
 
-	closable2 := &testClosable{h: &h, closed:false}
+	closable2 := &testClosable{h: &h, closed: false}
 	h.Add(closable2)
 
 	assert.Len(t, h.handlers, 2)
@@ -66,7 +66,7 @@ func TestClientHandlers_Del(t *testing.T) {
 }
 
 type testClosable struct {
-	h *ClientHandlers
+	h      *ClientHandlers
 	closed bool
 }
 
