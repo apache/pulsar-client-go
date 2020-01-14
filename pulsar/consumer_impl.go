@@ -318,8 +318,8 @@ func (c *consumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		c.client.handlers.Del(c)
 	})
-	c.client.handlers.Del(c)
 }
 
 var r = &random{
