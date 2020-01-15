@@ -84,7 +84,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("Got topic{%s} lookup response: %s", topic, res)
+	log.Debugf("Got topic{%s} lookup response: %+v", topic, res)
 
 	for i := 0; i < lookupResultMaxRedirect; i++ {
 		lr := res.Response.LookupTopicResponse
