@@ -84,7 +84,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("Got topic{%s} lookup response: %s",topic, res)
+	log.Debugf("Got topic{%s} lookup response: %s", topic, res)
 
 	for i := 0; i < lookupResultMaxRedirect; i++ {
 		lr := res.Response.LookupTopicResponse
@@ -131,7 +131,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			if lr.Error != nil {
 				errorMsg = lr.Error.String()
 			}
-			log.Warn("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
+			log.Warnf("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
 			return nil, fmt.Errorf("failed to lookup topic: %s", errorMsg)
 		}
 	}
