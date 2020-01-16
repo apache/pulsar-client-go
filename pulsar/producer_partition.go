@@ -254,7 +254,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if msg.Key != "" {
-		smm.PartitionKey = &msg.Key
+		smm.PartitionKey = proto.String(msg.Key)
 	}
 
 	if msg.Properties != nil {
