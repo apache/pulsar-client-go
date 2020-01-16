@@ -303,6 +303,10 @@ func (c *consumer) Close() {
 }
 
 func (c *consumer) Seek(msgID MessageID) error {
+	if len(c.consumers) > 1 {
+		return errors.New("for partition topic, seek command should perform on the individual partitions")
+	}
+
 	mid, ok := c.messageID(msgID)
 	if !ok {
 		return nil
