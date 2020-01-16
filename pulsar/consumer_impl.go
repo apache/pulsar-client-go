@@ -41,6 +41,7 @@ type acker interface {
 }
 
 type consumer struct {
+	client    *client
 	options   ConsumerOptions
 	consumers []*partitionConsumer
 
@@ -114,6 +115,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 func internalTopicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage) (*consumer, error) {
 	consumer := &consumer{
+		client:    client,
 		options:   options,
 		messageCh: messageCh,
 		closeCh:   make(chan struct{}),
@@ -316,6 +318,7 @@ func (c *consumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		c.client.handlers.Del(c)
 	})
 }
 

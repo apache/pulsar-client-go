@@ -36,6 +36,13 @@ func (h *ClientHandlers) Add(c Closable) {
 	defer h.l.Unlock()
 	h.handlers[c] = true
 }
+
+func (h *ClientHandlers) Del(c Closable) {
+	h.l.Lock()
+	defer h.l.Unlock()
+	delete(h.handlers, c)
+}
+
 func (h *ClientHandlers) Val(c Closable) bool {
 	h.l.RLock()
 	defer h.l.RUnlock()
@@ -44,9 +51,13 @@ func (h *ClientHandlers) Val(c Closable) bool {
 
 func (h *ClientHandlers) Close() {
 	h.l.Lock()
-	defer h.l.Unlock()
-
+	handlers := make([]Closable, 0, len(h.handlers))
 	for handler := range h.handlers {
+		handlers = append(handlers, handler)
+	}
+	h.l.Unlock()
+
+	for _, handler := range handlers {
 		handler.Close()
 	}
 }
