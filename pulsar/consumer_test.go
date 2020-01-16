@@ -280,7 +280,7 @@ func TestConsumerKeyShared(t *testing.T) {
 	defer producer.Close()
 
 	ctx := context.Background()
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 100; i++ {
 		_, err := producer.Send(ctx, &ProducerMessage{
 			Key:     fmt.Sprintf("key-shared-%d", i%3),
 			Payload: []byte(fmt.Sprintf("value-%d", i)),
@@ -290,7 +290,7 @@ func TestConsumerKeyShared(t *testing.T) {
 
 	receivedConsumer1 := 0
 	receivedConsumer2 := 0
-	for (receivedConsumer1 + receivedConsumer2) < 10 {
+	for (receivedConsumer1 + receivedConsumer2) < 100 {
 		select {
 		case cm, ok := <-consumer1.Chan():
 			if !ok {
@@ -307,9 +307,12 @@ func TestConsumerKeyShared(t *testing.T) {
 		}
 	}
 
+	assert.NotEqual(t, 0, receivedConsumer1)
+	assert.NotEqual(t, 0, receivedConsumer2)
+
 	fmt.Printf("TestConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
 		receivedConsumer1, receivedConsumer2)
-	assert.Equal(t, 10, receivedConsumer1+receivedConsumer2)
+	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
 }
 
 func TestPartitionTopicsConsumerPubSub(t *testing.T) {
