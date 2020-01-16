@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -211,17 +212,7 @@ func (c *regexConsumer) Close() {
 }
 
 func (c *regexConsumer) Seek(msgID MessageID) error {
-	c.consumersLock.Lock()
-	defer c.consumersLock.Unlock()
-
-	var errs error
-	for topic, consumer := range c.consumers {
-		if err := consumer.Seek(msgID); err != nil {
-			msg := fmt.Sprintf("unable to apply seek, topic=%s msg=%s", topic, msgID.Serialize())
-			errs = pkgerrors.Wrap(err, msg)
-		}
-	}
-	return errs
+	return errors.New("seek command not allowed for regex consumer")
 }
 
 func (c *regexConsumer) closed() bool {
