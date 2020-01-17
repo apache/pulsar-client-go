@@ -557,7 +557,7 @@ func (c *connection) handlePing() {
 }
 
 func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge) {
-	c.log.Debugf("Received auth challenge from broker: %s", authChallenge.GetChallenge().AuthMethodName)
+	c.log.Debugf("Received auth challenge from broker: %s", authChallenge.GetChallenge().GetAuthMethodName())
 
 	// Get new credentials from the provider
 	authData, err := c.auth.GetData()
@@ -571,8 +571,8 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
 		ClientVersion:   proto.String(ClientVersionString),
 		Response: &pb.AuthData{
-			AuthMethodName:       proto.String(c.auth.Name()),
-			AuthData:             authData,
+			AuthMethodName: proto.String(c.auth.Name()),
+			AuthData:       authData,
 		},
 	}
 
