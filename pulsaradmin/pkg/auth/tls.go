@@ -19,37 +19,49 @@ package auth
 
 import (
 	"crypto/tls"
-	"crypto/x509"
-	"io/ioutil"
+	"net/http"
+	"strings"
+)
 
-	"github.com/pkg/errors"
+const (
+	TLSPluginName = "org.apache.pulsar.client.impl.auth.AuthenticationTls"
 )
 
 type TLSAuthProvider struct {
-	certificatePath         string
-	privateKeyPath          string
-	allowInsecureConnection bool
+	certificatePath string
+	privateKeyPath  string
+	T               http.RoundTripper
 }
 
 // NewAuthenticationTLS initialize the authentication provider
 func NewAuthenticationTLS(certificatePath string, privateKeyPath string,
-	allowInsecureConnection bool) *TLSAuthProvider {
-
-	return &TLSAuthProvider{
-		certificatePath:         certificatePath,
-		privateKeyPath:          privateKeyPath,
-		allowInsecureConnection: allowInsecureConnection,
+	transport http.RoundTripper) (*TLSAuthProvider, error) {
+	provider := &TLSAuthProvider{
+		certificatePath: certificatePath,
+		privateKeyPath:  privateKeyPath,
+		T:               transport,
 	}
+	if err := provider.configTLS(); err != nil {
+		return nil, err
+	}
+	return provider, nil
 }
 
-func (p *TLSAuthProvider) Init() error {
-	// Try to read certificates immediately to provide better error at startup
-	_, err := p.GetTLSCertificate()
-	return err
-}
-
-func (p *TLSAuthProvider) Name() string {
-	return "tls"
+func NewAuthenticationTLSFromAuthParams(encodedAuthParams string,
+	transport http.RoundTripper) (*TLSAuthProvider, error) {
+	var certificatePath string
+	var privateKeyPath string
+	parts := strings.Split(encodedAuthParams, ",")
+	for _, part := range parts {
+		kv := strings.Split(part, ":")
+		switch kv[0] {
+		case "tlsCertFile":
+			certificatePath = kv[1]
+		case "tlsKeyFile":
+			privateKeyPath = kv[1]
+		}
+	}
+	return NewAuthenticationTLS(certificatePath, privateKeyPath, transport)
 }
 
 func (p *TLSAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
@@ -57,39 +69,20 @@ func (p *TLSAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
 	return &cert, err
 }
 
-func (p *TLSAuthProvider) GetTLSConfig(certFile string, allowInsecureConnection bool) (*tls.Config, error) {
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: allowInsecureConnection,
-	}
+func (p *TLSAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	return p.T.RoundTrip(req)
+}
 
-	if certFile != "" {
-		caCerts, err := ioutil.ReadFile(certFile)
-		if err != nil {
-			return nil, err
-		}
+func (p *TLSAuthProvider) Transport() http.RoundTripper {
+	return p.T
+}
 
-		tlsConfig.RootCAs = x509.NewCertPool()
-		if !tlsConfig.RootCAs.AppendCertsFromPEM(caCerts) {
-			return nil, errors.New("failed to parse root CAs certificates")
-		}
-	}
-
+func (p *TLSAuthProvider) configTLS() error {
 	cert, err := p.GetTLSCertificate()
 	if err != nil {
-		return nil, err
+		return err
 	}
-
-	if cert != nil {
-		tlsConfig.Certificates = []tls.Certificate{*cert}
-	}
-
-	return tlsConfig, nil
-}
-
-func (p *TLSAuthProvider) HasDataForHTTP() bool {
-	return false
-}
-
-func (p *TLSAuthProvider) GetHTTPHeaders() (map[string]string, error) {
-	return nil, errors.New("Unsupported operation")
+	transport := p.T.(*http.Transport)
+	transport.TLSClientConfig.Certificates = []tls.Certificate{*cert}
+	return nil
 }

@@ -19,38 +19,10 @@ package pulsar
 
 import (
 	"time"
-
-	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common"
 )
 
 const (
 	DefaultWebServiceURL       = "http://localhost:8080"
 	DefaultHTTPTimeOutDuration = 5 * time.Minute
+	ReleaseVersion             = "None"
 )
-
-var ReleaseVersion = "None"
-
-// Config is used to configure the admin client
-type Config struct {
-	WebServiceURL string
-	HTTPTimeout   time.Duration
-	// TODO: api version should apply to the method
-	APIVersion common.APIVersion
-
-	//Auth       *auth.TLSAuthProvider
-	TLSCertFile                string
-	TLSKeyFile                 string
-	TLSAllowInsecureConnection bool
-
-	// Token and TokenFile is used to config the pulsarctl using token to authentication
-	Token     string
-	TokenFile string
-}
-
-// DefaultConfig returns a default configuration for the pulsar admin client
-func DefaultConfig() *Config {
-	config := &Config{
-		WebServiceURL: DefaultWebServiceURL,
-	}
-	return config
-}

@@ -18,70 +18,63 @@
 package auth
 
 import (
+	"fmt"
 	"io/ioutil"
+	"net/http"
 	"strings"
 
 	"github.com/pkg/errors"
 )
 
+const (
+	tokenPrefix     = "token:"
+	filePrefix      = "file:"
+	TokenPluginName = "org.apache.pulsar.client.impl.auth.AuthenticationToken"
+)
+
 type TokenAuthProvider struct {
-	tokenSupplier func() (string, error)
+	T     http.RoundTripper
+	token string
 }
 
 // NewAuthenticationToken return a interface of Provider with a string token.
-func NewAuthenticationToken(token string) *TokenAuthProvider {
-	return &TokenAuthProvider{
-		tokenSupplier: func() (string, error) {
-			if token == "" {
-				return "", errors.New("empty token credentials")
-			}
-			return token, nil
-		},
+func NewAuthenticationToken(token string, transport http.RoundTripper) (*TokenAuthProvider, error) {
+	if len(token) == 0 {
+		return nil, errors.New("No token provided")
 	}
+	return &TokenAuthProvider{token: token, T: transport}, nil
 }
 
 // NewAuthenticationTokenFromFile return a interface of a Provider with a string token file path.
-func NewAuthenticationTokenFromFile(tokenFilePath string) *TokenAuthProvider {
-	return &TokenAuthProvider{
-		tokenSupplier: func() (string, error) {
-			data, err := ioutil.ReadFile(tokenFilePath)
-			if err != nil {
-				return "", err
-			}
-
-			token := strings.Trim(string(data), " \n")
-			if token == "" {
-				return "", errors.New("empty token credentials")
-			}
-			return token, nil
-		},
-	}
-}
-
-func (p *TokenAuthProvider) Init() error {
-	// Try to read certificates immediately to provide better error at startup
-	_, err := p.GetData()
-	return err
-}
-
-func (p *TokenAuthProvider) GetData() ([]byte, error) {
-	t, err := p.tokenSupplier()
+func NewAuthenticationTokenFromFile(tokenFilePath string, transport http.RoundTripper) (*TokenAuthProvider, error) {
+	data, err := ioutil.ReadFile(tokenFilePath)
 	if err != nil {
 		return nil, err
 	}
-	return []byte(t), nil
+	token := strings.Trim(string(data), " \n")
+	return NewAuthenticationToken(token, transport)
 }
 
-func (p *TokenAuthProvider) HasDataForHTTP() bool {
-	return true
-}
-
-func (p *TokenAuthProvider) GetHTTPHeaders() (map[string]string, error) {
-	data, err := p.GetData()
-	if err != nil {
-		return nil, err
+func NewAuthenticationTokenFromAuthParams(encodedAuthParam string,
+	transport http.RoundTripper) (*TokenAuthProvider, error) {
+	var tokenAuthProvider *TokenAuthProvider
+	var err error
+	switch {
+	case strings.HasPrefix(encodedAuthParam, tokenPrefix):
+		tokenAuthProvider, err = NewAuthenticationToken(strings.TrimPrefix(encodedAuthParam, tokenPrefix), transport)
+	case strings.HasPrefix(encodedAuthParam, filePrefix):
+		tokenAuthProvider, err = NewAuthenticationTokenFromFile(strings.TrimPrefix(encodedAuthParam, filePrefix), transport)
+	default:
+		tokenAuthProvider, err = NewAuthenticationToken(encodedAuthParam, transport)
 	}
-	headers := make(map[string]string)
-	headers["Authorization"] = "Bearer " + string(data)
-	return headers, nil
+	return tokenAuthProvider, err
+}
+
+func (p *TokenAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", p.token))
+	return p.T.RoundTrip(req)
+}
+
+func (p *TokenAuthProvider) Transport() http.RoundTripper {
+	return p.T
 }
