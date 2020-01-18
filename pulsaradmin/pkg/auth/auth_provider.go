@@ -17,11 +17,68 @@
 
 package auth
 
+import (
+	"crypto/tls"
+	"crypto/x509"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"os"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common"
+)
+
 // Provider provide a general method to add auth message
 type Provider interface {
-	// HasDataForHTTP is used to check if data for HTTP are available
-	HasDataForHTTP() bool
+	RoundTrip(req *http.Request) (*http.Response, error)
+	Transport() http.RoundTripper
+}
 
-	// GetHTTPHeaders is used to get all auth headers
-	GetHTTPHeaders() (map[string]string, error)
+type Transport struct {
+	T http.RoundTripper
+}
+
+func GetAuthProvider(config *common.Config) (*Provider, error) {
+	var provider Provider
+	defaultTransport := getDefaultTransport(config)
+	var err error
+	switch config.AuthPlugin {
+	case TLSPluginName:
+		provider, err = NewAuthenticationTLSFromAuthParams(config.AuthParams, defaultTransport)
+	case TokenPluginName:
+		provider, err = NewAuthenticationTokenFromAuthParams(config.AuthParams, defaultTransport)
+	default:
+		switch {
+		case len(config.TLSCertFile) > 0 && len(config.TLSKeyFile) > 0:
+			provider, err = NewAuthenticationTLS(config.TLSCertFile, config.TLSKeyFile, defaultTransport)
+		case len(config.Token) > 0:
+			provider, err = NewAuthenticationToken(config.Token, defaultTransport)
+		case len(config.TokenFile) > 0:
+			provider, err = NewAuthenticationTokenFromFile(config.TokenFile, defaultTransport)
+		}
+	}
+	return &provider, err
+}
+
+func getDefaultTransport(config *common.Config) http.RoundTripper {
+	transport := http.DefaultTransport.(*http.Transport)
+	if !config.TLSAllowInsecureConnection && len(config.TLSTrustCertsFilePath) == 0 {
+		return transport
+	}
+
+	tlsConfig := &tls.Config{
+		InsecureSkipVerify: config.TLSAllowInsecureConnection,
+	}
+	if len(config.TLSTrustCertsFilePath) > 0 {
+		rootCA, err := ioutil.ReadFile(config.TLSTrustCertsFilePath)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "error loading certificate authority:", err)
+			os.Exit(1)
+		}
+		tlsConfig.RootCAs = x509.NewCertPool()
+		tlsConfig.RootCAs.AppendCertsFromPEM(rootCA)
+	}
+	transport.MaxIdleConnsPerHost = 10
+	transport.TLSClientConfig = tlsConfig
+	return transport
 }

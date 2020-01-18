@@ -25,16 +25,13 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-
-	"github.com/streamnative/pulsar-admin-go/pkg/auth"
 )
 
 // Client is a base client that is used to make http request to the ServiceURL
 type Client struct {
-	ServiceURL   string
-	HTTPClient   *http.Client
-	VersionInfo  string
-	AuthProvider auth.Provider
+	ServiceURL  string
+	HTTPClient  *http.Client
+	VersionInfo string
 }
 
 func (c *Client) newRequest(method, path string) (*request, error) {
@@ -71,19 +68,6 @@ func (c *Client) doRequest(r *request) (*http.Response, error) {
 
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", c.useragent())
-
-	if c.AuthProvider != nil {
-		if c.AuthProvider.HasDataForHTTP() {
-			headers, err := c.AuthProvider.GetHTTPHeaders()
-			if err != nil {
-				return nil, err
-			}
-			for k, v := range headers {
-				req.Header.Set(k, v)
-			}
-		}
-	}
-
 	hc := c.HTTPClient
 	if hc == nil {
 		hc = http.DefaultClient
