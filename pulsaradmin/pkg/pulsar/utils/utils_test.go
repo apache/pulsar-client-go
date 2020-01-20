@@ -18,21 +18,44 @@
 package utils
 
 import (
-	"fmt"
-	"reflect"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-func MakeHTTPPath(apiVersion string, componentPath string) string {
-	return fmt.Sprintf("/admin/%s%s", apiVersion, componentPath)
+type People interface {
+	MakeSound() string
 }
 
-func IsNilFixed(i interface{}) bool {
-	if i == nil {
-		return true
-	}
-	switch reflect.TypeOf(i).Kind() {
-	case reflect.Ptr, reflect.Map, reflect.Array, reflect.Chan, reflect.Slice:
-		return reflect.ValueOf(i).IsNil()
-	}
-	return false
+type Student struct{}
+
+func (s *Student) MakeSound() string {
+	return "Student"
+}
+
+type Teacher struct{}
+
+func (t Teacher) MakeSound() string {
+	return "Teacher"
+}
+
+//nolint
+func TestIsNilFixed(t *testing.T) {
+	var stu *Student = nil
+	var people People
+	people = stu
+
+	var teacher Teacher
+	people = teacher
+
+	assert.False(t, IsNilFixed(people))
+
+	var m map[string]string
+	assert.True(t, IsNilFixed(m))
+
+	var s []string
+	assert.True(t, IsNilFixed(s))
+
+	var ch chan string
+	assert.True(t, IsNilFixed(ch))
 }
