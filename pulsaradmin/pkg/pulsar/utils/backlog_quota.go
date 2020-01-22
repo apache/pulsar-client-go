@@ -17,6 +17,8 @@
 
 package utils
 
+import "github.com/pkg/errors"
+
 type BacklogQuota struct {
 	Limit  int64           `json:"limit"`
 	Policy RetentionPolicy `json:"policy"`
@@ -40,3 +42,18 @@ const (
 	ProducerException       RetentionPolicy = "producer_exception"
 	ConsumerBacklogEviction RetentionPolicy = "consumer_backlog_eviction"
 )
+
+func ParseRetentionPolicy(str string) (RetentionPolicy, error) {
+	switch str {
+	case ProducerException.String():
+		return ProducerException, nil
+	case ConsumerBacklogEviction.String():
+		return ConsumerBacklogEviction, nil
+	default:
+		return "", errors.Errorf("Invalid retention policy %s", str)
+	}
+}
+
+func (s RetentionPolicy) String() string {
+	return string(s)
+}
