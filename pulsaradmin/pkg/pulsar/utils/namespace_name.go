@@ -65,12 +65,12 @@ func validateNamespaceName(tenant, namespace string) error {
 		return errors.Errorf("Invalid tenant or namespace. [%s/%s]", tenant, namespace)
 	}
 
-	ok := checkName(tenant)
+	ok := CheckName(tenant)
 	if !ok {
 		return errors.Errorf("Tenant name include unsupported special chars. tenant : [%s]", tenant)
 	}
 
-	ok = checkName(namespace)
+	ok = CheckName(namespace)
 	if !ok {
 		return errors.Errorf("Namespace name include unsupported special chars. namespace : [%s]", namespace)
 	}
@@ -83,7 +83,7 @@ func validateNamespaceName(tenant, namespace string) error {
 // and % is allowed as part of valid URL encoding
 const PATTEN = "^[-=:.\\w]*$"
 
-func checkName(name string) bool {
+func CheckName(name string) bool {
 	patten, err := regexp.Compile(PATTEN)
 	if err != nil {
 		return false
