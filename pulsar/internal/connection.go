@@ -36,6 +36,14 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 )
 
+const (
+	// TODO: Find a better way to embed the version in the library code
+	PulsarVersion       = "0.1"
+	ClientVersionString = "Pulsar Go " + PulsarVersion
+
+	PulsarProtocolVersion = int32(pb.ProtocolVersion_v13)
+)
+
 type TLSOptions struct {
 	TrustCertsFilePath      string
 	AllowInsecureConnection bool
@@ -237,8 +245,6 @@ func (c *connection) connect() bool {
 
 func (c *connection) doHandshake() bool {
 	// Send 'Connect' command to initiate handshake
-	version := int32(pb.ProtocolVersion_v13)
-
 	authData, err := c.auth.GetData()
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to load auth credentials")
@@ -249,10 +255,13 @@ func (c *connection) doHandshake() bool {
 	// active yet, so we need to timeout write and read requests
 	c.cnx.SetDeadline(time.Now().Add(keepAliveInterval))
 	cmdConnect := &pb.CommandConnect{
-		ProtocolVersion: &version,
-		ClientVersion:   proto.String("Pulsar Go 0.1"),
+		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
+		ClientVersion:   proto.String(ClientVersionString),
 		AuthMethodName:  proto.String(c.auth.Name()),
 		AuthData:        authData,
+		FeatureFlags: &pb.FeatureFlags{
+			SupportsAuthRefresh: proto.Bool(true),
+		},
 	}
 
 	if c.logicalAddr.Host != c.physicalAddr.Host {
@@ -420,6 +429,9 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	case pb.BaseCommand_CLOSE_CONSUMER:
 		c.handleCloseConsumer(cmd.GetCloseConsumer())
 
+	case pb.BaseCommand_AUTH_CHALLENGE:
+		c.handleAuthChallenge(cmd.GetAuthChallenge())
+
 	case pb.BaseCommand_SEND_RECEIPT:
 		c.handleSendReceipt(cmd.GetSendReceipt())
 
@@ -542,6 +554,29 @@ func (c *connection) handlePong() {
 func (c *connection) handlePing() {
 	c.log.Debug("Responding to PING request")
 	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
+}
+
+func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge) {
+	c.log.Debugf("Received auth challenge from broker: %s", authChallenge.GetChallenge().GetAuthMethodName())
+
+	// Get new credentials from the provider
+	authData, err := c.auth.GetData()
+	if err != nil {
+		c.log.WithError(err).Warn("Failed to load auth credentials")
+		c.Close()
+		return
+	}
+
+	cmdAuthResponse := &pb.CommandAuthResponse{
+		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
+		ClientVersion:   proto.String(ClientVersionString),
+		Response: &pb.AuthData{
+			AuthMethodName: proto.String(c.auth.Name()),
+			AuthData:       authData,
+		},
+	}
+
+	c.writeCommand(baseCommand(pb.BaseCommand_AUTH_RESPONSE, cmdAuthResponse))
 }
 
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
