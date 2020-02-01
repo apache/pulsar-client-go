@@ -509,6 +509,10 @@ func (c *connection) handleResponseError(serverError *pb.CommandError) {
 
 func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	producerID := response.GetProducerId()
+
+	c.Lock()
+	defer c.Unlock()
+
 	if producer, ok := c.listeners[producerID]; ok {
 		producer.ReceivedSendReceipt(response)
 	} else {
@@ -582,6 +586,10 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
 	c.log.Infof("Broker notification of Closed consumer: %d", closeConsumer.GetConsumerId())
 	consumerID := closeConsumer.GetConsumerId()
+
+	c.Lock()
+	defer c.Unlock()
+
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ConnectionClosed()
 		delete(c.listeners, consumerID)
@@ -594,6 +602,8 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
 
+	c.Lock()
+	defer c.Unlock()
 	if producer, ok := c.listeners[producerID]; ok {
 		producer.ConnectionClosed()
 		delete(c.listeners, producerID)
