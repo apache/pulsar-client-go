@@ -297,6 +297,40 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 	}
 }
 
+func (pc *partitionConsumer) SeekByTime(time time.Time) error {
+	req := &seekByTimeRequest{
+		doneCh:      make(chan struct{}),
+		publishTime: time,
+	}
+	pc.eventsCh <- req
+
+	// wait for the request to complete
+	<-req.doneCh
+	return req.err
+}
+
+func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
+	defer close(seek.doneCh)
+
+	if pc.state == consumerClosing || pc.state == consumerClosed {
+		pc.log.Error("Consumer was already closed")
+		return
+	}
+
+	requestID := pc.client.rpcClient.NewRequestID()
+	cmdSeek := &pb.CommandSeek{
+		ConsumerId:         proto.Uint64(pc.consumerID),
+		RequestId:          proto.Uint64(requestID),
+		MessagePublishTime: proto.Uint64(uint64(seek.publishTime.Unix())),
+	}
+
+	_, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_SEEK, cmdSeek)
+	if err != nil {
+		pc.log.WithError(err).Error("Failed to reset to message publish time")
+		seek.err = err
+	}
+}
+
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	msgID := req.msgID
 
@@ -557,6 +591,12 @@ type seekRequest struct {
 	err    error
 }
 
+type seekByTimeRequest struct {
+	doneCh      chan struct{}
+	publishTime time.Time
+	err         error
+}
+
 func (pc *partitionConsumer) runEventsLoop() {
 	defer func() {
 		pc.log.Debug("exiting events loop")
@@ -577,6 +617,8 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.internalGetLastMessageID(v)
 			case *seekRequest:
 				pc.internalSeek(v)
+			case *seekByTimeRequest:
+				pc.internalSeekByTime(v)
 			case *connectionClosed:
 				pc.reconnectToBroker()
 			case *closeRequest:
