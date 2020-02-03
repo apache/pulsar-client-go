@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -208,6 +209,10 @@ func (c *regexConsumer) Close() {
 		}
 		wg.Wait()
 	})
+}
+
+func (c *regexConsumer) Seek(msgID MessageID) error {
+	return errors.New("seek command not allowed for regex consumer")
 }
 
 func (c *regexConsumer) closed() bool {

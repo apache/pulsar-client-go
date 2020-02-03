@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -159,4 +160,8 @@ func (c *multiTopicConsumer) Close() {
 		wg.Wait()
 		close(c.closeCh)
 	})
+}
+
+func (c *multiTopicConsumer) Seek(msgID MessageID) error {
+	return errors.New("seek command not allowed for multi topic consumer")
 }

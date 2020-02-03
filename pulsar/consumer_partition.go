@@ -256,6 +256,47 @@ func (pc *partitionConsumer) Close() {
 	<-req.doneCh
 }
 
+func (pc *partitionConsumer) Seek(msgID *messageID) error {
+	req := &seekRequest{
+		doneCh: make(chan struct{}),
+		msgID:  msgID,
+	}
+	pc.eventsCh <- req
+
+	// wait for the request to complete
+	<-req.doneCh
+	return req.err
+}
+
+func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
+	defer close(seek.doneCh)
+
+	if pc.state == consumerClosing || pc.state == consumerClosed {
+		pc.log.Error("Consumer was already closed")
+		return
+	}
+
+	id := &pb.MessageIdData{}
+	err := proto.Unmarshal(seek.msgID.Serialize(), id)
+	if err != nil {
+		pc.log.WithError(err).Errorf("deserialize message id error: %s", err.Error())
+		seek.err = err
+	}
+
+	requestID := pc.client.rpcClient.NewRequestID()
+	cmdSeek := &pb.CommandSeek{
+		ConsumerId: proto.Uint64(pc.consumerID),
+		RequestId:  proto.Uint64(requestID),
+		MessageId:  id,
+	}
+
+	_, err = pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_SEEK, cmdSeek)
+	if err != nil {
+		pc.log.WithError(err).Error("Failed to reset to message id")
+		seek.err = err
+	}
+}
+
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	msgID := req.msgID
 
@@ -510,6 +551,12 @@ type getLastMsgIDRequest struct {
 	err    error
 }
 
+type seekRequest struct {
+	doneCh chan struct{}
+	msgID  *messageID
+	err    error
+}
+
 func (pc *partitionConsumer) runEventsLoop() {
 	defer func() {
 		pc.log.Debug("exiting events loop")
@@ -528,6 +575,8 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.internalUnsubscribe(v)
 			case *getLastMsgIDRequest:
 				pc.internalGetLastMessageID(v)
+			case *seekRequest:
+				pc.internalSeek(v)
 			case *connectionClosed:
 				pc.reconnectToBroker()
 			case *closeRequest:
