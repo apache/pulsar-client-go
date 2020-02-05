@@ -143,17 +143,20 @@ func (c *client) TopicPartitions(topic string) ([]string, error) {
 	}
 
 	r := res.Response.PartitionMetadataResponse
-	if r.Error != nil {
-		return nil, newError(ResultLookupError, r.GetError().String())
+	if r != nil {
+		if r.Error != nil {
+			return nil, newError(ResultLookupError, r.GetError().String())
+		}
+
+		if r.GetPartitions() > 0 {
+			partitions := make([]string, r.GetPartitions())
+			for i := 0; i < int(r.GetPartitions()); i++ {
+				partitions[i] = fmt.Sprintf("%s-partition-%d", topic, i)
+			}
+			return partitions, nil
+		}
 	}
 
-	if r.GetPartitions() > 0 {
-		partitions := make([]string, r.GetPartitions())
-		for i := 0; i < int(r.GetPartitions()); i++ {
-			partitions[i] = fmt.Sprintf("%s-partition-%d", topic, i)
-		}
-		return partitions, nil
-	}
 	// Non-partitioned topic
 	return []string{topicName.Name}, nil
 }
