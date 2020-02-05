@@ -18,8 +18,12 @@
 package internal
 
 import (
+	"strconv"
+	"strings"
 	"sync/atomic"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // TimestampMillis return a time unix nano.
@@ -34,5 +38,35 @@ func GetAndAdd(n *uint64, diff uint64) uint64 {
 		if atomic.CompareAndSwapUint64(n, v, v+diff) {
 			return v
 		}
+	}
+}
+
+func ParseRelativeTimeInSeconds(relativeTime string) (time.Duration, error) {
+	if relativeTime == "" {
+		return -1, errors.New("time can not be empty")
+	}
+
+	unitTime := relativeTime[len(relativeTime)-1:]
+	t := relativeTime[:len(relativeTime)-1]
+	timeValue, err := strconv.ParseInt(t, 10, 64)
+	if err != nil {
+		return -1, errors.Errorf("invalid time '%s'", t)
+	}
+
+	switch strings.ToLower(unitTime) {
+	case "s":
+		return time.Duration(timeValue) * time.Second, nil
+	case "m":
+		return time.Duration(timeValue) * time.Minute, nil
+	case "h":
+		return time.Duration(timeValue) * time.Hour, nil
+	case "d":
+		return time.Duration(timeValue) * time.Hour * 24, nil
+	case "w":
+		return time.Duration(timeValue) * time.Hour * 24 * 7, nil
+	case "y":
+		return time.Duration(timeValue) * time.Hour * 24 * 7 * 365, nil
+	default:
+		return -1, errors.Errorf("invalid time unit '%s'", unitTime)
 	}
 }

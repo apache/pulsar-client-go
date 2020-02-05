@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	pkgerrors "github.com/pkg/errors"
 
@@ -163,5 +164,9 @@ func (c *multiTopicConsumer) Close() {
 }
 
 func (c *multiTopicConsumer) Seek(msgID MessageID) error {
+	return errors.New("seek command not allowed for multi topic consumer")
+}
+
+func (c *multiTopicConsumer) SeekByTime(time time.Time) error {
 	return errors.New("seek command not allowed for multi topic consumer")
 }

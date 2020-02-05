@@ -25,6 +25,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -817,6 +818,61 @@ func TestConsumerSeek(t *testing.T) {
 	msg, err := consumer.Receive(ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, "hello-4", string(msg.Payload()))
+}
+
+func TestConsumerSeekByTime(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	const N = 10
+	resetTimeStr := "100s"
+	retentionTimeInSecond, err := internal.ParseRelativeTimeInSeconds(resetTimeStr)
+	assert.Nil(t, err)
+
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+
+	currentTimestamp := time.Now()
+	err = consumer.SeekByTime(currentTimestamp.Add(-retentionTimeInSecond))
+	assert.Nil(t, err)
+
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
 }
 
 func TestConsumerMetadata(t *testing.T) {

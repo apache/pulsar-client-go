@@ -318,6 +318,14 @@ func (c *consumer) Seek(msgID MessageID) error {
 	return c.consumers[mid.partitionIdx].Seek(mid)
 }
 
+func (c *consumer) SeekByTime(time time.Time) error {
+	if len(c.consumers) > 1 {
+		return errors.New("for partition topic, seek command should perform on the individual partitions")
+	}
+
+	return c.consumers[0].SeekByTime(time)
+}
+
 var r = &random{
 	R: rand.New(rand.NewSource(time.Now().UnixNano())),
 }

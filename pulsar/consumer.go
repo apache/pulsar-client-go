@@ -174,4 +174,14 @@ type Consumer interface {
 	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the
 	//       seek() on the individual partitions.
 	Seek(MessageID) error
+
+	// Reset the subscription associated with this consumer to a specific message publish time.
+	//
+	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the seek() on
+	// the individual partitions.
+	//
+	// @param timestamp
+	//            the message publish time where to reposition the subscription
+	//
+	SeekByTime(time time.Time) error
 }

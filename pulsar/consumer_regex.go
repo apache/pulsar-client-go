@@ -215,6 +215,10 @@ func (c *regexConsumer) Seek(msgID MessageID) error {
 	return errors.New("seek command not allowed for regex consumer")
 }
 
+func (c *regexConsumer) SeekByTime(time time.Time) error {
+	return errors.New("seek command not allowed for regex consumer")
+}
+
 func (c *regexConsumer) closed() bool {
 	select {
 	case <-c.closeCh:
