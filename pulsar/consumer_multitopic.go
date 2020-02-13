@@ -132,7 +132,7 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) {
 }
 
 func (c *multiTopicConsumer) Nack(msg Message) {
-	c.AckID(msg.ID())
+	c.NackID(msg.ID())
 }
 
 func (c *multiTopicConsumer) NackID(msgID MessageID) {

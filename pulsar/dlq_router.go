@@ -51,7 +51,7 @@ func newDlqRouter(client Client, policy *DLQPolicy) (*dlqRouter, error) {
 		}
 
 		r.messageCh = make(chan ConsumerMessage)
-		r.closeCh = make(chan interface{})
+		r.closeCh = make(chan interface{}, 1)
 		r.log = log.WithField("dlq-topic", policy.Topic)
 		go r.run()
 	}
@@ -115,8 +115,10 @@ func (r *dlqRouter) run() {
 }
 
 func (r *dlqRouter) close() {
-	if r.closeCh != nil {
-		r.closeCh <- nil
+	// Attempt to write on the close channel, without blocking
+	select {
+		case r.closeCh <- nil:
+		default:
 	}
 }
 

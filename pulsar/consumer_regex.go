@@ -176,7 +176,7 @@ func (c *regexConsumer) AckID(msgID MessageID) {
 }
 
 func (c *regexConsumer) Nack(msg Message) {
-	c.AckID(msg.ID())
+	c.NackID(msg.ID())
 }
 
 func (c *regexConsumer) NackID(msgID MessageID) {
