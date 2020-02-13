@@ -20,9 +20,10 @@ package pulsar
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 type dlqRouter struct {

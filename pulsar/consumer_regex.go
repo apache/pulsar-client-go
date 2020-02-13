@@ -348,7 +348,8 @@ type consumerError struct {
 	consumer Consumer
 }
 
-func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan ConsumerMessage, dlq *dlqRouter) <-chan consumerError {
+func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan ConsumerMessage,
+	dlq *dlqRouter) <-chan consumerError {
 	consumerErrorCh := make(chan consumerError, len(topics))
 	var wg sync.WaitGroup
 	wg.Add(len(topics))
