@@ -48,6 +48,7 @@ type consumer struct {
 	// channel used to deliver message to clients
 	messageCh chan ConsumerMessage
 
+	dlq       *dlqRouter
 	closeOnce sync.Once
 	closeCh   chan struct{}
 	errorCh   chan error
@@ -74,6 +75,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		messageCh = make(chan ConsumerMessage, 10)
 	}
 
+	dlq, err := newDlqRouter(client, options.DLQ)
+	if err != nil {
+		return nil, err
+	}
+
 	// single topic consumer
 	if options.Topic != "" || len(options.Topics) == 1 {
 		topic := options.Topic
@@ -85,7 +91,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		return topicSubscribe(client, options, topic, messageCh)
+		return topicSubscribe(client, options, topic, messageCh, dlq)
 	}
 
 	if len(options.Topics) > 1 {
@@ -93,7 +99,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		return newMultiTopicConsumer(client, options, options.Topics, messageCh)
+		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq)
 	}
 
 	if options.TopicsPattern != "" {
@@ -106,20 +112,21 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newRegexConsumer(client, options, tn, pattern, messageCh)
+		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq)
 	}
 
 	return nil, newError(ResultInvalidTopicName, "topic name is required for consumer")
 }
 
 func internalTopicSubscribe(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage) (*consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter) (*consumer, error) {
 	consumer := &consumer{
 		client:    client,
 		options:   options,
 		messageCh: messageCh,
 		closeCh:   make(chan struct{}),
 		errorCh:   make(chan error),
+		dlq:       dlq,
 		log:       log.WithField("topic", topic),
 	}
 
@@ -172,7 +179,7 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 				subscriptionMode:           durable,
 				readCompacted:              options.ReadCompacted,
 			}
-			cons, err := newPartitionConsumer(consumer, client, opts, messageCh)
+			cons, err := newPartitionConsumer(consumer, client, opts, messageCh, dlq)
 			ch <- ConsumerError{
 				err:       err,
 				partition: idx,
@@ -209,8 +216,8 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 }
 
 func topicSubscribe(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage) (Consumer, error) {
-	return internalTopicSubscribe(client, options, topic, messageCh)
+	messageCh chan ConsumerMessage, dlqRouter *dlqRouter) (Consumer, error) {
+	return internalTopicSubscribe(client, options, topic, messageCh, dlqRouter)
 }
 
 func (c *consumer) Subscription() string {
@@ -302,6 +309,7 @@ func (c *consumer) Close() {
 		wg.Wait()
 		close(c.closeCh)
 		c.client.handlers.Del(c)
+		c.dlq.close()
 	})
 }
 

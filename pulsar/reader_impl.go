@@ -75,7 +75,12 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		log:       log.WithField("topic", options.Topic),
 	}
 
-	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh)
+	// Provide dummy dlq router with not dlq policy
+	dlq, err := newDlqRouter(client, nil)
+	if err != nil {
+		return nil, err
+	}
+	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq)
 
 	if err != nil {
 		close(reader.messageCh)

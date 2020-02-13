@@ -60,6 +60,15 @@ const (
 	SubscriptionPositionEarliest
 )
 
+// Configuration for Dead Letter Queue consumer policy
+type DLQPolicy struct {
+	// Maximum number of times that a message will be delivered before being sent to the dead letter queue.
+	MaxDeliveries uint32
+
+	// Name of the topic where the failing messages will be sent.
+	Topic string
+}
+
 // ConsumerOptions is used to configure and create instances of Consumer
 type ConsumerOptions struct {
 	// Specify the topic this consumer will subscribe on.
@@ -92,6 +101,11 @@ type ConsumerOptions struct {
 	// InitialPosition at which the cursor will be set when subscribe
 	// Default is `Latest`
 	SubscriptionInitialPosition
+
+	// Configuration for Dead Letter Queue consumer policy.
+	// eg. route the message to topic X after N failed attempts at processing it
+	// By default is nil and there's no DLQ
+	DLQ *DLQPolicy
 
 	// Sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption

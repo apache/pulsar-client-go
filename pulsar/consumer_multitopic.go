@@ -36,6 +36,7 @@ type multiTopicConsumer struct {
 
 	consumers map[string]Consumer
 
+	dlq       *dlqRouter
 	closeOnce sync.Once
 	closeCh   chan struct{}
 
@@ -43,17 +44,18 @@ type multiTopicConsumer struct {
 }
 
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
-	messageCh chan ConsumerMessage) (Consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter) (Consumer, error) {
 	mtc := &multiTopicConsumer{
 		options:   options,
 		messageCh: messageCh,
 		consumers: make(map[string]Consumer, len(topics)),
 		closeCh:   make(chan struct{}),
+		dlq:       dlq,
 		log:       &log.Entry{},
 	}
 
 	var errs error
-	for ce := range subscriber(client, topics, options, messageCh) {
+	for ce := range subscriber(client, topics, options, messageCh, dlq) {
 		if ce.err != nil {
 			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
@@ -130,7 +132,7 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) {
 }
 
 func (c *multiTopicConsumer) Nack(msg Message) {
-	c.AckID(msg.ID())
+	c.NackID(msg.ID())
 }
 
 func (c *multiTopicConsumer) NackID(msgID MessageID) {
@@ -160,6 +162,7 @@ func (c *multiTopicConsumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		c.dlq.close()
 	})
 }
 
