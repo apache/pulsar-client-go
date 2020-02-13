@@ -117,8 +117,8 @@ func (r *dlqRouter) run() {
 func (r *dlqRouter) close() {
 	// Attempt to write on the close channel, without blocking
 	select {
-		case r.closeCh <- nil:
-		default:
+	case r.closeCh <- nil:
+	default:
 	}
 }
 
