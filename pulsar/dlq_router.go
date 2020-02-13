@@ -92,12 +92,11 @@ func (r *dlqRouter) run() {
 
 			msg := cm.Message.(*message)
 			msgID := msg.ID()
-			eventTime := msg.EventTime()
 			producer.SendAsync(context.Background(), &ProducerMessage{
 				Payload:             msg.Payload(),
 				Key:                 msg.Key(),
 				Properties:          msg.Properties(),
-				EventTime:           &eventTime,
+				EventTime:           msg.EventTime(),
 				ReplicationClusters: msg.replicationClusters,
 			}, func(MessageID, *ProducerMessage, error) {
 				r.log.WithField("msgID", msgID).Debug("Sent message to DLQ")

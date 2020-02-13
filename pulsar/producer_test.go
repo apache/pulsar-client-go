@@ -244,7 +244,7 @@ func TestEventTime(t *testing.T) {
 	eventTime := timeFromUnixTimestampMillis(uint64(1565161612))
 	ID, err := producer.Send(context.Background(), &ProducerMessage{
 		Payload:   []byte(fmt.Sprintf("test-event-time")),
-		EventTime: &eventTime,
+		EventTime: eventTime,
 	})
 	assert.Nil(t, err)
 	assert.NotNil(t, ID)

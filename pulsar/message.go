@@ -34,7 +34,7 @@ type ProducerMessage struct {
 	Properties map[string]string
 
 	// EventTime set the event time for a given message
-	EventTime *time.Time
+	EventTime time.Time
 
 	// ReplicationClusters override the replication clusters for this message.
 	ReplicationClusters []string
@@ -77,7 +77,7 @@ type Message interface {
 
 	// EventTime get the event time associated with this message. It is typically set by the applications via
 	// `ProducerMessage.EventTime`.
-	// If there isn't any event time associated with this event, it will be nil.
+	// If there isn't any event time associated with this event, it will be 0.
 	EventTime() time.Time
 
 	// Key get the key of the message, if any
