@@ -111,12 +111,13 @@ type partitionConsumer struct {
 	clearQueueCh chan func(id *messageID)
 
 	nackTracker *negativeAcksTracker
+	dlq         *dlqRouter
 
 	log *log.Entry
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
-	messageCh chan ConsumerMessage) (*partitionConsumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter) (*partitionConsumer, error) {
 	pc := &partitionConsumer{
 		state:          consumerInit,
 		parentConsumer: parent,
@@ -134,6 +135,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		messageCh:      messageCh,
 		closeCh:        make(chan struct{}),
 		clearQueueCh:   make(chan func(id *messageID)),
+		dlq:            dlq,
 		log:            log.WithField("topic", options.topic),
 	}
 	pc.log = pc.log.WithField("name", pc.name).WithField("subscription", options.subscription)
@@ -402,23 +404,27 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		var msg *message
 		if smm != nil {
 			msg = &message{
-				publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-				eventTime:   timeFromUnixTimestampMillis(smm.GetEventTime()),
-				key:         smm.GetPartitionKey(),
-				properties:  internal.ConvertToStringMap(smm.GetProperties()),
-				topic:       pc.topic,
-				msgID:       msgID,
-				payLoad:     payload,
+				publishTime:         timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:           timeFromUnixTimestampMillis(smm.GetEventTime()),
+				key:                 smm.GetPartitionKey(),
+				properties:          internal.ConvertToStringMap(smm.GetProperties()),
+				topic:               pc.topic,
+				msgID:               msgID,
+				payLoad:             payload,
+				replicationClusters: msgMeta.GetReplicateTo(),
+				redeliveryCount:     response.GetRedeliveryCount(),
 			}
 		} else {
 			msg = &message{
-				publishTime: timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-				eventTime:   timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-				key:         msgMeta.GetPartitionKey(),
-				properties:  internal.ConvertToStringMap(msgMeta.GetProperties()),
-				topic:       pc.topic,
-				msgID:       msgID,
-				payLoad:     payload,
+				publishTime:         timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:           timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+				key:                 msgMeta.GetPartitionKey(),
+				properties:          internal.ConvertToStringMap(msgMeta.GetProperties()),
+				topic:               pc.topic,
+				msgID:               msgID,
+				payLoad:             payload,
+				replicationClusters: msgMeta.GetReplicateTo(),
+				redeliveryCount:     response.GetRedeliveryCount(),
 			}
 		}
 
@@ -484,7 +490,14 @@ func (pc *partitionConsumer) dispatcher() {
 				Consumer: pc.parentConsumer,
 				Message:  messages[0],
 			}
-			messageCh = pc.messageCh
+
+			if pc.dlq.shouldSendToDlq(&nextMessage) {
+				// pass the message to the DLQ router
+				messageCh = pc.dlq.Chan()
+			} else {
+				// pass the message to application channel
+				messageCh = pc.messageCh
+			}
 		} else {
 			// we are ready for more messages
 			queueCh = pc.queueCh

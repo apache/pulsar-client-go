@@ -39,6 +39,7 @@ const (
 
 type regexConsumer struct {
 	client *client
+	dlq    *dlqRouter
 
 	options ConsumerOptions
 
@@ -61,9 +62,10 @@ type regexConsumer struct {
 }
 
 func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
-	msgCh chan ConsumerMessage) (Consumer, error) {
+	msgCh chan ConsumerMessage, dlq *dlqRouter) (Consumer, error) {
 	rc := &regexConsumer{
 		client:    c,
+		dlq:       dlq,
 		options:   opts,
 		messageCh: msgCh,
 
@@ -85,7 +87,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 	}
 
 	var errs error
-	for ce := range subscriber(c, topics, opts, msgCh) {
+	for ce := range subscriber(c, topics, opts, msgCh, dlq) {
 		if ce.err != nil {
 			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
@@ -208,6 +210,7 @@ func (c *regexConsumer) Close() {
 			}(con)
 		}
 		wg.Wait()
+		c.dlq.close()
 	})
 }
 
@@ -240,7 +243,7 @@ func (c *regexConsumer) monitor() {
 			}
 		case topics := <-c.subscribeCh:
 			if len(topics) > 0 && !c.closed() {
-				c.subscribe(topics)
+				c.subscribe(topics, c.dlq)
 			}
 		case topics := <-c.unsubscribeCh:
 			if len(topics) > 0 && !c.closed() {
@@ -285,12 +288,12 @@ func (c *regexConsumer) knownTopics() []string {
 	return topics
 }
 
-func (c *regexConsumer) subscribe(topics []string) {
+func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter) {
 	if log.GetLevel() == log.DebugLevel {
 		c.log.WithField("topics", topics).Debug("subscribe")
 	}
 	consumers := make(map[string]Consumer, len(topics))
-	for ce := range subscriber(c.client, topics, c.options, c.messageCh) {
+	for ce := range subscriber(c.client, topics, c.options, c.messageCh, dlq) {
 		if ce.err != nil {
 			c.log.Warnf("Failed to subscribe to topic=%s", ce.topic)
 		} else {
@@ -345,7 +348,7 @@ type consumerError struct {
 	consumer Consumer
 }
 
-func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan ConsumerMessage) <-chan consumerError {
+func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan ConsumerMessage, dlq *dlqRouter) <-chan consumerError {
 	consumerErrorCh := make(chan consumerError, len(topics))
 	var wg sync.WaitGroup
 	wg.Add(len(topics))
@@ -357,7 +360,7 @@ func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan Consum
 	for _, t := range topics {
 		go func(topic string) {
 			defer wg.Done()
-			c, err := internalTopicSubscribe(c, opts, topic, ch)
+			c, err := internalTopicSubscribe(c, opts, topic, ch, dlq)
 			consumerErrorCh <- consumerError{
 				err:      err,
 				topic:    topic,

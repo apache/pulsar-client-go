@@ -137,13 +137,15 @@ func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 }
 
 type message struct {
-	publishTime time.Time
-	eventTime   time.Time
-	key         string
-	payLoad     []byte
-	msgID       MessageID
-	properties  map[string]string
-	topic       string
+	publishTime         time.Time
+	eventTime           time.Time
+	key                 string
+	payLoad             []byte
+	msgID               MessageID
+	properties          map[string]string
+	topic               string
+	replicationClusters []string
+	redeliveryCount     uint32
 }
 
 func (msg *message) Topic() string {
