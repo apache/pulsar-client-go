@@ -34,7 +34,11 @@ type ProducerMessage struct {
 	Properties map[string]string
 
 	// EventTime set the event time for a given message
-	EventTime *time.Time
+	// By default, messages don't have an event time associated, while the publish
+	// time will be be always present.
+	// Set the event time to a non-zero timestamp to explicitly declare the time
+	// that the event "happened", as opposed to when the message is being published.
+	EventTime time.Time
 
 	// ReplicationClusters override the replication clusters for this message.
 	ReplicationClusters []string
@@ -77,7 +81,7 @@ type Message interface {
 
 	// EventTime get the event time associated with this message. It is typically set by the applications via
 	// `ProducerMessage.EventTime`.
-	// If there isn't any event time associated with this event, it will be nil.
+	// If EventTime is 0, it means there isn't any event time associated with this message.
 	EventTime() time.Time
 
 	// Key get the key of the message, if any

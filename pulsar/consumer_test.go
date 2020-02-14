@@ -503,7 +503,7 @@ func TestConsumerEventTime(t *testing.T) {
 	et := timeFromUnixTimestampMillis(uint64(5))
 	_, err = producer.Send(ctx, &ProducerMessage{
 		Payload:   []byte("test"),
-		EventTime: &et,
+		EventTime: et,
 	})
 	assert.Nil(t, err)
 

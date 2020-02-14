@@ -249,8 +249,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		PayloadSize: proto.Int(len(msg.Payload)),
 	}
 
-	if msg.EventTime != nil {
-		smm.EventTime = proto.Uint64(internal.TimestampMillis(*msg.EventTime))
+	if msg.EventTime.UnixNano() != 0 {
+		smm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
 	}
 
 	if msg.Key != "" {
