@@ -111,12 +111,13 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 
 func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
 	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
-	backoff := new(Backoff)
+	backoff := Backoff{1 * time.Second}
+	startTime := time.Now()
 	var retryTime time.Duration
 	if err != nil {
-		for retryTime < c.requestTimeout {
+		for time.Now().Sub(startTime) < c.requestTimeout {
 			retryTime = backoff.Next()
-			c.log.Debugf("Reconnecting to broker in {%v}", retryTime)
+			c.log.Debugf("Reconnecting to broker in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
 			time.Sleep(retryTime)
 			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr)
 			if err == nil {
