@@ -115,7 +115,7 @@ func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connec
 	startTime := time.Now()
 	var retryTime time.Duration
 	if err != nil {
-		for time.Now().Sub(startTime) < c.requestTimeout {
+		for time.Since(startTime) < c.requestTimeout {
 			retryTime = backoff.Next()
 			c.log.Debugf("Reconnecting to broker in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
 			time.Sleep(retryTime)
