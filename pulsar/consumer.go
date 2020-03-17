@@ -119,6 +119,11 @@ type ConsumerOptions struct {
 	// Set to -1 to disable prefetching in consumer
 	ReceiverQueueSize int
 
+	// Set the timeout for unacked messages
+	// Message not acknowledged within the give time, will be replayed by the broker to the same or a different consumer
+	// Default is 0, which means message are not being replayed based on ack time
+	AckTimeout time.Duration
+
 	// The delay after which to redeliver the messages that failed to be
 	// processed. Default is 1min. (See `Consumer.Nack()`)
 	NackRedeliveryDelay time.Duration

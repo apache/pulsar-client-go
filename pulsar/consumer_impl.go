@@ -33,7 +33,10 @@ import (
 
 var ErrConsumerClosed = errors.New("consumer closed")
 
-const defaultNackRedeliveryDelay = 1 * time.Minute
+const (
+	defaultNackRedeliveryDelay = 1 * time.Minute
+	defaultAckTimeout          = 30 * time.Second
+)
 
 type acker interface {
 	AckID(id *messageID)
@@ -164,6 +167,14 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 			} else {
 				nackRedeliveryDelay = options.NackRedeliveryDelay
 			}
+
+			var ackTimeout time.Duration
+			if options.AckTimeout == 0 {
+				ackTimeout = defaultAckTimeout
+			} else {
+				ackTimeout = options.AckTimeout
+			}
+
 			opts := &partitionConsumerOpts{
 				topic:                      pt,
 				consumerName:               consumerName,
@@ -172,6 +183,7 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 				subscriptionInitPos:        options.SubscriptionInitialPosition,
 				partitionIdx:               idx,
 				receiverQueueSize:          receiverQueueSize,
+				ackTimeout:                 ackTimeout,
 				nackRedeliveryDelay:        nackRedeliveryDelay,
 				metadata:                   metadata,
 				replicateSubscriptionState: options.ReplicateSubscriptionState,

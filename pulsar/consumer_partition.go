@@ -69,6 +69,7 @@ type partitionConsumerOpts struct {
 	subscriptionInitPos        SubscriptionInitialPosition
 	partitionIdx               int
 	receiverQueueSize          int
+	ackTimeout                 time.Duration
 	nackRedeliveryDelay        time.Duration
 	metadata                   map[string]string
 	replicateSubscriptionState bool
@@ -110,8 +111,9 @@ type partitionConsumer struct {
 	closeCh      chan struct{}
 	clearQueueCh chan func(id *messageID)
 
-	nackTracker *negativeAcksTracker
-	dlq         *dlqRouter
+	nackTracker  *negativeAcksTracker
+	unAckTracker *UnackedMessageTracker
+	dlq          *dlqRouter
 
 	log *log.Entry
 }
@@ -140,6 +142,13 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	}
 	pc.log = pc.log.WithField("name", pc.name).WithField("subscription", options.subscription)
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay)
+	pc.unAckTracker = NewUnackedMessageTracker()
+
+	if options.ackTimeout != 0 {
+		pc.unAckTracker = NewUnackedMessageTracker()
+		pc.unAckTracker.pc = pc
+		pc.unAckTracker.Start(int64(options.ackTimeout))
+	}
 
 	err := pc.grabConn()
 	if err != nil {
@@ -180,6 +189,9 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	}
 
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
+	if pc.unAckTracker != nil {
+		pc.unAckTracker.Stop()
+	}
 }
 
 func (pc *partitionConsumer) getLastMessageID() (*messageID, error) {
@@ -244,6 +256,10 @@ func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
 			ConsumerId: proto.Uint64(pc.consumerID),
 			MessageIds: msgIDDataList,
 		})
+
+	if pc.unAckTracker != nil {
+		pc.unAckTracker.clear()
+	}
 }
 
 func (pc *partitionConsumer) Close() {
@@ -349,6 +365,9 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	}
 
 	pc.client.rpcClient.RequestOnCnxNoWait(pc.conn, pb.BaseCommand_ACK, cmdAck)
+	if pc.unAckTracker != nil {
+		pc.unAckTracker.Remove(messageIDs[0])
+	}
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
@@ -426,6 +445,10 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicationClusters: msgMeta.GetReplicateTo(),
 				redeliveryCount:     response.GetRedeliveryCount(),
 			}
+		}
+
+		if pc.unAckTracker != nil {
+			pc.unAckTracker.Add(pbMsgID)
 		}
 
 		messages = append(messages, msg)
@@ -666,6 +689,9 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	pc.state = consumerClosed
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
 	pc.nackTracker.Close()
+	if pc.unAckTracker != nil {
+		pc.unAckTracker.Stop()
+	}
 	close(pc.closeCh)
 }
 

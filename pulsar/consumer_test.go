@@ -1143,3 +1143,69 @@ func TestDLQMultiTopics(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, msg)
 }
+
+func TestConsumerAckTimeout(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub1",
+		Type:             Exclusive,
+		AckTimeout:       5 * 1000,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		fmt.Printf("first receive message, value is:%s\n", expectMsg)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+		// not ack message
+	}
+
+	// wait ack timeout
+	time.Sleep(6 * time.Second)
+
+	fmt.Println("start redeliver messages...")
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		fmt.Printf("second receive message, value is:%s\n", expectMsg)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+		// ack message
+		consumer.Ack(msg)
+	}
+}
