@@ -201,7 +201,9 @@ func (t *UnackedMessageTracker) handlerCmd() {
 }
 
 func (t *UnackedMessageTracker) Stop() {
-	t.timeout.Stop()
+	if t.timeout != nil {
+		t.timeout.Stop()
+	}
 	log.Debug("stop ticker ", t.timeout)
 
 	t.clear()
