@@ -118,8 +118,8 @@ func serveProfiling(addr string, stop <-chan struct{}) error {
 	}()
 
 	fmt.Printf("Starting pprof server at: %s\n", addr)
-	fmt.Printf("  use go tool pprof http://%s/debug/pprof/prof to get pprof file(cpu info)\n", addr)
-	fmt.Printf("  use go tool pprof http://%s/debug/pprof/heap to get inuse_space file\n", addr)
+	fmt.Printf("  use `go tool pprof http://%s/debug/pprof/profile` to get pprof file(cpu info)\n", addr)
+	fmt.Printf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file\n", addr)
 	fmt.Println()
 
 	return s.ListenAndServe()
