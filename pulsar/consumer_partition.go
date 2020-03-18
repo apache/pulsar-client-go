@@ -323,7 +323,7 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 	cmdSeek := &pb.CommandSeek{
 		ConsumerId:         proto.Uint64(pc.consumerID),
 		RequestId:          proto.Uint64(requestID),
-		MessagePublishTime: proto.Uint64(uint64(seek.publishTime.Unix())),
+		MessagePublishTime: proto.Uint64(uint64(seek.publishTime.UnixNano() / 1e6)),
 	}
 
 	_, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_SEEK, cmdSeek)
