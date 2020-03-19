@@ -70,15 +70,6 @@ func main() {
 		Use: "pulsar-perf-go",
 	}
 
-	//go func() {
-	//	listenAddr := net.JoinHostPort("localhost", "8889")
-	//	fmt.Printf("Profile server listening on %s\n", listenAddr)
-	//	profileRedirect := http.RedirectHandler("/debug/pprof", http.StatusSeeOther)
-	//	http.Handle("/", profileRedirect)
-	//	err := fmt.Errorf("%v", http.ListenAndServe(listenAddr, nil))
-	//	fmt.Println(err.Error())
-	//}()
-
 	flags := rootCmd.PersistentFlags()
 	flags.BoolVar(&FlagProfile, "profile", false, "enable profiling")
 	flags.BoolVar(&flagDebug, "debug", false, "enable debug output")
