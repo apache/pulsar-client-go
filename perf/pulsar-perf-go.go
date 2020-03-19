@@ -99,14 +99,14 @@ func stopCh() <-chan struct{} {
 
 func RunProfiling(stop <-chan struct{}) {
 	go func() {
-		addr := getIntranetIp()
+		addr := getIntranetIP()
 		if err := serveProfiling(addr, stop); err != nil && err != http.ErrServerClosed {
 			log.WithError(err).Error("Unable to start debug profiling server")
 		}
 	}()
 }
 
-func getIntranetIp() string {
+func getIntranetIP() string {
 	var ipAddr string
 
 	addrs, err := net.InterfaceAddrs()
@@ -117,7 +117,7 @@ func getIntranetIp() string {
 
 	for _, address := range addrs {
 		if IPNet, ok := address.(*net.IPNet); ok && !IPNet.IP.IsLoopback() {
-			if IPNet.IP.To4() != nil && IPNet.IP.To4()[0] == 192 && IPNet.IP.To4()[1] == 168  {
+			if IPNet.IP.To4() != nil && IPNet.IP.To4()[0] == 192 && IPNet.IP.To4()[1] == 168 {
 				ipAddr = IPNet.IP.String()
 			}
 		}
