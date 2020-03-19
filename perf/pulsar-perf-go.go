@@ -70,14 +70,14 @@ func main() {
 		Use: "pulsar-perf-go",
 	}
 
-	go func() {
-		listenAddr := net.JoinHostPort("localhost", "8889")
-		fmt.Printf("Profile server listening on %s\n", listenAddr)
-		profileRedirect := http.RedirectHandler("/debug/pprof", http.StatusSeeOther)
-		http.Handle("/", profileRedirect)
-		err := fmt.Errorf("%v", http.ListenAndServe(listenAddr, nil))
-		fmt.Println(err.Error())
-	}()
+	//go func() {
+	//	listenAddr := net.JoinHostPort("localhost", "8889")
+	//	fmt.Printf("Profile server listening on %s\n", listenAddr)
+	//	profileRedirect := http.RedirectHandler("/debug/pprof", http.StatusSeeOther)
+	//	http.Handle("/", profileRedirect)
+	//	err := fmt.Errorf("%v", http.ListenAndServe(listenAddr, nil))
+	//	fmt.Println(err.Error())
+	//}()
 
 	flags := rootCmd.PersistentFlags()
 	flags.BoolVar(&FlagProfile, "profile", false, "enable profiling")
@@ -108,10 +108,31 @@ func stopCh() <-chan struct{} {
 
 func RunProfiling(stop <-chan struct{}) {
 	go func() {
-		if err := serveProfiling("0.0.0.0:6060", stop); err != nil && err != http.ErrServerClosed {
+		addr := getIntranetIp()
+		if err := serveProfiling(addr, stop); err != nil && err != http.ErrServerClosed {
 			log.WithError(err).Error("Unable to start debug profiling server")
 		}
 	}()
+}
+
+func getIntranetIp() string {
+	var ipAddr string
+
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "get internal ip error=%+v\n", err)
+		os.Exit(1)
+	}
+
+	for _, address := range addrs {
+		if IPNet, ok := address.(*net.IPNet); ok && !IPNet.IP.IsLoopback() {
+			if IPNet.IP.To4() != nil && IPNet.IP.To4()[0] == 192 && IPNet.IP.To4()[1] == 168  {
+				ipAddr = IPNet.IP.String()
+			}
+		}
+	}
+
+	return fmt.Sprintf("%s:6060", ipAddr)
 }
 
 // use `go tool pprof http://addr/debug/pprof/profile` to get pprof file(cpu info)
@@ -128,6 +149,7 @@ func serveProfiling(addr string, stop <-chan struct{}) error {
 	}()
 
 	fmt.Printf("Starting pprof server at: %s\n", addr)
+	fmt.Printf("  use `http://%s/debug/pprof` to access the browser\n", addr)
 	fmt.Printf("  use `go tool pprof http://%s/debug/pprof/profile` to get pprof file(cpu info)\n", addr)
 	fmt.Printf("  use `go tool pprof http://%s/debug/pprof/heap` to get inuse_space file\n", addr)
 	fmt.Println()
