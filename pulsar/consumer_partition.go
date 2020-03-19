@@ -168,6 +168,12 @@ func (pc *partitionConsumer) Unsubscribe() error {
 func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	defer close(unsub.doneCh)
 
+	if pc.state == consumerClosed || pc.state == consumerClosing {
+		pc.log.Error("Failed to unsubscribe consumer, the consumer is closing or consumer has been closed")
+		return
+	}
+
+	pc.state = consumerClosing
 	requestID := pc.client.rpcClient.NewRequestID()
 	cmdUnsubscribe := &pb.CommandUnsubscribe{
 		RequestId:  proto.Uint64(requestID),
@@ -180,6 +186,11 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	}
 
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
+	if pc.nackTracker != nil {
+		pc.nackTracker.Close()
+	}
+	pc.log.Infof("The consumer[%d] successfully unsubscribed", pc.consumerID)
+	pc.state = consumerClosed
 }
 
 func (pc *partitionConsumer) getLastMessageID() (*messageID, error) {
@@ -648,6 +659,14 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		return
 	}
 
+	if pc.state == consumerClosed || pc.state == consumerClosing {
+		pc.log.Error("The consumer is closing or has been closed")
+		if pc.nackTracker != nil {
+			pc.nackTracker.Close()
+		}
+		return
+	}
+
 	pc.state = consumerClosing
 	pc.log.Infof("Closing consumer=%d", pc.consumerID)
 
@@ -665,7 +684,9 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 
 	pc.state = consumerClosed
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
-	pc.nackTracker.Close()
+	if pc.nackTracker != nil {
+		pc.nackTracker.Close()
+	}
 	close(pc.closeCh)
 }
 
