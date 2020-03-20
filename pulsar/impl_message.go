@@ -176,7 +176,7 @@ func (msg *message) Key() string {
 	return msg.key
 }
 
-func (msg *message) GetDeliveryCount() uint32 {
+func (msg *message) RedeliveryCount() uint32 {
 	return msg.redeliveryCount
 }
 

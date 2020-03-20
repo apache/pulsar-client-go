@@ -1201,10 +1201,10 @@ func TestGetDeliveryCount(t *testing.T) {
 			assert.Nil(t, err)
 			consumer.Nack(msg)
 		}
-		assert.Equal(t, uint32(i+1), msg.GetDeliveryCount())
+		assert.Equal(t, uint32(i+1), msg.RedeliveryCount())
 	}
 
 	msg, err := consumer.Receive(context.Background())
 	assert.Nil(t, err)
-	assert.Equal(t, uint32(3), msg.GetDeliveryCount())
+	assert.Equal(t, uint32(3), msg.RedeliveryCount())
 }

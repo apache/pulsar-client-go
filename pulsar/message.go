@@ -92,7 +92,7 @@ type Message interface {
 	//
 	// Message redelivery increases monotonically in a broker, when topic switch ownership to a another broker
 	// redelivery count will be recalculated.
-	GetDeliveryCount() uint32
+	RedeliveryCount() uint32
 }
 
 // MessageID identifier for a particular message
