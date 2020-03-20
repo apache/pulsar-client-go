@@ -176,6 +176,10 @@ func (msg *message) Key() string {
 	return msg.key
 }
 
+func (msg *message) GetDeliveryCount() uint32 {
+	return msg.redeliveryCount
+}
+
 func newAckTracker(size int) *ackTracker {
 	var batchIDs *big.Int
 	if size <= 64 {

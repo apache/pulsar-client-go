@@ -86,6 +86,13 @@ type Message interface {
 
 	// Key get the key of the message, if any
 	Key() string
+
+    // Get message redelivery count, redelivery count maintain in pulsar broker. When client nack acknowledge messages,
+    // broker will dispatch message again with message redelivery count in CommandMessage defined.
+    //
+    // Message redelivery increases monotonically in a broker, when topic switch ownership to a another broker
+    // redelivery count will be recalculated.
+	GetDeliveryCount() uint32
 }
 
 // MessageID identifier for a particular message
