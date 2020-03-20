@@ -1205,5 +1205,6 @@ func TestGetDeliveryCount(t *testing.T) {
 	}
 
 	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
 	assert.Equal(t, uint32(3), msg.GetDeliveryCount())
 }
