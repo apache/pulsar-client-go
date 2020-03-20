@@ -20,7 +20,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"net"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -99,33 +98,13 @@ func stopCh() <-chan struct{} {
 
 func RunProfiling(stop <-chan struct{}) {
 	go func() {
-		addr := getIntranetIP()
-		if err := serveProfiling(addr, stop); err != nil && err != http.ErrServerClosed {
+		if err := serveProfiling("0.0.0.0:6060", stop); err != nil && err != http.ErrServerClosed {
 			log.WithError(err).Error("Unable to start debug profiling server")
 		}
 	}()
 }
 
-func getIntranetIP() string {
-	var ipAddr string
-
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "get internal ip error=%+v\n", err)
-		os.Exit(1)
-	}
-
-	for _, address := range addrs {
-		if IPNet, ok := address.(*net.IPNet); ok && !IPNet.IP.IsLoopback() {
-			if IPNet.IP.To4() != nil && IPNet.IP.To4()[0] == 192 && IPNet.IP.To4()[1] == 168 {
-				ipAddr = IPNet.IP.String()
-			}
-		}
-	}
-
-	return fmt.Sprintf("%s:6060", ipAddr)
-}
-
+// use `http://%s/debug/pprof` to access the browser
 // use `go tool pprof http://addr/debug/pprof/profile` to get pprof file(cpu info)
 // use `go tool pprof http://addr/debug/pprof/heap` to get inuse_space file
 func serveProfiling(addr string, stop <-chan struct{}) error {
