@@ -104,7 +104,7 @@ func RunProfiling(stop <-chan struct{}) {
 	}()
 }
 
-// use `http://%s/debug/pprof` to access the browser
+// use `http://addr/debug/pprof` to access the browser
 // use `go tool pprof http://addr/debug/pprof/profile` to get pprof file(cpu info)
 // use `go tool pprof http://addr/debug/pprof/heap` to get inuse_space file
 func serveProfiling(addr string, stop <-chan struct{}) error {
