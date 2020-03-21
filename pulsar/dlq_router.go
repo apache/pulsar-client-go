@@ -76,7 +76,8 @@ func (r *dlqRouter) shouldSendToDlq(cm *ConsumerMessage) bool {
 	//  * when we receive the message and redeliveryCount == 10, it means
 	//    that the application has already got (and Nack())  the message 10
 	//    times, so this time we should just go to DLQ.
-	return cm.Message.(*message).redeliveryCount >= r.policy.MaxDeliveries
+
+	return msg.redeliveryCount >= r.policy.MaxDeliveries
 }
 
 func (r *dlqRouter) Chan() chan ConsumerMessage {

@@ -1143,3 +1143,68 @@ func TestDLQMultiTopics(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, msg)
 }
+
+func TestGetDeliveryCount(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               topic,
+		SubscriptionName:    "my-sub",
+		NackRedeliveryDelay: 1 * time.Second,
+		Type:                Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// receive 10 messages and only ack half-of-them
+	for i := 0; i < 10; i++ {
+		msg, _ := consumer.Receive(context.Background())
+
+		if i%2 == 0 {
+			// ack message
+			consumer.Ack(msg)
+		} else {
+			consumer.Nack(msg)
+		}
+	}
+
+	// Receive the unacked messages other 2 times, failing at processing
+	for i := 0; i < 2; i++ {
+		var msg Message
+		for i := 0; i < 5; i++ {
+			msg, err = consumer.Receive(context.Background())
+			assert.Nil(t, err)
+			consumer.Nack(msg)
+		}
+		assert.Equal(t, uint32(i+1), msg.RedeliveryCount())
+	}
+
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, uint32(3), msg.RedeliveryCount())
+}
