@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net/http"
 	"testing"
 	"time"
 
@@ -327,7 +326,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	topic := "persistent://public/default/testGetPartitions"
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
 
-	makeHTTPCall(t, http.MethodPut, testURL, "64")
+	makeHTTPCall(t, testURL, "64")
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
@@ -411,7 +410,7 @@ func TestConsumerShared(t *testing.T) {
 	topic := "persistent://public/default/testMultiPartitionConsumerShared"
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testMultiPartitionConsumerShared/partitions"
 
-	makeHTTPCall(t, http.MethodPut, testURL, "3")
+	makeHTTPCall(t, testURL, "3")
 
 	sub := "sub-shared-1"
 	consumer1, err := client.Subscribe(ConsumerOptions{
