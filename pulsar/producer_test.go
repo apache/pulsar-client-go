@@ -20,7 +20,6 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"strconv"
 	"sync"
 	"testing"
