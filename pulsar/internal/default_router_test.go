@@ -71,7 +71,7 @@ func TestDefaultRouter(t *testing.T) {
 
 	// should round robin partitions
 	for i := 0; i < 200; i++ {
-		assert.Equal(t, router("", 100), i % 100)
+		assert.Equal(t, router("", 100), i%100)
 	}
 
 	// test batching is disabled
@@ -81,7 +81,7 @@ func TestDefaultRouter(t *testing.T) {
 
 	// should round robin partitions
 	for i := 0; i < 200; i++ {
-		assert.Equal(t, router("", 100), i % 100)
+		assert.Equal(t, router("", 100), i%100)
 	}
 }
 

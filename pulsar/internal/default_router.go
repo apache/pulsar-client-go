@@ -68,13 +68,13 @@ func NewDefaultRouter(clock Clock, hashFunc func(string) uint32,
 		// of batching of the messages.
 		//
 		//currentMs / maxBatchingDelayMs + startPtnIdx
-		if disableBatching == false && maxBatchingDelay.Nanoseconds() > 0 {
+		if !disableBatching && maxBatchingDelay.Nanoseconds() > 0 {
 			n := uint32(state.clock()/uint64(maxBatchingDelay.Nanoseconds())) + state.shiftIdx
 			return int(n % numPartitions)
-		} else {
-			p := int(state.msgCounter % numPartitions)
-			atomic.AddUint32(&state.msgCounter,1)
-			return p
 		}
+
+		p := int(state.msgCounter % numPartitions)
+		atomic.AddUint32(&state.msgCounter, 1)
+		return p
 	}
 }

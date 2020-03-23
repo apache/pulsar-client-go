@@ -457,8 +457,8 @@ func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   topicName,
-		DisableBatching:         true,
+		Topic:           topicName,
+		DisableBatching: true,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -489,7 +489,7 @@ func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 	assert.Equal(t, msgCount, numOfMessages)
 	assert.Equal(t, numberOfPartitions, len(msgPartitionMap))
 	for _, count := range msgPartitionMap {
-		assert.Equal(t, count, numOfMessages / numberOfPartitions)
+		assert.Equal(t, count, numOfMessages/numberOfPartitions)
 	}
 }
 
