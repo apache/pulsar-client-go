@@ -64,8 +64,6 @@ type partitionProducer struct {
 	partitionIdx int
 }
 
-const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
-
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (
 	*partitionProducer, error) {
 	var batchingMaxPublishDelay time.Duration
