@@ -32,26 +32,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-func TestFoo(t *testing.T) {
-	clientOptions := ClientOptions{
-		URL:            "pulsar://localhost:6650",
-	}
-
-	client, _ := NewClient(clientOptions)
-
-	producerOptions := ProducerOptions{
-		Topic: "input",
-	}
-
-	pProducer, _ := client.CreateProducer(producerOptions)
-
-	for true {
-		pProducer.Send(context.Background(), &ProducerMessage{
-			Payload: []byte("foo"),
-		})
-	}
-}
-
 func TestInvalidURL(t *testing.T) {
 	client, err := NewClient(ClientOptions{})
 
