@@ -65,7 +65,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		internalRouter := internal.NewDefaultRouter(
 			internal.NewSystemClock(),
 			getHashingFunction(options.HashingScheme),
-			batchingMaxPublishDelay)
+			batchingMaxPublishDelay, options.DisableBatching)
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
 			return internalRouter(message.Key, metadata.NumPartitions())
 		}
