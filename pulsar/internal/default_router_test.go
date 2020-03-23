@@ -30,7 +30,7 @@ func TestDefaultRouter(t *testing.T) {
 
 	router := NewDefaultRouter(func() uint64 {
 		return currentClock
-	}, JavaStringHash, 10*time.Nanosecond)
+	}, JavaStringHash, 10*time.Nanosecond, false)
 
 	// partition index should not change with time
 	p1 := router("my-key", 100)
@@ -63,11 +63,31 @@ func TestDefaultRouter(t *testing.T) {
 	currentClock = 112
 	pr6 := router("", 100)
 	assert.Equal(t, pr5, pr6)
+
+	// test batching delay is 0
+	router = NewDefaultRouter(func() uint64 {
+		return currentClock
+	}, JavaStringHash, 0, true)
+
+	// should round robin partitions
+	for i := 0; i < 200; i++ {
+		assert.Equal(t, router("", 100), i % 100)
+	}
+
+	// test batching is disabled
+	router = NewDefaultRouter(func() uint64 {
+		return currentClock
+	}, JavaStringHash, 10*time.Nanosecond, true)
+
+	// should round robin partitions
+	for i := 0; i < 200; i++ {
+		assert.Equal(t, router("", 100), i % 100)
+	}
 }
 
 func TestDefaultRouterNoPartitions(t *testing.T) {
 
-	router := NewDefaultRouter(NewSystemClock(), JavaStringHash, 10*time.Nanosecond)
+	router := NewDefaultRouter(NewSystemClock(), JavaStringHash, 10*time.Nanosecond, false)
 
 	// partition index should not change with time
 	p1 := router("", 1)

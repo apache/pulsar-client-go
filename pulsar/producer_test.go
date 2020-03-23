@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -351,10 +352,10 @@ func TestFlushInProducer(t *testing.T) {
 }
 
 func TestFlushInPartitionedProducer(t *testing.T) {
-	topicName := "persistent://public/default/partition-testFlushInPartitionedProducer"
+	topicName := "public/default/partition-testFlushInPartitionedProducer"
 
 	// call admin api to make it partitioned
-	url := adminURL + "/" + "admin/v2/" + topicName + "/partitions"
+	url := adminURL + "/" + "admin/v2/persistent/" + topicName + "/partitions"
 	makeHTTPCall(t, http.MethodPut, url, "5")
 
 	numberOfPartitions := 5
@@ -425,6 +426,71 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 		msgCount++
 	}
 	assert.Equal(t, msgCount, numOfMessages/2)
+}
+
+func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
+	topicName := "public/default/partition-testRoundRobinRouterPartitionedProducer"
+	numberOfPartitions := 5
+
+	// call admin api to make it partitioned
+	url := adminURL + "/" + "admin/v2/persistent/" + topicName + "/partitions"
+	makeHTTPCall(t, http.MethodPut, url, strconv.Itoa(numberOfPartitions))
+
+	numOfMessages := 10
+	ctx := context.Background()
+
+	// creat client connection
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBatching:         true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 5 messages
+	prefix := "msg-"
+
+	for i := 0; i < numOfMessages; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		_, err = producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(messageContent),
+		})
+		assert.Nil(t, err)
+	}
+
+	// Receive all messages
+	msgCount := 0
+	msgPartitionMap := make(map[string]int)
+	for i := 0; i < numOfMessages; i++ {
+		msg, err := consumer.Receive(ctx)
+		fmt.Printf("Received message msgId: %#v topic: %s-- content: '%s'\n",
+			msg.ID(), msg.Topic(), string(msg.Payload()))
+		assert.Nil(t, err)
+		consumer.Ack(msg)
+		msgCount++
+		msgPartitionMap[msg.Topic()]++
+	}
+	assert.Equal(t, msgCount, numOfMessages)
+	assert.Equal(t, numberOfPartitions, len(msgPartitionMap))
+	for _, count := range msgPartitionMap {
+		assert.Equal(t, count, numOfMessages / numberOfPartitions)
+	}
 }
 
 func TestMessageRouter(t *testing.T) {

@@ -19,6 +19,7 @@ package internal
 
 import (
 	"math/rand"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,6 +28,7 @@ type defaultRouter struct {
 	shiftIdx         uint32
 	maxBatchingDelay time.Duration
 	hashFunc         func(string) uint32
+	msgCounter       uint32
 }
 
 type Clock func() uint64
@@ -41,12 +43,13 @@ func NewSystemClock() Clock {
 // NewDefaultRouter set the message routing mode for the partitioned producer.
 // Default routing mode is round-robin routing.
 func NewDefaultRouter(clock Clock, hashFunc func(string) uint32,
-	maxBatchingDelay time.Duration) func(string, uint32) int {
+	maxBatchingDelay time.Duration, disableBatching bool) func(string, uint32) int {
 	state := &defaultRouter{
 		clock:            clock,
 		shiftIdx:         rand.Uint32(),
 		maxBatchingDelay: maxBatchingDelay,
 		hashFunc:         hashFunc,
+		msgCounter:       0,
 	}
 
 	return func(key string, numPartitions uint32) int {
@@ -65,10 +68,13 @@ func NewDefaultRouter(clock Clock, hashFunc func(string) uint32,
 		// of batching of the messages.
 		//
 		//currentMs / maxBatchingDelayMs + startPtnIdx
-		if maxBatchingDelay.Nanoseconds() != 0 {
+		if disableBatching == false && maxBatchingDelay.Nanoseconds() > 0 {
 			n := uint32(state.clock()/uint64(maxBatchingDelay.Nanoseconds())) + state.shiftIdx
 			return int(n % numPartitions)
+		} else {
+			p := int(state.msgCounter % numPartitions)
+			atomic.AddUint32(&state.msgCounter,1)
+			return p
 		}
-		return 0
 	}
 }

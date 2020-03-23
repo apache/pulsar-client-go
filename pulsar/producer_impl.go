@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
@@ -29,6 +30,8 @@ type producer struct {
 	producers     []Producer
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 }
+
+const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
 
 func getHashingFunction(s HashingScheme) func(string) uint32 {
 	switch s {
@@ -51,11 +54,18 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		client: client,
 	}
 
+	var batchingMaxPublishDelay time.Duration
+	if options.BatchingMaxPublishDelay != 0 {
+		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
+	} else {
+		batchingMaxPublishDelay = defaultBatchingMaxPublishDelay
+	}
+
 	if options.MessageRouter == nil {
 		internalRouter := internal.NewDefaultRouter(
 			internal.NewSystemClock(),
 			getHashingFunction(options.HashingScheme),
-			options.BatchingMaxPublishDelay)
+			batchingMaxPublishDelay, options.DisableBatching)
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
 			return internalRouter(message.Key, metadata.NumPartitions())
 		}
