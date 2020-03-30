@@ -65,7 +65,7 @@ $ svn co https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go pulsar-c
 $ cd pulsar-client-go
 $ mkdir pulsar-client-go-0.X.0-candidate-1
 $ cd pulsar-client-go-0.X.0-candidate-1
-$ cp apache-pulsar-client-go-0.X.0-src.tar.gz .
+$ cp ../apache-pulsar-client-go-0.X.0-src.tar.gz .
 $ svn add *
 $ svn ci -m 'Staging artifacts and signature for Pulsar Client Go release 0.X.0'
 ```
