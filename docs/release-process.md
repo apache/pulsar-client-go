@@ -4,11 +4,13 @@ In general, you need to perform the following steps:
 
 1. Create a release branch.
 2. Update the version and tag of a package.
-3. Write a release note.
-4. Run a vote.
-5. Promote the release.
-6. Update the release note.
-7. Announce the release.
+3. Build and inspect an artifact.
+4. Sign and stage the artifacts.
+5. Write a release note.
+6. Run a vote.
+7. Promote the release.
+8. Update the release note.
+9. Announce the release.
 
 ## Steps in detail
 
@@ -39,22 +41,44 @@ During the release process, you can create a "candidate" tag which will get prom
 ```
 # Commit 
 $ git commit -m "Release 0.X.0" -a
-
 # Create a "candidate" tag
 $ git tag -u $USER@apache.org v0.X.0-candidate-1 -m 'Release v0.X.0-candidate-1'
-
 # Push both the branch and the tag to Github repo
 git push origin branch-0.X.0
 git push origin v0.X.0-candidate-1
 ```
 
-3. Write a release note.
+3. Build and inspect an artifact.
+
+Generate a release candidate package.
+
+```bash
+$ tar -zcvf apache-pulsar-client-go-0.X.0-src.tar.gz .
+```
+
+4. Sign and stage the artifacts The src artifact need to be signed and uploaded to the dist SVN repository for staging.
+
+```
+$ gpg -b --armor apache-pulsar-client-go-0.X.0-src.tar.gz
+$ shasum -a 512 apache-pulsar-client-go-0.X.0-src.tar.gz > apache-pulsar-client-go-0.X.0-src.tar.gz.sha512
+$ svn co https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go pulsar-client-go
+$ cd pulsar-client-go
+$ mkdir pulsar-client-go-0.X.0-candidate-1
+$ cd pulsar-client-go-0.X.0-candidate-1
+$ cp ../apache-pulsar-client-go-0.X.0-src.tar.gz .
+$ svn add *
+$ svn ci -m 'Staging artifacts and signature for Pulsar Client Go release 0.X.0'
+```
+
+Since this needs to be merged in master, we need to follow the regular process and create a Pull Request on GitHub.
+
+5. Write a release note.
 
 Check the milestone in GitHub associated with the release. 
 
 In the released item, add the list of the most important changes that happened in the release and a link to the associated milestone, with the complete list of all the changes. 
 
-4. Run a vote.
+6. Run a vote.
 
 Send an email to the Pulsar Dev mailing list:
 
@@ -72,27 +96,30 @@ This is the first release candidate for Apache Pulsar Go client, version 0.X.0.
 It fixes the following issues:
 
 https://github.com/apache/pulsar-client-go/milestone/1?closed=1
-
+Pulsar Client Go's KEYS file contains PGP keys we used to sign this release:
+https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/KEYS
 Please download these packages and review this release candidate:
 
 - Review release notes
-- Download the source package and follow the README.md to build and run the pulsar-client-go.
-
+- Download the source package (verify shasum, and asc) and follow the
+README.md to build and run the pulsar-client-go.
 The vote will be open for at least 72 hours. It is adopted by majority approval, with at least 3 PMC affirmative votes.
 
 Source file:
-https://github.com/apache/pulsar/releases/tag/v0.X.0
-
+https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go/apache-pulsar-client-go-0.X.0-src.tar.gz
 The tag to be voted upon:
 v0.X.0
 https://github.com/apache/pulsar-client-node/releases/tag/v0.X.0
+
+SHA-512 checksums:
+97bb1000f70011e9a585186590e0688586590e09  apache-pulsar-client-go-0.X.0-src.tar.gz
 ```
 
 The vote should be open for at least 72 hours (3 days). Votes from Pulsar PMC members will be considered binding, while anyone else is encouraged to verify the release and vote as well.
 
 If the release is approved here, we can then proceed to the next step.
 
-5. Promote the release.
+7. Promote the release.
 
 ```
 $ git checkout branch-0.X.0
@@ -100,12 +127,25 @@ $ git tag -u $USER@apache.org v0.X.0 -m 'Release v0.X.0'
 $ git push origin v0.X.0
 ```
 
-6. Update the release note.
+Promote the artifacts on the release location (need PMC permissions):
 
+```
+svn move https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go/pulsar-client-go-0.X.0-candidate-1 \
+         https://dist.apache.org/repos/dist/release/pulsar/puslar-client-go/pulsar-client-go-0.X.0
+Remove the old releases (if any). We only need the latest release there, older releases are available through the Apache archive:
+```
+# Get the list of releases
+svn ls https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/
+
+# Delete each release (except for the last one)
+
+```
+svn rm https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/pulsar-client-go-0.X.0
+```
+8. Update the release note.
 Add the release note to [Pulsar Client Go](https://github.com/apache/pulsar-client-go/releases)
 
-7. Announce the release.
-
+9. Announce the release.
 Once the release process is available , you can announce the release and send an email as below:
 
 ```
