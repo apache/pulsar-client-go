@@ -57,6 +57,24 @@ type Functions interface {
 	// DeleteFunction delete an existing function
 	DeleteFunction(tenant, namespace, name string) error
 
+	// Download Function Code
+	// @param destinationFile
+	//        file where data should be downloaded to
+	// @param path
+	//        Path where data is located
+	DownloadFunction(path, destinationFile string) error
+
+	// Download Function Code
+	// @param destinationFile
+	//        file where data should be downloaded to
+	// @param tenant
+	//        Tenant name
+	// @param namespace
+	//        Namespace name
+	// @param function
+	//        Function name
+	DownloadFunctionByNs(destinationFile, tenant, namespace, function string) error
+
 	// StartFunction start all function instances
 	StartFunction(tenant, namespace, name string) error
 
@@ -258,6 +276,46 @@ func (f *functions) StopFunctionWithID(tenant, namespace, name string, instanceI
 func (f *functions) DeleteFunction(tenant, namespace, name string) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
 	return f.pulsar.Client.Delete(endpoint)
+}
+
+func (f *functions) DownloadFunction(path, destinationFile string) error {
+	endpoint := f.pulsar.endpoint(f.basePath, "download")
+	_, err := os.Open(destinationFile)
+	if err != nil {
+		_, err = os.Create(destinationFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	tmpMap := make(map[string]string)
+	tmpMap["path"] = path
+
+	_, err = f.pulsar.Client.GetWithQueryParams(endpoint, nil, tmpMap, false)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (f *functions) DownloadFunctionByNs(destinationFile, tenant, namespace, function string) error {
+	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, function, "download")
+	_, err := os.Open(destinationFile)
+	if err != nil {
+		_, err = os.Create(destinationFile)
+		if err != nil {
+			return err
+		}
+	}
+
+	err = f.pulsar.Client.Get(endpoint, nil)
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (f *functions) StartFunction(tenant, namespace, name string) error {

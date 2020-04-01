@@ -3,6 +3,7 @@ module github.com/streamnative/pulsar-admin-go
 go 1.12
 
 require (
+	github.com/davecgh/go-spew v1.1.1
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/docker/go-connections v0.4.0
 	github.com/fatih/color v1.7.0
