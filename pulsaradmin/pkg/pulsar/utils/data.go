@@ -73,6 +73,8 @@ type FunctionData struct {
 	FunctionConfigFile   string          `json:"fnConfigFile"`
 	ProcessingGuarantees string          `json:"processingGuarantees"`
 	UserConfig           string          `json:"userConfigString"`
+	DestinationFile      string          `json:"destinationFile"`
+	Path                 string          `json:"path"`
 	FuncConf             *FunctionConfig `json:"-"`
 }
 
