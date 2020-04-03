@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"io"
+	"encoding/json"
 
 	"github.com/pkg/errors"
 )
@@ -59,11 +60,16 @@ func NewProvider(name string, params string) (Provider, error) {
 	case "token", "org.apache.pulsar.client.impl.auth.AuthenticationToken":
 		return NewAuthenticationTokenWithParams(m)
 
+	case "athenz", "org.apache.pulsar.client.impl.auth.AuthenticationAthenz":
+		return NewAuthenticationAthenzWithParams(m)
+
 	default:
 		return nil, errors.New(fmt.Sprintf("invalid auth provider '%s'", name))
 	}
 }
 
 func parseParams(params string) map[string]string {
-	return nil
+	var mapString map[string]string
+	json.Unmarshal([]byte(params), &mapString)
+	return mapString
 }

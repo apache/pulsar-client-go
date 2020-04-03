@@ -1,0 +1,178 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
+package auth
+
+import (
+	"crypto/tls"
+	"encoding/base64"
+	"errors"
+	"io/ioutil"
+	"regexp"
+	"strings"
+	"time"
+
+	zms "github.com/yahoo/athenz/libs/go/zmssvctoken"
+	zts "github.com/yahoo/athenz/libs/go/ztsroletoken"
+)
+
+const (
+	minExpire = 2 * time.Hour
+	maxExpire = 24 * time.Hour
+)
+
+type athenzAuthProvider struct {
+	providerDomain     string
+	tenantDomain       string
+	tenantService      string
+	privateKey         string
+	keyId              string
+	principalHeader    string
+	ztsUrl             string
+	tokenBuilder       zms.TokenBuilder
+	roleToken          zts.RoleToken
+	zmsNewTokenBuilder func (domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error) // for test
+	ztsNewRoleToken    func (tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken // for test
+}
+
+type privateKeyUri struct {
+	Scheme                   string
+	MediaTypeAndEncodingType string
+	Data                     string
+	Path                     string
+}
+
+func NewAuthenticationAthenzWithParams(params map[string]string) (Provider, error) {
+	return NewAuthenticationAthenz(
+		params["providerDomain"],
+		params["tenantDomain"],
+		params["tenantService"],
+		params["privateKey"],
+		params["keyId"],
+		params["principalHeader"],
+		params["ztsUrl"],
+	), nil
+}
+
+func NewAuthenticationAthenz(
+	providerDomain string,
+	tenantDomain string,
+	tenantService string,
+	privateKey string,
+	keyId string,
+	principalHeader string,
+	ztsUrl string) Provider {
+	var fixedKeyId string
+	if keyId == "" {
+		fixedKeyId = "0"
+	} else {
+		fixedKeyId = keyId
+	}
+
+	return &athenzAuthProvider{
+		providerDomain: providerDomain,
+		tenantDomain: tenantDomain,
+		tenantService: tenantService,
+		privateKey: privateKey,
+		keyId: fixedKeyId,
+		principalHeader: principalHeader,
+		ztsUrl: strings.TrimSuffix(ztsUrl, "/"),
+		zmsNewTokenBuilder: zms.NewTokenBuilder,
+		ztsNewRoleToken: func (tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken {
+			return zts.RoleToken(zts.NewRoleToken(tok, domain, opts))
+		},
+	}
+}
+
+func (p *athenzAuthProvider) Init() error {
+	uriSt := parseUri(p.privateKey)
+	var keyData []byte
+
+	if uriSt.Scheme == "data" {
+		if uriSt.MediaTypeAndEncodingType != "application/x-pem-file;base64" {
+			return errors.New("Unsupported mediaType or encodingType: " + uriSt.MediaTypeAndEncodingType)
+		}
+		key, err := base64.StdEncoding.DecodeString(uriSt.Data)
+		if err != nil {
+			return err
+		}
+		keyData = key
+	} else if uriSt.Scheme == "file" {
+		key, err := ioutil.ReadFile(uriSt.Path)
+		if err != nil {
+			return err
+		}
+		keyData = key
+	} else {
+		return errors.New("Unsupported URI Scheme: " + uriSt.Scheme)
+	}
+
+	tb, err := p.zmsNewTokenBuilder(p.tenantDomain, p.tenantService, keyData, p.keyId)
+	if err != nil {
+		return err
+	}
+	p.tokenBuilder = tb
+
+	roleToken := p.ztsNewRoleToken(p.tokenBuilder.Token(), p.providerDomain, zts.RoleTokenOptions{
+		BaseZTSURL: p.ztsUrl + "/zts/v1",
+		MinExpire: minExpire,
+		MaxExpire: maxExpire,
+		AuthHeader: p.principalHeader,
+	})
+	p.roleToken = roleToken
+
+	return nil
+}
+
+func (p *athenzAuthProvider) Name() string {
+	return "athenz"
+}
+
+func (p *athenzAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
+	return nil, nil
+}
+
+func (p *athenzAuthProvider) GetData() ([]byte, error) {
+	tok, err := p.roleToken.RoleTokenValue()
+	if err != nil {
+		return nil, err
+	}
+
+	return []byte(tok), nil
+}
+
+func (p *athenzAuthProvider) Close() error {
+	return nil
+}
+
+func parseUri(uri string) privateKeyUri {
+	var uriSt privateKeyUri
+	// scheme mediatype[;base64] path file
+	const expression = `^(?:([^:/?#]+):)(?:([;/\\\-\w]*),)?(?:/{0,2}((?:[^?#/]*/)*))?([^?#]*)`
+
+	// when expression cannot be parsed, then panics
+	re := regexp.MustCompile(expression)
+	if re.MatchString(uri) {
+		groups := re.FindStringSubmatch(uri)
+		uriSt.Scheme = groups[1]
+		uriSt.MediaTypeAndEncodingType = groups[2]
+		uriSt.Data = groups[4]
+		uriSt.Path = groups[3] + groups[4]
+	}
+
+	return uriSt
+}
