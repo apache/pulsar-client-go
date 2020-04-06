@@ -313,10 +313,23 @@ func TestFlushInProducer(t *testing.T) {
 	assert.Nil(t, err)
 	wg.Wait()
 
+	var ledgerID int64 = -1
+	var entryID int64 = -1
+
 	for i := 0; i < numOfMessages/2; i++ {
-		_, err = consumer.Receive(ctx)
+		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		msgCount++
+
+		msgID := msg.ID().(*messageID)
+		// Since messages are batched, they will be sharing the same ledgerId/entryId
+		if ledgerID == -1 {
+			ledgerID = msgID.ledgerID
+			entryID = msgID.entryID
+		} else {
+			assert.Equal(t, ledgerID, msgID.ledgerID)
+			assert.Equal(t, entryID, msgID.entryID)
+		}
 	}
 
 	assert.Equal(t, msgCount, numOfMessages/2)

@@ -241,7 +241,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	sendAsBatch := !p.options.DisableBatching &&
 		msg.ReplicationClusters == nil &&
-		deliverAt.UnixNano() == 0
+		deliverAt.UnixNano() < 0
 
 	smm := &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int(len(msg.Payload)),
