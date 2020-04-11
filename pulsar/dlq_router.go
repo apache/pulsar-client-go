@@ -101,7 +101,11 @@ func (r *dlqRouter) run() {
 				ReplicationClusters: msg.replicationClusters,
 			}, func(MessageID, *ProducerMessage, error) {
 				r.log.WithField("msgID", msgID).Debug("Sent message to DLQ")
-				cm.Consumer.AckID(msgID)
+
+				consumer, ok := cm.Consumer.(Consumer)
+				if ok {
+					consumer.AckID(msgID)
+				}
 			})
 
 		case <-r.closeCh:

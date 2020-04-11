@@ -70,8 +70,14 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		replicateSubscriptionState: false,
 	}
 
+	// did the user pass in a message channel?
+	messageCh := options.MessageChannel
+	if options.MessageChannel == nil {
+		messageCh = make(chan ConsumerMessage)
+	}
+
 	reader := &reader{
-		messageCh: make(chan ConsumerMessage),
+		messageCh: messageCh,
 		log:       log.WithField("topic", options.Topic),
 	}
 
@@ -80,7 +86,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq)
+	pc, err := newPartitionConsumer(reader, client, consumerOptions, reader.messageCh, dlq)
 
 	if err != nil {
 		close(reader.messageCh)

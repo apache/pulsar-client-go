@@ -82,7 +82,7 @@ type partitionConsumer struct {
 	client *client
 
 	// this is needed for sending ConsumerMessage on the messageCh
-	parentConsumer Consumer
+	parentConsumer interface{}
 	state          consumerState
 	options        *partitionConsumerOpts
 
@@ -116,7 +116,7 @@ type partitionConsumer struct {
 	log *log.Entry
 }
 
-func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
+func newPartitionConsumer(parent interface{}, client *client, options *partitionConsumerOpts,
 	messageCh chan ConsumerMessage, dlq *dlqRouter) (*partitionConsumer, error) {
 	pc := &partitionConsumer{
 		state:          consumerInit,

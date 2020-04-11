@@ -24,7 +24,7 @@ import (
 
 // Pair of a Consumer and Message
 type ConsumerMessage struct {
-	Consumer
+	Consumer interface{} // can be of type Consumer or Reader
 	Message
 }
 

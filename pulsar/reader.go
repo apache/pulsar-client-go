@@ -19,12 +19,6 @@ package pulsar
 
 import "context"
 
-// ReaderMessage package Reader and Message as a struct to use
-type ReaderMessage struct {
-	Reader
-	Message
-}
-
 // ReaderOptions abstraction Reader options to use.
 type ReaderOptions struct {
 	// Topic specify the topic this consumer will subscribe on.
@@ -53,7 +47,7 @@ type ReaderOptions struct {
 
 	// MessageChannel sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
-	MessageChannel chan ReaderMessage
+	MessageChannel chan ConsumerMessage
 
 	// ReceiverQueueSize sets the size of the consumer receive queue.
 	// The consumer receive queue controls how many messages can be accumulated by the Reader before the
