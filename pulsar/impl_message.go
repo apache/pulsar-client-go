@@ -18,6 +18,8 @@
 package pulsar
 
 import (
+	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"sync"
@@ -116,6 +118,24 @@ func newMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int)
 		batchIdx:     batchIdx,
 		partitionIdx: partitionIdx,
 	}
+}
+
+// creates a new messageID object from the given MessageID, consumers is the amount of
+// consumers, 1+ for Consumer, 1 for Reader.
+func newMessageIDFromInterface(msgID MessageID, consumers int) (*messageID, error) {
+	mid, ok := msgID.(*messageID)
+	if !ok {
+		return nil, errors.New("invalid message id type")
+	}
+
+	partition := mid.partitionIdx
+	// did we receive a valid partition index?
+	if partition < 0 || partition >= consumers {
+		return nil, fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, consumers)
+	}
+
+	return mid, nil
 }
 
 func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int,

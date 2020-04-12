@@ -265,8 +265,9 @@ func (c *consumer) Ack(msg Message) {
 
 // Ack the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) {
-	mid, ok := c.messageID(msgID)
-	if !ok {
+	mid, err := newMessageIDFromInterface(msgID, len(c.consumers))
+	if err != nil {
+		c.log.Warnf(err.Error())
 		return
 	}
 
@@ -283,8 +284,9 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	mid, ok := c.messageID(msgID)
-	if !ok {
+	mid, err := newMessageIDFromInterface(msgID, len(c.consumers))
+	if err != nil {
+		c.log.Warnf(err.Error())
 		return
 	}
 
@@ -318,9 +320,9 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return errors.New("for partition topic, seek command should perform on the individual partitions")
 	}
 
-	mid, ok := c.messageID(msgID)
-	if !ok {
-		return nil
+	mid, err := newMessageIDFromInterface(msgID, len(c.consumers))
+	if err != nil {
+		return err
 	}
 
 	return c.consumers[mid.partitionIdx].Seek(mid)
@@ -378,22 +380,4 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 	}
 
 	return pb.CommandSubscribe_Latest
-}
-
-func (c *consumer) messageID(msgID MessageID) (*messageID, bool) {
-	mid, ok := msgID.(*messageID)
-	if !ok {
-		c.log.Warnf("invalid message id type")
-		return nil, false
-	}
-
-	partition := mid.partitionIdx
-	// did we receive a valid partition index?
-	if partition < 0 || partition >= len(c.consumers) {
-		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(c.consumers))
-		return nil, false
-	}
-
-	return mid, true
 }
