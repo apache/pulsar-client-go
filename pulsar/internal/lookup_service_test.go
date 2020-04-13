@@ -127,7 +127,7 @@ func TestLookupSuccess(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url)
+	}, url, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -135,6 +135,38 @@ func TestLookupSuccess(t *testing.T) {
 
 	assert.Equal(t, "pulsar://broker-1:6650", lr.LogicalAddr.String())
 	assert.Equal(t, "pulsar://broker-1:6650", lr.PhysicalAddr.String())
+}
+
+func TestTlsLookupSuccess(t *testing.T) {
+	url, err := url.Parse("pulsar+ssl://example:6651")
+	assert.NoError(t, err)
+
+	ls := NewLookupService(&mockedRPCClient{
+		t: t,
+
+		expectedRequests: []pb.CommandLookupTopic{
+			{
+				RequestId:     proto.Uint64(1),
+				Topic:         proto.String("my-topic"),
+				Authoritative: proto.Bool(false),
+			},
+		},
+		mockedResponses: []pb.CommandLookupTopicResponse{
+			{
+				RequestId:           proto.Uint64(1),
+				Response:            responseType(pb.CommandLookupTopicResponse_Connect),
+				Authoritative:       proto.Bool(true),
+				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
+			},
+		},
+	}, url, true)
+
+	lr, err := ls.Lookup("my-topic")
+	assert.NoError(t, err)
+	assert.NotNil(t, lr)
+
+	assert.Equal(t, "pulsar+ssl://broker-1:6651", lr.LogicalAddr.String())
+	assert.Equal(t, "pulsar+ssl://broker-1:6651", lr.PhysicalAddr.String())
 }
 
 func TestLookupWithProxy(t *testing.T) {
@@ -160,7 +192,7 @@ func TestLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url)
+	}, url, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -168,6 +200,39 @@ func TestLookupWithProxy(t *testing.T) {
 
 	assert.Equal(t, "pulsar://broker-1:6650", lr.LogicalAddr.String())
 	assert.Equal(t, "pulsar://example:6650", lr.PhysicalAddr.String())
+}
+
+func TestTlsLookupWithProxy(t *testing.T) {
+	url, err := url.Parse("pulsar+ssl://example:6651")
+	assert.NoError(t, err)
+
+	ls := NewLookupService(&mockedRPCClient{
+		t: t,
+
+		expectedRequests: []pb.CommandLookupTopic{
+			{
+				RequestId:     proto.Uint64(1),
+				Topic:         proto.String("my-topic"),
+				Authoritative: proto.Bool(false),
+			},
+		},
+		mockedResponses: []pb.CommandLookupTopicResponse{
+			{
+				RequestId:              proto.Uint64(1),
+				Response:               responseType(pb.CommandLookupTopicResponse_Connect),
+				Authoritative:          proto.Bool(true),
+				BrokerServiceUrlTls:    proto.String("pulsar+ssl://broker-1:6651"),
+				ProxyThroughServiceUrl: proto.Bool(true),
+			},
+		},
+	}, url, true)
+
+	lr, err := ls.Lookup("my-topic")
+	assert.NoError(t, err)
+	assert.NotNil(t, lr)
+
+	assert.Equal(t, "pulsar+ssl://broker-1:6651", lr.LogicalAddr.String())
+	assert.Equal(t, "pulsar+ssl://example:6651", lr.PhysicalAddr.String())
 }
 
 func TestLookupWithRedirect(t *testing.T) {
@@ -204,7 +269,7 @@ func TestLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url)
+	}, url, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -212,6 +277,50 @@ func TestLookupWithRedirect(t *testing.T) {
 
 	assert.Equal(t, "pulsar://broker-1:6650", lr.LogicalAddr.String())
 	assert.Equal(t, "pulsar://broker-1:6650", lr.PhysicalAddr.String())
+}
+
+func TestTlsLookupWithRedirect(t *testing.T) {
+	url, err := url.Parse("pulsar+ssl://example:6651")
+	assert.NoError(t, err)
+
+	ls := NewLookupService(&mockedRPCClient{
+		t:           t,
+		expectedURL: "pulsar+ssl://broker-2:6651",
+
+		expectedRequests: []pb.CommandLookupTopic{
+			{
+				RequestId:     proto.Uint64(1),
+				Topic:         proto.String("my-topic"),
+				Authoritative: proto.Bool(false),
+			},
+			{
+				RequestId:     proto.Uint64(2),
+				Topic:         proto.String("my-topic"),
+				Authoritative: proto.Bool(true),
+			},
+		},
+		mockedResponses: []pb.CommandLookupTopicResponse{
+			{
+				RequestId:           proto.Uint64(1),
+				Response:            responseType(pb.CommandLookupTopicResponse_Redirect),
+				Authoritative:       proto.Bool(true),
+				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-2:6651"),
+			},
+			{
+				RequestId:           proto.Uint64(2),
+				Response:            responseType(pb.CommandLookupTopicResponse_Connect),
+				Authoritative:       proto.Bool(true),
+				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
+			},
+		},
+	}, url, true)
+
+	lr, err := ls.Lookup("my-topic")
+	assert.NoError(t, err)
+	assert.NotNil(t, lr)
+
+	assert.Equal(t, "pulsar+ssl://broker-1:6651", lr.LogicalAddr.String())
+	assert.Equal(t, "pulsar+ssl://broker-1:6651", lr.PhysicalAddr.String())
 }
 
 func TestLookupWithInvalidUrlResponse(t *testing.T) {
@@ -237,7 +346,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(false),
 			},
 		},
-	}, url)
+	}, url, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -265,7 +374,7 @@ func TestLookupWithLookupFailure(t *testing.T) {
 				Authoritative: proto.Bool(true),
 			},
 		},
-	}, url)
+	}, url, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)

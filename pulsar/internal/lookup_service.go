@@ -44,19 +44,26 @@ type LookupService interface {
 type lookupService struct {
 	rpcClient  RPCClient
 	serviceURL *url.URL
+	tlsEnabled bool
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
-func NewLookupService(rpcClient RPCClient, serviceURL *url.URL) LookupService {
+func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, tlsEnabled bool) LookupService {
 	return &lookupService{
 		rpcClient:  rpcClient,
 		serviceURL: serviceURL,
+		tlsEnabled: tlsEnabled,
 	}
 }
 
 func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (logicalAddress *url.URL,
 	physicalAddress *url.URL, err error) {
-	logicalAddress, err = url.ParseRequestURI(lr.GetBrokerServiceUrl())
+	if ls.tlsEnabled {
+		logicalAddress, err = url.ParseRequestURI(lr.GetBrokerServiceUrlTls())
+	} else {
+		logicalAddress, err = url.ParseRequestURI(lr.GetBrokerServiceUrl())
+	}
+
 	if err != nil {
 		return nil, nil, err
 	}
