@@ -19,6 +19,8 @@ package pulsar
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -27,10 +29,12 @@ import (
 )
 
 type producer struct {
+	sync.Mutex
 	client        *client
 	options       *ProducerOptions
 	topic         string
 	producers     []Producer
+	numPartitions uint32
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 	ticker        *time.Ticker
 
@@ -109,8 +113,12 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	oldNumPartitions := 0
 	newNumPartitions := len(partitions)
 
-	if p.producers != nil {
-		oldNumPartitions = len(p.producers)
+	p.Lock()
+	oldProducers := p.producers
+	p.Unlock()
+
+	if oldProducers != nil {
+		oldNumPartitions = len(oldProducers)
 		if oldNumPartitions == newNumPartitions {
 			p.log.Debug("Number of partitions in topic has not changed")
 			return nil
@@ -125,10 +133,8 @@ func (p *producer) internalCreatePartitionsProducers() error {
 
 	// Copy over the existing consumer instances
 	for i := 0; i < oldNumPartitions; i++ {
-		producers[i] = p.producers[i]
+		producers[i] = oldProducers[i]
 	}
-
-	p.producers = producers
 
 	type ProducerError struct {
 		partition int
@@ -158,20 +164,25 @@ func (p *producer) internalCreatePartitionsProducers() error {
 			if pe.err != nil {
 				err = pe.err
 			} else {
-				p.producers[pe.partition] = pe.prod
+				producers[pe.partition] = pe.prod
 			}
 		}
 	}
 
 	if err != nil {
 		// Since there were some failures, cleanup all the partitions that succeeded in creating the producers
-		for _, producer := range p.producers {
+		for _, producer := range producers {
 			if producer != nil {
 				producer.Close()
 			}
 		}
 		return err
 	}
+
+	p.Lock()
+	p.producers = producers
+	atomic.StoreUint32(&p.numPartitions, uint32(len(p.producers)))
+	p.Unlock()
 
 	return nil
 }
@@ -181,11 +192,14 @@ func (p *producer) Topic() string {
 }
 
 func (p *producer) Name() string {
+	p.Lock()
+	defer p.Unlock()
+
 	return p.producers[0].Name()
 }
 
 func (p *producer) NumPartitions() uint32 {
-	return uint32(len(p.producers))
+	return atomic.LoadUint32(&p.numPartitions)
 }
 
 func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
@@ -195,11 +209,18 @@ func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, e
 
 func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error)) {
+	p.Lock()
 	partition := p.messageRouter(msg, p)
-	p.producers[partition].SendAsync(ctx, msg, callback)
+	pp := p.producers[partition]
+	p.Unlock()
+
+	pp.SendAsync(ctx, msg, callback)
 }
 
 func (p *producer) LastSequenceID() int64 {
+	p.Lock()
+	defer p.Unlock()
+
 	var maxSeq int64 = -1
 	for _, pp := range p.producers {
 		s := pp.LastSequenceID()
@@ -211,6 +232,9 @@ func (p *producer) LastSequenceID() int64 {
 }
 
 func (p *producer) Flush() error {
+	p.Lock()
+	defer p.Unlock()
+
 	for _, pp := range p.producers {
 		if err := pp.Flush(); err != nil {
 			return err
@@ -221,6 +245,9 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) Close() {
+	p.Lock()
+	defer p.Unlock()
+
 	for _, pp := range p.producers {
 		pp.Close()
 	}

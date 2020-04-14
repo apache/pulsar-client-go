@@ -41,6 +41,7 @@ type acker interface {
 }
 
 type consumer struct {
+	sync.Mutex
 	topic        string
 	client       *client
 	options      ConsumerOptions
@@ -172,8 +173,12 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	oldNumPartitions := 0
 	newNumPartitions := len(partitions)
 
-	if c.consumers != nil {
-		oldNumPartitions = len(c.consumers)
+	c.Lock()
+	oldConsumers := c.consumers
+	c.Unlock()
+
+	if oldConsumers != nil {
+		oldNumPartitions = len(oldConsumers)
 		if oldNumPartitions == newNumPartitions {
 			c.log.Debug("Number of partitions in topic has not changed")
 			return nil
@@ -188,10 +193,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	// Copy over the existing consumer instances
 	for i := 0; i < oldNumPartitions; i++ {
-		consumers[i] = c.consumers[i]
+		consumers[i] = oldConsumers[i]
 	}
-
-	c.consumers = consumers
 
 	type ConsumerError struct {
 		err       error
@@ -252,20 +255,24 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		if ce.err != nil {
 			err = ce.err
 		} else {
-			c.consumers[ce.partition] = ce.consumer
+			consumers[ce.partition] = ce.consumer
 		}
 	}
 
 	if err != nil {
 		// Since there were some failures,
 		// cleanup all the partitions that succeeded in creating the consumer
-		for _, c := range c.consumers {
+		for _, c := range consumers {
 			if c != nil {
 				c.Close()
 			}
 		}
 		return err
 	}
+
+	c.Lock()
+	c.consumers = consumers
+	c.Unlock()
 
 	return nil
 }
@@ -280,6 +287,9 @@ func (c *consumer) Subscription() string {
 }
 
 func (c *consumer) Unsubscribe() error {
+	c.Lock()
+	defer c.Unlock()
+
 	var errMsg string
 	for _, consumer := range c.consumers {
 		if err := consumer.Unsubscribe(); err != nil {
@@ -353,6 +363,9 @@ func (c *consumer) NackID(msgID MessageID) {
 
 func (c *consumer) Close() {
 	c.closeOnce.Do(func() {
+		c.Lock()
+		defer c.Unlock()
+
 		var wg sync.WaitGroup
 		for i := range c.consumers {
 			wg.Add(1)
@@ -370,6 +383,9 @@ func (c *consumer) Close() {
 }
 
 func (c *consumer) Seek(msgID MessageID) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if len(c.consumers) > 1 {
 		return errors.New("for partition topic, seek command should perform on the individual partitions")
 	}
@@ -383,6 +399,8 @@ func (c *consumer) Seek(msgID MessageID) error {
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
+	c.Lock()
+	defer c.Unlock()
 	if len(c.consumers) > 1 {
 		return errors.New("for partition topic, seek command should perform on the individual partitions")
 	}
