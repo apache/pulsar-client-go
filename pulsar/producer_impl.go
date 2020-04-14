@@ -114,8 +114,8 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	newNumPartitions := len(partitions)
 
 	p.Lock()
+	defer p.Unlock()
 	oldProducers := p.producers
-	p.Unlock()
 
 	if oldProducers != nil {
 		oldNumPartitions = len(oldProducers)
@@ -129,11 +129,11 @@ func (p *producer) internalCreatePartitionsProducers() error {
 			Info("Changed number of partitions in topic")
 	}
 
-	producers := make([]Producer, newNumPartitions)
+	p.producers = make([]Producer, newNumPartitions)
 
 	// Copy over the existing consumer instances
 	for i := 0; i < oldNumPartitions; i++ {
-		producers[i] = oldProducers[i]
+		p.producers[i] = oldProducers[i]
 	}
 
 	type ProducerError struct {
@@ -164,14 +164,14 @@ func (p *producer) internalCreatePartitionsProducers() error {
 			if pe.err != nil {
 				err = pe.err
 			} else {
-				producers[pe.partition] = pe.prod
+				p.producers[pe.partition] = pe.prod
 			}
 		}
 	}
 
 	if err != nil {
 		// Since there were some failures, cleanup all the partitions that succeeded in creating the producers
-		for _, producer := range producers {
+		for _, producer := range p.producers {
 			if producer != nil {
 				producer.Close()
 			}
@@ -179,11 +179,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		return err
 	}
 
-	p.Lock()
-	p.producers = producers
 	atomic.StoreUint32(&p.numPartitions, uint32(len(p.producers)))
-	p.Unlock()
-
 	return nil
 }
 

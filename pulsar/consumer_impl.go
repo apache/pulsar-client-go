@@ -174,8 +174,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	newNumPartitions := len(partitions)
 
 	c.Lock()
+	defer c.Unlock()
 	oldConsumers := c.consumers
-	c.Unlock()
+
 
 	if oldConsumers != nil {
 		oldNumPartitions = len(oldConsumers)
@@ -189,11 +190,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			Info("Changed number of partitions in topic")
 	}
 
-	consumers := make([]*partitionConsumer, newNumPartitions)
+	c.consumers = make([]*partitionConsumer, newNumPartitions)
 
 	// Copy over the existing consumer instances
 	for i := 0; i < oldNumPartitions; i++ {
-		consumers[i] = oldConsumers[i]
+		c.consumers[i] = oldConsumers[i]
 	}
 
 	type ConsumerError struct {
@@ -255,24 +256,20 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		if ce.err != nil {
 			err = ce.err
 		} else {
-			consumers[ce.partition] = ce.consumer
+			c.consumers[ce.partition] = ce.consumer
 		}
 	}
 
 	if err != nil {
 		// Since there were some failures,
 		// cleanup all the partitions that succeeded in creating the consumer
-		for _, c := range consumers {
+		for _, c := range c.consumers {
 			if c != nil {
 				c.Close()
 			}
 		}
 		return err
 	}
-
-	c.Lock()
-	c.consumers = consumers
-	c.Unlock()
 
 	return nil
 }
