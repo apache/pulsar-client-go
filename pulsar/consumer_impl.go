@@ -177,7 +177,6 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	defer c.Unlock()
 	oldConsumers := c.consumers
 
-
 	if oldConsumers != nil {
 		oldNumPartitions = len(oldConsumers)
 		if oldNumPartitions == newNumPartitions {
