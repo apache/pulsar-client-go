@@ -199,8 +199,12 @@ func (p *producer) NumPartitions() uint32 {
 }
 
 func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
+	p.Lock()
 	partition := p.messageRouter(msg, p)
-	return p.producers[partition].Send(ctx, msg)
+	pp := p.producers[partition]
+	p.Unlock()
+
+	return pp.Send(ctx, msg)
 }
 
 func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage,
