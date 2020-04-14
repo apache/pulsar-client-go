@@ -41,9 +41,12 @@ type acker interface {
 }
 
 type consumer struct {
-	client    *client
-	options   ConsumerOptions
-	consumers []*partitionConsumer
+	sync.Mutex
+	topic        string
+	client       *client
+	options      ConsumerOptions
+	consumers    []*partitionConsumer
+	consumerName string
 
 	// channel used to deliver message to clients
 	messageCh chan ConsumerMessage
@@ -52,6 +55,7 @@ type consumer struct {
 	closeOnce sync.Once
 	closeCh   chan struct{}
 	errorCh   chan error
+	ticker    *time.Ticker
 
 	log *log.Entry
 }
@@ -118,9 +122,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	return nil, newError(ResultInvalidTopicName, "topic name is required for consumer")
 }
 
-func internalTopicSubscribe(client *client, options ConsumerOptions, topic string,
+func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter) (*consumer, error) {
+
 	consumer := &consumer{
+		topic:     topic,
 		client:    client,
 		options:   options,
 		messageCh: messageCh,
@@ -130,13 +136,65 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 		log:       log.WithField("topic", topic),
 	}
 
-	partitions, err := client.TopicPartitions(topic)
+	if options.Name != "" {
+		consumer.consumerName = options.Name
+	} else {
+		consumer.consumerName = generateRandomName()
+	}
+
+	err := consumer.internalTopicSubscribeToPartitions()
 	if err != nil {
 		return nil, err
 	}
 
-	numPartitions := len(partitions)
-	consumer.consumers = make([]*partitionConsumer, numPartitions)
+	// set up timer to monitor for new partitions being added
+	duration := options.AutoDiscoveryPeriod
+	if duration <= 0 {
+		duration = defaultAutoDiscoveryDuration
+	}
+	consumer.ticker = time.NewTicker(duration)
+
+	go func() {
+		for range consumer.ticker.C {
+			consumer.log.Debug("Auto discovering new partitions")
+			consumer.internalTopicSubscribeToPartitions()
+		}
+	}()
+
+	return consumer, nil
+}
+
+func (c *consumer) internalTopicSubscribeToPartitions() error {
+	partitions, err := c.client.TopicPartitions(c.topic)
+	if err != nil {
+		return err
+	}
+
+	oldNumPartitions := 0
+	newNumPartitions := len(partitions)
+
+	c.Lock()
+	defer c.Unlock()
+	oldConsumers := c.consumers
+
+	if oldConsumers != nil {
+		oldNumPartitions = len(oldConsumers)
+		if oldNumPartitions == newNumPartitions {
+			c.log.Debug("Number of partitions in topic has not changed")
+			return nil
+		}
+
+		c.log.WithField("old_partitions", oldNumPartitions).
+			WithField("new_partitions", newNumPartitions).
+			Info("Changed number of partitions in topic")
+	}
+
+	c.consumers = make([]*partitionConsumer, newNumPartitions)
+
+	// Copy over the existing consumer instances
+	for i := 0; i < oldNumPartitions; i++ {
+		c.consumers[i] = oldConsumers[i]
+	}
 
 	type ConsumerError struct {
 		err       error
@@ -144,42 +202,42 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 		consumer  *partitionConsumer
 	}
 
-	consumerName := options.Name
-	if consumerName == "" {
-		consumerName = generateRandomName()
-	}
+	receiverQueueSize := c.options.ReceiverQueueSize
+	metadata := c.options.Properties
 
-	receiverQueueSize := options.ReceiverQueueSize
-	metadata := options.Properties
+	partitionsToAdd := newNumPartitions - oldNumPartitions
 	var wg sync.WaitGroup
-	ch := make(chan ConsumerError, numPartitions)
-	wg.Add(numPartitions)
-	for partitionIdx, partitionTopic := range partitions {
+	ch := make(chan ConsumerError, partitionsToAdd)
+	wg.Add(partitionsToAdd)
+
+	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
+		partitionTopic := partitions[partitionIdx]
+
 		go func(idx int, pt string) {
 			defer wg.Done()
 
 			var nackRedeliveryDelay time.Duration
-			if options.NackRedeliveryDelay == 0 {
+			if c.options.NackRedeliveryDelay == 0 {
 				nackRedeliveryDelay = defaultNackRedeliveryDelay
 			} else {
-				nackRedeliveryDelay = options.NackRedeliveryDelay
+				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
 			opts := &partitionConsumerOpts{
 				topic:                      pt,
-				consumerName:               consumerName,
-				subscription:               options.SubscriptionName,
-				subscriptionType:           options.Type,
-				subscriptionInitPos:        options.SubscriptionInitialPosition,
+				consumerName:               c.consumerName,
+				subscription:               c.options.SubscriptionName,
+				subscriptionType:           c.options.Type,
+				subscriptionInitPos:        c.options.SubscriptionInitialPosition,
 				partitionIdx:               idx,
 				receiverQueueSize:          receiverQueueSize,
 				nackRedeliveryDelay:        nackRedeliveryDelay,
 				metadata:                   metadata,
-				replicateSubscriptionState: options.ReplicateSubscriptionState,
+				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
 				startMessageID:             nil,
 				subscriptionMode:           durable,
-				readCompacted:              options.ReadCompacted,
+				readCompacted:              c.options.ReadCompacted,
 			}
-			cons, err := newPartitionConsumer(consumer, client, opts, messageCh, dlq)
+			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq)
 			ch <- ConsumerError{
 				err:       err,
 				partition: idx,
@@ -197,27 +255,27 @@ func internalTopicSubscribe(client *client, options ConsumerOptions, topic strin
 		if ce.err != nil {
 			err = ce.err
 		} else {
-			consumer.consumers[ce.partition] = ce.consumer
+			c.consumers[ce.partition] = ce.consumer
 		}
 	}
 
 	if err != nil {
 		// Since there were some failures,
 		// cleanup all the partitions that succeeded in creating the consumer
-		for _, c := range consumer.consumers {
+		for _, c := range c.consumers {
 			if c != nil {
 				c.Close()
 			}
 		}
-		return nil, err
+		return err
 	}
 
-	return consumer, nil
+	return nil
 }
 
 func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlqRouter *dlqRouter) (Consumer, error) {
-	return internalTopicSubscribe(client, options, topic, messageCh, dlqRouter)
+	return newInternalConsumer(client, options, topic, messageCh, dlqRouter)
 }
 
 func (c *consumer) Subscription() string {
@@ -225,6 +283,9 @@ func (c *consumer) Subscription() string {
 }
 
 func (c *consumer) Unsubscribe() error {
+	c.Lock()
+	defer c.Unlock()
+
 	var errMsg string
 	for _, consumer := range c.consumers {
 		if err := consumer.Unsubscribe(); err != nil {
@@ -298,6 +359,9 @@ func (c *consumer) NackID(msgID MessageID) {
 
 func (c *consumer) Close() {
 	c.closeOnce.Do(func() {
+		c.Lock()
+		defer c.Unlock()
+
 		var wg sync.WaitGroup
 		for i := range c.consumers {
 			wg.Add(1)
@@ -308,12 +372,16 @@ func (c *consumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		c.ticker.Stop()
 		c.client.handlers.Del(c)
 		c.dlq.close()
 	})
 }
 
 func (c *consumer) Seek(msgID MessageID) error {
+	c.Lock()
+	defer c.Unlock()
+
 	if len(c.consumers) > 1 {
 		return errors.New("for partition topic, seek command should perform on the individual partitions")
 	}
@@ -327,6 +395,8 @@ func (c *consumer) Seek(msgID MessageID) error {
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
+	c.Lock()
+	defer c.Unlock()
 	if len(c.consumers) > 1 {
 		return errors.New("for partition topic, seek command should perform on the individual partitions")
 	}

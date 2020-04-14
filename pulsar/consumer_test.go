@@ -21,6 +21,8 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net/http"
+	"strconv"
 	"testing"
 	"time"
 
@@ -326,7 +328,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	topic := "persistent://public/default/testGetPartitions"
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
 
-	makeHTTPCall(t, testURL, "64")
+	makeHTTPCall(t, http.MethodPut, testURL, "64")
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
@@ -410,7 +412,7 @@ func TestConsumerShared(t *testing.T) {
 	topic := "persistent://public/default/testMultiPartitionConsumerShared"
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testMultiPartitionConsumerShared/partitions"
 
-	makeHTTPCall(t, testURL, "3")
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
 	sub := "sub-shared-1"
 	consumer1, err := client.Subscribe(ConsumerOptions{
@@ -1206,4 +1208,69 @@ func TestGetDeliveryCount(t *testing.T) {
 	msg, err := consumer.Receive(context.Background())
 	assert.Nil(t, err)
 	assert.Equal(t, uint32(3), msg.RedeliveryCount())
+}
+
+func TestConsumerAddTopicPartitions(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/partitions"
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
+
+	// create producer
+	partitionsAutoDiscoveryInterval = 100 * time.Millisecond
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		MessageRouter: func(msg *ProducerMessage, topicMetadata TopicMetadata) int {
+			// The message key will contain the partition id where to route
+			i, err := strconv.Atoi(msg.Key)
+			assert.NoError(t, err)
+			return i
+		},
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               topic,
+		SubscriptionName:    "my-sub",
+		AutoDiscoveryPeriod: 100 * time.Millisecond,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// Increase number of partitions to 10
+	makeHTTPCall(t, http.MethodPost, testURL, "10")
+
+	// Wait for the producer/consumers to pick up the change
+	time.Sleep(1 * time.Second)
+
+	// Publish messages ensuring that they will go to all the partitions
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Key:     fmt.Sprintf("%d", i),
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	msgs := make([]string, 0)
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		msgs = append(msgs, string(msg.Payload()))
+
+		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+			msg.ID(), string(msg.Payload()))
+
+		consumer.Ack(msg)
+	}
+
+	assert.Equal(t, len(msgs), 10)
 }
