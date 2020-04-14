@@ -118,10 +118,10 @@ func httpDo(method string, requestPath string, in interface{}, out interface{}) 
 	return nil
 }
 
-func makeHTTPCall(t *testing.T, url string, body string) {
+func makeHTTPCall(t *testing.T, method string, url string, body string) {
 	client := http.Client{}
 
-	req, err := http.NewRequest(http.MethodPut, url, strings.NewReader(body))
+	req, err := http.NewRequest(method, url, strings.NewReader(body))
 	if err != nil {
 		t.Fatal(err)
 	}

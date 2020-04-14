@@ -21,17 +21,25 @@ import (
 	"context"
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 type producer struct {
 	client        *client
+	options       *ProducerOptions
 	topic         string
 	producers     []Producer
 	messageRouter func(*ProducerMessage, TopicMetadata) int
+	ticker        *time.Ticker
+
+	log *log.Entry
 }
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
+
+var partitionsAutoDiscoveryInterval = 1 * time.Minute
 
 func getHashingFunction(s HashingScheme) func(string) uint32 {
 	switch s {
@@ -50,8 +58,10 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	}
 
 	p := &producer{
-		topic:  options.Topic,
-		client: client,
+		options: options,
+		topic:   options.Topic,
+		client:  client,
+		log:     log.WithField("topic", options.Topic),
 	}
 
 	var batchingMaxPublishDelay time.Duration
@@ -73,13 +83,56 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		p.messageRouter = options.MessageRouter
 	}
 
-	partitions, err := client.TopicPartitions(options.Topic)
+	err := p.internalCreatePartitionsProducers()
 	if err != nil {
 		return nil, err
 	}
 
-	numPartitions := len(partitions)
-	p.producers = make([]Producer, numPartitions)
+	p.ticker = time.NewTicker(partitionsAutoDiscoveryInterval)
+
+	go func() {
+		for {
+			select {
+			case <-p.ticker.C:
+				p.log.Debug("Auto discovering new partitions")
+				p.internalCreatePartitionsProducers()
+			}
+		}
+	}()
+
+
+	return p, nil
+}
+
+func (p *producer) internalCreatePartitionsProducers() error {
+	partitions, err := p.client.TopicPartitions(p.topic)
+	if err != nil {
+		return err
+	}
+
+	oldNumPartitions := 0
+	newNumPartitions := len(partitions)
+
+	if p.producers != nil {
+		oldNumPartitions = len(p.producers)
+		if oldNumPartitions == newNumPartitions {
+			p.log.Debug("Number of partitions in topic has not changed")
+			return nil
+		} else {
+			p.log.WithField("old_partitions", oldNumPartitions).
+				WithField("new_partitions", newNumPartitions).
+				Info("Changed number of partitions in topic")
+		}
+	}
+
+	producers := make([]Producer, newNumPartitions)
+
+	// Copy over the existing consumer instances
+	for i := 0; i < oldNumPartitions; i++ {
+		producers[i] = p.producers[i]
+	}
+
+	p.producers = producers
 
 	type ProducerError struct {
 		partition int
@@ -87,11 +140,14 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		err       error
 	}
 
-	c := make(chan ProducerError, numPartitions)
+	partitionsToAdd := newNumPartitions - oldNumPartitions
+	c := make(chan ProducerError, partitionsToAdd)
 
-	for partitionIdx, partition := range partitions {
+	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
+		partition := partitions[partitionIdx]
+
 		go func(partitionIdx int, partition string) {
-			prod, e := newPartitionProducer(client, partition, options, partitionIdx)
+			prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx)
 			c <- ProducerError{
 				partition: partitionIdx,
 				prod:      prod,
@@ -100,7 +156,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		}(partitionIdx, partition)
 	}
 
-	for i := 0; i < numPartitions; i++ {
+	for i := 0; i < partitionsToAdd; i++ {
 		pe, ok := <-c
 		if ok {
 			if pe.err != nil {
@@ -118,10 +174,10 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 				producer.Close()
 			}
 		}
-		return nil, err
+		return err
 	}
 
-	return p, nil
+	return nil
 }
 
 func (p *producer) Topic() string {

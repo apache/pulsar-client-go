@@ -20,6 +20,7 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"strconv"
 	"sync"
 	"testing"
@@ -368,7 +369,7 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 
 	// call admin api to make it partitioned
 	url := adminURL + "/" + "admin/v2/persistent/" + topicName + "/partitions"
-	makeHTTPCall(t, url, "5")
+	makeHTTPCall(t, http.MethodPut, url, "5")
 
 	numberOfPartitions := 5
 	numOfMessages := 10
@@ -446,7 +447,7 @@ func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 
 	// call admin api to make it partitioned
 	url := adminURL + "/" + "admin/v2/persistent/" + topicName + "/partitions"
-	makeHTTPCall(t, url, strconv.Itoa(numberOfPartitions))
+	makeHTTPCall(t, http.MethodPut, url, strconv.Itoa(numberOfPartitions))
 
 	numOfMessages := 10
 	ctx := context.Background()

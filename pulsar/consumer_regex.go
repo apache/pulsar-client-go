@@ -237,7 +237,7 @@ func (c *regexConsumer) monitor() {
 		case <-c.closeCh:
 			return
 		case <-c.ticker.C:
-			log.Debug("Auto discovering topics")
+			c.log.Debug("Auto discovering topics")
 			if !c.closed() {
 				c.discover()
 			}
@@ -361,7 +361,7 @@ func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan Consum
 	for _, t := range topics {
 		go func(topic string) {
 			defer wg.Done()
-			c, err := internalTopicSubscribe(c, opts, topic, ch, dlq)
+			c, err := newInternalConsumer(c, opts, topic, ch, dlq)
 			consumerErrorCh <- consumerError{
 				err:      err,
 				topic:    topic,
