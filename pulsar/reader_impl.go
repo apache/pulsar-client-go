@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"time"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -149,4 +150,34 @@ func (r *reader) hasMoreMessages() bool {
 
 func (r *reader) Close() {
 	r.pc.Close()
+}
+
+func (r *reader) messageID(msgID MessageID) (*messageID, bool) {
+	mid, ok := msgID.(*messageID)
+	if !ok {
+		r.log.Warnf("invalid message id type")
+		return nil, false
+	}
+
+	partition := mid.partitionIdx
+	// did we receive a valid partition index?
+	if partition != 0 {
+		r.log.Warnf("invalid partition index %d expected 0", partition)
+		return nil, false
+	}
+
+	return mid, true
+}
+
+func (r *reader) Seek(msgID MessageID) error {
+	mid, ok := r.messageID(msgID)
+	if !ok {
+		return nil
+	}
+
+	return r.pc.Seek(mid)
+}
+
+func (r *reader) SeekByTime(time time.Time) error {
+	return r.pc.SeekByTime(time)
 }

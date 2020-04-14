@@ -24,6 +24,9 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 func TestReaderConfigErrors(t *testing.T) {
@@ -361,4 +364,109 @@ func TestReaderHasNext(t *testing.T) {
 	}
 
 	assert.Equal(t, 10, i)
+}
+
+func TestReaderSeek(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	require.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	require.Nil(t, err)
+	defer producer.Close()
+
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topicName,
+		StartMessageID: EarliestMessageID(),
+	})
+	require.Nil(t, err)
+	defer reader.Close()
+
+	const N = 10
+	var seekID MessageID
+	for i := 0; i < N; i++ {
+		id, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		require.Nil(t, err)
+
+		if i == 4 {
+			seekID = id
+		}
+	}
+	err = producer.Flush()
+	assert.NoError(t, err)
+
+	for i := 0; i < N; i++ {
+		msg, err := reader.Next(context.Background())
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+	}
+
+	err = reader.Seek(seekID)
+	require.Nil(t, err)
+
+	msg, err := reader.Next(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, "hello-4", string(msg.Payload()))
+}
+
+func TestReaderSeekByTime(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	require.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: false,
+	})
+	require.Nil(t, err)
+	defer producer.Close()
+
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topicName,
+		StartMessageID: LatestMessageID(),
+	})
+	require.Nil(t, err)
+	defer reader.Close()
+
+	const N = 10
+	resetTimeStr := "100s"
+	retentionTimeInSecond, err := internal.ParseRelativeTimeInSeconds(resetTimeStr)
+	assert.Nil(t, err)
+
+	for i := 0; i < N; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		require.Nil(t, err)
+	}
+
+	for i := 0; i < N; i++ {
+		msg, err := reader.Next(context.Background())
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+	}
+
+	currentTimestamp := time.Now()
+	err = reader.SeekByTime(currentTimestamp.Add(-retentionTimeInSecond))
+	require.Nil(t, err)
+
+	for i := 0; i < N; i++ {
+		msg, err := reader.Next(context.Background())
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+	}
 }
