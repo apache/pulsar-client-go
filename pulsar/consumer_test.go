@@ -1210,7 +1210,6 @@ func TestGetDeliveryCount(t *testing.T) {
 	assert.Equal(t, uint32(3), msg.RedeliveryCount())
 }
 
-
 func TestConsumerAddTopicPartitions(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

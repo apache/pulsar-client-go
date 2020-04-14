@@ -121,7 +121,6 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	return nil, newError(ResultInvalidTopicName, "topic name is required for consumer")
 }
 
-
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter) (*consumer, error) {
 
@@ -155,12 +154,9 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	consumer.ticker = time.NewTicker(duration)
 
 	go func() {
-		for {
-			select {
-			case <-consumer.ticker.C:
-				consumer.log.Debug("Auto discovering new partitions")
-				consumer.internalTopicSubscribeToPartitions()
-			}
+		for range consumer.ticker.C {
+			consumer.log.Debug("Auto discovering new partitions")
+			consumer.internalTopicSubscribeToPartitions()
 		}
 	}()
 
@@ -181,11 +177,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		if oldNumPartitions == newNumPartitions {
 			c.log.Debug("Number of partitions in topic has not changed")
 			return nil
-		} else {
-			c.log.WithField("old_partitions", oldNumPartitions).
-				WithField("new_partitions", newNumPartitions).
-				Info("Changed number of partitions in topic")
 		}
+
+		c.log.WithField("old_partitions", oldNumPartitions).
+			WithField("new_partitions", newNumPartitions).
+			Info("Changed number of partitions in topic")
 	}
 
 	consumers := make([]*partitionConsumer, newNumPartitions)

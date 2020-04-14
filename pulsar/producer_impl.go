@@ -91,15 +91,11 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	p.ticker = time.NewTicker(partitionsAutoDiscoveryInterval)
 
 	go func() {
-		for {
-			select {
-			case <-p.ticker.C:
-				p.log.Debug("Auto discovering new partitions")
-				p.internalCreatePartitionsProducers()
-			}
+		for range p.ticker.C {
+			p.log.Debug("Auto discovering new partitions")
+			p.internalCreatePartitionsProducers()
 		}
 	}()
-
 
 	return p, nil
 }
@@ -118,11 +114,11 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		if oldNumPartitions == newNumPartitions {
 			p.log.Debug("Number of partitions in topic has not changed")
 			return nil
-		} else {
-			p.log.WithField("old_partitions", oldNumPartitions).
-				WithField("new_partitions", newNumPartitions).
-				Info("Changed number of partitions in topic")
 		}
+
+		p.log.WithField("old_partitions", oldNumPartitions).
+			WithField("new_partitions", newNumPartitions).
+			Info("Changed number of partitions in topic")
 	}
 
 	producers := make([]Producer, newNumPartitions)
