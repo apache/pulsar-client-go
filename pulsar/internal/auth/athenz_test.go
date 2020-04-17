@@ -30,7 +30,7 @@ import (
 	zts "github.com/yahoo/athenz/libs/go/ztsroletoken"
 )
 
-const tlsClientKeyPath  = "../../../integration-tests/certs/client-key.pem"
+const tlsClientKeyPath = "../../../integration-tests/certs/client-key.pem"
 
 type MockTokenBuilder struct {
 	mock.Mock
@@ -44,10 +44,14 @@ type MockRoleToken struct {
 	mock.Mock
 }
 
-func (m *MockTokenBuilder) SetExpiration(t time.Duration) {}
-func (m *MockTokenBuilder) SetHostname(h string) {}
-func (m *MockTokenBuilder) SetIPAddress(ip string) {}
-func (m *MockTokenBuilder) SetKeyService(keyService string) {}
+func (m *MockTokenBuilder) SetExpiration(t time.Duration) {
+}
+func (m *MockTokenBuilder) SetHostname(h string) {
+}
+func (m *MockTokenBuilder) SetIPAddress(ip string) {
+}
+func (m *MockTokenBuilder) SetKeyService(keyService string) {
+}
 func (m *MockTokenBuilder) Token() zms.Token {
 	result := m.Called()
 	return result.Get(0).(zms.Token)
@@ -69,10 +73,10 @@ func MockZmsNewTokenBuilder(domain, name string, privateKeyPEM []byte, keyVersio
 	if err != nil {
 		return nil, err
 	}
-	if "pulsar.test.tenant" != domain ||
-		"service" != name ||
+	if domain != "pulsar.test.tenant" ||
+		name != "service" ||
 		!bytes.Equal(key, privateKeyPEM) ||
-		"0" != keyVersion {
+		keyVersion != "0" {
 		return nil, errors.New("Assertion error")
 	}
 
@@ -89,10 +93,10 @@ func MockZtsNewRoleToken(tok zms.Token, domain string, opts zts.RoleTokenOptions
 	if err != nil {
 		return nil
 	}
-	if "mockPrincipalToken" != token ||
-		"pulsar.test.provider" != domain ||
-		"http://localhost:9999/zts/v1" != opts.BaseZTSURL ||
-		"" != opts.AuthHeader {
+	if token != "mockPrincipalToken" ||
+		domain != "pulsar.test.provider" ||
+		opts.BaseZTSURL != "http://localhost:9999/zts/v1" ||
+		opts.AuthHeader != "" {
 		return nil
 	}
 
@@ -102,11 +106,12 @@ func MockZtsNewRoleToken(tok zms.Token, domain string, opts zts.RoleTokenOptions
 }
 
 func TestAthenzAuth(t *testing.T) {
+	privateKey := "file://" + tlsClientKeyPath
 	provider := NewAuthenticationAthenz(
 		"pulsar.test.provider",
 		"pulsar.test.tenant",
 		"service",
-		"file://" + tlsClientKeyPath,
+		privateKey,
 		"",
 		"",
 		"http://localhost:9999")

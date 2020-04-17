@@ -19,9 +19,9 @@ package auth
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
-	"encoding/json"
 
 	"github.com/pkg/errors"
 )

@@ -40,16 +40,16 @@ type athenzAuthProvider struct {
 	tenantDomain       string
 	tenantService      string
 	privateKey         string
-	keyId              string
+	keyID              string
 	principalHeader    string
-	ztsUrl             string
+	ztsURL             string
 	tokenBuilder       zms.TokenBuilder
 	roleToken          zts.RoleToken
-	zmsNewTokenBuilder func (domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error) // for test
-	ztsNewRoleToken    func (tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken // for test
+	zmsNewTokenBuilder func(domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error)
+	ztsNewRoleToken    func(tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken
 }
 
-type privateKeyUri struct {
+type privateKeyURI struct {
 	Scheme                   string
 	MediaTypeAndEncodingType string
 	Data                     string
@@ -73,33 +73,34 @@ func NewAuthenticationAthenz(
 	tenantDomain string,
 	tenantService string,
 	privateKey string,
-	keyId string,
+	keyID string,
 	principalHeader string,
-	ztsUrl string) Provider {
-	var fixedKeyId string
-	if keyId == "" {
-		fixedKeyId = "0"
+	ztsURL string) Provider {
+	var fixedKeyID string
+	if keyID == "" {
+		fixedKeyID = "0"
 	} else {
-		fixedKeyId = keyId
+		fixedKeyID = keyID
+	}
+	ztsNewRoleToken := func(tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken {
+		return zts.RoleToken(zts.NewRoleToken(tok, domain, opts))
 	}
 
 	return &athenzAuthProvider{
-		providerDomain: providerDomain,
-		tenantDomain: tenantDomain,
-		tenantService: tenantService,
-		privateKey: privateKey,
-		keyId: fixedKeyId,
-		principalHeader: principalHeader,
-		ztsUrl: strings.TrimSuffix(ztsUrl, "/"),
+		providerDomain:     providerDomain,
+		tenantDomain:       tenantDomain,
+		tenantService:      tenantService,
+		privateKey:         privateKey,
+		keyID:              fixedKeyID,
+		principalHeader:    principalHeader,
+		ztsURL:             strings.TrimSuffix(ztsURL, "/"),
 		zmsNewTokenBuilder: zms.NewTokenBuilder,
-		ztsNewRoleToken: func (tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken {
-			return zts.RoleToken(zts.NewRoleToken(tok, domain, opts))
-		},
+		ztsNewRoleToken:    ztsNewRoleToken,
 	}
 }
 
 func (p *athenzAuthProvider) Init() error {
-	uriSt := parseUri(p.privateKey)
+	uriSt := parseURI(p.privateKey)
 	var keyData []byte
 
 	if uriSt.Scheme == "data" {
@@ -121,16 +122,16 @@ func (p *athenzAuthProvider) Init() error {
 		return errors.New("Unsupported URI Scheme: " + uriSt.Scheme)
 	}
 
-	tb, err := p.zmsNewTokenBuilder(p.tenantDomain, p.tenantService, keyData, p.keyId)
+	tb, err := p.zmsNewTokenBuilder(p.tenantDomain, p.tenantService, keyData, p.keyID)
 	if err != nil {
 		return err
 	}
 	p.tokenBuilder = tb
 
 	roleToken := p.ztsNewRoleToken(p.tokenBuilder.Token(), p.providerDomain, zts.RoleTokenOptions{
-		BaseZTSURL: p.ztsUrl + "/zts/v1",
-		MinExpire: minExpire,
-		MaxExpire: maxExpire,
+		BaseZTSURL: p.ztsURL + "/zts/v1",
+		MinExpire:  minExpire,
+		MaxExpire:  maxExpire,
 		AuthHeader: p.principalHeader,
 	})
 	p.roleToken = roleToken
@@ -159,8 +160,8 @@ func (p *athenzAuthProvider) Close() error {
 	return nil
 }
 
-func parseUri(uri string) privateKeyUri {
-	var uriSt privateKeyUri
+func parseURI(uri string) privateKeyURI {
+	var uriSt privateKeyURI
 	// scheme mediatype[;base64] path file
 	const expression = `^(?:([^:/?#]+):)(?:([;/\\\-\w]*),)?(?:/{0,2}((?:[^?#/]*/)*))?([^?#]*)`
 
