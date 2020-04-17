@@ -76,6 +76,7 @@ type partitionConsumerOpts struct {
 	startMessageIDInclusive    bool
 	subscriptionMode           subscriptionMode
 	readCompacted              bool
+	disableForceTopicCreation  bool
 }
 
 type partitionConsumer struct {
@@ -746,6 +747,12 @@ func (pc *partitionConsumer) grabConn() error {
 
 	if len(pc.options.metadata) > 0 {
 		cmdSubscribe.Metadata = toKeyValues(pc.options.metadata)
+	}
+
+	// force topic creation is enabled by default so
+	// we only need to set the flag when disabling it
+	if pc.options.disableForceTopicCreation {
+		cmdSubscribe.ForceTopicCreation = proto.Bool(false)
 	}
 
 	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,

@@ -42,11 +42,12 @@ type acker interface {
 
 type consumer struct {
 	sync.Mutex
-	topic        string
-	client       *client
-	options      ConsumerOptions
-	consumers    []*partitionConsumer
-	consumerName string
+	topic                     string
+	client                    *client
+	options                   ConsumerOptions
+	consumers                 []*partitionConsumer
+	consumerName              string
+	disableForceTopicCreation bool
 
 	// channel used to deliver message to clients
 	messageCh chan ConsumerMessage
@@ -123,17 +124,18 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 }
 
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter) (*consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, disableForceTopicCreation bool) (*consumer, error) {
 
 	consumer := &consumer{
-		topic:     topic,
-		client:    client,
-		options:   options,
-		messageCh: messageCh,
-		closeCh:   make(chan struct{}),
-		errorCh:   make(chan error),
-		dlq:       dlq,
-		log:       log.WithField("topic", topic),
+		topic:                     topic,
+		client:                    client,
+		options:                   options,
+		disableForceTopicCreation: disableForceTopicCreation,
+		messageCh:                 messageCh,
+		closeCh:                   make(chan struct{}),
+		errorCh:                   make(chan error),
+		dlq:                       dlq,
+		log:                       log.WithField("topic", topic),
 	}
 
 	if options.Name != "" {
@@ -275,7 +277,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlqRouter *dlqRouter) (Consumer, error) {
-	return newInternalConsumer(client, options, topic, messageCh, dlqRouter)
+	return newInternalConsumer(client, options, topic, messageCh, dlqRouter, false)
 }
 
 func (c *consumer) Subscription() string {
