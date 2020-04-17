@@ -120,9 +120,9 @@ func newMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int)
 	}
 }
 
-// creates a new messageID object from the given MessageID, consumers is the amount of
-// consumers, 1+ for Consumer, 1 for Reader.
-func newMessageIDFromInterface(msgID MessageID, consumers int) (*messageID, error) {
+// casts the given messageID interface to the internal struct.
+// consumers is the amount of consumers, 1+ for Consumer, 1 for Reader.
+func messageIDFromInterface(msgID MessageID, consumers int) (*messageID, error) {
 	mid, ok := msgID.(*messageID)
 	if !ok {
 		return nil, errors.New("invalid message id type")

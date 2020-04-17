@@ -265,7 +265,7 @@ func (c *consumer) Ack(msg Message) {
 
 // Ack the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) {
-	mid, err := newMessageIDFromInterface(msgID, len(c.consumers))
+	mid, err := messageIDFromInterface(msgID, len(c.consumers))
 	if err != nil {
 		c.log.Warnf(err.Error())
 		return
@@ -284,7 +284,7 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	mid, err := newMessageIDFromInterface(msgID, len(c.consumers))
+	mid, err := messageIDFromInterface(msgID, len(c.consumers))
 	if err != nil {
 		c.log.Warnf(err.Error())
 		return
@@ -320,7 +320,7 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return errors.New("for partition topic, seek command should perform on the individual partitions")
 	}
 
-	mid, err := newMessageIDFromInterface(msgID, len(c.consumers))
+	mid, err := messageIDFromInterface(msgID, len(c.consumers))
 	if err != nil {
 		return err
 	}
