@@ -304,6 +304,7 @@ type pendingItem struct {
 	batchData    []byte
 	sequenceID   uint64
 	sendRequests []interface{}
+	completed    bool
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
@@ -329,6 +330,19 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		return
 	}
 
+	// lock the pending request while adding requests
+	// since the ReceivedSendReceipt func iterates over this list
+	pi.Lock()
+	defer pi.Unlock()
+
+	if pi.completed {
+		// The last item in the queue has been completed while we were
+		// looking at it. It's safe at this point to assume that every
+		// message enqueued before Flush() was called are now persisted
+		fr.waitGroup.Done()
+		return
+	}
+
 	sendReq := &sendRequest{
 		msg: nil,
 		callback: func(id MessageID, message *ProducerMessage, e error) {
@@ -337,11 +351,7 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		},
 	}
 
-	// lock the pending request while adding requests
-	// since the ReceivedSendReceipt func iterates over this list
-	pi.Lock()
 	pi.sendRequests = append(pi.sendRequests, sendReq)
-	pi.Unlock()
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
@@ -422,6 +432,9 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 			sr.callback(msgID, sr.msg, nil)
 		}
 	}
+
+	// Mark this pending item as done
+	pi.completed = true
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
