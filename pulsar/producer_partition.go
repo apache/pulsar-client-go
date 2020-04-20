@@ -357,12 +357,6 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 		wg.Done()
 	}, true)
 
-	// When sending synchronously we flush immediately to avoid
-	// the increased latency and reduced throughput of batching
-	if err = p.Flush(); err != nil {
-		return nil, err
-	}
-
 	wg.Wait()
 	return msgID, err
 }
