@@ -361,7 +361,7 @@ func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan Consum
 	for _, t := range topics {
 		go func(topic string) {
 			defer wg.Done()
-			c, err := newInternalConsumer(c, opts, topic, ch, dlq)
+			c, err := newInternalConsumer(c, opts, topic, ch, dlq, true)
 			consumerErrorCh <- consumerError{
 				err:      err,
 				topic:    topic,
