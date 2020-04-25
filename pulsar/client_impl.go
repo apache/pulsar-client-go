@@ -80,6 +80,10 @@ func newClient(options ClientOptions) (Client, error) {
 			return nil, errors.New("invalid auth provider interface")
 		}
 	}
+	err = authProvider.Init()
+	if err != nil {
+		return nil, err
+	}
 
 	connectionTimeout := options.ConnectionTimeout
 	if connectionTimeout.Nanoseconds() == 0 {
