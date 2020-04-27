@@ -114,7 +114,7 @@ func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
 }
 
 func (r *MessageReader) ReadMessage() (*pb.SingleMessageMetadata, []byte, error) {
-	if r.buffer.ReadableBytes() == 0 {
+	if r.buffer.ReadableBytes() == 0 && r.buffer.Capacity() > 0 {
 		return nil, nil, ErrEOM
 	}
 	if !r.batched {

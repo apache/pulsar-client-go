@@ -527,7 +527,7 @@ func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		err := consumer.MessageReceived(response, payload)
 		if err != nil {
-			c.log.WithField("consumerID", consumerID).Error("handle message err: ", response.MessageId)
+			c.log.WithField("consumerID", consumerID).WithError(err).Error("handle message Id: ", response.MessageId)
 		}
 	} else {
 		c.log.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)
