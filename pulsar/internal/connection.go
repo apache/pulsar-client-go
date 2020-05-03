@@ -716,7 +716,7 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 	} else if !tlsConfig.InsecureSkipVerify {
 		// Solution is credited to https://github.com/golang/go/issues/21971
 		// Code is adapted from the original implementation of handshake_client.go at
-		// 		https://github.com/golang/go/blob/81555cb4f3521b53f9de4ce15f64b77cc9df61b9/src/crypto/tls/handshake_client.go#L327-L344,%20but%20adapted%20to%20skip%20the%20hostname%20verification
+		// https://github.com/golang/go/blob/master/src/crypto/tls/handshake_client.go#L804
 		// disable the default verification; use customized VerifyPeerCertificate
 		tlsConfig.InsecureSkipVerify = true
 		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, certChain [][]*x509.Certificate) error {
