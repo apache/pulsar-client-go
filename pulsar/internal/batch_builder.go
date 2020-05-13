@@ -174,13 +174,13 @@ func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks 
 func getCompressionProvider(compressionType pb.CompressionType) compression.Provider {
 	switch compressionType {
 	case pb.CompressionType_NONE:
-		return compression.NoopProvider
+		return compression.NoopProvider()
 	case pb.CompressionType_LZ4:
-		return compression.Lz4Provider
+		return compression.Lz4Provider()
 	case pb.CompressionType_ZLIB:
-		return compression.ZLibProvider
+		return compression.ZLibProvider()
 	case pb.CompressionType_ZSTD:
-		return compression.ZStdProvider
+		return compression.ZStdProvider()
 	default:
 		log.Panic("unsupported compression type")
 		return nil

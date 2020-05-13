@@ -34,8 +34,8 @@ type Provider interface {
 }
 
 var (
-	NoopProvider = NewNoopProvider()
-	ZLibProvider = NewZLibProvider()
-	Lz4Provider  = NewLz4Provider()
-	ZStdProvider = NewZStdProvider()
+	NoopProvider = NewNoopProvider
+	ZLibProvider = NewZLibProvider
+	Lz4Provider  = NewLz4Provider
+	ZStdProvider = NewZStdProvider
 )

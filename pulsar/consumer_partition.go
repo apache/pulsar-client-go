@@ -32,15 +32,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 )
 
-var (
-	compressionProviders = map[pb.CompressionType]compression.Provider{
-		pb.CompressionType_NONE: compression.NoopProvider,
-		pb.CompressionType_LZ4:  compression.Lz4Provider,
-		pb.CompressionType_ZLIB: compression.ZLibProvider,
-		pb.CompressionType_ZSTD: compression.ZStdProvider,
-	}
-)
-
 type consumerState int
 
 const (
@@ -115,6 +106,8 @@ type partitionConsumer struct {
 	dlq         *dlqRouter
 
 	log *log.Entry
+
+	compressionProviders map[pb.CompressionType]compression.Provider
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
@@ -139,6 +132,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:            dlq,
 		log:            log.WithField("topic", options.topic),
 	}
+	pc.setupCompressionProviders()
 	pc.log = pc.log.WithField("name", pc.name).WithField("subscription", options.subscription)
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay)
 
@@ -155,6 +149,15 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	go pc.runEventsLoop()
 
 	return pc, nil
+}
+
+func (pc *partitionConsumer) setupCompressionProviders() {
+	pc.compressionProviders = map[pb.CompressionType]compression.Provider{
+		pb.CompressionType_NONE: compression.NoopProvider(),
+		pb.CompressionType_LZ4:  compression.Lz4Provider(),
+		pb.CompressionType_ZLIB: compression.ZLibProvider(),
+		pb.CompressionType_ZSTD: compression.ZStdProvider(),
+	}
 }
 
 func (pc *partitionConsumer) Unsubscribe() error {
@@ -844,7 +847,7 @@ func getPreviousMessage(mid *messageID) *messageID {
 }
 
 func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload internal.Buffer) (internal.Buffer, error) {
-	provider, ok := compressionProviders[msgMeta.GetCompression()]
+	provider, ok := pc.compressionProviders[msgMeta.GetCompression()]
 	if !ok {
 		err := fmt.Errorf("unsupported compression type: %v", msgMeta.GetCompression())
 		pc.log.WithError(err).Error("Failed to decompress message.")

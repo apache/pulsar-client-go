@@ -31,6 +31,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		queueCh:  make(chan []*message, 1),
 		eventsCh: eventsCh,
 	}
+	pc.setupCompressionProviders()
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -59,6 +60,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		queueCh:  make(chan []*message, 1),
 		eventsCh: eventsCh,
 	}
+	pc.setupCompressionProviders()
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -87,6 +89,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		queueCh:  make(chan []*message, 1),
 		eventsCh: eventsCh,
 	}
+	pc.setupCompressionProviders()
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
