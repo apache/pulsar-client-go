@@ -147,6 +147,7 @@ type connection struct {
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan interface{}
+	runLoopStoppedCh   chan interface{}
 	writeRequestsCh    chan []byte
 
 	pendingReqs map[uint64]*request
@@ -309,10 +310,15 @@ func (c *connection) run() {
 	go c.reader.readFromConnection()
 	go c.runPingCheck()
 
+	c.runLoopStoppedCh = make(chan interface{})
+	defer func() {
+		close(c.runLoopStoppedCh)
+		c.Close()
+	}()
+
 	for {
 		select {
 		case <-c.closeCh:
-			c.Close()
 			return
 
 		case req := <-c.incomingRequestsCh:
@@ -361,7 +367,7 @@ func (c *connection) internalWriteData(data []byte) {
 	c.log.Debug("Write data: ", len(data))
 	if _, err := c.cnx.Write(data); err != nil {
 		c.log.WithError(err).Warn("Failed to write on connection")
-		c.Close()
+		c.TriggerClose()
 	}
 }
 
@@ -450,7 +456,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	default:
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
-		c.Close()
+		c.TriggerClose()
 	}
 }
 
@@ -568,7 +574,7 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	authData, err := c.auth.GetData()
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to load auth credentials")
-		c.Close()
+		c.TriggerClose()
 		return
 	}
 
@@ -656,9 +662,7 @@ func (c *connection) Close() {
 
 	c.log.Info("Connection closed")
 	c.state = connectionClosed
-	if c.cnx != nil {
-		c.cnx.Close()
-	}
+	c.TriggerClose()
 	c.pingTicker.Stop()
 	c.pingCheckTicker.Stop()
 
@@ -666,8 +670,12 @@ func (c *connection) Close() {
 		listener.ConnectionClosed()
 	}
 
-	for _, req := range c.pendingReqs {
+	if c.runLoopStoppedCh != nil {
+		<-c.runLoopStoppedCh
+	}
+	for id, req := range c.pendingReqs {
 		req.callback(nil, errors.New("connection closed"))
+		delete(c.pendingReqs, id)
 	}
 
 	consumerHandlers := make(map[uint64]ConsumerHandler)
