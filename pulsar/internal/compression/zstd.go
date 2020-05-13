@@ -18,19 +18,19 @@
 package compression
 
 import (
-	"bytes"
-
 	"github.com/klauspost/compress/zstd"
 	"github.com/pkg/errors"
 )
 
 type zstdProvider struct {
 	encoder *zstd.Encoder
+	decoder *zstd.Decoder
 }
 
 func NewZStdProvider() Provider {
 	p := &zstdProvider{}
 	p.encoder, _ = zstd.NewWriter(nil)
+	p.decoder, _ = zstd.NewReader(nil)
 	return p
 }
 
@@ -42,19 +42,10 @@ func (p *zstdProvider) Compress(data []byte) []byte {
 	return p.encoder.EncodeAll(data, []byte{})
 }
 
-func (p *zstdProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	d, err := zstd.NewReader(bytes.NewReader(compressedData))
-	if err != nil {
-		return nil, err
-	}
-
-	uncompressed := make([]byte, originalSize)
-	size, err := d.Read(uncompressed)
-	if err != nil {
-		return nil, err
-	} else if size != originalSize {
+func (p *zstdProvider) Decompress(compressedData []byte, originalSize int) (dst []byte, err error) {
+	dst, err = p.decoder.DecodeAll(compressedData, nil)
+	if err == nil && len(dst) != originalSize {
 		return nil, errors.New("Invalid uncompressed size")
-	} else {
-		return uncompressed, nil
 	}
+	return
 }
