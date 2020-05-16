@@ -144,9 +144,9 @@ func (bq *blockingQueue) PollIfSatisfy(condition func(interface{}) bool) (item i
 
 	if condition(bq.items[bq.headIdx]) {
 		return bq.dequeue(), false, true
-	} else {
-		return nil, false, false
 	}
+
+	return nil, false, false
 }
 
 func (bq *blockingQueue) Peek() interface{} {

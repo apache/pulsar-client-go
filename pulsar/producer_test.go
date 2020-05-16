@@ -20,7 +20,6 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 	"net/http"
 	"strconv"
 	"sync"
@@ -28,6 +27,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 	"github.com/stretchr/testify/assert"
 
 	log "github.com/sirupsen/logrus"

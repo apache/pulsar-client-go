@@ -152,7 +152,13 @@ func (bb *BatchBuilder) reset() {
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks []interface{}, createAt time.Time, sendTimeout time.Duration) {
+func (bb *BatchBuilder) Flush() (
+	batchData []byte,
+	sequenceID uint64,
+	callbacks []interface{},
+	createAt time.Time,
+	sendTimeout time.Duration,
+) {
 	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
