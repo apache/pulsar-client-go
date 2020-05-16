@@ -126,6 +126,7 @@ type connection struct {
 	cond              *sync.Cond
 	state             connectionState
 	connectionTimeout time.Duration
+	closeOnce         sync.Once
 
 	logicalAddr  *url.URL
 	physicalAddr *url.URL
@@ -636,18 +637,14 @@ func (c *connection) UnregisterListener(id uint64) {
 // Triggers the connection close by forcing the socket to close and
 // broadcasting the notification on the close channel
 func (c *connection) TriggerClose() {
-	cnx := c.cnx
-	if cnx != nil {
-		cnx.Close()
-	}
+	c.closeOnce.Do(func() {
+		cnx := c.cnx
+		if cnx != nil {
+			cnx.Close()
+		}
 
-	select {
-	case <-c.closeCh:
-		return
-	default:
 		close(c.closeCh)
-	}
-
+	})
 }
 
 func (c *connection) Close() {
