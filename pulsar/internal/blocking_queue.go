@@ -34,7 +34,9 @@ type BlockingQueue interface {
 	// Poll dequeue one item, return nil if queue is empty
 	Poll() interface{}
 
-	// Poll dequeue one item if the item meets the condition, return nil,true,false if queue is empty, return nil,false,false if not satisfy.
+	// Poll dequeue one item if the item meets the condition,
+	// return nil,true,false if queue is empty,
+	// return nil,false,false if not satisfy.
 	PollIfSatisfy(i func(item interface{}) bool) (item interface{}, empty bool, satisfy bool)
 
 	// Peek return the first item without dequeing, return nil if queue is empty
