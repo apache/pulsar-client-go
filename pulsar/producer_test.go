@@ -20,6 +20,7 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 	"net/http"
 	"strconv"
 	"sync"
@@ -789,4 +790,119 @@ func TestDelayAbsolute(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, msg)
 	canc()
+}
+func TestSendTimeoutBecauseTooLongBatchingMaxPublishDelay(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   "topic-1",
+		BatchingMaxPublishDelay: time.Second * 3,
+		SendTimeout:             time.Second * 1,
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	for i := 0; i < 10; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}, func(msgId MessageID, message *ProducerMessage, e error) {
+			assert.Equal(t, ErrSendTimeout, e)
+			assert.Nil(t, msgId)
+		})
+	}
+
+	time.Sleep(4 * time.Second)
+	producer.Close()
+}
+
+func TestSendTimeoutBecauseResponseTooLate(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   "topic-1",
+		BatchingMaxPublishDelay: time.Second * 3,
+		SendTimeout:             time.Millisecond * 100,
+		beforeReceiveResponseCallback: func(receipt *pb.CommandSendReceipt) {
+			time.Sleep(1 * time.Second)
+		},
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	for i := 0; i < 10; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}, func(msgId MessageID, message *ProducerMessage, e error) {
+			assert.Equal(t, ErrSendTimeout, e)
+			assert.Nil(t, msgId)
+		})
+	}
+
+	producer.Flush()
+	time.Sleep(4 * time.Second)
+	producer.Close()
+}
+
+func TestSendTimeoutNormalResponseTime(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   "topic-1",
+		BatchingMaxPublishDelay: time.Second * 3,
+		SendTimeout:             time.Millisecond * 100,
+		beforeReceiveResponseCallback: func(receipt *pb.CommandSendReceipt) {
+			time.Sleep(1 * time.Millisecond)
+		},
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	for i := 0; i < 10; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}, func(msgId MessageID, message *ProducerMessage, e error) {
+			assert.Nil(t, e)
+			assert.NotNil(t, msgId)
+		})
+	}
+
+	producer.Flush()
+	time.Sleep(4 * time.Second)
+	producer.Close()
 }

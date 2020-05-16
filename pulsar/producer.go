@@ -20,6 +20,8 @@ package pulsar
 import (
 	"context"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 )
 
 type HashingScheme int
@@ -111,6 +113,19 @@ type ProducerOptions struct {
 	// If set to a value greater than 1, messages will be queued until this threshold is reached or
 	// batch interval has elapsed.
 	BatchingMaxMessages uint
+
+	// BatchingMaxPublishDelay set the time period within which the messages sent will be
+	// checked for timeout (default: 10ms)
+	SendTimeoutCheckInterval time.Duration
+
+	// SendTimeout set the soft bound for send message timeout. if batch is enabled. only check the first message
+	// in batch. if first message timeout then all message in batch will timeout.
+	// default (0) means no send time out. you can check the option with SendTimeoutNotSet
+	// if timeout an ErrSendTimeout will return
+	SendTimeout time.Duration
+
+	// only for test usage. not exported
+	beforeReceiveResponseCallback func(receipt *pb.CommandSendReceipt)
 }
 
 // Producer is used to publish messages on a topic

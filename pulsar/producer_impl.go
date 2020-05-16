@@ -42,6 +42,7 @@ type producer struct {
 }
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
+const defaultSendTimeoutCheckInterval = 10 * time.Millisecond
 
 var partitionsAutoDiscoveryInterval = 1 * time.Minute
 
