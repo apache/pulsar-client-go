@@ -107,7 +107,7 @@ func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 
 // Add will add single message to batch.
 func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint64, payload []byte,
-	callback interface{}, replicateTo []string, deliverAt time.Time, createAt time.Time, sendTimeout time.Duration) bool {
+	callback interface{}, replicateTo []string, deliverAt time.Time) bool {
 	if replicateTo != nil && bb.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
 		// then we need to force the current batch to flush and send the message individually
@@ -134,8 +134,6 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint6
 		}
 
 		bb.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
-		bb.createAt = createAt
-		bb.sendTimeout = sendTimeout
 	}
 	addSingleMessageToBatch(bb.buffer, metadata, payload)
 
@@ -156,13 +154,11 @@ func (bb *BatchBuilder) Flush() (
 	batchData []byte,
 	sequenceID uint64,
 	callbacks []interface{},
-	createAt time.Time,
-	sendTimeout time.Duration,
 ) {
 	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
-		return nil, 0, nil, time.Now(), time.Second * 0
+		return nil, 0, nil
 	}
 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
@@ -178,7 +174,7 @@ func (bb *BatchBuilder) Flush() (
 	callbacks = bb.callbacks
 	sequenceID = bb.cmdSend.Send.GetSequenceId()
 	bb.reset()
-	return buffer.ReadableSlice(), sequenceID, callbacks, bb.createAt, bb.sendTimeout
+	return buffer.ReadableSlice(), sequenceID, callbacks
 }
 
 func getCompressionProvider(compressionType pb.CompressionType) compression.Provider {

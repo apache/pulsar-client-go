@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+	"github.com/willf/bitset"
 
 	log "github.com/sirupsen/logrus"
 
@@ -41,8 +42,7 @@ const (
 	producerClosed
 )
 
-var ErrSendTimeout = errors.New("send time out")
-var SendTimeoutNotSet = time.Duration(0)
+var ErrNilContextPass = errors.New("can't pass an nil context")
 
 type partitionProducer struct {
 	state  producerState
@@ -62,10 +62,9 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	eventsChan chan interface{}
 
-	publishSemaphore           internal.Semaphore
-	pendingQueue               internal.BlockingQueue
-	sendTimeoutSequenceIDQueue internal.BlockingQueue
-	lastSequenceID             int64
+	publishSemaphore internal.Semaphore
+	pendingQueue     internal.BlockingQueue
+	lastSequenceID   int64
 
 	partitionIdx int
 }
@@ -94,20 +93,19 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	p := &partitionProducer{
-		state:                      producerInit,
-		log:                        log.WithField("topic", topic),
-		client:                     client,
-		topic:                      topic,
-		options:                    options,
-		producerID:                 client.rpcClient.NewProducerID(),
-		eventsChan:                 make(chan interface{}, 10),
-		batchFlushTicker:           time.NewTicker(batchingMaxPublishDelay),
-		checkSendTimeoutTicker:     time.NewTicker(sendTimeoutCheckInterval),
-		publishSemaphore:           make(internal.Semaphore, maxPendingMessages),
-		pendingQueue:               internal.NewBlockingQueue(maxPendingMessages),
-		sendTimeoutSequenceIDQueue: internal.NewBlockingQueue(maxPendingMessages),
-		lastSequenceID:             -1,
-		partitionIdx:               partitionIdx,
+		state:                  producerInit,
+		log:                    log.WithField("topic", topic),
+		client:                 client,
+		topic:                  topic,
+		options:                options,
+		producerID:             client.rpcClient.NewProducerID(),
+		eventsChan:             make(chan interface{}, 10),
+		batchFlushTicker:       time.NewTicker(batchingMaxPublishDelay),
+		checkSendTimeoutTicker: time.NewTicker(sendTimeoutCheckInterval),
+		publishSemaphore:       make(internal.Semaphore, maxPendingMessages),
+		pendingQueue:           internal.NewBlockingQueue(maxPendingMessages),
+		lastSequenceID:         -1,
+		partitionIdx:           partitionIdx,
 	}
 
 	if options.Name != "" {
@@ -177,10 +175,12 @@ func (p *partitionProducer) grabCnx() error {
 	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
 
 	p.log.Infof("Resending %d pending batches", p.pendingQueue.Size())
+
 	p.pendingQueue.IterateIfNonEmpty(
-		func(item interface{}) {
+		internal.IterateFunc(func(item interface{}) bool {
 			p.cnx.WriteData(item.(*pendingItem).batchData)
-		})
+			return true
+		}))
 
 	return nil
 }
@@ -283,22 +283,26 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		sequenceID = internal.GetAndAdd(p.sequenceIDGenerator, 1)
 	}
 
+	// check after flush before add to batch
+	if request.responseCallBackIfCtxDone() {
+		p.publishSemaphore.Release()
+	}
+
 	if sendAsBatch {
 		added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-			msg.ReplicationClusters, deliverAt, request.createAt, request.sendTimeout)
+			msg.ReplicationClusters, deliverAt)
 		if !added {
 			// The current batch is full.. flush it and retry
 			p.internalFlushCurrentBatch()
 
-			// check after flush
-			if request.Timeout() {
-				request.callback(nil, request.msg, ErrSendTimeout)
+			// check after flush before add to batch
+			if request.responseCallBackIfCtxDone() {
 				p.publishSemaphore.Release()
 			}
 
 			// after flushing try again to add the current payload
 			if ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-				msg.ReplicationClusters, deliverAt, request.createAt, request.sendTimeout); !ok {
+				msg.ReplicationClusters, deliverAt); !ok {
 				p.log.WithField("size", len(msg.Payload)).
 					WithField("sequenceID", sequenceID).
 					WithField("properties", msg.Properties).
@@ -308,7 +312,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	} else {
 		// Send individually
 		if added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-			msg.ReplicationClusters, deliverAt, request.createAt, request.sendTimeout); !added {
+			msg.ReplicationClusters, deliverAt); !added {
 			p.log.WithField("size", len(msg.Payload)).
 				WithField("sequenceID", sequenceID).
 				WithField("properties", msg.Properties).
@@ -323,72 +327,59 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 }
 
 func (p *partitionProducer) internalCheckSendTimeout() {
-	if p.options.SendTimeout == SendTimeoutNotSet {
-		return
-	}
-
-	// poll if pendingItem expire
-	item, empty, satisfy := p.pendingQueue.PollIfSatisfy(func(item interface{}) bool {
+	// check items in pendingQueue until one not all expire
+	p.pendingQueue.IterateIfNonEmpty(func(item interface{}) bool {
 		pi := item.(*pendingItem)
-		var now = time.Now()
-		expire := pi.createAt.Add(pi.sendTimeout).Before(now)
-		if expire {
-			p.sendTimeoutSequenceIDQueue.Put(pi.sequenceID)
-			p.log.Infof("Ticker check send timeout (%v). Ignored ack on sequenceId %v.", pi.sendTimeout, pi.sequenceID)
-		}
-		return expire
-	})
-
-	if empty || !satisfy {
-		return
-	}
-
-	pi, ok := item.(*pendingItem)
-	if ok {
 		pi.Lock()
 		defer pi.Unlock()
-
-		for _, i := range pi.sendRequests {
-			sr := i.(*sendRequest)
-			if sr.msg != nil {
-				atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
-				p.publishSemaphore.Release()
-			}
-
-			if sr.callback != nil {
-				sr.callback(nil, sr.msg, ErrSendTimeout)
-			}
-		}
-
-		// Mark this pendingItem as done
-		pi.completed = true
-	} else {
-		p.log.Errorf("error when poll from p.pendingQueue expect pendingItem type")
-	}
+		return pi.checkRequestsContextDone()
+	})
 }
 
 type pendingItem struct {
 	sync.Mutex
-	batchData    []byte
-	sequenceID   uint64
-	sendRequests []interface{}
-	completed    bool
-	createAt     time.Time
-	sendTimeout  time.Duration
+	batchData      []byte
+	sequenceID     uint64
+	sendRequests   []interface{}
+	completed      bool
+	requestCtxDone *bitset.BitSet
+}
+
+// need Lock() before call this func
+func (pi *pendingItem) allRequestCtxDone() bool {
+	return pi.requestCtxDone.All()
+}
+
+// need Lock() before call this func
+func (pi *pendingItem) checkRequestsContextDone() (allRequestDone bool) {
+	if pi.allRequestCtxDone() {
+		return true
+	}
+	var startTime = time.Now()
+	for idx, i := range pi.sendRequests {
+		sr := i.(*sendRequest)
+		if sr.responseCallBackIfCtxDone() {
+			pi.requestCtxDone.Set(uint(idx))
+			log.Debugf("request %v in pendingItem context done.", idx)
+		}
+	}
+	var endTime = time.Now()
+	log.Debugf("check context Done cost %v", endTime.Sub(startTime))
+
+	return pi.allRequestCtxDone()
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
-	batchData, sequenceID, callbacks, createAt, sendTimeout := p.batchBuilder.Flush()
+	batchData, sequenceID, callbacks := p.batchBuilder.Flush()
 	if batchData == nil {
 		return
 	}
 
 	p.pendingQueue.Put(&pendingItem{
-		batchData:    batchData,
-		sequenceID:   sequenceID,
-		sendRequests: callbacks,
-		createAt:     createAt,
-		sendTimeout:  sendTimeout,
+		batchData:      batchData,
+		sequenceID:     sequenceID,
+		sendRequests:   callbacks,
+		requestCtxDone: bitset.New(uint(len(callbacks))),
 	})
 	p.cnx.WriteData(batchData)
 }
@@ -415,24 +406,22 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		return
 	}
 
-	sendReq := &sendRequest{
-		msg: nil,
-		callback: func(id MessageID, message *ProducerMessage, e error) {
+	sendReq := NewsendRequest(context.Background(),
+		nil,
+		func(id MessageID, message *ProducerMessage, e error) {
 			fr.err = e
 			fr.waitGroup.Done()
 		},
-		flushImmediately: false,
-		createAt:         time.Now(),
-		// dummy value set here. because we never check this value
-		sendTimeout: time.Hour * 96,
-	}
+		false)
 
 	pi.sendRequests = append(pi.sendRequests, sendReq)
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	if ctx == nil {
+		return nil, ErrNilContextPass
+	}
+	wg := make(chan struct{}, 1)
 
 	var err error
 	var msgID MessageID
@@ -440,52 +429,37 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
 		err = e
 		msgID = ID
-		wg.Done()
+		wg <- struct{}{}
 	}, true)
 
-	wg.Wait()
-	return msgID, err
+	for {
+		select {
+		case <-wg:
+			close(wg)
+			return msgID, err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		default:
+			time.Sleep(p.options.SendTimeoutCheckInterval)
+		}
+	}
 }
 
 func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error)) {
-	p.publishSemaphore.Acquire()
-	sr := &sendRequest{
-		ctx:              ctx,
-		msg:              msg,
-		callback:         callback,
-		flushImmediately: false,
-		createAt:         time.Now(),
-		sendTimeout:      p.options.SendTimeout,
+	if ctx == nil {
+		callback(nil, msg, ErrNilContextPass)
 	}
+	p.publishSemaphore.Acquire()
+	sr := NewsendRequest(ctx, msg, callback, false)
 	p.eventsChan <- sr
 }
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
 	p.publishSemaphore.Acquire()
-	sr := &sendRequest{
-		ctx:              ctx,
-		msg:              msg,
-		callback:         callback,
-		flushImmediately: flushImmediately,
-		createAt:         time.Now(),
-		sendTimeout:      p.options.SendTimeout,
-	}
+	sr := NewsendRequest(ctx, msg, callback, flushImmediately)
 	p.eventsChan <- sr
-}
-
-func (p *partitionProducer) maybeIgnoreTimeoutResponse(responseSequenceID uint64) (item interface{}, ignored bool) {
-	item, empty, satisfy := p.sendTimeoutSequenceIDQueue.PollIfSatisfy(func(item interface{}) bool {
-		id := item.(uint64)
-		return id == responseSequenceID
-	})
-
-	if empty {
-		return item, false
-	}
-
-	return item, satisfy
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -493,12 +467,6 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// inject point for mock slow response
 	p.beforeReceiveResponse(response)
 
-	// maybe internalCheckSendTimeout has removed pendingItem from pendingQueue
-	if _, ignored := p.maybeIgnoreTimeoutResponse(response.GetSequenceId()); ignored {
-		p.log.Infof("Ignored ack for %v on sequenceId %v because of send timeout.",
-			response.GetMessageId(), response.GetSequenceId())
-		return
-	}
 	item, empty, satisfy := p.pendingQueue.PollIfSatisfy(func(item interface{}) bool {
 		pi := item.(*pendingItem)
 		if pi.sequenceID != response.GetSequenceId() {
@@ -523,20 +491,22 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	defer pi.Unlock()
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
+
+		// maybe sendRequest.ctx has already timeout or canceled
+		// still set lastSequenceId here
 		if sr.msg != nil {
 			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
 			p.publishSemaphore.Release()
 		}
 
-		if sr.callback != nil {
-			msgID := newMessageID(
-				int64(response.MessageId.GetLedgerId()),
-				int64(response.MessageId.GetEntryId()),
-				idx,
-				p.partitionIdx,
-			)
-			sr.callback(msgID, sr.msg, nil)
-		}
+		msgID := newMessageID(
+			int64(response.MessageId.GetLedgerId()),
+			int64(response.MessageId.GetEntryId()),
+			idx,
+			p.partitionIdx,
+		)
+
+		sr.callback.Call(msgID, sr.msg, nil)
 	}
 
 	// Mark this pending item as done
@@ -609,18 +579,66 @@ func (p *partitionProducer) beforeReceiveResponse(receipt *pb.CommandSendReceipt
 type sendRequest struct {
 	ctx              context.Context
 	msg              *ProducerMessage
-	callback         func(MessageID, *ProducerMessage, error)
+	callback         *onceCallback
 	flushImmediately bool
-	sendTimeout      time.Duration
-	createAt         time.Time
+
+	sync.Mutex
+	callbackCalled bool
 }
 
-func (request sendRequest) Timeout() bool {
-	if request.sendTimeout != SendTimeoutNotSet {
-		return request.createAt.Add(request.sendTimeout).Before(time.Now())
+type onceCallback struct {
+	once     sync.Once
+	callback func(MessageID, *ProducerMessage, error)
+}
+
+func (o *onceCallback) Call(messageID MessageID, msg *ProducerMessage, err error) {
+	log.Debugf("callback called with messageID=%v, msg=%v, err=%v", messageID, msg, err)
+	o.once.Do(func() {
+		o.callback(messageID, msg, err)
+		log.Debugf("callback returns with messageID=%v, msg=%v, err=%v", messageID, msg, err)
+	})
+}
+
+var defaultCallback = func(MessageID, *ProducerMessage, error) {}
+
+func NewsendRequest(ctx context.Context,
+	msg *ProducerMessage,
+	callback func(MessageID, *ProducerMessage, error),
+	flushImmediately bool,
+) *sendRequest {
+
+	var cb func(MessageID, *ProducerMessage, error)
+	if callback == nil {
+		cb = defaultCallback
+	}
+	cb = callback
+
+	return &sendRequest{
+		ctx: ctx,
+		msg: msg,
+		callback: &onceCallback{
+			callback: cb,
+		},
+		flushImmediately: flushImmediately,
+	}
+}
+
+func (request *sendRequest) responseCallBackIfCtxDone() (callbackCalledByThisCall bool) {
+	request.Lock()
+	defer request.Unlock()
+
+	if request.callbackCalled {
+		return false
 	}
 
-	return false
+	select {
+	case <-request.ctx.Done():
+		request.callback.Call(nil, request.msg, request.ctx.Err())
+		request.callbackCalled = true
+		return true
+	default:
+		return false
+	}
 }
 
 type closeProducer struct {
