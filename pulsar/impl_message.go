@@ -145,6 +145,7 @@ type message struct {
 	properties          map[string]string
 	topic               string
 	replicationClusters []string
+	replicatedFrom      string
 	redeliveryCount     uint32
 }
 
@@ -178,6 +179,14 @@ func (msg *message) Key() string {
 
 func (msg *message) RedeliveryCount() uint32 {
 	return msg.redeliveryCount
+}
+
+func (msg *message) IsReplicated() bool {
+	return msg.replicatedFrom != ""
+}
+
+func (msg *message) GetReplicatedFrom() string {
+	return msg.replicatedFrom
 }
 
 func newAckTracker(size int) *ackTracker {
