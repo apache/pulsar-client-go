@@ -670,7 +670,10 @@ func (request *sendRequest) CallBack(messageID MessageID, msg *ProducerMessage, 
 	request.callback.once.Do(func() {
 		request.callback.callback(messageID, msg, err)
 		request.callBackCallAt = time.Now()
-		log.Debugf("gotSemaphoreCost=%v, addToBuilderCost=%v, flushed=%v, waitForFlushCost=%v, recvResp=%v, waitForResponseCost=%v, waitForCallbackCost=%v, checkDoneTotal=%v, total=%v",
+		log.Debugf("gotSemaphoreCost=%v, addToBuilderCost=%v, "+
+			"flushed=%v, waitForFlushCost=%v, "+
+			"recvResp=%v, waitForResponseCost=%v, "+
+			"waitForCallbackCost=%v, checkDoneTotal=%v, total=%v",
 			request.gotSemaphoreAt.Sub(request.createAt),
 			request.addToBuilderAt.Sub(request.gotSemaphoreAt),
 			!request.flushAt.IsZero(),

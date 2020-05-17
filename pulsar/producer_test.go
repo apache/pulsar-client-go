@@ -843,7 +843,7 @@ func TestProducerSendAsyncTimeoutBecauseResponseTooLate(t *testing.T) {
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: "topic-1",
 		beforeReceiveResponseCallback: func(receipt *pb.CommandSendReceipt) {
-			time.Sleep(150 * time.Millisecond)
+			time.Sleep(300 * time.Millisecond)
 		},
 	})
 
@@ -853,7 +853,7 @@ func TestProducerSendAsyncTimeoutBecauseResponseTooLate(t *testing.T) {
 
 	ctx := context.Background()
 
-	var SendTimeout = time.Millisecond * 90
+	var SendTimeout = time.Millisecond * 100
 
 	for times := 0; times < 5; times++ {
 		for i := 0; i < 1000; i++ {
@@ -864,7 +864,8 @@ func TestProducerSendAsyncTimeoutBecauseResponseTooLate(t *testing.T) {
 			}, func(msgId MessageID, message *ProducerMessage, e error) {
 				endTime := time.Now()
 				useTime := endTime.Sub(startTime)
-				assert.True(t, useTime < SendTimeout*2, fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
+				assert.True(t, useTime < SendTimeout*2,
+					fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
 				assert.Equal(t, context.DeadlineExceeded, e)
 				assert.Nil(t, msgId)
 				cancel()
@@ -973,7 +974,8 @@ func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 			}, func(msgId MessageID, message *ProducerMessage, e error) {
 				endTime := time.Now()
 				useTime := endTime.Sub(startTime)
-				assert.True(t, useTime < estimatedUpperBoundSendTimeout, fmt.Sprintf("message %v sendTimeout set %v. useTime %v", msgNumber, SendTimeout, useTime))
+				assert.True(t, useTime < estimatedUpperBoundSendTimeout,
+					fmt.Sprintf("message %v sendTimeout set %v. useTime %v", msgNumber, SendTimeout, useTime))
 				//assert.Equal(t, context.Canceled, e)
 				assert.Nil(t, msgId)
 			})
@@ -1030,7 +1032,8 @@ func TestProducerSendTimeout(t *testing.T) {
 			})
 			endTime := time.Now()
 			useTime := endTime.Sub(startTime)
-			assert.True(t, useTime < estimatedUpperBoundSendTimeout, fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
+			assert.True(t, useTime < estimatedUpperBoundSendTimeout,
+				fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
 			assert.Equal(t, context.DeadlineExceeded, err)
 			assert.Nil(t, msgID)
 			cancel()
