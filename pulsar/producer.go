@@ -118,12 +118,6 @@ type ProducerOptions struct {
 	// checked for timeout (default: 10ms)
 	SendTimeoutCheckInterval time.Duration
 
-	// SendTimeout set the soft bound for send message timeout. if batch is enabled. only check the first message
-	// in batch. if first message timeout then all message in batch will timeout.
-	// default (0) means no send time out. you can check the option with SendTimeoutNotSet
-	// if timeout an ErrSendTimeout will return
-	SendTimeout time.Duration
-
 	// only for test usage. not exported
 	beforeReceiveResponseCallback func(receipt *pb.CommandSendReceipt)
 }

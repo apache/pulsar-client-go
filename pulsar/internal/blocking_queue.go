@@ -49,8 +49,11 @@ type BlockingQueue interface {
 	Size() int
 
 	// if queue is not empty. iterate the whole queue and apply the function
-	IterateIfNonEmpty(i func(item interface{}))
+	IterateIfNonEmpty(fun IterateFunc)
 }
+
+// if func return true then continue iterate blocking queue
+type IterateFunc func(item interface{}) (continue_ bool)
 
 // BlockingQueueIterator abstract a interface of block queue iterator.
 type BlockingQueueIterator interface {
@@ -161,6 +164,16 @@ func (bq *blockingQueue) Peek() interface{} {
 	return bq.items[bq.headIdx]
 }
 
+func (bq *blockingQueue) PeekApply(consumer func(item interface{})) bool {
+	bq.mutex.Lock()
+	defer bq.mutex.Unlock()
+	if bq.size == 0 {
+		return false
+	}
+	consumer(bq.items[bq.headIdx])
+	return true
+}
+
 func (bq *blockingQueue) PeekLast() interface{} {
 	bq.mutex.Lock()
 	defer bq.mutex.Unlock()
@@ -201,12 +214,15 @@ func (bq *blockingQueue) iterator() BlockingQueueIterator {
 	}
 }
 
-func (bq *blockingQueue) IterateIfNonEmpty(operation func(interface{})) {
+func (bq *blockingQueue) IterateIfNonEmpty(operation IterateFunc) {
 	bq.mutex.Lock()
 	defer bq.mutex.Unlock()
 	if bq.size > 0 {
 		for it := bq.iterator(); it.HasNext(); {
-			operation(it.Next())
+			if operation(it.Next()) {
+				continue
+			}
+			break
 		}
 	}
 }
