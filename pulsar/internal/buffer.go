@@ -25,7 +25,7 @@ import (
 )
 
 var (
-	memorySegmentPool = make(map[int]chan []byte)
+	memorySegmentPool     = make(map[int]chan []byte)
 	memorySegmentPoolLock sync.RWMutex
 )
 
@@ -90,7 +90,7 @@ func NewBuffer(size int) Buffer {
 	memSegmentQueue := getMemorySegmentQueue(size)
 
 	select {
-	case existMemSeg := <- memSegmentQueue:
+	case existMemSeg := <-memSegmentQueue:
 		if cap(existMemSeg) == size {
 			sliceHeader := (*reflect.SliceHeader)(unsafe.Pointer(&existMemSeg))
 			sliceHeader.Len = size
@@ -110,7 +110,7 @@ func NewBuffer(size int) Buffer {
 	}
 }
 
-func RecoverMemory(memSeg []byte)  {
+func RecoverMemory(memSeg []byte) {
 	if cap(memSeg) < 1024 {
 		return
 	}

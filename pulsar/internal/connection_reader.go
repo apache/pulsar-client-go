@@ -36,7 +36,7 @@ func newConnectionReader(cnx *connection) *connectionReader {
 	return &connectionReader{
 		cnx:    cnx,
 		reader: bufio.NewReader(cnx.cnx),
-		buffer: NewBuffer(4*1024*1024),
+		buffer: NewBuffer(4 * 1024 * 1024),
 	}
 }
 
