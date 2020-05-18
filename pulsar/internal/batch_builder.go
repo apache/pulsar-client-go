@@ -34,7 +34,7 @@ const (
 	// MaxBatchSize will be the largest size for a batch sent from this particular producer.
 	// This is used as a baseline to allocate a new buffer that can hold the entire batch
 	// without needing costly re-allocations.
-	MaxBatchSize = 128 * 1024
+	MaxBatchSize = 1024 * 1024
 	// DefaultMaxMessagesPerBatch init default num of entries in per batch.
 	DefaultMaxMessagesPerBatch = 1000
 )
@@ -66,7 +66,7 @@ func NewBatchBuilder(maxMessages uint, producerName string, producerID uint64,
 		maxMessages = DefaultMaxMessagesPerBatch
 	}
 	bb := &BatchBuilder{
-		buffer:       NewBuffer(4096),
+		buffer:       NewBuffer(MaxBatchSize),
 		numMessages:  0,
 		maxMessages:  maxMessages,
 		producerName: producerName,
@@ -162,7 +162,7 @@ func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks 
 	compressed := bb.compressionProvider.Compress(bb.buffer.ReadableSlice())
 	bb.msgMetadata.UncompressedSize = &uncompressedSize
 
-	buffer := NewBuffer(4096)
+	buffer := NewBuffer(MaxBatchSize)
 	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, compressed)
 
 	callbacks = bb.callbacks

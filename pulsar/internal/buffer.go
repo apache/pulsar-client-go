@@ -19,6 +19,14 @@ package internal
 
 import (
 	"encoding/binary"
+	"reflect"
+	"sync"
+	"unsafe"
+)
+
+var (
+	memorySegmentPool = make(map[int]chan []byte)
+	memorySegmentPoolLock sync.RWMutex
 )
 
 // Buffer is a variable-sized buffer of bytes with Read and Write methods.
@@ -66,6 +74,7 @@ type Buffer interface {
 
 	// Clear will clear the current buffer data.
 	Clear()
+	GetRawBytes() []byte
 }
 
 type buffer struct {
@@ -77,10 +86,40 @@ type buffer struct {
 
 // NewBuffer creates and initializes a new Buffer using buf as its initial contents.
 func NewBuffer(size int) Buffer {
+	var memSeg []byte
+	memSegmentQueue := getMemorySegmentQueue(size)
+
+	select {
+	case existMemSeg := <- memSegmentQueue:
+		if cap(existMemSeg) == size {
+			sliceHeader := (*reflect.SliceHeader)(unsafe.Pointer(&existMemSeg))
+			sliceHeader.Len = size
+			memSeg = existMemSeg
+
+		} else {
+			memSeg = make([]byte, size)
+			RecoverMemory(existMemSeg)
+		}
+	default:
+		memSeg = make([]byte, size)
+	}
 	return &buffer{
-		data:      make([]byte, size),
+		data:      memSeg,
 		readerIdx: 0,
 		writerIdx: 0,
+	}
+}
+
+func RecoverMemory(memSeg []byte)  {
+	if cap(memSeg) < 1024 {
+		return
+	}
+
+	memSegmentQueue := getMemorySegmentQueue(cap(memSeg))
+	memSeg = memSeg[:0]
+	select {
+	case memSegmentQueue <- memSeg:
+	default:
 	}
 }
 
@@ -202,4 +241,26 @@ func (b *buffer) Put(writerIdx uint32, s []byte) {
 func (b *buffer) Clear() {
 	b.readerIdx = 0
 	b.writerIdx = 0
+}
+
+func (b *buffer) GetRawBytes() []byte {
+	return b.data
+}
+
+func getMemorySegmentQueue(size int) (memSegmentQueue chan []byte) {
+	memorySegmentPoolLock.RLock()
+	memSegmentQueue = memorySegmentPool[size]
+	memorySegmentPoolLock.RUnlock()
+
+	if memSegmentQueue != nil {
+		return
+	}
+
+	memorySegmentPoolLock.Lock()
+	if _, ok := memorySegmentPool[size]; !ok {
+		memSegmentQueue = make(chan []byte, 128)
+	}
+	memorySegmentPool[size] = memSegmentQueue
+	memorySegmentPoolLock.Unlock()
+	return
 }

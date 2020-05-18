@@ -166,7 +166,7 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		connectionTimeout:    connectionTimeout,
 		logicalAddr:          logicalAddr,
 		physicalAddr:         physicalAddr,
-		writeBuffer:          NewBuffer(4096),
+		writeBuffer:          NewBuffer(512*1024),
 		log:                  log.WithField("remote_addr", physicalAddr),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
@@ -363,6 +363,8 @@ func (c *connection) internalWriteData(data []byte) {
 		c.log.WithError(err).Warn("Failed to write on connection")
 		c.Close()
 	}
+
+	RecoverMemory(data)
 }
 
 func (c *connection) writeCommand(cmd proto.Message) {
@@ -452,6 +454,10 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
 		c.Close()
 	}
+
+	if headersAndPayload != nil {
+		RecoverMemory(headersAndPayload.GetRawBytes())
+	}
 }
 
 func (c *connection) Write(data []byte) {
@@ -527,7 +533,7 @@ func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		err := consumer.MessageReceived(response, payload)
 		if err != nil {
-			c.log.WithField("consumerID", consumerID).WithError(err).Error("handle message Id: ", response.MessageId)
+			c.log.WithField("consumerID", consumerID).Error("handle message err: ", response.MessageId)
 		}
 	} else {
 		c.log.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)

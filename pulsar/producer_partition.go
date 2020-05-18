@@ -64,6 +64,8 @@ type partitionProducer struct {
 	partitionIdx int
 }
 
+const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
+
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (
 	*partitionProducer, error) {
 	var batchingMaxPublishDelay time.Duration
@@ -241,7 +243,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	sendAsBatch := !p.options.DisableBatching &&
 		msg.ReplicationClusters == nil &&
-		deliverAt.UnixNano() < 0
+		deliverAt.UnixNano() <= 0
 
 	smm := &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int(len(msg.Payload)),
@@ -304,7 +306,6 @@ type pendingItem struct {
 	batchData    []byte
 	sequenceID   uint64
 	sendRequests []interface{}
-	completed    bool
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
@@ -330,19 +331,6 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		return
 	}
 
-	// lock the pending request while adding requests
-	// since the ReceivedSendReceipt func iterates over this list
-	pi.Lock()
-	defer pi.Unlock()
-
-	if pi.completed {
-		// The last item in the queue has been completed while we were
-		// looking at it. It's safe at this point to assume that every
-		// message enqueued before Flush() was called are now persisted
-		fr.waitGroup.Done()
-		return
-	}
-
 	sendReq := &sendRequest{
 		msg: nil,
 		callback: func(id MessageID, message *ProducerMessage, e error) {
@@ -351,7 +339,11 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		},
 	}
 
+	// lock the pending request while adding requests
+	// since the ReceivedSendReceipt func iterates over this list
+	pi.Lock()
 	pi.sendRequests = append(pi.sendRequests, sendReq)
+	pi.Unlock()
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
@@ -366,6 +358,12 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 		msgID = ID
 		wg.Done()
 	}, true)
+
+	// When sending synchronously we flush immediately to avoid
+	// the increased latency and reduced throughput of batching
+	if err = p.Flush(); err != nil {
+		return nil, err
+	}
 
 	wg.Wait()
 	return msgID, err
@@ -432,9 +430,6 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 			sr.callback(msgID, sr.msg, nil)
 		}
 	}
-
-	// Mark this pending item as done
-	pi.completed = true
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
