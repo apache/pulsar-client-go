@@ -36,7 +36,7 @@ func newConnectionReader(cnx *connection) *connectionReader {
 	return &connectionReader{
 		cnx:    cnx,
 		reader: bufio.NewReader(cnx.cnx),
-		buffer: NewBuffer(1024*1024*4),
+		buffer: NewBuffer(4*1024*1024),
 	}
 }
 
@@ -66,8 +66,8 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 			// If the buffer is empty, just go back to write at the beginning
 			r.buffer.Clear()
 		}
-		if !r.readAtLeast(4) {
-			return nil, nil, errors.New("Short read when reading frame size")
+		if err := r.readAtLeast(4); err != nil {
+			return nil, nil, errors.Errorf("Short read when reading frame size: %s", err)
 		}
 	}
 
@@ -82,8 +82,8 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 	// Next, we read the rest of the frame
 	if r.buffer.ReadableBytes() < frameSize {
 		remainingBytes := frameSize - r.buffer.ReadableBytes()
-		if !r.readAtLeast(remainingBytes) {
-			return nil, nil, errors.New("Short read when reading frame")
+		if err := r.readAtLeast(remainingBytes); err != nil {
+			return nil, nil, errors.Errorf("Short read when reading frame: %s", err)
 		}
 	}
 
@@ -103,7 +103,7 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 	return cmd, headersAndPayload, nil
 }
 
-func (r *connectionReader) readAtLeast(size uint32) (ok bool) {
+func (r *connectionReader) readAtLeast(size uint32) error {
 	if r.buffer.WritableBytes() < size {
 		// There's not enough room in the current buffer to read the requested amount of data
 		totalFrameSize := r.buffer.ReadableBytes() + size
@@ -120,11 +120,11 @@ func (r *connectionReader) readAtLeast(size uint32) (ok bool) {
 	n, err := io.ReadAtLeast(r.cnx.cnx, r.buffer.WritableSlice(), int(size))
 	if err != nil {
 		r.cnx.TriggerClose()
-		return false
+		return err
 	}
 
 	r.buffer.WrittenBytes(uint32(n))
-	return true
+	return nil
 }
 
 func (r *connectionReader) deserializeCmd(data []byte) (*pb.BaseCommand, error) {
