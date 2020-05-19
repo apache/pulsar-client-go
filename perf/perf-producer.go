@@ -98,7 +98,7 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 
 	ch := make(chan float64)
 
-	go func(stop <-chan struct{}) {
+	go func(stopCh <-chan struct{}) {
 		var rateLimiter *rate.RateLimiter
 		if produceArgs.Rate > 0 {
 			rateLimiter = rate.New(produceArgs.Rate, time.Second)
