@@ -106,7 +106,7 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 
 		for {
 			select {
-			case <-stop:
+			case <-stopCh:
 				return
 			default:
 			}
