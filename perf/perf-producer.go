@@ -98,7 +98,7 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 
 	ch := make(chan float64)
 
-	go func() {
+	go func(stopCh <-chan struct{}) {
 		var rateLimiter *rate.RateLimiter
 		if produceArgs.Rate > 0 {
 			rateLimiter = rate.New(produceArgs.Rate, time.Second)
@@ -106,7 +106,7 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 
 		for {
 			select {
-			case <-stop:
+			case <-stopCh:
 				return
 			default:
 			}
@@ -128,7 +128,7 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 				ch <- latency
 			})
 		}
-	}()
+	}(stop)
 
 	// Print stats of the publish rate and latencies
 	tick := time.NewTicker(10 * time.Second)
