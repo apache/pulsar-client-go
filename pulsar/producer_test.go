@@ -804,8 +804,8 @@ func TestProducerSendWithTimeoutContextCanReturnInBoundedTime(t *testing.T) {
 
 	ctx := context.Background()
 
-	var messageNum = 1200
-	var routine = 5
+	var messageNum = 600
+	var routine = 3
 	var SendTimeout = time.Millisecond * 60
 	var wg sync.WaitGroup
 	wg.Add(routine * messageNum)
@@ -857,8 +857,8 @@ func TestProducerSendAsyncWithTimeoutContextCanReturnInBoundedTime(t *testing.T)
 
 	ctx := context.Background()
 
-	var messageNum = 1200
-	var routine = 5
+	var messageNum = 600
+	var routine = 3
 	var SendTimeout = time.Millisecond * 60
 	var wg sync.WaitGroup
 	wg.Add(routine * messageNum)
@@ -919,24 +919,21 @@ func TestProducerSendTimeoutEarlyCancel(t *testing.T) {
 
 	ctx := context.Background()
 
-	var routine = 5
+	var routine = 3
 	var wg sync.WaitGroup
-	var messageNum = 1200
+	var messageNum = 600
 	wg.Add(routine * messageNum)
 
 	cancelChan := make(chan context.CancelFunc, messageNum*routine)
 	go func(chan context.CancelFunc) {
-		for {
-			select {
-			case canc := <-cancelChan:
-				time.Sleep(5 * time.Millisecond)
-				canc()
-			}
+		for cancelFunc := range cancelChan {
+			time.Sleep(5 * time.Millisecond)
+			cancelFunc()
 		}
 	}(cancelChan)
 
 	for r := 0; r < routine; r++ {
-		go func() {
+		go func(chan context.CancelFunc) {
 
 			for i := 0; i < messageNum; i++ {
 				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
@@ -951,7 +948,7 @@ func TestProducerSendTimeoutEarlyCancel(t *testing.T) {
 				assert.True(t, useTime < SendTimeout*2,
 					fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
 			}
-		}()
+		}(cancelChan)
 	}
 
 	wg.Wait()
@@ -984,9 +981,9 @@ func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 
 	ctx := context.Background()
 
-	var routine = 5
+	var routine = 3
 	var wg sync.WaitGroup
-	var messageNum = 1200
+	var messageNum = 600
 	wg.Add(routine * messageNum)
 
 	for r := 0; r < routine; r++ {
