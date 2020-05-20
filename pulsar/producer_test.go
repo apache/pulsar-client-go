@@ -804,7 +804,7 @@ func TestProducerSendWithTimeoutContextCanReturnInBoundedTime(t *testing.T) {
 
 	ctx := context.Background()
 
-	var messageNum = 100
+	var messageNum = 20
 	var routine = 3
 	var SendTimeout = time.Millisecond * 60
 	var wg sync.WaitGroup
@@ -857,7 +857,7 @@ func TestProducerSendAsyncWithTimeoutContextCanReturnInBoundedTime(t *testing.T)
 
 	ctx := context.Background()
 
-	var messageNum = 100
+	var messageNum = 20
 	var routine = 3
 	var SendTimeout = time.Millisecond * 60
 	var wg sync.WaitGroup
@@ -921,7 +921,7 @@ func TestProducerSendTimeoutEarlyCancel(t *testing.T) {
 
 	var routine = 3
 	var wg sync.WaitGroup
-	var messageNum = 100
+	var messageNum = 20
 	wg.Add(routine * messageNum)
 
 	cancelChan := make(chan context.CancelFunc, messageNum*routine)
@@ -982,7 +982,7 @@ func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 
 	var routine = 3
 	var wg sync.WaitGroup
-	var messageNum = 100
+	var messageNum = 20
 	wg.Add(routine * messageNum)
 
 	for r := 0; r < routine; r++ {
