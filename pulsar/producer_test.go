@@ -805,10 +805,9 @@ func TestProducerSendWithTimeoutContextCanReturnInBoundedTime(t *testing.T) {
 	ctx := context.Background()
 
 	var messageNum = 20
-	var routine = 3
 	var SendTimeout = time.Millisecond * 60
 	var wg sync.WaitGroup
-	wg.Add(routine * messageNum)
+	wg.Add(messageNum)
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: "topic-1",
@@ -818,26 +817,22 @@ func TestProducerSendWithTimeoutContextCanReturnInBoundedTime(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	for r := 0; r < routine; r++ {
-		go func() {
-			for i := 0; i < messageNum; i++ {
-				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-				startTime := time.Now()
-				_, _ = producer.Send(timeoutCtx, &ProducerMessage{
-					Payload: []byte(fmt.Sprintf("hello-%d", i)),
-				})
-				endTime := time.Now()
-				useTime := endTime.Sub(startTime)
+	for i := 0; i < messageNum; i++ {
+		timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+		startTime := time.Now()
+		_, _ = producer.Send(timeoutCtx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		endTime := time.Now()
+		useTime := endTime.Sub(startTime)
 
-				// just test the upper bound.
-				// if test fail need check performance issue.
-				assert.True(t, useTime < SendTimeout*2,
-					fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
+		// just test the upper bound.
+		// if test fail need check performance issue.
+		assert.True(t, useTime < SendTimeout*2,
+			fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
 
-				cancel()
-				wg.Done()
-			}
-		}()
+		cancel()
+		wg.Done()
 	}
 
 	wg.Wait()
@@ -858,10 +853,9 @@ func TestProducerSendAsyncWithTimeoutContextCanReturnInBoundedTime(t *testing.T)
 	ctx := context.Background()
 
 	var messageNum = 20
-	var routine = 3
 	var SendTimeout = time.Millisecond * 60
 	var wg sync.WaitGroup
-	wg.Add(routine * messageNum)
+	wg.Add(messageNum)
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: "topic-1",
@@ -871,23 +865,19 @@ func TestProducerSendAsyncWithTimeoutContextCanReturnInBoundedTime(t *testing.T)
 		log.Fatal(err)
 	}
 
-	for r := 0; r < routine; r++ {
-		go func() {
-			for i := 0; i < messageNum; i++ {
-				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-				startTime := time.Now()
-				producer.SendAsync(timeoutCtx, &ProducerMessage{
-					Payload: []byte(fmt.Sprintf("hello-%d", i)),
-				}, func(msgId MessageID, message *ProducerMessage, e error) {
-					endTime := time.Now()
-					useTime := endTime.Sub(startTime)
-					assert.True(t, useTime < SendTimeout*2,
-						fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
-					wg.Done()
-					cancel()
-				})
-			}
-		}()
+	for i := 0; i < messageNum; i++ {
+		timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+		startTime := time.Now()
+		producer.SendAsync(timeoutCtx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}, func(msgId MessageID, message *ProducerMessage, e error) {
+			endTime := time.Now()
+			useTime := endTime.Sub(startTime)
+			assert.True(t, useTime < SendTimeout*2,
+				fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
+			wg.Done()
+			cancel()
+		})
 	}
 
 	wg.Wait()
@@ -919,35 +909,29 @@ func TestProducerSendTimeoutEarlyCancel(t *testing.T) {
 
 	ctx := context.Background()
 
-	var routine = 3
 	var wg sync.WaitGroup
 	var messageNum = 20
-	wg.Add(routine * messageNum)
+	wg.Add(messageNum)
 
-	cancelChan := make(chan context.CancelFunc, messageNum*routine)
+	cancelChan := make(chan context.CancelFunc, messageNum)
 	go func(chan context.CancelFunc) {
 		for cancelFunc := range cancelChan {
 			cancelFunc()
 		}
 	}(cancelChan)
 
-	for r := 0; r < routine; r++ {
-		go func(chan context.CancelFunc) {
+	for i := 0; i < messageNum; i++ {
+		timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+		cancelChan <- cancel
 
-			for i := 0; i < messageNum; i++ {
-				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-				cancelChan <- cancel
-
-				startTime := time.Now()
-				_, _ = producer.Send(timeoutCtx, &ProducerMessage{
-					Payload: []byte(fmt.Sprintf("hello-%d", i)),
-				})
-				endTime := time.Now()
-				useTime := endTime.Sub(startTime)
-				assert.True(t, useTime < SendTimeout*2,
-					fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
-			}
-		}(cancelChan)
+		startTime := time.Now()
+		_, _ = producer.Send(timeoutCtx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		endTime := time.Now()
+		useTime := endTime.Sub(startTime)
+		assert.True(t, useTime < SendTimeout*2,
+			fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
 	}
 
 	wg.Wait()
@@ -980,32 +964,27 @@ func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 
 	ctx := context.Background()
 
-	var routine = 3
 	var wg sync.WaitGroup
 	var messageNum = 20
-	wg.Add(routine * messageNum)
+	wg.Add(messageNum)
 
-	for r := 0; r < routine; r++ {
-		go func() {
-
-			for i := 0; i < messageNum; i++ {
-				msgNumber := i
-				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-				startTime := time.Now()
-				producer.SendAsync(timeoutCtx, &ProducerMessage{
-					Payload: []byte(fmt.Sprintf("hello-%d", i)),
-				}, func(msgId MessageID, message *ProducerMessage, e error) {
-					endTime := time.Now()
-					useTime := endTime.Sub(startTime)
-					assert.True(t, useTime < SendTimeout*2,
-						fmt.Sprintf("message %v sendTimeout set %v. useTime %v", msgNumber, SendTimeout, useTime))
-					//assert.Equal(t, context.Canceled, e)
-					wg.Done()
-				})
-				cancel()
-			}
-		}()
+	for i := 0; i < messageNum; i++ {
+		msgNumber := i
+		timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+		startTime := time.Now()
+		producer.SendAsync(timeoutCtx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}, func(msgId MessageID, message *ProducerMessage, e error) {
+			endTime := time.Now()
+			useTime := endTime.Sub(startTime)
+			assert.True(t, useTime < SendTimeout*2,
+				fmt.Sprintf("message %v sendTimeout set %v. useTime %v", msgNumber, SendTimeout, useTime))
+			//assert.Equal(t, context.Canceled, e)
+			wg.Done()
+		})
+		cancel()
 	}
+
 	wg.Wait()
 	producer.Close()
 }
