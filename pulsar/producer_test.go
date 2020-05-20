@@ -27,7 +27,6 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 	"github.com/stretchr/testify/assert"
 
 	log "github.com/sirupsen/logrus"
@@ -792,9 +791,7 @@ func TestDelayAbsolute(t *testing.T) {
 	canc()
 }
 
-// if the batch delay time is too long
-// publish message can just return after flush from batch builder
-func TestProducerSendAsyncTimeoutBecauseTooLongBatchingMaxPublishDelay(t *testing.T) {
+func TestProducerSendWithTimeoutContextCanReturnInBoundedTime(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://localhost:6650",
 	})
@@ -805,37 +802,89 @@ func TestProducerSendAsyncTimeoutBecauseTooLongBatchingMaxPublishDelay(t *testin
 
 	defer client.Close()
 
+	ctx := context.Background()
+
+	var messageNum = 1200
+	var routine = 5
+	var SendTimeout = time.Millisecond * 60
+	var wg sync.WaitGroup
+	wg.Add(routine * messageNum)
+
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   "topic-1",
-		BatchingMaxPublishDelay: time.Second * 3,
+		Topic: "topic-1",
 	})
 
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	var routine = 5
-	var messageNum = 1200
-	var wg sync.WaitGroup
-	wg.Add(messageNum * routine)
+	for r := 0; r < routine; r++ {
+		go func() {
+			for i := 0; i < messageNum; i++ {
+				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+				startTime := time.Now()
+				_, _ = producer.Send(timeoutCtx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("hello-%d", i)),
+				})
+				endTime := time.Now()
+				useTime := endTime.Sub(startTime)
+
+				// just test the upper bound.
+				// if test fail need check performance issue.
+				assert.True(t, useTime < SendTimeout*2,
+					fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
+
+				cancel()
+				wg.Done()
+			}
+		}()
+	}
+
+	wg.Wait()
+	producer.Close()
+}
+
+func TestProducerSendAsyncWithTimeoutContextCanReturnInBoundedTime(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	defer client.Close()
 
 	ctx := context.Background()
 
-	var SendTimeout = time.Millisecond * 50
+	var messageNum = 1200
+	var routine = 5
+	var SendTimeout = time.Millisecond * 60
+	var wg sync.WaitGroup
+	wg.Add(routine * messageNum)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: "topic-1",
+	})
+
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	for r := 0; r < routine; r++ {
 		go func() {
-			// default pendingItem is 1000, we set 1500 here
 			for i := 0; i < messageNum; i++ {
 				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
 				startTime := time.Now()
 				producer.SendAsync(timeoutCtx, &ProducerMessage{
 					Payload: []byte(fmt.Sprintf("hello-%d", i)),
 				}, func(msgId MessageID, message *ProducerMessage, e error) {
-					assert.Equal(t, context.DeadlineExceeded, e)
-					assert.Nil(t, msgId)
-					assert.True(t, time.Now().Sub(startTime) < SendTimeout*2)
-					cancel()
+					endTime := time.Now()
+					useTime := endTime.Sub(startTime)
+					assert.True(t, useTime < SendTimeout*2,
+						fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
 					wg.Done()
+					cancel()
 				})
 			}
 		}()
@@ -845,7 +894,7 @@ func TestProducerSendAsyncTimeoutBecauseTooLongBatchingMaxPublishDelay(t *testin
 	producer.Close()
 }
 
-func TestProducerSendAsyncTimeoutBecauseResponseTooLate(t *testing.T) {
+func TestProducerSendTimeoutEarlyCancel(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://localhost:6650",
 	})
@@ -856,18 +905,12 @@ func TestProducerSendAsyncTimeoutBecauseResponseTooLate(t *testing.T) {
 
 	defer client.Close()
 
-	var SendTimeout = time.Millisecond * 100
-	var NetWorkDelay = 1 * time.Second
-	var messageNum = 1200
-	var routine = 5
-	var wg sync.WaitGroup
-	wg.Add(routine * messageNum)
+	var SendTimeout = time.Millisecond * 90
+	var BatchingMaxPublishDelay = time.Second * 1
 
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: "topic-1",
-		beforeReceiveResponseCallback: func(receipt *pb.CommandSendReceipt) {
-			time.Sleep(NetWorkDelay)
-		},
+		Topic:                   "topic-1",
+		BatchingMaxPublishDelay: BatchingMaxPublishDelay,
 	})
 
 	if err != nil {
@@ -876,80 +919,46 @@ func TestProducerSendAsyncTimeoutBecauseResponseTooLate(t *testing.T) {
 
 	ctx := context.Background()
 
-	for r := 0; r < routine; r++ {
-		go func(r int) {
-			for i := 0; i < messageNum; i++ {
-				startTime := time.Now()
-				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-				producer.SendAsync(timeoutCtx, &ProducerMessage{
-					Payload: []byte(fmt.Sprintf("hello-%d", i)),
-				}, func(msgId MessageID, message *ProducerMessage, e error) {
-					endTime := time.Now()
-					useTime := endTime.Sub(startTime)
-					assert.True(t, useTime < (SendTimeout)*2,
-						fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
-					cancel()
-					wg.Done()
-				})
+	var routine = 5
+	var wg sync.WaitGroup
+	var messageNum = 1200
+	wg.Add(routine * messageNum)
+
+	cancelChan := make(chan context.CancelFunc, messageNum*routine)
+	go func(chan context.CancelFunc) {
+		for {
+			select {
+			case canc := <-cancelChan:
+				time.Sleep(5 * time.Millisecond)
+				canc()
 			}
-		}(r)
+		}
+	}(cancelChan)
+
+	for r := 0; r < routine; r++ {
+		go func() {
+
+			for i := 0; i < messageNum; i++ {
+				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+				cancelChan <- cancel
+
+				startTime := time.Now()
+				_, _ = producer.Send(timeoutCtx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("hello-%d", i)),
+				})
+				endTime := time.Now()
+				useTime := endTime.Sub(startTime)
+				assert.True(t, useTime < SendTimeout*2,
+					fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
+			}
+		}()
 	}
 
 	wg.Wait()
+	close(cancelChan)
 	producer.Close()
 }
 
-func TestProducerSendAsyncTimeoutNormalResponseTime(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6650",
-	})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer client.Close()
-
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: "topic-1",
-	})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	ctx := context.Background()
-
-	var SendTimeout = time.Millisecond * 100
-	var routine = 5
-	var wg sync.WaitGroup
-	var messageNum = 1200
-	wg.Add(routine * messageNum)
-
-	for i := 0; i < messageNum; i++ {
-		timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-		startTime := time.Now()
-		producer.SendAsync(timeoutCtx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}, func(msgId MessageID, message *ProducerMessage, e error) {
-			endTime := time.Now()
-			useTime := endTime.Sub(startTime)
-			assert.True(t, useTime < SendTimeout*2, fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
-			assert.Nil(t, e)
-			assert.NotNil(t, msgId)
-			cancel()
-		})
-	}
-	_ = producer.Flush()
-
-	time.Sleep(1 * time.Second)
-	producer.Close()
-}
-
-// the context is only start check after the message has flushed
-// or before add to BatchBuilder
-// if you set too big BatchingMaxPublishDelay
-// callBack will be returned in BatchingMaxPublishDelay if you cancel the context.
 func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://localhost:6650",
@@ -967,9 +976,6 @@ func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:                   "topic-1",
 		BatchingMaxPublishDelay: BatchingMaxPublishDelay,
-		beforeReceiveResponseCallback: func(receipt *pb.CommandSendReceipt) {
-			time.Sleep(3 * time.Second)
-		},
 	})
 
 	if err != nil {
@@ -985,12 +991,11 @@ func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 
 	for r := 0; r < routine; r++ {
 		go func() {
-			var cancels = make([]context.CancelFunc, 0)
+
 			for i := 0; i < messageNum; i++ {
 				msgNumber := i
 				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
 				startTime := time.Now()
-				cancels = append(cancels, cancel)
 				producer.SendAsync(timeoutCtx, &ProducerMessage{
 					Payload: []byte(fmt.Sprintf("hello-%d", i)),
 				}, func(msgId MessageID, message *ProducerMessage, e error) {
@@ -999,76 +1004,13 @@ func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 					assert.True(t, useTime < SendTimeout*2,
 						fmt.Sprintf("message %v sendTimeout set %v. useTime %v", msgNumber, SendTimeout, useTime))
 					//assert.Equal(t, context.Canceled, e)
-					assert.Nil(t, msgId)
 					wg.Done()
 				})
-			}
-			time.Sleep(10 * time.Millisecond)
-			for _, cancel := range cancels {
+				time.Sleep(5 * time.Millisecond)
 				cancel()
 			}
 		}()
 	}
-	wg.Wait()
-	producer.Close()
-}
-
-func TestProducerSendWithTimeoutContextCanReturnInBoundedTime(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6650",
-	})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	defer client.Close()
-
-	ctx := context.Background()
-
-	var messageNum = 1200
-	var routine = 5
-	var SendTimeout = time.Millisecond * 60
-	var NetWorkDelay = 1 * time.Millisecond * 280
-	var wg sync.WaitGroup
-	wg.Add(routine * messageNum)
-
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: "topic-1",
-		beforeReceiveResponseCallback: func(receipt *pb.CommandSendReceipt) {
-			// just mock late response
-			time.Sleep(NetWorkDelay)
-		},
-	})
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	for r := 0; r < routine; r++ {
-		go func(r int) {
-			for i := 0; i < messageNum; i++ {
-				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-				startTime := time.Now()
-				msgID, err := producer.Send(timeoutCtx, &ProducerMessage{
-					Payload: []byte(fmt.Sprintf("hello-%d", i)),
-				})
-				endTime := time.Now()
-				useTime := endTime.Sub(startTime)
-
-				// just test the upper bound.
-				// if test fail need check performance issue.
-				assert.True(t, useTime < SendTimeout*2,
-					fmt.Sprintf("round %v messageNum %v sendTimeout set %v. useTime %v", r, i, SendTimeout, useTime))
-
-				assert.Nil(t, msgID)
-				assert.Equal(t, err, context.DeadlineExceeded)
-				cancel()
-				wg.Done()
-			}
-		}(r)
-	}
-
 	wg.Wait()
 	producer.Close()
 }

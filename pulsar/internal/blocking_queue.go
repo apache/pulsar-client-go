@@ -164,16 +164,6 @@ func (bq *blockingQueue) Peek() interface{} {
 	return bq.items[bq.headIdx]
 }
 
-func (bq *blockingQueue) PeekApply(consumer func(item interface{})) bool {
-	bq.mutex.Lock()
-	defer bq.mutex.Unlock()
-	if bq.size == 0 {
-		return false
-	}
-	consumer(bq.items[bq.headIdx])
-	return true
-}
-
 func (bq *blockingQueue) PeekLast() interface{} {
 	bq.mutex.Lock()
 	defer bq.mutex.Unlock()

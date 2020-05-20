@@ -20,8 +20,6 @@ package pulsar
 import (
 	"context"
 	"time"
-
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 )
 
 type HashingScheme int
@@ -114,12 +112,9 @@ type ProducerOptions struct {
 	// batch interval has elapsed.
 	BatchingMaxMessages uint
 
-	// BatchingMaxPublishDelay set the time period within which the messages sent will be
+	// SendTimeoutCheckInterval set the time period within which the messages sent will be
 	// checked for timeout (default: 10ms)
 	SendTimeoutCheckInterval time.Duration
-
-	// only for test usage. not exported
-	beforeReceiveResponseCallback func(receipt *pb.CommandSendReceipt)
 }
 
 // Producer is used to publish messages on a topic

@@ -446,7 +446,7 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	if ctx == nil {
 		return nil, ErrNilContextPass
 	}
-	wg := make(chan struct{}, 1)
+	chanWaitGroup := make(chan struct{}, 1)
 
 	var err error
 	var msgID MessageID
@@ -454,13 +454,13 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
 		err = e
 		msgID = ID
-		wg <- struct{}{}
+		chanWaitGroup <- struct{}{}
 	}, true)
 
 	for {
 		select {
-		case <-wg:
-			close(wg)
+		case <-chanWaitGroup:
+			close(chanWaitGroup)
 			return msgID, err
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -545,9 +545,6 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
-
-	// inject point for mock slow response
-	p.beforeReceiveResponse(response)
 
 	item, empty, satisfy := p.pendingQueue.PollIfSatisfy(func(item interface{}) bool {
 		pi := item.(*pendingItem)
@@ -651,12 +648,6 @@ func (p *partitionProducer) Close() {
 	p.eventsChan <- cp
 
 	wg.Wait()
-}
-
-func (p *partitionProducer) beforeReceiveResponse(receipt *pb.CommandSendReceipt) {
-	if p.options.beforeReceiveResponseCallback != nil {
-		p.options.beforeReceiveResponseCallback(receipt)
-	}
 }
 
 type sendRequest struct {
