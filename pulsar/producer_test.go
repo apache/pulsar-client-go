@@ -791,6 +791,9 @@ func TestDelayAbsolute(t *testing.T) {
 	assert.NotNil(t, msg)
 	canc()
 }
+
+// if the batch delay time is too long
+// publish message can just return after flush from batch builder
 func TestProducerSendAsyncTimeoutBecauseTooLongBatchingMaxPublishDelay(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://localhost:6650",
@@ -811,21 +814,34 @@ func TestProducerSendAsyncTimeoutBecauseTooLongBatchingMaxPublishDelay(t *testin
 		log.Fatal(err)
 	}
 
+	var routine = 5
+	var messageNum = 1200
+	var wg sync.WaitGroup
+	wg.Add(messageNum * routine)
+
 	ctx := context.Background()
 
-	var SendTimeout = time.Millisecond * 30
-	for i := 0; i < 1000; i++ {
-		timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-		producer.SendAsync(timeoutCtx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}, func(msgId MessageID, message *ProducerMessage, e error) {
-			assert.Equal(t, context.DeadlineExceeded, e)
-			assert.Nil(t, msgId)
-			cancel()
-		})
+	var SendTimeout = time.Millisecond * 50
+	for r := 0; r < routine; r++ {
+		go func() {
+			// default pendingItem is 1000, we set 1500 here
+			for i := 0; i < messageNum; i++ {
+				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+				startTime := time.Now()
+				producer.SendAsync(timeoutCtx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("hello-%d", i)),
+				}, func(msgId MessageID, message *ProducerMessage, e error) {
+					assert.Equal(t, context.DeadlineExceeded, e)
+					assert.Nil(t, msgId)
+					assert.True(t, time.Now().Sub(startTime) < SendTimeout*2)
+					cancel()
+					wg.Done()
+				})
+			}
+		}()
 	}
 
-	time.Sleep(4 * time.Second)
+	wg.Wait()
 	producer.Close()
 }
 
@@ -840,10 +856,17 @@ func TestProducerSendAsyncTimeoutBecauseResponseTooLate(t *testing.T) {
 
 	defer client.Close()
 
+	var SendTimeout = time.Millisecond * 100
+	var NetWorkDelay = 1 * time.Second
+	var messageNum = 1200
+	var routine = 5
+	var wg sync.WaitGroup
+	wg.Add(routine * messageNum)
+
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: "topic-1",
 		beforeReceiveResponseCallback: func(receipt *pb.CommandSendReceipt) {
-			time.Sleep(300 * time.Millisecond)
+			time.Sleep(NetWorkDelay)
 		},
 	})
 
@@ -853,28 +876,26 @@ func TestProducerSendAsyncTimeoutBecauseResponseTooLate(t *testing.T) {
 
 	ctx := context.Background()
 
-	var SendTimeout = time.Millisecond * 100
-
-	for times := 0; times < 5; times++ {
-		for i := 0; i < 1000; i++ {
-			startTime := time.Now()
-			timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-			producer.SendAsync(timeoutCtx, &ProducerMessage{
-				Payload: []byte(fmt.Sprintf("hello-%d", i)),
-			}, func(msgId MessageID, message *ProducerMessage, e error) {
-				endTime := time.Now()
-				useTime := endTime.Sub(startTime)
-				assert.True(t, useTime < SendTimeout*2,
-					fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
-				assert.Equal(t, context.DeadlineExceeded, e)
-				assert.Nil(t, msgId)
-				cancel()
-			})
-		}
-		producer.Flush()
+	for r := 0; r < routine; r++ {
+		go func(r int) {
+			for i := 0; i < messageNum; i++ {
+				startTime := time.Now()
+				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+				producer.SendAsync(timeoutCtx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("hello-%d", i)),
+				}, func(msgId MessageID, message *ProducerMessage, e error) {
+					endTime := time.Now()
+					useTime := endTime.Sub(startTime)
+					assert.True(t, useTime < (SendTimeout)*2,
+						fmt.Sprintf("sendTimeout set %v. useTime %v", SendTimeout, useTime))
+					cancel()
+					wg.Done()
+				})
+			}
+		}(r)
 	}
 
-	time.Sleep(1 * time.Second)
+	wg.Wait()
 	producer.Close()
 }
 
@@ -900,8 +921,12 @@ func TestProducerSendAsyncTimeoutNormalResponseTime(t *testing.T) {
 	ctx := context.Background()
 
 	var SendTimeout = time.Millisecond * 100
+	var routine = 5
+	var wg sync.WaitGroup
+	var messageNum = 1200
+	wg.Add(routine * messageNum)
 
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < messageNum; i++ {
 		timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
 		startTime := time.Now()
 		producer.SendAsync(timeoutCtx, &ProducerMessage{
@@ -915,7 +940,7 @@ func TestProducerSendAsyncTimeoutNormalResponseTime(t *testing.T) {
 			cancel()
 		})
 	}
-	producer.Flush()
+	_ = producer.Flush()
 
 	time.Sleep(1 * time.Second)
 	producer.Close()
@@ -952,43 +977,43 @@ func TestProducerSendAsyncTimeoutEarlyCancel(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	var estimatedUpperBoundSendTimeout time.Duration
 
-	if SendTimeout < BatchingMaxPublishDelay {
-		estimatedUpperBoundSendTimeout = BatchingMaxPublishDelay + BatchingMaxPublishDelay/3
-	} else {
-		estimatedUpperBoundSendTimeout = SendTimeout + SendTimeout/3
+	var routine = 5
+	var wg sync.WaitGroup
+	var messageNum = 1200
+	wg.Add(routine * messageNum)
+
+	for r := 0; r < routine; r++ {
+		go func() {
+			var cancels = make([]context.CancelFunc, 0)
+			for i := 0; i < messageNum; i++ {
+				msgNumber := i
+				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+				startTime := time.Now()
+				cancels = append(cancels, cancel)
+				producer.SendAsync(timeoutCtx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("hello-%d", i)),
+				}, func(msgId MessageID, message *ProducerMessage, e error) {
+					endTime := time.Now()
+					useTime := endTime.Sub(startTime)
+					assert.True(t, useTime < SendTimeout*2,
+						fmt.Sprintf("message %v sendTimeout set %v. useTime %v", msgNumber, SendTimeout, useTime))
+					//assert.Equal(t, context.Canceled, e)
+					assert.Nil(t, msgId)
+					wg.Done()
+				})
+			}
+			time.Sleep(10 * time.Millisecond)
+			for _, cancel := range cancels {
+				cancel()
+			}
+		}()
 	}
-
-	for times := 0; times < 5; times++ {
-
-		var cancels = make([]context.CancelFunc, 0)
-
-		for i := 0; i < 1000; i++ {
-			msgNumber := i
-			timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-			startTime := time.Now()
-			cancels = append(cancels, cancel)
-			producer.SendAsync(timeoutCtx, &ProducerMessage{
-				Payload: []byte(fmt.Sprintf("hello-%d", i)),
-			}, func(msgId MessageID, message *ProducerMessage, e error) {
-				endTime := time.Now()
-				useTime := endTime.Sub(startTime)
-				assert.True(t, useTime < estimatedUpperBoundSendTimeout,
-					fmt.Sprintf("message %v sendTimeout set %v. useTime %v", msgNumber, SendTimeout, useTime))
-				//assert.Equal(t, context.Canceled, e)
-				assert.Nil(t, msgId)
-			})
-		}
-		time.Sleep(10 * time.Millisecond)
-		for _, cancel := range cancels {
-			cancel()
-		}
-	}
+	wg.Wait()
 	producer.Close()
 }
 
-func TestProducerSendTimeout(t *testing.T) {
+func TestProducerSendWithTimeoutContextCanReturnInBoundedTime(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://localhost:6650",
 	})
@@ -999,10 +1024,20 @@ func TestProducerSendTimeout(t *testing.T) {
 
 	defer client.Close()
 
+	ctx := context.Background()
+
+	var messageNum = 1200
+	var routine = 5
+	var SendTimeout = time.Millisecond * 60
+	var NetWorkDelay = 1 * time.Millisecond * 280
+	var wg sync.WaitGroup
+	wg.Add(routine * messageNum)
+
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: "topic-1",
 		beforeReceiveResponseCallback: func(receipt *pb.CommandSendReceipt) {
-			time.Sleep(1 * time.Millisecond * 100)
+			// just mock late response
+			time.Sleep(NetWorkDelay)
 		},
 	})
 
@@ -1010,36 +1045,30 @@ func TestProducerSendTimeout(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	ctx := context.Background()
+	for r := 0; r < routine; r++ {
+		go func(r int) {
+			for i := 0; i < messageNum; i++ {
+				timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
+				startTime := time.Now()
+				msgID, err := producer.Send(timeoutCtx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("hello-%d", i)),
+				})
+				endTime := time.Now()
+				useTime := endTime.Sub(startTime)
 
-	var SendTimeout = time.Millisecond * 60
-	var BatchingMaxPublishDelay = time.Millisecond * 10
+				// just test the upper bound.
+				// if test fail need check performance issue.
+				assert.True(t, useTime < SendTimeout*2,
+					fmt.Sprintf("round %v messageNum %v sendTimeout set %v. useTime %v", r, i, SendTimeout, useTime))
 
-	var estimatedUpperBoundSendTimeout time.Duration
-
-	if SendTimeout < BatchingMaxPublishDelay {
-		estimatedUpperBoundSendTimeout = BatchingMaxPublishDelay + BatchingMaxPublishDelay/3
-	} else {
-		estimatedUpperBoundSendTimeout = SendTimeout + SendTimeout/3
+				assert.Nil(t, msgID)
+				assert.Equal(t, err, context.DeadlineExceeded)
+				cancel()
+				wg.Done()
+			}
+		}(r)
 	}
 
-	for times := 0; times < 3; times++ {
-		for i := 0; i < 100; i++ {
-			timeoutCtx, cancel := context.WithTimeout(ctx, SendTimeout)
-			startTime := time.Now()
-			msgID, err := producer.Send(timeoutCtx, &ProducerMessage{
-				Payload: []byte(fmt.Sprintf("hello-%d", i)),
-			})
-			endTime := time.Now()
-			useTime := endTime.Sub(startTime)
-			assert.True(t, useTime < estimatedUpperBoundSendTimeout,
-				fmt.Sprintf("messageNum %v sendTimeout set %v. useTime %v", i, SendTimeout, useTime))
-			assert.Equal(t, context.DeadlineExceeded, err)
-			assert.Nil(t, msgID)
-			cancel()
-		}
-	}
-
-	time.Sleep(1 * time.Second)
+	wg.Wait()
 	producer.Close()
 }
