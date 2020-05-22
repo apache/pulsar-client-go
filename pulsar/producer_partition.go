@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,8 @@ const (
 	producerClosing
 	producerClosed
 )
+
+var errFailAddBatch = errors.New("message send failed")
 
 type partitionProducer struct {
 	state  int32
@@ -265,35 +268,26 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		sequenceID = internal.GetAndAdd(p.sequenceIDGenerator, 1)
 	}
 
-	if sendAsBatch {
-		added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-			msg.ReplicationClusters, deliverAt)
-		if !added {
-			// The current batch is full.. flush it and retry
-			p.internalFlushCurrentBatch()
+	added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
+		msg.ReplicationClusters, deliverAt)
+	if !added {
+		// The current batch is full.. flush it and retry
+		p.internalFlushCurrentBatch()
 
-			// after flushing try again to add the current payload
-			if ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-				msg.ReplicationClusters, deliverAt); !ok {
-				p.log.WithField("size", len(msg.Payload)).
-					WithField("sequenceID", sequenceID).
-					WithField("properties", msg.Properties).
-					Error("unable to add message to batch")
-			}
-		}
-	} else {
-		// Send individually
-		if added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-			msg.ReplicationClusters, deliverAt); !added {
+		// after flushing try again to add the current payload
+		if ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
+			msg.ReplicationClusters, deliverAt); !ok {
+			p.publishSemaphore.Release()
+			request.callback(nil, request.msg, errFailAddBatch)
 			p.log.WithField("size", len(msg.Payload)).
 				WithField("sequenceID", sequenceID).
 				WithField("properties", msg.Properties).
-				Error("unable to send single message")
+				Error("unable to add message to batch")
+			return
 		}
-		p.internalFlushCurrentBatch()
 	}
 
-	if request.flushImmediately {
+	if !sendAsBatch || request.flushImmediately {
 		p.internalFlushCurrentBatch()
 	}
 }
