@@ -112,9 +112,9 @@ type ProducerOptions struct {
 	// batch interval has elapsed.
 	BatchingMaxMessages uint
 
-	// SendTimeoutCheckInterval set the time period within which the messages sent will be
+	// SendContextCheckInterval set the time period within which the messages sent will be
 	// checked for timeout (default: 10ms)
-	SendTimeoutCheckInterval time.Duration
+	SendContextCheckInterval time.Duration
 }
 
 // Producer is used to publish messages on a topic

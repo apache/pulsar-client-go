@@ -48,6 +48,9 @@ type BlockingQueue interface {
 	// Size return the current size of the queue
 	Size() int
 
+	// Iterator return an iterator for the queue
+	Iterator() BlockingQueueIterator
+
 	// if queue is not empty. iterate the whole queue and apply the function
 	IterateIfNonEmpty(fun IterateFunc)
 }
@@ -194,6 +197,17 @@ func (bq *blockingQueue) Size() int {
 	defer bq.mutex.Unlock()
 
 	return bq.size
+}
+
+func (bq *blockingQueue) Iterator() BlockingQueueIterator {
+	bq.mutex.Lock()
+	defer bq.mutex.Unlock()
+
+	return &blockingQueueIterator{
+		bq:      bq,
+		readIdx: bq.headIdx,
+		toRead:  bq.size,
+	}
 }
 
 func (bq *blockingQueue) iterator() BlockingQueueIterator {

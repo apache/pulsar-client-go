@@ -122,7 +122,6 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint6
 	if bb.numMessages == 0 {
 		bb.msgMetadata.SequenceId = proto.Uint64(sequenceID)
 		bb.msgMetadata.PublishTime = proto.Uint64(TimestampMillis(time.Now()))
-		bb.msgMetadata.SequenceId = proto.Uint64(sequenceID)
 		bb.msgMetadata.ProducerName = &bb.producerName
 		bb.msgMetadata.ReplicateTo = replicateTo
 		bb.msgMetadata.PartitionKey = metadata.PartitionKey
