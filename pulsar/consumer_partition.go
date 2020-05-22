@@ -424,6 +424,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				msgID:               msgID,
 				payLoad:             payload,
 				replicationClusters: msgMeta.GetReplicateTo(),
+				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
 			}
 		} else {
@@ -436,6 +437,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				msgID:               msgID,
 				payLoad:             payload,
 				replicationClusters: msgMeta.GetReplicateTo(),
+				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
 			}
 		}
