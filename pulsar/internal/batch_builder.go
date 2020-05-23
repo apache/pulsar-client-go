@@ -149,11 +149,11 @@ func (bb *BatchBuilder) reset() {
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
 func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks []interface{}) {
-	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
 		return nil, 0, nil
 	}
+	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
 	bb.cmdSend.Send.NumMessages = proto.Int32(int32(bb.numMessages))
