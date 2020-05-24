@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -259,6 +260,7 @@ func (p *partitionProducer) Name() string {
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
+	p.log.Debug("Received send request: ", *request)
 
 	msg := request.msg
 
