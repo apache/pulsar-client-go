@@ -260,8 +260,6 @@ func (p *partitionProducer) Name() string {
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
-	p.log.Debug("Received send request: ", *request)
-
 	msg := request.msg
 
 	deliverAt := msg.DeliverAt
@@ -618,7 +616,7 @@ type sendRequest struct {
 	flushImmediately bool
 
 	sync.Mutex
-	once     sync.Once
+	once           sync.Once
 	callbackCalled bool
 }
 
@@ -644,11 +642,11 @@ func newSendRequest(ctx context.Context,
 	}
 
 	return &sendRequest{
-		ctx: ctx,
-		msg: msg,
-		callback: cb,
+		ctx:              ctx,
+		msg:              msg,
+		callback:         cb,
 		flushImmediately: flushImmediately,
-		callbackCalled: false,
+		callbackCalled:   false,
 	}
 }
 
