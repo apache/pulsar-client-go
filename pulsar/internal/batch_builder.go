@@ -29,8 +29,6 @@ import (
 )
 
 const (
-	// MaxMessageSize limit message size for transfer
-	MaxMessageSize = 5 * 1024 * 1024
 	// MaxBatchSize will be the largest size for a batch sent from this particular producer.
 	// This is used as a baseline to allocate a new buffer that can hold the entire batch
 	// without needing costly re-allocations.
