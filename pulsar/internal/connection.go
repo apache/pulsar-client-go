@@ -730,7 +730,11 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 				certs[i] = cert
 			}
 
-			// Or we could pass c.physicalAddr.Hostname() so this becomes one code path for HostName verification
+			if tlsConfig.RootCAs == nil {
+				return nil
+			}
+
+			// Verify certs if they exist but skip ServerName validation
 			opts := x509.VerifyOptions{
 				Roots:         tlsConfig.RootCAs,
 				CurrentTime:   time.Now(),
