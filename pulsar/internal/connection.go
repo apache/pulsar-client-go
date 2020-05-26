@@ -711,14 +711,13 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 		}
 	}
 
-	if c.tlsOptions.ValidateHostname {
-		tlsConfig.ServerName = c.physicalAddr.Hostname()
-	} else if !tlsConfig.InsecureSkipVerify {
+	tlsConfig.ServerName = c.physicalAddr.Hostname()
+
+	if tlsConfig.InsecureSkipVerify {
 		// Solution is credited to https://github.com/golang/go/issues/21971
 		// Code is adapted from the original implementation of handshake_client.go at
 		// https://github.com/golang/go/blob/master/src/crypto/tls/handshake_client.go#L804
 		// disable the default verification; use customized VerifyPeerCertificate
-		tlsConfig.InsecureSkipVerify = true
 		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, certChain [][]*x509.Certificate) error {
 			// If this is the first handshake on a connection, process and
 			// (optionally) verify the server's certificates.
