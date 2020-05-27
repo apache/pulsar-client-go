@@ -148,7 +148,6 @@ type connection struct {
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan interface{}
-	runLoopStoppedCh   chan interface{}
 	writeRequestsCh    chan []byte
 
 	pendingReqs map[uint64]*request
@@ -311,9 +310,13 @@ func (c *connection) run() {
 	go c.reader.readFromConnection()
 	go c.runPingCheck()
 
-	c.runLoopStoppedCh = make(chan interface{})
 	defer func() {
-		close(c.runLoopStoppedCh)
+		// all the accesses to the pendingReqs should be happened in this run loop thread,
+		// including the final cleanup, to avoid the issue https://github.com/apache/pulsar-client-go/issues/239
+		for id, req := range c.pendingReqs {
+			req.callback(nil, errors.New("connection closed"))
+			delete(c.pendingReqs, id)
+		}
 		c.Close()
 	}()
 
@@ -665,14 +668,6 @@ func (c *connection) Close() {
 
 	for _, listener := range c.listeners {
 		listener.ConnectionClosed()
-	}
-
-	if c.runLoopStoppedCh != nil {
-		<-c.runLoopStoppedCh
-	}
-	for id, req := range c.pendingReqs {
-		req.callback(nil, errors.New("connection closed"))
-		delete(c.pendingReqs, id)
 	}
 
 	consumerHandlers := make(map[uint64]ConsumerHandler)
