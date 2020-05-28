@@ -40,7 +40,10 @@ const (
 	producerClosed
 )
 
-var errFailAddBatch = errors.New("message send failed")
+var (
+	errFailAddBatch    = errors.New("message send failed")
+	errMessageTooLarge = errors.New("message size exceeds MaxMessageSize")
+)
 
 type partitionProducer struct {
 	state  int32
@@ -235,6 +238,16 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	p.log.Debug("Received send request: ", *request)
 
 	msg := request.msg
+
+	// if msg is too large
+	if len(msg.Payload) > int(p.cnx.GetMaxMessageSize()) {
+		p.publishSemaphore.Release()
+		request.callback(nil, request.msg, errMessageTooLarge)
+		p.log.WithField("size", len(msg.Payload)).
+			WithField("properties", msg.Properties).
+			WithError(errMessageTooLarge).Error()
+		return
+	}
 
 	deliverAt := msg.DeliverAt
 	if msg.DeliverAfter.Nanoseconds() > 0 {

@@ -790,3 +790,30 @@ func TestDelayAbsolute(t *testing.T) {
 	assert.NotNil(t, msg)
 	canc()
 }
+
+func TestMaxMessageSize(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+	serverMaxMessageSize := 1024 * 1024
+	for bias := -1; bias <= 1; bias++ {
+		payload := make([]byte, serverMaxMessageSize+bias)
+		ID, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: payload,
+		})
+		if bias <= 0 {
+			assert.NoError(t, err)
+			assert.NotNil(t, ID)
+		} else {
+			assert.Equal(t, errMessageTooLarge, err)
+		}
+	}
+}

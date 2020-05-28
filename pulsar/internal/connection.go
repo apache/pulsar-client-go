@@ -71,6 +71,7 @@ type Connection interface {
 	AddConsumeHandler(id uint64, handler ConsumerHandler)
 	DeleteConsumeHandler(id uint64)
 	ID() string
+	GetMaxMessageSize() int32
 	Close()
 }
 
@@ -157,6 +158,8 @@ type connection struct {
 
 	tlsOptions *TLSOptions
 	auth       auth.Provider
+
+	maxMessageSize int32
 }
 
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
@@ -282,7 +285,13 @@ func (c *connection) doHandshake() bool {
 			cmd.Type)
 		return false
 	}
-
+	if cmd.Connected.MaxMessageSize != nil {
+		c.log.Debug("Got MaxMessageSize from handshake response:", *cmd.Connected.MaxMessageSize)
+		c.maxMessageSize = *cmd.Connected.MaxMessageSize
+	} else {
+		c.log.Debug("No MaxMessageSize from handshake response, use default: ", MaxMessageSize)
+		c.maxMessageSize = MaxMessageSize
+	}
 	c.log.Info("Connection is ready")
 	c.changeState(connectionReady)
 	return true
@@ -748,4 +757,8 @@ func (c *connection) consumerHandler(id uint64) (ConsumerHandler, bool) {
 
 func (c *connection) ID() string {
 	return fmt.Sprintf("%s -> %s", c.cnx.LocalAddr(), c.cnx.RemoteAddr())
+}
+
+func (c *connection) GetMaxMessageSize() int32 {
+	return c.maxMessageSize
 }
