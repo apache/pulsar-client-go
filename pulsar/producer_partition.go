@@ -245,7 +245,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		request.callback(nil, request.msg, errMessageTooLarge)
 		p.log.WithField("size", len(msg.Payload)).
 			WithField("properties", msg.Properties).
-			Error("message size exceeds MaxMessageSize")
+			WithError(errMessageTooLarge).Error()
 		return
 	}
 
