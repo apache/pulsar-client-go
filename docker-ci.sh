@@ -25,7 +25,8 @@ cd ${SRC_DIR}
 
 IMAGE_NAME=pulsar-client-go-test:latest
 
-docker build -t ${IMAGE_NAME} .
+GO_VERSION=${1:-1.12}
+docker build -t ${IMAGE_NAME} --build-arg GO_VERSION="golang:${GO_VERSION}" .
 
 docker run -i -v ${PWD}:/pulsar-client-go ${IMAGE_NAME} \
        bash -c "cd /pulsar-client-go && ./run-ci.sh"
