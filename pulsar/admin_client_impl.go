@@ -36,9 +36,6 @@ type AdminClient struct {
 	// BaseURL is the base url for API requests
 	BaseURL *url.URL
 
-	// UserAgent to use when communicating with Pulsar API
-	UserAgent string
-
 	common service // Reuse a single struct instead of allocating one for each service on the heap.
 
 	// Services used for talking to different parts of the Pulsar Admin API
@@ -76,24 +73,7 @@ func (c *AdminClient) NewRequest(method, urlStr string, body interface{}) (*http
 	}
 	req.Header.Set("Accept", "application/json")
 
-	if c.UserAgent != "" {
-		req.Header.Set("User-Agent", c.UserAgent)
-	}
 	return req, nil
-}
-
-// sanitizeURL redacts the client_secret parameter from the URL which may be
-// exposed to the user.
-func sanitizeURL(uri *url.URL) *url.URL {
-	if uri == nil {
-		return nil
-	}
-	params := uri.Query()
-	if len(params.Get("client_secret")) > 0 {
-		params.Set("client_secret", "REDACTED")
-		uri.RawQuery = params.Encode()
-	}
-	return uri
 }
 
 // Do sends an API request and returns the API response. The API
@@ -124,7 +104,7 @@ func (c *AdminClient) Do(ctx context.Context, req *http.Request, v interface{}) 
 		// If the error type is *url.Error, sanitize its URL before returning.
 		if e, ok := err.(*url.Error); ok {
 			if url, err := url.Parse(e.URL); err == nil {
-				e.URL = sanitizeURL(url).String()
+				e.URL = url.String()
 				return nil, e
 			}
 		}
