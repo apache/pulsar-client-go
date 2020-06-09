@@ -18,6 +18,8 @@
 package pulsar
 
 import (
+	"net/http"
+	"net/url"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
@@ -25,6 +27,19 @@ import (
 
 func NewClient(options ClientOptions) (Client, error) {
 	return newClient(options)
+}
+
+func NewAdminClient(options AdminClientOptions) (*AdminClient, error) {
+	httpclient := options.HTTPClient
+	if httpclient == nil {
+		httpclient = &http.Client{}
+	}
+	base, _ := url.Parse(options.URL)
+
+	c := &AdminClient{client: httpclient, BaseURL: base}
+	c.common.client = c
+	c.Tenants = (*TenantsService)(&c.common)
+	return c, nil
 }
 
 // Opaque interface that represents the authentication credentials
@@ -117,4 +132,10 @@ type Client interface {
 
 	// Close the Client and free associated resources
 	Close()
+}
+
+// AdminClientOptions control the creation of the Admin API client
+type AdminClientOptions struct {
+	HTTPClient *http.Client
+	URL        string
 }
