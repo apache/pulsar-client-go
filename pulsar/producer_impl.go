@@ -247,6 +247,9 @@ func (p *producer) Flush() error {
 func (p *producer) Close() {
 	p.Lock()
 	defer p.Unlock()
+	if p.ticker != nil {
+		p.ticker.Stop()
+	}
 
 	for _, pp := range p.producers {
 		pp.Close()
