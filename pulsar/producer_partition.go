@@ -25,25 +25,29 @@ import (
 	"time"
 
 	"github.com/golang/protobuf/proto"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 )
 
-type producerState int
-
 const (
-	producerInit producerState = iota
+	// producer states
+	producerInit int32 = iota
 	producerReady
 	producerClosing
 	producerClosed
 )
 
-var ErrNilContextPass = errors.New("can't pass an nil context")
+var (
+	errFailAddBatch    = errors.New("message send failed")
+	errMessageTooLarge = errors.New("message size exceeds MaxMessageSize")
+	ErrNilContextPass  = errors.New("can't pass an nil context")
+)
 
 type partitionProducer struct {
-	state  producerState
+	state  int32
 	client *client
 	topic  string
 	log    *log.Entry
@@ -122,7 +126,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	p.log = p.log.WithField("producer_name", p.producerName)
 	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
-	p.state = producerReady
+	atomic.StoreInt32(&p.state, producerReady)
 
 	go p.runEventsLoop()
 	go p.checkTimeoutEventsLoop()
@@ -199,7 +203,7 @@ func (p *partitionProducer) ConnectionClosed() {
 func (p *partitionProducer) reconnectToBroker() {
 	backoff := internal.Backoff{}
 	for {
-		if p.state != producerReady {
+		if atomic.LoadInt32(&p.state) != producerReady {
 			// Producer is already closing
 			return
 		}
@@ -259,8 +263,19 @@ func (p *partitionProducer) Name() string {
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
+	p.log.Debug("Received send request: ", *request)
 
 	msg := request.msg
+
+	// if msg is too large
+	if len(msg.Payload) > int(p.cnx.GetMaxMessageSize()) {
+		p.publishSemaphore.Release()
+		request.CallBack(nil, request.msg, errMessageTooLarge)
+		p.log.WithField("size", len(msg.Payload)).
+			WithField("properties", msg.Properties).
+			WithError(errMessageTooLarge).Error()
+		return
+	}
 
 	deliverAt := msg.DeliverAt
 	if msg.DeliverAfter.Nanoseconds() > 0 {
@@ -300,43 +315,31 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		return
 	}
 
-	if sendAsBatch {
-		added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-			msg.ReplicationClusters, deliverAt)
-		if !added {
-			// The current batch is full.. flush it and retry
-			p.internalFlushCurrentBatch()
+	added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
+		msg.ReplicationClusters, deliverAt)
+	if !added {
+		// The current batch is full.. flush it and retry
+		p.internalFlushCurrentBatch()
 
-			// check after flush before add to batch
-			if _, done := request.responseCallBackIfCtxDone(); done {
-				p.publishSemaphore.Release()
-				return
-			}
-
-			// after flushing try again to add the current payload
-			if ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-				msg.ReplicationClusters, deliverAt); !ok {
-				p.log.WithField("size", len(msg.Payload)).
-					WithField("sequenceID", sequenceID).
-					WithField("properties", msg.Properties).
-					Error("unable to add message to batch")
-			}
+		// check after flush before add to batch
+		if _, done := request.responseCallBackIfCtxDone(); done {
+			p.publishSemaphore.Release()
+			return
 		}
-
-	} else {
-		// Send individually
-		if added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
-			msg.ReplicationClusters, deliverAt); !added {
+		// after flushing try again to add the current payload
+		if ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
+			msg.ReplicationClusters, deliverAt); !ok {
+			p.publishSemaphore.Release()
+			request.CallBack(nil, request.msg, errFailAddBatch)
 			p.log.WithField("size", len(msg.Payload)).
 				WithField("sequenceID", sequenceID).
 				WithField("properties", msg.Properties).
-				Error("unable to send single message")
+				Error("unable to add message to batch")
+			return
 		}
-
-		p.internalFlushCurrentBatch()
 	}
 
-	if request.flushImmediately {
+	if !sendAsBatch || request.flushImmediately {
 		p.internalFlushCurrentBatch()
 	}
 }
@@ -594,11 +597,10 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer req.waitGroup.Done()
-	if p.state != producerReady {
+	if !atomic.CompareAndSwapInt32(&p.state, producerReady, producerClosing) {
 		return
 	}
 
-	p.state = producerClosing
 	p.log.Info("Closing producer")
 
 	id := p.client.rpcClient.NewRequestID()
@@ -613,7 +615,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.Info("Closed producer")
 	}
 
-	p.state = producerClosed
+	atomic.StoreInt32(&p.state, producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
 	p.checkSendTimeoutTicker.Stop()
@@ -636,7 +638,7 @@ func (p *partitionProducer) Flush() error {
 }
 
 func (p *partitionProducer) Close() {
-	if p.state != producerReady {
+	if atomic.LoadInt32(&p.state) != producerReady {
 		// Producer is closing
 		return
 	}

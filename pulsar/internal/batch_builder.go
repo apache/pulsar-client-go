@@ -29,8 +29,6 @@ import (
 )
 
 const (
-	// MaxMessageSize limit message size for transfer
-	MaxMessageSize = 5 * 1024 * 1024
 	// MaxBatchSize will be the largest size for a batch sent from this particular producer.
 	// This is used as a baseline to allocate a new buffer that can hold the entire batch
 	// without needing costly re-allocations.
@@ -148,16 +146,12 @@ func (bb *BatchBuilder) reset() {
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-func (bb *BatchBuilder) Flush() (
-	batchData []byte,
-	sequenceID uint64,
-	callbacks []interface{},
-) {
-	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
+func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks []interface{}) {
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
 		return nil, 0, nil
 	}
+	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
 	bb.cmdSend.Send.NumMessages = proto.Int32(int32(bb.numMessages))

@@ -1,16 +1,17 @@
 name: Project Style Check
 on: [pull_request]
 jobs:
-
   build:
     name: Build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.11, 1.12, 1.13, 1.14]
     steps:
-
-      - name: Set up Go 1.12
+      - name: Set up Go
         uses: actions/setup-go@v1
         with:
-          go-version: 1.12
+          go-version: ${{ matrix.go-version }}
         id: go
 
       - name: Check out code into the Go module directory
