@@ -15,39 +15,32 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// +build !cgo
+// +build cgo
+
+// If CGO is enabled, use ZSTD library that links with official
+// C based zstd which provides better performance compared with
+// respect to the native Go implementation of ZStd.
 
 package compression
 
 import (
-	"github.com/klauspost/compress/zstd"
-	"github.com/pkg/errors"
+	zstd "github.com/valyala/gozstd"
 )
 
-type zstdProvider struct {
-	encoder *zstd.Encoder
-	decoder *zstd.Decoder
-}
+type zstdCGoProvider struct{}
 
 func NewZStdProvider() Provider {
-	p := &zstdProvider{}
-	p.encoder, _ = zstd.NewWriter(nil)
-	p.decoder, _ = zstd.NewReader(nil)
-	return p
+	return &zstdCGoProvider{}
 }
 
-func (p *zstdProvider) CanCompress() bool {
+func (*zstdCGoProvider) CanCompress() bool {
 	return true
 }
 
-func (p *zstdProvider) Compress(data []byte) []byte {
-	return p.encoder.EncodeAll(data, []byte{})
+func (*zstdCGoProvider) Compress(data []byte) []byte {
+	return zstd.Compress(nil, data)
 }
 
-func (p *zstdProvider) Decompress(compressedData []byte, originalSize int) (dst []byte, err error) {
-	dst, err = p.decoder.DecodeAll(compressedData, nil)
-	if err == nil && len(dst) != originalSize {
-		return nil, errors.New("Invalid uncompressed size")
-	}
-	return
+func (*zstdCGoProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
+	return zstd.Decompress(nil, compressedData)
 }

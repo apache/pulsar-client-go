@@ -93,6 +93,12 @@ type Message interface {
 	// Message redelivery increases monotonically in a broker, when topic switch ownership to a another broker
 	// redelivery count will be recalculated.
 	RedeliveryCount() uint32
+
+	// Check whether the message is replicated from other cluster.
+	IsReplicated() bool
+
+	// Get name of cluster, from which the message is replicated.
+	GetReplicatedFrom() string
 }
 
 // MessageID identifier for a particular message
