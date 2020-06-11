@@ -187,9 +187,9 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		// partition produces writing on a single connection. In general it's
 		// good to keep this above the number of partition producers assigned
 		// to a single connection.
-		writeRequestsCh:    make(chan []byte, 256),
-		listeners:          make(map[uint64]ConnectionListener),
-		consumerHandlers:   make(map[uint64]ConsumerHandler),
+		writeRequestsCh:  make(chan []byte, 256),
+		listeners:        make(map[uint64]ConnectionListener),
+		consumerHandlers: make(map[uint64]ConsumerHandler),
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
