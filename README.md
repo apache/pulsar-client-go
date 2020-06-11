@@ -103,6 +103,36 @@ fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
 
 ```
 
+Create a Reader:
+
+```go
+client, err := pulsar.NewClient(pulsar.ClientOptions{URL: "pulsar://localhost:6650"})
+if err != nil {
+	log.Fatal(err)
+}
+
+defer client.Close()
+
+reader, err := client.CreateReader(pulsar.ReaderOptions{
+	Topic:          "topic-1",
+	StartMessageID: pulsar.EarliestMessageID(),
+})
+if err != nil {
+	log.Fatal(err)
+}
+defer reader.Close()
+
+for reader.HasNext() {
+	msg, err := reader.Next(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+		msg.ID(), string(msg.Payload()))
+}
+```
+
 ## Contributing
 
 Contributions are welcomed and greatly appreciated. See [CONTRIBUTING.md](CONTRIBUTING.md) for details on submitting patches and the contribution workflow.
