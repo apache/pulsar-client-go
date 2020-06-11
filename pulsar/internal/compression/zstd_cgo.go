@@ -27,20 +27,28 @@ import (
 	zstd "github.com/valyala/gozstd"
 )
 
-type zstdCGoProvider struct{}
+type zstdCGoProvider struct {
+	compressionLevel int
+}
+
+func newCGoZStdProvider(compressionLevel int) Provider {
+	return &zstdCGoProvider{
+		compressionLevel: compressionLevel,
+	}
+}
 
 func NewZStdProvider() Provider {
-	return &zstdCGoProvider{}
+	return newCGoZStdProvider(zstd.DefaultCompressionLevel)
 }
 
 func (*zstdCGoProvider) CanCompress() bool {
 	return true
 }
 
-func (*zstdCGoProvider) Compress(data []byte) []byte {
-	return zstd.Compress(nil, data)
+func (z *zstdCGoProvider) Compress(data []byte) []byte {
+	return zstd.CompressLevel(nil, data, z.compressionLevel)
 }
 
-func (*zstdCGoProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
+func (z *zstdCGoProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
 	return zstd.Decompress(nil, compressedData)
 }

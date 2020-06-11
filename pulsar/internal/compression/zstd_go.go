@@ -15,22 +15,37 @@
 // specific language governing permissions and limitations
 // under the License.
 
-// +build !cgo
-
 package compression
 
 import (
-	"fmt"
 	"github.com/klauspost/compress/zstd"
+	"github.com/pkg/errors"
 )
 
-func NewZStdProvider() Provider {
-	return newPureGoZStdProvider(zstd.SpeedDefault)
+type zstdProvider struct {
+	encoder *zstd.Encoder
+	decoder *zstd.Decoder
 }
 
-func newCGoZStdProvider(compressionLevel int) Provider {
-	// This is kept to avoid compile errors in benchmark code when cgo is disabled.
-	// The warning is only shown when running the benchmark with CGO disabled.
-	fmt.Println("WARNING: CGO is disabled, using pure Go implementation of ZStd. Use CGO_ENABLED=1 when running benchmark.")
-	return newPureGoZStdProvider(zstd.SpeedDefault)
+func newPureGoZStdProvider(compressionLevel zstd.EncoderLevel) Provider {
+	p := &zstdProvider{}
+	p.encoder, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(compressionLevel))
+	p.decoder, _ = zstd.NewReader(nil)
+	return p
+}
+
+func (p *zstdProvider) CanCompress() bool {
+	return true
+}
+
+func (p *zstdProvider) Compress(data []byte) []byte {
+	return p.encoder.EncodeAll(data, []byte{})
+}
+
+func (p *zstdProvider) Decompress(compressedData []byte, originalSize int) (dst []byte, err error) {
+	dst, err = p.decoder.DecodeAll(compressedData, nil)
+	if err == nil && len(dst) != originalSize {
+		return nil, errors.New("Invalid uncompressed size")
+	}
+	return
 }
