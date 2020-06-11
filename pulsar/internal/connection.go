@@ -181,7 +181,13 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		closeCh:            make(chan interface{}),
 		incomingRequestsCh: make(chan *request, 10),
 		incomingCmdCh:      make(chan *incomingCmd, 10),
-		writeRequestsCh:    make(chan []byte, 10),
+
+		// This channel is used to pass data from producers to the connection
+		// go routine. It can become contended or blocking if we have multiple
+		// partition produces writing on a single connection. In general it's
+		// good to keep this above the number of partition producers assigned
+		// to a single connection.
+		writeRequestsCh:    make(chan []byte, 256),
 		listeners:          make(map[uint64]ConnectionListener),
 		consumerHandlers:   make(map[uint64]ConsumerHandler),
 	}
