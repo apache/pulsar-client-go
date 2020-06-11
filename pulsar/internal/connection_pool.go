@@ -18,8 +18,10 @@
 package internal
 
 import (
+	"fmt"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
@@ -37,23 +39,31 @@ type ConnectionPool interface {
 }
 
 type connectionPool struct {
-	pool              sync.Map
-	connectionTimeout time.Duration
-	tlsOptions        *TLSOptions
-	auth              auth.Provider
+	pool                  sync.Map
+	connectionTimeout     time.Duration
+	tlsOptions            *TLSOptions
+	auth                  auth.Provider
+	maxConnectionsPerHost int32
+	roundRobinCnt         int32
 }
 
 // NewConnectionPool init connection pool.
-func NewConnectionPool(tlsOptions *TLSOptions, auth auth.Provider, connectionTimeout time.Duration) ConnectionPool {
+func NewConnectionPool(
+	tlsOptions *TLSOptions,
+	auth auth.Provider,
+	connectionTimeout time.Duration,
+	maxConnectionsPerHost int) ConnectionPool {
 	return &connectionPool{
-		tlsOptions:        tlsOptions,
-		auth:              auth,
-		connectionTimeout: connectionTimeout,
+		tlsOptions:            tlsOptions,
+		auth:                  auth,
+		connectionTimeout:     connectionTimeout,
+		maxConnectionsPerHost: int32(maxConnectionsPerHost),
 	}
 }
 
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
-	cachedCnx, found := p.pool.Load(logicalAddr.Host)
+	key := p.getMapKey(logicalAddr)
+	cachedCnx, found := p.pool.Load(key)
 	if found {
 		cnx := cachedCnx.(*connection)
 		log.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
@@ -63,14 +73,15 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 			return cnx, nil
 		}
 		// The cached connection is failed
-		p.pool.Delete(logicalAddr.Host)
+		p.pool.Delete(key)
 		log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
 	}
 
 	// Try to create a new connection
 	newConnection := newConnection(logicalAddr, physicalAddr, p.tlsOptions, p.connectionTimeout, p.auth)
-	newCnx, wasCached := p.pool.LoadOrStore(logicalAddr.Host, newConnection)
+	newCnx, wasCached := p.pool.LoadOrStore(key, newConnection)
 	cnx := newCnx.(*connection)
+
 	if !wasCached {
 		cnx.start()
 	} else {
@@ -88,4 +99,13 @@ func (p *connectionPool) Close() {
 		value.(Connection).Close()
 		return true
 	})
+}
+
+func (p *connectionPool) getMapKey(addr *url.URL) string {
+	cnt := atomic.AddInt32(&p.roundRobinCnt, 1)
+	if cnt < 0 {
+		cnt = -cnt
+	}
+	idx := cnt % p.maxConnectionsPerHost
+	return fmt.Sprint(addr.Host, '-', idx)
 }
