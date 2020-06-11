@@ -88,6 +88,9 @@ type ClientOptions struct {
 
 	// Configure whether the Pulsar client verify the validity of the host name from broker (default: false)
 	TLSValidateHostname bool
+
+	// Max number of connections to a single broker that will kept in the pool. (Default: 1 connection)
+	MaxConnectionsPerBroker int
 }
 
 type Client interface {
