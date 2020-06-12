@@ -40,6 +40,19 @@ const (
 	ZSTD
 )
 
+type CompressionLevel int
+
+const (
+	// Default compression level
+	Default CompressionLevel = iota
+
+	// Faster compression, with lower compression ration
+	Faster
+
+	// Higher compression rate, but slower
+	Better
+)
+
 // TopicMetadata is a interface of topic metadata
 type TopicMetadata interface {
 	// NumPartitions get the number of partitions for the specific topic
@@ -86,6 +99,12 @@ type ProducerOptions struct {
 	// Note: ZSTD is supported since Pulsar 2.3. Consumers will need to be at least at that
 	// release in order to be able to receive messages compressed with ZSTD.
 	CompressionType
+
+	// Define the desired compression level. Options:
+	// - Default
+	// - Faster
+	// - Better
+	CompressionLevel
 
 	// MessageRouter set a custom message routing policy by passing an implementation of MessageRouter
 	// The router is a function that given a particular message and the topic metadata, returns the

@@ -19,6 +19,14 @@ package compression
 
 import "io"
 
+type Level int
+
+const (
+	Default Level = iota
+	Faster
+	Better
+)
+
 // Provider is a interface of compression providers
 type Provider interface {
 	// Compress a []byte, the param is a []byte with the uncompressed content.

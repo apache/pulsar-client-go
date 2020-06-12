@@ -29,23 +29,34 @@ import (
 )
 
 type zstdCGoProvider struct {
-	ctx              zstd.Ctx
-	compressionLevel int
+	ctx       zstd.Ctx
+	level     Level
+	zstdLevel int
 }
 
-func newCGoZStdProvider(compressionLevel int) Provider {
-	return &zstdCGoProvider{
-		compressionLevel: compressionLevel,
-		ctx:              zstd.NewCtx(),
+func newCGoZStdProvider(level Level) Provider {
+	z := &zstdCGoProvider{
+		ctx: zstd.NewCtx(),
 	}
+
+	switch level {
+	case Default:
+		z.zstdLevel = zstd.DefaultCompression
+	case Faster:
+		z.zstdLevel = zstd.BestSpeed
+	case Better:
+		z.zstdLevel = 9
+	}
+
+	return z
 }
 
-func NewZStdProvider() Provider {
-	return newCGoZStdProvider(zstd.DefaultCompression)
+func NewZStdProvider(level Level) Provider {
+	return newCGoZStdProvider(level)
 }
 
 func (z *zstdCGoProvider) Compress(data []byte) []byte {
-	out, err := z.ctx.CompressLevel(nil, data, z.compressionLevel)
+	out, err := z.ctx.CompressLevel(nil, data, z.zstdLevel)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to compress")
 	}
@@ -62,5 +73,5 @@ func (z *zstdCGoProvider) Close() error {
 }
 
 func (z *zstdCGoProvider) Clone() Provider {
-	return newCGoZStdProvider(z.compressionLevel)
+	return newCGoZStdProvider(z.level)
 }
