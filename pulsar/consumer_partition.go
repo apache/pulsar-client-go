@@ -32,15 +32,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
 )
 
-var (
-	compressionProviders = map[pb.CompressionType]compression.Provider{
-		pb.CompressionType_NONE: compression.NoopProvider,
-		pb.CompressionType_LZ4:  compression.Lz4Provider,
-		pb.CompressionType_ZLIB: compression.ZLibProvider,
-		pb.CompressionType_ZSTD: compression.ZStdProvider,
-	}
-)
-
 type consumerState int
 
 const (
@@ -115,29 +106,32 @@ type partitionConsumer struct {
 	dlq         *dlqRouter
 
 	log *log.Entry
+
+	compressionProviders map[pb.CompressionType]compression.Provider
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
 	messageCh chan ConsumerMessage, dlq *dlqRouter) (*partitionConsumer, error) {
 	pc := &partitionConsumer{
-		state:          consumerInit,
-		parentConsumer: parent,
-		client:         client,
-		options:        options,
-		topic:          options.topic,
-		name:           options.consumerName,
-		consumerID:     client.rpcClient.NewConsumerID(),
-		partitionIdx:   options.partitionIdx,
-		eventsCh:       make(chan interface{}, 3),
-		queueSize:      int32(options.receiverQueueSize),
-		queueCh:        make(chan []*message, options.receiverQueueSize),
-		startMessageID: options.startMessageID,
-		connectedCh:    make(chan struct{}),
-		messageCh:      messageCh,
-		closeCh:        make(chan struct{}),
-		clearQueueCh:   make(chan func(id *messageID)),
-		dlq:            dlq,
-		log:            log.WithField("topic", options.topic),
+		state:                consumerInit,
+		parentConsumer:       parent,
+		client:               client,
+		options:              options,
+		topic:                options.topic,
+		name:                 options.consumerName,
+		consumerID:           client.rpcClient.NewConsumerID(),
+		partitionIdx:         options.partitionIdx,
+		eventsCh:             make(chan interface{}, 3),
+		queueSize:            int32(options.receiverQueueSize),
+		queueCh:              make(chan []*message, options.receiverQueueSize),
+		startMessageID:       options.startMessageID,
+		connectedCh:          make(chan struct{}),
+		messageCh:            messageCh,
+		closeCh:              make(chan struct{}),
+		clearQueueCh:         make(chan func(id *messageID)),
+		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		dlq:                  dlq,
+		log:                  log.WithField("topic", options.topic),
 	}
 	pc.log = pc.log.WithField("name", pc.name).WithField("subscription", options.subscription)
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay)
@@ -685,6 +679,10 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		pc.log.Info("Closed consumer")
 	}
 
+	for _, provider := range pc.compressionProviders {
+		provider.Close()
+	}
+
 	pc.state = consumerClosed
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
 	if pc.nackTracker != nil {
@@ -846,11 +844,15 @@ func getPreviousMessage(mid *messageID) *messageID {
 }
 
 func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload internal.Buffer) (internal.Buffer, error) {
-	provider, ok := compressionProviders[msgMeta.GetCompression()]
+	provider, ok := pc.compressionProviders[msgMeta.GetCompression()]
 	if !ok {
-		err := fmt.Errorf("unsupported compression type: %v", msgMeta.GetCompression())
-		pc.log.WithError(err).Error("Failed to decompress message.")
-		return nil, err
+		var err error
+		if provider, err = pc.initializeCompressionProvider(msgMeta.GetCompression()); err != nil {
+			pc.log.WithError(err).Error("Failed to decompress message.")
+			return nil, err
+		}
+
+		pc.compressionProviders[msgMeta.GetCompression()] = provider
 	}
 
 	uncompressed, err := provider.Decompress(payload.ReadableSlice(), int(msgMeta.GetUncompressedSize()))
@@ -859,6 +861,22 @@ func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload int
 	}
 
 	return internal.NewBufferWrapper(uncompressed), nil
+}
+
+func (pc *partitionConsumer) initializeCompressionProvider(
+	compressionType pb.CompressionType) (compression.Provider, error) {
+	switch compressionType {
+	case pb.CompressionType_NONE:
+		return compression.NewNoopProvider(), nil
+	case pb.CompressionType_ZLIB:
+		return compression.NewZLibProvider(), nil
+	case pb.CompressionType_LZ4:
+		return compression.NewLz4Provider(), nil
+	case pb.CompressionType_ZSTD:
+		return compression.NewZStdProvider(), nil
+	}
+
+	return nil, fmt.Errorf("unsupported compression type: %v", compressionType)
 }
 
 func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,

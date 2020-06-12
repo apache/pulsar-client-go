@@ -30,10 +30,6 @@ func NewZLibProvider() Provider {
 	return &zlibProvider{}
 }
 
-func (zlibProvider) CanCompress() bool {
-	return true
-}
-
 func (zlibProvider) Compress(data []byte) []byte {
 	var b bytes.Buffer
 	w := zlib.NewWriter(&b)
@@ -64,4 +60,12 @@ func (zlibProvider) Decompress(compressedData []byte, originalSize int) ([]byte,
 	}
 
 	return uncompressed, nil
+}
+
+func (zlibProvider) Clone() Provider {
+	return NewZLibProvider()
+}
+
+func (zlibProvider) Close() error {
+	return nil
 }

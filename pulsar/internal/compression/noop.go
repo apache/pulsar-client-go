@@ -19,14 +19,9 @@ package compression
 
 type noopProvider struct{}
 
-// NewNoopProvider returns a Provider interface
+// NewNoopProvider returns a Provider interface that does not compress the data
 func NewNoopProvider() Provider {
 	return &noopProvider{}
-}
-
-// CanCompress always returns true, in the case of noopProvider, noopProvider means no compression.
-func (noopProvider) CanCompress() bool {
-	return true
 }
 
 func (noopProvider) Compress(data []byte) []byte {
@@ -35,4 +30,12 @@ func (noopProvider) Compress(data []byte) []byte {
 
 func (noopProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
 	return compressedData, nil
+}
+
+func (noopProvider) Close() error {
+	return nil
+}
+
+func (noopProvider) Clone() Provider {
+	return NewNoopProvider()
 }

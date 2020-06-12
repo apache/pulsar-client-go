@@ -23,19 +23,18 @@ import (
 )
 
 type zstdProvider struct {
-	encoder *zstd.Encoder
-	decoder *zstd.Decoder
+	compressionLevel zstd.EncoderLevel
+	encoder          *zstd.Encoder
+	decoder          *zstd.Decoder
 }
 
 func newPureGoZStdProvider(compressionLevel zstd.EncoderLevel) Provider {
-	p := &zstdProvider{}
+	p := &zstdProvider{
+		compressionLevel: compressionLevel,
+	}
 	p.encoder, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(compressionLevel))
 	p.decoder, _ = zstd.NewReader(nil)
 	return p
-}
-
-func (p *zstdProvider) CanCompress() bool {
-	return true
 }
 
 func (p *zstdProvider) Compress(data []byte) []byte {
@@ -48,4 +47,13 @@ func (p *zstdProvider) Decompress(compressedData []byte, originalSize int) (dst 
 		return nil, errors.New("Invalid uncompressed size")
 	}
 	return
+}
+
+func (p *zstdProvider) Close() error {
+	p.decoder.Close()
+	return p.encoder.Close()
+}
+
+func (p *zstdProvider) Clone() Provider {
+	return newPureGoZStdProvider(p.compressionLevel)
 }

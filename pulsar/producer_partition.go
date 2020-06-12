@@ -463,6 +463,10 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.Info("Closed producer")
 	}
 
+	if err = p.batchBuilder.Close(); err != nil {
+		p.log.WithError(err).Warn("Failed to close batch builder")
+	}
+
 	atomic.StoreInt32(&p.state, producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()

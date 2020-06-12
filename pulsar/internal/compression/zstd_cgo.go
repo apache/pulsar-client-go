@@ -41,14 +41,18 @@ func NewZStdProvider() Provider {
 	return newCGoZStdProvider(zstd.DefaultCompressionLevel)
 }
 
-func (*zstdCGoProvider) CanCompress() bool {
-	return true
-}
-
 func (z *zstdCGoProvider) Compress(data []byte) []byte {
 	return zstd.CompressLevel(nil, data, z.compressionLevel)
 }
 
 func (z *zstdCGoProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
 	return zstd.Decompress(nil, compressedData)
+}
+
+func (z *zstdCGoProvider) Close() error {
+	return nil
+}
+
+func (z *zstdCGoProvider) Clone() Provider {
+	return newCGoZStdProvider(z.compressionLevel)
 }
