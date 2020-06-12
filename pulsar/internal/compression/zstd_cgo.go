@@ -24,29 +24,37 @@
 package compression
 
 import (
-	zstd "github.com/valyala/gozstd"
+	"github.com/DataDog/zstd"
+	log "github.com/sirupsen/logrus"
 )
 
 type zstdCGoProvider struct {
+	ctx              zstd.Ctx
 	compressionLevel int
 }
 
 func newCGoZStdProvider(compressionLevel int) Provider {
 	return &zstdCGoProvider{
 		compressionLevel: compressionLevel,
+		ctx:              zstd.NewCtx(),
 	}
 }
 
 func NewZStdProvider() Provider {
-	return newCGoZStdProvider(zstd.DefaultCompressionLevel)
+	return newCGoZStdProvider(zstd.DefaultCompression)
 }
 
 func (z *zstdCGoProvider) Compress(data []byte) []byte {
-	return zstd.CompressLevel(nil, data, z.compressionLevel)
+	out, err := z.ctx.CompressLevel(nil, data, z.compressionLevel)
+	if err != nil {
+		log.WithError(err).Fatal("Failed to compress")
+	}
+
+	return out
 }
 
 func (z *zstdCGoProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	return zstd.Decompress(nil, compressedData)
+	return z.ctx.Decompress(nil, compressedData)
 }
 
 func (z *zstdCGoProvider) Close() error {
