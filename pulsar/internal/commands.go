@@ -21,6 +21,8 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+
 	"github.com/golang/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
@@ -211,19 +213,17 @@ func addSingleMessageToBatch(wb Buffer, smm proto.Message, payload []byte) {
 	wb.Write(payload)
 }
 
-func serializeBatch(wb Buffer, cmdSend proto.Message, msgMetadata proto.Message, payload []byte) {
+func serializeBatch(wb Buffer, cmdSend proto.Message, msgMetadata proto.Message,
+	uncompressedPayload Buffer,
+	compressionProvider compression.Provider) {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
 	cmdSize := proto.Size(cmdSend)
 	msgMetadataSize := proto.Size(msgMetadata)
-	payloadSize := len(payload)
 
-	magicAndChecksumLength := 2 + 4 /* magic + checksumLength */
-	headerContentSize := 4 + cmdSize + magicAndChecksumLength + 4 + msgMetadataSize
-	// cmdLength + cmdSize + magicLength + checksumSize + msgMetadataLength + msgMetadataSize
-	totalSize := headerContentSize + payloadSize
-
-	wb.WriteUint32(uint32(totalSize)) // External frame
+	frameSizeIdx := wb.WriterIndex()
+	wb.WriteUint32(0) // Skip frame size until we now the size
+	frameStartIdx := wb.WriterIndex()
 
 	// Write cmd
 	wb.WriteUint32(uint32(cmdSize))
@@ -248,13 +248,20 @@ func serializeBatch(wb Buffer, cmdSend proto.Message, msgMetadata proto.Message,
 	}
 
 	wb.Write(serialized)
-	wb.Write(payload)
+
+	// Make sure the buffer has enough space to hold the compressed data
+	// and perform the compression in-place
+	maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
+	wb.ResizeIfNeeded(maxSize)
+	b := compressionProvider.Compress(wb.WritableSlice()[:0], uncompressedPayload.ReadableSlice())
+	wb.WrittenBytes(uint32(len(b)))
 
 	// Write checksum at created checksum-placeholder
-	endIdx := wb.WriterIndex()
-	checksum := Crc32cCheckSum(wb.Get(metadataStartIdx, endIdx-metadataStartIdx))
+	frameEndIdx := wb.WriterIndex()
+	checksum := Crc32cCheckSum(wb.Get(metadataStartIdx, frameEndIdx-metadataStartIdx))
 
-	// set computed checksum
+	// Set Sizes and checksum in the fixed-size header
+	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
 }
 

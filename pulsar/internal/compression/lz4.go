@@ -21,6 +21,10 @@ import (
 	"github.com/pierrec/lz4"
 )
 
+const (
+	minLz4DestinationBufferSize = 1024 * 1024
+)
+
 type lz4Provider struct {
 	hashTable []int
 }
@@ -34,10 +38,23 @@ func NewLz4Provider() Provider {
 	}
 }
 
-func (l *lz4Provider) Compress(data []byte) []byte {
+func (l *lz4Provider) CompressMaxSize(originalSize int) int {
+	s := lz4.CompressBlockBound(originalSize)
+	if s < minLz4DestinationBufferSize {
+		return minLz4DestinationBufferSize
+	}
+
+	return s
+}
+
+func (l *lz4Provider) Compress(dst, data []byte) []byte {
 	maxSize := lz4.CompressBlockBound(len(data))
-	compressed := make([]byte, maxSize)
-	size, err := lz4.CompressBlock(data, compressed, l.hashTable)
+	if cap(dst) >= maxSize {
+		dst = dst[0:maxSize] // Reuse dst buffer
+	} else {
+		dst = make([]byte, maxSize)
+	}
+	size, err := lz4.CompressBlock(data, dst, l.hashTable)
 	if err != nil {
 		panic("Failed to compress")
 	}
@@ -45,11 +62,11 @@ func (l *lz4Provider) Compress(data []byte) []byte {
 	if size == 0 {
 		// The data block was not compressed. Just repeat it with
 		// the block header flag to signal it's not compressed
-		headerSize := writeSize(len(data), compressed)
-		copy(compressed[headerSize:], data)
-		return compressed[:len(data)+headerSize]
+		headerSize := writeSize(len(data), dst)
+		copy(dst[headerSize:], data)
+		return dst[:len(data)+headerSize]
 	}
-	return compressed[:size]
+	return dst[:size]
 }
 
 // Write the encoded size for the uncompressed payload
@@ -69,10 +86,14 @@ func writeSize(size int, dst []byte) int {
 	return i + 1
 }
 
-func (lz4Provider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	uncompressed := make([]byte, originalSize)
-	_, err := lz4.UncompressBlock(compressedData, uncompressed)
-	return uncompressed, err
+func (lz4Provider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
+	if cap(dst) >= originalSize {
+		dst = dst[0:originalSize] // Reuse dst buffer
+	} else {
+		dst = make([]byte, originalSize)
+	}
+	_, err := lz4.UncompressBlock(src, dst)
+	return dst, err
 }
 
 func (lz4Provider) Close() error {

@@ -17,6 +17,10 @@
 
 package compression
 
+import (
+	"bytes"
+)
+
 type noopProvider struct{}
 
 // NewNoopProvider returns a Provider interface that does not compress the data
@@ -24,12 +28,28 @@ func NewNoopProvider() Provider {
 	return &noopProvider{}
 }
 
-func (noopProvider) Compress(data []byte) []byte {
-	return data
+func (noopProvider) CompressMaxSize(originalSize int) int {
+	return originalSize
 }
 
-func (noopProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	return compressedData, nil
+func (noopProvider) Compress(dst, src []byte) []byte {
+	if dst == nil {
+		dst = make([]byte, len(src))
+	}
+
+	b := bytes.NewBuffer(dst[:0])
+	b.Write(src)
+	return dst[:len(src)]
+}
+
+func (noopProvider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
+	if dst == nil {
+		dst = make([]byte, len(src))
+	}
+
+	b := bytes.NewBuffer(dst[:0])
+	b.Write(src)
+	return dst[:len(src)], nil
 }
 
 func (noopProvider) Close() error {

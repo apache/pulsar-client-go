@@ -19,7 +19,6 @@ package compression
 
 import (
 	"github.com/klauspost/compress/zstd"
-	"github.com/pkg/errors"
 )
 
 type zstdProvider struct {
@@ -44,16 +43,23 @@ func newPureGoZStdProvider(level Level) Provider {
 	return p
 }
 
-func (p *zstdProvider) Compress(data []byte) []byte {
-	return p.encoder.EncodeAll(data, []byte{})
+func (p *zstdProvider) CompressMaxSize(srcSize int) int {
+	// from zstd.h
+	// this formula ensures that bound(A) + bound(B) <= bound(A+B) as long as A and B >= 128 KB
+	lowLimit := 128 << 10 // 128 kB
+	var margin int
+	if srcSize < lowLimit {
+		margin = (lowLimit - srcSize) >> 11
+	}
+	return srcSize + (srcSize >> 8) + margin
 }
 
-func (p *zstdProvider) Decompress(compressedData []byte, originalSize int) (dst []byte, err error) {
-	dst, err = p.decoder.DecodeAll(compressedData, nil)
-	if err == nil && len(dst) != originalSize {
-		return nil, errors.New("Invalid uncompressed size")
-	}
-	return
+func (p *zstdProvider) Compress(dst, src []byte) []byte {
+	return p.encoder.EncodeAll(src, dst)
+}
+
+func (p *zstdProvider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
+	return p.decoder.DecodeAll(src, dst)
 }
 
 func (p *zstdProvider) Close() error {

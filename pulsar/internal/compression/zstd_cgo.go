@@ -55,8 +55,12 @@ func NewZStdProvider(level Level) Provider {
 	return newCGoZStdProvider(level)
 }
 
-func (z *zstdCGoProvider) Compress(data []byte) []byte {
-	out, err := z.ctx.CompressLevel(nil, data, z.zstdLevel)
+func (z *zstdCGoProvider) CompressMaxSize(originalSize int) int {
+	return zstd.CompressBound(originalSize)
+}
+
+func (z *zstdCGoProvider) Compress(dst, src []byte) []byte {
+	out, err := z.ctx.CompressLevel(dst, src, z.zstdLevel)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to compress")
 	}
@@ -64,8 +68,8 @@ func (z *zstdCGoProvider) Compress(data []byte) []byte {
 	return out
 }
 
-func (z *zstdCGoProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	return z.ctx.Decompress(nil, compressedData)
+func (z *zstdCGoProvider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
+	return z.ctx.Decompress(dst, src)
 }
 
 func (z *zstdCGoProvider) Close() error {

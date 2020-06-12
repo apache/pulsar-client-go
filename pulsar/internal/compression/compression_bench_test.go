@@ -33,11 +33,12 @@ func testCompression(b *testing.B, provider Provider) {
 	}
 
 	dataLen := int64(len(data))
+	compressed := make([]byte, 1024*1024)
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		provider.Compress(data)
+		provider.Compress(compressed[:0], data)
 		b.SetBytes(dataLen)
 	}
 }
@@ -49,14 +50,15 @@ func testDecompression(b *testing.B, provider Provider) {
 		b.Error(err)
 	}
 
-	dataCompressed := provider.Compress(data)
+	dataCompressed := provider.Compress(nil, data)
+	dataDecompressed := make([]byte, 1024*1024)
 
 	dataLen := int64(len(data))
 
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		provider.Decompress(dataCompressed, int(dataLen))
+		provider.Decompress(dataDecompressed[:0], dataCompressed, int(dataLen))
 		b.SetBytes(dataLen)
 	}
 }
@@ -108,8 +110,10 @@ func BenchmarkCompressionParallel(b *testing.B) {
 		b.Run(p.name, func(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				localProvider := p.provider.Clone()
+				compressed := make([]byte, 1024*1024)
+
 				for pb.Next() {
-					localProvider.Compress(data)
+					localProvider.Compress(compressed[:0], data)
 					b.SetBytes(dataLen)
 				}
 			})

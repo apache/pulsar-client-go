@@ -65,13 +65,14 @@ type ConnectionListener interface {
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	SendRequestNoWait(req *pb.BaseCommand)
-	WriteData(data []byte)
+	WriteData(data Buffer)
 	RegisterListener(id uint64, listener ConnectionListener)
 	UnregisterListener(id uint64)
 	AddConsumeHandler(id uint64, handler ConsumerHandler)
 	DeleteConsumeHandler(id uint64)
 	ID() string
 	GetMaxMessageSize() int32
+	GetBufferFromPool() Buffer
 	Close()
 }
 
@@ -148,7 +149,7 @@ type connection struct {
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan interface{}
-	writeRequestsCh    chan []byte
+	writeRequestsCh    chan Buffer
 
 	pendingReqs map[uint64]*request
 	listeners   map[uint64]ConnectionListener
@@ -160,6 +161,8 @@ type connection struct {
 	auth       auth.Provider
 
 	maxMessageSize int32
+
+	buffersPool sync.Pool
 }
 
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
@@ -187,9 +190,14 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		// partition produces writing on a single connection. In general it's
 		// good to keep this above the number of partition producers assigned
 		// to a single connection.
-		writeRequestsCh:  make(chan []byte, 256),
+		writeRequestsCh:  make(chan Buffer, 256),
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
+		buffersPool: sync.Pool{
+			New: func() interface{} {
+				return NewBuffer(1024)
+			},
+		},
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -344,6 +352,8 @@ func (c *connection) run() {
 				return
 			}
 			c.internalWriteData(data)
+			// Return buffer to the pool since we're now done using it
+			c.buffersPool.Put(data)
 
 		case <-c.pingTicker.C:
 			c.sendPing()
@@ -368,13 +378,13 @@ func (c *connection) runPingCheck() {
 	}
 }
 
-func (c *connection) WriteData(data []byte) {
+func (c *connection) WriteData(data Buffer) {
 	c.writeRequestsCh <- data
 }
 
-func (c *connection) internalWriteData(data []byte) {
-	c.log.Debug("Write data: ", len(data))
-	if _, err := c.cnx.Write(data); err != nil {
+func (c *connection) internalWriteData(data Buffer) {
+	c.log.Debug("Write data: ", data.ReadableBytes())
+	if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
 		c.log.WithError(err).Warn("Failed to write on connection")
 		c.Close()
 	}
@@ -398,8 +408,7 @@ func (c *connection) writeCommand(cmd proto.Message) {
 	}
 
 	c.writeBuffer.Write(serialized)
-	data := c.writeBuffer.ReadableSlice()
-	c.internalWriteData(data)
+	c.internalWriteData(c.writeBuffer)
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
@@ -469,7 +478,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	}
 }
 
-func (c *connection) Write(data []byte) {
+func (c *connection) Write(data Buffer) {
 	c.writeRequestsCh <- data
 }
 
@@ -767,4 +776,10 @@ func (c *connection) ID() string {
 
 func (c *connection) GetMaxMessageSize() int32 {
 	return c.maxMessageSize
+}
+
+func (c *connection) GetBufferFromPool() Buffer {
+	b := c.buffersPool.Get().(Buffer)
+	b.Clear()
+	return b
 }
