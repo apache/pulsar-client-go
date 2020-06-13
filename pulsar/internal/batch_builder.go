@@ -29,10 +29,9 @@ import (
 )
 
 const (
-	// MaxBatchSize will be the largest size for a batch sent from this particular producer.
-	// This is used as a baseline to allocate a new buffer that can hold the entire batch
-	// without needing costly re-allocations.
-	MaxBatchSize = 128 * 1024
+	// DefaultMaxBatchSize init default for maximum number of bytes per batch
+	DefaultMaxBatchSize = 128 * 1024
+
 	// DefaultMaxMessagesPerBatch init default num of entries in per batch.
 	DefaultMaxMessagesPerBatch = 1000
 )
@@ -47,6 +46,11 @@ type BatchBuilder struct {
 	// Max number of message allowed in the batch
 	maxMessages uint
 
+	// The largest size for a batch sent from this praticular producer.
+	// This is used as a baseline to allocate a new buffer that can hold the entire batch
+	// without needing costly re-allocations.
+	maxBatchSize uint
+
 	producerName string
 	producerID   uint64
 
@@ -58,15 +62,19 @@ type BatchBuilder struct {
 }
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
-func NewBatchBuilder(maxMessages uint, producerName string, producerID uint64,
+func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType) (*BatchBuilder, error) {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
+	}
+	if maxBatchSize == 0 {
+		maxBatchSize = DefaultMaxBatchSize
 	}
 	bb := &BatchBuilder{
 		buffer:       NewBuffer(4096),
 		numMessages:  0,
 		maxMessages:  maxMessages,
+		maxBatchSize: maxBatchSize,
 		producerName: producerName,
 		producerID:   producerID,
 		cmdSend: baseCommand(pb.BaseCommand_SEND,
@@ -93,12 +101,12 @@ func NewBatchBuilder(maxMessages uint, producerName string, producerID uint64,
 
 // IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
 func (bb *BatchBuilder) IsFull() bool {
-	return bb.numMessages >= bb.maxMessages || bb.buffer.ReadableBytes() > MaxBatchSize
+	return bb.numMessages >= bb.maxMessages || bb.buffer.ReadableBytes() > uint32(bb.maxBatchSize)
 }
 
 func (bb *BatchBuilder) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
-	return bb.numMessages > 0 && (bb.buffer.ReadableBytes()+msgSize) > MaxBatchSize
+	return bb.numMessages > 0 && (bb.buffer.ReadableBytes()+msgSize) > uint32(bb.maxBatchSize)
 }
 
 // Add will add single message to batch.
