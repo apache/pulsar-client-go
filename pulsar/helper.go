@@ -22,10 +22,10 @@ import (
 
 	pkgerrors "github.com/pkg/errors"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 // NewUnexpectedErrMsg instantiates an ErrUnexpectedMsg error.

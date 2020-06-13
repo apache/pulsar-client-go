@@ -29,11 +29,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 const (
@@ -390,10 +390,10 @@ func (c *connection) internalWriteData(data Buffer) {
 	}
 }
 
-func (c *connection) writeCommand(cmd proto.Message) {
+func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	// Wire format
 	// [FRAME_SIZE] [CMD_SIZE][CMD]
-	cmdSize := uint32(proto.Size(cmd))
+	cmdSize := uint32(cmd.Size())
 	frameSize := cmdSize + 4
 
 	c.writeBufferLock.Lock()
@@ -401,13 +401,14 @@ func (c *connection) writeCommand(cmd proto.Message) {
 
 	c.writeBuffer.Clear()
 	c.writeBuffer.WriteUint32(frameSize)
+
 	c.writeBuffer.WriteUint32(cmdSize)
-	serialized, err := proto.Marshal(cmd)
+	_, err := cmd.MarshalToSizedBuffer(c.writeBuffer.WritableSlice()[:cmdSize])
 	if err != nil {
 		c.log.WithError(err).Fatal("Protobuf serialization error")
 	}
 
-	c.writeBuffer.Write(serialized)
+	c.writeBuffer.WrittenBytes(cmdSize)
 	c.internalWriteData(c.writeBuffer)
 }
 
