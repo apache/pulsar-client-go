@@ -166,8 +166,8 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
 	if p.batchBuilder == nil {
-		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, p.producerName,
-			p.producerID, pb.CompressionType(p.options.CompressionType))
+		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType))
 		if err != nil {
 			return err
 		}

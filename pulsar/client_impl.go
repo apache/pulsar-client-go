@@ -95,8 +95,13 @@ func newClient(options ClientOptions) (Client, error) {
 		operationTimeout = defaultOperationTimeout
 	}
 
+	maxConnectionsPerHost := options.MaxConnectionsPerBroker
+	if maxConnectionsPerHost <= 0 {
+		maxConnectionsPerHost = 1
+	}
+
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout),
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost),
 	}
 	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil)

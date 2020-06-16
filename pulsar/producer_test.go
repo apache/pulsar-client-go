@@ -661,7 +661,7 @@ func TestBatchMessageFlushing(t *testing.T) {
 	}
 	defer producer.Close()
 
-	maxBytes := internal.MaxBatchSize
+	maxBytes := internal.DefaultMaxBatchSize
 	genbytes := func(n int) []byte {
 		c := []byte("a")[0]
 		bytes := make([]byte, n)

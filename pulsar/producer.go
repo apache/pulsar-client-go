@@ -109,12 +109,16 @@ type ProducerOptions struct {
 
 	// BatchingMaxMessages set the maximum number of messages permitted in a batch. (default: 1000)
 	// If set to a value greater than 1, messages will be queued until this threshold is reached or
-	// batch interval has elapsed.
+	// BatchingMaxSize (see below) has been reached or the batch interval has elapsed.
 	BatchingMaxMessages uint
 
 	// SendTimeoutCheckInterval set the time period within which the messages sent will be
 	// checked for timeout (default: 10ms)
 	SendTimeoutCheckInterval time.Duration
+	// BatchingMaxSize sets the maximum number of bytes permitted in a batch. (default 128 KB)
+	// If set to a value greater than 1, messages will be queued until this threshold is reached or
+	// BatchingMaxMessages (see above) has been reached or the batch interval has elapsed.
+	BatchingMaxSize uint
 }
 
 // Producer is used to publish messages on a topic
