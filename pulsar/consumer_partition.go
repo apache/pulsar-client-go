@@ -184,6 +184,10 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to unsubscribe consumer")
 		unsub.err = err
+		// Set the state to ready for closing the consumer
+		pc.state = consumerReady
+		// Should'nt remove the consumer handler
+		return
 	}
 
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
