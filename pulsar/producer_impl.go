@@ -22,6 +22,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+	"unsafe"
 
 	log "github.com/sirupsen/logrus"
 
@@ -34,6 +35,7 @@ type producer struct {
 	options       *ProducerOptions
 	topic         string
 	producers     []Producer
+	producersPtr  unsafe.Pointer
 	numPartitions uint32
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 	ticker        *time.Ticker
@@ -180,6 +182,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		return err
 	}
 
+	atomic.StorePointer(&p.producersPtr, unsafe.Pointer(&p.producers))
 	atomic.StoreUint32(&p.numPartitions, uint32(len(p.producers)))
 	return nil
 }
@@ -196,7 +199,7 @@ func (p *producer) Name() string {
 }
 
 func (p *producer) NumPartitions() uint32 {
-	return p.numPartitions
+	return atomic.LoadUint32(&p.numPartitions)
 }
 
 func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
@@ -212,7 +215,7 @@ func (p *producer) getPartition(msg *ProducerMessage) Producer {
 	// Since partitions can only increase, it's ok if the producers list
 	// is updated in between. The numPartition is updated only after the list.
 	partition := p.messageRouter(msg, p)
-	producers := p.producers
+	producers := *(*[]Producer) (atomic.LoadPointer(&p.producersPtr))
 	if partition >= len(producers) {
 		// We read the old producers list while the count was already
 		// updated
