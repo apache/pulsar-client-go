@@ -22,10 +22,12 @@ import (
 	"testing"
 )
 
-var compressed int
+const (
+	dataSampleFile = "test_data_sample.txt"
+)
 
 func testCompression(b *testing.B, provider Provider) {
-	data, err := ioutil.ReadFile("test_data_sample.txt")
+	data, err := ioutil.ReadFile(dataSampleFile)
 	if err != nil {
 		b.Error(err)
 	}
@@ -35,15 +37,14 @@ func testCompression(b *testing.B, provider Provider) {
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		// Use len() to avoid the compiler optimizing the call away
-		compressed = len(provider.Compress(data))
+		provider.Compress(data)
 		b.SetBytes(dataLen)
 	}
 }
 
 func testDecompression(b *testing.B, provider Provider) {
 	// Read data sample file
-	data, err := ioutil.ReadFile("test_data_sample.txt")
+	data, err := ioutil.ReadFile(dataSampleFile)
 	if err != nil {
 		b.Error(err)
 	}
@@ -61,8 +62,8 @@ func testDecompression(b *testing.B, provider Provider) {
 }
 
 var benchmarkProviders = []testProvider{
-	{"zlib", ZLibProvider, nil},
-	{"lz4", Lz4Provider, nil},
+	{"zlib", NewZLibProvider(), nil},
+	{"lz4", NewLz4Provider(), nil},
 	{"zstd-pure-go-fastest", newPureGoZStdProvider(1), nil},
 	{"zstd-pure-go-default", newPureGoZStdProvider(2), nil},
 	{"zstd-pure-go-best", newPureGoZStdProvider(3), nil},
@@ -87,6 +88,31 @@ func BenchmarkDecompression(b *testing.B) {
 		p := provider
 		b.Run(p.name, func(b *testing.B) {
 			testDecompression(b, p.provider)
+		})
+	}
+}
+
+func BenchmarkCompressionParallel(b *testing.B) {
+	b.ReportAllocs()
+
+	data, err := ioutil.ReadFile(dataSampleFile)
+	if err != nil {
+		b.Error(err)
+	}
+
+	dataLen := int64(len(data))
+	b.ResetTimer()
+
+	for _, provider := range benchmarkProviders {
+		p := provider
+		b.Run(p.name, func(b *testing.B) {
+			b.RunParallel(func(pb *testing.PB) {
+				localProvider := p.provider.Clone()
+				for pb.Next() {
+					localProvider.Compress(data)
+					b.SetBytes(dataLen)
+				}
+			})
 		})
 	}
 }

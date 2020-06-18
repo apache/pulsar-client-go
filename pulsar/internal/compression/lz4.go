@@ -21,24 +21,23 @@ import (
 	"github.com/pierrec/lz4"
 )
 
-type lz4Provider struct{}
+type lz4Provider struct {
+	hashTable []int
+}
 
 // NewLz4Provider return a interface of Provider.
 func NewLz4Provider() Provider {
-	return &lz4Provider{}
-}
-
-func (lz4Provider) CanCompress() bool {
-	return true
-}
-
-func (lz4Provider) Compress(data []byte) []byte {
 	const tableSize = 1 << 16
-	hashTable := make([]int, tableSize)
 
+	return &lz4Provider{
+		hashTable: make([]int, tableSize),
+	}
+}
+
+func (l *lz4Provider) Compress(data []byte) []byte {
 	maxSize := lz4.CompressBlockBound(len(data))
 	compressed := make([]byte, maxSize)
-	size, err := lz4.CompressBlock(data, compressed, hashTable)
+	size, err := lz4.CompressBlock(data, compressed, l.hashTable)
 	if err != nil {
 		panic("Failed to compress")
 	}
@@ -74,4 +73,12 @@ func (lz4Provider) Decompress(compressedData []byte, originalSize int) ([]byte, 
 	uncompressed := make([]byte, originalSize)
 	_, err := lz4.UncompressBlock(compressedData, uncompressed)
 	return uncompressed, err
+}
+
+func (lz4Provider) Close() error {
+	return nil
+}
+
+func (lz4Provider) Clone() Provider {
+	return NewLz4Provider()
 }

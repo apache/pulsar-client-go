@@ -18,7 +18,6 @@
 package internal
 
 import (
-	"fmt"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
@@ -90,10 +89,6 @@ func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, p
 
 	if compressionType != pb.CompressionType_NONE {
 		bb.msgMetadata.Compression = &compressionType
-	}
-
-	if !bb.compressionProvider.CanCompress() {
-		return nil, fmt.Errorf("compression provider %d can only decompress data", compressionType)
 	}
 
 	return bb, nil
@@ -177,16 +172,20 @@ func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks 
 	return buffer.ReadableSlice(), sequenceID, callbacks
 }
 
+func (bb *BatchBuilder) Close() error {
+	return bb.compressionProvider.Close()
+}
+
 func getCompressionProvider(compressionType pb.CompressionType) compression.Provider {
 	switch compressionType {
 	case pb.CompressionType_NONE:
-		return compression.NoopProvider
+		return compression.NewNoopProvider()
 	case pb.CompressionType_LZ4:
-		return compression.Lz4Provider
+		return compression.NewLz4Provider()
 	case pb.CompressionType_ZLIB:
-		return compression.ZLibProvider
+		return compression.NewZLibProvider()
 	case pb.CompressionType_ZSTD:
-		return compression.ZStdProvider
+		return compression.NewZStdProvider()
 	default:
 		log.Panic("unsupported compression type")
 		return nil

@@ -17,11 +17,10 @@
 
 package compression
 
+import "io"
+
 // Provider is a interface of compression providers
 type Provider interface {
-	// CanCompress checks if the compression method is available under the current version.
-	CanCompress() bool
-
 	// Compress a []byte, the param is a []byte with the uncompressed content.
 	// The reader/writer indexes will not be modified. The return is a []byte
 	// with the compressed content.
@@ -31,11 +30,10 @@ type Provider interface {
 	// The compressedData is compressed content, originalSize is the size of the original content.
 	// The return were the result will be passed, if err is nil, the buffer was decompressed, no nil otherwise.
 	Decompress(compressedData []byte, originalSize int) ([]byte, error)
-}
 
-var (
-	NoopProvider = NewNoopProvider()
-	ZLibProvider = NewZLibProvider()
-	Lz4Provider  = NewLz4Provider()
-	ZStdProvider = NewZStdProvider()
-)
+	// Returns a new instance of the same provider, with the same exact configuration
+	Clone() Provider
+
+	// Close the compressor
+	io.Closer
+}
