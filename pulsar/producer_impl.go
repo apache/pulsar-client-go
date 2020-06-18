@@ -215,7 +215,7 @@ func (p *producer) getPartition(msg *ProducerMessage) Producer {
 	// Since partitions can only increase, it's ok if the producers list
 	// is updated in between. The numPartition is updated only after the list.
 	partition := p.messageRouter(msg, p)
-	producers := *(*[]Producer) (atomic.LoadPointer(&p.producersPtr))
+	producers := *(*[]Producer)(atomic.LoadPointer(&p.producersPtr))
 	if partition >= len(producers) {
 		// We read the old producers list while the count was already
 		// updated
