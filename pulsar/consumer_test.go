@@ -1274,3 +1274,28 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 
 	assert.Equal(t, len(msgs), 10)
 }
+
+func TestConsumterNegativeRecieverQueueSize(t *testing.T) {
+	assert := assert.New(t)
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(err)
+	defer client.Close()
+
+	topic := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  "my-sub",
+		ReceiverQueueSize: -1,
+	})
+	defer func() {
+		if consumer != nil {
+			consumer.Close()
+		}
+	}()
+
+	assert.Nil(err)
+}

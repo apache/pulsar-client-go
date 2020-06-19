@@ -70,7 +70,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		return nil, newError(SubscriptionNotFound, "subscription name is required for consumer")
 	}
 
-	if options.ReceiverQueueSize == 0 {
+	if options.ReceiverQueueSize <= 0 {
 		options.ReceiverQueueSize = 1000
 	}
 
