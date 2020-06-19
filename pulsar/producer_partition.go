@@ -145,7 +145,7 @@ func (p *partitionProducer) grabCnx() error {
 	if len(p.options.Properties) > 0 {
 		cmdProducer.Metadata = toKeyValues(p.options.Properties)
 	}
-	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	res, err := p.client.rpcClient.Request(id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer")
 		return err

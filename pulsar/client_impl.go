@@ -69,6 +69,11 @@ func newClient(options ClientOptions) (Client, error) {
 		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
 
+	host, err := internal.NewHostResolve(options.URL)
+	if err != nil {
+		return nil, err
+	}
+
 	var authProvider auth.Provider
 	var ok bool
 
@@ -103,8 +108,8 @@ func newClient(options ClientOptions) (Client, error) {
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost),
 	}
-	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout)
-	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil)
+	c.rpcClient = internal.NewRPCClient(host, c.cnxPool, operationTimeout)
+	c.lookupService = internal.NewLookupService(c.rpcClient, host, tlsConfig != nil)
 	c.handlers = internal.NewClientHandlers()
 	return c, nil
 }

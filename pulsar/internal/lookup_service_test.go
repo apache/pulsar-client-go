@@ -18,7 +18,6 @@
 package internal
 
 import (
-	"net/url"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
@@ -30,7 +29,8 @@ type mockedRPCClient struct {
 	requestIDGenerator uint64
 	t                  *testing.T
 
-	expectedURL      string
+	expectedURL string
+	//expectedHost     HostResolve
 	expectedRequests []pb.CommandLookupTopic
 	mockedResponses  []pb.CommandLookupTopicResponse
 }
@@ -69,8 +69,8 @@ func (c *mockedRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCo
 	}, nil
 }
 
-func (c *mockedRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (c *mockedRPCClient) Request(requestID uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RPCResult, error) {
 	assert.Equal(c.t, cmdType, pb.BaseCommand_LOOKUP)
 	expectedRequest := &c.expectedRequests[0]
 	c.expectedRequests = c.expectedRequests[1:]
@@ -79,9 +79,6 @@ func (c *mockedRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, r
 
 	mockedResponse := &c.mockedResponses[0]
 	c.mockedResponses = c.mockedResponses[1:]
-
-	assert.Equal(c.t, c.expectedURL, logicalAddr.String())
-	assert.Equal(c.t, c.expectedURL, physicalAddr.String())
 
 	return &RPCResult{
 		&pb.BaseCommand{
@@ -106,7 +103,7 @@ func responseType(r pb.CommandLookupTopicResponse_LookupType) *pb.CommandLookupT
 }
 
 func TestLookupSuccess(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
+	host, err := NewHostResolve("pulsar://example:6650")
 	assert.NoError(t, err)
 
 	ls := NewLookupService(&mockedRPCClient{
@@ -127,7 +124,7 @@ func TestLookupSuccess(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, false)
+	}, host, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -138,7 +135,7 @@ func TestLookupSuccess(t *testing.T) {
 }
 
 func TestTlsLookupSuccess(t *testing.T) {
-	url, err := url.Parse("pulsar+ssl://example:6651")
+	host, err := NewHostResolve("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
 
 	ls := NewLookupService(&mockedRPCClient{
@@ -159,7 +156,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, true)
+	}, host, true)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -170,7 +167,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 }
 
 func TestLookupWithProxy(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
+	host, err := NewHostResolve("pulsar://example:6650")
 	assert.NoError(t, err)
 
 	ls := NewLookupService(&mockedRPCClient{
@@ -192,7 +189,7 @@ func TestLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, false)
+	}, host, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -203,7 +200,7 @@ func TestLookupWithProxy(t *testing.T) {
 }
 
 func TestTlsLookupWithProxy(t *testing.T) {
-	url, err := url.Parse("pulsar+ssl://example:6651")
+	host, err := NewHostResolve("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
 
 	ls := NewLookupService(&mockedRPCClient{
@@ -225,7 +222,7 @@ func TestTlsLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, true)
+	}, host, true)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -236,7 +233,7 @@ func TestTlsLookupWithProxy(t *testing.T) {
 }
 
 func TestLookupWithRedirect(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
+	host, err := NewHostResolve("pulsar://example:6650")
 	assert.NoError(t, err)
 
 	ls := NewLookupService(&mockedRPCClient{
@@ -269,7 +266,7 @@ func TestLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, false)
+	}, host, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -280,7 +277,7 @@ func TestLookupWithRedirect(t *testing.T) {
 }
 
 func TestTlsLookupWithRedirect(t *testing.T) {
-	url, err := url.Parse("pulsar+ssl://example:6651")
+	host, err := NewHostResolve("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
 
 	ls := NewLookupService(&mockedRPCClient{
@@ -313,7 +310,7 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, true)
+	}, host, true)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -324,7 +321,7 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 }
 
 func TestLookupWithInvalidUrlResponse(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
+	host, err := NewHostResolve("pulsar://example:6650")
 	assert.NoError(t, err)
 
 	ls := NewLookupService(&mockedRPCClient{
@@ -346,7 +343,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(false),
 			},
 		},
-	}, url, false)
+	}, host, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -354,7 +351,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 }
 
 func TestLookupWithLookupFailure(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
+	host, err := NewHostResolve("pulsar://example:6650")
 	assert.NoError(t, err)
 
 	ls := NewLookupService(&mockedRPCClient{
@@ -374,7 +371,7 @@ func TestLookupWithLookupFailure(t *testing.T) {
 				Authoritative: proto.Bool(true),
 			},
 		},
-	}, url, false)
+	}, host, false)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)

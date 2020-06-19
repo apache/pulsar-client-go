@@ -19,7 +19,6 @@ package internal
 
 import (
 	"errors"
-	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,8 +45,7 @@ type RPCClient interface {
 	// Send a request and block until the result is available
 	RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+	Request(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message)
 
@@ -55,7 +53,7 @@ type RPCClient interface {
 }
 
 type rpcClient struct {
-	serviceURL          *url.URL
+	host                HostResolve
 	pool                ConnectionPool
 	requestTimeout      time.Duration
 	requestIDGenerator  uint64
@@ -65,23 +63,23 @@ type rpcClient struct {
 	log *log.Entry
 }
 
-func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.Duration) RPCClient {
+func NewRPCClient(host HostResolve, pool ConnectionPool, requestTimeout time.Duration) RPCClient {
 	return &rpcClient{
-		serviceURL:     serviceURL,
+		host:           host,
 		pool:           pool,
 		requestTimeout: requestTimeout,
-		log:            log.WithField("serviceURL", serviceURL),
+		log:            log.WithField("serviceURL", host.GetServiceURL()),
 	}
 }
 
 func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
-	return c.Request(c.serviceURL, c.serviceURL, requestID, cmdType, message)
+	return c.Request(requestID, cmdType, message)
 }
 
-func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
+func (c *rpcClient) Request(requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	cnx, err := c.getConn(logicalAddr, physicalAddr)
+	cnx, err := c.getConn()
 	if err != nil {
 		return nil, err
 	}
@@ -109,8 +107,13 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	}
 }
 
-func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
-	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
+func (c *rpcClient) getConn() (Connection, error) {
+
+	resolveHost, err := c.host.ResolveHost()
+	if err != nil {
+		return nil, err
+	}
+	cnx, err := c.pool.GetConnection(resolveHost, resolveHost)
 	backoff := Backoff{1 * time.Second}
 	startTime := time.Now()
 	var retryTime time.Duration
@@ -119,7 +122,12 @@ func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connec
 			retryTime = backoff.Next()
 			c.log.Debugf("Reconnecting to broker in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
 			time.Sleep(retryTime)
-			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr)
+
+			resolveHost, err := c.host.ResolveHost()
+			if err != nil {
+				return nil, err
+			}
+			cnx, err = c.pool.GetConnection(resolveHost, resolveHost)
 			if err == nil {
 				c.log.Debugf("retry connection success")
 				return cnx, nil

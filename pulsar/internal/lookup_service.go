@@ -29,6 +29,8 @@ import (
 )
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
+// logicalAddress is the address to use as the broker tag
+// physicalAddress is the real address where the TCP connection should be made
 type LookupResult struct {
 	LogicalAddr  *url.URL
 	PhysicalAddr *url.URL
@@ -42,16 +44,16 @@ type LookupService interface {
 }
 
 type lookupService struct {
+	host       HostResolve
 	rpcClient  RPCClient
-	serviceURL *url.URL
 	tlsEnabled bool
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
-func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, tlsEnabled bool) LookupService {
+func NewLookupService(rpcClient RPCClient, host HostResolve, tlsEnabled bool) LookupService {
 	return &lookupService{
+		host:       host,
 		rpcClient:  rpcClient,
-		serviceURL: serviceURL,
 		tlsEnabled: tlsEnabled,
 	}
 }
@@ -70,7 +72,10 @@ func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (lo
 
 	var physicalAddr *url.URL
 	if lr.GetProxyThroughServiceUrl() {
-		physicalAddr = ls.serviceURL
+		physicalAddr, err = ls.host.GetHost()
+		if err != nil {
+			return nil, nil, err
+		}
 	} else {
 		physicalAddr = logicalAddress
 	}
@@ -98,7 +103,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 		switch *lr.Response {
 
 		case pb.CommandLookupTopicResponse_Redirect:
-			logicalAddress, physicalAddr, err := ls.getBrokerAddress(lr)
+			//logicalAddress, physicalAddr, err := ls.getBrokerAddress(lr)
 			if err != nil {
 				return nil, err
 			}
@@ -107,7 +112,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 				topic, lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
 
 			id := ls.rpcClient.NewRequestID()
-			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
+			res, err = ls.rpcClient.Request(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
 				RequestId:     &id,
 				Topic:         &topic,
 				Authoritative: lr.Authoritative,

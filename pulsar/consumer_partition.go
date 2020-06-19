@@ -759,8 +759,7 @@ func (pc *partitionConsumer) grabConn() error {
 		cmdSubscribe.ForceTopicCreation = proto.Bool(false)
 	}
 
-	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
-		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
+	res, err := pc.client.rpcClient.Request(requestID, pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
 
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
