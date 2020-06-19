@@ -74,7 +74,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.ReceiverQueueSize = 1000
 	}
 
-	// disable receiver queue if queuing size is negative
+	// disable receiver queue if queue size is negative
 	if options.ReceiverQueueSize < 0 {
 		options.ReceiverQueueSize = 0
 	}
