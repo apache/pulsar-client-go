@@ -23,16 +23,23 @@ import (
 )
 
 type zstdProvider struct {
-	compressionLevel zstd.EncoderLevel
+	compressionLevel Level
 	encoder          *zstd.Encoder
 	decoder          *zstd.Decoder
 }
 
-func newPureGoZStdProvider(compressionLevel zstd.EncoderLevel) Provider {
-	p := &zstdProvider{
-		compressionLevel: compressionLevel,
+func newPureGoZStdProvider(level Level) Provider {
+	var zstdLevel zstd.EncoderLevel
+	p := &zstdProvider{}
+	switch level {
+	case Default:
+		zstdLevel = zstd.SpeedDefault
+	case Faster:
+		zstdLevel = zstd.SpeedFastest
+	case Better:
+		zstdLevel = zstd.SpeedBetterCompression
 	}
-	p.encoder, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(compressionLevel))
+	p.encoder, _ = zstd.NewWriter(nil, zstd.WithEncoderLevel(zstdLevel))
 	p.decoder, _ = zstd.NewReader(nil)
 	return p
 }

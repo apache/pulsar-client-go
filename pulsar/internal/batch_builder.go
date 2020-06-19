@@ -62,7 +62,7 @@ type BatchBuilder struct {
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
 func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
-	compressionType pb.CompressionType) (*BatchBuilder, error) {
+	compressionType pb.CompressionType, level compression.Level) (*BatchBuilder, error) {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
 	}
@@ -84,7 +84,7 @@ func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, p
 			ProducerName: &producerName,
 		},
 		callbacks:           []interface{}{},
-		compressionProvider: getCompressionProvider(compressionType),
+		compressionProvider: getCompressionProvider(compressionType, level),
 	}
 
 	if compressionType != pb.CompressionType_NONE {
@@ -176,7 +176,8 @@ func (bb *BatchBuilder) Close() error {
 	return bb.compressionProvider.Close()
 }
 
-func getCompressionProvider(compressionType pb.CompressionType) compression.Provider {
+func getCompressionProvider(compressionType pb.CompressionType,
+	level compression.Level) compression.Provider {
 	switch compressionType {
 	case pb.CompressionType_NONE:
 		return compression.NewNoopProvider()
@@ -185,7 +186,7 @@ func getCompressionProvider(compressionType pb.CompressionType) compression.Prov
 	case pb.CompressionType_ZLIB:
 		return compression.NewZLibProvider()
 	case pb.CompressionType_ZSTD:
-		return compression.NewZStdProvider()
+		return compression.NewZStdProvider(level)
 	default:
 		log.Panic("unsupported compression type")
 		return nil

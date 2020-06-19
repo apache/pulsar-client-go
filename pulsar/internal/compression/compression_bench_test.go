@@ -64,12 +64,12 @@ func testDecompression(b *testing.B, provider Provider) {
 var benchmarkProviders = []testProvider{
 	{"zlib", NewZLibProvider(), nil},
 	{"lz4", NewLz4Provider(), nil},
-	{"zstd-pure-go-fastest", newPureGoZStdProvider(1), nil},
-	{"zstd-pure-go-default", newPureGoZStdProvider(2), nil},
-	{"zstd-pure-go-best", newPureGoZStdProvider(3), nil},
-	{"zstd-cgo-level-fastest", newCGoZStdProvider(1), nil},
-	{"zstd-cgo-level-default", newCGoZStdProvider(3), nil},
-	{"zstd-cgo-level-best", newCGoZStdProvider(9), nil},
+	{"zstd-pure-go-fastest", newPureGoZStdProvider(Faster), nil},
+	{"zstd-pure-go-default", newPureGoZStdProvider(Default), nil},
+	{"zstd-pure-go-best", newPureGoZStdProvider(Better), nil},
+	{"zstd-cgo-level-fastest", newCGoZStdProvider(Faster), nil},
+	{"zstd-cgo-level-default", newCGoZStdProvider(Default), nil},
+	{"zstd-cgo-level-best", newCGoZStdProvider(Better), nil},
 }
 
 func BenchmarkCompression(b *testing.B) {

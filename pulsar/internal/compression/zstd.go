@@ -21,17 +21,15 @@ package compression
 
 import (
 	"fmt"
-
-	"github.com/klauspost/compress/zstd"
 )
 
-func NewZStdProvider() Provider {
-	return newPureGoZStdProvider(zstd.SpeedDefault)
+func NewZStdProvider(level Level) Provider {
+	return newPureGoZStdProvider(level)
 }
 
-func newCGoZStdProvider(compressionLevel int) Provider {
+func newCGoZStdProvider(level Level) Provider {
 	// This is kept to avoid compile errors in benchmark code when cgo is disabled.
 	// The warning is only shown when running the benchmark with CGO disabled.
 	fmt.Println("WARNING: CGO is disabled, using pure Go implementation of ZStd. Use CGO_ENABLED=1 when running benchmark.")
-	return newPureGoZStdProvider(zstd.SpeedDefault)
+	return newPureGoZStdProvider(level)
 }
