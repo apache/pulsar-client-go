@@ -116,7 +116,6 @@ type ConsumerOptions struct {
 	// application calls `Consumer.receive()`. Using a higher value could potentially increase the consumer
 	// throughput at the expense of bigger memory utilization.
 	// Default value is `1000` messages and should be good for most use cases.
-	// Set to -1 to disable prefetching in consumer
 	ReceiverQueueSize int
 
 	// The delay after which to redeliver the messages that failed to be

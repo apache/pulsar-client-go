@@ -70,13 +70,8 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		return nil, newError(SubscriptionNotFound, "subscription name is required for consumer")
 	}
 
-	if options.ReceiverQueueSize == 0 {
+	if options.ReceiverQueueSize <= 0 {
 		options.ReceiverQueueSize = 1000
-	}
-
-	// disable receiver queue if queue size is negative
-	if options.ReceiverQueueSize < 0 {
-		options.ReceiverQueueSize = 0
 	}
 
 	// did the user pass in a message channel?
