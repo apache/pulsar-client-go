@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -34,7 +35,8 @@ func TestClient(t *testing.T) {
 
 func TestTLSConnectionCAError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURLTLS,
+		URL:              serviceURLTLS,
+		OperationTimeout: 5 * time.Second,
 	})
 	assert.NoError(t, err)
 
@@ -105,6 +107,7 @@ func TestTLSConnectionHostNameVerification(t *testing.T) {
 func TestTLSConnectionHostNameVerificationError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL:                   "pulsar+ssl://127.0.0.1:6651",
+		OperationTimeout:      5 * time.Second,
 		TLSTrustCertsFilePath: caCertsPath,
 		TLSValidateHostname:   true,
 	})

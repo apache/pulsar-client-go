@@ -155,7 +155,8 @@ func (p *partitionProducer) grabCnx() error {
 	if p.batchBuilder == nil {
 		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
-			compression.Level(p.options.CompressionLevel))
+			compression.Level(p.options.CompressionLevel),
+			p)
 		if err != nil {
 			return err
 		}
@@ -179,6 +180,10 @@ func (p *partitionProducer) grabCnx() error {
 }
 
 type connectionClosed struct{}
+
+func (p *partitionProducer) GetConnection() internal.Connection {
+	return p.cnx
+}
 
 func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine
@@ -310,7 +315,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 type pendingItem struct {
 	sync.Mutex
-	batchData    []byte
+	batchData    internal.Buffer
 	sequenceID   uint64
 	sendRequests []interface{}
 	completed    bool

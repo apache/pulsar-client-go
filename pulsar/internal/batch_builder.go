@@ -35,6 +35,10 @@ const (
 	DefaultMaxMessagesPerBatch = 1000
 )
 
+type ConnectionHolder interface {
+	GetConnection() Connection
+}
+
 // BatchBuilder wraps the objects needed to build a batch.
 type BatchBuilder struct {
 	buffer Buffer
@@ -58,11 +62,13 @@ type BatchBuilder struct {
 	callbacks   []interface{}
 
 	compressionProvider compression.Provider
+	cnxHolder           ConnectionHolder
 }
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
 func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
-	compressionType pb.CompressionType, level compression.Level) (*BatchBuilder, error) {
+	compressionType pb.CompressionType, level compression.Level,
+	cnxHolder ConnectionHolder) (*BatchBuilder, error) {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
 	}
@@ -85,6 +91,7 @@ func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, p
 		},
 		callbacks:           []interface{}{},
 		compressionProvider: getCompressionProvider(compressionType, level),
+		cnxHolder:           cnxHolder,
 	}
 
 	if compressionType != pb.CompressionType_NONE {
@@ -149,7 +156,7 @@ func (bb *BatchBuilder) reset() {
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks []interface{}) {
+func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}) {
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
 		return nil, 0, nil
@@ -160,16 +167,22 @@ func (bb *BatchBuilder) Flush() (batchData []byte, sequenceID uint64, callbacks 
 	bb.cmdSend.Send.NumMessages = proto.Int32(int32(bb.numMessages))
 
 	uncompressedSize := bb.buffer.ReadableBytes()
-	compressed := bb.compressionProvider.Compress(bb.buffer.ReadableSlice())
 	bb.msgMetadata.UncompressedSize = &uncompressedSize
 
-	buffer := NewBuffer(4096)
-	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, compressed)
+	cnx := bb.cnxHolder.GetConnection()
+	var buffer Buffer
+	if cnx == nil {
+		buffer = NewBuffer(int(uncompressedSize))
+	} else {
+		buffer = cnx.GetBufferFromPool()
+	}
+
+	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider)
 
 	callbacks = bb.callbacks
 	sequenceID = bb.cmdSend.Send.GetSequenceId()
 	bb.reset()
-	return buffer.ReadableSlice(), sequenceID, callbacks
+	return buffer, sequenceID, callbacks
 }
 
 func (bb *BatchBuilder) Close() error {

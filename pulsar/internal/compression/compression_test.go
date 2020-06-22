@@ -43,8 +43,24 @@ func TestCompression(t *testing.T) {
 		p := provider
 		t.Run(p.name, func(t *testing.T) {
 			hello := []byte("test compression data")
-			compressed := p.provider.Compress(hello)
-			uncompressed, err := p.provider.Decompress(compressed, len(hello))
+			compressed := make([]byte, 1024)
+			compressed = p.provider.Compress(compressed, hello)
+
+			uncompressed := make([]byte, 1024)
+			uncompressed, err := p.provider.Decompress(uncompressed, compressed, len(hello))
+			assert.Nil(t, err)
+			assert.ElementsMatch(t, hello, uncompressed)
+		})
+	}
+}
+
+func TestCompressionNoBuffers(t *testing.T) {
+	for _, provider := range providers {
+		p := provider
+		t.Run(p.name, func(t *testing.T) {
+			hello := []byte("test compression data")
+			compressed := p.provider.Compress(nil, hello)
+			uncompressed, err := p.provider.Decompress(nil, compressed, len(hello))
 			assert.Nil(t, err)
 			assert.ElementsMatch(t, hello, uncompressed)
 		})
@@ -56,7 +72,7 @@ func TestJavaCompatibility(t *testing.T) {
 		p := provider
 		t.Run(p.name, func(t *testing.T) {
 			hello := []byte("hello")
-			uncompressed, err := p.provider.Decompress(p.compressedHello, len(hello))
+			uncompressed, err := p.provider.Decompress(nil, p.compressedHello, len(hello))
 			assert.Nil(t, err)
 			assert.ElementsMatch(t, hello, uncompressed)
 		})
@@ -67,7 +83,7 @@ func TestDecompressionError(t *testing.T) {
 	for _, provider := range providers {
 		p := provider
 		t.Run(p.name, func(t *testing.T) {
-			_, err := p.provider.Decompress([]byte{0x05}, 10)
+			_, err := p.provider.Decompress(nil, []byte{0x05}, 10)
 			assert.NotNil(t, err)
 		})
 	}

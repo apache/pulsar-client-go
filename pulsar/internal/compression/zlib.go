@@ -30,11 +30,15 @@ func NewZLibProvider() Provider {
 	return &zlibProvider{}
 }
 
-func (zlibProvider) Compress(data []byte) []byte {
-	var b bytes.Buffer
-	w := zlib.NewWriter(&b)
+func (zlibProvider) CompressMaxSize(originalSize int) int {
+	return int(float32(originalSize) * 1.10)
+}
 
-	if _, err := w.Write(data); err != nil {
+func (zlibProvider) Compress(dst, src []byte) []byte {
+	var b = bytes.NewBuffer(dst[:0])
+	w := zlib.NewWriter(b)
+
+	if _, err := w.Write(src); err != nil {
 		return nil
 	}
 	if err := w.Close(); err != nil {
@@ -44,14 +48,18 @@ func (zlibProvider) Compress(data []byte) []byte {
 	return b.Bytes()
 }
 
-func (zlibProvider) Decompress(compressedData []byte, originalSize int) ([]byte, error) {
-	r, err := zlib.NewReader(bytes.NewReader(compressedData))
+func (zlibProvider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
+	r, err := zlib.NewReader(bytes.NewReader(src))
 	if err != nil {
 		return nil, err
 	}
 
-	uncompressed := make([]byte, originalSize)
-	if _, err = io.ReadFull(r, uncompressed); err != nil {
+	if cap(dst) >= originalSize {
+		dst = dst[0:originalSize] // Reuse dst buffer
+	} else {
+		dst = make([]byte, originalSize)
+	}
+	if _, err = io.ReadFull(r, dst); err != nil {
 		return nil, err
 	}
 
@@ -59,7 +67,7 @@ func (zlibProvider) Decompress(compressedData []byte, originalSize int) ([]byte,
 		return nil, err
 	}
 
-	return uncompressed, nil
+	return dst, nil
 }
 
 func (zlibProvider) Clone() Provider {
