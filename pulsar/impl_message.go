@@ -23,9 +23,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 type messageID struct {

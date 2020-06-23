@@ -23,11 +23,11 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/gogo/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 const (
@@ -202,37 +202,42 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 	return cmd
 }
 
-func addSingleMessageToBatch(wb Buffer, smm proto.Message, payload []byte) {
-	serialized, err := proto.Marshal(smm)
+func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte) {
+	metadataSize := uint32(smm.Size())
+	wb.WriteUint32(metadataSize)
+
+	wb.ResizeIfNeeded(metadataSize)
+	_, err := smm.MarshalToSizedBuffer(wb.WritableSlice()[:metadataSize])
 	if err != nil {
 		log.WithError(err).Fatal("Protobuf serialization error")
 	}
 
-	wb.WriteUint32(uint32(len(serialized)))
-	wb.Write(serialized)
+	wb.WrittenBytes(metadataSize)
 	wb.Write(payload)
 }
 
-func serializeBatch(wb Buffer, cmdSend proto.Message, msgMetadata proto.Message,
+func serializeBatch(wb Buffer,
+	cmdSend *pb.BaseCommand,
+	msgMetadata *pb.MessageMetadata,
 	uncompressedPayload Buffer,
 	compressionProvider compression.Provider) {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
-	cmdSize := proto.Size(cmdSend)
-	msgMetadataSize := proto.Size(msgMetadata)
+	cmdSize := uint32(proto.Size(cmdSend))
+	msgMetadataSize := uint32(proto.Size(msgMetadata))
 
 	frameSizeIdx := wb.WriterIndex()
 	wb.WriteUint32(0) // Skip frame size until we now the size
 	frameStartIdx := wb.WriterIndex()
 
 	// Write cmd
-	wb.WriteUint32(uint32(cmdSize))
-	serialized, err := proto.Marshal(cmdSend)
+	wb.WriteUint32(cmdSize)
+	wb.ResizeIfNeeded(cmdSize)
+	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		log.WithError(err).Fatal("Protobuf error when serializing cmdSend")
 	}
-
-	wb.Write(serialized)
+	wb.WrittenBytes(cmdSize)
 
 	// Create checksum placeholder
 	wb.WriteUint16(magicCrc32c)
@@ -241,13 +246,13 @@ func serializeBatch(wb Buffer, cmdSend proto.Message, msgMetadata proto.Message,
 
 	// Write metadata
 	metadataStartIdx := wb.WriterIndex()
-	wb.WriteUint32(uint32(msgMetadataSize))
-	serialized, err = proto.Marshal(msgMetadata)
+	wb.WriteUint32(msgMetadataSize)
+	wb.ResizeIfNeeded(msgMetadataSize)
+	_, err = msgMetadata.MarshalToSizedBuffer(wb.WritableSlice()[:msgMetadataSize])
 	if err != nil {
 		log.WithError(err).Fatal("Protobuf error when serializing msgMetadata")
 	}
-
-	wb.Write(serialized)
+	wb.WrittenBytes(msgMetadataSize)
 
 	// Make sure the buffer has enough space to hold the compressed data
 	// and perform the compression in-place

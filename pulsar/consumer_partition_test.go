@@ -21,7 +21,7 @@ import (
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 
 	"github.com/stretchr/testify/assert"
 

@@ -28,7 +28,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/pb"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 var ErrConsumerClosed = errors.New("consumer closed")
