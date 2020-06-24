@@ -17,27 +17,81 @@
 
 package internal
 
-// Semaphore is a channel of bool, used to receive a bool type semaphore.
-type Semaphore chan bool
+import (
+	"sync/atomic"
 
-// Acquire a permit from this semaphore, blocking until one is available.
+	log "github.com/sirupsen/logrus"
+)
 
-// Acquire a permit, if one is available and returns immediately,
-// reducing the number of available permits by one.
-func (s Semaphore) Acquire() {
-	s <- true
+type Semaphore interface {
+	// Acquire a permit, if one is available and returns immediately,
+	// reducing the number of available permits by one.
+	Acquire()
+
+	// Try to acquire a permit. The method will return immediately
+	// with a `true` if it was possible to acquire a permit and
+	// `false` otherwise.
+	TryAcquire() bool
+
+	// Release a permit, returning it to the semaphore.
+	// Release a permit, increasing the number of available permits by
+	// one.  If any threads are trying to acquire a permit, then one is
+	// selected and given the permit that was just released.  That thread
+	// is (re)enabled for thread scheduling purposes.
+	// There is no requirement that a thread that releases a permit must
+	// have acquired that permit by calling Acquire().
+	// Correct usage of a semaphore is established by programming convention
+	// in the application.
+	Release()
 }
 
-// Release a permit, returning it to the semaphore.
+type semaphore struct {
+	maxPermits int32
+	permits    int32
+	ch         chan bool
+}
 
-// Release a permit, increasing the number of available permits by
-// one.  If any threads are trying to acquire a permit, then one is
-// selected and given the permit that was just released.  That thread
-// is (re)enabled for thread scheduling purposes.
-// There is no requirement that a thread that releases a permit must
-// have acquired that permit by calling Acquire().
-// Correct usage of a semaphore is established by programming convention
-// in the application.
-func (s Semaphore) Release() {
-	<-s
+func NewSemaphore(maxPermits int32) Semaphore {
+	if maxPermits <= 0 {
+		log.Fatal("Max permits for semaphore needs to be > 0")
+	}
+
+	return &semaphore{
+		maxPermits: maxPermits,
+		permits:    0,
+		ch:         make(chan bool),
+	}
+}
+
+func (s *semaphore) Acquire() {
+	permits := atomic.AddInt32(&s.permits, 1)
+	if permits <= s.maxPermits {
+		return
+	}
+
+	// Block on the channel until a new permit is available
+	<-s.ch
+}
+
+func (s *semaphore) TryAcquire() bool {
+	for {
+		currentPermits := atomic.LoadInt32(&s.permits)
+		if currentPermits >= s.maxPermits {
+			// All the permits are already exhausted
+			return false
+		}
+
+		if atomic.CompareAndSwapInt32(&s.permits, currentPermits, currentPermits+1) {
+			// Successfully incremented counter
+			return true
+		}
+	}
+}
+
+func (s *semaphore) Release() {
+	permits := atomic.AddInt32(&s.permits, -1)
+	if permits >= s.maxPermits {
+		// Unblock the next in line to acquire the semaphore
+		s.ch <- true
+	}
 }
