@@ -19,8 +19,6 @@ package internal
 
 import (
 	"sync"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // BlockingQueue is a interface of block queue
@@ -43,14 +41,8 @@ type BlockingQueue interface {
 	// Size return the current size of the queue
 	Size() int
 
-	// Iterator return an iterator for the queue
-	Iterator() BlockingQueueIterator
-}
-
-// BlockingQueueIterator abstract a interface of block queue iterator.
-type BlockingQueueIterator interface {
-	HasNext() bool
-	Next() interface{}
+	// ReadableSlice returns a new view of the readable items in the queue
+	ReadableSlice() []interface{}
 }
 
 type blockingQueue struct {
@@ -63,12 +55,6 @@ type blockingQueue struct {
 	mutex      sync.Mutex
 	isNotEmpty *sync.Cond
 	isNotFull  *sync.Cond
-}
-
-type blockingQueueIterator struct {
-	bq      *blockingQueue
-	readIdx int
-	toRead  int
 }
 
 // NewBlockingQueue init block queue and returns a BlockingQueue
@@ -173,31 +159,19 @@ func (bq *blockingQueue) Size() int {
 	return bq.size
 }
 
-func (bq *blockingQueue) Iterator() BlockingQueueIterator {
+func (bq *blockingQueue) ReadableSlice() []interface{} {
 	bq.mutex.Lock()
 	defer bq.mutex.Unlock()
 
-	return &blockingQueueIterator{
-		bq:      bq,
-		readIdx: bq.headIdx,
-		toRead:  bq.size,
-	}
-}
-
-func (bqi *blockingQueueIterator) HasNext() bool {
-	return bqi.toRead > 0
-}
-
-func (bqi *blockingQueueIterator) Next() interface{} {
-	if bqi.toRead == 0 {
-		log.Panic("Trying to read past the end of the iterator")
+	res := make([]interface{}, bq.size)
+	readIdx := bq.headIdx
+	for i := 0; i < bq.size; i++ {
+		res[i] = bq.items[readIdx]
+		readIdx++
+		if readIdx == bq.maxSize {
+			readIdx = 0
+		}
 	}
 
-	item := bqi.bq.items[bqi.readIdx]
-	bqi.toRead--
-	bqi.readIdx++
-	if bqi.readIdx == bqi.bq.maxSize {
-		bqi.readIdx = 0
-	}
-	return item
+	return res
 }
