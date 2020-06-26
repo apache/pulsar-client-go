@@ -64,6 +64,9 @@ type Message interface {
 	// Topic get the topic from which this message originated from
 	Topic() string
 
+	// ProducerName returns the name of the producer that has published the message.
+	ProducerName() string
+
 	// Properties are application defined key/value pairs that will be attached to the message.
 	// Return the properties attached to the message.
 	Properties() map[string]string
