@@ -64,7 +64,7 @@ type Message interface {
 	// Topic get the topic from which this message originated from
 	Topic() string
 
-	// ProducerName will get the producer name who produced this message.
+	// ProducerName returns the name of the producer that has published the message.
 	ProducerName() string
 
 	// Properties are application defined key/value pairs that will be attached to the message.
