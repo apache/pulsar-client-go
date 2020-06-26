@@ -244,7 +244,7 @@ func TestEventTime(t *testing.T) {
 
 	eventTime := timeFromUnixTimestampMillis(uint64(1565161612))
 	ID, err := producer.Send(context.Background(), &ProducerMessage{
-		Payload:   []byte(fmt.Sprintf("test-event-time")),
+		Payload:   []byte("test-event-time"),
 		EventTime: eventTime,
 	})
 	assert.Nil(t, err)
@@ -728,7 +728,7 @@ func TestDelayRelative(t *testing.T) {
 	defer consumer.Close()
 
 	ID, err := producer.Send(context.Background(), &ProducerMessage{
-		Payload:      []byte(fmt.Sprintf("test")),
+		Payload:      []byte("test"),
 		DeliverAfter: 3 * time.Second,
 	})
 	assert.Nil(t, err)
@@ -771,7 +771,7 @@ func TestDelayAbsolute(t *testing.T) {
 	defer consumer.Close()
 
 	ID, err := producer.Send(context.Background(), &ProducerMessage{
-		Payload:   []byte(fmt.Sprintf("test")),
+		Payload:   []byte("test"),
 		DeliverAt: time.Now().Add(3 * time.Second),
 	})
 	assert.Nil(t, err)

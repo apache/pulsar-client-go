@@ -1311,15 +1311,15 @@ func TestProducerName(t *testing.T) {
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
-		Name: producerName,
+		Name:  producerName,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
 
 	// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:             topic,
-		SubscriptionName:  "my-sub",
+		Topic:            topic,
+		SubscriptionName: "my-sub",
 	})
 
 	assert.Nil(t, err)
