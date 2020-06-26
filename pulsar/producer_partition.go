@@ -62,7 +62,8 @@ type partitionProducer struct {
 	batchFlushTicker    *time.Ticker
 
 	// Channel where app is posting messages to be published
-	eventsChan chan interface{}
+	eventsChan  chan interface{}
+	buffersPool sync.Pool
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
@@ -88,13 +89,18 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	p := &partitionProducer{
-		state:            producerInit,
-		log:              log.WithField("topic", topic),
-		client:           client,
-		topic:            topic,
-		options:          options,
-		producerID:       client.rpcClient.NewProducerID(),
-		eventsChan:       make(chan interface{}, maxPendingMessages),
+		state:      producerInit,
+		log:        log.WithField("topic", topic),
+		client:     client,
+		topic:      topic,
+		options:    options,
+		producerID: client.rpcClient.NewProducerID(),
+		eventsChan: make(chan interface{}, maxPendingMessages),
+		buffersPool: sync.Pool{
+			New: func() interface{} {
+				return internal.NewBuffer(1024)
+			},
+		},
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -181,8 +187,10 @@ func (p *partitionProducer) grabCnx() error {
 
 type connectionClosed struct{}
 
-func (p *partitionProducer) GetConnection() internal.Connection {
-	return p.cnx
+func (p *partitionProducer) GetBuffer() internal.Buffer {
+	b := p.buffersPool.Get().(internal.Buffer)
+	b.Clear()
+	return b
 }
 
 func (p *partitionProducer) ConnectionClosed() {
@@ -442,6 +450,8 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	// Mark this pending item as done
 	pi.completed = true
+	// Return buffer to the pool since we're now done using it
+	p.buffersPool.Put(pi.batchData)
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {

@@ -72,7 +72,6 @@ type Connection interface {
 	DeleteConsumeHandler(id uint64)
 	ID() string
 	GetMaxMessageSize() int32
-	GetBufferFromPool() Buffer
 	Close()
 }
 
@@ -161,8 +160,6 @@ type connection struct {
 	auth       auth.Provider
 
 	maxMessageSize int32
-
-	buffersPool sync.Pool
 }
 
 func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
@@ -193,11 +190,6 @@ func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSO
 		writeRequestsCh:  make(chan Buffer, 256),
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
-		buffersPool: sync.Pool{
-			New: func() interface{} {
-				return NewBuffer(1024)
-			},
-		},
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -352,8 +344,6 @@ func (c *connection) run() {
 				return
 			}
 			c.internalWriteData(data)
-			// Return buffer to the pool since we're now done using it
-			c.buffersPool.Put(data)
 
 		case <-c.pingTicker.C:
 			c.sendPing()
@@ -777,10 +767,4 @@ func (c *connection) ID() string {
 
 func (c *connection) GetMaxMessageSize() int32 {
 	return c.maxMessageSize
-}
-
-func (c *connection) GetBufferFromPool() Buffer {
-	b := c.buffersPool.Get().(Buffer)
-	b.Clear()
-	return b
 }
