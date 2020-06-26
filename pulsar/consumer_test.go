@@ -1275,14 +1275,12 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	assert.Equal(t, len(msgs), 10)
 }
 
-func TestConsumterNegativeRecieverQueueSize(t *testing.T) {
-	assert := assert.New(t)
-
+func TestConsumerNegativeReceiverQueueSize(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
 
-	assert.Nil(err)
+	assert.Nil(t, err)
 	defer client.Close()
 
 	topic := newTopicName()
@@ -1297,5 +1295,50 @@ func TestConsumterNegativeRecieverQueueSize(t *testing.T) {
 		}
 	}()
 
-	assert.Nil(err)
+	assert.Nil(t, err)
+}
+
+func TestProducerName(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	producerName := "test-producer-name"
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Name: producerName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  "my-sub",
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// publish 10 messages to topic
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+
+		assert.Equal(t, msg.ProducerName(), producerName)
+		consumer.Ack(msg)
+	}
 }
