@@ -170,6 +170,9 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 	bb.msgMetadata.UncompressedSize = &uncompressedSize
 
 	buffer := bb.buffersPool.GetBuffer()
+	if buffer == nil {
+		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
+	}
 	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider)
 
 	callbacks = bb.callbacks
