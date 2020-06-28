@@ -176,10 +176,11 @@ func (p *partitionProducer) grabCnx() error {
 	p.cnx.RegisterListener(p.producerID, p)
 	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
 
-	if p.pendingQueue.Size() > 0 {
-		p.log.Infof("Resending %d pending batches", p.pendingQueue.Size())
-		for it := p.pendingQueue.Iterator(); it.HasNext(); {
-			p.cnx.WriteData(it.Next().(*pendingItem).batchData)
+	pendingItems := p.pendingQueue.ReadableSlice()
+	if len(pendingItems) > 0 {
+		p.log.Infof("Resending %d pending batches", len(pendingItems))
+		for _, pi := range pendingItems {
+			p.cnx.WriteData(pi.(*pendingItem).batchData)
 		}
 	}
 	return nil

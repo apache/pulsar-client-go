@@ -119,17 +119,32 @@ func TestBlockingQueueWaitWhenFull(t *testing.T) {
 	close(ch)
 }
 
-func TestBlockingQueueIterator(t *testing.T) {
-	q := NewBlockingQueue(10)
+func TestBlockingQueue_ReadableSlice(t *testing.T) {
+	q := NewBlockingQueue(3)
 
 	q.Put(1)
 	q.Put(2)
 	q.Put(3)
 	assert.Equal(t, 3, q.Size())
 
-	i := 1
-	for it := q.Iterator(); it.HasNext(); {
-		assert.Equal(t, i, it.Next())
-		i++
-	}
+	items := q.ReadableSlice()
+	assert.Equal(t, len(items), 3)
+	assert.Equal(t, items[0], 1)
+	assert.Equal(t, items[1], 2)
+	assert.Equal(t, items[2], 3)
+
+	q.Poll()
+
+	items = q.ReadableSlice()
+	assert.Equal(t, len(items), 2)
+	assert.Equal(t, items[0], 2)
+	assert.Equal(t, items[1], 3)
+
+	q.Put(4)
+
+	items = q.ReadableSlice()
+	assert.Equal(t, len(items), 3)
+	assert.Equal(t, items[0], 2)
+	assert.Equal(t, items[1], 3)
+	assert.Equal(t, items[2], 4)
 }
