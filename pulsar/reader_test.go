@@ -402,7 +402,7 @@ func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 	}
 
 	// custom start message ID
-	myStartMsgId := &myMessageID{
+	myStartMsgID := &myMessageID{
 		data: msgIDs[4].Serialize(),
 	}
 
@@ -411,7 +411,7 @@ func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 	assert.NotPanics(t, func() {
 		reader, err = client.CreateReader(ReaderOptions{
 			Topic:          topic,
-			StartMessageID: myStartMsgId,
+			StartMessageID: myStartMsgID,
 		})
 	})
 
@@ -430,7 +430,7 @@ func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 	// create reader on 5th message (included)
 	readerInclusive, err := client.CreateReader(ReaderOptions{
 		Topic:                   topic,
-		StartMessageID:          myStartMsgId,
+		StartMessageID:          myStartMsgID,
 		StartMessageIDInclusive: true,
 	})
 
