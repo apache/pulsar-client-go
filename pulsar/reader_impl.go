@@ -44,6 +44,19 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(ResultInvalidConfiguration, "StartMessageID is required")
 	}
 
+	var startMessageID *messageID
+	var ok bool
+	if startMessageID, ok = options.StartMessageID.(*messageID); !ok {
+		// a custom type satisfying MessageID may not be a *messageID
+		// so re-create *messageID using its data
+		deserMsgID, err := deserializeMessageID(options.StartMessageID.Serialize())
+		if err != nil {
+			return nil, err
+		}
+		// de-serialized MessageID is a *messageID
+		startMessageID = deserMsgID.(*messageID)
+	}
+
 	subscriptionName := options.SubscriptionRolePrefix
 	if subscriptionName == "" {
 		subscriptionName = "reader"
@@ -61,7 +74,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		subscription:               subscriptionName,
 		subscriptionType:           Exclusive,
 		receiverQueueSize:          receiverQueueSize,
-		startMessageID:             options.StartMessageID.(*messageID),
+		startMessageID:             startMessageID,
 		startMessageIDInclusive:    options.StartMessageIDInclusive,
 		subscriptionMode:           nonDurable,
 		readCompacted:              options.ReadCompacted,
@@ -80,8 +93,8 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	if err != nil {
 		return nil, err
 	}
-	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq)
 
+	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq)
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err
