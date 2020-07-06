@@ -70,6 +70,7 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 		return nil, errs
 	}
 
+	consumersOpened.Inc()
 	return mtc, nil
 }
 
@@ -163,6 +164,7 @@ func (c *multiTopicConsumer) Close() {
 		wg.Wait()
 		close(c.closeCh)
 		c.dlq.close()
+		consumersClosed.Inc()
 	})
 }
 

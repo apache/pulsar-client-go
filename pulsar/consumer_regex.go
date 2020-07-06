@@ -111,6 +111,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 	go rc.monitor()
 
+	consumersOpened.Inc()
 	return rc, nil
 }
 
@@ -211,6 +212,7 @@ func (c *regexConsumer) Close() {
 		}
 		wg.Wait()
 		c.dlq.close()
+		consumersClosed.Inc()
 	})
 }
 

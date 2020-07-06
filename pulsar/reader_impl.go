@@ -20,11 +20,26 @@ package pulsar
 import (
 	"context"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	log "github.com/sirupsen/logrus"
 )
 
 const (
 	defaultReceiverQueueSize = 1000
+)
+
+var (
+	readersOpened = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_readers_opened",
+		Help: "Counter of readers created by the client",
+	})
+
+	readersClosed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_readers_closed",
+		Help: "Counter of readers closed by the client",
+	})
 )
 
 type reader struct {
@@ -101,6 +116,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	}
 
 	reader.pc = pc
+	readersOpened.Inc()
 	return reader, nil
 }
 
@@ -162,4 +178,5 @@ func (r *reader) hasMoreMessages() bool {
 
 func (r *reader) Close() {
 	r.pc.Close()
+	readersClosed.Inc()
 }
