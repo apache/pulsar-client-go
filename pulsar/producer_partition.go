@@ -64,7 +64,7 @@ type partitionProducer struct {
 	batchFlushTicker    *time.Ticker
 
 	// Channel where app is posting messages to be published
-	eventsChan  chan interface{}
+	eventsChan chan interface{}
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue

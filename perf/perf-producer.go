@@ -36,7 +36,7 @@ type ProduceArgs struct {
 	Topic              string
 	Rate               int
 	BatchingTimeMillis int
-	BatchingMaxSize int
+	BatchingMaxSize    int
 	MessageSize        int
 	ProducerQueueSize  int
 }
