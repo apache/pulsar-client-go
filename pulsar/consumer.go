@@ -107,10 +107,6 @@ type ConsumerOptions struct {
 	// By default is nil and there's no DLQ
 	DLQ *DLQPolicy
 
-	// Sets a `MessageChannel` for the consumer
-	// When a message is received, it will be pushed to the channel for consumption
-	MessageChannel chan ConsumerMessage
-
 	// Sets the size of the consumer receive queue.
 	// The consumer receive queue controls how many messages can be accumulated by the `Consumer` before the
 	// application calls `Consumer.receive()`. Using a higher value could potentially increase the consumer

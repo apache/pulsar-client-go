@@ -74,11 +74,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.ReceiverQueueSize = 1000
 	}
 
-	// did the user pass in a message channel?
-	messageCh := options.MessageChannel
-	if options.MessageChannel == nil {
-		messageCh = make(chan ConsumerMessage, 10)
-	}
+	messageCh := make(chan ConsumerMessage, 10)
 
 	dlq, err := newDlqRouter(client, options.DLQ)
 	if err != nil {
