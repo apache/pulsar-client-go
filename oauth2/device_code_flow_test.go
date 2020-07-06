@@ -1,0 +1,213 @@
+// Copyright (c) 2020 StreamNative, Inc.. All Rights Reserved.
+
+package auth
+
+import (
+	"errors"
+	"time"
+
+	"golang.org/x/oauth2"
+	"k8s.io/utils/clock"
+	"k8s.io/utils/clock/testing"
+
+	. "github.com/onsi/ginkgo"
+	. "github.com/onsi/gomega"
+)
+
+type MockDeviceCodeProvider struct {
+	Called                     bool
+	CalledWithAdditionalScopes []string
+	DeviceCodeResult           *DeviceCodeResult
+	ReturnsError               error
+}
+
+func (cp *MockDeviceCodeProvider) GetCode(additionalScopes ...string) (*DeviceCodeResult, error) {
+	cp.Called = true
+	cp.CalledWithAdditionalScopes = additionalScopes
+	return cp.DeviceCodeResult, cp.ReturnsError
+}
+
+type MockDeviceCodeCallback struct {
+	Called           bool
+	DeviceCodeResult *DeviceCodeResult
+	ReturnsError     error
+}
+
+func (c *MockDeviceCodeCallback) Callback(code *DeviceCodeResult) error {
+	c.Called = true
+	c.DeviceCodeResult = code
+	if c.ReturnsError != nil {
+		return c.ReturnsError
+	}
+	return nil
+}
+
+var _ = Describe("DeviceCodeFlow", func() {
+	var issuer = Issuer{
+		IssuerEndpoint: "http://issuer",
+		ClientID:       "test_clientID",
+		Audience:       "test_audience",
+	}
+
+	Describe("Authorize", func() {
+
+		var mockClock clock.Clock
+		var mockCodeProvider *MockDeviceCodeProvider
+		var mockTokenExchanger *MockTokenExchanger
+		var mockCallback *MockDeviceCodeCallback
+		var flow *DeviceCodeFlow
+
+		BeforeEach(func() {
+			mockClock = testing.NewFakeClock(time.Unix(0, 0))
+
+			mockCodeProvider = &MockDeviceCodeProvider{
+				DeviceCodeResult: &DeviceCodeResult{
+					DeviceCode:              "test_deviceCode",
+					UserCode:                "test_userCode",
+					VerificationURI:         "http://verification_uri",
+					VerificationURIComplete: "http://verification_uri_complete",
+					ExpiresIn:               10,
+					Interval:                5,
+				},
+			}
+
+			expectedTokens := TokenResult{AccessToken: "accessToken", RefreshToken: "refreshToken", ExpiresIn: 1234}
+			mockTokenExchanger = &MockTokenExchanger{
+				ReturnsTokens: &expectedTokens,
+			}
+
+			mockCallback = &MockDeviceCodeCallback{}
+
+			opts := DeviceCodeFlowOptions{
+				AdditionalScopes: nil,
+				AllowRefresh:     true,
+			}
+			flow = NewDeviceCodeFlow(
+				issuer,
+				opts,
+				mockCodeProvider,
+				mockTokenExchanger,
+				mockCallback.Callback,
+				mockClock,
+			)
+		})
+
+		It("invokes DeviceCodeProvider", func() {
+			_, _ = flow.Authorize()
+			Expect(mockCodeProvider.Called).To(BeTrue())
+			Expect(mockCodeProvider.CalledWithAdditionalScopes).To(ContainElement("offline_access"))
+		})
+
+		It("invokes callback with returned code", func() {
+			_, _ = flow.Authorize()
+			Expect(mockCallback.Called).To(BeTrue())
+			Expect(mockCallback.DeviceCodeResult).To(Equal(mockCodeProvider.DeviceCodeResult))
+		})
+
+		It("invokes TokenExchanger with returned code", func() {
+			_, _ = flow.Authorize()
+			Expect(mockTokenExchanger.CalledWithRequest).To(Equal(&DeviceCodeExchangeRequest{
+				ClientID:     issuer.ClientID,
+				PollInterval: time.Duration(5) * time.Second,
+				DeviceCode:   "test_deviceCode",
+			}))
+		})
+
+		It("returns an authorization grant", func() {
+			grant, _ := flow.Authorize()
+			Expect(grant).ToNot(BeNil())
+			expected := convertToOAuth2Token(mockTokenExchanger.ReturnsTokens, mockClock)
+			Expect(*grant.Token).To(Equal(expected))
+		})
+	})
+})
+
+var _ = Describe("DeviceAuthorizationGrantRefresher", func() {
+	var issuer = Issuer{
+		IssuerEndpoint: "http://issuer",
+		ClientID:       "test_clientID",
+		Audience:       "test_audience",
+	}
+
+	Describe("Refresh", func() {
+		var mockClock clock.Clock
+		var mockTokenExchanger *MockTokenExchanger
+		var refresher *DeviceAuthorizationGrantRefresher
+		var grant *AuthorizationGrant
+
+		BeforeEach(func() {
+			mockClock = testing.NewFakeClock(time.Unix(0, 0))
+
+			mockTokenExchanger = &MockTokenExchanger{}
+
+			refresher = &DeviceAuthorizationGrantRefresher{
+				issuerData: issuer,
+				exchanger:  mockTokenExchanger,
+				clock:      mockClock,
+			}
+
+			token := oauth2.Token{AccessToken: "gat", RefreshToken: "grt", Expiry: time.Unix(1, 0)}
+			grant = &AuthorizationGrant{
+				Type:  GrantTypeDeviceCode,
+				Token: &token,
+			}
+		})
+
+		It("invokes the token exchanger", func() {
+			mockTokenExchanger.ReturnsTokens = &TokenResult{
+				AccessToken: "new token",
+			}
+
+			_, _ = refresher.Refresh(grant)
+			Expect(mockTokenExchanger.RefreshCalledWithRequest).To(Equal(&RefreshTokenExchangeRequest{
+				ClientID:     issuer.ClientID,
+				RefreshToken: "grt",
+			}))
+		})
+
+		It("returns the refreshed access token from the TokenExchanger", func() {
+			mockTokenExchanger.ReturnsTokens = &TokenResult{
+				AccessToken: "new token",
+			}
+
+			grant, _ = refresher.Refresh(grant)
+			Expect(grant.Token.AccessToken).To(Equal(mockTokenExchanger.ReturnsTokens.AccessToken))
+		})
+
+		It("preserves the existing refresh token from the TokenExchanger", func() {
+			mockTokenExchanger.ReturnsTokens = &TokenResult{
+				AccessToken: "new token",
+			}
+
+			grant, _ = refresher.Refresh(grant)
+			Expect(grant.Token.RefreshToken).To(Equal("grt"))
+		})
+
+		It("returns the refreshed refresh token from the TokenExchanger", func() {
+			mockTokenExchanger.ReturnsTokens = &TokenResult{
+				AccessToken:  "new token",
+				RefreshToken: "new token",
+			}
+
+			grant, _ = refresher.Refresh(grant)
+			Expect(grant.Token.RefreshToken).To(Equal("new token"))
+		})
+
+		It("returns a meaningful expiration time", func() {
+			mockTokenExchanger.ReturnsTokens = &TokenResult{
+				AccessToken: "new token",
+				ExpiresIn:   60,
+			}
+
+			grant, _ = refresher.Refresh(grant)
+			Expect(grant.Token.Expiry).To(Equal(mockClock.Now().Add(time.Duration(60) * time.Second)))
+		})
+
+		It("returns an error when TokenExchanger does", func() {
+			mockTokenExchanger.ReturnsError = errors.New("someerror")
+
+			_, err := refresher.Refresh(grant)
+			Expect(err.Error()).To(Equal("could not exchange refresh token: someerror"))
+		})
+	})
+})

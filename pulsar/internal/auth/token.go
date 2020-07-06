@@ -102,6 +102,6 @@ func (p *tokenAuthProvider) GetData() ([]byte, error) {
 	return []byte(t), nil
 }
 
-func (tokenAuthProvider) Close() error {
+func (p *tokenAuthProvider) Close() error {
 	return nil
 }
