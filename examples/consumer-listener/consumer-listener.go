@@ -42,7 +42,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
 	defer consumer.Close()
 
 	// Receive messages from channel. The channel returns a struct which contains message and the consumer from where
