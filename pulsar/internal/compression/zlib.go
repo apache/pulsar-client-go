@@ -31,7 +31,9 @@ func NewZLibProvider() Provider {
 }
 
 func (zlibProvider) CompressMaxSize(originalSize int) int {
-	return int(float32(originalSize) * 1.10)
+	// Use formula from ZLib: https://github.com/madler/zlib/blob/cacf7f1d4e3d44d871b605da3b647f07d718623f/deflate.c#L659
+	return originalSize +
+		((originalSize + 7) >> 3) + ((originalSize + 63) >> 6) + 11
 }
 
 func (zlibProvider) Compress(dst, src []byte) []byte {
