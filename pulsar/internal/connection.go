@@ -287,7 +287,7 @@ func (c *connection) doHandshake() bool {
 	c.cnx.SetDeadline(time.Time{})
 
 	if cmd.Connected == nil {
-		c.log.Errorf("Failed to perform initial handshake - Expecting 'Connected' cmd, got '%s'",
+		c.log.Warnf("Failed to perform initial handshake - Expecting 'Connected' cmd, got '%s'",
 			cmd.Error.GetMessage())
 		return false
 	}
