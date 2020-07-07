@@ -42,4 +42,10 @@ type Config struct {
 	Token            string
 	TokenFile        string
 	PulsarAPIVersion APIVersion
+
+	// OAuth2 configuration
+	IssuerEndpoint string
+	ClientID       string
+	Audience       string
+	KeyFile        string
 }
