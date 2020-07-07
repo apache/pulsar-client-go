@@ -211,6 +211,7 @@ func (c *regexConsumer) Close() {
 		}
 		wg.Wait()
 		c.dlq.close()
+		close(c.messageCh)
 	})
 }
 

@@ -277,7 +277,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlqRouter *dlqRouter) (Consumer, error) {
-	return newInternalConsumer(client, options, topic, messageCh, dlqRouter, false)
+	return newSingleTopicConsumer(client, options, topic, messageCh, dlqRouter, false)
 }
 
 func (c *consumer) Subscription() string {

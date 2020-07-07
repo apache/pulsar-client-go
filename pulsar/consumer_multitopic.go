@@ -163,6 +163,7 @@ func (c *multiTopicConsumer) Close() {
 		wg.Wait()
 		close(c.closeCh)
 		c.dlq.close()
+		close(c.messageCh)
 	})
 }
 
