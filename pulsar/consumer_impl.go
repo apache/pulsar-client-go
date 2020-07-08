@@ -238,6 +238,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				startMessageID:             nil,
 				subscriptionMode:           durable,
 				readCompacted:              c.options.ReadCompacted,
+				interceptors:               c.options.Interceptors,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq)
 			ch <- ConsumerError{

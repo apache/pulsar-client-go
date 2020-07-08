@@ -137,6 +137,9 @@ type ConsumerOptions struct {
 
 	// Mark the subscription as replicated to keep it in sync across clusters
 	ReplicateSubscriptionState bool
+
+	// A chain of interceptors, These interceptors will be called at some points defined in ConsumerInterceptor interface.
+	Interceptors ConsumerInterceptors
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

@@ -68,6 +68,7 @@ type partitionConsumerOpts struct {
 	subscriptionMode           subscriptionMode
 	readCompacted              bool
 	disableForceTopicCreation  bool
+	interceptors               ConsumerInterceptors
 }
 
 type partitionConsumer struct {
@@ -226,6 +227,8 @@ func (pc *partitionConsumer) AckID(msgID *messageID) {
 			msgID: msgID,
 		}
 		pc.eventsCh <- req
+
+		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
 }
 
@@ -235,6 +238,12 @@ func (pc *partitionConsumer) NackID(msgID *messageID) {
 
 func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
 	pc.eventsCh <- &redeliveryRequest{msgIds}
+
+	iMsgIds := make([]MessageID, len(msgIds))
+	for i := range iMsgIds {
+		iMsgIds[i] = &msgIds[i]
+	}
+	pc.options.interceptors.OnNegativeAcksSend(pc.parentConsumer, iMsgIds)
 }
 
 func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
@@ -441,6 +450,11 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				redeliveryCount:     response.GetRedeliveryCount(),
 			}
 		}
+
+		pc.options.interceptors.BeforeConsume(ConsumerMessage{
+			Consumer: pc.parentConsumer,
+			Message:  msg,
+		})
 
 		messages = append(messages, msg)
 	}

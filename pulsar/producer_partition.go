@@ -408,6 +408,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		callback:         callback,
 		flushImmediately: flushImmediately,
 	}
+	p.options.Interceptors.BeforeSend(p, msg)
 	p.eventsChan <- sr
 }
 
@@ -438,14 +439,19 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 			p.publishSemaphore.Release()
 		}
 
-		if sr.callback != nil {
+		if sr.callback != nil || len(p.options.Interceptors) > 0 {
 			msgID := newMessageID(
 				int64(response.MessageId.GetLedgerId()),
 				int64(response.MessageId.GetEntryId()),
 				idx,
 				p.partitionIdx,
 			)
-			sr.callback(msgID, sr.msg, nil)
+
+			if sr.callback != nil {
+				sr.callback(msgID, sr.msg, nil)
+			}
+
+			p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
 		}
 	}
 
