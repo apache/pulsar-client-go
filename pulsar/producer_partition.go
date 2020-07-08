@@ -69,7 +69,7 @@ type partitionProducer struct {
 	pendingQueue     internal.BlockingQueue
 	lastSequenceID   int64
 
-	partitionIdx int
+	partitionIdx int32
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (
@@ -105,7 +105,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
-		partitionIdx:     partitionIdx,
+		partitionIdx:     int32(partitionIdx),
 	}
 
 	if options.Name != "" {
@@ -442,7 +442,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 			msgID := newMessageID(
 				int64(response.MessageId.GetLedgerId()),
 				int64(response.MessageId.GetEntryId()),
-				idx,
+				int32(idx),
 				p.partitionIdx,
 			)
 			sr.callback(msgID, sr.msg, nil)
