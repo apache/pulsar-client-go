@@ -1,33 +1,52 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 package store
 
 import (
-	auth "github.com/apache/pulsar-client-go/oauth2"
-	"k8s.io/utils/clock"
 	"sync"
+
+	"github.com/apache/pulsar-client-go/oauth2"
+	"k8s.io/utils/clock"
 )
 
 type MemoryStore struct {
 	clock  clock.Clock
 	lock   sync.Mutex
-	grants map[string]*auth.AuthorizationGrant
+	grants map[string]*oauth2.AuthorizationGrant
 }
 
 func NewMemoryStore() Store {
 	return &MemoryStore{
-		clock: clock.RealClock{},
+		clock:  clock.RealClock{},
+		grants: make(map[string]*oauth2.AuthorizationGrant),
 	}
 }
 
 var _ Store = &MemoryStore{}
 
-func (f *MemoryStore) SaveGrant(audience string, grant auth.AuthorizationGrant) error {
+func (f *MemoryStore) SaveGrant(audience string, grant oauth2.AuthorizationGrant) error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	f.grants[audience] = &grant
 	return nil
 }
 
-func (f *MemoryStore) LoadGrant(audience string) (*auth.AuthorizationGrant, error) {
+func (f *MemoryStore) LoadGrant(audience string) (*oauth2.AuthorizationGrant, error) {
 	f.lock.Lock()
 	defer f.lock.Unlock()
 	grant, ok := f.grants[audience]
@@ -45,16 +64,16 @@ func (f *MemoryStore) WhoAmI(audience string) (string, error) {
 		return "", ErrNoAuthenticationData
 	}
 	switch grant.Type {
-	case auth.GrantTypeClientCredentials:
+	case oauth2.GrantTypeClientCredentials:
 		if grant.ClientCredentials == nil {
 			return "", ErrUnsupportedAuthData
 		}
 		return grant.ClientCredentials.ClientEmail, nil
-	case auth.GrantTypeDeviceCode:
+	case oauth2.GrantTypeDeviceCode:
 		if grant.Token == nil {
 			return "", ErrUnsupportedAuthData
 		}
-		return auth.ExtractUserName(*grant.Token)
+		return oauth2.ExtractUserName(*grant.Token)
 	default:
 		return "", ErrUnsupportedAuthData
 	}
@@ -63,6 +82,6 @@ func (f *MemoryStore) WhoAmI(audience string) (string, error) {
 func (f *MemoryStore) Logout() error {
 	f.lock.Lock()
 	defer f.lock.Unlock()
-	f.grants = map[string]*auth.AuthorizationGrant{}
+	f.grants = map[string]*oauth2.AuthorizationGrant{}
 	return nil
 }

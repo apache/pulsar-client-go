@@ -21,7 +21,7 @@ import (
 	"crypto/tls"
 	"fmt"
 
-	auth "github.com/apache/pulsar-client-go/oauth2"
+	"github.com/apache/pulsar-client-go/oauth2"
 	"github.com/apache/pulsar-client-go/oauth2/cache"
 	"github.com/apache/pulsar-client-go/oauth2/store"
 	"k8s.io/utils/clock"
@@ -30,61 +30,69 @@ import (
 const (
 	ConfigParamType                  = "type"
 	ConfigParamTypeClientCredentials = "client_credentials"
-	ConfigParamIssuerUrl             = "issuerUrl"
+	ConfigParamIssuerURL             = "issuerUrl"
 	ConfigParamAudience              = "audience"
 	ConfigParamKeyFile               = "privateKey"
-	ConfigParamClientId              = "clientId"
+	ConfigParamClientID              = "clientId"
 )
 
 type oauth2AuthProvider struct {
 	clock  clock.Clock
-	issuer auth.Issuer
+	issuer oauth2.Issuer
 	store  store.Store
 	source cache.CachingTokenSource
 }
 
 // NewAuthenticationOAuth2WithParams return a interface of Provider with string map.
 func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, error) {
-
-	issuer := auth.Issuer{
-		IssuerEndpoint: params[ConfigParamIssuerUrl],
-		ClientID:       params[ConfigParamClientId],
+	issuer := oauth2.Issuer{
+		IssuerEndpoint: params[ConfigParamIssuerURL],
+		ClientID:       params[ConfigParamClientID],
 		Audience:       params[ConfigParamAudience],
 	}
 
 	// initialize a store of authorization grants
 	st := store.NewMemoryStore()
-	switch params[ConfigParamType] {
-	case ConfigParamTypeClientCredentials:
-		keyFile := params[ConfigParamKeyFile]
-		flow, err := auth.NewDefaultClientCredentialsFlow(issuer, keyFile)
-		if err != nil {
-			return nil, err
-		}
-		grant, err := flow.Authorize()
-		if err != nil {
-			return nil, err
-		}
-		err = st.SaveGrant(issuer.Audience, *grant)
-		if err != nil {
-			return nil, err
-		}
-	default:
-		return nil, fmt.Errorf("unsupported authentication type: %s", params[ConfigParamType])
-	}
 
-	return NewAuthenticationOAuth2(issuer, st), nil
+	oauth2Type := params[ConfigParamType]
+	keyFile := params[ConfigParamKeyFile]
+	return NewAuthenticationOAuth2(issuer, st, oauth2Type, keyFile)
 }
 
 func NewAuthenticationOAuth2(
-	issuer auth.Issuer,
-	store store.Store) Provider {
+	issuer oauth2.Issuer,
+	store store.Store,
+	oauth2Type, keyFilePath string) (Provider, error) {
 
-	return &oauth2AuthProvider{
+	p := &oauth2AuthProvider{
 		clock:  clock.RealClock{},
 		issuer: issuer,
 		store:  store,
 	}
+	err := p.initFlow(oauth2Type, keyFilePath)
+	return p, err
+}
+
+func (p *oauth2AuthProvider) initFlow(oauth2Type, keyFile string) error {
+	switch oauth2Type {
+	case ConfigParamTypeClientCredentials:
+		keyFile := keyFile
+		flow, err := oauth2.NewDefaultClientCredentialsFlow(p.issuer, keyFile)
+		if err != nil {
+			return err
+		}
+		grant, err := flow.Authorize()
+		if err != nil {
+			return err
+		}
+		err = p.store.SaveGrant(p.issuer.Audience, *grant)
+		if err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("unsupported authentication type: %s", oauth2Type)
+	}
+	return nil
 }
 
 func (p *oauth2AuthProvider) Init() error {
@@ -132,13 +140,13 @@ func (p *oauth2AuthProvider) Close() error {
 	return nil
 }
 
-func (p *oauth2AuthProvider) getRefresher(issuerData auth.Issuer,
-	t auth.AuthorizationGrantType) (auth.AuthorizationGrantRefresher, error) {
+func (p *oauth2AuthProvider) getRefresher(issuerData oauth2.Issuer,
+	t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
 	switch t {
-	case auth.GrantTypeClientCredentials:
-		return auth.NewDefaultClientCredentialsGrantRefresher(issuerData, p.clock)
-	case auth.GrantTypeDeviceCode:
-		return auth.NewDefaultDeviceAuthorizationGrantRefresher(issuerData, p.clock)
+	case oauth2.GrantTypeClientCredentials:
+		return oauth2.NewDefaultClientCredentialsGrantRefresher(issuerData, p.clock)
+	case oauth2.GrantTypeDeviceCode:
+		return oauth2.NewDefaultDeviceAuthorizationGrantRefresher(issuerData, p.clock)
 	default:
 		return nil, store.ErrUnsupportedAuthData
 	}
