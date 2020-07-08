@@ -3,7 +3,7 @@ module github.com/apache/pulsar-client-go
 go 1.13
 
 require (
-	github.com/DataDog/zstd v1.4.5
+	github.com/DataDog/zstd v1.4.6-0.20200617134701-89f69fb7df32
 	github.com/apache/pulsar-client-go/oauth2 v0.0.0-00010101000000-000000000000
 	github.com/beefsack/go-rate v0.0.0-20180408011153-efa7637bb9b6
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
