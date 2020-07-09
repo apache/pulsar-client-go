@@ -21,7 +21,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"math/rand"
 	"net/http"
 	"strconv"
 	"sync/atomic"
@@ -1396,8 +1395,7 @@ func TestConsumerWithInterceptors(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	rand.Seed(time.Now().Unix())
-	topic := fmt.Sprintf("persistent://public/default/test-topic-interceptors-%d", rand.Int())
+	topic := newTopicName()
 	ctx := context.Background()
 
 	metric := &metricConsumerInterceptor{}
@@ -1468,6 +1466,25 @@ func TestConsumerWithInterceptors(t *testing.T) {
 		consumer.NackID(nackIds[i])
 	}
 
-	time.Sleep(time.Second * 3) // waiting for nack actual perform
+	// receive 5 nack messages
+	for i := 0; i < 5; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i*2+1)
+		expectProperties := map[string]string{
+			"key-1":      "pulsar-1",
+			"key-1-copy": "pulsar-1", // check properties copy by interceptor
+		}
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
+
+		// ack message
+		consumer.Ack(msg)
+	}
+
 	assert.Equal(t, int32(5), atomic.LoadInt32(&metric.nackn))
 }
