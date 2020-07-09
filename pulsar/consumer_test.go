@@ -1348,9 +1348,9 @@ type noopConsumerInterceptor struct{}
 
 func (noopConsumerInterceptor) BeforeConsume(message ConsumerMessage) {}
 
-func (noopConsumerInterceptor) OnAcknowledge(consumer Consumer, msgId MessageID) {}
+func (noopConsumerInterceptor) OnAcknowledge(consumer Consumer, msgID MessageID) {}
 
-func (noopConsumerInterceptor) OnNegativeAcksSend(consumer Consumer, messageIds []MessageID) {}
+func (noopConsumerInterceptor) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {}
 
 // copyPropertyInterceptor copy all keys in message properties map and add a suffix
 type copyPropertyInterceptor struct {
@@ -1368,9 +1368,9 @@ func (x copyPropertyInterceptor) BeforeConsume(message ConsumerMessage) {
 	}
 }
 
-func (copyPropertyInterceptor) OnAcknowledge(consumer Consumer, msgId MessageID) {}
+func (copyPropertyInterceptor) OnAcknowledge(consumer Consumer, msgID MessageID) {}
 
-func (copyPropertyInterceptor) OnNegativeAcksSend(consumer Consumer, messageIds []MessageID) {}
+func (copyPropertyInterceptor) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {}
 
 type metricConsumerInterceptor struct {
 	ackn  int
@@ -1379,12 +1379,12 @@ type metricConsumerInterceptor struct {
 
 func (x *metricConsumerInterceptor) BeforeConsume(message ConsumerMessage) {}
 
-func (x *metricConsumerInterceptor) OnAcknowledge(consumer Consumer, msgId MessageID) {
+func (x *metricConsumerInterceptor) OnAcknowledge(consumer Consumer, msgID MessageID) {
 	x.ackn++
 }
 
-func (x *metricConsumerInterceptor) OnNegativeAcksSend(consumer Consumer, messageIds []MessageID) {
-	x.nackn += len(messageIds)
+func (x *metricConsumerInterceptor) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {
+	x.nackn += len(msgIDs)
 }
 
 func TestConsumerWithInterceptors(t *testing.T) {

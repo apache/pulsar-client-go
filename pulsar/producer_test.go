@@ -822,7 +822,7 @@ type noopProduceInterceptor struct{}
 
 func (noopProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {}
 
-func (noopProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgId MessageID) {
+func (noopProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
 }
 
 // copyPropertyIntercepotr copy all keys in message properties map and add a suffix
@@ -835,7 +835,7 @@ func (x *metricProduceInterceptor) BeforeSend(producer Producer, message *Produc
 	x.sendn++
 }
 
-func (x *metricProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgId MessageID) {
+func (x *metricProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
 	x.ackn++
 }
 

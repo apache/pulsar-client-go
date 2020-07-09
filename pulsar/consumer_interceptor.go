@@ -22,10 +22,10 @@ type ConsumerInterceptor interface {
 	BeforeConsume(message ConsumerMessage)
 
 	// OnAcknowledge This is called consumer sends the acknowledgment to the broker.
-	OnAcknowledge(consumer Consumer, msgId MessageID)
+	OnAcknowledge(consumer Consumer, msgID MessageID)
 
 	// OnNegativeAcksSend This method will be called when a redelivery from a negative acknowledge occurs.
-	OnNegativeAcksSend(consumer Consumer, msgIds []MessageID)
+	OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID)
 }
 
 type ConsumerInterceptors []ConsumerInterceptor
@@ -36,15 +36,15 @@ func (x ConsumerInterceptors) BeforeConsume(message ConsumerMessage) {
 	}
 }
 
-func (x ConsumerInterceptors) OnAcknowledge(consumer Consumer, msgId MessageID) {
+func (x ConsumerInterceptors) OnAcknowledge(consumer Consumer, msgID MessageID) {
 	for i := range x {
-		x[i].OnAcknowledge(consumer, msgId)
+		x[i].OnAcknowledge(consumer, msgID)
 	}
 }
 
-func (x ConsumerInterceptors) OnNegativeAcksSend(consumer Consumer, msgIds []MessageID) {
+func (x ConsumerInterceptors) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {
 	for i := range x {
-		x[i].OnNegativeAcksSend(consumer, msgIds)
+		x[i].OnNegativeAcksSend(consumer, msgIDs)
 	}
 }
 
