@@ -47,3 +47,5 @@ func (x ConsumerInterceptors) OnNegativeAcksSend(consumer Consumer, msgIds []Mes
 		x[i].OnNegativeAcksSend(consumer, msgIds)
 	}
 }
+
+var defaultConsumerInterceptors = make(ConsumerInterceptors, 0)

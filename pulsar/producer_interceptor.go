@@ -39,3 +39,5 @@ func (x ProducerInterceptors) OnSendAcknowledgement(producer Producer, message *
 		x[i].OnSendAcknowledgement(producer, message, msgId)
 	}
 }
+
+var defaultProducerInterceptors = make(ProducerInterceptors, 0)

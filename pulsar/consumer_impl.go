@@ -74,6 +74,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.ReceiverQueueSize = 1000
 	}
 
+	if options.Interceptors == nil {
+		options.Interceptors = defaultConsumerInterceptors
+	}
+
 	// did the user pass in a message channel?
 	messageCh := options.MessageChannel
 	if options.MessageChannel == nil {
