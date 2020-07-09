@@ -19,6 +19,8 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
+	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
@@ -45,7 +47,7 @@ var (
 type reader struct {
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
-	lastMessageInBroker messageID
+	lastMessageInBroker trackingMessageID
 
 	log *log.Entry
 }
@@ -59,17 +61,19 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(ResultInvalidConfiguration, "StartMessageID is required")
 	}
 
-	var startMessageID messageID
-	var ok bool
-	if startMessageID, ok = options.StartMessageID.(messageID); !ok {
-		// a custom type satisfying MessageID may not be a messageID
+	startMessageID, ok := toTrackingMessageID(options.StartMessageID)
+	if !ok {
+		// a custom type satisfying MessageID may not be a messageID or trackingMessageID
 		// so re-create messageID using its data
 		deserMsgID, err := deserializeMessageID(options.StartMessageID.Serialize())
 		if err != nil {
 			return nil, err
 		}
 		// de-serialized MessageID is a messageID
-		startMessageID = deserMsgID.(messageID)
+		startMessageID = trackingMessageID{
+			messageID:    deserMsgID.(messageID),
+			receivedTime: time.Now(),
+		}
 	}
 
 	subscriptionName := options.SubscriptionRolePrefix
@@ -134,10 +138,13 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
-			msgID := cm.Message.ID().(messageID)
-			r.pc.lastDequeuedMsg = msgID
-			r.pc.AckID(msgID)
-			return cm.Message, nil
+			msgID := cm.Message.ID()
+			if mid, ok := toTrackingMessageID(msgID); ok {
+				r.pc.lastDequeuedMsg = mid
+				r.pc.AckID(mid)
+				return cm.Message, nil
+			}
+			return nil, fmt.Errorf("invalid message id type %T", msgID)
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -145,7 +152,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 }
 
 func (r *reader) HasNext() bool {
-	if !r.lastMessageInBroker.IsZero() && r.hasMoreMessages() {
+	if !r.lastMessageInBroker.Undefined() && r.hasMoreMessages() {
 		return true
 	}
 
@@ -164,16 +171,16 @@ func (r *reader) HasNext() bool {
 }
 
 func (r *reader) hasMoreMessages() bool {
-	if !r.pc.lastDequeuedMsg.IsZero() {
-		return r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg)
+	if !r.pc.lastDequeuedMsg.Undefined() {
+		return r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg.messageID)
 	}
 
 	if r.pc.options.startMessageIDInclusive {
-		return r.lastMessageInBroker.greaterEqual(r.pc.startMessageID)
+		return r.lastMessageInBroker.greaterEqual(r.pc.startMessageID.messageID)
 	}
 
 	// Non-inclusive
-	return r.lastMessageInBroker.greater(r.pc.startMessageID)
+	return r.lastMessageInBroker.greater(r.pc.startMessageID.messageID)
 }
 
 func (r *reader) Close() {

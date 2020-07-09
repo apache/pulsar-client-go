@@ -33,17 +33,21 @@ type messageID struct {
 	entryID      int64
 	batchIdx     int32
 	partitionIdx int32
+}
+
+type trackingMessageID struct {
+	messageID
 
 	tracker      *ackTracker
 	consumer     acker
 	receivedTime time.Time
 }
 
-func (id messageID) IsZero() bool {
-	return id == messageID{}
+func (id trackingMessageID) Undefined() bool {
+	return id == trackingMessageID{}
 }
 
-func (id messageID) Ack() {
+func (id trackingMessageID) Ack() {
 	if id.consumer == nil {
 		return
 	}
@@ -52,14 +56,14 @@ func (id messageID) Ack() {
 	}
 }
 
-func (id messageID) Nack() {
+func (id trackingMessageID) Nack() {
 	if id.consumer == nil {
 		return
 	}
 	id.consumer.NackID(id)
 }
 
-func (id messageID) ack() bool {
+func (id trackingMessageID) ack() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
 		return id.tracker.ack(int(id.batchIdx))
 	}
@@ -124,14 +128,29 @@ func newMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx in
 }
 
 func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32,
-	tracker *ackTracker) messageID {
-	return messageID{
-		ledgerID:     ledgerID,
-		entryID:      entryID,
-		batchIdx:     batchIdx,
-		partitionIdx: partitionIdx,
+	tracker *ackTracker) trackingMessageID {
+	return trackingMessageID{
+		messageID: messageID{
+			ledgerID:     ledgerID,
+			entryID:      entryID,
+			batchIdx:     batchIdx,
+			partitionIdx: partitionIdx,
+		},
 		tracker:      tracker,
 		receivedTime: time.Now(),
+	}
+}
+
+func toTrackingMessageID(msgID MessageID) (trackingMessageID, bool) {
+	if mid, ok := msgID.(messageID); ok {
+		return trackingMessageID{
+			messageID:    mid,
+			receivedTime: time.Now(),
+		}, true
+	} else if mid, ok := msgID.(trackingMessageID); ok {
+		return mid, true
+	} else {
+		return trackingMessageID{}, false
 	}
 }
 

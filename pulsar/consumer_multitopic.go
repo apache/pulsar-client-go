@@ -120,7 +120,7 @@ func (c *multiTopicConsumer) Ack(msg Message) {
 
 // Ack the consumption of a single message, identified by its MessageID
 func (c *multiTopicConsumer) AckID(msgID MessageID) {
-	mid, ok := msgID.(messageID)
+	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return
@@ -139,7 +139,7 @@ func (c *multiTopicConsumer) Nack(msg Message) {
 }
 
 func (c *multiTopicConsumer) NackID(msgID MessageID) {
-	mid, ok := msgID.(messageID)
+	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return
