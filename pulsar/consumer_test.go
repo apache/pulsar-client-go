@@ -1462,12 +1462,12 @@ func TestConsumerWithInterceptors(t *testing.T) {
 			nackIds = append(nackIds, msg.ID())
 		}
 	}
-	assert.Equal(t, 5, metric.ackn)
+	assert.Equal(t, int32(5), atomic.LoadInt32(&metric.ackn))
 
 	for i := range nackIds {
 		consumer.NackID(nackIds[i])
 	}
 
 	time.Sleep(time.Second * 3) // waiting for nack actual perform
-	assert.Equal(t, 5, metric.nackn)
+	assert.Equal(t, int32(5), atomic.LoadInt32(&metric.nackn))
 }
