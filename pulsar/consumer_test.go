@@ -24,6 +24,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1373,18 +1374,18 @@ func (copyPropertyInterceptor) OnAcknowledge(consumer Consumer, msgID MessageID)
 func (copyPropertyInterceptor) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {}
 
 type metricConsumerInterceptor struct {
-	ackn  int
-	nackn int
+	ackn  int32
+	nackn int32
 }
 
 func (x *metricConsumerInterceptor) BeforeConsume(message ConsumerMessage) {}
 
 func (x *metricConsumerInterceptor) OnAcknowledge(consumer Consumer, msgID MessageID) {
-	x.ackn++
+	atomic.AddInt32(&x.ackn, 1)
 }
 
 func (x *metricConsumerInterceptor) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {
-	x.nackn += len(msgIDs)
+	atomic.AddInt32(&x.nackn, int32(len(msgIDs)))
 }
 
 func TestConsumerWithInterceptors(t *testing.T) {
