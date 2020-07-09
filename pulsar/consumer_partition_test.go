@@ -34,6 +34,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		options:              &partitionConsumerOpts{},
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
