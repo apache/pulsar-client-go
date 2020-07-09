@@ -440,6 +440,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		ackTracker = newAckTracker(numMsgs)
 	}
 
+	messagesReceived.Add(float64(numMsgs))
 	prefetchedMessages.Add(float64(numMsgs))
 
 	for i := 0; i < numMsgs; i++ {
@@ -449,6 +450,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return err
 		}
 
+		bytesReceived.Add(float64(len(payload)))
 		prefetchedBytes.Add(float64(len(payload)))
 
 		msgID := newTrackingMessageID(
