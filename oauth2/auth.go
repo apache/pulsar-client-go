@@ -34,7 +34,7 @@ const (
 type Flow interface {
 	// Authorize obtains an authorization grant based on an OAuth 2.0 authorization flow.
 	// The method returns a grant which may contain an initial access token.
-	Authorize() (*AuthorizationGrant, error)
+	Authorize(audience string) (*AuthorizationGrant, error)
 }
 
 // AuthorizationGrantRefresher refreshes OAuth 2.0 authorization grant
@@ -59,8 +59,17 @@ type AuthorizationGrant struct {
 	// Type describes the type of authorization grant represented by this structure
 	Type AuthorizationGrantType `json:"type"`
 
+	// Audience is the intended audience of the access tokens
+	Audience string `json:"audience,omitempty"`
+
+	// ClientID is an OAuth2 client identifier used by some flows
+	ClientID string `json:"client_id,omitempty"`
+
 	// ClientCredentials is credentials data for the client credentials grant type
 	ClientCredentials *KeyFile `json:"client_credentials,omitempty"`
+
+	// the token endpoint
+	TokenEndpoint string `json:"token_endpoint"`
 
 	// Token contains an access token in the client credentials grant type,
 	// and a refresh token in the device authorization grant type

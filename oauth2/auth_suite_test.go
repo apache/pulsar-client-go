@@ -57,3 +57,9 @@ func (te *MockTokenExchanger) ExchangeDeviceCode(ctx context.Context,
 	te.CalledWithRequest = &req
 	return te.ReturnsTokens, te.ReturnsError
 }
+
+var oidcEndpoints = OIDCWellKnownEndpoints{
+	AuthorizationEndpoint:       "http://issuer/auth/authorize",
+	TokenEndpoint:               "http://issuer/auth/token",
+	DeviceAuthorizationEndpoint: "http://issuer/auth/authorize/device",
+}

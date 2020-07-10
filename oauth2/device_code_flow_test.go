@@ -31,13 +31,15 @@ import (
 
 type MockDeviceCodeProvider struct {
 	Called                     bool
+	CalledWithAudience         string
 	CalledWithAdditionalScopes []string
 	DeviceCodeResult           *DeviceCodeResult
 	ReturnsError               error
 }
 
-func (cp *MockDeviceCodeProvider) GetCode(additionalScopes ...string) (*DeviceCodeResult, error) {
+func (cp *MockDeviceCodeProvider) GetCode(audience string, additionalScopes ...string) (*DeviceCodeResult, error) {
 	cp.Called = true
+	cp.CalledWithAudience = audience
 	cp.CalledWithAdditionalScopes = additionalScopes
 	return cp.DeviceCodeResult, cp.ReturnsError
 }
@@ -58,13 +60,9 @@ func (c *MockDeviceCodeCallback) Callback(code *DeviceCodeResult) error {
 }
 
 var _ = Describe("DeviceCodeFlow", func() {
-	var issuer = Issuer{
-		IssuerEndpoint: "http://issuer",
-		ClientID:       "test_clientID",
-		Audience:       "test_audience",
-	}
 
 	Describe("Authorize", func() {
+		const audience = "test_clientID"
 
 		var mockClock clock.Clock
 		var mockCodeProvider *MockDeviceCodeProvider
@@ -94,12 +92,14 @@ var _ = Describe("DeviceCodeFlow", func() {
 			mockCallback = &MockDeviceCodeCallback{}
 
 			opts := DeviceCodeFlowOptions{
+				IssuerEndpoint:   "http://issuer",
+				ClientID:         "test_clientID",
 				AdditionalScopes: nil,
 				AllowRefresh:     true,
 			}
-			flow = NewDeviceCodeFlow(
-				issuer,
+			flow = newDeviceCodeFlow(
 				opts,
+				oidcEndpoints,
 				mockCodeProvider,
 				mockTokenExchanger,
 				mockCallback.Callback,
@@ -108,29 +108,34 @@ var _ = Describe("DeviceCodeFlow", func() {
 		})
 
 		It("invokes DeviceCodeProvider", func() {
-			_, _ = flow.Authorize()
+			_, _ = flow.Authorize(audience)
 			Expect(mockCodeProvider.Called).To(BeTrue())
 			Expect(mockCodeProvider.CalledWithAdditionalScopes).To(ContainElement("offline_access"))
 		})
 
 		It("invokes callback with returned code", func() {
-			_, _ = flow.Authorize()
+			_, _ = flow.Authorize(audience)
 			Expect(mockCallback.Called).To(BeTrue())
 			Expect(mockCallback.DeviceCodeResult).To(Equal(mockCodeProvider.DeviceCodeResult))
 		})
 
 		It("invokes TokenExchanger with returned code", func() {
-			_, _ = flow.Authorize()
+			_, _ = flow.Authorize(audience)
 			Expect(mockTokenExchanger.CalledWithRequest).To(Equal(&DeviceCodeExchangeRequest{
-				ClientID:     issuer.ClientID,
-				PollInterval: time.Duration(5) * time.Second,
-				DeviceCode:   "test_deviceCode",
+				TokenEndpoint: oidcEndpoints.TokenEndpoint,
+				ClientID:      "test_clientID",
+				PollInterval:  time.Duration(5) * time.Second,
+				DeviceCode:    "test_deviceCode",
 			}))
 		})
 
 		It("returns an authorization grant", func() {
-			grant, _ := flow.Authorize()
+			grant, _ := flow.Authorize(audience)
 			Expect(grant).ToNot(BeNil())
+			Expect(grant.Audience).To(Equal(audience))
+			Expect(grant.ClientID).To(Equal("test_clientID"))
+			Expect(grant.ClientCredentials).To(BeNil())
+			Expect(grant.TokenEndpoint).To(Equal(oidcEndpoints.TokenEndpoint))
 			expected := convertToOAuth2Token(mockTokenExchanger.ReturnsTokens, mockClock)
 			Expect(*grant.Token).To(Equal(expected))
 		})
@@ -138,11 +143,6 @@ var _ = Describe("DeviceCodeFlow", func() {
 })
 
 var _ = Describe("DeviceAuthorizationGrantRefresher", func() {
-	var issuer = Issuer{
-		IssuerEndpoint: "http://issuer",
-		ClientID:       "test_clientID",
-		Audience:       "test_audience",
-	}
 
 	Describe("Refresh", func() {
 		var mockClock clock.Clock
@@ -156,15 +156,16 @@ var _ = Describe("DeviceAuthorizationGrantRefresher", func() {
 			mockTokenExchanger = &MockTokenExchanger{}
 
 			refresher = &DeviceAuthorizationGrantRefresher{
-				issuerData: issuer,
-				exchanger:  mockTokenExchanger,
-				clock:      mockClock,
+				exchanger: mockTokenExchanger,
+				clock:     mockClock,
 			}
 
 			token := oauth2.Token{AccessToken: "gat", RefreshToken: "grt", Expiry: time.Unix(1, 0)}
 			grant = &AuthorizationGrant{
-				Type:  GrantTypeDeviceCode,
-				Token: &token,
+				Type:          GrantTypeDeviceCode,
+				ClientID:      "test_clientID",
+				TokenEndpoint: oidcEndpoints.TokenEndpoint,
+				Token:         &token,
 			}
 		})
 
@@ -174,9 +175,10 @@ var _ = Describe("DeviceAuthorizationGrantRefresher", func() {
 			}
 
 			_, _ = refresher.Refresh(grant)
-			Expect(mockTokenExchanger.RefreshCalledWithRequest).To(Equal(&RefreshTokenExchangeRequest{
-				ClientID:     issuer.ClientID,
-				RefreshToken: "grt",
+			Expect(*mockTokenExchanger.RefreshCalledWithRequest).To(Equal(RefreshTokenExchangeRequest{
+				TokenEndpoint: oidcEndpoints.TokenEndpoint,
+				ClientID:      grant.ClientID,
+				RefreshToken:  "grt",
 			}))
 		})
 

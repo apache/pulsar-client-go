@@ -76,12 +76,14 @@ func NewAuthenticationOAuth2(
 func (p *oauth2AuthProvider) initFlow(oauth2Type, keyFile string) error {
 	switch oauth2Type {
 	case ConfigParamTypeClientCredentials:
-		keyFile := keyFile
-		flow, err := oauth2.NewDefaultClientCredentialsFlow(p.issuer, keyFile)
+		flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
+			KeyFile:          keyFile,
+			AdditionalScopes: nil,
+		})
 		if err != nil {
 			return err
 		}
-		grant, err := flow.Authorize()
+		grant, err := flow.Authorize(p.issuer.Audience)
 		if err != nil {
 			return err
 		}
@@ -103,7 +105,7 @@ func (p *oauth2AuthProvider) Init() error {
 		}
 		return err
 	}
-	refresher, err := p.getRefresher(p.issuer, grant.Type)
+	refresher, err := p.getRefresher(grant.Type)
 	if err != nil {
 		return err
 	}
@@ -140,13 +142,12 @@ func (p *oauth2AuthProvider) Close() error {
 	return nil
 }
 
-func (p *oauth2AuthProvider) getRefresher(issuerData oauth2.Issuer,
-	t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
+func (p *oauth2AuthProvider) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
 	switch t {
 	case oauth2.GrantTypeClientCredentials:
-		return oauth2.NewDefaultClientCredentialsGrantRefresher(issuerData, p.clock)
+		return oauth2.NewDefaultClientCredentialsGrantRefresher(p.clock)
 	case oauth2.GrantTypeDeviceCode:
-		return oauth2.NewDefaultDeviceAuthorizationGrantRefresher(issuerData, p.clock)
+		return oauth2.NewDefaultDeviceAuthorizationGrantRefresher(p.clock)
 	default:
 		return nil, store.ErrUnsupportedAuthData
 	}

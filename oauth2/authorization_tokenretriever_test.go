@@ -49,13 +49,13 @@ func (t *MockTransport) Do(req *http.Request) (*http.Response, error) {
 var _ = Describe("CodetokenExchanger", func() {
 	Describe("newExchangeCodeRequest", func() {
 		It("creates the request", func() {
-			tokenRetriever := TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "https://issuer/oauth/token"}}
+			tokenRetriever := TokenRetriever{}
 			exchangeRequest := AuthorizationCodeExchangeRequest{
-				ClientID:     "clientID",
-				CodeVerifier: "Verifier",
-				Code:         "code",
-				RedirectURI:  "https://redirect",
+				TokenEndpoint: "https://issuer/oauth/token",
+				ClientID:      "clientID",
+				CodeVerifier:  "Verifier",
+				Code:          "code",
+				RedirectURI:   "https://redirect",
 			}
 
 			result, err := tokenRetriever.newExchangeCodeRequest(exchangeRequest)
@@ -75,10 +75,11 @@ var _ = Describe("CodetokenExchanger", func() {
 		})
 
 		It("returns an error when NewRequest returns an error", func() {
-			tokenRetriever := TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "://issuer/oauth/token"}}
+			tokenRetriever := TokenRetriever{}
 
-			result, err := tokenRetriever.newExchangeCodeRequest(AuthorizationCodeExchangeRequest{})
+			result, err := tokenRetriever.newExchangeCodeRequest(AuthorizationCodeExchangeRequest{
+				TokenEndpoint: "://issuer/oauth/token",
+			})
 
 			Expect(result).To(BeNil())
 			Expect(err.Error()).To(Equal("parse ://issuer/oauth/token: missing protocol scheme"))
@@ -139,11 +140,11 @@ var _ = Describe("CodetokenExchanger", func() {
 
 	Describe("newRefreshTokenRequest", func() {
 		It("creates the request", func() {
-			tokenRetriever := TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "https://issuer/oauth/token"}}
+			tokenRetriever := TokenRetriever{}
 			exchangeRequest := RefreshTokenExchangeRequest{
-				ClientID:     "clientID",
-				RefreshToken: "refreshToken",
+				TokenEndpoint: "https://issuer/oauth/token",
+				ClientID:      "clientID",
+				RefreshToken:  "refreshToken",
 			}
 
 			result, err := tokenRetriever.newRefreshTokenRequest(exchangeRequest)
@@ -161,10 +162,11 @@ var _ = Describe("CodetokenExchanger", func() {
 		})
 
 		It("returns an error when NewRequest returns an error", func() {
-			tokenRetriever := TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "://issuer/oauth/token"}}
+			tokenRetriever := TokenRetriever{}
 
-			result, err := tokenRetriever.newRefreshTokenRequest(RefreshTokenExchangeRequest{})
+			result, err := tokenRetriever.newRefreshTokenRequest(RefreshTokenExchangeRequest{
+				TokenEndpoint: "://issuer/oauth/token",
+			})
 
 			Expect(result).To(BeNil())
 			Expect(err.Error()).To(Equal("parse ://issuer/oauth/token: missing protocol scheme"))
@@ -173,12 +175,12 @@ var _ = Describe("CodetokenExchanger", func() {
 
 	Describe("newClientCredentialsRequest", func() {
 		It("creates the request", func() {
-			tokenRetriever := TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "https://issuer/oauth/token"}}
+			tokenRetriever := TokenRetriever{}
 			exchangeRequest := ClientCredentialsExchangeRequest{
-				ClientID:     "clientID",
-				ClientSecret: "clientSecret",
-				Audience:     "audience",
+				TokenEndpoint: "https://issuer/oauth/token",
+				ClientID:      "clientID",
+				ClientSecret:  "clientSecret",
+				Audience:      "audience",
 			}
 
 			result, err := tokenRetriever.newClientCredentialsRequest(exchangeRequest)
@@ -197,10 +199,11 @@ var _ = Describe("CodetokenExchanger", func() {
 		})
 
 		It("returns an error when NewRequest returns an error", func() {
-			tokenRetriever := TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "://issuer/oauth/token"}}
+			tokenRetriever := TokenRetriever{}
 
-			result, err := tokenRetriever.newClientCredentialsRequest(ClientCredentialsExchangeRequest{})
+			result, err := tokenRetriever.newClientCredentialsRequest(ClientCredentialsExchangeRequest{
+				TokenEndpoint: "://issuer/oauth/token",
+			})
 
 			Expect(result).To(BeNil())
 			Expect(err.Error()).To(Equal("parse ://issuer/oauth/token: missing protocol scheme"))
@@ -209,12 +212,12 @@ var _ = Describe("CodetokenExchanger", func() {
 
 	Describe("newDeviceCodeExchangeRequest", func() {
 		It("creates the request", func() {
-			tokenRetriever := TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "https://issuer/oauth/token"}}
+			tokenRetriever := TokenRetriever{}
 			exchangeRequest := DeviceCodeExchangeRequest{
-				ClientID:     "clientID",
-				DeviceCode:   "deviceCode",
-				PollInterval: time.Duration(5) * time.Second,
+				TokenEndpoint: "https://issuer/oauth/token",
+				ClientID:      "clientID",
+				DeviceCode:    "deviceCode",
+				PollInterval:  time.Duration(5) * time.Second,
 			}
 
 			result, err := tokenRetriever.newDeviceCodeExchangeRequest(exchangeRequest)
@@ -232,10 +235,11 @@ var _ = Describe("CodetokenExchanger", func() {
 		})
 
 		It("returns an error when NewRequest returns an error", func() {
-			tokenRetriever := TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "://issuer/oauth/token"}}
+			tokenRetriever := TokenRetriever{}
 
-			result, err := tokenRetriever.newClientCredentialsRequest(ClientCredentialsExchangeRequest{})
+			result, err := tokenRetriever.newClientCredentialsRequest(ClientCredentialsExchangeRequest{
+				TokenEndpoint: "://issuer/oauth/token",
+			})
 
 			Expect(result).To(BeNil())
 			Expect(err.Error()).To(Equal("parse ://issuer/oauth/token: missing protocol scheme"))
@@ -251,13 +255,13 @@ var _ = Describe("CodetokenExchanger", func() {
 		BeforeEach(func() {
 			mockTransport = &MockTransport{}
 			tokenRetriever = &TokenRetriever{
-				oidcWellKnownEndpoints: OIDCWellKnownEndpoints{TokenEndpoint: "https://issuer/oauth/token"},
-				transport:              mockTransport,
+				transport: mockTransport,
 			}
 			exchangeRequest = DeviceCodeExchangeRequest{
-				ClientID:     "clientID",
-				DeviceCode:   "deviceCode",
-				PollInterval: time.Duration(1) * time.Second,
+				TokenEndpoint: "https://issuer/oauth/token",
+				ClientID:      "clientID",
+				DeviceCode:    "deviceCode",
+				PollInterval:  time.Duration(1) * time.Second,
 			}
 			tokenResult = TokenResult{
 				ExpiresIn:    1,
