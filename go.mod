@@ -17,4 +17,5 @@ require (
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/stretchr/testify v1.4.0
 	github.com/yahoo/athenz v1.8.55
+	github.com/natefinch/lumberjack v2.0.0+incompatible
 )
