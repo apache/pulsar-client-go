@@ -34,8 +34,9 @@ type messageID struct {
 	batchIdx     int32
 	partitionIdx int32
 
-	tracker  *ackTracker
-	consumer acker
+	tracker      *ackTracker
+	consumer     acker
+	receivedTime time.Time
 }
 
 func (id messageID) IsZero() bool {
@@ -130,6 +131,7 @@ func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partiti
 		batchIdx:     batchIdx,
 		partitionIdx: partitionIdx,
 		tracker:      tracker,
+		receivedTime: time.Now(),
 	}
 }
 

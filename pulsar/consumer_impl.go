@@ -25,10 +25,30 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
+
+var (
+	consumersOpened = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_consumers_opened",
+		Help: "Counter of consumers created by the client",
+	})
+
+	consumersClosed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_consumers_closed",
+		Help: "Counter of consumers closed by the client",
+	})
+
+	consumersPartitions = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_consumers_partitions_active",
+		Help: "Counter of individual partitions the consumers are currently active",
+	})
 )
 
 var ErrConsumerClosed = errors.New("consumer closed")
@@ -276,12 +296,17 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		return err
 	}
 
+	consumersPartitions.Add(float64(partitionsToAdd))
 	return nil
 }
 
 func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlqRouter *dlqRouter) (Consumer, error) {
-	return newInternalConsumer(client, options, topic, messageCh, dlqRouter, false)
+	c, err := newInternalConsumer(client, options, topic, messageCh, dlqRouter, false)
+	if err == nil {
+		consumersOpened.Inc()
+	}
+	return c, err
 }
 
 func (c *consumer) Subscription() string {
@@ -381,6 +406,8 @@ func (c *consumer) Close() {
 		c.ticker.Stop()
 		c.client.handlers.Del(c)
 		c.dlq.close()
+		consumersClosed.Inc()
+		consumersPartitions.Sub(float64(len(c.consumers)))
 	})
 }
 
