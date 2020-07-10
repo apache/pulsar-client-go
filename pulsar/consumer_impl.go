@@ -459,7 +459,7 @@ func (c *consumer) messageID(msgID MessageID) (*messageID, bool) {
 		return nil, false
 	}
 
-	partition := mid.partitionIdx
+	partition := int(mid.partitionIdx)
 	// did we receive a valid partition index?
 	if partition < 0 || partition >= len(c.consumers) {
 		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",

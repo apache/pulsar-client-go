@@ -31,8 +31,8 @@ import (
 type messageID struct {
 	ledgerID     int64
 	entryID      int64
-	batchIdx     int
-	partitionIdx int
+	batchIdx     int32
+	partitionIdx int32
 
 	tracker  *ackTracker
 	consumer acker
@@ -56,7 +56,7 @@ func (id *messageID) Nack() {
 
 func (id *messageID) ack() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
-		return id.tracker.ack(id.batchIdx)
+		return id.tracker.ack(int(id.batchIdx))
 	}
 	return true
 }
@@ -87,8 +87,8 @@ func (id *messageID) Serialize() []byte {
 	msgID := &pb.MessageIdData{
 		LedgerId:   proto.Uint64(uint64(id.ledgerID)),
 		EntryId:    proto.Uint64(uint64(id.entryID)),
-		BatchIndex: proto.Int(id.batchIdx),
-		Partition:  proto.Int(id.partitionIdx),
+		BatchIndex: proto.Int(int(id.batchIdx)),
+		Partition:  proto.Int(int(id.partitionIdx)),
 	}
 	data, _ := proto.Marshal(msgID)
 	return data
@@ -103,13 +103,13 @@ func deserializeMessageID(data []byte) (MessageID, error) {
 	id := newMessageID(
 		int64(msgID.GetLedgerId()),
 		int64(msgID.GetEntryId()),
-		int(msgID.GetBatchIndex()),
-		int(msgID.GetPartition()),
+		msgID.GetBatchIndex(),
+		msgID.GetPartition(),
 	)
 	return id, nil
 }
 
-func newMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int) MessageID {
+func newMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32) MessageID {
 	return &messageID{
 		ledgerID:     ledgerID,
 		entryID:      entryID,
@@ -118,7 +118,7 @@ func newMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int)
 	}
 }
 
-func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int, partitionIdx int,
+func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32,
 	tracker *ackTracker) *messageID {
 	return &messageID{
 		ledgerID:     ledgerID,
