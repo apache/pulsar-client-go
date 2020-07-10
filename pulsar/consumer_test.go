@@ -1342,3 +1342,28 @@ func TestProducerName(t *testing.T) {
 		consumer.Ack(msg)
 	}
 }
+
+func TestConsumerName(t *testing.T) {
+	assert := assert.New(t)
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	// create consumer
+	consumerName := "test-consumer-name"
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Name:             consumerName,
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+
+	assert.Nil(err)
+	defer consumer.Close()
+
+	assert.Equal(consumerName, consumer.Name())
+}

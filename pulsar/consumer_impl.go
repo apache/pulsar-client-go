@@ -74,6 +74,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.ReceiverQueueSize = 1000
 	}
 
+	if options.Name == "" {
+		options.Name = generateRandomName()
+	}
+
 	// did the user pass in a message channel?
 	messageCh := options.MessageChannel
 	if options.MessageChannel == nil {
@@ -136,12 +140,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
 		log:                       log.WithField("topic", topic),
-	}
-
-	if options.Name != "" {
-		consumer.consumerName = options.Name
-	} else {
-		consumer.consumerName = generateRandomName()
+		consumerName:              options.Name,
 	}
 
 	err := consumer.internalTopicSubscribeToPartitions()
@@ -164,6 +163,11 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	}()
 
 	return consumer, nil
+}
+
+// Name returns the name of consumer.
+func (c *consumer) Name() string {
+	return c.consumerName
 }
 
 func (c *consumer) internalTopicSubscribeToPartitions() error {

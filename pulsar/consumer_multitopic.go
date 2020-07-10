@@ -32,7 +32,8 @@ import (
 type multiTopicConsumer struct {
 	options ConsumerOptions
 
-	messageCh chan ConsumerMessage
+	consumerName string
+	messageCh    chan ConsumerMessage
 
 	consumers map[string]Consumer
 
@@ -46,12 +47,13 @@ type multiTopicConsumer struct {
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter) (Consumer, error) {
 	mtc := &multiTopicConsumer{
-		options:   options,
-		messageCh: messageCh,
-		consumers: make(map[string]Consumer, len(topics)),
-		closeCh:   make(chan struct{}),
-		dlq:       dlq,
-		log:       &log.Entry{},
+		options:      options,
+		messageCh:    messageCh,
+		consumers:    make(map[string]Consumer, len(topics)),
+		closeCh:      make(chan struct{}),
+		dlq:          dlq,
+		log:          &log.Entry{},
+		consumerName: options.Name,
 	}
 
 	var errs error
@@ -172,4 +174,9 @@ func (c *multiTopicConsumer) Seek(msgID MessageID) error {
 
 func (c *multiTopicConsumer) SeekByTime(time time.Time) error {
 	return errors.New("seek command not allowed for multi topic consumer")
+}
+
+// Name returns the name of consumer.
+func (c *multiTopicConsumer) Name() string {
+	return c.consumerName
 }
