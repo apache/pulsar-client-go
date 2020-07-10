@@ -59,6 +59,8 @@ type regexConsumer struct {
 	ticker *time.Ticker
 
 	log *log.Entry
+
+	consumerName string
 }
 
 func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
@@ -78,7 +80,8 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 		closeCh: make(chan struct{}),
 
-		log: log.WithField("topic", tn.Name),
+		log:          log.WithField("topic", tn.Name),
+		consumerName: opts.Name,
 	}
 
 	topics, err := rc.topics()
@@ -220,6 +223,11 @@ func (c *regexConsumer) Seek(msgID MessageID) error {
 
 func (c *regexConsumer) SeekByTime(time time.Time) error {
 	return errors.New("seek command not allowed for regex consumer")
+}
+
+// Name returns the name of consumer.
+func (c *regexConsumer) Name() string {
+	return c.consumerName
 }
 
 func (c *regexConsumer) closed() bool {
