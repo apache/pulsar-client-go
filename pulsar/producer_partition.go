@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -91,7 +92,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	p := &partitionProducer{
 		state:            producerInit,
-		log:              log.WithField("topic", topic),
+		log:              logger.Logger.WithField("topic", topic),
 		client:           client,
 		topic:            topic,
 		options:          options,
@@ -110,7 +111,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	err := p.grabCnx()
 	if err != nil {
-		log.WithError(err).Errorf("Failed to create producer")
+		logger.Logger.WithError(err).Errorf("Failed to create producer")
 		return nil, err
 	}
 

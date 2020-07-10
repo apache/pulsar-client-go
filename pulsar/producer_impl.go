@@ -27,6 +27,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 )
 
 type producer struct {
@@ -67,7 +68,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		options: options,
 		topic:   options.Topic,
 		client:  client,
-		log:     log.WithField("topic", options.Topic),
+		log:     logger.Logger.WithField("topic", options.Topic),
 	}
 
 	var batchingMaxPublishDelay time.Duration

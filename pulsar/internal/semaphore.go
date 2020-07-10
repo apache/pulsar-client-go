@@ -20,7 +20,7 @@ package internal
 import (
 	"sync/atomic"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 )
 
 type Semaphore interface {
@@ -53,7 +53,7 @@ type semaphore struct {
 
 func NewSemaphore(maxPermits int32) Semaphore {
 	if maxPermits <= 0 {
-		log.Fatal("Max permits for semaphore needs to be > 0")
+		logger.Logger.Fatal("Max permits for semaphore needs to be > 0")
 	}
 
 	return &semaphore{

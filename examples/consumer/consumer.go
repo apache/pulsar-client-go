@@ -23,7 +23,19 @@ import (
 	"log"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/natefinch/lumberjack"
 )
+
+func init() {
+	logger := pulsar.GetLogger()
+	logger.SetOutput(&lumberjack.Logger{
+		Filename:   "pulsar.log",
+		MaxSize:    1024, // megabytes
+		MaxBackups: 3,
+		MaxAge:     5,
+		Compress:   true,
+	})
+}
 
 func main() {
 	client, err := pulsar.NewClient(pulsar.ClientOptions{URL: "pulsar://localhost:6650"})

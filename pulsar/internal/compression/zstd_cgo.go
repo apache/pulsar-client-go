@@ -25,7 +25,7 @@ package compression
 
 import (
 	"github.com/DataDog/zstd"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 )
 
 type zstdCGoProvider struct {
@@ -62,7 +62,7 @@ func (z *zstdCGoProvider) CompressMaxSize(originalSize int) int {
 func (z *zstdCGoProvider) Compress(dst, src []byte) []byte {
 	out, err := z.ctx.CompressLevel(dst, src, z.zstdLevel)
 	if err != nil {
-		log.WithError(err).Fatal("Failed to compress")
+		logger.Logger.WithError(err).Fatal("Failed to compress")
 	}
 
 	return out

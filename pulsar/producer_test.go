@@ -27,9 +27,8 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	"github.com/stretchr/testify/assert"
-
-	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -131,10 +130,10 @@ func TestProducerAsyncSend(t *testing.T) {
 			Payload: []byte("hello"),
 		}, func(id MessageID, message *ProducerMessage, e error) {
 			if e != nil {
-				log.WithError(e).Error("Failed to publish")
+				logger.Logger.WithError(e).Error("Failed to publish")
 				errors.Put(e)
 			} else {
-				log.Info("Published message ", id)
+				logger.Logger.Info("Published message ", id)
 			}
 			wg.Done()
 		})
@@ -301,10 +300,10 @@ func TestFlushInProducer(t *testing.T) {
 			Payload: []byte(messageContent),
 		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
 			if e != nil {
-				log.WithError(e).Error("Failed to publish")
+				logger.Logger.WithError(e).Error("Failed to publish")
 				errors.Put(e)
 			} else {
-				log.Info("Published message ", id)
+				logger.Logger.Info("Published message ", id)
 			}
 			wg.Done()
 		})
@@ -342,10 +341,10 @@ func TestFlushInProducer(t *testing.T) {
 			Payload: []byte(messageContent),
 		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
 			if e != nil {
-				log.WithError(e).Error("Failed to publish")
+				logger.Logger.WithError(e).Error("Failed to publish")
 				errors.Put(e)
 			} else {
-				log.Info("Published message ", id)
+				logger.Logger.Info("Published message ", id)
 			}
 			wg.Done()
 		})
@@ -412,10 +411,10 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 			Payload: []byte(messageContent),
 		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
 			if e != nil {
-				log.WithError(e).Error("Failed to publish")
+				logger.Logger.WithError(e).Error("Failed to publish")
 				errors.Put(e)
 			} else {
-				log.Info("Published message: ", id)
+				logger.Logger.Info("Published message: ", id)
 			}
 			wg.Done()
 		})

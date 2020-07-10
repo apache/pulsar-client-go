@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -52,7 +53,7 @@ func newDlqRouter(client Client, policy *DLQPolicy) (*dlqRouter, error) {
 
 		r.messageCh = make(chan ConsumerMessage)
 		r.closeCh = make(chan interface{}, 1)
-		r.log = log.WithField("dlq-topic", policy.Topic)
+		r.log = logger.Logger.WithField("dlq-topic", policy.Topic)
 		go r.run()
 	}
 	return r, nil

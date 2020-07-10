@@ -20,8 +20,15 @@ package pulsar
 import (
 	"time"
 
+	log "github.com/sirupsen/logrus"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 )
+
+func GetLogger() *log.Logger {
+	return logger.Logger
+}
 
 func NewClient(options ClientOptions) (Client, error) {
 	return newClient(options)

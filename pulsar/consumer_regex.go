@@ -31,6 +31,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 )
 
 const (
@@ -78,7 +79,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 		closeCh: make(chan struct{}),
 
-		log: log.WithField("topic", tn.Name),
+		log: logger.Logger.WithField("topic", tn.Name),
 	}
 
 	topics, err := rc.topics()
@@ -263,7 +264,7 @@ func (c *regexConsumer) discover() {
 	newTopics := topicsDiff(topics, known)
 	staleTopics := topicsDiff(known, topics)
 
-	if log.GetLevel() == log.DebugLevel {
+	if logger.Logger.GetLevel() == log.DebugLevel {
 		l := c.log.WithFields(log.Fields{
 			"new_topics": newTopics,
 			"old_topics": staleTopics,
@@ -289,7 +290,7 @@ func (c *regexConsumer) knownTopics() []string {
 }
 
 func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter) {
-	if log.GetLevel() == log.DebugLevel {
+	if logger.Logger.GetLevel() == log.DebugLevel {
 		c.log.WithField("topics", topics).Debug("subscribe")
 	}
 	consumers := make(map[string]Consumer, len(topics))
@@ -309,7 +310,7 @@ func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter) {
 }
 
 func (c *regexConsumer) unsubscribe(topics []string) {
-	if log.GetLevel() == log.DebugLevel {
+	if logger.Logger.GetLevel() == log.DebugLevel {
 		c.log.WithField("topics", topics).Debug("unsubscribe")
 	}
 	consumers := make(map[string]Consumer, len(topics))
@@ -323,7 +324,7 @@ func (c *regexConsumer) unsubscribe(topics []string) {
 	c.consumersLock.Unlock()
 
 	for t, consumer := range consumers {
-		log.Debugf("unsubscribe from topic=%s subscription=%s", t, c.options.SubscriptionName)
+		logger.Logger.Debugf("unsubscribe from topic=%s subscription=%s", t, c.options.SubscriptionName)
 		if err := consumer.Unsubscribe(); err != nil {
 			c.log.Warnf("unable to unsubscribe from topic=%s subscription=%s",
 				t, c.options.SubscriptionName)

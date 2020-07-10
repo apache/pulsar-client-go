@@ -20,6 +20,7 @@ package pulsar
 import (
 	"context"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -85,7 +86,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
-		log:       log.WithField("topic", options.Topic),
+		log:       logger.Logger.WithField("topic", options.Topic),
 	}
 
 	// Provide dummy dlq router with not dlq policy

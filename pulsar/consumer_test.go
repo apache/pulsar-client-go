@@ -20,13 +20,13 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"testing"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -72,7 +72,7 @@ func TestProducerConsumer(t *testing.T) {
 				"key-1": "pulsar-1",
 			},
 		}); err != nil {
-			log.Fatal(err)
+			logger.Logger.Fatal(err)
 		}
 	}
 
@@ -80,7 +80,7 @@ func TestProducerConsumer(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		msg, err := consumer.Receive(context.Background())
 		if err != nil {
-			log.Fatal(err)
+			logger.Logger.Fatal(err)
 		}
 
 		expectMsg := fmt.Sprintf("hello-%d", i)
@@ -444,7 +444,7 @@ func TestConsumerShared(t *testing.T) {
 		if _, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
-			log.Fatal(err)
+			logger.Logger.Fatal(err)
 		}
 		fmt.Println("sending message:", fmt.Sprintf("hello-%d", i))
 	}
@@ -991,7 +991,7 @@ func TestDLQ(t *testing.T) {
 		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
-			log.Fatal(err)
+			logger.Logger.Fatal(err)
 		}
 	}
 
@@ -1098,7 +1098,7 @@ func TestDLQMultiTopics(t *testing.T) {
 		if _, err := producers[i].Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
-			log.Fatal(err)
+			logger.Logger.Fatal(err)
 		}
 	}
 
@@ -1178,7 +1178,7 @@ func TestGetDeliveryCount(t *testing.T) {
 		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
-			log.Fatal(err)
+			logger.Logger.Fatal(err)
 		}
 	}
 

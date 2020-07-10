@@ -21,10 +21,9 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
-
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -161,7 +160,7 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 		// No-Op for empty batch
 		return nil, 0, nil
 	}
-	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
+	logger.Logger.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
 	bb.cmdSend.Send.NumMessages = proto.Int32(int32(bb.numMessages))
@@ -197,7 +196,7 @@ func getCompressionProvider(compressionType pb.CompressionType,
 	case pb.CompressionType_ZSTD:
 		return compression.NewZStdProvider(level)
 	default:
-		log.Panic("unsupported compression type")
+		logger.Logger.Panic("unsupported compression type")
 		return nil
 	}
 }

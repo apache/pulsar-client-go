@@ -22,10 +22,9 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
-
-	log "github.com/sirupsen/logrus"
 )
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
@@ -91,7 +90,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("Got topic{%s} lookup response: %+v", topic, res)
+	logger.Logger.Debugf("Got topic{%s} lookup response: %+v", topic, res)
 
 	for i := 0; i < lookupResultMaxRedirect; i++ {
 		lr := res.Response.LookupTopicResponse
@@ -103,7 +102,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 				return nil, err
 			}
 
-			log.Debugf("Follow topic{%s} redirect to broker. %v / %v - Use proxy: %v",
+			logger.Logger.Debugf("Follow topic{%s} redirect to broker. %v / %v - Use proxy: %v",
 				topic, lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
 
 			id := ls.rpcClient.NewRequestID()
@@ -120,7 +119,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			continue
 
 		case pb.CommandLookupTopicResponse_Connect:
-			log.Debugf("Successfully looked up topic{%s} on broker. %s / %s - Use proxy: %t",
+			logger.Logger.Debugf("Successfully looked up topic{%s} on broker. %s / %s - Use proxy: %t",
 				topic, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
 			logicalAddress, physicalAddress, err := ls.getBrokerAddress(lr)
@@ -138,7 +137,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			if lr.Error != nil {
 				errorMsg = lr.Error.String()
 			}
-			log.Warnf("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
+			logger.Logger.Warnf("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
 			return nil, fmt.Errorf("failed to lookup topic: %s", errorMsg)
 		}
 	}
