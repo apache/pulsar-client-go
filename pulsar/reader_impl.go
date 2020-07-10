@@ -30,7 +30,7 @@ const (
 type reader struct {
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
-	lastMessageInBroker *messageID
+	lastMessageInBroker messageID
 
 	log *log.Entry
 }
@@ -44,17 +44,17 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(ResultInvalidConfiguration, "StartMessageID is required")
 	}
 
-	var startMessageID *messageID
+	var startMessageID messageID
 	var ok bool
-	if startMessageID, ok = options.StartMessageID.(*messageID); !ok {
-		// a custom type satisfying MessageID may not be a *messageID
-		// so re-create *messageID using its data
+	if startMessageID, ok = options.StartMessageID.(messageID); !ok {
+		// a custom type satisfying MessageID may not be a messageID
+		// so re-create messageID using its data
 		deserMsgID, err := deserializeMessageID(options.StartMessageID.Serialize())
 		if err != nil {
 			return nil, err
 		}
-		// de-serialized MessageID is a *messageID
-		startMessageID = deserMsgID.(*messageID)
+		// de-serialized MessageID is a messageID
+		startMessageID = deserMsgID.(messageID)
 	}
 
 	subscriptionName := options.SubscriptionRolePrefix
@@ -118,7 +118,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
-			msgID := cm.Message.ID().(*messageID)
+			msgID := cm.Message.ID().(messageID)
 			r.pc.lastDequeuedMsg = msgID
 			r.pc.AckID(msgID)
 			return cm.Message, nil
@@ -129,7 +129,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 }
 
 func (r *reader) HasNext() bool {
-	if r.lastMessageInBroker != nil && r.hasMoreMessages() {
+	if !r.lastMessageInBroker.IsZero() && r.hasMoreMessages() {
 		return true
 	}
 
@@ -148,7 +148,7 @@ func (r *reader) HasNext() bool {
 }
 
 func (r *reader) hasMoreMessages() bool {
-	if r.pc.lastDequeuedMsg != nil {
+	if !r.pc.lastDequeuedMsg.IsZero() {
 		return r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg)
 	}
 

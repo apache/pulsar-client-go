@@ -164,9 +164,9 @@ func (c *regexConsumer) Ack(msg Message) {
 
 // Ack the consumption of a single message, identified by its MessageID
 func (c *regexConsumer) AckID(msgID MessageID) {
-	mid, ok := msgID.(*messageID)
+	mid, ok := msgID.(messageID)
 	if !ok {
-		c.log.Warnf("invalid message id type")
+		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}
 
@@ -183,9 +183,9 @@ func (c *regexConsumer) Nack(msg Message) {
 }
 
 func (c *regexConsumer) NackID(msgID MessageID) {
-	mid, ok := msgID.(*messageID)
+	mid, ok := msgID.(messageID)
 	if !ok {
-		c.log.Warnf("invalid message id type")
+		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}
 
