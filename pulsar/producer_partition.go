@@ -24,6 +24,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 
@@ -48,6 +51,39 @@ var (
 	errMessageTooLarge = errors.New("message size exceeds MaxMessageSize")
 
 	buffersPool sync.Pool
+)
+
+var (
+	messagesPublished = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_messages_published",
+		Help: "Counter of messages published by the client",
+	})
+
+	bytesPublished = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_bytes_published",
+		Help: "Counter of messages published by the client",
+	})
+
+	messagesPending = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_producer_pending_messages",
+		Help: "Counter of messages pending to be published by the client",
+	})
+
+	bytesPending = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_producer_pending_bytes",
+		Help: "Counter of bytes pending to be published by the client",
+	})
+
+	publishErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_producer_errors",
+		Help: "Counter of publish errors",
+	})
+
+	publishLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pulsar_client_producer_latency_seconds",
+		Help:    "Publish latency experienced by the client",
+		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+	})
 )
 
 type partitionProducer struct {
@@ -262,6 +298,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		p.log.WithField("size", len(msg.Payload)).
 			WithField("properties", msg.Properties).
 			WithError(errMessageTooLarge).Error()
+		publishErrors.Inc()
 		return
 	}
 
@@ -400,13 +437,19 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
-	p.publishSemaphore.Acquire()
+
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
 		callback:         callback,
 		flushImmediately: flushImmediately,
+		publishTime:      time.Now(),
 	}
+
+	messagesPending.Inc()
+	bytesPending.Add(float64(len(sr.msg.Payload)))
+
+	p.publishSemaphore.Acquire()
 	p.eventsChan <- sr
 }
 
@@ -427,6 +470,8 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
 
+	now := time.Now().UnixNano()
+
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
@@ -435,6 +480,13 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		if sr.msg != nil {
 			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
 			p.publishSemaphore.Release()
+
+			publishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
+			messagesPublished.Inc()
+			messagesPending.Dec()
+			payloadSize := float64(len(sr.msg.Payload))
+			bytesPublished.Add(payloadSize)
+			bytesPending.Sub(payloadSize)
 		}
 
 		if sr.callback != nil {
@@ -517,6 +569,7 @@ type sendRequest struct {
 	ctx              context.Context
 	msg              *ProducerMessage
 	callback         func(MessageID, *ProducerMessage, error)
+	publishTime      time.Time
 	flushImmediately bool
 }
 

@@ -23,8 +23,18 @@ import (
 	"net/url"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
+)
+
+var (
+	lookupRequestsCount = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_lookup_count",
+		Help: "Counter of lookup requests made by the client",
+	})
 )
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
@@ -81,6 +91,7 @@ func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (lo
 const lookupResultMaxRedirect = 20
 
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
+	lookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
 	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
 		RequestId:     &id,

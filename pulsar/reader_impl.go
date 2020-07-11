@@ -21,6 +21,8 @@ import (
 	"context"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -28,10 +30,22 @@ const (
 	defaultReceiverQueueSize = 1000
 )
 
+var (
+	readersOpened = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_readers_opened",
+		Help: "Counter of readers created by the client",
+	})
+
+	readersClosed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_readers_closed",
+		Help: "Counter of readers closed by the client",
+	})
+)
+
 type reader struct {
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
-	lastMessageInBroker *messageID
+	lastMessageInBroker messageID
 
 	log *log.Entry
 }
@@ -45,17 +59,17 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(ResultInvalidConfiguration, "StartMessageID is required")
 	}
 
-	var startMessageID *messageID
+	var startMessageID messageID
 	var ok bool
-	if startMessageID, ok = options.StartMessageID.(*messageID); !ok {
-		// a custom type satisfying MessageID may not be a *messageID
-		// so re-create *messageID using its data
+	if startMessageID, ok = options.StartMessageID.(messageID); !ok {
+		// a custom type satisfying MessageID may not be a messageID
+		// so re-create messageID using its data
 		deserMsgID, err := deserializeMessageID(options.StartMessageID.Serialize())
 		if err != nil {
 			return nil, err
 		}
-		// de-serialized MessageID is a *messageID
-		startMessageID = deserMsgID.(*messageID)
+		// de-serialized MessageID is a messageID
+		startMessageID = deserMsgID.(messageID)
 	}
 
 	subscriptionName := options.SubscriptionRolePrefix
@@ -102,6 +116,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	}
 
 	reader.pc = pc
+	readersOpened.Inc()
 	return reader, nil
 }
 
@@ -119,7 +134,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
-			msgID := cm.Message.ID().(*messageID)
+			msgID := cm.Message.ID().(messageID)
 			r.pc.lastDequeuedMsg = msgID
 			r.pc.AckID(msgID)
 			return cm.Message, nil
@@ -130,7 +145,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 }
 
 func (r *reader) HasNext() bool {
-	if r.lastMessageInBroker != nil && r.hasMoreMessages() {
+	if !r.lastMessageInBroker.IsZero() && r.hasMoreMessages() {
 		return true
 	}
 
@@ -149,7 +164,7 @@ func (r *reader) HasNext() bool {
 }
 
 func (r *reader) hasMoreMessages() bool {
-	if r.pc.lastDequeuedMsg != nil {
+	if !r.pc.lastDequeuedMsg.IsZero() {
 		return r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg)
 	}
 
@@ -163,4 +178,5 @@ func (r *reader) hasMoreMessages() bool {
 
 func (r *reader) Close() {
 	r.pc.Close()
+	readersClosed.Inc()
 }

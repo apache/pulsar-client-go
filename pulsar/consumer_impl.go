@@ -25,6 +25,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -32,13 +35,30 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
+var (
+	consumersOpened = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_consumers_opened",
+		Help: "Counter of consumers created by the client",
+	})
+
+	consumersClosed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_consumers_closed",
+		Help: "Counter of consumers closed by the client",
+	})
+
+	consumersPartitions = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_consumers_partitions_active",
+		Help: "Counter of individual partitions the consumers are currently active",
+	})
+)
+
 var ErrConsumerClosed = errors.New("consumer closed")
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
-	AckID(id *messageID)
-	NackID(id *messageID)
+	AckID(id messageID)
+	NackID(id messageID)
 }
 
 type consumer struct {
@@ -73,6 +93,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 	if options.ReceiverQueueSize <= 0 {
 		options.ReceiverQueueSize = 1000
+	}
+
+	if options.Name == "" {
+		options.Name = generateRandomName()
 	}
 
 	// did the user pass in a message channel?
@@ -137,12 +161,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
 		log:                       logger.Logger.WithField("topic", topic),
-	}
-
-	if options.Name != "" {
-		consumer.consumerName = options.Name
-	} else {
-		consumer.consumerName = generateRandomName()
+		consumerName:              options.Name,
 	}
 
 	err := consumer.internalTopicSubscribeToPartitions()
@@ -165,6 +184,11 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	}()
 
 	return consumer, nil
+}
+
+// Name returns the name of consumer.
+func (c *consumer) Name() string {
+	return c.consumerName
 }
 
 func (c *consumer) internalTopicSubscribeToPartitions() error {
@@ -236,7 +260,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				nackRedeliveryDelay:        nackRedeliveryDelay,
 				metadata:                   metadata,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             nil,
+				startMessageID:             messageID{},
 				subscriptionMode:           durable,
 				readCompacted:              c.options.ReadCompacted,
 			}
@@ -273,12 +297,17 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		return err
 	}
 
+	consumersPartitions.Add(float64(partitionsToAdd))
 	return nil
 }
 
 func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlqRouter *dlqRouter) (Consumer, error) {
-	return newInternalConsumer(client, options, topic, messageCh, dlqRouter, false)
+	c, err := newInternalConsumer(client, options, topic, messageCh, dlqRouter, false)
+	if err == nil {
+		consumersOpened.Inc()
+	}
+	return c, err
 }
 
 func (c *consumer) Subscription() string {
@@ -378,6 +407,8 @@ func (c *consumer) Close() {
 		c.ticker.Stop()
 		c.client.handlers.Del(c)
 		c.dlq.close()
+		consumersClosed.Inc()
+		consumersPartitions.Sub(float64(len(c.consumers)))
 	})
 }
 
@@ -453,11 +484,11 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 	return pb.CommandSubscribe_Latest
 }
 
-func (c *consumer) messageID(msgID MessageID) (*messageID, bool) {
-	mid, ok := msgID.(*messageID)
+func (c *consumer) messageID(msgID MessageID) (messageID, bool) {
+	mid, ok := msgID.(messageID)
 	if !ok {
-		c.log.Warnf("invalid message id type")
-		return nil, false
+		c.log.Warnf("invalid message id type %T", msgID)
+		return messageID{}, false
 	}
 
 	partition := int(mid.partitionIdx)
@@ -465,7 +496,7 @@ func (c *consumer) messageID(msgID MessageID) (*messageID, bool) {
 	if partition < 0 || partition >= len(c.consumers) {
 		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
-		return nil, false
+		return messageID{}, false
 	}
 
 	return mid, true

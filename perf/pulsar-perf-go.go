@@ -24,17 +24,20 @@ import (
 	_ "net/http/pprof"
 	"os"
 	"os/signal"
+	"strconv"
 
 	"github.com/spf13/cobra"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 // FlagProfile is a global flag
 var FlagProfile bool
 var flagDebug bool
+var PrometheusPort int
 
 type ClientArgs struct {
 	ServiceURL string
@@ -71,12 +74,21 @@ func main() {
 
 	flags := rootCmd.PersistentFlags()
 	flags.BoolVar(&FlagProfile, "profile", false, "enable profiling")
+	flags.IntVar(&PrometheusPort, "metrics", 8000, "Port to use to export metrics for Prometheus. Use -1 to disable.")
 	flags.BoolVar(&flagDebug, "debug", false, "enable debug output")
 	flags.StringVarP(&clientArgs.ServiceURL, "service-url", "u",
 		"pulsar://localhost:6650", "The Pulsar service URL")
 
 	rootCmd.AddCommand(newProducerCommand())
 	rootCmd.AddCommand(newConsumerCommand())
+
+	if PrometheusPort > 0 {
+		go func() {
+			log.Info("Starting Prometheus metrics at http://localhost:", PrometheusPort, "/metrics")
+			http.Handle("/metrics", promhttp.Handler())
+			http.ListenAndServe(":"+strconv.Itoa(PrometheusPort), nil)
+		}()
+	}
 
 	err := rootCmd.Execute()
 	if err != nil {

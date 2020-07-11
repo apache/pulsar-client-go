@@ -60,6 +60,8 @@ type regexConsumer struct {
 	ticker *time.Ticker
 
 	log *log.Entry
+
+	consumerName string
 }
 
 func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
@@ -79,7 +81,8 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 		closeCh: make(chan struct{}),
 
-		log: logger.Logger.WithField("topic", tn.Name),
+		log:          logger.Logger.WithField("topic", tn.Name),
+		consumerName: opts.Name,
 	}
 
 	topics, err := rc.topics()
@@ -112,6 +115,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 	go rc.monitor()
 
+	consumersOpened.Inc()
 	return rc, nil
 }
 
@@ -162,9 +166,9 @@ func (c *regexConsumer) Ack(msg Message) {
 
 // Ack the consumption of a single message, identified by its MessageID
 func (c *regexConsumer) AckID(msgID MessageID) {
-	mid, ok := msgID.(*messageID)
+	mid, ok := msgID.(messageID)
 	if !ok {
-		c.log.Warnf("invalid message id type")
+		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}
 
@@ -181,9 +185,9 @@ func (c *regexConsumer) Nack(msg Message) {
 }
 
 func (c *regexConsumer) NackID(msgID MessageID) {
-	mid, ok := msgID.(*messageID)
+	mid, ok := msgID.(messageID)
 	if !ok {
-		c.log.Warnf("invalid message id type")
+		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}
 
@@ -212,6 +216,7 @@ func (c *regexConsumer) Close() {
 		}
 		wg.Wait()
 		c.dlq.close()
+		consumersClosed.Inc()
 	})
 }
 
@@ -221,6 +226,11 @@ func (c *regexConsumer) Seek(msgID MessageID) error {
 
 func (c *regexConsumer) SeekByTime(time time.Time) error {
 	return errors.New("seek command not allowed for regex consumer")
+}
+
+// Name returns the name of consumer.
+func (c *regexConsumer) Name() string {
+	return c.consumerName
 }
 
 func (c *regexConsumer) closed() bool {

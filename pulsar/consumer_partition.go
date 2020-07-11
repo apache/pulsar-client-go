@@ -23,6 +23,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/gogo/protobuf/proto"
 
 	log "github.com/sirupsen/logrus"
@@ -31,6 +34,49 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
+
+var (
+	messagesReceived = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_messages_received",
+		Help: "Counter of messages received by the client",
+	})
+
+	bytesReceived = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_bytes_received",
+		Help: "Counter of bytes received by the client",
+	})
+
+	prefetchedMessages = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_consumer_prefetched_messages",
+		Help: "Number of messages currently sitting in the consumer pre-fetch queue",
+	})
+
+	prefetchedBytes = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_consumer_prefetched_bytes",
+		Help: "Total number of bytes currently sitting in the consumer pre-fetch queue",
+	})
+
+	acksCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_consumer_acks",
+		Help: "Counter of messages acked by client",
+	})
+
+	nacksCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_consumer_nacks",
+		Help: "Counter of messages nacked by client",
+	})
+
+	dlqCounter = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_consumer_dlq_messages",
+		Help: "Counter of messages sent to Dead letter queue",
+	})
+
+	processingTime = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pulsar_client_consumer_processing_time_seconds",
+		Help:    "Time it takes for application to process messages",
+		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+	})
 )
 
 type consumerState int
@@ -64,7 +110,7 @@ type partitionConsumerOpts struct {
 	nackRedeliveryDelay        time.Duration
 	metadata                   map[string]string
 	replicateSubscriptionState bool
-	startMessageID             *messageID
+	startMessageID             messageID
 	startMessageIDInclusive    bool
 	subscriptionMode           subscriptionMode
 	readCompacted              bool
@@ -95,13 +141,13 @@ type partitionConsumer struct {
 	// the size of the queue channel for buffering messages
 	queueSize       int32
 	queueCh         chan []*message
-	startMessageID  *messageID
-	lastDequeuedMsg *messageID
+	startMessageID  messageID
+	lastDequeuedMsg messageID
 
 	eventsCh     chan interface{}
 	connectedCh  chan struct{}
 	closeCh      chan struct{}
-	clearQueueCh chan func(id *messageID)
+	clearQueueCh chan func(id messageID)
 
 	nackTracker *negativeAcksTracker
 	dlq         *dlqRouter
@@ -129,7 +175,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
 		closeCh:              make(chan struct{}),
-		clearQueueCh:         make(chan func(id *messageID)),
+		clearQueueCh:         make(chan func(id messageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
 		log:                  logger.Logger.WithField("topic", options.topic),
@@ -193,7 +239,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	pc.state = consumerClosed
 }
 
-func (pc *partitionConsumer) getLastMessageID() (*messageID, error) {
+func (pc *partitionConsumer) getLastMessageID() (messageID, error) {
 	req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
 	pc.eventsCh <- req
 
@@ -221,8 +267,10 @@ func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) 
 	}
 }
 
-func (pc *partitionConsumer) AckID(msgID *messageID) {
-	if msgID != nil && msgID.ack() {
+func (pc *partitionConsumer) AckID(msgID messageID) {
+	if !msgID.IsZero() && msgID.ack() {
+		acksCounter.Inc()
+		processingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
 		req := &ackRequest{
 			msgID: msgID,
 		}
@@ -230,8 +278,9 @@ func (pc *partitionConsumer) AckID(msgID *messageID) {
 	}
 }
 
-func (pc *partitionConsumer) NackID(msgID *messageID) {
+func (pc *partitionConsumer) NackID(msgID messageID) {
 	pc.nackTracker.Add(msgID)
+	nacksCounter.Inc()
 }
 
 func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
@@ -269,7 +318,7 @@ func (pc *partitionConsumer) Close() {
 	<-req.doneCh
 }
 
-func (pc *partitionConsumer) Seek(msgID *messageID) error {
+func (pc *partitionConsumer) Seek(msgID messageID) error {
 	req := &seekRequest{
 		doneCh: make(chan struct{}),
 		msgID:  msgID,
@@ -391,12 +440,19 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	if numMsgs > 1 {
 		ackTracker = newAckTracker(numMsgs)
 	}
+
+	messagesReceived.Add(float64(numMsgs))
+	prefetchedMessages.Add(float64(numMsgs))
+
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
 		if err != nil {
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
 		}
+
+		bytesReceived.Add(float64(len(payload)))
+		prefetchedBytes.Add(float64(len(payload)))
 
 		msgID := newTrackingMessageID(
 			int64(pbMsgID.GetLedgerId()),
@@ -451,8 +507,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	return nil
 }
 
-func (pc *partitionConsumer) messageShouldBeDiscarded(msgID *messageID) bool {
-	if pc.startMessageID == nil {
+func (pc *partitionConsumer) messageShouldBeDiscarded(msgID messageID) bool {
+	if pc.startMessageID.IsZero() {
 		return false
 	}
 
@@ -508,11 +564,15 @@ func (pc *partitionConsumer) dispatcher() {
 
 			if pc.dlq.shouldSendToDlq(&nextMessage) {
 				// pass the message to the DLQ router
+				dlqCounter.Inc()
 				messageCh = pc.dlq.Chan()
 			} else {
 				// pass the message to application channel
 				messageCh = pc.messageCh
 			}
+
+			prefetchedMessages.Dec()
+			prefetchedBytes.Sub(float64(len(messages[0].payLoad)))
 		} else {
 			// we are ready for more messages
 			queueCh = pc.queueCh
@@ -572,7 +632,7 @@ func (pc *partitionConsumer) dispatcher() {
 		case clearQueueCb := <-pc.clearQueueCh:
 			// drain the message queue on any new connection by sending a
 			// special nil message to the channel so we know when to stop dropping messages
-			var nextMessageInQueue *messageID
+			var nextMessageInQueue messageID
 			go func() {
 				pc.queueCh <- nil
 			}()
@@ -580,8 +640,8 @@ func (pc *partitionConsumer) dispatcher() {
 				// the queue has been drained
 				if m == nil {
 					break
-				} else if nextMessageInQueue == nil {
-					nextMessageInQueue = m[0].msgID.(*messageID)
+				} else if nextMessageInQueue.IsZero() {
+					nextMessageInQueue = m[0].msgID.(messageID)
 				}
 			}
 
@@ -591,7 +651,7 @@ func (pc *partitionConsumer) dispatcher() {
 }
 
 type ackRequest struct {
-	msgID *messageID
+	msgID messageID
 }
 
 type unsubscribeRequest struct {
@@ -609,13 +669,13 @@ type redeliveryRequest struct {
 
 type getLastMsgIDRequest struct {
 	doneCh chan struct{}
-	msgID  *messageID
+	msgID  messageID
 	err    error
 }
 
 type seekRequest struct {
 	doneCh chan struct{}
-	msgID  *messageID
+	msgID  messageID
 	err    error
 }
 
@@ -795,15 +855,15 @@ func (pc *partitionConsumer) grabConn() error {
 	}
 }
 
-func (pc *partitionConsumer) clearQueueAndGetNextMessage() *messageID {
+func (pc *partitionConsumer) clearQueueAndGetNextMessage() messageID {
 	if pc.state != consumerReady {
-		return nil
+		return messageID{}
 	}
 	wg := &sync.WaitGroup{}
 	wg.Add(1)
-	var msgID *messageID
+	var msgID messageID
 
-	pc.clearQueueCh <- func(id *messageID) {
+	pc.clearQueueCh <- func(id messageID) {
 		msgID = id
 		wg.Done()
 	}
@@ -816,12 +876,12 @@ func (pc *partitionConsumer) clearQueueAndGetNextMessage() *messageID {
  * Clear the internal receiver queue and returns the message id of what was the 1st message in the queue that was
  * not seen by the application
  */
-func (pc *partitionConsumer) clearReceiverQueue() *messageID {
+func (pc *partitionConsumer) clearReceiverQueue() messageID {
 	nextMessageInQueue := pc.clearQueueAndGetNextMessage()
 
-	if nextMessageInQueue != nil {
+	if !nextMessageInQueue.IsZero() {
 		return getPreviousMessage(nextMessageInQueue)
-	} else if pc.lastDequeuedMsg != nil {
+	} else if !pc.lastDequeuedMsg.IsZero() {
 		// If the queue was empty we need to restart from the message just after the last one that has been dequeued
 		// in the past
 		return pc.lastDequeuedMsg
@@ -831,9 +891,9 @@ func (pc *partitionConsumer) clearReceiverQueue() *messageID {
 	}
 }
 
-func getPreviousMessage(mid *messageID) *messageID {
+func getPreviousMessage(mid messageID) messageID {
 	if mid.batchIdx >= 0 {
-		return &messageID{
+		return messageID{
 			ledgerID:     mid.ledgerID,
 			entryID:      mid.entryID,
 			batchIdx:     mid.batchIdx - 1,
@@ -842,7 +902,7 @@ func getPreviousMessage(mid *messageID) *messageID {
 	}
 
 	// Get on previous message in previous entry
-	return &messageID{
+	return messageID{
 		ledgerID:     mid.ledgerID,
 		entryID:      mid.entryID - 1,
 		batchIdx:     mid.batchIdx,
@@ -902,8 +962,8 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 		})
 }
 
-func convertToMessageIDData(msgID *messageID) *pb.MessageIdData {
-	if msgID == nil {
+func convertToMessageIDData(msgID messageID) *pb.MessageIdData {
+	if msgID.IsZero() {
 		return nil
 	}
 
@@ -913,16 +973,15 @@ func convertToMessageIDData(msgID *messageID) *pb.MessageIdData {
 	}
 }
 
-func convertToMessageID(id *pb.MessageIdData) *messageID {
+func convertToMessageID(id *pb.MessageIdData) messageID {
 	if id == nil {
-		return nil
+		return messageID{}
 	}
 
-	msgID := &messageID{
+	msgID := messageID{
 		ledgerID: int64(*id.LedgerId),
 		entryID:  int64(*id.EntryId),
 	}
-
 	if id.BatchIndex != nil {
 		msgID.batchIdx = *id.BatchIndex
 	}

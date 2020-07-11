@@ -51,7 +51,7 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration) *negativ
 	return t
 }
 
-func (t *negativeAcksTracker) Add(msgID *messageID) {
+func (t *negativeAcksTracker) Add(msgID messageID) {
 	// Always clear up the batch index since we want to track the nack
 	// for the entire batch
 	batchMsgID := messageID{
