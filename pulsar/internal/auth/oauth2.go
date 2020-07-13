@@ -53,46 +53,37 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 
 	// initialize a store of authorization grants
 	st := store.NewMemoryStore()
+	switch params[ConfigParamType] {
+	case ConfigParamTypeClientCredentials:
+		keyFile := params[ConfigParamKeyFile]
+		flow, err := oauth2.NewDefaultClientCredentialsFlow(issuer, keyFile)
+		if err != nil {
+			return nil, err
+		}
+		grant, err := flow.Authorize()
+		if err != nil {
+			return nil, err
+		}
+		err = st.SaveGrant(issuer.Audience, *grant)
+		if err != nil {
+			return nil, err
+		}
+	default:
+		return nil, fmt.Errorf("unsupported authentication type: %s", params[ConfigParamType])
+	}
 
-	oauth2Type := params[ConfigParamType]
-	keyFile := params[ConfigParamKeyFile]
-	return NewAuthenticationOAuth2(issuer, st, oauth2Type, keyFile)
+	return NewAuthenticationOAuth2(issuer, st), nil
 }
 
 func NewAuthenticationOAuth2(
 	issuer oauth2.Issuer,
-	store store.Store,
-	oauth2Type, keyFilePath string) (Provider, error) {
+	store store.Store) Provider {
 
-	p := &oauth2AuthProvider{
+	return &oauth2AuthProvider{
 		clock:  clock.RealClock{},
 		issuer: issuer,
 		store:  store,
 	}
-	err := p.initFlow(oauth2Type, keyFilePath)
-	return p, err
-}
-
-func (p *oauth2AuthProvider) initFlow(oauth2Type, keyFile string) error {
-	switch oauth2Type {
-	case ConfigParamTypeClientCredentials:
-		keyFile := keyFile
-		flow, err := oauth2.NewDefaultClientCredentialsFlow(p.issuer, keyFile)
-		if err != nil {
-			return err
-		}
-		grant, err := flow.Authorize()
-		if err != nil {
-			return err
-		}
-		err = p.store.SaveGrant(p.issuer.Audience, *grant)
-		if err != nil {
-			return err
-		}
-	default:
-		return fmt.Errorf("unsupported authentication type: %s", oauth2Type)
-	}
-	return nil
 }
 
 func (p *oauth2AuthProvider) Init() error {
