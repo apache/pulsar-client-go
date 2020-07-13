@@ -100,11 +100,11 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
-		log:       log.WithField("topic", options.Topic),
+		log:       client.logger.WithField("topic", options.Topic),
 	}
 
 	// Provide dummy dlq router with not dlq policy
-	dlq, err := newDlqRouter(client, nil)
+	dlq, err := newDlqRouter(client, nil, client.logger)
 	if err != nil {
 		return nil, err
 	}

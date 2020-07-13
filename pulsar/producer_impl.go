@@ -87,7 +87,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		options: options,
 		topic:   options.Topic,
 		client:  client,
-		log:     log.WithField("topic", options.Topic),
+		log:     client.logger.WithField("topic", options.Topic),
 	}
 
 	var batchingMaxPublishDelay time.Duration

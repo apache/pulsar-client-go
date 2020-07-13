@@ -104,7 +104,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		messageCh = make(chan ConsumerMessage, 10)
 	}
 
-	dlq, err := newDlqRouter(client, options.DLQ)
+	dlq, err := newDlqRouter(client, options.DLQ, client.logger)
 	if err != nil {
 		return nil, err
 	}
@@ -159,7 +159,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		closeCh:                   make(chan struct{}),
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
-		log:                       log.WithField("topic", topic),
+		log:                       client.logger.WithField("topic", topic),
 		consumerName:              options.Name,
 	}
 

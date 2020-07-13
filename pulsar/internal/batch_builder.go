@@ -63,12 +63,14 @@ type BatchBuilder struct {
 
 	compressionProvider compression.Provider
 	buffersPool         BuffersPool
+
+	logger *log.Logger
 }
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
 func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool) (*BatchBuilder, error) {
+	bufferPool BuffersPool, logger *log.Logger) (*BatchBuilder, error) {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
 	}
@@ -90,8 +92,9 @@ func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, p
 			ProducerName: &producerName,
 		},
 		callbacks:           []interface{}{},
-		compressionProvider: getCompressionProvider(compressionType, level),
+		compressionProvider: getCompressionProvider(compressionType, level, logger),
 		buffersPool:         bufferPool,
+		logger:              logger,
 	}
 
 	if compressionType != pb.CompressionType_NONE {
@@ -141,7 +144,7 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint6
 
 		bb.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
 	}
-	addSingleMessageToBatch(bb.buffer, metadata, payload)
+	addSingleMessageToBatch(bb.buffer, metadata, payload, bb.logger)
 
 	bb.numMessages++
 	bb.callbacks = append(bb.callbacks, callback)
@@ -161,7 +164,7 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 		// No-Op for empty batch
 		return nil, 0, nil
 	}
-	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
+	bb.logger.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
 	bb.cmdSend.Send.NumMessages = proto.Int32(int32(bb.numMessages))
@@ -173,7 +176,7 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 	if buffer == nil {
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
-	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider)
+	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider, bb.logger)
 
 	callbacks = bb.callbacks
 	sequenceID = bb.cmdSend.Send.GetSequenceId()
@@ -186,7 +189,7 @@ func (bb *BatchBuilder) Close() error {
 }
 
 func getCompressionProvider(compressionType pb.CompressionType,
-	level compression.Level) compression.Provider {
+	level compression.Level, logger *log.Logger) compression.Provider {
 	switch compressionType {
 	case pb.CompressionType_NONE:
 		return compression.NewNoopProvider()
@@ -197,7 +200,7 @@ func getCompressionProvider(compressionType pb.CompressionType,
 	case pb.CompressionType_ZSTD:
 		return compression.NewZStdProvider(level)
 	default:
-		log.Panic("unsupported compression type")
+		logger.Panic("unsupported compression type")
 		return nil
 	}
 }

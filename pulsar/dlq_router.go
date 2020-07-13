@@ -35,7 +35,7 @@ type dlqRouter struct {
 	log       *log.Entry
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy) (*dlqRouter, error) {
+func newDlqRouter(client Client, policy *DLQPolicy, logger *log.Logger) (*dlqRouter, error) {
 	r := &dlqRouter{
 		client: client,
 		policy: policy,
@@ -52,7 +52,7 @@ func newDlqRouter(client Client, policy *DLQPolicy) (*dlqRouter, error) {
 
 		r.messageCh = make(chan ConsumerMessage)
 		r.closeCh = make(chan interface{}, 1)
-		r.log = log.WithField("dlq-topic", policy.Topic)
+		r.log = logger.WithField("dlq-topic", policy.Topic)
 		go r.run()
 	}
 	return r, nil

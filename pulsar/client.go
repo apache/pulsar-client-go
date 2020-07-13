@@ -21,6 +21,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+	"github.com/sirupsen/logrus"
 )
 
 func NewClient(options ClientOptions) (Client, error) {
@@ -91,6 +92,9 @@ type ClientOptions struct {
 
 	// Max number of connections to a single broker that will kept in the pool. (Default: 1 connection)
 	MaxConnectionsPerBroker int
+
+	// Configure the logger used by the client. (Default: logrus.StandardLogger())
+	Logger *logrus.Logger
 }
 
 type Client interface {

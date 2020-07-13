@@ -75,12 +75,13 @@ type rpcClient struct {
 	log *log.Entry
 }
 
-func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.Duration) RPCClient {
+func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
+	requestTimeout time.Duration, logger *log.Logger) RPCClient {
 	return &rpcClient{
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
-		log:            log.WithField("serviceURL", serviceURL),
+		log:            logger.WithField("serviceURL", serviceURL),
 	}
 }
 

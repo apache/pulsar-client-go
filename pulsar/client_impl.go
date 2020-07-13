@@ -42,6 +42,8 @@ type client struct {
 	rpcClient     internal.RPCClient
 	handlers      internal.ClientHandlers
 	lookupService internal.LookupService
+
+	logger *log.Logger
 }
 
 func newClient(options ClientOptions) (Client, error) {
@@ -99,12 +101,19 @@ func newClient(options ClientOptions) (Client, error) {
 	if maxConnectionsPerHost <= 0 {
 		maxConnectionsPerHost = 1
 	}
+	var logger *log.Logger
+	if options.Logger != nil {
+		logger = options.Logger
+	} else {
+		logger = log.StandardLogger()
+	}
 
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost),
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost, logger),
+		logger:  logger,
 	}
-	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout)
-	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil)
+	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger)
+	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil, logger)
 	c.handlers = internal.NewClientHandlers()
 	return c, nil
 }

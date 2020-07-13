@@ -127,7 +127,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	p := &partitionProducer{
 		state:            producerInit,
-		log:              log.WithField("topic", topic),
+		log:              client.logger.WithField("topic", topic),
 		client:           client,
 		topic:            topic,
 		options:          options,
@@ -194,7 +194,8 @@ func (p *partitionProducer) grabCnx() error {
 		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
-			p)
+			p,
+			p.log.Logger)
 		if err != nil {
 			return err
 		}

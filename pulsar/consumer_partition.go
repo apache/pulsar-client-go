@@ -177,7 +177,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		clearQueueCh:         make(chan func(id messageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
-		log:                  log.WithField("topic", options.topic),
+		log:                  client.logger.WithField("topic", options.topic),
 	}
 	pc.log = pc.log.WithField("name", pc.name).WithField("subscription", options.subscription)
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay)

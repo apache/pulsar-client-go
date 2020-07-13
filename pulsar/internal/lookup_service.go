@@ -55,14 +55,17 @@ type lookupService struct {
 	rpcClient  RPCClient
 	serviceURL *url.URL
 	tlsEnabled bool
+	log        *log.Entry
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
-func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, tlsEnabled bool) LookupService {
+func NewLookupService(rpcClient RPCClient, serviceURL *url.URL,
+	tlsEnabled bool, logger *log.Logger) LookupService {
 	return &lookupService{
 		rpcClient:  rpcClient,
 		serviceURL: serviceURL,
 		tlsEnabled: tlsEnabled,
+		log:        logger.WithField("serviceURL", serviceURL),
 	}
 }
 

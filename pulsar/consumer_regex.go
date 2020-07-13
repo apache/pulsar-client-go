@@ -80,7 +80,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 		closeCh: make(chan struct{}),
 
-		log:          log.WithField("topic", tn.Name),
+		log:          c.logger.WithField("topic", tn.Name),
 		consumerName: opts.Name,
 	}
 

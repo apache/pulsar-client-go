@@ -202,14 +202,14 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 	return cmd
 }
 
-func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte) {
+func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte, logger *log.Logger) {
 	metadataSize := uint32(smm.Size())
 	wb.WriteUint32(metadataSize)
 
 	wb.ResizeIfNeeded(metadataSize)
 	_, err := smm.MarshalToSizedBuffer(wb.WritableSlice()[:metadataSize])
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf serialization error")
+		logger.WithError(err).Fatal("Protobuf serialization error")
 	}
 
 	wb.WrittenBytes(metadataSize)
@@ -220,7 +220,8 @@ func serializeBatch(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,
 	uncompressedPayload Buffer,
-	compressionProvider compression.Provider) {
+	compressionProvider compression.Provider,
+	logger *log.Logger) {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
 	cmdSize := uint32(proto.Size(cmdSend))
@@ -235,7 +236,7 @@ func serializeBatch(wb Buffer,
 	wb.ResizeIfNeeded(cmdSize)
 	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf error when serializing cmdSend")
+		logger.WithError(err).Fatal("Protobuf error when serializing cmdSend")
 	}
 	wb.WrittenBytes(cmdSize)
 
@@ -250,7 +251,7 @@ func serializeBatch(wb Buffer,
 	wb.ResizeIfNeeded(msgMetadataSize)
 	_, err = msgMetadata.MarshalToSizedBuffer(wb.WritableSlice()[:msgMetadataSize])
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf error when serializing msgMetadata")
+		logger.WithError(err).Fatal("Protobuf error when serializing msgMetadata")
 	}
 	wb.WrittenBytes(msgMetadataSize)
 

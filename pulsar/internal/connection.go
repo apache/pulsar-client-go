@@ -187,15 +187,14 @@ type connection struct {
 	maxMessageSize int32
 }
 
-func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
-	connectionTimeout time.Duration, auth auth.Provider) *connection {
+func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions, connectionTimeout time.Duration, auth auth.Provider, logger *log.Logger) *connection {
 	cnx := &connection{
 		state:                connectionInit,
 		connectionTimeout:    connectionTimeout,
 		logicalAddr:          logicalAddr,
 		physicalAddr:         physicalAddr,
 		writeBuffer:          NewBuffer(4096),
-		log:                  log.WithField("remote_addr", physicalAddr),
+		log:                  logger.WithField("remote_addr", physicalAddr),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
