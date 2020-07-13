@@ -29,6 +29,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/gogo/protobuf/proto"
 	log "github.com/sirupsen/logrus"
 
@@ -42,6 +45,28 @@ const (
 	ClientVersionString = "Pulsar Go " + PulsarVersion
 
 	PulsarProtocolVersion = int32(pb.ProtocolVersion_v13)
+)
+
+var (
+	connectionsOpened = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_connections_opened",
+		Help: "Counter of connections created by the client",
+	})
+
+	connectionsClosed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_connections_closed",
+		Help: "Counter of connections closed by the client",
+	})
+
+	connectionsEstablishmentErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_connections_establishment_errors",
+		Help: "Counter of errors in connections establishment",
+	})
+
+	connectionsHandshakeErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_connections_handshake_errors",
+		Help: "Counter of errors in connections handshake (eg: authz)",
+	})
 )
 
 type TLSOptions struct {
@@ -201,11 +226,14 @@ func (c *connection) start() {
 	go func() {
 		if c.connect() {
 			if c.doHandshake() {
+				connectionsOpened.Inc()
 				c.run()
 			} else {
+				connectionsHandshakeErrors.Inc()
 				c.changeState(connectionClosed)
 			}
 		} else {
+			connectionsEstablishmentErrors.Inc()
 			c.changeState(connectionClosed)
 		}
 	}()
@@ -695,6 +723,8 @@ func (c *connection) Close() {
 	for _, handler := range consumerHandlers {
 		handler.ConnectionClosed()
 	}
+
+	connectionsClosed.Inc()
 }
 
 func (c *connection) changeState(state connectionState) {

@@ -200,4 +200,7 @@ type Consumer interface {
 	//            the message publish time where to reposition the subscription
 	//
 	SeekByTime(time time.Time) error
+
+	// Name returns the name of consumer.
+	Name() string
 }

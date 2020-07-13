@@ -32,7 +32,8 @@ import (
 type multiTopicConsumer struct {
 	options ConsumerOptions
 
-	messageCh chan ConsumerMessage
+	consumerName string
+	messageCh    chan ConsumerMessage
 
 	consumers map[string]Consumer
 
@@ -46,12 +47,13 @@ type multiTopicConsumer struct {
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter) (Consumer, error) {
 	mtc := &multiTopicConsumer{
-		options:   options,
-		messageCh: messageCh,
-		consumers: make(map[string]Consumer, len(topics)),
-		closeCh:   make(chan struct{}),
-		dlq:       dlq,
-		log:       &log.Entry{},
+		options:      options,
+		messageCh:    messageCh,
+		consumers:    make(map[string]Consumer, len(topics)),
+		closeCh:      make(chan struct{}),
+		dlq:          dlq,
+		log:          &log.Entry{},
+		consumerName: options.Name,
 	}
 
 	var errs error
@@ -70,6 +72,7 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 		return nil, errs
 	}
 
+	consumersOpened.Inc()
 	return mtc, nil
 }
 
@@ -117,9 +120,9 @@ func (c *multiTopicConsumer) Ack(msg Message) {
 
 // Ack the consumption of a single message, identified by its MessageID
 func (c *multiTopicConsumer) AckID(msgID MessageID) {
-	mid, ok := msgID.(*messageID)
+	mid, ok := msgID.(messageID)
 	if !ok {
-		c.log.Warnf("invalid message id type")
+		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}
 
@@ -136,9 +139,9 @@ func (c *multiTopicConsumer) Nack(msg Message) {
 }
 
 func (c *multiTopicConsumer) NackID(msgID MessageID) {
-	mid, ok := msgID.(*messageID)
+	mid, ok := msgID.(messageID)
 	if !ok {
-		c.log.Warnf("invalid message id type")
+		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}
 
@@ -163,6 +166,7 @@ func (c *multiTopicConsumer) Close() {
 		wg.Wait()
 		close(c.closeCh)
 		c.dlq.close()
+		consumersClosed.Inc()
 	})
 }
 
@@ -172,4 +176,9 @@ func (c *multiTopicConsumer) Seek(msgID MessageID) error {
 
 func (c *multiTopicConsumer) SeekByTime(time time.Time) error {
 	return errors.New("seek command not allowed for multi topic consumer")
+}
+
+// Name returns the name of consumer.
+func (c *multiTopicConsumer) Name() string {
+	return c.consumerName
 }

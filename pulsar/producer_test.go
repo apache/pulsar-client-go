@@ -322,7 +322,7 @@ func TestFlushInProducer(t *testing.T) {
 		assert.Nil(t, err)
 		msgCount++
 
-		msgID := msg.ID().(*messageID)
+		msgID := msg.ID().(messageID)
 		// Since messages are batched, they will be sharing the same ledgerId/entryId
 		if ledgerID == -1 {
 			ledgerID = msgID.ledgerID

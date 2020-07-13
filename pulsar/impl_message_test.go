@@ -31,10 +31,10 @@ func TestMessageId(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, id2)
 
-	assert.Equal(t, int64(1), id2.(*messageID).ledgerID)
-	assert.Equal(t, int64(2), id2.(*messageID).entryID)
-	assert.Equal(t, 3, id2.(*messageID).batchIdx)
-	assert.Equal(t, 4, id2.(*messageID).partitionIdx)
+	assert.Equal(t, int64(1), id2.(messageID).ledgerID)
+	assert.Equal(t, int64(2), id2.(messageID).entryID)
+	assert.Equal(t, int32(3), id2.(messageID).batchIdx)
+	assert.Equal(t, int32(4), id2.(messageID).partitionIdx)
 
 	id, err = DeserializeMessageID(nil)
 	assert.Error(t, err)
@@ -82,7 +82,7 @@ func TestAckingMessageIDBatchOne(t *testing.T) {
 
 func TestAckingMessageIDBatchTwo(t *testing.T) {
 	tracker := newAckTracker(2)
-	ids := []*messageID{
+	ids := []messageID{
 		newTrackingMessageID(1, 1, 0, 0, tracker),
 		newTrackingMessageID(1, 1, 1, 0, tracker),
 	}
@@ -93,7 +93,7 @@ func TestAckingMessageIDBatchTwo(t *testing.T) {
 
 	// try reverse order
 	tracker = newAckTracker(2)
-	ids = []*messageID{
+	ids = []messageID{
 		newTrackingMessageID(1, 1, 0, 0, tracker),
 		newTrackingMessageID(1, 1, 1, 0, tracker),
 	}

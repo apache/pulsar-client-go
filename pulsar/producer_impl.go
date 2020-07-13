@@ -24,9 +24,29 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+)
+
+var (
+	producersOpened = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_producers_opened",
+		Help: "Counter of producers created by the client",
+	})
+
+	producersClosed = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_producers_closed",
+		Help: "Counter of producers closed by the client",
+	})
+
+	producersPartitions = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_producers_partitions_active",
+		Help: "Counter of individual partitions the producers are currently active",
+	})
 )
 
 type producer struct {
@@ -107,6 +127,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		}
 	}()
 
+	producersOpened.Inc()
 	return p, nil
 }
 
@@ -186,6 +207,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		return err
 	}
 
+	producersPartitions.Add(float64(partitionsToAdd))
 	atomic.StorePointer(&p.producersPtr, unsafe.Pointer(&p.producers))
 	atomic.StoreUint32(&p.numPartitions, uint32(len(p.producers)))
 	return nil
@@ -266,4 +288,6 @@ func (p *producer) Close() {
 		pp.Close()
 	}
 	p.client.handlers.Del(p)
+	producersPartitions.Sub(float64(len(p.producers)))
+	producersClosed.Inc()
 }
