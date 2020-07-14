@@ -315,8 +315,8 @@ func (c *connection) doHandshake() bool {
 	c.cnx.SetDeadline(time.Time{})
 
 	if cmd.Connected == nil {
-		c.log.Warnf("Failed to perform initial handshake - Expecting 'Connected' cmd, got '%s'",
-			cmd.Type)
+		c.log.Warnf("Failed to establish connection with broker: '%s'",
+			cmd.Error.GetMessage())
 		return false
 	}
 	if cmd.Connected.MaxMessageSize != nil {
