@@ -29,7 +29,7 @@ import (
 // DeviceCodeProvider holds the information needed to easily get a
 // device code locally.
 type LocalDeviceCodeProvider struct {
-	Issuer
+	options                LocalDeviceCodeProviderOptions
 	oidcWellKnownEndpoints OIDCWellKnownEndpoints
 	transport              HTTPAuthTransport
 }
@@ -50,13 +50,17 @@ type DeviceCodeResult struct {
 	Interval                int    `json:"interval"`
 }
 
+type LocalDeviceCodeProviderOptions struct {
+	ClientID string
+}
+
 // NewLocalDeviceCodeProvider allows for the easy setup of LocalDeviceCodeProvider
 func NewLocalDeviceCodeProvider(
-	issuer Issuer,
+	options LocalDeviceCodeProviderOptions,
 	oidcWellKnownEndpoints OIDCWellKnownEndpoints,
 	authTransport HTTPAuthTransport) *LocalDeviceCodeProvider {
 	return &LocalDeviceCodeProvider{
-		issuer,
+		options,
 		oidcWellKnownEndpoints,
 		authTransport,
 	}
@@ -65,11 +69,11 @@ func NewLocalDeviceCodeProvider(
 // GetCode obtains a new device code. Additional scopes
 // beyond openid and email can be sent by passing in arguments for
 // <additionalScopes>.
-func (cp *LocalDeviceCodeProvider) GetCode(additionalScopes ...string) (*DeviceCodeResult, error) {
+func (cp *LocalDeviceCodeProvider) GetCode(audience string, additionalScopes ...string) (*DeviceCodeResult, error) {
 	request, err := cp.newDeviceCodeRequest(&DeviceCodeRequest{
-		ClientID: cp.ClientID,
+		ClientID: cp.options.ClientID,
 		Scopes:   append([]string{"openid", "email"}, additionalScopes...),
-		Audience: cp.Audience,
+		Audience: audience,
 	})
 	if err != nil {
 		return nil, err
