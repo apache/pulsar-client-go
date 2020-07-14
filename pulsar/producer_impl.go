@@ -97,6 +97,10 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		batchingMaxPublishDelay = defaultBatchingMaxPublishDelay
 	}
 
+	if options.Interceptors == nil {
+		options.Interceptors = defaultProducerInterceptors
+	}
+
 	if options.MessageRouter == nil {
 		internalRouter := internal.NewDefaultRouter(
 			internal.NewSystemClock(),

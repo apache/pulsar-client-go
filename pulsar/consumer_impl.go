@@ -94,6 +94,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.ReceiverQueueSize = 1000
 	}
 
+	if options.Interceptors == nil {
+		options.Interceptors = defaultConsumerInterceptors
+	}
+
 	if options.Name == "" {
 		options.Name = generateRandomName()
 	}
@@ -262,6 +266,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				startMessageID:             messageID{},
 				subscriptionMode:           durable,
 				readCompacted:              c.options.ReadCompacted,
+				interceptors:               c.options.Interceptors,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq)
 			ch <- ConsumerError{
