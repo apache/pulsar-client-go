@@ -135,6 +135,9 @@ type ProducerOptions struct {
 	// If set to a value greater than 1, messages will be queued until this threshold is reached or
 	// BatchingMaxMessages (see above) has been reached or the batch interval has elapsed.
 	BatchingMaxSize uint
+
+	// A chain of interceptors, These interceptors will be called at some points defined in ProducerInterceptor interface
+	Interceptors ProducerInterceptors
 }
 
 // Producer is used to publish messages on a topic

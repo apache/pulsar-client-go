@@ -22,8 +22,8 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/oauth2/clock"
+	"github.com/apache/pulsar-client-go/oauth2/clock/testing"
 	"golang.org/x/oauth2"
-	"k8s.io/utils/clock/testing"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

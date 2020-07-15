@@ -76,13 +76,13 @@ func TestNacksTracker(t *testing.T) {
 	nmc := newNackMockedConsumer()
 	nacks := newNegativeAcksTracker(nmc, testNackDelay)
 
-	nacks.Add(&messageID{
+	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
 	})
 
-	nacks.Add(&messageID{
+	nacks.Add(messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
@@ -107,25 +107,25 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := newNackMockedConsumer()
 	nacks := newNegativeAcksTracker(nmc, testNackDelay)
 
-	nacks.Add(&messageID{
+	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
 	})
 
-	nacks.Add(&messageID{
+	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 2,
 	})
 
-	nacks.Add(&messageID{
+	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 3,
 	})
 
-	nacks.Add(&messageID{
+	nacks.Add(messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,

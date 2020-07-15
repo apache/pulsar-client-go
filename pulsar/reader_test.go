@@ -362,3 +362,87 @@ func TestReaderHasNext(t *testing.T) {
 
 	assert.Equal(t, 10, i)
 }
+
+type myMessageID struct {
+	data []byte
+}
+
+func (id *myMessageID) Serialize() []byte {
+	return id.data
+}
+
+func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	msgIDs := [10]MessageID{}
+	for i := 0; i < 10; i++ {
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, msgID)
+		msgIDs[i] = msgID
+	}
+
+	// custom start message ID
+	myStartMsgID := &myMessageID{
+		data: msgIDs[4].Serialize(),
+	}
+
+	// attempt to create reader on 5th message (not included)
+	var reader Reader
+	assert.NotPanics(t, func() {
+		reader, err = client.CreateReader(ReaderOptions{
+			Topic:          topic,
+			StartMessageID: myStartMsgID,
+		})
+	})
+
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	// receive the remaining 5 messages
+	for i := 5; i < 10; i++ {
+		msg, err := reader.Next(context.Background())
+		assert.NoError(t, err)
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+	}
+
+	// create reader on 5th message (included)
+	readerInclusive, err := client.CreateReader(ReaderOptions{
+		Topic:                   topic,
+		StartMessageID:          myStartMsgID,
+		StartMessageIDInclusive: true,
+	})
+
+	assert.Nil(t, err)
+	defer readerInclusive.Close()
+
+	// receive the remaining 6 messages
+	for i := 4; i < 10; i++ {
+		msg, err := readerInclusive.Next(context.Background())
+		assert.NoError(t, err)
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+	}
+}

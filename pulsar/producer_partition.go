@@ -24,6 +24,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 
 	"github.com/gogo/protobuf/proto"
@@ -45,6 +48,41 @@ const (
 var (
 	errFailAddBatch    = errors.New("message send failed")
 	errMessageTooLarge = errors.New("message size exceeds MaxMessageSize")
+
+	buffersPool sync.Pool
+)
+
+var (
+	messagesPublished = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_messages_published",
+		Help: "Counter of messages published by the client",
+	})
+
+	bytesPublished = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_bytes_published",
+		Help: "Counter of messages published by the client",
+	})
+
+	messagesPending = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_producer_pending_messages",
+		Help: "Counter of messages pending to be published by the client",
+	})
+
+	bytesPending = promauto.NewGauge(prometheus.GaugeOpts{
+		Name: "pulsar_client_producer_pending_bytes",
+		Help: "Counter of bytes pending to be published by the client",
+	})
+
+	publishErrors = promauto.NewCounter(prometheus.CounterOpts{
+		Name: "pulsar_client_producer_errors",
+		Help: "Counter of publish errors",
+	})
+
+	publishLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pulsar_client_producer_latency_seconds",
+		Help:    "Publish latency experienced by the client",
+		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+	})
 )
 
 type partitionProducer struct {
@@ -62,14 +100,13 @@ type partitionProducer struct {
 	batchFlushTicker    *time.Ticker
 
 	// Channel where app is posting messages to be published
-	eventsChan  chan interface{}
-	buffersPool sync.Pool
+	eventsChan chan interface{}
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
 	lastSequenceID   int64
 
-	partitionIdx int
+	partitionIdx int32
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (
@@ -89,23 +126,18 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	p := &partitionProducer{
-		state:      producerInit,
-		log:        log.WithField("topic", topic),
-		client:     client,
-		topic:      topic,
-		options:    options,
-		producerID: client.rpcClient.NewProducerID(),
-		eventsChan: make(chan interface{}, maxPendingMessages),
-		buffersPool: sync.Pool{
-			New: func() interface{} {
-				return internal.NewBuffer(1024)
-			},
-		},
+		state:            producerInit,
+		log:              log.WithField("topic", topic),
+		client:           client,
+		topic:            topic,
+		options:          options,
+		producerID:       client.rpcClient.NewProducerID(),
+		eventsChan:       make(chan interface{}, maxPendingMessages),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
-		partitionIdx:     partitionIdx,
+		partitionIdx:     int32(partitionIdx),
 	}
 
 	if options.Name != "" {
@@ -189,8 +221,10 @@ func (p *partitionProducer) grabCnx() error {
 type connectionClosed struct{}
 
 func (p *partitionProducer) GetBuffer() internal.Buffer {
-	b := p.buffersPool.Get().(internal.Buffer)
-	b.Clear()
+	b, ok := buffersPool.Get().(internal.Buffer)
+	if ok {
+		b.Clear()
+	}
 	return b
 }
 
@@ -263,6 +297,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		p.log.WithField("size", len(msg.Payload)).
 			WithField("properties", msg.Properties).
 			WithError(errMessageTooLarge).Error()
+		publishErrors.Inc()
 		return
 	}
 
@@ -401,13 +436,20 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
-	p.publishSemaphore.Acquire()
+
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
 		callback:         callback,
 		flushImmediately: flushImmediately,
+		publishTime:      time.Now(),
 	}
+	p.options.Interceptors.BeforeSend(p, msg)
+
+	messagesPending.Inc()
+	bytesPending.Add(float64(len(sr.msg.Payload)))
+
+	p.publishSemaphore.Acquire()
 	p.eventsChan <- sr
 }
 
@@ -428,6 +470,8 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
 
+	now := time.Now().UnixNano()
+
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
@@ -436,23 +480,35 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		if sr.msg != nil {
 			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
 			p.publishSemaphore.Release()
+
+			publishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
+			messagesPublished.Inc()
+			messagesPending.Dec()
+			payloadSize := float64(len(sr.msg.Payload))
+			bytesPublished.Add(payloadSize)
+			bytesPending.Sub(payloadSize)
 		}
 
-		if sr.callback != nil {
+		if sr.callback != nil || len(p.options.Interceptors) > 0 {
 			msgID := newMessageID(
 				int64(response.MessageId.GetLedgerId()),
 				int64(response.MessageId.GetEntryId()),
-				idx,
+				int32(idx),
 				p.partitionIdx,
 			)
-			sr.callback(msgID, sr.msg, nil)
+
+			if sr.callback != nil {
+				sr.callback(msgID, sr.msg, nil)
+			}
+
+			p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
 		}
 	}
 
 	// Mark this pending item as done
 	pi.completed = true
 	// Return buffer to the pool since we're now done using it
-	p.buffersPool.Put(pi.batchData)
+	buffersPool.Put(pi.batchData)
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
@@ -518,6 +574,7 @@ type sendRequest struct {
 	ctx              context.Context
 	msg              *ProducerMessage
 	callback         func(MessageID, *ProducerMessage, error)
+	publishTime      time.Time
 	flushImmediately bool
 }
 

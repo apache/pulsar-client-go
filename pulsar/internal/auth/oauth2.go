@@ -56,13 +56,13 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 	switch params[ConfigParamType] {
 	case ConfigParamTypeClientCredentials:
 		flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
-			KeyFile:          keyFile,
+			KeyFile:          params[ConfigParamKeyFile],
 			AdditionalScopes: nil,
 		})
 		if err != nil {
 			return nil, err
 		}
-		grant, err := flow.Authorize(p.issuer.Audience)
+		grant, err := flow.Authorize(issuer.Audience)
 		if err != nil {
 			return nil, err
 		}
