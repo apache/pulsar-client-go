@@ -23,8 +23,8 @@ import (
 
 	"github.com/apache/pulsar-client-go/oauth2"
 	"github.com/apache/pulsar-client-go/oauth2/cache"
+	"github.com/apache/pulsar-client-go/oauth2/clock"
 	"github.com/apache/pulsar-client-go/oauth2/store"
-	"k8s.io/utils/clock"
 )
 
 const (

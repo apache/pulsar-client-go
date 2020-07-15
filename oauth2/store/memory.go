@@ -21,7 +21,7 @@ import (
 	"sync"
 
 	"github.com/apache/pulsar-client-go/oauth2"
-	"k8s.io/utils/clock"
+	"github.com/apache/pulsar-client-go/oauth2/clock"
 )
 
 type MemoryStore struct {

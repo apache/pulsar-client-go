@@ -19,7 +19,6 @@ require (
 	github.com/spf13/pflag v1.0.3 // indirect
 	github.com/stretchr/testify v1.4.0
 	github.com/yahoo/athenz v1.8.55
-	k8s.io/utils v0.0.0-20200619165400-6e3d28b6ed19
 )
 
 replace github.com/apache/pulsar-client-go/oauth2 => ./oauth2

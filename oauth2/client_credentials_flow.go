@@ -20,7 +20,7 @@ package oauth2
 import (
 	"net/http"
 
-	"k8s.io/utils/clock"
+	"github.com/apache/pulsar-client-go/oauth2/clock"
 
 	"github.com/pkg/errors"
 )

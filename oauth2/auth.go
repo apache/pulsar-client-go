@@ -21,9 +21,9 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/apache/pulsar-client-go/oauth2/clock"
 	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/oauth2"
-	"k8s.io/utils/clock"
 )
 
 const (
