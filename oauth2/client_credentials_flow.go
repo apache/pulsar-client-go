@@ -28,10 +28,11 @@ import (
 // ClientCredentialsFlow takes care of the mechanics needed for getting an access
 // token using the OAuth 2.0 "Client Credentials Flow"
 type ClientCredentialsFlow struct {
-	issuerData Issuer
-	provider   ClientCredentialsProvider
-	exchanger  ClientCredentialsExchanger
-	clock      clock.Clock
+	options                ClientCredentialsFlowOptions
+	oidcWellKnownEndpoints OIDCWellKnownEndpoints
+	keyfile                *KeyFile
+	exchanger              ClientCredentialsExchanger
+	clock                  clock.Clock
 }
 
 // ClientCredentialsProvider abstracts getting client credentials
@@ -44,57 +45,67 @@ type ClientCredentialsExchanger interface {
 	ExchangeClientCredentials(req ClientCredentialsExchangeRequest) (*TokenResult, error)
 }
 
-func NewClientCredentialsFlow(
-	issuerData Issuer,
-	provider ClientCredentialsProvider,
+type ClientCredentialsFlowOptions struct {
+	KeyFile          string
+	AdditionalScopes []string
+}
+
+func newClientCredentialsFlow(
+	options ClientCredentialsFlowOptions,
+	keyfile *KeyFile,
+	oidcWellKnownEndpoints OIDCWellKnownEndpoints,
 	exchanger ClientCredentialsExchanger,
 	clock clock.Clock) *ClientCredentialsFlow {
 	return &ClientCredentialsFlow{
-		issuerData: issuerData,
-		provider:   provider,
-		exchanger:  exchanger,
-		clock:      clock,
+		options:                options,
+		oidcWellKnownEndpoints: oidcWellKnownEndpoints,
+		keyfile:                keyfile,
+		exchanger:              exchanger,
+		clock:                  clock,
 	}
 }
 
 // NewDefaultClientCredentialsFlow provides an easy way to build up a default
 // client credentials flow with all the correct configuration.
-func NewDefaultClientCredentialsFlow(issuerData Issuer, keyFile string) (*ClientCredentialsFlow, error) {
-	wellKnownEndpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(issuerData.IssuerEndpoint)
+func NewDefaultClientCredentialsFlow(options ClientCredentialsFlowOptions) (*ClientCredentialsFlow, error) {
+
+	credsProvider := NewClientCredentialsProviderFromKeyFile(options.KeyFile)
+	keyFile, err := credsProvider.GetClientCredentials()
+	if err != nil {
+		return nil, errors.Wrap(err, "could not get client credentials")
+	}
+
+	wellKnownEndpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(keyFile.IssuerURL)
 	if err != nil {
 		return nil, err
 	}
 
-	credsProvider := NewClientCredentialsProviderFromKeyFile(keyFile)
+	tokenRetriever := NewTokenRetriever(&http.Client{})
 
-	tokenRetriever := NewTokenRetriever(
+	return newClientCredentialsFlow(
+		options,
+		keyFile,
 		*wellKnownEndpoints,
-		&http.Client{})
-
-	return NewClientCredentialsFlow(
-		issuerData,
-		credsProvider,
 		tokenRetriever,
 		clock.RealClock{}), nil
 }
 
 var _ Flow = &ClientCredentialsFlow{}
 
-func (c *ClientCredentialsFlow) Authorize() (*AuthorizationGrant, error) {
-	keyFile, err := c.provider.GetClientCredentials()
-	if err != nil {
-		return nil, errors.Wrap(err, "could not get client credentials")
-	}
+func (c *ClientCredentialsFlow) Authorize(audience string) (*AuthorizationGrant, error) {
+	var err error
 	grant := &AuthorizationGrant{
 		Type:              GrantTypeClientCredentials,
-		ClientCredentials: keyFile,
+		Audience:          audience,
+		ClientID:          c.keyfile.ClientID,
+		ClientCredentials: c.keyfile,
+		TokenEndpoint:     c.oidcWellKnownEndpoints.TokenEndpoint,
 	}
 
 	// test the credentials and obtain an initial access token
 	refresher := &ClientCredentialsGrantRefresher{
-		issuerData: c.issuerData,
-		exchanger:  c.exchanger,
-		clock:      c.clock,
+		exchanger: c.exchanger,
+		clock:     c.clock,
 	}
 	grant, err = refresher.Refresh(grant)
 	if err != nil {
@@ -104,26 +115,15 @@ func (c *ClientCredentialsFlow) Authorize() (*AuthorizationGrant, error) {
 }
 
 type ClientCredentialsGrantRefresher struct {
-	issuerData Issuer
-	exchanger  ClientCredentialsExchanger
-	clock      clock.Clock
+	exchanger ClientCredentialsExchanger
+	clock     clock.Clock
 }
 
-func NewDefaultClientCredentialsGrantRefresher(issuerData Issuer,
-	clock clock.Clock) (*ClientCredentialsGrantRefresher, error) {
-	wellKnownEndpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(issuerData.IssuerEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	tokenRetriever := NewTokenRetriever(
-		*wellKnownEndpoints,
-		&http.Client{})
-
+func NewDefaultClientCredentialsGrantRefresher(clock clock.Clock) (*ClientCredentialsGrantRefresher, error) {
+	tokenRetriever := NewTokenRetriever(&http.Client{})
 	return &ClientCredentialsGrantRefresher{
-		issuerData: issuerData,
-		exchanger:  tokenRetriever,
-		clock:      clock,
+		exchanger: tokenRetriever,
+		clock:     clock,
 	}, nil
 }
 
@@ -135,9 +135,10 @@ func (g *ClientCredentialsGrantRefresher) Refresh(grant *AuthorizationGrant) (*A
 	}
 
 	exchangeRequest := ClientCredentialsExchangeRequest{
-		Audience:     g.issuerData.Audience,
-		ClientID:     grant.ClientCredentials.ClientID,
-		ClientSecret: grant.ClientCredentials.ClientSecret,
+		TokenEndpoint: grant.TokenEndpoint,
+		Audience:      grant.Audience,
+		ClientID:      grant.ClientCredentials.ClientID,
+		ClientSecret:  grant.ClientCredentials.ClientSecret,
 	}
 	tr, err := g.exchanger.ExchangeClientCredentials(exchangeRequest)
 	if err != nil {
@@ -147,7 +148,10 @@ func (g *ClientCredentialsGrantRefresher) Refresh(grant *AuthorizationGrant) (*A
 	token := convertToOAuth2Token(tr, g.clock)
 	grant = &AuthorizationGrant{
 		Type:              GrantTypeClientCredentials,
+		Audience:          grant.Audience,
+		ClientID:          grant.ClientID,
 		ClientCredentials: grant.ClientCredentials,
+		TokenEndpoint:     grant.TokenEndpoint,
 		Token:             &token,
 	}
 	return grant, nil

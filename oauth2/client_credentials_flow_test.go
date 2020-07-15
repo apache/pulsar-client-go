@@ -46,28 +46,17 @@ var clientCredentials = KeyFile{
 	ClientID:     "test_clientID",
 	ClientSecret: "test_clientSecret",
 	ClientEmail:  "test_clientEmail",
+	IssuerURL:    "http://issuer",
 }
 
 var _ = Describe("ClientCredentialsFlow", func() {
-	issuer := Issuer{
-		IssuerEndpoint: "http://issuer",
-		ClientID:       "",
-		Audience:       "test_audience",
-	}
-
 	Describe("Authorize", func() {
 
 		var mockClock clock.Clock
-		var mockCredsProvider *MockClientCredentialsProvider
 		var mockTokenExchanger *MockTokenExchanger
 
 		BeforeEach(func() {
 			mockClock = testing.NewFakeClock(time.Unix(0, 0))
-
-			mockCredsProvider = &MockClientCredentialsProvider{
-				ClientCredentialsResult: &clientCredentials,
-			}
-
 			expectedTokens := TokenResult{AccessToken: "accessToken", RefreshToken: "refreshToken", ExpiresIn: 1234}
 			mockTokenExchanger = &MockTokenExchanger{
 				ReturnsTokens: &expectedTokens,
@@ -75,63 +64,58 @@ var _ = Describe("ClientCredentialsFlow", func() {
 		})
 
 		It("invokes TokenExchanger with credentials", func() {
-			provider := NewClientCredentialsFlow(
-				issuer,
-				mockCredsProvider,
+			provider := newClientCredentialsFlow(
+				ClientCredentialsFlowOptions{
+					KeyFile: "test_keyfile",
+				},
+				&clientCredentials,
+				oidcEndpoints,
 				mockTokenExchanger,
 				mockClock,
 			)
 
-			_, err := provider.Authorize()
+			_, err := provider.Authorize("test_audience")
 			Expect(err).ToNot(HaveOccurred())
-			Expect(mockCredsProvider.Called).To(BeTrue())
 			Expect(mockTokenExchanger.CalledWithRequest).To(Equal(&ClientCredentialsExchangeRequest{
-				ClientID:     mockCredsProvider.ClientCredentialsResult.ClientID,
-				ClientSecret: mockCredsProvider.ClientCredentialsResult.ClientSecret,
-				Audience:     issuer.Audience,
+				TokenEndpoint: oidcEndpoints.TokenEndpoint,
+				ClientID:      clientCredentials.ClientID,
+				ClientSecret:  clientCredentials.ClientSecret,
+				Audience:      "test_audience",
 			}))
 		})
 
 		It("returns TokensResult from TokenExchanger", func() {
-			provider := NewClientCredentialsFlow(
-				issuer,
-				mockCredsProvider,
+			provider := newClientCredentialsFlow(
+				ClientCredentialsFlowOptions{
+					KeyFile: "test_keyfile",
+				},
+				&clientCredentials,
+				oidcEndpoints,
 				mockTokenExchanger,
 				mockClock,
 			)
 
-			grant, err := provider.Authorize()
+			grant, err := provider.Authorize("test_audience")
 			Expect(err).ToNot(HaveOccurred())
 			expected := convertToOAuth2Token(mockTokenExchanger.ReturnsTokens, mockClock)
 			Expect(*grant.Token).To(Equal(expected))
-		})
-
-		It("returns an error if client credentials request errors", func() {
-			mockCredsProvider.ReturnsError = errors.New("someerror")
-
-			provider := NewClientCredentialsFlow(
-				issuer,
-				mockCredsProvider,
-				mockTokenExchanger,
-				mockClock,
-			)
-
-			_, err := provider.Authorize()
-			Expect(err.Error()).To(Equal("could not get client credentials: someerror"))
 		})
 
 		It("returns an error if token exchanger errors", func() {
 			mockTokenExchanger.ReturnsError = errors.New("someerror")
 			mockTokenExchanger.ReturnsTokens = nil
 
-			provider := NewClientCredentialsFlow(
-				issuer,
-				mockCredsProvider,
+			provider := newClientCredentialsFlow(
+				ClientCredentialsFlowOptions{
+					KeyFile: "test_keyfile",
+				},
+				&clientCredentials,
+				oidcEndpoints,
 				mockTokenExchanger,
 				mockClock,
 			)
 
-			_, err := provider.Authorize()
+			_, err := provider.Authorize("test_audience")
 			Expect(err.Error()).To(Equal("authentication failed using client credentials: " +
 				"could not exchange client credentials: someerror"))
 		})
@@ -139,11 +123,6 @@ var _ = Describe("ClientCredentialsFlow", func() {
 })
 
 var _ = Describe("ClientCredentialsGrantRefresher", func() {
-	issuer := Issuer{
-		IssuerEndpoint: "http://issuer",
-		ClientID:       "",
-		Audience:       "test_audience",
-	}
 
 	Describe("Refresh", func() {
 		var mockClock clock.Clock
@@ -159,37 +138,44 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 
 		It("invokes TokenExchanger with credentials", func() {
 			refresher := &ClientCredentialsGrantRefresher{
-				issuerData: issuer,
-				clock:      mockClock,
-				exchanger:  mockTokenExchanger,
+				clock:     mockClock,
+				exchanger: mockTokenExchanger,
 			}
 			og := &AuthorizationGrant{
 				Type:              GrantTypeClientCredentials,
+				Audience:          "test_audience",
 				ClientCredentials: &clientCredentials,
+				TokenEndpoint:     oidcEndpoints.TokenEndpoint,
 				Token:             nil,
 			}
 			_, err := refresher.Refresh(og)
 			Expect(err).ToNot(HaveOccurred())
 			Expect(mockTokenExchanger.CalledWithRequest).To(Equal(&ClientCredentialsExchangeRequest{
-				ClientID:     clientCredentials.ClientID,
-				ClientSecret: clientCredentials.ClientSecret,
-				Audience:     issuer.Audience,
+				TokenEndpoint: oidcEndpoints.TokenEndpoint,
+				ClientID:      clientCredentials.ClientID,
+				ClientSecret:  clientCredentials.ClientSecret,
+				Audience:      og.Audience,
 			}))
 		})
 
 		It("returns a valid grant", func() {
 			refresher := &ClientCredentialsGrantRefresher{
-				issuerData: issuer,
-				clock:      mockClock,
-				exchanger:  mockTokenExchanger,
+				clock:     mockClock,
+				exchanger: mockTokenExchanger,
 			}
 			og := &AuthorizationGrant{
 				Type:              GrantTypeClientCredentials,
+				Audience:          "test_audience",
 				ClientCredentials: &clientCredentials,
+				TokenEndpoint:     oidcEndpoints.TokenEndpoint,
 				Token:             nil,
 			}
 			ng, err := refresher.Refresh(og)
 			Expect(err).ToNot(HaveOccurred())
+			Expect(ng.Audience).To(Equal("test_audience"))
+			Expect(ng.ClientID).To(Equal(""))
+			Expect(*ng.ClientCredentials).To(Equal(clientCredentials))
+			Expect(ng.TokenEndpoint).To(Equal(oidcEndpoints.TokenEndpoint))
 			expected := convertToOAuth2Token(mockTokenExchanger.ReturnsTokens, mockClock)
 			Expect(*ng.Token).To(Equal(expected))
 		})

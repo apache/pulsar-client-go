@@ -31,17 +31,17 @@ import (
 // DeviceCodeFlow takes care of the mechanics needed for getting an access
 // token using the OAuth 2.0 "Device Code Flow"
 type DeviceCodeFlow struct {
-	issuerData   Issuer
-	options      DeviceCodeFlowOptions
-	codeProvider DeviceCodeProvider
-	exchanger    DeviceTokenExchanger
-	callback     DeviceCodeCallback
-	clock        clock.Clock
+	options                DeviceCodeFlowOptions
+	oidcWellKnownEndpoints OIDCWellKnownEndpoints
+	codeProvider           DeviceCodeProvider
+	exchanger              DeviceTokenExchanger
+	callback               DeviceCodeCallback
+	clock                  clock.Clock
 }
 
 // AuthorizationCodeProvider abstracts getting an authorization code
 type DeviceCodeProvider interface {
-	GetCode(additionalScopes ...string) (*DeviceCodeResult, error)
+	GetCode(audience string, additionalScopes ...string) (*DeviceCodeResult, error)
 }
 
 // DeviceTokenExchanger abstracts exchanging for tokens
@@ -53,50 +53,52 @@ type DeviceTokenExchanger interface {
 type DeviceCodeCallback func(code *DeviceCodeResult) error
 
 type DeviceCodeFlowOptions struct {
+	IssuerEndpoint   string
+	ClientID         string
 	AdditionalScopes []string
 	AllowRefresh     bool
 }
 
-func NewDeviceCodeFlow(
-	issuerData Issuer,
+func newDeviceCodeFlow(
 	options DeviceCodeFlowOptions,
+	oidcWellKnownEndpoints OIDCWellKnownEndpoints,
 	codeProvider DeviceCodeProvider,
 	exchanger DeviceTokenExchanger,
 	callback DeviceCodeCallback,
 	clock clock.Clock) *DeviceCodeFlow {
 	return &DeviceCodeFlow{
-		options:      options,
-		issuerData:   issuerData,
-		codeProvider: codeProvider,
-		exchanger:    exchanger,
-		callback:     callback,
-		clock:        clock,
+		options:                options,
+		oidcWellKnownEndpoints: oidcWellKnownEndpoints,
+		codeProvider:           codeProvider,
+		exchanger:              exchanger,
+		callback:               callback,
+		clock:                  clock,
 	}
 }
 
 // NewDefaultDeviceCodeFlow provides an easy way to build up a default
 // device code flow with all the correct configuration. If refresh tokens should
 // be allowed pass in true for <allowRefresh>
-func NewDefaultDeviceCodeFlow(issuerData Issuer, options DeviceCodeFlowOptions,
+func NewDefaultDeviceCodeFlow(options DeviceCodeFlowOptions,
 	callback DeviceCodeCallback) (*DeviceCodeFlow, error) {
-	wellKnownEndpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(issuerData.IssuerEndpoint)
+	wellKnownEndpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(options.IssuerEndpoint)
 	if err != nil {
 		return nil, err
 	}
 
 	codeProvider := NewLocalDeviceCodeProvider(
-		issuerData,
+		LocalDeviceCodeProviderOptions{
+			ClientID: options.ClientID,
+		},
 		*wellKnownEndpoints,
 		&http.Client{},
 	)
 
-	tokenRetriever := NewTokenRetriever(
-		*wellKnownEndpoints,
-		&http.Client{})
+	tokenRetriever := NewTokenRetriever(&http.Client{})
 
-	return NewDeviceCodeFlow(
-		issuerData,
+	return newDeviceCodeFlow(
 		options,
+		*wellKnownEndpoints,
 		codeProvider,
 		tokenRetriever,
 		callback,
@@ -105,14 +107,15 @@ func NewDefaultDeviceCodeFlow(issuerData Issuer, options DeviceCodeFlowOptions,
 
 var _ Flow = &DeviceCodeFlow{}
 
-func (p *DeviceCodeFlow) Authorize() (*AuthorizationGrant, error) {
+func (p *DeviceCodeFlow) Authorize(audience string) (*AuthorizationGrant, error) {
+
 	var additionalScopes []string
 	additionalScopes = append(additionalScopes, p.options.AdditionalScopes...)
 	if p.options.AllowRefresh {
 		additionalScopes = append(additionalScopes, "offline_access")
 	}
 
-	codeResult, err := p.codeProvider.GetCode(additionalScopes...)
+	codeResult, err := p.codeProvider.GetCode(audience, additionalScopes...)
 	if err != nil {
 		return nil, err
 	}
@@ -125,9 +128,10 @@ func (p *DeviceCodeFlow) Authorize() (*AuthorizationGrant, error) {
 	}
 
 	exchangeRequest := DeviceCodeExchangeRequest{
-		ClientID:     p.issuerData.ClientID,
-		DeviceCode:   codeResult.DeviceCode,
-		PollInterval: time.Duration(codeResult.Interval) * time.Second,
+		TokenEndpoint: p.oidcWellKnownEndpoints.TokenEndpoint,
+		ClientID:      p.options.ClientID,
+		DeviceCode:    codeResult.DeviceCode,
+		PollInterval:  time.Duration(codeResult.Interval) * time.Second,
 	}
 
 	tr, err := p.exchanger.ExchangeDeviceCode(context.Background(), exchangeRequest)
@@ -137,35 +141,27 @@ func (p *DeviceCodeFlow) Authorize() (*AuthorizationGrant, error) {
 
 	token := convertToOAuth2Token(tr, p.clock)
 	grant := &AuthorizationGrant{
-		Type:  GrantTypeDeviceCode,
-		Token: &token,
+		Type:          GrantTypeDeviceCode,
+		Audience:      audience,
+		ClientID:      p.options.ClientID,
+		TokenEndpoint: p.oidcWellKnownEndpoints.TokenEndpoint,
+		Token:         &token,
 	}
 	return grant, nil
 }
 
 type DeviceAuthorizationGrantRefresher struct {
-	issuerData Issuer
-	exchanger  DeviceTokenExchanger
-	clock      clock.Clock
+	exchanger DeviceTokenExchanger
+	clock     clock.Clock
 }
 
 // NewDefaultDeviceAuthorizationGrantRefresher constructs a grant refresher based on the result
 // of the device authorization flow.
-func NewDefaultDeviceAuthorizationGrantRefresher(issuerData Issuer,
-	clock clock.Clock) (*DeviceAuthorizationGrantRefresher, error) {
-	wellKnownEndpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(issuerData.IssuerEndpoint)
-	if err != nil {
-		return nil, err
-	}
-
-	tokenRetriever := NewTokenRetriever(
-		*wellKnownEndpoints,
-		&http.Client{})
-
+func NewDefaultDeviceAuthorizationGrantRefresher(clock clock.Clock) (*DeviceAuthorizationGrantRefresher, error) {
+	tokenRetriever := NewTokenRetriever(&http.Client{})
 	return &DeviceAuthorizationGrantRefresher{
-		issuerData: issuerData,
-		exchanger:  tokenRetriever,
-		clock:      clock,
+		exchanger: tokenRetriever,
+		clock:     clock,
 	}, nil
 }
 
@@ -180,8 +176,9 @@ func (g *DeviceAuthorizationGrantRefresher) Refresh(grant *AuthorizationGrant) (
 	}
 
 	exchangeRequest := RefreshTokenExchangeRequest{
-		ClientID:     g.issuerData.ClientID,
-		RefreshToken: grant.Token.RefreshToken,
+		TokenEndpoint: grant.TokenEndpoint,
+		ClientID:      grant.ClientID,
+		RefreshToken:  grant.Token.RefreshToken,
 	}
 	tr, err := g.exchanger.ExchangeRefreshToken(exchangeRequest)
 	if err != nil {
@@ -196,8 +193,11 @@ func (g *DeviceAuthorizationGrantRefresher) Refresh(grant *AuthorizationGrant) (
 
 	token := convertToOAuth2Token(tr, g.clock)
 	grant = &AuthorizationGrant{
-		Type:  GrantTypeDeviceCode,
-		Token: &token,
+		Type:          GrantTypeDeviceCode,
+		Audience:      grant.Audience,
+		ClientID:      grant.ClientID,
+		Token:         &token,
+		TokenEndpoint: grant.TokenEndpoint,
 	}
 	return grant, nil
 }

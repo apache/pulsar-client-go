@@ -32,8 +32,7 @@ import (
 // TokenRetriever implements AuthTokenExchanger in order to facilitate getting
 // Tokens
 type TokenRetriever struct {
-	oidcWellKnownEndpoints OIDCWellKnownEndpoints
-	transport              HTTPAuthTransport
+	transport HTTPAuthTransport
 }
 
 // AuthorizationTokenResponse is the HTTP response when asking for a new token.
@@ -50,33 +49,37 @@ type AuthorizationTokenResponse struct {
 // AuthorizationCodeExchangeRequest is used to request the exchange of an
 // authorization code for a token
 type AuthorizationCodeExchangeRequest struct {
-	ClientID     string
-	CodeVerifier string
-	Code         string
-	RedirectURI  string
+	TokenEndpoint string
+	ClientID      string
+	CodeVerifier  string
+	Code          string
+	RedirectURI   string
 }
 
 // RefreshTokenExchangeRequest is used to request the exchange of a refresh
 // token for a refreshed token
 type RefreshTokenExchangeRequest struct {
-	ClientID     string
-	RefreshToken string
+	TokenEndpoint string
+	ClientID      string
+	RefreshToken  string
 }
 
 // ClientCredentialsExchangeRequest is used to request the exchange of
 // client credentials for a token
 type ClientCredentialsExchangeRequest struct {
-	ClientID     string
-	ClientSecret string
-	Audience     string
+	TokenEndpoint string
+	ClientID      string
+	ClientSecret  string
+	Audience      string
 }
 
 // DeviceCodeExchangeRequest is used to request the exchange of
 // a device code for a token
 type DeviceCodeExchangeRequest struct {
-	ClientID     string
-	DeviceCode   string
-	PollInterval time.Duration
+	TokenEndpoint string
+	ClientID      string
+	DeviceCode    string
+	PollInterval  time.Duration
 }
 
 // TokenErrorResponse is used to parse error responses from the token endpoint
@@ -104,12 +107,9 @@ type HTTPAuthTransport interface {
 
 // NewTokenRetriever allows a TokenRetriever the internal of a new
 // TokenRetriever to be easily set up
-func NewTokenRetriever(
-	oidcWellKnownEndpoints OIDCWellKnownEndpoints,
-	authTransport HTTPAuthTransport) *TokenRetriever {
+func NewTokenRetriever(authTransport HTTPAuthTransport) *TokenRetriever {
 	return &TokenRetriever{
-		oidcWellKnownEndpoints: oidcWellKnownEndpoints,
-		transport:              authTransport,
+		transport: authTransport,
 	}
 }
 
@@ -127,7 +127,7 @@ func (ce *TokenRetriever) newExchangeCodeRequest(
 	euv := uv.Encode()
 
 	request, err := http.NewRequest("POST",
-		ce.oidcWellKnownEndpoints.TokenEndpoint,
+		req.TokenEndpoint,
 		strings.NewReader(euv),
 	)
 	if err != nil {
@@ -151,7 +151,7 @@ func (ce *TokenRetriever) newDeviceCodeExchangeRequest(
 	euv := uv.Encode()
 
 	request, err := http.NewRequest("POST",
-		ce.oidcWellKnownEndpoints.TokenEndpoint,
+		req.TokenEndpoint,
 		strings.NewReader(euv),
 	)
 	if err != nil {
@@ -175,7 +175,7 @@ func (ce *TokenRetriever) newRefreshTokenRequest(req RefreshTokenExchangeRequest
 	euv := uv.Encode()
 
 	request, err := http.NewRequest("POST",
-		ce.oidcWellKnownEndpoints.TokenEndpoint,
+		req.TokenEndpoint,
 		strings.NewReader(euv),
 	)
 	if err != nil {
@@ -200,7 +200,7 @@ func (ce *TokenRetriever) newClientCredentialsRequest(req ClientCredentialsExcha
 	euv := uv.Encode()
 
 	request, err := http.NewRequest("POST",
-		ce.oidcWellKnownEndpoints.TokenEndpoint,
+		req.TokenEndpoint,
 		strings.NewReader(euv),
 	)
 	if err != nil {
