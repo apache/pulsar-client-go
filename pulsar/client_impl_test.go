@@ -20,9 +20,13 @@ package pulsar
 import (
 	"fmt"
 	"io/ioutil"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -206,6 +210,96 @@ func TestTokenAuthFromFile(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL:            serviceURL,
 		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+// mockOAuthServer will mock a oauth service for the tests
+func mockOAuthServer() *httptest.Server {
+	// prepare a port for the mocked server
+	server := httptest.NewUnstartedServer(http.DefaultServeMux)
+
+	// mock the used REST path for the tests
+	mockedHandler := http.NewServeMux()
+	mockedHandler.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, request *http.Request) {
+		s := fmt.Sprintf(`{
+    "issuer":"%s",
+    "authorization_endpoint":"%s/authorize",
+    "token_endpoint":"%s/oauth/token",
+    "device_authorization_endpoint":"%s/oauth/device/code"
+}`, server.URL, server.URL, server.URL, server.URL)
+		fmt.Fprintln(writer, s)
+	})
+	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, request *http.Request) {
+		fmt.Fprintln(writer, "{\n"+
+			"  \"access_token\": \"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0b2tlbi1wcmluY2lwYWwifQ."+
+			"tSfgR8l7dKC6LoWCxQgNkuSB8our7xV_nAM7wpgCbG4\",\n"+
+			"  \"token_type\": \"Bearer\"\n}")
+	})
+	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, request *http.Request) {
+		fmt.Fprintln(writer, "true")
+	})
+
+	server.Config.Handler = mockedHandler
+	server.Start()
+
+	return server
+}
+
+// mockKeyFile will mock a temp key file for testing.
+func mockKeyFile(server string) (string, error) {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	kf, err := ioutil.TempFile(pwd, "test_oauth2")
+	if err != nil {
+		return "", err
+	}
+	_, err = kf.WriteString(fmt.Sprintf(`{
+  "type":"sn_service_account",
+  "client_id":"client-id",
+  "client_secret":"client-secret",
+  "client_email":"oauth@test.org",
+  "issuer_url":"%s"
+}`, server))
+	if err != nil {
+		return "", err
+	}
+
+	return kf.Name(), nil
+}
+
+func TestOAuth2Auth(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]string{
+		auth.ConfigParamType:      auth.ConfigParamTypeClientCredentials,
+		auth.ConfigParamIssuerURL: server.URL,
+		auth.ConfigParamClientID:  "client-id",
+		auth.ConfigParamAudience:  "audience",
+		auth.ConfigParamKeyFile:   kf,
+	}
+
+	oauth := NewAuthenticationOAuth2(params)
+	client, err := NewClient(ClientOptions{
+		URL:            serviceURL,
+		Authentication: oauth,
 	})
 	assert.NoError(t, err)
 
