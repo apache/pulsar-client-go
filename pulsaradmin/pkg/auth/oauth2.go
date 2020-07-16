@@ -18,77 +18,180 @@
 package auth
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
+	"path/filepath"
 
-	"github.com/streamnative/pulsar-admin-go/pkg/auth/oauth2"
+	"github.com/99designs/keyring"
+	"github.com/apache/pulsar-client-go/oauth2"
+	"github.com/apache/pulsar-client-go/oauth2/cache"
+	clock2 "github.com/apache/pulsar-client-go/oauth2/clock"
+	"github.com/apache/pulsar-client-go/oauth2/store"
+	util "github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
+	xoauth2 "golang.org/x/oauth2"
+)
+
+const (
+	TypeClientCredential = "client_credentials"
+	TypeDeviceCode       = "device_code"
 )
 
 type OAuth2Provider struct {
-	issuer  *oauth2.Issuer
-	keyFile string
-	T       http.RoundTripper
+	clock  clock2.RealClock
+	issuer oauth2.Issuer
+	store  store.Store
+	source cache.CachingTokenSource
+	T      http.RoundTripper
 }
 
-func NewAuthenticationOAuth2(
-	issueEndpoint,
-	clientID,
-	audience,
-	keyFile string,
-	transport http.RoundTripper) (*OAuth2Provider, error) {
+func NewAuthenticationOauth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Provider, error) {
+	p := &OAuth2Provider{
+		clock:  clock2.RealClock{},
+		issuer: issuer,
+		store:  store,
+	}
 
-	return &OAuth2Provider{
-		issuer: &oauth2.Issuer{
-			IssuerEndpoint: issueEndpoint,
-			ClientID:       clientID,
-			Audience:       audience,
-		},
-		keyFile: keyFile,
-		T:       transport,
-	}, nil
-}
-
-func (o *OAuth2Provider) RoundTrip(req *http.Request) (*http.Response, error) {
-	token, err := o.getToken(o.issuer)
+	err := p.loadGrant()
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
-	return o.T.RoundTrip(req)
+
+	return p, nil
+}
+
+func NewAuthenticationOAuth2WithParams(
+	issueEndpoint,
+	clientID,
+	audience string) (*OAuth2Provider, error) {
+
+	issuer := oauth2.Issuer{
+		IssuerEndpoint: issueEndpoint,
+		ClientID:       clientID,
+		Audience:       audience,
+	}
+
+	keyringStore, err := MakeKeyringStore()
+	if err != nil {
+		return nil, err
+	}
+
+	p := &OAuth2Provider{
+		clock:  clock2.RealClock{},
+		issuer: issuer,
+		store:  keyringStore,
+	}
+
+	err = p.loadGrant()
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+func (o *OAuth2Provider) loadGrant() error {
+	grant, err := o.store.LoadGrant(o.issuer.Audience)
+	if err != nil {
+		return err
+	}
+	return o.initCache(grant)
+}
+
+func (o *OAuth2Provider) initCache(grant *oauth2.AuthorizationGrant) error {
+	refresher, err := o.getRefresher(grant.Type)
+	if err != nil {
+		return err
+	}
+
+	source, err := cache.NewDefaultTokenCache(o.store, o.issuer.Audience, refresher)
+	if err != nil {
+		return err
+	}
+	o.source = source
+	return nil
+}
+
+func (o *OAuth2Provider) RoundTrip(req *http.Request) (*http.Response, error) {
+	return o.Transport().RoundTrip(req)
 }
 
 func (o *OAuth2Provider) Transport() http.RoundTripper {
-	return o.T
+	return &transport{
+		source: o.source,
+		wrapped: &xoauth2.Transport{
+			Source: o.source,
+			Base:   o.T,
+		},
+	}
 }
 
-func (o *OAuth2Provider) getFlow(issuer *oauth2.Issuer) (oauth2.Flow, error) {
-	// note that these flows don't rely on the user's cache or configuration
-	// to produce an ephemeral token that doesn't replace what is generated
-	// by `login` or by `activate-service-account`.
+func (o *OAuth2Provider) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
+	switch t {
+	case oauth2.GrantTypeClientCredentials:
+		return oauth2.NewDefaultClientCredentialsGrantRefresher(o.clock)
+	case oauth2.GrantTypeDeviceCode:
+		return oauth2.NewDefaultDeviceAuthorizationGrantRefresher(o.clock)
+	default:
+		return nil, store.ErrUnsupportedAuthData
+	}
+}
 
-	var err error
-	var flow oauth2.Flow
-	if o.keyFile != "" {
-		flow, err = oauth2.NewDefaultClientCredentialsFlow(*issuer, o.keyFile)
+type transport struct {
+	source  cache.CachingTokenSource
+	wrapped *xoauth2.Transport
+}
+
+func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if len(req.Header.Get("Authorization")) != 0 {
+		return t.wrapped.Base.RoundTrip(req)
+	}
+
+	token, err := t.source.Token()
+	if err != nil {
+		fmt.Println(err.Error())
+	}
+	fmt.Println(token.AccessToken)
+	res, err := t.wrapped.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.StatusCode == 401 {
+		err := t.source.InvalidateToken()
 		if err != nil {
 			return nil, err
 		}
-		return flow, err
 	}
-	return flow, errors.New("the key file must be specified")
+
+	return res, nil
 }
 
-func (o *OAuth2Provider) getToken(issuer *oauth2.Issuer) (string, error) {
-	flow, err := o.getFlow(issuer)
-	if err != nil {
-		return "", err
-	}
+func (t *transport) WrappedRoundTripper() http.RoundTripper { return t.wrapped.Base }
 
-	_, token, err := flow.Authorize()
-	if err != nil {
-		return "", err
-	}
+const (
+	serviceName  = "pulsar"
+	keyChainName = "pulsarctl"
+)
 
-	return token.AccessToken, nil
+func MakeKeyringStore() (store.Store, error) {
+	kr, err := makeKeyring()
+	if err != nil {
+		return nil, err
+	}
+	return store.NewKeyringStore(kr)
+}
+
+func makeKeyring() (keyring.Keyring, error) {
+	return keyring.Open(keyring.Config{
+		AllowedBackends:          keyring.AvailableBackends(),
+		ServiceName:              serviceName,
+		KeychainName:             keyChainName,
+		KeychainTrustApplication: true,
+		FileDir:                  filepath.Join(util.HomeDir(), "~/.config/pulsar", "credentials"),
+		FilePasswordFunc:         keyringPrompt,
+	})
+}
+
+func keyringPrompt(prompt string) (string, error) {
+	return "", nil
 }

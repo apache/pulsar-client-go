@@ -83,6 +83,21 @@ func New(config *common.Config) (Client, error) {
 	return c, err
 }
 
+func NewWithAuthProvider(config *common.Config, auth auth.Provider) Client {
+	c := &pulsarClient{
+		APIVersion: config.PulsarAPIVersion,
+		Client: &cli.Client{
+			ServiceURL:  config.WebServiceURL,
+			VersionInfo: ReleaseVersion,
+			HTTPClient: &http.Client{
+				Timeout:   DefaultHTTPTimeOutDuration,
+				Transport: auth,
+			},
+		},
+	}
+	return c
+}
+
 func (c *pulsarClient) endpoint(componentPath string, parts ...string) string {
 	return path.Join(utils.MakeHTTPPath(c.APIVersion.String(), componentPath), path.Join(parts...))
 }
