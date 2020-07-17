@@ -150,7 +150,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		return nil, err
 	}
 
-	p.log = p.log.WithField("producer_name", p.producerName)
+	p.log = p.log.WithField("producer_name", p.producerName).
+		WithField("producerID", p.producerID)
 	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
 	atomic.StoreInt32(&p.state, producerReady)
 
