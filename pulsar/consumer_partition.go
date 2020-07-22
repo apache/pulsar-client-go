@@ -100,6 +100,10 @@ const (
 	nonDurable
 )
 
+const (
+	noMessageEntry = -1
+)
+
 type partitionConsumerOpts struct {
 	topic                      string
 	consumerName               string
@@ -198,11 +202,13 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		if err != nil {
 			return nil, err
 		}
-		pc.startMessageID = msgID
+		if msgID.entryID != noMessageEntry {
+			pc.startMessageID = msgID
 
-		err = pc.requestSeek(msgID)
-		if err != nil {
-			return nil, err
+			err = pc.requestSeek(msgID)
+			if err != nil {
+				return nil, err
+			}
 		}
 	}
 

@@ -458,6 +458,18 @@ func TestReaderLatestInclusiveHasNext(t *testing.T) {
 	topic := newTopicName()
 	ctx := context.Background()
 
+	// create reader on the last message (inclusive)
+	reader0, err := client.CreateReader(ReaderOptions{
+		Topic:                   topic,
+		StartMessageID:          LatestMessageID(),
+		StartMessageIDInclusive: true,
+	})
+
+	assert.Nil(t, err)
+	defer reader0.Close()
+
+	assert.False(t, reader0.HasNext())
+
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
