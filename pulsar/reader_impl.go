@@ -40,6 +40,8 @@ var (
 		Name: "pulsar_client_readers_closed",
 		Help: "Counter of readers closed by the client",
 	})
+
+	lastestMessageID = LatestMessageID()
 )
 
 type reader struct {
@@ -113,6 +115,21 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err
+	}
+
+	if pc.options.startMessageIDInclusive && pc.startMessageID == lastestMessageID {
+		msgID, err := pc.getLastMessageID()
+		if err != nil {
+			return nil, err
+		}
+		pc.startMessageID = msgID
+
+		err = pc.Seek(msgID)
+		if err != nil {
+			return nil, err
+		}
+
+		reader.lastMessageInBroker = msgID
 	}
 
 	reader.pc = pc

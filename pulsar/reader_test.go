@@ -446,3 +446,54 @@ func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
 	}
 }
+
+func TestReaderLatestInclusiveHasNext(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	var lastMsgID MessageID
+	for i := 0; i < 10; i++ {
+		lastMsgID, err = producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, lastMsgID)
+	}
+
+	// create reader on the last message (inclusive)
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:                   topic,
+		StartMessageID:          LatestMessageID(),
+		StartMessageIDInclusive: true,
+	})
+
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	var msgID MessageID
+	if reader.HasNext() {
+		msg, err := reader.Next(context.Background())
+		assert.NoError(t, err)
+
+		assert.Equal(t, []byte("hello-9"), msg.Payload())
+		msgID = msg.ID()
+	}
+
+	assert.Equal(t, lastMsgID.Serialize(), msgID.Serialize())
+}
