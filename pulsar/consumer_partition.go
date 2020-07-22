@@ -76,6 +76,8 @@ var (
 		Help:    "Time it takes for application to process messages",
 		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 	})
+
+	lastestMessageID = LatestMessageID()
 )
 
 type consumerState int
@@ -191,6 +193,19 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.log.Info("Created consumer")
 	pc.state = consumerReady
 
+	if pc.options.startMessageIDInclusive && pc.startMessageID == lastestMessageID {
+		msgID, err := pc.requestGetLastMessageID()
+		if err != nil {
+			return nil, err
+		}
+		pc.startMessageID = msgID
+
+		err = pc.requestSeek(msgID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	go pc.dispatcher()
 
 	go pc.runEventsLoop()
@@ -250,7 +265,10 @@ func (pc *partitionConsumer) getLastMessageID() (messageID, error) {
 
 func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) {
 	defer close(req.doneCh)
+	req.msgID, req.err = pc.requestGetLastMessageID()
+}
 
+func (pc *partitionConsumer) requestGetLastMessageID() (messageID, error) {
 	requestID := pc.client.rpcClient.NewRequestID()
 	cmdGetLastMessageID := &pb.CommandGetLastMessageId{
 		RequestId:  proto.Uint64(requestID),
@@ -260,11 +278,10 @@ func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) 
 		pb.BaseCommand_GET_LAST_MESSAGE_ID, cmdGetLastMessageID)
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to get last message id")
-		req.err = err
-	} else {
-		id := res.Response.GetLastMessageIdResponse.GetLastMessageId()
-		req.msgID = convertToMessageID(id)
+		return messageID{}, err
 	}
+	id := res.Response.GetLastMessageIdResponse.GetLastMessageId()
+	return convertToMessageID(id), nil
 }
 
 func (pc *partitionConsumer) AckID(msgID messageID) {
@@ -340,17 +357,20 @@ func (pc *partitionConsumer) Seek(msgID messageID) error {
 
 func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 	defer close(seek.doneCh)
+	seek.err = pc.requestSeek(seek.msgID)
+}
 
+func (pc *partitionConsumer) requestSeek(msgID messageID) error {
 	if pc.state == consumerClosing || pc.state == consumerClosed {
 		pc.log.Error("Consumer was already closed")
-		return
+		return nil
 	}
 
 	id := &pb.MessageIdData{}
-	err := proto.Unmarshal(seek.msgID.Serialize(), id)
+	err := proto.Unmarshal(msgID.Serialize(), id)
 	if err != nil {
 		pc.log.WithError(err).Errorf("deserialize message id error: %s", err.Error())
-		seek.err = err
+		return err
 	}
 
 	requestID := pc.client.rpcClient.NewRequestID()
@@ -363,8 +383,9 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 	_, err = pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_SEEK, cmdSeek)
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to reset to message id")
-		seek.err = err
+		return err
 	}
+	return nil
 }
 
 func (pc *partitionConsumer) SeekByTime(time time.Time) error {
