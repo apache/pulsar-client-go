@@ -56,8 +56,8 @@ var ErrConsumerClosed = errors.New("consumer closed")
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
-	AckID(id messageID)
-	NackID(id messageID)
+	AckID(id trackingMessageID)
+	NackID(id trackingMessageID)
 }
 
 type consumer struct {
@@ -263,7 +263,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				nackRedeliveryDelay:        nackRedeliveryDelay,
 				metadata:                   metadata,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             messageID{},
+				startMessageID:             trackingMessageID{},
 				subscriptionMode:           durable,
 				readCompacted:              c.options.ReadCompacted,
 				interceptors:               c.options.Interceptors,
@@ -488,11 +488,11 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 	return pb.CommandSubscribe_Latest
 }
 
-func (c *consumer) messageID(msgID MessageID) (messageID, bool) {
-	mid, ok := msgID.(messageID)
+func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
+	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
-		return messageID{}, false
+		return trackingMessageID{}, false
 	}
 
 	partition := int(mid.partitionIdx)
@@ -500,7 +500,7 @@ func (c *consumer) messageID(msgID MessageID) (messageID, bool) {
 	if partition < 0 || partition >= len(c.consumers) {
 		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
-		return messageID{}, false
+		return trackingMessageID{}, false
 	}
 
 	return mid, true
