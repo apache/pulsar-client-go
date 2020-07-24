@@ -636,7 +636,7 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ConnectionClosed()
-		delete(c.listeners, consumerID)
+		c.DeleteConsumeHandler(consumerID)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
 	}
