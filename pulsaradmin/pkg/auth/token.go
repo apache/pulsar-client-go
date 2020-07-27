@@ -78,3 +78,7 @@ func (p *TokenAuthProvider) RoundTrip(req *http.Request) (*http.Response, error)
 func (p *TokenAuthProvider) Transport() http.RoundTripper {
 	return p.T
 }
+
+func (p *TokenAuthProvider) WithTransport(tripper http.RoundTripper) {
+	p.T = tripper
+}

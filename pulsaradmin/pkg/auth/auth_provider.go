@@ -32,6 +32,7 @@ import (
 type Provider interface {
 	RoundTrip(req *http.Request) (*http.Response, error)
 	Transport() http.RoundTripper
+	WithTransport(tripper http.RoundTripper)
 }
 
 type Transport struct {
@@ -40,7 +41,7 @@ type Transport struct {
 
 func GetAuthProvider(config *common.Config) (*Provider, error) {
 	var provider Provider
-	defaultTransport := getDefaultTransport(config)
+	defaultTransport := GetDefaultTransport(config)
 	var err error
 	switch config.AuthPlugin {
 	case TLSPluginName:
@@ -59,13 +60,13 @@ func GetAuthProvider(config *common.Config) (*Provider, error) {
 			provider, err = NewAuthenticationOAuth2WithParams(
 				config.IssuerEndpoint,
 				config.ClientID,
-				config.Audience)
+				config.Audience, defaultTransport)
 		}
 	}
 	return &provider, err
 }
 
-func getDefaultTransport(config *common.Config) http.RoundTripper {
+func GetDefaultTransport(config *common.Config) http.RoundTripper {
 	transport := http.DefaultTransport.(*http.Transport)
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: config.TLSAllowInsecureConnection,

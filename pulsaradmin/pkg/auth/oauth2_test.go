@@ -106,7 +106,7 @@ func TestOauth2(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	auth, err := NewAuthenticationOauth2(issuer, memoryStore)
+	auth, err := NewAuthenticationOAuth2(issuer, memoryStore)
 	if err != nil {
 		t.Fatal(err)
 	}
