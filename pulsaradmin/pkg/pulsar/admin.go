@@ -83,7 +83,10 @@ func New(config *common.Config) (Client, error) {
 	return c, err
 }
 
-func NewWithAuthProvider(config *common.Config, auth auth.Provider) Client {
+func NewWithAuthProvider(config *common.Config, authProvider auth.Provider) Client {
+	defaultTransport := auth.GetDefaultTransport(config)
+	authProvider.WithTransport(defaultTransport)
+
 	c := &pulsarClient{
 		APIVersion: config.PulsarAPIVersion,
 		Client: &cli.Client{
@@ -91,7 +94,7 @@ func NewWithAuthProvider(config *common.Config, auth auth.Provider) Client {
 			VersionInfo: ReleaseVersion,
 			HTTPClient: &http.Client{
 				Timeout:   DefaultHTTPTimeOutDuration,
-				Transport: auth,
+				Transport: authProvider,
 			},
 		},
 	}

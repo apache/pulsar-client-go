@@ -18,7 +18,6 @@
 package auth
 
 import (
-	"fmt"
 	"net/http"
 	"path/filepath"
 
@@ -37,14 +36,15 @@ const (
 )
 
 type OAuth2Provider struct {
-	clock  clock2.RealClock
-	issuer oauth2.Issuer
-	store  store.Store
-	source cache.CachingTokenSource
-	T      http.RoundTripper
+	clock            clock2.RealClock
+	issuer           oauth2.Issuer
+	store            store.Store
+	source           cache.CachingTokenSource
+	defaultTransport http.RoundTripper
+	tokenTransport   *transport
 }
 
-func NewAuthenticationOauth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Provider, error) {
+func NewAuthenticationOAuth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Provider, error) {
 	p := &OAuth2Provider{
 		clock:  clock2.RealClock{},
 		issuer: issuer,
@@ -59,10 +59,40 @@ func NewAuthenticationOauth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Pr
 	return p, nil
 }
 
+// NewAuthenticationOAuth2WithDefaultFlow uses memory to save the grant
+func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string) (Provider, error) {
+	st := store.NewMemoryStore()
+	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
+		KeyFile: keyFile,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	grant, err := flow.Authorize(issuer.Audience)
+	if err != nil {
+		return nil, err
+	}
+
+	err = st.SaveGrant(issuer.Audience, *grant)
+	if err != nil {
+		return nil, err
+	}
+
+	p := &OAuth2Provider{
+		clock:  clock2.RealClock{},
+		issuer: issuer,
+		store:  st,
+	}
+
+	return p, p.loadGrant()
+}
+
 func NewAuthenticationOAuth2WithParams(
 	issueEndpoint,
 	clientID,
-	audience string) (*OAuth2Provider, error) {
+	audience string,
+	transport http.RoundTripper) (*OAuth2Provider, error) {
 
 	issuer := oauth2.Issuer{
 		IssuerEndpoint: issueEndpoint,
@@ -76,9 +106,10 @@ func NewAuthenticationOAuth2WithParams(
 	}
 
 	p := &OAuth2Provider{
-		clock:  clock2.RealClock{},
-		issuer: issuer,
-		store:  keyringStore,
+		clock:            clock2.RealClock{},
+		issuer:           issuer,
+		store:            keyringStore,
+		defaultTransport: transport,
 	}
 
 	err = p.loadGrant()
@@ -108,11 +139,22 @@ func (o *OAuth2Provider) initCache(grant *oauth2.AuthorizationGrant) error {
 		return err
 	}
 	o.source = source
+	o.tokenTransport = &transport{
+		source: o.source,
+		wrapped: &xoauth2.Transport{
+			Source: o.source,
+			Base:   o.defaultTransport,
+		},
+	}
 	return nil
 }
 
 func (o *OAuth2Provider) RoundTrip(req *http.Request) (*http.Response, error) {
-	return o.Transport().RoundTrip(req)
+	return o.tokenTransport.RoundTrip(req)
+}
+
+func (o *OAuth2Provider) WithTransport(tripper http.RoundTripper) {
+	o.defaultTransport = tripper
 }
 
 func (o *OAuth2Provider) Transport() http.RoundTripper {
@@ -120,7 +162,7 @@ func (o *OAuth2Provider) Transport() http.RoundTripper {
 		source: o.source,
 		wrapped: &xoauth2.Transport{
 			Source: o.source,
-			Base:   o.T,
+			Base:   o.defaultTransport,
 		},
 	}
 }
@@ -146,11 +188,6 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 		return t.wrapped.Base.RoundTrip(req)
 	}
 
-	token, err := t.source.Token()
-	if err != nil {
-		fmt.Println(err.Error())
-	}
-	fmt.Println(token.AccessToken)
 	res, err := t.wrapped.RoundTrip(req)
 	if err != nil {
 		return nil, err
