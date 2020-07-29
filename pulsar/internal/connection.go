@@ -416,8 +416,10 @@ func (c *connection) WriteData(data Buffer) {
 			// The channel is either:
 			// 1. blocked, in which case we need to wait until we have space
 			// 2. the connection is already closed, then we need to bail out
+			c.log.Debug("Couldn't write on connection channel immediately")
 			state := connectionState(atomic.LoadInt32(&c.state))
 			if state != connectionReady {
+				c.log.Debug("Connection was already closed")
 				return
 			}
 		}
