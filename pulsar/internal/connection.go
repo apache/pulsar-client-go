@@ -110,11 +110,11 @@ type ConsumerHandler interface {
 type connectionState int32
 
 const (
-	connectionInit         connectionState = 0
-	connectionConnecting                   = 1
-	connectionTCPConnected                 = 2
-	connectionReady                        = 3
-	connectionClosed                       = 4
+	connectionInit         = 0
+	connectionConnecting   = 1
+	connectionTCPConnected = 2
+	connectionReady        = 3
+	connectionClosed       = 4
 )
 
 func (s connectionState) String() string {
