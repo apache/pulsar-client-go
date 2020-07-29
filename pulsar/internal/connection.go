@@ -397,6 +397,15 @@ func (c *connection) runPingCheck() {
 }
 
 func (c *connection) WriteData(data Buffer) {
+	select {
+	case c.writeRequestsCh <- data:
+		// Channel is not full
+		return
+
+	default:
+		// Channel full, fallback to probe if connection is closed
+	}
+
 	for {
 		select {
 		case c.writeRequestsCh <- data:
