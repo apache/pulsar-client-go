@@ -25,7 +25,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -49,7 +49,7 @@ type reader struct {
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
 
-	log *log.Entry
+	logger log.Logger
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -104,7 +104,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
-		log:       client.logger.WithField("topic", options.Topic),
+		logger:    client.logger.SubLogger(log.Fields{"topic": options.Topic}),
 	}
 
 	// Provide dummy dlq router with not dlq policy
@@ -159,7 +159,7 @@ func (r *reader) HasNext() bool {
 	for {
 		lastMsgID, err := r.pc.getLastMessageID()
 		if err != nil {
-			r.log.WithError(err).Error("Failed to get last message id from broker")
+			r.logger.WithField("cause", err).Error("Failed to get last message id from broker")
 			continue
 		} else {
 			r.lastMessageInBroker = lastMsgID

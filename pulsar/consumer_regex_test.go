@@ -27,9 +27,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 func TestFilterTopics(t *testing.T) {
@@ -155,7 +154,7 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 		AutoDiscoveryPeriod: 5 * time.Minute,
 	}
 
-	dlq, _ := newDlqRouter(c.(*client), nil, log.StandardLogger())
+	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
 	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq)
 	if err != nil {
 		t.Fatal(err)
@@ -203,7 +202,7 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 		AutoDiscoveryPeriod: 5 * time.Minute,
 	}
 
-	dlq, _ := newDlqRouter(c.(*client), nil, log.StandardLogger())
+	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
 	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq)
 	if err != nil {
 		t.Fatal(err)

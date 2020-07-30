@@ -26,7 +26,7 @@ import (
 
 	pkgerrors "github.com/pkg/errors"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 type multiTopicConsumer struct {
@@ -41,7 +41,7 @@ type multiTopicConsumer struct {
 	closeOnce sync.Once
 	closeCh   chan struct{}
 
-	log *log.Entry
+	logger log.Logger
 }
 
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
@@ -52,7 +52,7 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 		consumers:    make(map[string]Consumer, len(topics)),
 		closeCh:      make(chan struct{}),
 		dlq:          dlq,
-		log:          client.logger.WithField("topic", topics),
+		logger:       client.logger.SubLogger(log.Fields{"topic": topics}),
 		consumerName: options.Name,
 	}
 
@@ -122,12 +122,12 @@ func (c *multiTopicConsumer) Ack(msg Message) {
 func (c *multiTopicConsumer) AckID(msgID MessageID) {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
-		c.log.Warnf("invalid message id type %T", msgID)
+		c.logger.Warnf("invalid message id type %T", msgID)
 		return
 	}
 
 	if mid.consumer == nil {
-		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
+		c.logger.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
 		return
 	}
 
@@ -141,12 +141,12 @@ func (c *multiTopicConsumer) Nack(msg Message) {
 func (c *multiTopicConsumer) NackID(msgID MessageID) {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
-		c.log.Warnf("invalid message id type %T", msgID)
+		c.logger.Warnf("invalid message id type %T", msgID)
 		return
 	}
 
 	if mid.consumer == nil {
-		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
+		c.logger.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
 		return
 	}
 

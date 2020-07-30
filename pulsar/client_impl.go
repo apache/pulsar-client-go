@@ -25,11 +25,12 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -43,17 +44,24 @@ type client struct {
 	handlers      internal.ClientHandlers
 	lookupService internal.LookupService
 
-	logger *log.Logger
+	logger log.Logger
 }
 
 func newClient(options ClientOptions) (Client, error) {
+	var logger log.Logger
+	if options.Logger != nil {
+		logger = options.Logger
+	} else {
+		logger = log.NewLoggerWithLogrus(logrus.StandardLogger())
+	}
+
 	if options.URL == "" {
 		return nil, newError(ResultInvalidConfiguration, "URL is required for client")
 	}
 
 	url, err := url.Parse(options.URL)
 	if err != nil {
-		log.WithError(err).Error("Failed to parse service URL")
+		logger.WithField("cause", err).Error("Failed to parse service URL")
 		return nil, newError(ResultInvalidConfiguration, "Invalid service URL")
 	}
 
@@ -100,12 +108,6 @@ func newClient(options ClientOptions) (Client, error) {
 	maxConnectionsPerHost := options.MaxConnectionsPerBroker
 	if maxConnectionsPerHost <= 0 {
 		maxConnectionsPerHost = 1
-	}
-	var logger *log.Logger
-	if options.Logger != nil {
-		logger = options.Logger
-	} else {
-		logger = log.StandardLogger()
 	}
 
 	c := &client{

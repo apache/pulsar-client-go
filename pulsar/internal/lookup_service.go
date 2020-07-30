@@ -22,13 +22,12 @@ import (
 	"fmt"
 	"net/url"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	"github.com/gogo/protobuf/proto"
-
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
@@ -55,17 +54,17 @@ type lookupService struct {
 	rpcClient  RPCClient
 	serviceURL *url.URL
 	tlsEnabled bool
-	log        *log.Entry
+	logger     log.Logger
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL,
-	tlsEnabled bool, logger *log.Logger) LookupService {
+	tlsEnabled bool, logger log.Logger) LookupService {
 	return &lookupService{
 		rpcClient:  rpcClient,
 		serviceURL: serviceURL,
 		tlsEnabled: tlsEnabled,
-		log:        logger.WithField("serviceURL", serviceURL),
+		logger:     logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 	}
 }
 
@@ -105,7 +104,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Debugf("Got topic{%s} lookup response: %+v", topic, res)
+	ls.logger.Debugf("Got topic{%s} lookup response: %+v", topic, res)
 
 	for i := 0; i < lookupResultMaxRedirect; i++ {
 		lr := res.Response.LookupTopicResponse
@@ -117,7 +116,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 				return nil, err
 			}
 
-			log.Debugf("Follow topic{%s} redirect to broker. %v / %v - Use proxy: %v",
+			ls.logger.Debugf("Follow topic{%s} redirect to broker. %v / %v - Use proxy: %v",
 				topic, lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
 
 			id := ls.rpcClient.NewRequestID()
@@ -134,7 +133,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			continue
 
 		case pb.CommandLookupTopicResponse_Connect:
-			log.Debugf("Successfully looked up topic{%s} on broker. %s / %s - Use proxy: %t",
+			ls.logger.Debugf("Successfully looked up topic{%s} on broker. %s / %s - Use proxy: %t",
 				topic, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
 			logicalAddress, physicalAddress, err := ls.getBrokerAddress(lr)
@@ -152,7 +151,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			if lr.Error != nil {
 				errorMsg = lr.Error.String()
 			}
-			log.Warnf("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
+			ls.logger.Warnf("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
 			return nil, fmt.Errorf("failed to lookup topic: %s", errorMsg)
 		}
 	}

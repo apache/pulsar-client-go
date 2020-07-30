@@ -25,8 +25,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
-
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 // ConnectionPool is a interface of connection pool.
@@ -46,7 +45,7 @@ type connectionPool struct {
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
 
-	logger *log.Logger
+	logger log.Logger
 }
 
 // NewConnectionPool init connection pool.
@@ -55,7 +54,7 @@ func NewConnectionPool(
 	auth auth.Provider,
 	connectionTimeout time.Duration,
 	maxConnectionsPerHost int,
-	logger *log.Logger) ConnectionPool {
+	logger log.Logger) ConnectionPool {
 	return &connectionPool{
 		tlsOptions:            tlsOptions,
 		auth:                  auth,

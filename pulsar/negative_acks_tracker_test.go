@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -74,7 +75,7 @@ func (nmc *nackMockedConsumer) Wait() <-chan messageID {
 
 func TestNacksTracker(t *testing.T) {
 	nmc := newNackMockedConsumer()
-	nacks := newNegativeAcksTracker(nmc, testNackDelay)
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, log.DefaultNopLogger())
 
 	nacks.Add(messageID{
 		ledgerID: 1,
@@ -105,7 +106,7 @@ func TestNacksTracker(t *testing.T) {
 
 func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := newNackMockedConsumer()
-	nacks := newNegativeAcksTracker(nmc, testNackDelay)
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, log.DefaultNopLogger())
 
 	nacks.Add(messageID{
 		ledgerID: 1,

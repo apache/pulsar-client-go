@@ -44,7 +44,7 @@ func (r *connectionReader) readFromConnection() {
 	for {
 		cmd, headersAndPayload, err := r.readSingleCommand()
 		if err != nil {
-			r.cnx.log.WithError(err).Info("Error reading from connection")
+			r.cnx.logger.WithField("cause", err).Info("Error reading from connection")
 			r.cnx.TriggerClose()
 			break
 		}
@@ -54,7 +54,7 @@ func (r *connectionReader) readFromConnection() {
 		if headersAndPayload != nil {
 			payloadLen = headersAndPayload.ReadableBytes()
 		}
-		r.cnx.log.Debug("Got command! ", cmd, " with payload size: ", payloadLen)
+		r.cnx.logger.Debug("Got command! ", cmd, " with payload size: ", payloadLen)
 		r.cnx.receivedCommand(cmd, headersAndPayload)
 	}
 }
@@ -74,7 +74,7 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 	// We have enough to read frame size
 	frameSize := r.buffer.ReadUint32()
 	if frameSize > MaxFrameSize {
-		r.cnx.log.Warnf("Received too big frame size. size=%d", frameSize)
+		r.cnx.logger.Warnf("Received too big frame size. size=%d", frameSize)
 		r.cnx.TriggerClose()
 		return nil, nil, errors.New("Frame size too big")
 	}
@@ -131,7 +131,7 @@ func (r *connectionReader) deserializeCmd(data []byte) (*pb.BaseCommand, error) 
 	cmd := &pb.BaseCommand{}
 	err := proto.Unmarshal(data, cmd)
 	if err != nil {
-		r.cnx.log.WithError(err).Warn("Failed to parse protobuf command")
+		r.cnx.logger.WithField("cause", err).Warn("Failed to parse protobuf command")
 		r.cnx.TriggerClose()
 		return nil, err
 	}

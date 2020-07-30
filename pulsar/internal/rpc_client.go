@@ -27,10 +27,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/apache/pulsar-client-go/pulsar/log"
+
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -72,16 +72,16 @@ type rpcClient struct {
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
 
-	log *log.Entry
+	logger log.Logger
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
-	requestTimeout time.Duration, logger *log.Logger) RPCClient {
+	requestTimeout time.Duration, logger log.Logger) RPCClient {
 	return &rpcClient{
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
-		log:            logger.WithField("serviceURL", serviceURL),
+		logger:         logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 	}
 }
 
@@ -129,11 +129,11 @@ func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connec
 	if err != nil {
 		for time.Since(startTime) < c.requestTimeout {
 			retryTime = backoff.Next()
-			c.log.Debugf("Reconnecting to broker in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
+			c.logger.Debugf("Reconnecting to broker in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
 			time.Sleep(retryTime)
 			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr)
 			if err == nil {
-				c.log.Debugf("retry connection success")
+				c.logger.Debugf("retry connection success")
 				return cnx, nil
 			}
 		}

@@ -20,11 +20,11 @@ package internal
 import (
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -64,13 +64,13 @@ type BatchBuilder struct {
 	compressionProvider compression.Provider
 	buffersPool         BuffersPool
 
-	logger *log.Logger
+	logger log.Logger
 }
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
 func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger *log.Logger) (*BatchBuilder, error) {
+	bufferPool BuffersPool, logger log.Logger) (*BatchBuilder, error) {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
 	}
@@ -189,7 +189,7 @@ func (bb *BatchBuilder) Close() error {
 }
 
 func getCompressionProvider(compressionType pb.CompressionType,
-	level compression.Level, logger *log.Logger) compression.Provider {
+	level compression.Level, logger log.Logger) compression.Provider {
 	switch compressionType {
 	case pb.CompressionType_NONE:
 		return compression.NewNoopProvider()
@@ -200,7 +200,8 @@ func getCompressionProvider(compressionType pb.CompressionType,
 	case pb.CompressionType_ZSTD:
 		return compression.NewZStdProvider(level)
 	default:
-		logger.Panic("unsupported compression type")
+		logger.Error("unsupported compression type")
+		panic("unsupported compression type")
 		return nil
 	}
 }

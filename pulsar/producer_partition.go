@@ -31,10 +31,9 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -89,7 +88,7 @@ type partitionProducer struct {
 	state  int32
 	client *client
 	topic  string
-	log    *log.Entry
+	logger log.Logger
 	cnx    internal.Connection
 
 	options             *ProducerOptions
@@ -125,11 +124,12 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		maxPendingMessages = options.MaxPendingMessages
 	}
 
+	logger := client.logger.SubLogger(log.Fields{"topic": topic})
 	p := &partitionProducer{
 		state:            producerInit,
-		log:              client.logger.WithField("topic", topic),
 		client:           client,
 		topic:            topic,
+		logger:           logger,
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, maxPendingMessages),
@@ -146,13 +146,16 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	err := p.grabCnx()
 	if err != nil {
-		log.WithError(err).Errorf("Failed to create producer")
+		logger.WithField("cause", err).Errorf("Failed to create producer")
 		return nil, err
 	}
 
-	p.log = p.log.WithField("producer_name", p.producerName).
-		WithField("producerID", p.producerID)
-	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
+	p.logger = p.logger.SubLogger(log.Fields{
+		"producer_name": p.producerName,
+		"producerID":    p.producerID,
+	})
+
+	p.logger.WithField("cnx", p.cnx.ID()).Info("Created producer")
 	atomic.StoreInt32(&p.state, producerReady)
 
 	go p.runEventsLoop()
@@ -163,11 +166,11 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 func (p *partitionProducer) grabCnx() error {
 	lr, err := p.client.lookupService.Lookup(p.topic)
 	if err != nil {
-		p.log.WithError(err).Warn("Failed to lookup topic")
+		p.logger.WithField("cause", err).Warn("Failed to lookup topic")
 		return err
 	}
 
-	p.log.Debug("Lookup result: ", lr)
+	p.logger.Debug("Lookup result: ", lr)
 	id := p.client.rpcClient.NewRequestID()
 	cmdProducer := &pb.CommandProducer{
 		RequestId:  proto.Uint64(id),
@@ -186,7 +189,7 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
-		p.log.WithError(err).Error("Failed to create producer")
+		p.logger.WithField("cause", err).Error("Failed to create producer")
 		return err
 	}
 
@@ -196,7 +199,7 @@ func (p *partitionProducer) grabCnx() error {
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
-			p.log.Logger)
+			p.logger)
 		if err != nil {
 			return err
 		}
@@ -208,11 +211,11 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	p.cnx = res.Cnx
 	p.cnx.RegisterListener(p.producerID, p)
-	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
+	p.logger.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	if len(pendingItems) > 0 {
-		p.log.Infof("Resending %d pending batches", len(pendingItems))
+		p.logger.Infof("Resending %d pending batches", len(pendingItems))
 		for _, pi := range pendingItems {
 			p.cnx.WriteData(pi.(*pendingItem).batchData)
 		}
@@ -232,7 +235,7 @@ func (p *partitionProducer) GetBuffer() internal.Buffer {
 
 func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine
-	p.log.WithField("cnx", p.cnx.ID()).Warn("Connection was closed")
+	p.logger.WithField("cnx", p.cnx.ID()).Warn("Connection was closed")
 	p.eventsChan <- &connectionClosed{}
 }
 
@@ -245,13 +248,13 @@ func (p *partitionProducer) reconnectToBroker() {
 		}
 
 		d := backoff.Next()
-		p.log.Info("Reconnecting to broker in ", d)
+		p.logger.Info("Reconnecting to broker in ", d)
 		time.Sleep(d)
 
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
-			p.log.WithField("cnx", p.cnx.ID()).Info("Reconnected producer to broker")
+			p.logger.WithField("cnx", p.cnx.ID()).Info("Reconnected producer to broker")
 			return
 		}
 	}
@@ -288,7 +291,7 @@ func (p *partitionProducer) Name() string {
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
-	p.log.Debug("Received send request: ", *request)
+	p.logger.Debug("Received send request: ", *request)
 
 	msg := request.msg
 
@@ -296,9 +299,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if len(msg.Payload) > int(p.cnx.GetMaxMessageSize()) {
 		p.publishSemaphore.Release()
 		request.callback(nil, request.msg, errMessageTooLarge)
-		p.log.WithField("size", len(msg.Payload)).
+		p.logger.WithField("size", len(msg.Payload)).
 			WithField("properties", msg.Properties).
-			WithError(errMessageTooLarge).Error()
+			Error(errMessageTooLarge)
 		publishErrors.Inc()
 		return
 	}
@@ -346,7 +349,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			msg.ReplicationClusters, deliverAt); !ok {
 			p.publishSemaphore.Release()
 			request.callback(nil, request.msg, errFailAddBatch)
-			p.log.WithField("size", len(msg.Payload)).
+			p.logger.WithField("size", len(msg.Payload)).
 				WithField("sequenceID", sequenceID).
 				WithField("properties", msg.Properties).
 				Error("unable to add message to batch")
@@ -462,7 +465,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		// if we receive a receipt although the pending queue is empty, the state of the broker and the producer differs.
 		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
 		// the state discrepancy.
-		p.log.Warnf("Received ack for %v although the pending queue is empty, closing connection", response.GetMessageId())
+		p.logger.Warnf("Received ack for %v although the pending queue is empty, closing connection", response.GetMessageId())
 		p.cnx.Close()
 		return
 	}
@@ -471,7 +474,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		// if we receive a receipt that is not the one expected, the state of the broker and the producer differs.
 		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
 		// the state discrepancy.
-		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
+		p.logger.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		p.cnx.Close()
 		return
@@ -527,7 +530,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		return
 	}
 
-	p.log.Info("Closing producer")
+	p.logger.Info("Closing producer")
 
 	id := p.client.rpcClient.NewRequestID()
 	_, err := p.client.rpcClient.RequestOnCnx(p.cnx, id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
@@ -536,13 +539,13 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	})
 
 	if err != nil {
-		p.log.WithError(err).Warn("Failed to close producer")
+		p.logger.WithField("cause", err).Warn("Failed to close producer")
 	} else {
-		p.log.Info("Closed producer")
+		p.logger.Info("Closed producer")
 	}
 
 	if err = p.batchBuilder.Close(); err != nil {
-		p.log.WithError(err).Warn("Failed to close batch builder")
+		p.logger.WithField("cause", err).Warn("Failed to close batch builder")
 	}
 
 	atomic.StoreInt32(&p.state, producerClosed)

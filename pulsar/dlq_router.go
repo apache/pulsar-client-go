@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 type dlqRouter struct {
@@ -32,10 +32,10 @@ type dlqRouter struct {
 	policy    *DLQPolicy
 	messageCh chan ConsumerMessage
 	closeCh   chan interface{}
-	log       *log.Entry
+	logger    log.Logger
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy, logger *log.Logger) (*dlqRouter, error) {
+func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger) (*dlqRouter, error) {
 	r := &dlqRouter{
 		client: client,
 		policy: policy,
@@ -52,7 +52,7 @@ func newDlqRouter(client Client, policy *DLQPolicy, logger *log.Logger) (*dlqRou
 
 		r.messageCh = make(chan ConsumerMessage)
 		r.closeCh = make(chan interface{}, 1)
-		r.log = logger.WithField("dlq-topic", policy.Topic)
+		r.logger = logger.SubLogger(log.Fields{"dlq-topic": policy.Topic})
 		go r.run()
 	}
 	return r, nil
@@ -64,7 +64,7 @@ func (r *dlqRouter) shouldSendToDlq(cm *ConsumerMessage) bool {
 	}
 
 	msg := cm.Message.(*message)
-	r.log.WithField("count", msg.redeliveryCount).
+	r.logger.WithField("count", msg.redeliveryCount).
 		WithField("max", r.policy.MaxDeliveries).
 		WithField("msgId", msg.msgID).
 		Debug("Should route to DLQ?")
@@ -88,7 +88,7 @@ func (r *dlqRouter) run() {
 	for {
 		select {
 		case cm := <-r.messageCh:
-			r.log.WithField("msgID", cm.ID()).Debug("Got message for DLQ")
+			r.logger.WithField("msgID", cm.ID()).Debug("Got message for DLQ")
 			producer := r.getProducer()
 
 			msg := cm.Message.(*message)
@@ -100,7 +100,7 @@ func (r *dlqRouter) run() {
 				EventTime:           msg.EventTime(),
 				ReplicationClusters: msg.replicationClusters,
 			}, func(MessageID, *ProducerMessage, error) {
-				r.log.WithField("msgID", msgID).Debug("Sent message to DLQ")
+				r.logger.WithField("msgID", msgID).Debug("Sent message to DLQ")
 				cm.Consumer.AckID(msgID)
 			})
 
@@ -108,7 +108,7 @@ func (r *dlqRouter) run() {
 			if r.producer != nil {
 				r.producer.Close()
 			}
-			r.log.Debug("Closed DLQ router")
+			r.logger.Debug("Closed DLQ router")
 			return
 		}
 	}
@@ -138,7 +138,7 @@ func (r *dlqRouter) getProducer() Producer {
 		})
 
 		if err != nil {
-			r.log.WithError(err).Error("Failed to create DLQ producer")
+			r.logger.WithField("cause", err).Error("Failed to create DLQ producer")
 			time.Sleep(backoff.Next())
 			continue
 		} else {

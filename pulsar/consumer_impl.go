@@ -28,10 +28,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
@@ -78,7 +77,7 @@ type consumer struct {
 	errorCh   chan error
 	ticker    *time.Ticker
 
-	log *log.Entry
+	logger log.Logger
 }
 
 func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
@@ -163,7 +162,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		closeCh:                   make(chan struct{}),
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
-		log:                       client.logger.WithField("topic", topic),
+		logger:                    client.logger.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
 	}
 
@@ -181,7 +180,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 
 	go func() {
 		for range consumer.ticker.C {
-			consumer.log.Debug("Auto discovering new partitions")
+			consumer.logger.Debug("Auto discovering new partitions")
 			consumer.internalTopicSubscribeToPartitions()
 		}
 	}()
@@ -210,11 +209,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	if oldConsumers != nil {
 		oldNumPartitions = len(oldConsumers)
 		if oldNumPartitions == newNumPartitions {
-			c.log.Debug("Number of partitions in topic has not changed")
+			c.logger.Debug("Number of partitions in topic has not changed")
 			return nil
 		}
 
-		c.log.WithField("old_partitions", oldNumPartitions).
+		c.logger.WithField("old_partitions", oldNumPartitions).
 			WithField("new_partitions", newNumPartitions).
 			Info("Changed number of partitions in topic")
 	}
@@ -491,14 +490,14 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
-		c.log.Warnf("invalid message id type %T", msgID)
+		c.logger.Warnf("invalid message id type %T", msgID)
 		return trackingMessageID{}, false
 	}
 
 	partition := int(mid.partitionIdx)
 	// did we receive a valid partition index?
 	if partition < 0 || partition >= len(c.consumers) {
-		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
+		c.logger.Warnf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
 		return trackingMessageID{}, false
 	}

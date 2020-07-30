@@ -27,9 +27,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
@@ -61,7 +60,7 @@ type producer struct {
 	ticker        *time.Ticker
 	tickerStop    chan struct{}
 
-	log *log.Entry
+	logger log.Logger
 }
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
@@ -88,7 +87,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		options: options,
 		topic:   options.Topic,
 		client:  client,
-		log:     client.logger.WithField("topic", options.Topic),
+		logger:  client.logger.SubLogger(log.Fields{"topic": options.Topic}),
 	}
 
 	var batchingMaxPublishDelay time.Duration
@@ -127,7 +126,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		for {
 			select {
 			case <-ticker.C:
-				p.log.Debug("Auto discovering new partitions")
+				p.logger.Debug("Auto discovering new partitions")
 				p.internalCreatePartitionsProducers()
 			case <-p.tickerStop:
 				return
@@ -156,11 +155,11 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	if oldProducers != nil {
 		oldNumPartitions = len(oldProducers)
 		if oldNumPartitions == newNumPartitions {
-			p.log.Debug("Number of partitions in topic has not changed")
+			p.logger.Debug("Number of partitions in topic has not changed")
 			return nil
 		}
 
-		p.log.WithField("old_partitions", oldNumPartitions).
+		p.logger.WithField("old_partitions", oldNumPartitions).
 			WithField("new_partitions", newNumPartitions).
 			Info("Changed number of partitions in topic")
 	}
