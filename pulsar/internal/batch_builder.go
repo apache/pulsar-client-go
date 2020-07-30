@@ -202,6 +202,5 @@ func getCompressionProvider(compressionType pb.CompressionType,
 	default:
 		logger.Error("unsupported compression type")
 		panic("unsupported compression type")
-		return nil
 	}
 }
