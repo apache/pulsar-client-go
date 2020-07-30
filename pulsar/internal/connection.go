@@ -187,20 +187,30 @@ type connection struct {
 	maxMessageSize int32
 }
 
-func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions, connectionTimeout time.Duration, auth auth.Provider, logger log.Logger) *connection {
+// ConnectionOptions defines configurations for creating connection.
+type ConnectionOptions struct {
+	LogicalAddr       *url.URL
+	PhysicalAddr      *url.URL
+	TLS               *TLSOptions
+	ConnectionTimeout time.Duration
+	Auth              auth.Provider
+	Logger            log.Logger
+}
+
+func newConnection(opts ConnectionOptions) *connection {
 	cnx := &connection{
 		state:                int32(connectionInit),
-		connectionTimeout:    connectionTimeout,
-		logicalAddr:          logicalAddr,
-		physicalAddr:         physicalAddr,
+		connectionTimeout:    opts.ConnectionTimeout,
+		logicalAddr:          opts.LogicalAddr,
+		physicalAddr:         opts.PhysicalAddr,
 		writeBuffer:          NewBuffer(4096),
-		logger:               logger.SubLogger(log.Fields{"remote_addr": physicalAddr}),
+		logger:               opts.Logger.SubLogger(log.Fields{"remote_addr": opts.PhysicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
 		pingCheckTicker:      time.NewTicker(keepAliveInterval),
-		tlsOptions:           tlsOptions,
-		auth:                 auth,
+		tlsOptions:           opts.TLS,
+		auth:                 opts.Auth,
 
 		closeCh:            make(chan interface{}),
 		incomingRequestsCh: make(chan *request, 10),
