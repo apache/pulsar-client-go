@@ -1,4 +1,4 @@
-package pulsar
+package log
 
 // Logger and Entry interfaces are inspired by sirupsen/logrus
 

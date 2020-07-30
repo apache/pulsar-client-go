@@ -1,4 +1,4 @@
-package pulsar
+package log
 
 import (
 	"github.com/sirupsen/logrus"
