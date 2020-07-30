@@ -82,7 +82,7 @@ func TestAckingMessageIDBatchOne(t *testing.T) {
 
 func TestAckingMessageIDBatchTwo(t *testing.T) {
 	tracker := newAckTracker(2)
-	ids := []messageID{
+	ids := []trackingMessageID{
 		newTrackingMessageID(1, 1, 0, 0, tracker),
 		newTrackingMessageID(1, 1, 1, 0, tracker),
 	}
@@ -93,7 +93,7 @@ func TestAckingMessageIDBatchTwo(t *testing.T) {
 
 	// try reverse order
 	tracker = newAckTracker(2)
-	ids = []messageID{
+	ids = []trackingMessageID{
 		newTrackingMessageID(1, 1, 0, 0, tracker),
 		newTrackingMessageID(1, 1, 1, 0, tracker),
 	}

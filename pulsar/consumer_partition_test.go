@@ -34,6 +34,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		options:              &partitionConsumerOpts{},
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
@@ -44,11 +45,11 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	// ensure the tracker was set on the message id
 	messages := <-pc.queueCh
 	for _, m := range messages {
-		assert.Nil(t, m.ID().(messageID).tracker)
+		assert.Nil(t, m.ID().(trackingMessageID).tracker)
 	}
 
 	// ack the message id
-	pc.AckID(messages[0].msgID.(messageID))
+	pc.AckID(messages[0].msgID.(trackingMessageID))
 
 	select {
 	case <-eventsCh:
@@ -63,6 +64,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		options:              &partitionConsumerOpts{},
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
@@ -73,11 +75,11 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	// ensure the tracker was set on the message id
 	messages := <-pc.queueCh
 	for _, m := range messages {
-		assert.Nil(t, m.ID().(messageID).tracker)
+		assert.Nil(t, m.ID().(trackingMessageID).tracker)
 	}
 
 	// ack the message id
-	pc.AckID(messages[0].msgID.(messageID))
+	pc.AckID(messages[0].msgID.(trackingMessageID))
 
 	select {
 	case <-eventsCh:
@@ -92,6 +94,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		options:              &partitionConsumerOpts{},
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
@@ -102,12 +105,12 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	// ensure the tracker was set on the message id
 	messages := <-pc.queueCh
 	for _, m := range messages {
-		assert.NotNil(t, m.ID().(messageID).tracker)
+		assert.NotNil(t, m.ID().(trackingMessageID).tracker)
 	}
 
 	// ack all message ids except the last one
 	for i := 0; i < 9; i++ {
-		pc.AckID(messages[i].msgID.(messageID))
+		pc.AckID(messages[i].msgID.(trackingMessageID))
 	}
 
 	select {
@@ -117,7 +120,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	}
 
 	// ack last message
-	pc.AckID(messages[9].msgID.(messageID))
+	pc.AckID(messages[9].msgID.(trackingMessageID))
 
 	select {
 	case <-eventsCh:

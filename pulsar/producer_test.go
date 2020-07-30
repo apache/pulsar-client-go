@@ -322,7 +322,7 @@ func TestFlushInProducer(t *testing.T) {
 		assert.Nil(t, err)
 		msgCount++
 
-		msgID := msg.ID().(messageID)
+		msgID := msg.ID().(trackingMessageID)
 		// Since messages are batched, they will be sharing the same ledgerId/entryId
 		if ledgerID == -1 {
 			ledgerID = msgID.ledgerID
@@ -816,4 +816,106 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, errMessageTooLarge, err)
 		}
 	}
+}
+
+type noopProduceInterceptor struct{}
+
+func (noopProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {}
+
+func (noopProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
+}
+
+// copyPropertyIntercepotr copy all keys in message properties map and add a suffix
+type metricProduceInterceptor struct {
+	sendn int
+	ackn  int
+}
+
+func (x *metricProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {
+	x.sendn++
+}
+
+func (x *metricProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
+	x.ackn++
+}
+
+func TestProducerWithInterceptors(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/test-topic-interceptors"
+	ctx := context.Background()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	metric := &metricProduceInterceptor{}
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+		Interceptors: ProducerInterceptors{
+			noopProduceInterceptor{},
+			metric,
+		},
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if i%2 == 0 {
+			_, err := producer.Send(ctx, &ProducerMessage{
+				Payload: []byte(fmt.Sprintf("hello-%d", i)),
+				Key:     "pulsar",
+				Properties: map[string]string{
+					"key-1": "pulsar-1",
+				},
+			})
+			assert.Nil(t, err)
+		} else {
+			producer.SendAsync(ctx, &ProducerMessage{
+				Payload: []byte(fmt.Sprintf("hello-%d", i)),
+				Key:     "pulsar",
+				Properties: map[string]string{
+					"key-1": "pulsar-1",
+				},
+			}, func(_ MessageID, _ *ProducerMessage, err error) {
+				assert.Nil(t, err)
+			})
+			assert.Nil(t, err)
+		}
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		expectProperties := map[string]string{
+			"key-1": "pulsar-1",
+		}
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
+
+		// ack message
+		consumer.Ack(msg)
+	}
+
+	assert.Equal(t, 10, metric.sendn)
+	assert.Equal(t, 10, metric.ackn)
 }

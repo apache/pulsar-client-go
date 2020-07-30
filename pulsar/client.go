@@ -63,6 +63,11 @@ func NewAuthenticationAthenz(authParams map[string]string) Authentication {
 	return athenz
 }
 
+func NewAuthenticationOAuth2(authParams map[string]string) Authentication {
+	oauth, _ := auth.NewAuthenticationOAuth2WithParams(authParams)
+	return oauth
+}
+
 // Builder interface that is used to construct a Pulsar Client instance.
 type ClientOptions struct {
 	// Configure the service URL for the Pulsar service.

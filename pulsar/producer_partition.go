@@ -150,7 +150,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		return nil, err
 	}
 
-	p.log = p.log.WithField("producer_name", p.producerName)
+	p.log = p.log.WithField("producer_name", p.producerName).
+		WithField("producerID", p.producerID)
 	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
 	atomic.StoreInt32(&p.state, producerReady)
 
@@ -445,6 +446,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
 	}
+	p.options.Interceptors.BeforeSend(p, msg)
 
 	messagesPending.Inc()
 	bytesPending.Add(float64(len(sr.msg.Payload)))
@@ -457,13 +459,21 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	pi, ok := p.pendingQueue.Peek().(*pendingItem)
 
 	if !ok {
-		p.log.Warnf("Received ack for %v although the pending queue is empty", response.GetMessageId())
+		// if we receive a receipt although the pending queue is empty, the state of the broker and the producer differs.
+		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
+		// the state discrepancy.
+		p.log.Warnf("Received ack for %v although the pending queue is empty, closing connection", response.GetMessageId())
+		p.cnx.Close()
 		return
 	}
 
 	if pi.sequenceID != response.GetSequenceId() {
-		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v", response.GetMessageId(),
+		// if we receive a receipt that is not the one expected, the state of the broker and the producer differs.
+		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
+		// the state discrepancy.
+		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
+		p.cnx.Close()
 		return
 	}
 
@@ -489,14 +499,19 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 			bytesPending.Sub(payloadSize)
 		}
 
-		if sr.callback != nil {
+		if sr.callback != nil || len(p.options.Interceptors) > 0 {
 			msgID := newMessageID(
 				int64(response.MessageId.GetLedgerId()),
 				int64(response.MessageId.GetEntryId()),
 				int32(idx),
 				p.partitionIdx,
 			)
-			sr.callback(msgID, sr.msg, nil)
+
+			if sr.callback != nil {
+				sr.callback(msgID, sr.msg, nil)
+			}
+
+			p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
 		}
 	}
 
