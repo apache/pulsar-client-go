@@ -63,6 +63,9 @@ func NewProvider(name string, params string) (Provider, error) {
 	case "athenz", "org.apache.pulsar.client.impl.auth.AuthenticationAthenz":
 		return NewAuthenticationAthenzWithParams(m)
 
+	case "oauth2", "org.apache.pulsar.client.impl.auth.oauth2.AuthenticationOAuth2":
+		return NewAuthenticationOAuth2WithParams(m)
+
 	default:
 		return nil, errors.New(fmt.Sprintf("invalid auth provider '%s'", name))
 	}
