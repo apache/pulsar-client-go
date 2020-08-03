@@ -19,12 +19,7 @@ package oauth2
 
 import (
 	"encoding/json"
-	"fmt"
 	"io/ioutil"
-)
-
-const (
-	KeyFileTypeServiceAccount = "sn_service_account"
 )
 
 type KeyFileProvider struct {
@@ -57,9 +52,6 @@ func (k *KeyFileProvider) GetClientCredentials() (*KeyFile, error) {
 	err = json.Unmarshal(keyFile, &v)
 	if err != nil {
 		return nil, err
-	}
-	if v.Type != KeyFileTypeServiceAccount {
-		return nil, fmt.Errorf("open %s: unsupported format", k.KeyFile)
 	}
 
 	return &v, nil
