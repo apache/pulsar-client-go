@@ -266,7 +266,7 @@ func mockKeyFile(server string) (string, error) {
 		return "", err
 	}
 	_, err = kf.WriteString(fmt.Sprintf(`{
-  "type":"sn_service_account",
+  "type":"resource",
   "client_id":"client-id",
   "client_secret":"client-secret",
   "client_email":"oauth@test.org",
