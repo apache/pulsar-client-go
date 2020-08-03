@@ -45,6 +45,7 @@ type connectionPool struct {
 	auth                  auth.Provider
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
+	lock                  sync.Mutex
 }
 
 // NewConnectionPool init connection pool.
@@ -72,9 +73,20 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 			// Connection is ready to be used
 			return cnx, nil
 		}
-		// The cached connection is failed
-		p.pool.Delete(key)
-		log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
+		// The cached connection is failed;  double check to avoid delete other goroutine' established connection
+		p.lock.Lock()
+		cachedCnx, found = p.pool.Load(key)
+		if found {
+			cnx = cachedCnx.(*connection)
+			if err := cnx.waitUntilReady(); err == nil {
+				// new connection is ready to be used
+				p.lock.Unlock()
+				return cnx, nil
+			}
+			p.pool.Delete(key)
+			log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
+		}
+		p.lock.Unlock()
 	}
 
 	// Try to create a new connection
