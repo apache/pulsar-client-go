@@ -60,7 +60,7 @@ func NewAuthenticationTLS(certificatePath string, privateKeyPath string) Authent
 
 // Create new Authentication provider with specified TLS certificate supplier
 func NewAuthenticationFromTLSCertSupplier(tlsCertSupplier func() (*tls.Certificate, error)) Authentication {
-	return auth.NewAuthenticationFromTLSCertSupplier(tlsCertSupplier())
+	return auth.NewAuthenticationFromTLSCertSupplier(tlsCertSupplier)
 }
 
 func NewAuthenticationAthenz(authParams map[string]string) Authentication {
