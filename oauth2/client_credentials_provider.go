@@ -20,6 +20,12 @@ package oauth2
 import (
 	"encoding/json"
 	"io/ioutil"
+	"strings"
+)
+
+const (
+	FILE = "file://"
+	DATA = "data://"
 )
 
 type KeyFileProvider struct {
@@ -43,7 +49,17 @@ func NewClientCredentialsProviderFromKeyFile(keyFile string) *KeyFileProvider {
 var _ ClientCredentialsProvider = &KeyFileProvider{}
 
 func (k *KeyFileProvider) GetClientCredentials() (*KeyFile, error) {
-	keyFile, err := ioutil.ReadFile(k.KeyFile)
+	var keyFile []byte
+	var err error
+	switch {
+	case strings.HasPrefix(k.KeyFile, FILE):
+		filename := strings.TrimPrefix(k.KeyFile, FILE)
+		keyFile, err = ioutil.ReadFile(filename)
+	case strings.HasPrefix(k.KeyFile, "data://"):
+		keyFile = []byte(strings.TrimPrefix(k.KeyFile, DATA))
+	default:
+		keyFile, err = ioutil.ReadFile(k.KeyFile)
+	}
 	if err != nil {
 		return nil, err
 	}

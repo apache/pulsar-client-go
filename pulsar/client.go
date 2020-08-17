@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"crypto/tls"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
@@ -56,6 +57,11 @@ func NewAuthenticationTokenFromFile(tokenFilePath string) Authentication {
 // Create new Authentication provider with specified TLS certificate and private key
 func NewAuthenticationTLS(certificatePath string, privateKeyPath string) Authentication {
 	return auth.NewAuthenticationTLS(certificatePath, privateKeyPath)
+}
+
+// Create new Authentication provider with specified TLS certificate supplier
+func NewAuthenticationFromTLSCertSupplier(tlsCertSupplier func() (*tls.Certificate, error)) Authentication {
+	return auth.NewAuthenticationFromTLSCertSupplier(tlsCertSupplier)
 }
 
 func NewAuthenticationAthenz(authParams map[string]string) Authentication {

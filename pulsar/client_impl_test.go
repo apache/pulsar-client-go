@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"crypto/tls"
 	"fmt"
 	"io/ioutil"
 	"net/http"
@@ -149,6 +150,28 @@ func TestTLSAuth(t *testing.T) {
 		URL:                   serviceURLTLS,
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestTLSAuthWithCertSupplier(t *testing.T) {
+	supplier := func() (*tls.Certificate, error) {
+		cert, err := tls.LoadX509KeyPair(tlsClientCertPath, tlsClientKeyPath)
+		return &cert, err
+	}
+	client, err := NewClient(ClientOptions{
+		URL:                   serviceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        NewAuthenticationFromTLSCertSupplier(supplier),
 	})
 	assert.NoError(t, err)
 
