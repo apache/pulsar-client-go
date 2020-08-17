@@ -28,6 +28,7 @@ type Logger interface {
 
 	WithFields(fields Fields) Entry
 	WithField(name string, value interface{}) Entry
+	WithError(err error) Entry
 
 	Debug(args ...interface{})
 	Info(args ...interface{})

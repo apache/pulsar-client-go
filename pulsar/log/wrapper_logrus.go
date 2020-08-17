@@ -53,6 +53,12 @@ func (l *logrusWrapper) WithField(name string, value interface{}) Entry {
 	}
 }
 
+func (l *logrusWrapper) WithError(err error) Entry {
+	return logrusEntry{
+		e: l.l.WithError(err),
+	}
+}
+
 func (l *logrusWrapper) Debug(args ...interface{}) {
 	l.l.Debug(args)
 }

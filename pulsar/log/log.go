@@ -27,6 +27,7 @@ type nopLogger struct{}
 func (l nopLogger) SubLogger(fields Fields) Logger                 { return l }
 func (l nopLogger) WithFields(fields Fields) Entry                 { return nopEntry{} }
 func (l nopLogger) WithField(name string, value interface{}) Entry { return nopEntry{} }
+func (l nopLogger) WithError(err error) Entry                      { return nopEntry{} }
 func (l nopLogger) Debug(args ...interface{})                      {}
 func (l nopLogger) Info(args ...interface{})                       {}
 func (l nopLogger) Warn(args ...interface{})                       {}
