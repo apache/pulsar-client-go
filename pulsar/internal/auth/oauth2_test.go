@@ -91,27 +91,52 @@ func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 		t.Fatal(errors.Wrap(err, "create mocked key file failed"))
 	}
 
-	params := map[string]string{
-		ConfigParamType:      ConfigParamTypeClientCredentials,
-		ConfigParamIssuerURL: server.URL,
-		ConfigParamClientID:  "client-id",
-		ConfigParamAudience:  "audience",
-		ConfigParamKeyFile:   kf,
+	testData := []map[string]string{
+		{
+			ConfigParamType:      ConfigParamTypeClientCredentials,
+			ConfigParamIssuerURL: server.URL,
+			ConfigParamClientID:  "client-id",
+			ConfigParamAudience:  "audience",
+			ConfigParamKeyFile:   kf,
+		},
+		{
+			ConfigParamType:      ConfigParamTypeClientCredentials,
+			ConfigParamIssuerURL: server.URL,
+			ConfigParamClientID:  "client-id",
+			ConfigParamAudience:  "audience",
+			ConfigParamKeyFile:   fmt.Sprintf("file://%s", kf),
+		},
+		{
+			ConfigParamType:      ConfigParamTypeClientCredentials,
+			ConfigParamIssuerURL: server.URL,
+			ConfigParamClientID:  "client-id",
+			ConfigParamAudience:  "audience",
+			ConfigParamKeyFile: "data://" + fmt.Sprintf(`{
+  "type":"resource",
+  "client_id":"client-id",
+  "client_secret":"client-secret",
+  "client_email":"oauth@test.org",
+  "issuer_url":"%s"
+}`, server.URL),
+		},
 	}
 
-	auth, err := NewAuthenticationOAuth2WithParams(params)
-	if err != nil {
-		t.Fatal(err)
-	}
-	err = auth.Init()
-	if err != nil {
-		t.Fatal(err)
-	}
+	for i := range testData {
+		params := testData[i]
+		auth, err := NewAuthenticationOAuth2WithParams(params)
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = auth.Init()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	token, err := auth.GetData()
-	if err != nil {
-		t.Fatal(err)
-	}
+		token, err := auth.GetData()
+		if err != nil {
+			t.Fatal(err)
+		}
 
-	assert.Equal(t, "token-content", string(token))
+		assert.Equal(t, "token-content", string(token))
+	}
 }
