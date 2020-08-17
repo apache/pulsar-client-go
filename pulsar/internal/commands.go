@@ -207,7 +207,7 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.ResizeIfNeeded(metadataSize)
 	_, err := smm.MarshalToSizedBuffer(wb.WritableSlice()[:metadataSize])
 	if err != nil {
-		logger.WithField("cause", err).Error("Protobuf serialization error")
+		logger.WithError(err).Error("Protobuf serialization error")
 		panic("Protobuf serialization error")
 	}
 
@@ -235,7 +235,7 @@ func serializeBatch(wb Buffer,
 	wb.ResizeIfNeeded(cmdSize)
 	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
-		logger.WithField("cause", err).Error("Protobuf error when serializing cmdSend")
+		logger.WithError(err).Error("Protobuf error when serializing cmdSend")
 		panic("Protobuf error when serializing cmdSend")
 	}
 	wb.WrittenBytes(cmdSize)
@@ -251,7 +251,7 @@ func serializeBatch(wb Buffer,
 	wb.ResizeIfNeeded(msgMetadataSize)
 	_, err = msgMetadata.MarshalToSizedBuffer(wb.WritableSlice()[:msgMetadataSize])
 	if err != nil {
-		logger.WithField("cause", err).Error("Protobuf error when serializing msgMetadata")
+		logger.WithError(err).Error("Protobuf error when serializing msgMetadata")
 		panic("Protobuf error when serializing msgMetadata")
 	}
 	wb.WrittenBytes(msgMetadataSize)

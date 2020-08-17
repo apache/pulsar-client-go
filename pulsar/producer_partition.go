@@ -146,7 +146,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	err := p.grabCnx()
 	if err != nil {
-		logger.WithField("cause", err).Errorf("Failed to create producer")
+		logger.WithError(err).Errorf("Failed to create producer")
 		return nil, err
 	}
 
@@ -166,7 +166,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 func (p *partitionProducer) grabCnx() error {
 	lr, err := p.client.lookupService.Lookup(p.topic)
 	if err != nil {
-		p.logger.WithField("cause", err).Warn("Failed to lookup topic")
+		p.logger.WithError(err).Warn("Failed to lookup topic")
 		return err
 	}
 
@@ -189,7 +189,7 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
-		p.logger.WithField("cause", err).Error("Failed to create producer")
+		p.logger.WithError(err).Error("Failed to create producer")
 		return err
 	}
 
@@ -539,13 +539,13 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	})
 
 	if err != nil {
-		p.logger.WithField("cause", err).Warn("Failed to close producer")
+		p.logger.WithError(err).Warn("Failed to close producer")
 	} else {
 		p.logger.Info("Closed producer")
 	}
 
 	if err = p.batchBuilder.Close(); err != nil {
-		p.logger.WithField("cause", err).Warn("Failed to close batch builder")
+		p.logger.WithError(err).Warn("Failed to close batch builder")
 	}
 
 	atomic.StoreInt32(&p.state, producerClosed)

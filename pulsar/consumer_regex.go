@@ -265,7 +265,7 @@ func (c *regexConsumer) monitor() {
 func (c *regexConsumer) discover() {
 	topics, err := c.topics()
 	if err != nil {
-		c.logger.WithField("cause", err).Errorf("Failed to discover topics")
+		c.logger.WithError(err).Errorf("Failed to discover topics")
 		return
 	}
 	known := c.knownTopics()

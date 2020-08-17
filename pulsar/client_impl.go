@@ -61,7 +61,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 	url, err := url.Parse(options.URL)
 	if err != nil {
-		logger.WithField("cause", err).Error("Failed to parse service URL")
+		logger.WithError(err).Error("Failed to parse service URL")
 		return nil, newError(ResultInvalidConfiguration, "Invalid service URL")
 	}
 

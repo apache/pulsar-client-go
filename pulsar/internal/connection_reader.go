@@ -44,7 +44,7 @@ func (r *connectionReader) readFromConnection() {
 	for {
 		cmd, headersAndPayload, err := r.readSingleCommand()
 		if err != nil {
-			r.cnx.logger.WithField("cause", err).Info("Error reading from connection")
+			r.cnx.logger.WithError(err).Info("Error reading from connection")
 			r.cnx.TriggerClose()
 			break
 		}
@@ -131,7 +131,7 @@ func (r *connectionReader) deserializeCmd(data []byte) (*pb.BaseCommand, error) 
 	cmd := &pb.BaseCommand{}
 	err := proto.Unmarshal(data, cmd)
 	if err != nil {
-		r.cnx.logger.WithField("cause", err).Warn("Failed to parse protobuf command")
+		r.cnx.logger.WithError(err).Warn("Failed to parse protobuf command")
 		r.cnx.TriggerClose()
 		return nil, err
 	}

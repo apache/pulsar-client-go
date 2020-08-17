@@ -265,7 +265,7 @@ func (c *connection) connect() bool {
 		// TLS connection
 		tlsConfig, err = c.getTLSConfig()
 		if err != nil {
-			c.logger.WithField("cause", err).Warn("Failed to configure TLS ")
+			c.logger.WithError(err).Warn("Failed to configure TLS ")
 			return false
 		}
 
@@ -274,7 +274,7 @@ func (c *connection) connect() bool {
 	}
 
 	if err != nil {
-		c.logger.WithField("cause", err).Warn("Failed to connect to broker.")
+		c.logger.WithError(err).Warn("Failed to connect to broker.")
 		c.Close()
 		return false
 	}
@@ -294,7 +294,7 @@ func (c *connection) doHandshake() bool {
 	// Send 'Connect' command to initiate handshake
 	authData, err := c.auth.GetData()
 	if err != nil {
-		c.logger.WithField("cause", err).Warn("Failed to load auth credentials")
+		c.logger.WithError(err).Warn("Failed to load auth credentials")
 		return false
 	}
 
@@ -317,7 +317,7 @@ func (c *connection) doHandshake() bool {
 	c.writeCommand(baseCommand(pb.BaseCommand_CONNECT, cmdConnect))
 	cmd, _, err := c.reader.readSingleCommand()
 	if err != nil {
-		c.logger.WithField("cause", err).Warn("Failed to perform initial handshake")
+		c.logger.WithError(err).Warn("Failed to perform initial handshake")
 		return false
 	}
 
@@ -449,7 +449,7 @@ func (c *connection) WriteData(data Buffer) {
 func (c *connection) internalWriteData(data Buffer) {
 	c.logger.Debug("Write data: ", data.ReadableBytes())
 	if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
-		c.logger.WithField("cause", err).Warn("Failed to write on connection")
+		c.logger.WithError(err).Warn("Failed to write on connection")
 		c.TriggerClose()
 	}
 }
@@ -469,7 +469,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	c.writeBuffer.WriteUint32(cmdSize)
 	_, err := cmd.MarshalToSizedBuffer(c.writeBuffer.WritableSlice()[:cmdSize])
 	if err != nil {
-		c.logger.WithField("cause", err).Error("Protobuf serialization error")
+		c.logger.WithError(err).Error("Protobuf serialization error")
 		panic("Protobuf serialization error")
 	}
 
@@ -618,7 +618,8 @@ func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) 
 		err := consumer.MessageReceived(response, payload)
 		if err != nil {
 			c.logger.
-				WithFields(log.Fields{"consumerID": consumerID, "cause": err}).
+				WithError(err).
+				WithField("consumerID", consumerID).
 				Error("handle message Id: ", response.MessageId)
 		}
 	} else {
@@ -659,7 +660,7 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	// Get new credentials from the provider
 	authData, err := c.auth.GetData()
 	if err != nil {
-		c.logger.WithField("cause", err).Warn("Failed to load auth credentials")
+		c.logger.WithError(err).Warn("Failed to load auth credentials")
 		c.TriggerClose()
 		return
 	}

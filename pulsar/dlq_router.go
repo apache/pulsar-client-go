@@ -138,7 +138,7 @@ func (r *dlqRouter) getProducer() Producer {
 		})
 
 		if err != nil {
-			r.logger.WithField("cause", err).Error("Failed to create DLQ producer")
+			r.logger.WithError(err).Error("Failed to create DLQ producer")
 			time.Sleep(backoff.Next())
 			continue
 		} else {

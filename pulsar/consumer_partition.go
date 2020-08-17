@@ -189,7 +189,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	err := pc.grabConn()
 	if err != nil {
-		pc.logger.WithField("cause", err).Errorf("Failed to create consumer")
+		pc.logger.WithError(err).Errorf("Failed to create consumer")
 		return nil, err
 	}
 	pc.logger.Info("Created consumer")
@@ -227,7 +227,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	}
 	_, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_UNSUBSCRIBE, cmdUnsubscribe)
 	if err != nil {
-		pc.logger.WithField("cause", err).Error("Failed to unsubscribe consumer")
+		pc.logger.WithError(err).Error("Failed to unsubscribe consumer")
 		unsub.err = err
 		// Set the state to ready for closing the consumer
 		pc.state = consumerReady
@@ -263,7 +263,7 @@ func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) 
 	res, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID,
 		pb.BaseCommand_GET_LAST_MESSAGE_ID, cmdGetLastMessageID)
 	if err != nil {
-		pc.logger.WithField("cause", err).Error("Failed to get last message id")
+		pc.logger.WithError(err).Error("Failed to get last message id")
 		req.err = err
 	} else {
 		id := res.Response.GetLastMessageIdResponse.GetLastMessageId()
@@ -353,7 +353,7 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 	id := &pb.MessageIdData{}
 	err := proto.Unmarshal(seek.msgID.Serialize(), id)
 	if err != nil {
-		pc.logger.WithField("cause", err).Errorf("deserialize message id error: %s", err.Error())
+		pc.logger.WithError(err).Errorf("deserialize message id error: %s", err.Error())
 		seek.err = err
 	}
 
@@ -366,7 +366,7 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 
 	_, err = pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_SEEK, cmdSeek)
 	if err != nil {
-		pc.logger.WithField("cause", err).Error("Failed to reset to message id")
+		pc.logger.WithError(err).Error("Failed to reset to message id")
 		seek.err = err
 	}
 }
@@ -400,7 +400,7 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 
 	_, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_SEEK, cmdSeek)
 	if err != nil {
-		pc.logger.WithField("cause", err).Error("Failed to reset to message publish time")
+		pc.logger.WithError(err).Error("Failed to reset to message publish time")
 		seek.err = err
 	}
 }
@@ -614,7 +614,7 @@ func (pc *partitionConsumer) dispatcher() {
 			pc.logger.Debugf("dispatcher requesting initial permits=%d", initialPermits)
 			// send initial permits
 			if err := pc.internalFlow(initialPermits); err != nil {
-				pc.logger.WithField("cause", err).Error("unable to send initial permits to broker")
+				pc.logger.WithError(err).Error("unable to send initial permits to broker")
 			}
 
 		case msgs, ok := <-queueCh:
@@ -642,7 +642,7 @@ func (pc *partitionConsumer) dispatcher() {
 
 				pc.logger.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
 				if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
-					pc.logger.WithField("cause", err).Error("unable to send permits")
+					pc.logger.WithError(err).Error("unable to send permits")
 				}
 			}
 
@@ -758,7 +758,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	}
 	_, err := pc.client.rpcClient.RequestOnCnx(pc.conn, requestID, pb.BaseCommand_CLOSE_CONSUMER, cmdClose)
 	if err != nil {
-		pc.logger.WithField("cause", err).Warn("Failed to close consumer")
+		pc.logger.WithError(err).Warn("Failed to close consumer")
 	} else {
 		pc.logger.Info("Closed consumer")
 	}
@@ -799,7 +799,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 func (pc *partitionConsumer) grabConn() error {
 	lr, err := pc.client.lookupService.Lookup(pc.topic)
 	if err != nil {
-		pc.logger.WithField("cause", err).Warn("Failed to lookup topic")
+		pc.logger.WithError(err).Warn("Failed to lookup topic")
 		return err
 	}
 	pc.logger.Debugf("Lookup result: %+v", lr)
@@ -843,7 +843,7 @@ func (pc *partitionConsumer) grabConn() error {
 		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
 
 	if err != nil {
-		pc.logger.WithField("cause", err).Error("Failed to create consumer")
+		pc.logger.WithError(err).Error("Failed to create consumer")
 		return err
 	}
 
@@ -942,7 +942,7 @@ func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload int
 	if !ok {
 		var err error
 		if provider, err = pc.initializeCompressionProvider(msgMeta.GetCompression()); err != nil {
-			pc.logger.WithField("cause", err).Error("Failed to decompress message.")
+			pc.logger.WithError(err).Error("Failed to decompress message.")
 			return nil, err
 		}
 
