@@ -48,8 +48,7 @@ type reader struct {
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
-
-	logger log.Logger
+	log                 log.Logger
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -104,7 +103,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
-		logger:    client.log.WithFields(log.Fields{"topic": options.Topic}),
+		log:       client.log.WithFields(log.Fields{"topic": options.Topic}),
 	}
 
 	// Provide dummy dlq router with not dlq policy
@@ -159,7 +158,7 @@ func (r *reader) HasNext() bool {
 	for {
 		lastMsgID, err := r.pc.getLastMessageID()
 		if err != nil {
-			r.logger.WithError(err).Error("Failed to get last message id from broker")
+			r.log.WithError(err).Error("Failed to get last message id from broker")
 			continue
 		} else {
 			r.lastMessageInBroker = lastMsgID
