@@ -64,7 +64,7 @@ type BatchBuilder struct {
 	compressionProvider compression.Provider
 	buffersPool         BuffersPool
 
-	logger log.Logger
+	log log.Logger
 }
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
@@ -94,7 +94,7 @@ func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, p
 		callbacks:           []interface{}{},
 		compressionProvider: getCompressionProvider(compressionType, level, logger),
 		buffersPool:         bufferPool,
-		logger:              logger,
+		log:                 logger,
 	}
 
 	if compressionType != pb.CompressionType_NONE {
@@ -144,7 +144,7 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint6
 
 		bb.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
 	}
-	addSingleMessageToBatch(bb.buffer, metadata, payload, bb.logger)
+	addSingleMessageToBatch(bb.buffer, metadata, payload, bb.log)
 
 	bb.numMessages++
 	bb.callbacks = append(bb.callbacks, callback)
@@ -164,7 +164,7 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 		// No-Op for empty batch
 		return nil, 0, nil
 	}
-	bb.logger.Debug("BatchBuilder flush: messages: ", bb.numMessages)
+	bb.log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
 	bb.cmdSend.Send.NumMessages = proto.Int32(int32(bb.numMessages))
@@ -176,7 +176,7 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 	if buffer == nil {
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
-	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider, bb.logger)
+	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider, bb.log)
 
 	callbacks = bb.callbacks
 	sequenceID = bb.cmdSend.Send.GetSequenceId()

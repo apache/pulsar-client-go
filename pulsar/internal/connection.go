@@ -167,7 +167,7 @@ type connection struct {
 	pingTicker           *time.Ticker
 	pingCheckTicker      *time.Ticker
 
-	logger log.Logger
+	log log.Logger
 
 	requestIDGenerator uint64
 
@@ -205,7 +205,7 @@ func newConnection(opts ConnectionOptions) *connection {
 		logicalAddr:          opts.LogicalAddr,
 		physicalAddr:         opts.PhysicalAddr,
 		writeBuffer:          NewBuffer(4096),
-		logger:               opts.Logger.SubLogger(log.Fields{"remote_addr": opts.PhysicalAddr}),
+		log:                  opts.Logger.WithFields(log.Fields{"remote_addr": opts.PhysicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
@@ -250,7 +250,7 @@ func (c *connection) start() {
 }
 
 func (c *connection) connect() bool {
-	c.logger.Info("Connecting to broker")
+	c.log.Info("Connecting to broker")
 
 	var (
 		err       error
@@ -265,7 +265,7 @@ func (c *connection) connect() bool {
 		// TLS connection
 		tlsConfig, err = c.getTLSConfig()
 		if err != nil {
-			c.logger.WithError(err).Warn("Failed to configure TLS ")
+			c.log.WithError(err).Warn("Failed to configure TLS ")
 			return false
 		}
 
@@ -274,15 +274,15 @@ func (c *connection) connect() bool {
 	}
 
 	if err != nil {
-		c.logger.WithError(err).Warn("Failed to connect to broker.")
+		c.log.WithError(err).Warn("Failed to connect to broker.")
 		c.Close()
 		return false
 	}
 
 	c.Lock()
 	c.cnx = cnx
-	c.logger = c.logger.SubLogger(log.Fields{"local_addr": c.cnx.LocalAddr()})
-	c.logger.Info("TCP connection established")
+	c.log = c.log.WithFields(log.Fields{"local_addr": c.cnx.LocalAddr()})
+	c.log.Info("TCP connection established")
 	c.Unlock()
 
 	c.changeState(connectionTCPConnected)
@@ -294,7 +294,7 @@ func (c *connection) doHandshake() bool {
 	// Send 'Connect' command to initiate handshake
 	authData, err := c.auth.GetData()
 	if err != nil {
-		c.logger.WithError(err).Warn("Failed to load auth credentials")
+		c.log.WithError(err).Warn("Failed to load auth credentials")
 		return false
 	}
 
@@ -317,7 +317,7 @@ func (c *connection) doHandshake() bool {
 	c.writeCommand(baseCommand(pb.BaseCommand_CONNECT, cmdConnect))
 	cmd, _, err := c.reader.readSingleCommand()
 	if err != nil {
-		c.logger.WithError(err).Warn("Failed to perform initial handshake")
+		c.log.WithError(err).Warn("Failed to perform initial handshake")
 		return false
 	}
 
@@ -325,18 +325,18 @@ func (c *connection) doHandshake() bool {
 	c.cnx.SetDeadline(time.Time{})
 
 	if cmd.Connected == nil {
-		c.logger.Warnf("Failed to establish connection with broker: '%s'",
+		c.log.Warnf("Failed to establish connection with broker: '%s'",
 			cmd.Error.GetMessage())
 		return false
 	}
 	if cmd.Connected.MaxMessageSize != nil {
-		c.logger.Debug("Got MaxMessageSize from handshake response:", *cmd.Connected.MaxMessageSize)
+		c.log.Debug("Got MaxMessageSize from handshake response:", *cmd.Connected.MaxMessageSize)
 		c.maxMessageSize = *cmd.Connected.MaxMessageSize
 	} else {
-		c.logger.Debug("No MaxMessageSize from handshake response, use default: ", MaxMessageSize)
+		c.log.Debug("No MaxMessageSize from handshake response, use default: ", MaxMessageSize)
 		c.maxMessageSize = MaxMessageSize
 	}
-	c.logger.Info("Connection is ready")
+	c.log.Info("Connection is ready")
 	c.changeState(connectionReady)
 	return true
 }
@@ -346,7 +346,7 @@ func (c *connection) waitUntilReady() error {
 	defer c.Unlock()
 
 	for c.state != connectionReady {
-		c.logger.Debug("Wait until connection is ready. State: ", c.state)
+		c.log.Debug("Wait until connection is ready. State: ", c.state)
 		if c.state == connectionClosed {
 			return errors.New("connection error")
 		}
@@ -407,7 +407,7 @@ func (c *connection) runPingCheck() {
 			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
-				c.logger.Warn("Detected stale connection to broker")
+				c.log.Warn("Detected stale connection to broker")
 				c.TriggerClose()
 				return
 			}
@@ -435,10 +435,10 @@ func (c *connection) WriteData(data Buffer) {
 			// The channel is either:
 			// 1. blocked, in which case we need to wait until we have space
 			// 2. the connection is already closed, then we need to bail out
-			c.logger.Debug("Couldn't write on connection channel immediately")
+			c.log.Debug("Couldn't write on connection channel immediately")
 			state := connectionState(atomic.LoadInt32(&c.state))
 			if state != connectionReady {
-				c.logger.Debug("Connection was already closed")
+				c.log.Debug("Connection was already closed")
 				return
 			}
 		}
@@ -447,9 +447,9 @@ func (c *connection) WriteData(data Buffer) {
 }
 
 func (c *connection) internalWriteData(data Buffer) {
-	c.logger.Debug("Write data: ", data.ReadableBytes())
+	c.log.Debug("Write data: ", data.ReadableBytes())
 	if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
-		c.logger.WithError(err).Warn("Failed to write on connection")
+		c.log.WithError(err).Warn("Failed to write on connection")
 		c.TriggerClose()
 	}
 }
@@ -469,7 +469,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	c.writeBuffer.WriteUint32(cmdSize)
 	_, err := cmd.MarshalToSizedBuffer(c.writeBuffer.WritableSlice()[:cmdSize])
 	if err != nil {
-		c.logger.WithError(err).Error("Protobuf serialization error")
+		c.log.WithError(err).Error("Protobuf serialization error")
 		panic("Protobuf serialization error")
 	}
 
@@ -482,7 +482,7 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buff
 }
 
 func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
-	c.logger.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
+	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.setLastDataReceived(time.Now())
 
 	switch *cmd.Type {
@@ -539,7 +539,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
 
 	default:
-		c.logger.Errorf("Received invalid command type: %s", cmd.Type)
+		c.log.Errorf("Received invalid command type: %s", cmd.Type)
 		c.TriggerClose()
 	}
 }
@@ -575,7 +575,7 @@ func (c *connection) internalSendRequest(req *request) {
 func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
 	request, ok := c.pendingReqs[requestID]
 	if !ok {
-		c.logger.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
+		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
 		return
 	}
 
@@ -587,7 +587,7 @@ func (c *connection) handleResponseError(serverError *pb.CommandError) {
 	requestID := serverError.GetRequestId()
 	request, ok := c.pendingReqs[requestID]
 	if !ok {
-		c.logger.Warnf("Received unexpected error response for request %d of type %s",
+		c.log.Warnf("Received unexpected error response for request %d of type %s",
 			requestID, serverError.GetError())
 		return
 	}
@@ -607,23 +607,23 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	if producer, ok := c.listeners[producerID]; ok {
 		producer.ReceivedSendReceipt(response)
 	} else {
-		c.logger.WithField("producerID", producerID).Warn("Got unexpected send receipt for message: ", response.MessageId)
+		c.log.WithField("producerID", producerID).Warn("Got unexpected send receipt for message: ", response.MessageId)
 	}
 }
 
 func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) {
-	c.logger.Debug("Got Message: ", response)
+	c.log.Debug("Got Message: ", response)
 	consumerID := response.GetConsumerId()
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		err := consumer.MessageReceived(response, payload)
 		if err != nil {
-			c.logger.
+			c.log.
 				WithError(err).
 				WithField("consumerID", consumerID).
 				Error("handle message Id: ", response.MessageId)
 		}
 	} else {
-		c.logger.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)
+		c.log.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)
 	}
 }
 
@@ -641,26 +641,26 @@ func (c *connection) setLastDataReceived(t time.Time) {
 }
 
 func (c *connection) sendPing() {
-	c.logger.Debug("Sending PING")
+	c.log.Debug("Sending PING")
 	c.writeCommand(baseCommand(pb.BaseCommand_PING, &pb.CommandPing{}))
 }
 
 func (c *connection) handlePong() {
-	c.logger.Debug("Received PONG response")
+	c.log.Debug("Received PONG response")
 }
 
 func (c *connection) handlePing() {
-	c.logger.Debug("Responding to PING request")
+	c.log.Debug("Responding to PING request")
 	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
 }
 
 func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge) {
-	c.logger.Debugf("Received auth challenge from broker: %s", authChallenge.GetChallenge().GetAuthMethodName())
+	c.log.Debugf("Received auth challenge from broker: %s", authChallenge.GetChallenge().GetAuthMethodName())
 
 	// Get new credentials from the provider
 	authData, err := c.auth.GetData()
 	if err != nil {
-		c.logger.WithError(err).Warn("Failed to load auth credentials")
+		c.log.WithError(err).Warn("Failed to load auth credentials")
 		c.TriggerClose()
 		return
 	}
@@ -678,7 +678,7 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 }
 
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
-	c.logger.Infof("Broker notification of Closed consumer: %d", closeConsumer.GetConsumerId())
+	c.log.Infof("Broker notification of Closed consumer: %d", closeConsumer.GetConsumerId())
 	consumerID := closeConsumer.GetConsumerId()
 
 	c.Lock()
@@ -688,12 +688,12 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 		consumer.ConnectionClosed()
 		c.DeleteConsumeHandler(consumerID)
 	} else {
-		c.logger.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
+		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
 	}
 }
 
 func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer) {
-	c.logger.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
+	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
 
 	c.Lock()
@@ -702,7 +702,7 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 		producer.ConnectionClosed()
 		delete(c.listeners, producerID)
 	} else {
-		c.logger.WithField("producerID", producerID).Warn("Producer with ID not found while closing producer")
+		c.log.WithField("producerID", producerID).Warn("Producer with ID not found while closing producer")
 	}
 }
 
@@ -743,7 +743,7 @@ func (c *connection) Close() {
 		return
 	}
 
-	c.logger.Info("Connection closed")
+	c.log.Info("Connection closed")
 	c.state = connectionClosed
 	c.TriggerClose()
 	c.pingTicker.Stop()

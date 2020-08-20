@@ -36,8 +36,7 @@ type negativeAcksTracker struct {
 	rc           redeliveryConsumer
 	tick         *time.Ticker
 	delay        time.Duration
-
-	logger log.Logger
+	log          log.Logger
 }
 
 func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration, logger log.Logger) *negativeAcksTracker {
@@ -47,7 +46,7 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration, logger l
 		rc:           rc,
 		tick:         time.NewTicker(delay / 3),
 		delay:        delay,
-		logger:       logger,
+		log:          logger,
 	}
 
 	go t.track()
@@ -80,7 +79,7 @@ func (t *negativeAcksTracker) track() {
 	for {
 		select {
 		case <-t.doneCh:
-			t.logger.Debug("Closing nack tracker")
+			t.log.Debug("Closing nack tracker")
 			return
 
 		case <-t.tick.C:
@@ -90,9 +89,9 @@ func (t *negativeAcksTracker) track() {
 				now := time.Now()
 				msgIds := make([]messageID, 0)
 				for msgID, targetTime := range t.negativeAcks {
-					t.logger.Debugf("MsgId: %v -- targetTime: %v -- now: %v", msgID, targetTime, now)
+					t.log.Debugf("MsgId: %v -- targetTime: %v -- now: %v", msgID, targetTime, now)
 					if targetTime.Before(now) {
-						t.logger.Debugf("Adding MsgId: %v", msgID)
+						t.log.Debugf("Adding MsgId: %v", msgID)
 						msgIds = append(msgIds, msgID)
 						delete(t.negativeAcks, msgID)
 					}
