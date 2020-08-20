@@ -144,7 +144,7 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint6
 
 		bb.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
 	}
-	addSingleMessageToBatch(bb.buffer, metadata, payload, bb.log)
+	addSingleMessageToBatch(bb.buffer, metadata, payload)
 
 	bb.numMessages++
 	bb.callbacks = append(bb.callbacks, callback)
@@ -176,7 +176,7 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 	if buffer == nil {
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
-	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider, bb.log)
+	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider)
 
 	callbacks = bb.callbacks
 	sequenceID = bb.cmdSend.Send.GetSequenceId()
