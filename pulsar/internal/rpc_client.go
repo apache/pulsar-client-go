@@ -71,8 +71,7 @@ type rpcClient struct {
 	requestIDGenerator  uint64
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
-
-	logger log.Logger
+	log                 log.Logger
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
@@ -81,7 +80,7 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
-		logger:         logger.WithFields(log.Fields{"serviceURL": serviceURL}),
+		log:            logger.WithFields(log.Fields{"serviceURL": serviceURL}),
 	}
 }
 
@@ -129,11 +128,11 @@ func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connec
 	if err != nil {
 		for time.Since(startTime) < c.requestTimeout {
 			retryTime = backoff.Next()
-			c.logger.Debugf("Reconnecting to broker in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
+			c.log.Debugf("Reconnecting to broker in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
 			time.Sleep(retryTime)
 			cnx, err = c.pool.GetConnection(logicalAddr, physicalAddr)
 			if err == nil {
-				c.logger.Debugf("retry connection success")
+				c.log.Debugf("retry connection success")
 				return cnx, nil
 			}
 		}
