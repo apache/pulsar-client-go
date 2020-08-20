@@ -22,7 +22,7 @@ package log
 // Fields type, used to pass to `WithFields`.
 type Fields map[string]interface{}
 
-// Logger describes the interface that must be implemeted by all loggers.
+// Logger describes the interface that must be implemented by all loggers.
 type Logger interface {
 	WithFields(fields Fields) Logger
 	WithField(name string, value interface{}) Logger
