@@ -59,8 +59,7 @@ type producer struct {
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 	ticker        *time.Ticker
 	tickerStop    chan struct{}
-
-	logger log.Logger
+	log           log.Logger
 }
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
@@ -87,7 +86,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		options: options,
 		topic:   options.Topic,
 		client:  client,
-		logger:  client.logger.SubLogger(log.Fields{"topic": options.Topic}),
+		log:     client.log.WithFields(log.Fields{"topic": options.Topic}),
 	}
 
 	var batchingMaxPublishDelay time.Duration
@@ -126,7 +125,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		for {
 			select {
 			case <-ticker.C:
-				p.logger.Debug("Auto discovering new partitions")
+				p.log.Debug("Auto discovering new partitions")
 				p.internalCreatePartitionsProducers()
 			case <-p.tickerStop:
 				return
@@ -155,11 +154,11 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	if oldProducers != nil {
 		oldNumPartitions = len(oldProducers)
 		if oldNumPartitions == newNumPartitions {
-			p.logger.Debug("Number of partitions in topic has not changed")
+			p.log.Debug("Number of partitions in topic has not changed")
 			return nil
 		}
 
-		p.logger.WithField("old_partitions", oldNumPartitions).
+		p.log.WithField("old_partitions", oldNumPartitions).
 			WithField("new_partitions", newNumPartitions).
 			Info("Changed number of partitions in topic")
 	}
