@@ -45,7 +45,7 @@ type connectionPool struct {
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
 
-	logger log.Logger
+	log log.Logger
 }
 
 // NewConnectionPool init connection pool.
@@ -60,7 +60,7 @@ func NewConnectionPool(
 		auth:                  auth,
 		connectionTimeout:     connectionTimeout,
 		maxConnectionsPerHost: int32(maxConnectionsPerHost),
-		logger:                logger,
+		log:                   logger,
 	}
 }
 
@@ -69,7 +69,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	cachedCnx, found := p.pool.Load(key)
 	if found {
 		cnx := cachedCnx.(*connection)
-		p.logger.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
+		p.log.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
 
 		if err := cnx.waitUntilReady(); err == nil {
 			// Connection is ready to be used
@@ -77,7 +77,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		}
 		// The cached connection is failed
 		p.pool.Delete(key)
-		p.logger.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
+		p.log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
 	}
 
 	// Try to create a new connection
@@ -87,7 +87,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		TLS:               p.tlsOptions,
 		ConnectionTimeout: p.connectionTimeout,
 		Auth:              p.auth,
-		Logger:            p.logger,
+		Logger:            p.log,
 	})
 	newCnx, wasCached := p.pool.LoadOrStore(key, newConnection)
 	cnx := newCnx.(*connection)
