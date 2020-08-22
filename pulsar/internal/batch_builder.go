@@ -92,7 +92,7 @@ func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, p
 			ProducerName: &producerName,
 		},
 		callbacks:           []interface{}{},
-		compressionProvider: getCompressionProvider(compressionType, level, logger),
+		compressionProvider: getCompressionProvider(compressionType, level),
 		buffersPool:         bufferPool,
 		log:                 logger,
 	}
@@ -189,7 +189,7 @@ func (bb *BatchBuilder) Close() error {
 }
 
 func getCompressionProvider(compressionType pb.CompressionType,
-	level compression.Level, logger log.Logger) compression.Provider {
+	level compression.Level) compression.Provider {
 	switch compressionType {
 	case pb.CompressionType_NONE:
 		return compression.NewNoopProvider()
@@ -200,7 +200,6 @@ func getCompressionProvider(compressionType pb.CompressionType,
 	case pb.CompressionType_ZSTD:
 		return compression.NewZStdProvider(level)
 	default:
-		logger.Error("unsupported compression type")
 		panic("unsupported compression type")
 	}
 }
