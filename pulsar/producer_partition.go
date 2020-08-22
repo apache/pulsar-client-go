@@ -124,7 +124,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		maxPendingMessages = options.MaxPendingMessages
 	}
 
-	logger := client.log.WithFields(log.Fields{"topic": topic})
+	logger := client.log.SubLogger(log.Fields{"topic": topic})
 	p := &partitionProducer{
 		state:            producerInit,
 		client:           client,

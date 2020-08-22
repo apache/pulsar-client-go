@@ -177,7 +177,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
-		log:                  client.log.WithFields(log.Fields{"topic": options.topic}),
+		log:                  client.log.SubLogger(log.Fields{"topic": options.topic}),
 	}
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,

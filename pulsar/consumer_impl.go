@@ -162,7 +162,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		closeCh:                   make(chan struct{}),
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
-		log:                       client.log.WithFields(log.Fields{"topic": topic}),
+		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
 	}
 
