@@ -177,7 +177,6 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
-		log:                  client.log.SubLogger(log.Fields{"topic": options.topic}),
 	}
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
@@ -189,7 +188,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	err := pc.grabConn()
 	if err != nil {
-		pc.log.WithError(err).Errorf("Failed to create consumer")
+		pc.log.WithError(err).Error("Failed to create consumer")
 		return nil, err
 	}
 	pc.log.Info("Created consumer")

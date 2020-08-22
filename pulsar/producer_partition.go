@@ -146,7 +146,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	err := p.grabCnx()
 	if err != nil {
-		logger.WithError(err).Errorf("Failed to create producer")
+		logger.WithError(err).Error("Failed to create producer")
 		return nil, err
 	}
 
