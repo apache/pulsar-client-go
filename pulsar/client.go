@@ -104,9 +104,10 @@ type ClientOptions struct {
 	// Max number of connections to a single broker that will kept in the pool. (Default: 1 connection)
 	MaxConnectionsPerBroker int
 
-	// Configure the log used by the client.
+	// Configure the logger used by the client.
 	// By default, a wrapped logrus.StandardLogger will be used, namely,
 	// log.NewLoggerWithLogrus(logrus.StandardLogger())
+	// FIXME: use `logger` as internal field name instead of `log` as it's more idiomatic
 	Logger log.Logger
 }
 

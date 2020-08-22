@@ -150,7 +150,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		return nil, err
 	}
 
-	p.log = p.log.WithFields(log.Fields{
+	p.log = p.log.SubLogger(log.Fields{
 		"producer_name": p.producerName,
 		"producerID":    p.producerID,
 	})
