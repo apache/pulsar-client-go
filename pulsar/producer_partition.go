@@ -299,9 +299,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if len(msg.Payload) > int(p.cnx.GetMaxMessageSize()) {
 		p.publishSemaphore.Release()
 		request.callback(nil, request.msg, errMessageTooLarge)
-		p.log.WithField("size", len(msg.Payload)).
+		p.log.WithError(errMessageTooLarge).
+			WithField("size", len(msg.Payload)).
 			WithField("properties", msg.Properties).
-			Error(errMessageTooLarge)
+			Error()
 		publishErrors.Inc()
 		return
 	}

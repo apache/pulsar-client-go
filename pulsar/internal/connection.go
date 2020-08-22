@@ -205,7 +205,7 @@ func newConnection(opts ConnectionOptions) *connection {
 		logicalAddr:          opts.LogicalAddr,
 		physicalAddr:         opts.PhysicalAddr,
 		writeBuffer:          NewBuffer(4096),
-		log:                  opts.Logger.WithFields(log.Fields{"remote_addr": opts.PhysicalAddr}),
+		log:                  opts.Logger.SubLogger(log.Fields{"remote_addr": opts.PhysicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
@@ -281,7 +281,7 @@ func (c *connection) connect() bool {
 
 	c.Lock()
 	c.cnx = cnx
-	c.log = c.log.WithFields(log.Fields{"local_addr": c.cnx.LocalAddr()})
+	c.log = c.log.SubLogger(log.Fields{"local_addr": c.cnx.LocalAddr()})
 	c.log.Info("TCP connection established")
 	c.Unlock()
 

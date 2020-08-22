@@ -64,7 +64,7 @@ func NewLookupService(rpcClient RPCClient, serviceURL *url.URL,
 		rpcClient:  rpcClient,
 		serviceURL: serviceURL,
 		tlsEnabled: tlsEnabled,
-		log:        logger.WithFields(log.Fields{"serviceURL": serviceURL}),
+		log:        logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 	}
 }
 

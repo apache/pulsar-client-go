@@ -179,7 +179,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		log:                  client.log.WithFields(log.Fields{"topic": options.topic}),
 	}
-	pc.log = client.log.WithFields(log.Fields{
+	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
 		"topic":        options.topic,
 		"subscription": options.subscription,

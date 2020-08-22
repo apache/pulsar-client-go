@@ -80,7 +80,7 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
-		log:            logger.WithFields(log.Fields{"serviceURL": serviceURL}),
+		log:            logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 	}
 }
 

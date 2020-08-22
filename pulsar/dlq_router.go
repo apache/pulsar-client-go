@@ -52,7 +52,7 @@ func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger) (*dlqRout
 
 		r.messageCh = make(chan ConsumerMessage)
 		r.closeCh = make(chan interface{}, 1)
-		r.log = logger.WithFields(log.Fields{"dlq-topic": policy.Topic})
+		r.log = logger.SubLogger(log.Fields{"dlq-topic": policy.Topic})
 		go r.run()
 	}
 	return r, nil
