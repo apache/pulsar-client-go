@@ -499,6 +499,7 @@ func TestReaderSeek(t *testing.T) {
 		StartMessageID:          seekID,
 		StartMessageIDInclusive: true,
 	})
+	assert.Nil(t, err)
 
 	msg, err := readerOfSeek.Next(ctx)
 	assert.Nil(t, err)

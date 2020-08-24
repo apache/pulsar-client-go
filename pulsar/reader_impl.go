@@ -199,7 +199,7 @@ func (r *reader) messageID(msgID MessageID) (trackingMessageID, bool) {
 
 	partition := int(mid.partitionIdx)
 	// did we receive a valid partition index?
-	if partition < 0  {
+	if partition < 0 {
 		r.log.Warnf("invalid partition index %d expected", partition)
 		return trackingMessageID{}, false
 	}
@@ -215,7 +215,6 @@ func (r *reader) Seek(msgID MessageID) error {
 	if !ok {
 		return nil
 	}
-
 
 	return r.pc.Seek(mid)
 }
