@@ -207,7 +207,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		if msgID.entryID != noMessageEntry {
 			pc.startMessageID = msgID
 
-			err = pc.requestSeek(msgID)
+			err = pc.requestSeek(msgID.messageID)
 			if err != nil {
 				return nil, err
 			}
@@ -276,7 +276,7 @@ func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) 
 	req.msgID, req.err = pc.requestGetLastMessageID()
 }
 
-func (pc *partitionConsumer) requestGetLastMessageID() (messageID, error) {
+func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error) {
 	requestID := pc.client.rpcClient.NewRequestID()
 	cmdGetLastMessageID := &pb.CommandGetLastMessageId{
 		RequestId:  proto.Uint64(requestID),
@@ -286,7 +286,7 @@ func (pc *partitionConsumer) requestGetLastMessageID() (messageID, error) {
 		pb.BaseCommand_GET_LAST_MESSAGE_ID, cmdGetLastMessageID)
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to get last message id")
-		return messageID{}, err
+		return trackingMessageID{}, err
 	}
 	id := res.Response.GetLastMessageIdResponse.GetLastMessageId()
 	return convertToMessageID(id), nil
@@ -365,7 +365,7 @@ func (pc *partitionConsumer) Seek(msgID trackingMessageID) error {
 
 func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 	defer close(seek.doneCh)
-	seek.err = pc.requestSeek(seek.msgID)
+	seek.err = pc.requestSeek(seek.msgID.messageID)
 }
 
 func (pc *partitionConsumer) requestSeek(msgID messageID) error {
