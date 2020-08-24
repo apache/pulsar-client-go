@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"strconv"
 	"sync"
 	"time"
 
@@ -73,6 +74,7 @@ type consumer struct {
 	messageCh chan ConsumerMessage
 
 	dlq       *dlqRouter
+	rlq       *retryRouter
 	closeOnce sync.Once
 	closeCh   chan struct{}
 	errorCh   chan error
@@ -108,7 +110,49 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		messageCh = make(chan ConsumerMessage, 10)
 	}
 
+	if options.RetryEnable {
+		usingTopic := ""
+		if options.Topic != "" {
+			usingTopic = options.Topic
+		} else if len(options.Topics) > 0 {
+			usingTopic = options.Topics[0]
+		} else {
+			usingTopic = options.TopicsPattern
+		}
+		tn, err := internal.ParseTopicName(usingTopic)
+		if err != nil {
+			return nil, err
+		}
+
+		retryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
+		dlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
+		if options.DLQ == nil {
+			options.DLQ = &DLQPolicy{
+				MaxDeliveries:    MaxReconsumeTimes,
+				DeadLetterTopic:  dlqTopic,
+				RetryLetterTopic: retryTopic,
+			}
+		} else {
+			if options.DLQ.DeadLetterTopic == "" {
+				options.DLQ.DeadLetterTopic = dlqTopic
+			}
+			if options.DLQ.RetryLetterTopic == "" {
+				options.DLQ.RetryLetterTopic = retryTopic
+			}
+		}
+		if options.Topic != "" && len(options.Topics) == 0 {
+			options.Topics = []string{options.Topic, options.DLQ.RetryLetterTopic}
+			options.Topic = ""
+		} else {
+			options.Topics = append(options.Topics, options.DLQ.RetryLetterTopic)
+		}
+	}
+
 	dlq, err := newDlqRouter(client, options.DLQ)
+	if err != nil {
+		return nil, err
+	}
+	rlq, err := newRetryRouter(client, options.DLQ)
 	if err != nil {
 		return nil, err
 	}
@@ -124,7 +168,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		return topicSubscribe(client, options, topic, messageCh, dlq)
+		return topicSubscribe(client, options, topic, messageCh, dlq, rlq)
 	}
 
 	if len(options.Topics) > 1 {
@@ -132,7 +176,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq)
+		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
 	}
 
 	if options.TopicsPattern != "" {
@@ -145,14 +189,14 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq)
+		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq)
 	}
 
 	return nil, newError(ResultInvalidTopicName, "topic name is required for consumer")
 }
 
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter, disableForceTopicCreation bool) (*consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (*consumer, error) {
 
 	consumer := &consumer{
 		topic:                     topic,
@@ -163,6 +207,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		closeCh:                   make(chan struct{}),
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
+		rlq:                       rlq,
 		log:                       log.WithField("topic", topic),
 		consumerName:              options.Name,
 	}
@@ -306,8 +351,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 }
 
 func topicSubscribe(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlqRouter *dlqRouter) (Consumer, error) {
-	c, err := newInternalConsumer(client, options, topic, messageCh, dlqRouter, false)
+	messageCh chan ConsumerMessage, dlqRouter *dlqRouter, retryRouter *retryRouter) (Consumer, error) {
+	c, err := newInternalConsumer(client, options, topic, messageCh, dlqRouter, retryRouter, false)
 	if err == nil {
 		consumersOpened.Inc()
 	}
@@ -375,6 +420,53 @@ func (c *consumer) AckID(msgID MessageID) {
 	c.consumers[mid.partitionIdx].AckID(mid)
 }
 
+// ReconsumeLater mark a message for redelivery after custom delay
+func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
+	if delay < 0 {
+		delay = 0
+	}
+	msgId, ok := c.messageID(msg.ID())
+	if !ok {
+		return
+	}
+	props := make(map[string]string)
+	for k, v := range msg.Properties() {
+		props[k] = v
+	}
+
+	reconsumeTimes := 1
+	if s, ok := props[SysPropertyReconsumeTimes]; ok {
+		reconsumeTimes, _ = strconv.Atoi(s)
+		reconsumeTimes++
+	} else {
+		props[SysPropertyRealTopic] = msg.Topic()
+		props[SysPropertyOriginMessageId] = msgId.messageID.String()
+	}
+	props[SysPropertyReconsumeTimes] = strconv.Itoa(reconsumeTimes)
+	props[SysPropertyDelayTime] = fmt.Sprintf("%d", delay.Milliseconds())
+
+	msg.(*message).properties = props
+	msg.(*message).redeliveryCount = uint32(reconsumeTimes)
+	consumerMsg := ConsumerMessage{
+		Consumer: c,
+		Message:  msg,
+	}
+	if uint32(reconsumeTimes) > c.dlq.policy.MaxDeliveries {
+		c.dlq.Chan() <- consumerMsg
+	} else {
+		c.rlq.Chan() <- RetryMessage{
+			consumerMsg: consumerMsg,
+			producerMsg: ProducerMessage{
+				Payload:      msg.Payload(),
+				Key:          msg.Key(),
+				Properties:   props,
+				EventTime:    msg.EventTime(),
+				DeliverAfter: delay,
+			},
+		}
+	}
+}
+
 func (c *consumer) Nack(msg Message) {
 	c.NackID(msg.ID())
 }
@@ -411,6 +503,7 @@ func (c *consumer) Close() {
 		c.ticker.Stop()
 		c.client.handlers.Del(c)
 		c.dlq.close()
+		c.rlq.close()
 		consumersClosed.Inc()
 		consumersPartitions.Sub(float64(len(c.consumers)))
 	})

@@ -38,6 +38,7 @@ type multiTopicConsumer struct {
 	consumers map[string]Consumer
 
 	dlq       *dlqRouter
+	rlq       *retryRouter
 	closeOnce sync.Once
 	closeCh   chan struct{}
 
@@ -45,19 +46,20 @@ type multiTopicConsumer struct {
 }
 
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter) (Consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
 	mtc := &multiTopicConsumer{
 		options:      options,
 		messageCh:    messageCh,
 		consumers:    make(map[string]Consumer, len(topics)),
 		closeCh:      make(chan struct{}),
 		dlq:          dlq,
+		rlq:          rlq,
 		log:          &log.Entry{},
 		consumerName: options.Name,
 	}
 
 	var errs error
-	for ce := range subscriber(client, topics, options, messageCh, dlq) {
+	for ce := range subscriber(client, topics, options, messageCh, dlq, rlq) {
 		if ce.err != nil {
 			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
@@ -134,6 +136,15 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) {
 	mid.Ack()
 }
 
+func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
+	consumer, ok := c.consumers[msg.Topic()]
+	if !ok {
+		c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
+		return
+	}
+	consumer.ReconsumeLater(msg, delay)
+}
+
 func (c *multiTopicConsumer) Nack(msg Message) {
 	c.NackID(msg.ID())
 }
@@ -166,6 +177,7 @@ func (c *multiTopicConsumer) Close() {
 		wg.Wait()
 		close(c.closeCh)
 		c.dlq.close()
+		c.rlq.close()
 		consumersClosed.Inc()
 	})
 }
