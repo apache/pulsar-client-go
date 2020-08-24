@@ -143,7 +143,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if options.Topic != "" && len(options.Topics) == 0 {
 			options.Topics = []string{options.Topic, options.DLQ.RetryLetterTopic}
 			options.Topic = ""
-		} else {
+		} else if options.Topic == "" && len(options.Topics) > 0 {
 			options.Topics = append(options.Topics, options.DLQ.RetryLetterTopic)
 		}
 	}
@@ -445,11 +445,12 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 	props[SysPropertyReconsumeTimes] = strconv.Itoa(reconsumeTimes)
 	props[SysPropertyDelayTime] = fmt.Sprintf("%d", delay.Milliseconds())
 
-	msg.(*message).properties = props
-	msg.(*message).redeliveryCount = uint32(reconsumeTimes)
 	consumerMsg := ConsumerMessage{
 		Consumer: c,
-		Message:  msg,
+		Message: &message{
+			payLoad:    msg.Payload(),
+			properties: props,
+		},
 	}
 	if uint32(reconsumeTimes) > c.dlq.policy.MaxDeliveries {
 		c.dlq.Chan() <- consumerMsg
@@ -460,7 +461,6 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 				Payload:      msg.Payload(),
 				Key:          msg.Key(),
 				Properties:   props,
-				EventTime:    msg.EventTime(),
 				DeliverAfter: delay,
 			},
 		}

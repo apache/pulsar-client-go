@@ -1313,8 +1313,9 @@ func TestRLQByCustomTopicName(t *testing.T) {
 }
 
 func TestRLQWithMultiTopics(t *testing.T) {
-	topic01 := fmt.Sprintf("persistent://public/default/topic-new-%d", time.Now().Unix())
-	topic02 := fmt.Sprintf("persistent://public/default/topic-new-%d", time.Now().Unix()+1)
+	now := time.Now().Unix()
+	topic01 := fmt.Sprintf("persistent://public/default/topic-%d-1", now)
+	topic02 := fmt.Sprintf("persistent://public/default/topic-%d-2", now)
 	topics := []string{topic01, topic02}
 
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
@@ -1380,6 +1381,7 @@ func TestRLQWithMultiTopics(t *testing.T) {
 	dlqRecv := 0
 	for dlqRecv < sentMsgs {
 		msg, err := dlqConsumer.Receive(ctx)
+		fmt.Printf("dlq received: %s, total: %d\n", string(msg.Payload()), recv)
 		assert.Nil(t, err)
 		dlqConsumer.Ack(msg)
 		dlqRecv++

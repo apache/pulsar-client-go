@@ -166,12 +166,8 @@ func (c *regexConsumer) Ack(msg Message) {
 }
 
 func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
-	consumer, ok := c.consumers[msg.Topic()]
-	if !ok {
-		c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
-		return
-	}
-	consumer.ReconsumeLater(msg, delay)
+	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
+	return
 }
 
 // Ack the consumption of a single message, identified by its MessageID
