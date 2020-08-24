@@ -152,7 +152,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	if err != nil {
 		return nil, err
 	}
-	rlq, err := newRetryRouter(client, options.DLQ)
+	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable)
 	if err != nil {
 		return nil, err
 	}
