@@ -557,14 +557,10 @@ func TestReaderLatestInclusiveHasNext(t *testing.T) {
 	assert.Nil(t, err)
 	defer reader.Close()
 
-	var msgID MessageID
 	if reader.HasNext() {
 		msg, err := reader.Next(context.Background())
 		assert.NoError(t, err)
 
 		assert.Equal(t, []byte("hello-9"), msg.Payload())
-		msgID = msg.ID()
 	}
-
-	assert.Equal(t, lastMsgID.Serialize(), msgID.Serialize())
 }
