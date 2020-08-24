@@ -46,13 +46,13 @@ func newDlqRouter(client Client, policy *DLQPolicy) (*dlqRouter, error) {
 			return nil, errors.New("DLQPolicy.MaxDeliveries needs to be > 0")
 		}
 
-		if policy.Topic == "" {
+		if policy.DeadLetterTopic == "" {
 			return nil, errors.New("DLQPolicy.Topic needs to be set to a valid topic name")
 		}
 
 		r.messageCh = make(chan ConsumerMessage)
 		r.closeCh = make(chan interface{}, 1)
-		r.log = log.WithField("dlq-topic", policy.Topic)
+		r.log = log.WithField("dlq-topic", policy.DeadLetterTopic)
 		go r.run()
 	}
 	return r, nil
@@ -132,7 +132,7 @@ func (r *dlqRouter) getProducer() Producer {
 	backoff := &internal.Backoff{}
 	for {
 		producer, err := r.client.CreateProducer(ProducerOptions{
-			Topic:                   r.policy.Topic,
+			Topic:                   r.policy.DeadLetterTopic,
 			CompressionType:         LZ4,
 			BatchingMaxPublishDelay: 100 * time.Millisecond,
 		})
