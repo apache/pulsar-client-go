@@ -3,9 +3,10 @@ package pulsar
 import (
 	"context"
 	"errors"
+	"time"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	log "github.com/sirupsen/logrus"
-	"time"
 )
 
 const (
@@ -17,7 +18,7 @@ const (
 	SysPropertyRealTopic       = "REAL_TOPIC"
 	SysPropertyRetryTopic      = "RETRY_TOPIC"
 	SysPropertyReconsumeTimes  = "RECONSUMETIMES"
-	SysPropertyOriginMessageId = "ORIGIN_MESSAGE_IDY_TIME"
+	SysPropertyOriginMessageID = "ORIGIN_MESSAGE_IDY_TIME"
 )
 
 type RetryMessage struct {

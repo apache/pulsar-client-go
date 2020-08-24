@@ -425,7 +425,7 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 	if delay < 0 {
 		delay = 0
 	}
-	msgId, ok := c.messageID(msg.ID())
+	msgID, ok := c.messageID(msg.ID())
 	if !ok {
 		return
 	}
@@ -440,10 +440,10 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 		reconsumeTimes++
 	} else {
 		props[SysPropertyRealTopic] = msg.Topic()
-		props[SysPropertyOriginMessageId] = msgId.messageID.String()
+		props[SysPropertyOriginMessageID] = msgID.messageID.String()
 	}
 	props[SysPropertyReconsumeTimes] = strconv.Itoa(reconsumeTimes)
-	props[SysPropertyDelayTime] = fmt.Sprintf("%d", delay.Milliseconds())
+	props[SysPropertyDelayTime] = fmt.Sprintf("%d", int64(delay)/1e6)
 
 	consumerMsg := ConsumerMessage{
 		Consumer: c,
