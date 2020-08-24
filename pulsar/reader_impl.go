@@ -20,6 +20,7 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -45,6 +46,7 @@ var (
 )
 
 type reader struct {
+	sync.Mutex
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
@@ -186,4 +188,41 @@ func (r *reader) hasMoreMessages() bool {
 func (r *reader) Close() {
 	r.pc.Close()
 	readersClosed.Inc()
+}
+
+func (r *reader) messageID(msgID MessageID) (trackingMessageID, bool) {
+	mid, ok := toTrackingMessageID(msgID)
+	if !ok {
+		r.log.Warnf("invalid message id type %T", msgID)
+		return trackingMessageID{}, false
+	}
+
+	partition := int(mid.partitionIdx)
+	// did we receive a valid partition index?
+	if partition < 0  {
+		r.log.Warnf("invalid partition index %d expected", partition)
+		return trackingMessageID{}, false
+	}
+
+	return mid, true
+}
+
+func (r *reader) Seek(msgID MessageID) error {
+	r.Lock()
+	defer r.Unlock()
+
+	mid, ok := r.messageID(msgID)
+	if !ok {
+		return nil
+	}
+
+
+	return r.pc.Seek(mid)
+}
+
+func (r *reader) SeekByTime(time time.Time) error {
+	r.Lock()
+	defer r.Unlock()
+
+	return r.pc.SeekByTime(time)
 }
