@@ -470,7 +470,7 @@ func TestReaderSeek(t *testing.T) {
 	assert.Nil(t, err)
 	defer reader.Close()
 
-	const N= 10
+	const N = 10
 	var seekID MessageID
 	for i := 0; i < N; i++ {
 		id, err := producer.Send(ctx, &ProducerMessage{
