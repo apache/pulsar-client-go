@@ -140,6 +140,9 @@ type ConsumerOptions struct {
 
 	// A chain of interceptors, These interceptors will be called at some points defined in ConsumerInterceptor interface.
 	Interceptors ConsumerInterceptors
+
+	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
+	MaxReconnectToBroker *uint
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
