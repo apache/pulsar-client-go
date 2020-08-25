@@ -446,3 +446,121 @@ func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
 	}
 }
+
+func TestReaderSeek(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topicName,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	const N = 10
+	var seekID MessageID
+	for i := 0; i < N; i++ {
+		id, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+
+		if i == 4 {
+			seekID = id
+		}
+	}
+	err = producer.Flush()
+	assert.NoError(t, err)
+
+	for i := 0; i < N; i++ {
+		msg, err := reader.Next(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+	}
+
+	err = reader.Seek(seekID)
+	assert.Nil(t, err)
+
+	readerOfSeek, err := client.CreateReader(ReaderOptions{
+		Topic:                   topicName,
+		StartMessageID:          seekID,
+		StartMessageIDInclusive: true,
+	})
+	assert.Nil(t, err)
+
+	msg, err := readerOfSeek.Next(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, "hello-4", string(msg.Payload()))
+}
+
+func TestReaderLatestInclusiveHasNext(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create reader on the last message (inclusive)
+	reader0, err := client.CreateReader(ReaderOptions{
+		Topic:                   topic,
+		StartMessageID:          LatestMessageID(),
+		StartMessageIDInclusive: true,
+	})
+
+	assert.Nil(t, err)
+	defer reader0.Close()
+
+	assert.False(t, reader0.HasNext())
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	var lastMsgID MessageID
+	for i := 0; i < 10; i++ {
+		lastMsgID, err = producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, lastMsgID)
+	}
+
+	// create reader on the last message (inclusive)
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:                   topic,
+		StartMessageID:          LatestMessageID(),
+		StartMessageIDInclusive: true,
+	})
+
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	if reader.HasNext() {
+		msg, err := reader.Next(context.Background())
+		assert.NoError(t, err)
+
+		assert.Equal(t, []byte("hello-9"), msg.Payload())
+	}
+}

@@ -678,8 +678,8 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 }
 
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
-	c.log.Infof("Broker notification of Closed consumer: %d", closeConsumer.GetConsumerId())
 	consumerID := closeConsumer.GetConsumerId()
+	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
 
 	c.Lock()
 	defer c.Unlock()
