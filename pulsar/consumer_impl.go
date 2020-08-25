@@ -116,8 +116,6 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			usingTopic = options.Topic
 		} else if len(options.Topics) > 0 {
 			usingTopic = options.Topics[0]
-		} else {
-			usingTopic = options.TopicsPattern
 		}
 		tn, err := internal.ParseTopicName(usingTopic)
 		if err != nil {
@@ -450,6 +448,7 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 		Message: &message{
 			payLoad:    msg.Payload(),
 			properties: props,
+			msgID:      msgID,
 		},
 	}
 	if uint32(reconsumeTimes) > c.dlq.policy.MaxDeliveries {
