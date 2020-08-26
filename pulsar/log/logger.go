@@ -15,9 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
+// Package log defines the logger interfaces used by pulsar client.
+// Users can leverage these interfaces to provide a customized logger
+// implementation.
+//
+// The Logger and Entry interfaces defined here are inspired
+// by sirupsen/logrus, both logrus and zap logging libraries
+// are good resources to learn how to implement a effective
+// logging library.
+//
+// Besides the interfaces, this log library also provides an
+// implementation based on logrus, and a No-op one as well.
 package log
-
-// Logger and Entry interfaces are inspired by sirupsen/logrus
 
 // Fields type, used to pass to `WithFields`.
 type Fields map[string]interface{}

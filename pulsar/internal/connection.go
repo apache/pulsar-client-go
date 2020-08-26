@@ -188,30 +188,30 @@ type connection struct {
 	maxMessageSize int32
 }
 
-// ConnectionOptions defines configurations for creating connection.
-type ConnectionOptions struct {
-	LogicalAddr       *url.URL
-	PhysicalAddr      *url.URL
-	TLS               *TLSOptions
-	ConnectionTimeout time.Duration
-	Auth              auth.Provider
-	Logger            log.Logger
+// connectionOptions defines configurations for creating connection.
+type connectionOptions struct {
+	logicalAddr       *url.URL
+	physicalAddr      *url.URL
+	tls               *TLSOptions
+	connectionTimeout time.Duration
+	auth              auth.Provider
+	logger            log.Logger
 }
 
-func newConnection(opts ConnectionOptions) *connection {
+func newConnection(opts connectionOptions) *connection {
 	cnx := &connection{
 		state:                int32(connectionInit),
-		connectionTimeout:    opts.ConnectionTimeout,
-		logicalAddr:          opts.LogicalAddr,
-		physicalAddr:         opts.PhysicalAddr,
+		connectionTimeout:    opts.connectionTimeout,
+		logicalAddr:          opts.logicalAddr,
+		physicalAddr:         opts.physicalAddr,
 		writeBuffer:          NewBuffer(4096),
-		log:                  opts.Logger.SubLogger(log.Fields{"remote_addr": opts.PhysicalAddr}),
+		log:                  opts.logger.SubLogger(log.Fields{"remote_addr": opts.physicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
 		pingCheckTicker:      time.NewTicker(keepAliveInterval),
-		tlsOptions:           opts.TLS,
-		auth:                 opts.Auth,
+		tlsOptions:           opts.tls,
+		auth:                 opts.auth,
 
 		closeCh:            make(chan interface{}),
 		incomingRequestsCh: make(chan *request, 10),
