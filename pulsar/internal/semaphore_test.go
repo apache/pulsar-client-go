@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"context"
 	"sync"
 	"testing"
 	"time"
@@ -35,7 +36,7 @@ func TestSemaphore(t *testing.T) {
 
 	for i := 0; i < n; i++ {
 		go func() {
-			s.Acquire()
+			assert.True(t, s.Acquire(context.Background()))
 			time.Sleep(100 * time.Millisecond)
 			s.Release()
 			wg.Done()
@@ -48,7 +49,7 @@ func TestSemaphore(t *testing.T) {
 func TestSemaphore_TryAcquire(t *testing.T) {
 	s := NewSemaphore(1)
 
-	s.Acquire()
+	assert.True(t, s.Acquire(context.Background()))
 
 	assert.False(t, s.TryAcquire())
 
@@ -57,4 +58,19 @@ func TestSemaphore_TryAcquire(t *testing.T) {
 	assert.True(t, s.TryAcquire())
 	assert.False(t, s.TryAcquire())
 	s.Release()
+}
+
+func TestSemaphore_ContextExpire(t *testing.T) {
+	s := NewSemaphore(1)
+
+	assert.True(t, s.Acquire(context.Background()))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	assert.False(t, s.Acquire(ctx))
+
+	assert.False(t, s.TryAcquire())
+	s.Release()
+
+	assert.True(t, s.TryAcquire())
 }
