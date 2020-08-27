@@ -22,10 +22,9 @@ import (
 	"fmt"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 
 	"github.com/gogo/protobuf/proto"
-
-	log "github.com/sirupsen/logrus"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
@@ -196,7 +195,7 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 	case pb.BaseCommand_AUTH_RESPONSE:
 		cmd.AuthResponse = msg.(*pb.CommandAuthResponse)
 	default:
-		log.Panic("Missing command type: ", cmdType)
+		logger.Logger.Panic("Missing command type: ", cmdType)
 	}
 
 	return cmd
@@ -209,7 +208,7 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.ResizeIfNeeded(metadataSize)
 	_, err := smm.MarshalToSizedBuffer(wb.WritableSlice()[:metadataSize])
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf serialization error")
+		logger.Logger.WithError(err).Fatal("Protobuf serialization error")
 	}
 
 	wb.WrittenBytes(metadataSize)
@@ -235,7 +234,7 @@ func serializeBatch(wb Buffer,
 	wb.ResizeIfNeeded(cmdSize)
 	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf error when serializing cmdSend")
+		logger.Logger.WithError(err).Fatal("Protobuf error when serializing cmdSend")
 	}
 	wb.WrittenBytes(cmdSize)
 
@@ -250,7 +249,7 @@ func serializeBatch(wb Buffer,
 	wb.ResizeIfNeeded(msgMetadataSize)
 	_, err = msgMetadata.MarshalToSizedBuffer(wb.WritableSlice()[:msgMetadataSize])
 	if err != nil {
-		log.WithError(err).Fatal("Protobuf error when serializing msgMetadata")
+		logger.Logger.WithError(err).Fatal("Protobuf error when serializing msgMetadata")
 	}
 	wb.WrittenBytes(msgMetadataSize)
 

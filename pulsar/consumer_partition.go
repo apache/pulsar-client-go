@@ -32,6 +32,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
@@ -184,7 +185,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
-		log:                  log.WithField("topic", options.topic),
+		log:                  logger.Logger.WithField("topic", options.topic),
 	}
 	pc.log = pc.log.WithField("name", pc.name).
 		WithField("subscription", options.subscription).
@@ -193,7 +194,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	err := pc.grabConn()
 	if err != nil {
-		log.WithError(err).Errorf("Failed to create consumer")
+		logger.Logger.WithError(err).Errorf("Failed to create consumer")
 		return nil, err
 	}
 	pc.log.Info("Created consumer")

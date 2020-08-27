@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	pkgerrors "github.com/pkg/errors"
 
 	log "github.com/sirupsen/logrus"
@@ -52,7 +53,7 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 		consumers:    make(map[string]Consumer, len(topics)),
 		closeCh:      make(chan struct{}),
 		dlq:          dlq,
-		log:          &log.Entry{},
+		log:          log.NewEntry(logger.Logger),
 		consumerName: options.Name,
 	}
 

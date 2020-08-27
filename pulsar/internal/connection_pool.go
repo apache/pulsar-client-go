@@ -25,8 +25,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
-
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 )
 
 // ConnectionPool is a interface of connection pool.
@@ -66,7 +65,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	cachedCnx, found := p.pool.Load(key)
 	if found {
 		cnx := cachedCnx.(*connection)
-		log.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
+		logger.Logger.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
 
 		if err := cnx.waitUntilReady(); err == nil {
 			// Connection is ready to be used
@@ -74,7 +73,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		}
 		// The cached connection is failed
 		p.pool.Delete(key)
-		log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
+		logger.Logger.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
 	}
 
 	// Try to create a new connection

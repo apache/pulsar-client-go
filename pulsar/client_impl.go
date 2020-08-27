@@ -25,10 +25,9 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
@@ -51,7 +50,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 	url, err := url.Parse(options.URL)
 	if err != nil {
-		log.WithError(err).Error("Failed to parse service URL")
+		logger.Logger.WithError(err).Error("Failed to parse service URL")
 		return nil, newError(ResultInvalidConfiguration, "Invalid service URL")
 	}
 

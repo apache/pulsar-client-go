@@ -24,12 +24,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
+	"github.com/apache/pulsar-client-go/pulsar/internal/logger"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
-
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -80,7 +79,7 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
-		log:            log.WithField("serviceURL", serviceURL),
+		log:            logger.Logger.WithField("serviceURL", serviceURL),
 	}
 }
 
