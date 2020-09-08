@@ -60,9 +60,9 @@ client, err := pulsar.NewClient(pulsar.ClientOptions{
 
 defer client.Close()
 
-producer, err := client.CreateProducer(pulsar.ProducerOptions{
-	Topic: "my-topic",
-})
+producer, err := client.CreateProducer(
+    pulsar.SetTopic("my-topic"),
+)
 
 _, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
 	Payload: []byte("hello"),
