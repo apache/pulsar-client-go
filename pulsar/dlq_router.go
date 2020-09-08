@@ -134,7 +134,7 @@ func (r *dlqRouter) getProducer() Producer {
 		producer, err := r.client.CreateProducer(
 			SetTopic(r.policy.Topic),
 			SetCompressionType(LZ4),
-			SetBatchingMaxPublishDelay(100 * time.Millisecond),
+			SetBatchingMaxPublishDelay(100*time.Millisecond),
 		)
 
 		if err != nil {

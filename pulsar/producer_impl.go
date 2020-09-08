@@ -82,7 +82,7 @@ func getHashingFunction(s HashingScheme) func(string) uint32 {
 func newProducer(client *client, opts ...ProducerOption) (*producer, error) {
 	var options = &ProducerOptions{
 		BatchingMaxPublishDelay: defaultBatchingMaxPublishDelay,
-		Interceptors: defaultProducerInterceptors,
+		Interceptors:            defaultProducerInterceptors,
 	}
 	for _, o := range opts {
 		o(options)
