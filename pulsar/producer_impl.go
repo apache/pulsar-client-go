@@ -79,11 +79,17 @@ func getHashingFunction(s HashingScheme) func(string) uint32 {
 	}
 }
 
-func newProducer(client *client, options *ProducerOptions) (*producer, error) {
+func newProducer(client *client, opts ...ProducerOption) (*producer, error) {
+	var options = &ProducerOptions{
+		BatchingMaxPublishDelay: defaultBatchingMaxPublishDelay,
+		Interceptors: defaultProducerInterceptors,
+	}
+	for _, o := range opts {
+		o(options)
+	}
 	if options.Topic == "" {
 		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
 	}
-
 	p := &producer{
 		options: options,
 		topic:   options.Topic,
@@ -91,28 +97,16 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		log:     log.WithField("topic", options.Topic),
 	}
 
-	var batchingMaxPublishDelay time.Duration
-	if options.BatchingMaxPublishDelay != 0 {
-		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
-	} else {
-		batchingMaxPublishDelay = defaultBatchingMaxPublishDelay
-	}
-
-	if options.Interceptors == nil {
-		options.Interceptors = defaultProducerInterceptors
-	}
-
 	if options.MessageRouter == nil {
 		internalRouter := internal.NewDefaultRouter(
 			internal.NewSystemClock(),
 			getHashingFunction(options.HashingScheme),
-			batchingMaxPublishDelay, options.DisableBatching)
-		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
+			options.BatchingMaxPublishDelay, options.DisableBatching)
+		options.MessageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
 			return internalRouter(message.Key, metadata.NumPartitions())
 		}
-	} else {
-		p.messageRouter = options.MessageRouter
 	}
+	p.messageRouter = options.MessageRouter
 
 	err := p.internalCreatePartitionsProducers()
 	if err != nil {

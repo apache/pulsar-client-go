@@ -85,12 +85,12 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 	}
 	defer client.Close()
 
-	producer, err := client.CreateProducer(pulsar.ProducerOptions{
-		Topic:                   produceArgs.Topic,
-		MaxPendingMessages:      produceArgs.ProducerQueueSize,
-		BatchingMaxPublishDelay: time.Millisecond * time.Duration(produceArgs.BatchingTimeMillis),
-		BatchingMaxSize:         uint(produceArgs.BatchingMaxSize * 1024),
-	})
+	producer, err := client.CreateProducer(
+		pulsar.SetTopic(produceArgs.Topic),
+		pulsar.SetMaxPendingMessages(produceArgs.ProducerQueueSize),
+		pulsar.SetBatchingMaxPublishDelay(time.Millisecond * time.Duration(produceArgs.BatchingTimeMillis)),
+		pulsar.SetBatchingMaxSize(uint(produceArgs.BatchingMaxSize * 1024)),
+	)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -131,11 +131,11 @@ func (r *dlqRouter) getProducer() Producer {
 	// Retry to create producer indefinitely
 	backoff := &internal.Backoff{}
 	for {
-		producer, err := r.client.CreateProducer(ProducerOptions{
-			Topic:                   r.policy.Topic,
-			CompressionType:         LZ4,
-			BatchingMaxPublishDelay: 100 * time.Millisecond,
-		})
+		producer, err := r.client.CreateProducer(
+			SetTopic(r.policy.Topic),
+			SetCompressionType(LZ4),
+			SetBatchingMaxPublishDelay(100 * time.Millisecond),
+		)
 
 		if err != nil {
 			r.log.WithError(err).Error("Failed to create DLQ producer")

@@ -57,10 +57,10 @@ func TestProducerConsumer(t *testing.T) {
 	defer consumer.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: false,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(false),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -135,11 +135,11 @@ func TestBatchMessageReceive(t *testing.T) {
 	batchSize, numOfMessages := 2, 100
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:               topicName,
-		BatchingMaxMessages: uint(batchSize),
-		DisableBatching:     false,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetBatchingMaxMessages(uint(batchSize)),
+		SetDisableBatching(false),
+	)
 	assert.Nil(t, err)
 	assert.Equal(t, topicName, producer.Topic())
 	defer producer.Close()
@@ -217,9 +217,9 @@ func TestConsumerSubscriptionEarliestPosition(t *testing.T) {
 	subName := "test-subscription-initial-earliest-position"
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -276,10 +276,10 @@ func TestConsumerKeyShared(t *testing.T) {
 	defer consumer2.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(true),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -332,9 +332,9 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	makeHTTPCall(t, http.MethodPut, testURL, "64")
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -433,10 +433,10 @@ func TestConsumerShared(t *testing.T) {
 	defer consumer2.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(true),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -489,9 +489,9 @@ func TestConsumerEventTime(t *testing.T) {
 	topicName := "test-event-time"
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -526,9 +526,9 @@ func TestConsumerFlow(t *testing.T) {
 	topicName := "test-received-since-flow"
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -566,9 +566,9 @@ func TestConsumerAck(t *testing.T) {
 	topicName := newTopicName()
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -632,9 +632,9 @@ func TestConsumerNack(t *testing.T) {
 	topicName := newTopicName()
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -694,10 +694,10 @@ func TestConsumerCompression(t *testing.T) {
 	topicName := newTopicName()
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topicName,
-		CompressionType: LZ4,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetCompressionType(LZ4),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -737,11 +737,11 @@ func TestConsumerCompressionWithBatches(t *testing.T) {
 	topicName := newTopicName()
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   topicName,
-		CompressionType:         ZLib,
-		BatchingMaxPublishDelay: 1 * time.Minute,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetCompressionType(ZLib),
+		SetBatchingMaxPublishDelay(1 * time.Minute),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -780,10 +780,10 @@ func TestConsumerSeek(t *testing.T) {
 	topicName := newTopicName()
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topicName,
-		DisableBatching: false,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetDisableBatching(false),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -832,10 +832,10 @@ func TestConsumerSeekByTime(t *testing.T) {
 	topicName := newTopicName()
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topicName,
-		DisableBatching: false,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetDisableBatching(false),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -981,9 +981,9 @@ func TestDLQ(t *testing.T) {
 	defer consumer.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -1086,9 +1086,9 @@ func TestDLQMultiTopics(t *testing.T) {
 	// create one producer for each topic
 	producers := make([]Producer, 10)
 	for i, topic := range topics {
-		producer, err := client.CreateProducer(ProducerOptions{
-			Topic: topic,
-		})
+		producer, err := client.CreateProducer(
+			SetTopic(topic),
+		)
 		assert.Nil(t, err)
 
 		producers[i] = producer
@@ -1168,9 +1168,9 @@ func TestGetDeliveryCount(t *testing.T) {
 	defer consumer.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -1224,15 +1224,16 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 
 	// create producer
 	partitionsAutoDiscoveryInterval = 100 * time.Millisecond
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-		MessageRouter: func(msg *ProducerMessage, topicMetadata TopicMetadata) int {
-			// The message key will contain the partition id where to route
-			i, err := strconv.Atoi(msg.Key)
-			assert.NoError(t, err)
-			return i
-		},
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetMessageRouter(
+			func(msg *ProducerMessage, topicMetadata TopicMetadata) int {
+				// The message key will contain the partition id where to route
+				i, err := strconv.Atoi(msg.Key)
+				assert.NoError(t, err)
+				return i
+			}),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -1310,10 +1311,10 @@ func TestProducerName(t *testing.T) {
 	producerName := "test-producer-name"
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-		Name:  producerName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetName(producerName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -1416,10 +1417,10 @@ func TestConsumerWithInterceptors(t *testing.T) {
 	defer consumer.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: false,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(false),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 

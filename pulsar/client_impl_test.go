@@ -45,9 +45,9 @@ func TestTLSConnectionCAError(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 
 	// The client should fail because it wouldn't trust the
 	// broker certificate
@@ -64,9 +64,9 @@ func TestTLSInsecureConnection(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -81,9 +81,9 @@ func TestTLSConnection(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -99,9 +99,9 @@ func TestTLSConnectionHostNameVerification(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -118,9 +118,9 @@ func TestTLSConnectionHostNameVerificationError(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 
 	assert.Error(t, err)
 	assert.Nil(t, producer)
@@ -135,9 +135,9 @@ func TestTLSAuthError(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newAuthTopicName()),
+	)
 
 	assert.Error(t, err)
 	assert.Nil(t, producer)
@@ -153,9 +153,9 @@ func TestTLSAuth(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newAuthTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -175,9 +175,9 @@ func TestTLSAuthWithCertSupplier(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newAuthTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -195,9 +195,9 @@ func TestTokenAuth(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newAuthTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -219,9 +219,9 @@ func TestTokenAuthWithSupplier(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newAuthTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -236,9 +236,9 @@ func TestTokenAuthFromFile(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newAuthTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -326,9 +326,9 @@ func TestOAuth2Auth(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newAuthTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newAuthTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -434,9 +434,9 @@ func TestNamespaceTopics(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 
 	assert.Nil(t, err)
 	defer producer.Close()

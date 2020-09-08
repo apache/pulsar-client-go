@@ -49,9 +49,9 @@ func TestProducerConnectError(t *testing.T) {
 
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 
 	// Expect error in creating producer
 	assert.Nil(t, producer)
@@ -72,7 +72,7 @@ func TestProducerNoTopic(t *testing.T) {
 
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{})
+	producer, err := client.CreateProducer()
 
 	// Expect error in creating producer
 	assert.Nil(t, producer)
@@ -88,9 +88,9 @@ func TestSimpleProducer(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -113,10 +113,10 @@ func TestProducerAsyncSend(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   newTopicName(),
-		BatchingMaxPublishDelay: 1 * time.Second,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+		SetBatchingMaxPublishDelay(1 * time.Second),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -172,10 +172,10 @@ func TestProducerCompression(t *testing.T) {
 			assert.NoError(t, err)
 			defer client.Close()
 
-			producer, err := client.CreateProducer(ProducerOptions{
-				Topic:           newTopicName(),
-				CompressionType: p.compressionType,
-			})
+			producer, err := client.CreateProducer(
+				SetTopic(newTopicName()),
+				SetCompressionType(p.compressionType),
+			)
 
 			assert.NoError(t, err)
 			assert.NotNil(t, producer)
@@ -200,9 +200,9 @@ func TestProducerLastSequenceID(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -229,9 +229,9 @@ func TestEventTime(t *testing.T) {
 	defer client.Close()
 
 	topicName := "test-event-time"
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -269,16 +269,16 @@ func TestFlushInProducer(t *testing.T) {
 	ctx := context.Background()
 
 	// set batch message number numOfMessages, and max delay 10s
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   topicName,
-		DisableBatching:         false,
-		BatchingMaxMessages:     uint(numOfMessages),
-		BatchingMaxPublishDelay: time.Second * 10,
-		Properties: map[string]string{
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetDisableBatching(false),
+		SetBatchingMaxMessages(uint(numOfMessages)),
+		SetBatchingMaxPublishDelay(time.Second * 10),
+		SetProperties(map[string]string{
 			"producer-name": "test-producer-name",
 			"producer-id":   "test-producer-id",
-		},
-	})
+		}),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -392,12 +392,12 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	defer consumer.Close()
 
 	// create producer and set batch message number numOfMessages, and max delay 10s
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   topicName,
-		DisableBatching:         false,
-		BatchingMaxMessages:     uint(numOfMessages / numberOfPartitions),
-		BatchingMaxPublishDelay: time.Second * 10,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetDisableBatching(false),
+		SetBatchingMaxMessages(uint(numOfMessages / numberOfPartitions)),
+		SetBatchingMaxPublishDelay(time.Second * 10),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -469,10 +469,10 @@ func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 	defer consumer.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topicName,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetDisableBatching(true),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -528,13 +528,13 @@ func TestMessageRouter(t *testing.T) {
 	assert.Nil(t, err)
 	defer consumer.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: "my-partitioned-topic",
-		MessageRouter: func(msg *ProducerMessage, tm TopicMetadata) int {
+	producer, err := client.CreateProducer(
+		SetTopic("my-partitioned-topic"),
+		SetMessageRouter(func(msg *ProducerMessage, tm TopicMetadata) int {
 			fmt.Println("Routing message ", msg, " -- Partitions: ", tm.NumPartitions())
 			return 2
-		},
-	})
+		}),
+	)
 
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -564,9 +564,9 @@ func TestNonPersistentTopic(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -591,19 +591,19 @@ func TestProducerDuplicateNameOnSameTopic(t *testing.T) {
 	topicName := newTopicName()
 	producerName := "my-producer"
 
-	p1, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-		Name:  producerName,
-	})
+	p1, err := client.CreateProducer(
+		SetTopic(topicName),
+		SetName(producerName),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p1.Close()
 
-	_, err = client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-		Name:  producerName,
-	})
+	_, err = client.CreateProducer(
+		SetTopic(topicName),
+		SetName(producerName),
+	)
 	assert.NotNil(t, err, "expected error when creating producer with same name")
 }
 
@@ -620,11 +620,11 @@ func TestProducerMetadata(t *testing.T) {
 	props := map[string]string{
 		"key1": "value1",
 	}
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:      topic,
-		Name:       "my-producer",
-		Properties: props,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetName("my-producer"),
+		SetProperties(props),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -653,9 +653,9 @@ func TestBatchMessageFlushing(t *testing.T) {
 	defer client.Close()
 
 	topic := newTopicName()
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -713,9 +713,9 @@ func TestDelayRelative(t *testing.T) {
 	defer client.Close()
 
 	topicName := newTopicName()
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -756,9 +756,9 @@ func TestDelayAbsolute(t *testing.T) {
 	defer client.Close()
 
 	topicName := newTopicName()
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -797,9 +797,9 @@ func TestMaxMessageSize(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	defer client.Close()
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(newTopicName()),
+	)
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 	defer producer.Close()
@@ -861,14 +861,14 @@ func TestProducerWithInterceptors(t *testing.T) {
 
 	metric := &metricProduceInterceptor{}
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: false,
-		Interceptors: ProducerInterceptors{
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(false),
+		SetInterceptors(ProducerInterceptors{
 			noopProduceInterceptor{},
 			metric,
-		},
-	})
+		}),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 

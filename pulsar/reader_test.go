@@ -67,9 +67,9 @@ func TestReader(t *testing.T) {
 	defer reader.Close()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -124,10 +124,10 @@ func TestReaderOnSpecificMessage(t *testing.T) {
 	ctx := context.Background()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(true),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -192,12 +192,12 @@ func TestReaderOnSpecificMessageWithBatching(t *testing.T) {
 	ctx := context.Background()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   topic,
-		DisableBatching:         false,
-		BatchingMaxMessages:     3,
-		BatchingMaxPublishDelay: 1 * time.Second,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(false),
+		SetBatchingMaxMessages(3),
+		SetBatchingMaxPublishDelay(1 * time.Second),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -268,12 +268,12 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 	ctx := context.Background()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                   topic,
-		DisableBatching:         false,
-		BatchingMaxMessages:     4,
-		BatchingMaxPublishDelay: 1 * time.Second,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(false),
+		SetBatchingMaxMessages(4),
+		SetBatchingMaxPublishDelay(1 * time.Second),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -324,10 +324,10 @@ func TestReaderHasNext(t *testing.T) {
 	ctx := context.Background()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(true),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -383,10 +383,10 @@ func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 	ctx := context.Background()
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(true),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -457,9 +457,9 @@ func TestReaderSeek(t *testing.T) {
 	topicName := newTopicName()
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topicName),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 
@@ -530,10 +530,10 @@ func TestReaderLatestInclusiveHasNext(t *testing.T) {
 	assert.False(t, reader0.HasNext())
 
 	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
+	producer, err := client.CreateProducer(
+		SetTopic(topic),
+		SetDisableBatching(true),
+	)
 	assert.Nil(t, err)
 	defer producer.Close()
 

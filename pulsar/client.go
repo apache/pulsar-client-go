@@ -107,7 +107,7 @@ type ClientOptions struct {
 type Client interface {
 	// Create the producer instance
 	// This method will block until the producer is created successfully
-	CreateProducer(ProducerOptions) (Producer, error)
+	CreateProducer(...ProducerOption) (Producer, error)
 
 	// Create a `Consumer` by subscribing to a topic.
 	//

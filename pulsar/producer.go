@@ -140,6 +140,102 @@ type ProducerOptions struct {
 	Interceptors ProducerInterceptors
 }
 
+type ProducerOption func(*ProducerOptions)
+
+// SetTopic sets the topic this producer will be publishing on.
+func SetTopic(topic string) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.Topic = topic
+	}
+}
+
+// SetName sets name for this producer.
+func SetName(name string) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.Name = name
+	}
+}
+
+// SetProperties sets application defined properties that will be attached to the producer.
+func SetProperties(properties map[string]string) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.Properties = properties
+	}
+}
+
+// SetMaxPendingMessages sets the max size of the queue holding the messages pending to receive an
+// acknowledgment from the broker.
+func SetMaxPendingMessages(maxPendingMessages int) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.MaxPendingMessages = maxPendingMessages
+	}
+}
+
+// SetHashingScheme sets the hashingScheme used to chose the partition on where to publish a particular message.
+func SetHashingScheme(hashingScheme HashingScheme) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.HashingScheme = hashingScheme
+	}
+}
+
+// SetCompressionLevel sets the desired compression level.
+func SetCompressionLevel(compressionLevel CompressionLevel) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.CompressionLevel = compressionLevel
+	}
+}
+
+// SetCompressionType set the compression type for the producer.
+func SetCompressionType(compressionType CompressionType) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.CompressionType = compressionType
+	}
+}
+
+// SetMessageRouter set a custom message routing policy by passing an implementation of MessageRouter.
+func SetMessageRouter(messageRouter func(*ProducerMessage, TopicMetadata) int) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.MessageRouter = messageRouter
+	}
+}
+
+// SetDisableBatching sets whether automatic batching of messages is enabled for the producer.
+func SetDisableBatching(disableBatching bool) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.DisableBatching = disableBatching
+	}
+}
+
+// SetBatchingMaxPublishDelay sets the time period within which the messages sent will be batched (default: 10ms).
+func SetBatchingMaxPublishDelay(batchingMaxPublishDelay time.Duration) ProducerOption {
+	return func(o *ProducerOptions) {
+		if batchingMaxPublishDelay != 0 {
+			o.BatchingMaxPublishDelay = batchingMaxPublishDelay
+		}
+	}
+}
+
+// SetBatchingMaxMessages sets the maximum number of messages permitted in a batch. (default: 1000).
+func SetBatchingMaxMessages(batchingMaxMessages uint) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.BatchingMaxMessages = batchingMaxMessages
+	}
+}
+
+// SetBatchingMaxSize sets the maximum number of bytes permitted in a batch. (default 128 KB).
+func SetBatchingMaxSize(batchingMaxSize uint) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.BatchingMaxSize = batchingMaxSize
+	}
+}
+
+// SetInterceptors sets interceptors that will be called at some points defined in ProducerInterceptor interface.
+func SetInterceptors(interceptors ProducerInterceptors) ProducerOption {
+	return func(o *ProducerOptions) {
+		o.Interceptors = interceptors
+	}
+}
+
 // Producer is used to publish messages on a topic
 type Producer interface {
 	// Topic return the topic to which producer is publishing to

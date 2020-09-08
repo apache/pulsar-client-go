@@ -47,10 +47,10 @@ func TestMultiTopicConsumerReceive(t *testing.T) {
 
 	// produce messages
 	for i, topic := range topics {
-		p, err := client.CreateProducer(ProducerOptions{
-			Topic:           topic,
-			DisableBatching: true,
-		})
+		p, err := client.CreateProducer(
+			SetTopic(topic),
+			SetDisableBatching(true),
+		)
 		if err != nil {
 			t.Fatal(err)
 		}

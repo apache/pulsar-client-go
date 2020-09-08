@@ -109,8 +109,8 @@ func newClient(options ClientOptions) (Client, error) {
 	return c, nil
 }
 
-func (c *client) CreateProducer(options ProducerOptions) (Producer, error) {
-	producer, err := newProducer(c, &options)
+func (c *client) CreateProducer(opts ...ProducerOption) (Producer, error) {
+	producer, err := newProducer(c, opts...)
 	if err == nil {
 		c.handlers.Add(producer)
 	}

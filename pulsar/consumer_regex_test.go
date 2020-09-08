@@ -263,19 +263,19 @@ func runRegexConsumerMatchOneTopic(t *testing.T, c Client, namespace string) {
 	topicNotInRegex := fmt.Sprintf("%s/my-topic", namespace)
 	topicInRegex := fmt.Sprintf("%s/foo-topic", namespace)
 
-	p1, err := c.CreateProducer(ProducerOptions{
-		Topic:           topicNotInRegex,
-		DisableBatching: true,
-	})
+	p1, err := c.CreateProducer(
+		SetTopic(topicNotInRegex),
+		SetDisableBatching(true),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer p1.Close()
 
-	p2, err := c.CreateProducer(ProducerOptions{
-		Topic:           topicInRegex,
-		DisableBatching: true,
-	})
+	p2, err := c.CreateProducer(
+		SetTopic(topicInRegex),
+		SetDisableBatching(true),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -320,10 +320,10 @@ func runRegexConsumerMatchOneTopic(t *testing.T, c Client, namespace string) {
 
 func runRegexConsumerAddMatchingTopic(t *testing.T, c Client, namespace string) {
 	topicInRegex := namespace + "/foo-topic"
-	p, err := c.CreateProducer(ProducerOptions{
-		Topic:           topicInRegex,
-		DisableBatching: true,
-	})
+	p, err := c.CreateProducer(
+		SetTopic(topicInRegex),
+		SetDisableBatching(true),
+	)
 	if err != nil {
 		t.Fatal(err)
 	}
