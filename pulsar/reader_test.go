@@ -196,7 +196,7 @@ func TestReaderOnSpecificMessageWithBatching(t *testing.T) {
 		SetTopic(topic),
 		SetDisableBatching(false),
 		SetBatchingMaxMessages(3),
-		SetBatchingMaxPublishDelay(1 * time.Second),
+		SetBatchingMaxPublishDelay(1*time.Second),
 	)
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -272,7 +272,7 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 		SetTopic(topic),
 		SetDisableBatching(false),
 		SetBatchingMaxMessages(4),
-		SetBatchingMaxPublishDelay(1 * time.Second),
+		SetBatchingMaxPublishDelay(1*time.Second),
 	)
 	assert.Nil(t, err)
 	defer producer.Close()

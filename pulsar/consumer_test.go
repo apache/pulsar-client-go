@@ -740,7 +740,7 @@ func TestConsumerCompressionWithBatches(t *testing.T) {
 	producer, err := client.CreateProducer(
 		SetTopic(topicName),
 		SetCompressionType(ZLib),
-		SetBatchingMaxPublishDelay(1 * time.Minute),
+		SetBatchingMaxPublishDelay(1*time.Minute),
 	)
 	assert.Nil(t, err)
 	defer producer.Close()

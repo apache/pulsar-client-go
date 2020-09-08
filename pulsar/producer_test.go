@@ -115,7 +115,7 @@ func TestProducerAsyncSend(t *testing.T) {
 
 	producer, err := client.CreateProducer(
 		SetTopic(newTopicName()),
-		SetBatchingMaxPublishDelay(1 * time.Second),
+		SetBatchingMaxPublishDelay(1*time.Second),
 	)
 
 	assert.NoError(t, err)
@@ -273,7 +273,7 @@ func TestFlushInProducer(t *testing.T) {
 		SetTopic(topicName),
 		SetDisableBatching(false),
 		SetBatchingMaxMessages(uint(numOfMessages)),
-		SetBatchingMaxPublishDelay(time.Second * 10),
+		SetBatchingMaxPublishDelay(time.Second*10),
 		SetProperties(map[string]string{
 			"producer-name": "test-producer-name",
 			"producer-id":   "test-producer-id",
@@ -395,8 +395,8 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	producer, err := client.CreateProducer(
 		SetTopic(topicName),
 		SetDisableBatching(false),
-		SetBatchingMaxMessages(uint(numOfMessages / numberOfPartitions)),
-		SetBatchingMaxPublishDelay(time.Second * 10),
+		SetBatchingMaxMessages(uint(numOfMessages/numberOfPartitions)),
+		SetBatchingMaxPublishDelay(time.Second*10),
 	)
 	assert.Nil(t, err)
 	defer producer.Close()
