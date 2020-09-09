@@ -107,6 +107,9 @@ type ConsumerOptions struct {
 	// By default is nil and there's no DLQ
 	DLQ *DLQPolicy
 
+	// Configuration for Key Shared consumer policy.
+	KeySharedPolicy *KeySharedPolicy
+
 	// Sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
 	MessageChannel chan ConsumerMessage

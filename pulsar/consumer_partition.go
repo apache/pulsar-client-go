@@ -121,6 +121,7 @@ type partitionConsumerOpts struct {
 	readCompacted              bool
 	disableForceTopicCreation  bool
 	interceptors               ConsumerInterceptors
+	keySharedPolicy            *KeySharedPolicy
 }
 
 type partitionConsumer struct {
@@ -831,6 +832,7 @@ func (pc *partitionConsumer) grabConn() error {
 
 	subType := toProtoSubType(pc.options.subscriptionType)
 	initialPosition := toProtoInitialPosition(pc.options.subscriptionInitPos)
+	keySharedMeta := toProtoKeySharedMeta(pc.options.keySharedPolicy)
 	requestID := pc.client.rpcClient.NewRequestID()
 	cmdSubscribe := &pb.CommandSubscribe{
 		Topic:                      proto.String(pc.topic),
@@ -846,6 +848,7 @@ func (pc *partitionConsumer) grabConn() error {
 		Schema:                     nil,
 		InitialPosition:            initialPosition.Enum(),
 		ReplicateSubscriptionState: proto.Bool(pc.options.replicateSubscriptionState),
+		KeySharedMeta:              keySharedMeta,
 	}
 
 	pc.startMessageID = pc.clearReceiverQueue()
