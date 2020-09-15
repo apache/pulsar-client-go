@@ -92,7 +92,7 @@ func TestDeadlock(t *testing.T) {
 				for {
 					select {
 					case <-ticker.C:
-						t.Logf("Trying to ack %+v", msg)
+						t.Logf("Trying to ack %+v", msg.ID())
 					case <-acknowledged:
 						return
 					}
