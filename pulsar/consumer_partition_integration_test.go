@@ -27,7 +27,7 @@ func init() {
 func TestDeadlock(t *testing.T) {
 	// Bootstrapping
 	containerName := randomName("pulsar-test")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	require.NoError(t, startPulsarContainer(ctx, t, containerName), "Could not start Pulsar container")
 	cancel()
 
@@ -92,7 +92,7 @@ func TestDeadlock(t *testing.T) {
 				for {
 					select {
 					case <-ticker.C:
-						t.Logf("Trying to ack %+v", msg.ID())
+						t.Logf("[%s] Trying to ack %+v", time.Now(), msg.ID())
 					case <-acknowledged:
 						return
 					}
@@ -102,7 +102,7 @@ func TestDeadlock(t *testing.T) {
 	}()
 
 	// Abruptly close connection at intervals to simulate behaviour of messages with too big frame size
-	for i := 0; i < 5; i++ {
+	for i := 0; i < 10; i++ {
 		for _, pc := range c.(*consumer).consumers {
 			pc.conn.Close()
 		}
