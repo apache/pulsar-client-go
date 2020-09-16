@@ -3,18 +3,21 @@
 package pulsar
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"math/rand"
-	"os"
+	"net/http"
 	"os/exec"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi"
+	"github.com/go-chi/chi/middleware"
 	"github.com/stretchr/testify/require"
 )
 
@@ -27,14 +30,28 @@ func init() {
 func TestDeadlock(t *testing.T) {
 	// Bootstrapping
 	containerName := randomName("pulsar-test")
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
 	require.NoError(t, startPulsarContainer(ctx, t, containerName), "Could not start Pulsar container")
 	cancel()
 
 	t.Log("Bootstrap done, starting test...")
 
+	// New context
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Minute)
+	t.Cleanup(cancel)
+
+	// Debug server
+	r := chi.NewRouter()
+	r.Mount("/debug", middleware.Profiler())
+	httpServer := http.Server{Addr: ":8081", Handler: r}
+	go func() {
+		t.Log("Starting debug HTTP server on 8081")
+		if err := httpServer.ListenAndServe(); err != nil {
+			t.Fatal("Could not start debug HTTP server")
+		}
+	}()
+
 	// Creating client
-	ctx = context.Background()
 	port := hostPort(ctx, t, containerName, "6650")
 	nc, err := newClient(ClientOptions{
 		URL:                     "pulsar://localhost:" + port,
@@ -42,18 +59,8 @@ func TestDeadlock(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Creating consumer
-	topic := randomName("topic-name")
-	c, err := nc.Subscribe(ConsumerOptions{
-		Name:                        randomName("consumer-name"),
-		SubscriptionName:            randomName("subscription-name"),
-		Topic:                       topic,
-		Type:                        KeyShared,
-		SubscriptionInitialPosition: SubscriptionPositionEarliest,
-	})
-	require.NoError(t, err)
-
 	// Creating producer
+	topic := randomName("topic-name")
 	p, err := nc.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Name:  randomName("producer-name"),
@@ -67,6 +74,16 @@ func TestDeadlock(t *testing.T) {
 		key := fmt.Sprintf("msg-%d", i)
 		publish(ctx, t, p, key)
 	}
+
+	// Creating consumer
+	c, err := nc.Subscribe(ConsumerOptions{
+		Name:                        randomName("consumer-name"),
+		SubscriptionName:            randomName("subscription-name"),
+		Topic:                       topic,
+		Type:                        KeyShared,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	require.NoError(t, err)
 
 	// Starting consumer
 	wg := sync.WaitGroup{}
@@ -123,6 +140,7 @@ func publish(ctx context.Context, t *testing.T, p Producer, key string) {
 		EventTime: time.Now(),
 	})
 	require.NoError(t, err)
+	t.Logf("Message published: %s", key)
 }
 
 func startPulsarContainer(ctx context.Context, t *testing.T, containerName string) error {
@@ -147,15 +165,13 @@ func startPulsarContainer(ctx context.Context, t *testing.T, containerName strin
 	}
 
 	go func(containerName string) {
-		t.Logf("Following logs")
-		stdout, stderr, err := execCommand(ctx, "docker", nil, "logs", "--follow", containerName)
+		t.Log("Following logs")
+		defer t.Log("Stopped following logs")
+		err := streamCommand(context.Background(), "docker", nil, "logs", "--follow", containerName)
 		if err != nil {
 			t.Logf("Could not follow container logs: %v", err)
 			return
 		}
-
-		go func() { _, _ = io.Copy(os.Stderr, stderr) }()
-		go func() { _, _ = io.Copy(os.Stdout, stdout) }()
 	}(containerName)
 
 	healthPort := hostPort(ctx, t, containerName, "8080")
@@ -220,6 +236,41 @@ func execCommand(ctx context.Context, name string, env []string, args ...string)
 	}
 
 	return
+}
+
+func streamCommand(ctx context.Context, name string, env []string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Env = env
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return err
+	}
+	stderr, err := cmd.StderrPipe()
+	if err != nil {
+		return err
+	}
+
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	scanReader(stdout)
+	go scanReader(stderr)
+
+	if err := cmd.Wait(); err != nil {
+		return fmt.Errorf("%s: %w", name, err)
+	}
+
+	return nil
+}
+
+func scanReader(r io.Reader) {
+	reader := bufio.NewReader(r)
+	line, err := reader.ReadString('\n')
+	for err == nil {
+		fmt.Print(line)
+		line, err = reader.ReadString('\n')
+	}
 }
 
 func randomName(prefix string) string {
