@@ -286,8 +286,8 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) Close() {
-	p.RLock()
-	defer p.RUnlock()
+	p.Lock()
+	defer p.Unlock()
 	if p.ticker != nil {
 		p.ticker.Stop()
 		close(p.tickerStop)
