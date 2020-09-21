@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 	"sync"
@@ -173,6 +174,7 @@ type message struct {
 	replicationClusters []string
 	replicatedFrom      string
 	redeliveryCount     uint32
+	schema              Schema
 }
 
 func (msg *message) Topic() string {
@@ -213,6 +215,12 @@ func (msg *message) IsReplicated() bool {
 
 func (msg *message) GetReplicatedFrom() string {
 	return msg.replicatedFrom
+}
+
+func (msg *message) GetSchemaValue(v interface{}) error  {
+	fmt.Println("=================")
+	fmt.Println(msg.Payload())
+	return msg.schema.Decode(msg.payLoad, v)
 }
 
 func (msg *message) ProducerName() string {

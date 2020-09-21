@@ -27,6 +27,9 @@ type ProducerMessage struct {
 	// Payload for the message
 	Payload []byte
 
+	//Value and payload is mutually exclusive, `Value interface{}` for schema message.
+	Value interface{}
+
 	// Key sets the key of the message for routing policy
 	Key string
 
@@ -102,6 +105,9 @@ type Message interface {
 
 	// Get name of cluster, from which the message is replicated.
 	GetReplicatedFrom() string
+
+	//Get the de-serialized value of the message, according the configured
+	GetSchemaValue(v interface{}) error
 }
 
 // MessageID identifier for a particular message
