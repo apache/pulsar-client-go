@@ -54,7 +54,7 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 		closeCh:      make(chan struct{}),
 		dlq:          dlq,
 		rlq:          rlq,
-		log:          &log.Entry{},
+		log:          log.WithField("topics", topics),
 		consumerName: options.Name,
 	}
 
