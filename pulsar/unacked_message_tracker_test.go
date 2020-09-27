@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -35,7 +36,9 @@ const (
 )
 
 type ackTimeoutMockedConsumer struct {
-	msgCh chan messageID
+	msgCh  chan messageID
+	closed bool
+	sync.Mutex
 }
 
 func newAckTimeoutMockedConsumer() *ackTimeoutMockedConsumer {
@@ -45,12 +48,20 @@ func newAckTimeoutMockedConsumer() *ackTimeoutMockedConsumer {
 	go func() {
 		// ensure we have enough time to verify msgs after timeout
 		time.Sleep(ackTimeout + minAckTimeoutTickTime*2)
+		c.Lock()
+		defer c.Unlock()
+		c.closed = true
 		close(c.msgCh)
 	}()
 	return c
 }
 
 func (c *ackTimeoutMockedConsumer) Redeliver(msgIds []messageID) {
+	c.Lock()
+	defer c.Unlock()
+	if c.closed {
+		return
+	}
 	for _, msgID := range msgIds {
 		c.msgCh <- msgID
 	}
