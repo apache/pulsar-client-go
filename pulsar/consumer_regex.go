@@ -38,9 +38,10 @@ const (
 )
 
 type regexConsumer struct {
-	client *client
-	dlq    *dlqRouter
-	rlq    *retryRouter
+	client       *client
+	dlq          *dlqRouter
+	rlq          *retryRouter
+	unackTracker *unackedMessageTracker
 
 	options ConsumerOptions
 
@@ -90,6 +91,10 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 	if err != nil {
 		return nil, err
 	}
+	if opts.AckTimeout > 0 {
+		rc.unackTracker = NewUnackedMessageTracker(opts.AckTimeout, minAckTimeoutTickTime)
+		opts.AckTimeout = 0
+	}
 
 	var errs error
 	for ce := range subscriber(c, topics, opts, msgCh, dlq, rlq) {
@@ -136,6 +141,9 @@ func (c *regexConsumer) Unsubscribe() error {
 			errs = pkgerrors.Wrap(err, msg)
 		}
 	}
+	if c.unackTracker != nil {
+		c.unackTracker.Close()
+	}
 	return errs
 }
 
@@ -147,6 +155,13 @@ func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error
 		case cm, ok := <-c.messageCh:
 			if !ok {
 				return nil, ErrConsumerClosed
+			}
+			if c.unackTracker != nil {
+				if id, ok := toTrackingMessageID(cm.ID()); !ok {
+					c.log.Warnf("invalid message id type %T", cm.ID())
+				} else {
+					c.unackTracker.add(id)
+				}
 			}
 			return cm.Message, nil
 		case <-ctx.Done():
@@ -181,6 +196,9 @@ func (c *regexConsumer) AckID(msgID MessageID) {
 		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
 		return
 	}
+	if c.unackTracker != nil {
+		c.unackTracker.remove(mid.messageID)
+	}
 
 	mid.Ack()
 }
@@ -199,6 +217,9 @@ func (c *regexConsumer) NackID(msgID MessageID) {
 	if mid.consumer == nil {
 		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
 		return
+	}
+	if c.unackTracker != nil {
+		c.unackTracker.remove(mid.messageID)
 	}
 
 	mid.Nack()
@@ -222,6 +243,9 @@ func (c *regexConsumer) Close() {
 		wg.Wait()
 		c.dlq.close()
 		c.rlq.close()
+		if c.unackTracker != nil {
+			c.unackTracker.Close()
+		}
 		consumersClosed.Inc()
 	})
 }

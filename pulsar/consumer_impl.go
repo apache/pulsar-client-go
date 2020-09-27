@@ -54,9 +54,15 @@ var (
 
 var ErrConsumerClosed = errors.New("consumer closed")
 
-const defaultNackRedeliveryDelay = 1 * time.Minute
+const (
+	defaultNackRedeliveryDelay = 1 * time.Minute
+
+	minAckTimeout         = 1000 * time.Millisecond
+	minAckTimeoutTickTime = 100 * time.Millisecond
+)
 
 type acker interface {
+	redeliveryConsumer
 	AckID(id trackingMessageID)
 	NackID(id trackingMessageID)
 }
@@ -80,6 +86,8 @@ type consumer struct {
 	errorCh   chan error
 	ticker    *time.Ticker
 
+	unackTracker *unackedMessageTracker
+
 	log *log.Entry
 }
 
@@ -102,6 +110,14 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 	if options.Name == "" {
 		options.Name = generateRandomName()
+	}
+
+	if options.AckTimeout != 0 && options.AckTimeout < minAckTimeout {
+		msg := fmt.Sprintf("ackTimeout %dms should be greater than %dms",
+			options.AckTimeout.Milliseconds(),
+			minAckTimeout.Milliseconds(),
+		)
+		return nil, newError(ResultInvalidConfiguration, msg)
 	}
 
 	// did the user pass in a message channel?
@@ -210,6 +226,9 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		consumerName:              options.Name,
 	}
 
+	if options.AckTimeout > 0 {
+		consumer.unackTracker = NewUnackedMessageTracker(options.AckTimeout, minAckTimeoutTickTime)
+	}
 	err := consumer.internalTopicSubscribeToPartitions()
 	if err != nil {
 		return nil, err
@@ -289,11 +308,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		go func(idx int, pt string) {
 			defer wg.Done()
 
-			var nackRedeliveryDelay time.Duration
-			if c.options.NackRedeliveryDelay == 0 {
+			nackRedeliveryDelay := c.options.NackRedeliveryDelay
+			if nackRedeliveryDelay == 0 {
 				nackRedeliveryDelay = defaultNackRedeliveryDelay
-			} else {
-				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
 			opts := &partitionConsumerOpts{
 				topic:                      pt,
@@ -374,6 +391,9 @@ func (c *consumer) Unsubscribe() error {
 	if errMsg != "" {
 		return fmt.Errorf(errMsg)
 	}
+	if c.unackTracker != nil {
+		c.unackTracker.Close()
+	}
 	return nil
 }
 
@@ -385,6 +405,13 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 		case cm, ok := <-c.messageCh:
 			if !ok {
 				return nil, ErrConsumerClosed
+			}
+			if c.unackTracker != nil {
+				if mid, ok := toTrackingMessageID(cm.ID()); !ok {
+					c.log.Warnf("invalid message id type %T", cm.ID())
+				} else {
+					c.unackTracker.add(mid)
+				}
 			}
 			return cm.Message, nil
 		case <-ctx.Done():
@@ -410,6 +437,9 @@ func (c *consumer) AckID(msgID MessageID) {
 		return
 	}
 
+	if c.unackTracker != nil {
+		c.unackTracker.remove(mid.messageID)
+	}
 	if mid.consumer != nil {
 		mid.Ack()
 		return
@@ -476,6 +506,9 @@ func (c *consumer) NackID(msgID MessageID) {
 		return
 	}
 
+	if c.unackTracker != nil {
+		c.unackTracker.remove(mid.messageID)
+	}
 	if mid.consumer != nil {
 		mid.Nack()
 		return
@@ -503,6 +536,9 @@ func (c *consumer) Close() {
 		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()
+		if c.unackTracker != nil {
+			c.unackTracker.Close()
+		}
 		consumersClosed.Inc()
 		consumersPartitions.Sub(float64(len(c.consumers)))
 	})

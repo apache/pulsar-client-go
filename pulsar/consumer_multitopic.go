@@ -42,6 +42,8 @@ type multiTopicConsumer struct {
 	closeOnce sync.Once
 	closeCh   chan struct{}
 
+	unackTracker *unackedMessageTracker
+
 	log *log.Entry
 }
 
@@ -56,6 +58,12 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 		rlq:          rlq,
 		log:          &log.Entry{},
 		consumerName: options.Name,
+	}
+
+	if options.AckTimeout > 0 {
+		mtc.unackTracker = NewUnackedMessageTracker(options.AckTimeout, minAckTimeoutTickTime)
+		// avoid consumers instantiate unack tracker separately
+		options.AckTimeout = 0
 	}
 
 	var errs error
@@ -91,6 +99,9 @@ func (c *multiTopicConsumer) Unsubscribe() error {
 			errs = pkgerrors.Wrap(err, msg)
 		}
 	}
+	if c.unackTracker != nil {
+		c.unackTracker.Close()
+	}
 	return errs
 }
 
@@ -102,6 +113,13 @@ func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err 
 		case cm, ok := <-c.messageCh:
 			if !ok {
 				return nil, ErrConsumerClosed
+			}
+			if c.unackTracker != nil {
+				if mid, ok := toTrackingMessageID(cm.ID()); !ok {
+					c.log.Warnf("invalid message id type %T", cm.ID())
+				} else {
+					c.unackTracker.add(mid)
+				}
 			}
 			return cm.Message, nil
 		case <-ctx.Done():
@@ -132,6 +150,9 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) {
 		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
 		return
 	}
+	if c.unackTracker != nil {
+		c.unackTracker.remove(mid.messageID)
+	}
 
 	mid.Ack()
 }
@@ -160,6 +181,9 @@ func (c *multiTopicConsumer) NackID(msgID MessageID) {
 		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
 		return
 	}
+	if c.unackTracker != nil {
+		c.unackTracker.remove(mid.messageID)
+	}
 
 	mid.Nack()
 }
@@ -178,6 +202,9 @@ func (c *multiTopicConsumer) Close() {
 		close(c.closeCh)
 		c.dlq.close()
 		c.rlq.close()
+		if c.unackTracker != nil {
+			c.unackTracker.Close()
+		}
 		consumersClosed.Inc()
 	})
 }
