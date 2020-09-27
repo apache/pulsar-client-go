@@ -227,7 +227,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	}
 
 	if options.AckTimeout > 0 {
-		consumer.unackTracker = NewUnackedMessageTracker(options.AckTimeout, minAckTimeoutTickTime)
+		consumer.unackTracker = newUnackedMessageTracker(options.AckTimeout)
 	}
 	err := consumer.internalTopicSubscribeToPartitions()
 	if err != nil {

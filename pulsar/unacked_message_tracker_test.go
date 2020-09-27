@@ -51,8 +51,8 @@ func newAckTimeoutMockedConsumer() *ackTimeoutMockedConsumer {
 }
 
 func (c *ackTimeoutMockedConsumer) Redeliver(msgIds []messageID) {
-	for _, msgId := range msgIds {
-		c.msgCh <- msgId
+	for _, msgID := range msgIds {
+		c.msgCh <- msgID
 	}
 }
 
@@ -62,7 +62,7 @@ func (c *ackTimeoutMockedConsumer) NackID(trackingMessageID) {}
 
 func TestAckTimeoutWithBatchesTracker(t *testing.T) {
 	c := newAckTimeoutMockedConsumer()
-	tracker := NewUnackedMessageTracker(ackTimeout, minAckTimeoutTickTime)
+	tracker := newUnackedMessageTracker(ackTimeout)
 	defer tracker.Close()
 
 	f := func(ledgerID, entryID int64, batchIdx int32) trackingMessageID {
@@ -80,17 +80,17 @@ func TestAckTimeoutWithBatchesTracker(t *testing.T) {
 	tracker.add(f(1, 1, 3))
 	tracker.add(f(2, 2, 1))
 
-	var msgIds []messageID
-	for msgId := range c.msgCh {
-		msgIds = append(msgIds, msgId)
+	msgIDs := make([]messageID, 0, 5)
+	for msgID := range c.msgCh {
+		msgIDs = append(msgIDs, msgID)
 	}
-	msgIds = sortMessageIds(msgIds)
+	msgIDs = sortMessageIds(msgIDs)
 
-	assert.Equal(t, 2, len(msgIds))
-	assert.Equal(t, int64(1), msgIds[0].ledgerID)
-	assert.Equal(t, int64(1), msgIds[0].entryID)
-	assert.Equal(t, int64(2), msgIds[1].ledgerID)
-	assert.Equal(t, int64(2), msgIds[1].entryID)
+	assert.Equal(t, 2, len(msgIDs))
+	assert.Equal(t, int64(1), msgIDs[0].ledgerID)
+	assert.Equal(t, int64(1), msgIDs[0].entryID)
+	assert.Equal(t, int64(2), msgIDs[1].ledgerID)
+	assert.Equal(t, int64(2), msgIDs[1].entryID)
 }
 
 func TestMinAckTimeout(t *testing.T) {
@@ -140,7 +140,7 @@ func TestAckTimeoutExclusive(t *testing.T) {
 	}
 
 	// 4. received 5 messages, but not ack
-	recv := receiveAll(c, recvTimeout, false)
+	recv := receiveAll(c, false)
 	assert.Equal(t, totalMsgs/2, recv)
 
 	// validate consumer's unack tracker size
@@ -155,7 +155,7 @@ func TestAckTimeoutExclusive(t *testing.T) {
 	}
 
 	// 6. receive 10 messages, and ack
-	recv = receiveAll(c, recvTimeout, true)
+	recv = receiveAll(c, true)
 	assert.Equal(t, totalMsgs, recv)
 	assert.Equal(t, 0, unackTrackersSize(c))
 }
@@ -205,18 +205,18 @@ func TestAckTimeoutFailover(t *testing.T) {
 	}
 
 	// 4. received 10 messages totally
-	recv1 := receiveAll(c1, recvTimeout, false)
+	recv1 := receiveAll(c1, false)
 	acked1 := 0
-	recv2 := receiveAll(c2, recvTimeout, true)
+	recv2 := receiveAll(c2, true)
 	assert.Equal(t, totalMsgs, recv1+recv2)
 
 	// wait ack timeout triggered
 	time.Sleep(ackTimeout)
 
 	// 5. check if messages redelivery
-	recv1 = receiveAll(c1, recvTimeout, true)
+	recv1 = receiveAll(c1, true)
 	acked1 = recv1
-	recv2 += receiveAll(c2, recvTimeout, false)
+	recv2 += receiveAll(c2, false)
 	assert.Equal(t, totalMsgs, acked1+recv2)
 	assert.Equal(t, 0, unackTrackersSize(c1))
 	assert.Equal(t, 0, unackTrackersSize(c2))
@@ -267,26 +267,26 @@ func TestAckTimeoutShared(t *testing.T) {
 	}
 
 	// 4. receive 10 messages totally
-	recv1 := receiveAll(c1, recvTimeout, false) // not-ack
+	recv1 := receiveAll(c1, false) // not-ack
 	acked1 := 0
-	recv2 := receiveAll(c2, recvTimeout, true) // ack
+	recv2 := receiveAll(c2, true) // ack
 	acked2 := recv2
 	assert.Equal(t, totalMsgs, recv1+recv2)
 
 	time.Sleep(ackTimeout)
 
 	// 5. check if messages redelivery again
-	recv1 = receiveAll(c1, recvTimeout, true) // not-ack --> ack
+	recv1 = receiveAll(c1, true) // not-ack --> ack
 	acked1 = recv1
-	recv2 += receiveAll(c2, recvTimeout, false) // ack --> not-ack
+	recv2 += receiveAll(c2, false) // ack --> not-ack
 	assert.Equal(t, totalMsgs, recv1+recv2)
 	assert.Equal(t, totalMsgs, acked1+recv2)
 
 	time.Sleep(ackTimeout)
 
 	// 6. now check remaining messages redelivery
-	acked1 += receiveAll(c1, recvTimeout, true)
-	acked2 += receiveAll(c2, recvTimeout, true)
+	acked1 += receiveAll(c1, true)
+	acked2 += receiveAll(c2, true)
 	assert.Equal(t, totalMsgs, acked1+acked2)
 	assert.Equal(t, 0, unackTrackersSize(c1))
 	assert.Equal(t, 0, unackTrackersSize(c2))
@@ -358,35 +358,36 @@ func runAckTimeoutMultiTopics(t *testing.T, topics []string, options ConsumerOpt
 	}
 
 	// 4. receive 10 messages totally
-	recv1 := receiveAll(c1, recvTimeout, false) // not-ack
+	recv1 := receiveAll(c1, false) // not-ack
 	acked1 := 0
-	recv2 := receiveAll(c2, recvTimeout, true) // ack
+	recv2 := receiveAll(c2, true) // ack
 	acked2 := recv2
 	assert.Equal(t, totalMsgs, recv1+recv2)
 
 	time.Sleep(ackTimeout)
 
 	// 5. check if messages redelivery again
-	recv1 = receiveAll(c1, recvTimeout, true) // reset
+	recv1 = receiveAll(c1, true) // reset
 	acked1 = recv1
-	recv2 += receiveAll(c2, recvTimeout, false)
+	recv2 += receiveAll(c2, false)
 	assert.Equal(t, totalMsgs, recv1+recv2)
 	assert.Equal(t, totalMsgs, acked1+recv2)
 
 	time.Sleep(ackTimeout)
 
 	// 6. now check remaining messages redelivery
-	acked1 += receiveAll(c1, recvTimeout, true)
-	acked2 += receiveAll(c2, recvTimeout, true)
+	acked1 += receiveAll(c1, true)
+	acked2 += receiveAll(c2, true)
 	assert.Equal(t, totalMsgs, acked1+acked2)
 	assert.Equal(t, 0, unackTrackersSize(c1))
 	assert.Equal(t, 0, unackTrackersSize(c2))
 }
 
-func receiveAll(c Consumer, timeout time.Duration, ack bool) int {
+func receiveAll(c Consumer, ack bool) int {
 	received := 0
 	for {
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
+		var ctx, cancel = context.WithTimeout(context.Background(), recvTimeout)
+		defer cancel()
 		msg, err := c.Receive(ctx)
 		if err != nil {
 			if err == context.DeadlineExceeded || msg == nil {
@@ -402,20 +403,19 @@ func receiveAll(c Consumer, timeout time.Duration, ack bool) int {
 			c.Ack(msg)
 		}
 		received++
-		cancel()
 	}
 }
 
-func unackTrackersSize(c Consumer) (tracked int) {
-	switch c.(type) {
+func unackTrackersSize(ic Consumer) (tracked int) {
+	switch c := ic.(type) {
 	case *consumer:
-		return len(c.(*consumer).unackTracker.msgID2Sector)
+		return len(c.unackTracker.msgID2Sector)
 	case *multiTopicConsumer:
-		return len(c.(*multiTopicConsumer).unackTracker.msgID2Sector)
+		return len(c.unackTracker.msgID2Sector)
 	case *regexConsumer:
-		return len(c.(*regexConsumer).unackTracker.msgID2Sector)
+		return len(c.unackTracker.msgID2Sector)
 	default:
-		log.Errorf("unexpected Consumer type: %T", c)
+		log.Errorf("unexpected Consumer type: %T", ic)
 		return -1
 	}
 }

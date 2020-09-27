@@ -92,7 +92,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 		return nil, err
 	}
 	if opts.AckTimeout > 0 {
-		rc.unackTracker = NewUnackedMessageTracker(opts.AckTimeout, minAckTimeoutTickTime)
+		rc.unackTracker = newUnackedMessageTracker(opts.AckTimeout)
 		opts.AckTimeout = 0
 	}
 

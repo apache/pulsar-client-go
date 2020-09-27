@@ -29,9 +29,7 @@ type timeSector map[messageID]interface{}
 
 type unackedMessageTracker struct {
 	sync.Mutex
-
-	tick       *time.Ticker
-	ackTimeout time.Duration
+	tick *time.Ticker
 
 	// Consumer delegate trackingMessageID's acker to do Redelivery
 	sectors      []timeSector
@@ -41,14 +39,14 @@ type unackedMessageTracker struct {
 	doneCh chan interface{}
 }
 
-func NewUnackedMessageTracker(ackTimeout time.Duration, tickTime time.Duration) *unackedMessageTracker {
+func newUnackedMessageTracker(ackTimeout time.Duration) *unackedMessageTracker {
 	t := &unackedMessageTracker{
-		tick:         time.NewTicker(tickTime),
+		tick:         time.NewTicker(minAckTimeoutTickTime),
 		msgID2Sector: make(map[messageID]timeSector),
 		msgID2Acker:  make(map[messageID]acker),
 		doneCh:       make(chan interface{}),
 	}
-	n := int(math.Ceil(float64(ackTimeout) / float64(tickTime)))
+	n := int(math.Ceil(float64(ackTimeout) / float64(minAckTimeoutTickTime)))
 	for i := 0; i <= n; i++ {
 		t.sectors = append(t.sectors, make(timeSector))
 	}
@@ -103,7 +101,6 @@ func (t *unackedMessageTracker) track() {
 					delete(t.msgID2Sector, msgID)
 				}
 			}
-			headSector = nil
 			headSector = make(map[messageID]interface{})
 			t.sectors = append(t.sectors, headSector) // enqueue
 

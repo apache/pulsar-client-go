@@ -61,7 +61,7 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 	}
 
 	if options.AckTimeout > 0 {
-		mtc.unackTracker = NewUnackedMessageTracker(options.AckTimeout, minAckTimeoutTickTime)
+		mtc.unackTracker = newUnackedMessageTracker(options.AckTimeout)
 		// avoid consumers instantiate unack tracker separately
 		options.AckTimeout = 0
 	}
