@@ -420,11 +420,11 @@ func receiveAll(c Consumer, ack bool) int {
 func unackTrackersSize(ic Consumer) (tracked int) {
 	switch c := ic.(type) {
 	case *consumer:
-		return len(c.unackTracker.msgID2Sector)
+		return c.unackTracker.size()
 	case *multiTopicConsumer:
-		return len(c.unackTracker.msgID2Sector)
+		return c.unackTracker.size()
 	case *regexConsumer:
-		return len(c.unackTracker.msgID2Sector)
+		return c.unackTracker.size()
 	default:
 		log.Errorf("unexpected Consumer type: %T", ic)
 		return -1

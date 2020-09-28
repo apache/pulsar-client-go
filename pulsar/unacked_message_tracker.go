@@ -128,3 +128,9 @@ func (t *unackedMessageTracker) track() {
 func (t *unackedMessageTracker) Close() {
 	t.doneCh <- nil
 }
+
+func (t *unackedMessageTracker) size() int {
+	t.Lock()
+	defer t.Unlock()
+	return len(t.msgID2Sector)
+}

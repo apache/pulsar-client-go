@@ -113,10 +113,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	}
 
 	if options.AckTimeout != 0 && options.AckTimeout < minAckTimeout {
-		msg := fmt.Sprintf("ackTimeout %dms should be greater than %dms",
-			options.AckTimeout.Nanoseconds()/1e6,
-			minAckTimeout.Nanoseconds()/1e6,
-		)
+		msg := fmt.Sprintf("ackTimeout %s should be greater than %s", options.AckTimeout, minAckTimeout)
 		return nil, newError(ResultInvalidConfiguration, msg)
 	}
 
