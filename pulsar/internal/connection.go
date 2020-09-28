@@ -366,10 +366,28 @@ func (c *connection) run() {
 		c.Close()
 	}()
 
+	// a close relay channel ensures consumer/producer handlers can be closed before connection shuts down
+	closeRelayCh := make(chan interface{})
 	go func() {
 		for {
 			select {
 			case <-c.closeCh:
+				for _, listener := range c.listeners {
+					listener.ConnectionClosed()
+				}
+				consumerHandlers := make(map[uint64]ConsumerHandler)
+				c.consumerHandlersLock.RLock()
+				for id, handler := range c.consumerHandlers {
+					consumerHandlers[id] = handler
+				}
+				c.consumerHandlersLock.RUnlock()
+
+				for _, handler := range consumerHandlers {
+					handler.ConnectionClosed()
+				}
+				c.log.Infof("%v closing consumer and producer handlers", c.logicalAddr)
+				close(closeRelayCh)
+
 				return
 
 			case req := <-c.incomingRequestsCh:
@@ -383,7 +401,8 @@ func (c *connection) run() {
 
 	for {
 		select {
-		case <-c.closeCh:
+		case <-closeRelayCh:
+			c.log.Infof("exits %v connection run loop", c.logicalAddr)
 			return
 
 		case cmd := <-c.incomingCmdCh:
@@ -410,7 +429,7 @@ func (c *connection) runPingCheck() {
 			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
-				c.log.Warn("Detected stale connection to broker")
+				c.log.Warnf("%v detected stale connection to broker %v", c.logicalAddr, connectionState(c.state))
 				c.TriggerClose()
 				return
 			}
@@ -731,12 +750,13 @@ func (c *connection) UnregisterListener(id uint64) {
 // broadcasting the notification on the close channel
 func (c *connection) TriggerClose() {
 	c.closeOnce.Do(func() {
+		close(c.closeCh)
 		cnx := c.cnx
 		if cnx != nil {
+			c.log.Infof("%v close conneciton", c.logicalAddr)
 			cnx.Close()
 		}
 
-		close(c.closeCh)
 	})
 }
 
@@ -755,21 +775,6 @@ func (c *connection) Close() {
 	c.TriggerClose()
 	c.pingTicker.Stop()
 	c.pingCheckTicker.Stop()
-
-	for _, listener := range c.listeners {
-		listener.ConnectionClosed()
-	}
-
-	consumerHandlers := make(map[uint64]ConsumerHandler)
-	c.consumerHandlersLock.RLock()
-	for id, handler := range c.consumerHandlers {
-		consumerHandlers[id] = handler
-	}
-	c.consumerHandlersLock.RUnlock()
-
-	for _, handler := range consumerHandlers {
-		handler.ConnectionClosed()
-	}
 
 	connectionsClosed.Inc()
 }
