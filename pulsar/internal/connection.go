@@ -753,7 +753,7 @@ func (c *connection) TriggerClose() {
 		close(c.closeCh)
 		cnx := c.cnx
 		if cnx != nil {
-			c.log.Infof("%v close conneciton", c.logicalAddr)
+			c.log.Infof("%v close connection", c.logicalAddr)
 			cnx.Close()
 		}
 
