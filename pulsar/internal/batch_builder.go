@@ -152,7 +152,7 @@ func (bb *BatchBuilder) reset() {
 	bb.numMessages = 0
 	bb.buffer.Clear()
 	bb.callbacks = []interface{}{}
-	bb.msgMetadata.ReplicateTo = nil
+	bb.msgMetadata.Reset()
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
