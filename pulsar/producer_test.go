@@ -733,10 +733,10 @@ func TestBatchDelayMessage(t *testing.T) {
 		Payload:      []byte("delay: 3s"),
 		DeliverAfter: 3 * time.Second,
 	}
-	var delayMsgId int64
+	var delayMsgID int64
 	ch := make(chan struct{}, 2)
 	producer.SendAsync(ctx, delayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
-		atomic.StoreInt64(&delayMsgId, id.(messageID).entryID)
+		atomic.StoreInt64(&delayMsgID, id.(messageID).entryID)
 		ch <- struct{}{}
 	})
 	delayMsgPublished := false
@@ -750,18 +750,18 @@ func TestBatchDelayMessage(t *testing.T) {
 	noDelayMsg := &ProducerMessage{
 		Payload: []byte("no delay"),
 	}
-	var noDelayMsgId int64
+	var noDelayMsgID int64
 	producer.SendAsync(ctx, noDelayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
-		atomic.StoreInt64(&noDelayMsgId, id.(messageID).entryID)
+		atomic.StoreInt64(&noDelayMsgID, id.(messageID).entryID)
 	})
 	for i := 0; i < 2; i++ {
 		msg, err := consumer.Receive(context.Background())
 		assert.Nil(t, err, "unexpected error occurred when recving message from topic")
 
 		switch msg.ID().(trackingMessageID).entryID {
-		case atomic.LoadInt64(&noDelayMsgId):
+		case atomic.LoadInt64(&noDelayMsgID):
 			assert.LessOrEqual(t, time.Since(msg.PublishTime()).Nanoseconds(), int64(batchingDelay*2))
-		case atomic.LoadInt64(&delayMsgId):
+		case atomic.LoadInt64(&delayMsgID):
 			assert.GreaterOrEqual(t, time.Since(msg.PublishTime()).Nanoseconds(), int64(time.Second*3))
 		default:
 			t.Fatalf("got an unexpected message from topic, id:%v", msg.ID().Serialize())
