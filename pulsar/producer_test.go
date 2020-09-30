@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -732,10 +733,10 @@ func TestBatchDelayMessage(t *testing.T) {
 		Payload:      []byte("delay: 3s"),
 		DeliverAfter: 3 * time.Second,
 	}
-	var delayMsgId messageID
+	var delayMsgId int64
 	ch := make(chan struct{}, 2)
 	producer.SendAsync(ctx, delayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
-		delayMsgId = id.(messageID)
+		atomic.StoreInt64(&delayMsgId, id.(messageID).entryID)
 		ch <- struct{}{}
 	})
 	delayMsgPublished := false
@@ -749,19 +750,18 @@ func TestBatchDelayMessage(t *testing.T) {
 	noDelayMsg := &ProducerMessage{
 		Payload: []byte("no delay"),
 	}
-	var noDelayMsgId messageID
+	var noDelayMsgId int64
 	producer.SendAsync(ctx, noDelayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
-		noDelayMsgId = id.(messageID)
+		atomic.StoreInt64(&noDelayMsgId, id.(messageID).entryID)
 	})
-
 	for i := 0; i < 2; i++ {
 		msg, err := consumer.Receive(context.Background())
 		assert.Nil(t, err, "unexpected error occurred when recving message from topic")
 
 		switch msg.ID().(trackingMessageID).entryID {
-		case noDelayMsgId.entryID:
+		case atomic.LoadInt64(&noDelayMsgId):
 			assert.LessOrEqual(t, time.Since(msg.PublishTime()).Nanoseconds(), int64(batchingDelay*2))
-		case delayMsgId.entryID:
+		case atomic.LoadInt64(&delayMsgId):
 			assert.GreaterOrEqual(t, time.Since(msg.PublishTime()).Nanoseconds(), int64(time.Second*3))
 		default:
 			t.Fatalf("got an unexpected message from topic, id:%v", msg.ID().Serialize())
