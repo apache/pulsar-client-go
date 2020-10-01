@@ -470,6 +470,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	c.writeBuffer.WriteUint32(frameSize)
 
 	c.writeBuffer.WriteUint32(cmdSize)
+	c.writeBuffer.ResizeIfNeeded(cmdSize)
 	_, err := cmd.MarshalToSizedBuffer(c.writeBuffer.WritableSlice()[:cmdSize])
 	if err != nil {
 		c.log.WithError(err).Fatal("Protobuf serialization error")
