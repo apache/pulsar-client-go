@@ -48,6 +48,8 @@ var ErrCorruptedMessage = errors.New("corrupted message")
 // ErrEOM is the error returned by ReadMessage when no more input is available.
 var ErrEOM = errors.New("EOF")
 
+var ErrConnectionClosed = errors.New("connection closed")
+
 func NewMessageReader(headersAndPayload Buffer) *MessageReader {
 	return &MessageReader{
 		buffer: headersAndPayload,
