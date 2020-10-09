@@ -176,6 +176,7 @@ type connection struct {
 	closeCh            chan interface{}
 	writeRequestsCh    chan Buffer
 
+	pendingLock sync.Mutex
 	pendingReqs map[uint64]*request
 	listeners   map[uint64]ConnectionListener
 
@@ -365,23 +366,34 @@ func (c *connection) run() {
 	defer func() {
 		// all the accesses to the pendingReqs should be happened in this run loop thread,
 		// including the final cleanup, to avoid the issue https://github.com/apache/pulsar-client-go/issues/239
+		c.pendingLock.Lock()
 		for id, req := range c.pendingReqs {
 			req.callback(nil, errors.New("connection closed"))
 			delete(c.pendingReqs, id)
 		}
+		c.pendingLock.Unlock()
 		c.Close()
+	}()
+
+	go func() {
+		for {
+			select {
+			case <-c.closeCh:
+				return
+
+			case req := <-c.incomingRequestsCh:
+				if req == nil {
+					return // TODO: this never gonna be happen
+				}
+				c.internalSendRequest(req)
+			}
+		}
 	}()
 
 	for {
 		select {
 		case <-c.closeCh:
 			return
-
-		case req := <-c.incomingRequestsCh:
-			if req == nil {
-				return
-			}
-			c.internalSendRequest(req)
 
 		case cmd := <-c.incomingCmdCh:
 			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
@@ -467,6 +479,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	c.writeBuffer.WriteUint32(frameSize)
 
 	c.writeBuffer.WriteUint32(cmdSize)
+	c.writeBuffer.ResizeIfNeeded(cmdSize)
 	_, err := cmd.MarshalToSizedBuffer(c.writeBuffer.WritableSlice()[:cmdSize])
 	if err != nil {
 		c.log.WithError(err).Error("Protobuf serialization error")
@@ -566,33 +579,41 @@ func (c *connection) SendRequestNoWait(req *pb.BaseCommand) {
 }
 
 func (c *connection) internalSendRequest(req *request) {
+	c.pendingLock.Lock()
 	if req.id != nil {
 		c.pendingReqs[*req.id] = req
 	}
+	c.pendingLock.Unlock()
 	c.writeCommand(req.cmd)
 }
 
 func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
+	c.pendingLock.Lock()
 	request, ok := c.pendingReqs[requestID]
 	if !ok {
 		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
+		c.pendingLock.Unlock()
 		return
 	}
 
 	delete(c.pendingReqs, requestID)
+	c.pendingLock.Unlock()
 	request.callback(response, nil)
 }
 
 func (c *connection) handleResponseError(serverError *pb.CommandError) {
 	requestID := serverError.GetRequestId()
+	c.pendingLock.Lock()
 	request, ok := c.pendingReqs[requestID]
 	if !ok {
 		c.log.Warnf("Received unexpected error response for request %d of type %s",
 			requestID, serverError.GetError())
+		c.pendingLock.Unlock()
 		return
 	}
 
 	delete(c.pendingReqs, requestID)
+	c.pendingLock.Unlock()
 
 	errMsg := fmt.Sprintf("server error: %s: %s", serverError.GetError(), serverError.GetMessage())
 	request.callback(nil, errors.New(errMsg))

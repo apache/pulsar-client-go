@@ -66,7 +66,10 @@ type DLQPolicy struct {
 	MaxDeliveries uint32
 
 	// Name of the topic where the failing messages will be sent.
-	Topic string
+	DeadLetterTopic string
+
+	// Name of the topic where the retry messages will be sent.
+	RetryLetterTopic string
 }
 
 // ConsumerOptions is used to configure and create instances of Consumer
@@ -106,6 +109,13 @@ type ConsumerOptions struct {
 	// eg. route the message to topic X after N failed attempts at processing it
 	// By default is nil and there's no DLQ
 	DLQ *DLQPolicy
+
+	// Configuration for Key Shared consumer policy.
+	KeySharedPolicy *KeySharedPolicy
+
+	// Auto retry send messages to default filled DLQPolicy topics
+	// Default is false
+	RetryEnable bool
 
 	// Sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
@@ -162,6 +172,9 @@ type Consumer interface {
 
 	// AckID the consumption of a single message, identified by its MessageID
 	AckID(MessageID)
+
+	// ReconsumeLater mark a message for redelivery after custom delay
+	ReconsumeLater(msg Message, delay time.Duration)
 
 	// Acknowledge the failure to process a single message.
 	//

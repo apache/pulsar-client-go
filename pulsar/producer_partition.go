@@ -339,6 +339,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		sequenceID = internal.GetAndAdd(p.sequenceIDGenerator, 1)
 	}
 
+	if !sendAsBatch {
+		p.internalFlushCurrentBatch()
+	}
 	added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
 		msg.ReplicationClusters, deliverAt)
 	if !added {
@@ -442,7 +445,6 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
-
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
