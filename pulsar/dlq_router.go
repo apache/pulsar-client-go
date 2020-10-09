@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 type dlqRouter struct {
@@ -32,13 +32,14 @@ type dlqRouter struct {
 	policy    *DLQPolicy
 	messageCh chan ConsumerMessage
 	closeCh   chan interface{}
-	log       *log.Entry
+	log       log.Logger
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy) (*dlqRouter, error) {
+func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger) (*dlqRouter, error) {
 	r := &dlqRouter{
 		client: client,
 		policy: policy,
+		log:    logger,
 	}
 
 	if policy != nil {
@@ -52,7 +53,7 @@ func newDlqRouter(client Client, policy *DLQPolicy) (*dlqRouter, error) {
 
 		r.messageCh = make(chan ConsumerMessage)
 		r.closeCh = make(chan interface{}, 1)
-		r.log = log.WithField("dlq-topic", policy.DeadLetterTopic)
+		r.log = logger.SubLogger(log.Fields{"dlq-topic": policy.DeadLetterTopic})
 		go r.run()
 	}
 	return r, nil

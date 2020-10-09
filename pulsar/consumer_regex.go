@@ -28,9 +28,8 @@ import (
 
 	pkgerrors "github.com/pkg/errors"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -59,7 +58,7 @@ type regexConsumer struct {
 
 	ticker *time.Ticker
 
-	log *log.Entry
+	log log.Logger
 
 	consumerName string
 }
@@ -82,7 +81,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 		closeCh: make(chan struct{}),
 
-		log:          log.WithField("topic", tn.Name),
+		log:          c.log.SubLogger(log.Fields{"topic": tn.Name}),
 		consumerName: opts.Name,
 	}
 
@@ -280,13 +279,12 @@ func (c *regexConsumer) discover() {
 	newTopics := topicsDiff(topics, known)
 	staleTopics := topicsDiff(known, topics)
 
-	if log.GetLevel() == log.DebugLevel {
-		l := c.log.WithFields(log.Fields{
+	c.log.
+		WithFields(log.Fields{
 			"new_topics": newTopics,
 			"old_topics": staleTopics,
-		})
-		l.Debug("discover topics")
-	}
+		}).
+		Debug("discover topics")
 
 	c.unsubscribeCh <- staleTopics
 	c.subscribeCh <- newTopics
@@ -306,9 +304,7 @@ func (c *regexConsumer) knownTopics() []string {
 }
 
 func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter, rlq *retryRouter) {
-	if log.GetLevel() == log.DebugLevel {
-		c.log.WithField("topics", topics).Debug("subscribe")
-	}
+	c.log.WithField("topics", topics).Debug("subscribe")
 	consumers := make(map[string]Consumer, len(topics))
 	for ce := range subscriber(c.client, topics, c.options, c.messageCh, dlq, rlq) {
 		if ce.err != nil {
@@ -326,11 +322,11 @@ func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter, rlq *retryRou
 }
 
 func (c *regexConsumer) unsubscribe(topics []string) {
-	if log.GetLevel() == log.DebugLevel {
-		c.log.WithField("topics", topics).Debug("unsubscribe")
-	}
+	c.log.WithField("topics", topics).Debug("unsubscribe")
+
 	consumers := make(map[string]Consumer, len(topics))
 	c.consumersLock.Lock()
+
 	for _, t := range topics {
 		if consumer, ok := c.consumers[t]; ok {
 			consumers[t] = consumer
@@ -340,7 +336,7 @@ func (c *regexConsumer) unsubscribe(topics []string) {
 	c.consumersLock.Unlock()
 
 	for t, consumer := range consumers {
-		log.Debugf("unsubscribe from topic=%s subscription=%s", t, c.options.SubscriptionName)
+		c.log.Debugf("unsubscribe from topic=%s subscription=%s", t, c.options.SubscriptionName)
 		if err := consumer.Unsubscribe(); err != nil {
 			c.log.Warnf("unable to unsubscribe from topic=%s subscription=%s",
 				t, c.options.SubscriptionName)

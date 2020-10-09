@@ -26,7 +26,7 @@ import (
 
 	pkgerrors "github.com/pkg/errors"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 type multiTopicConsumer struct {
@@ -42,7 +42,7 @@ type multiTopicConsumer struct {
 	closeOnce sync.Once
 	closeCh   chan struct{}
 
-	log *log.Entry
+	log log.Logger
 }
 
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
@@ -54,7 +54,7 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 		closeCh:      make(chan struct{}),
 		dlq:          dlq,
 		rlq:          rlq,
-		log:          log.WithField("topics", topics),
+		log:          client.log.SubLogger(log.Fields{"topic": topics}),
 		consumerName: options.Name,
 	}
 

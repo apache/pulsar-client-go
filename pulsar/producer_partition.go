@@ -31,10 +31,9 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -89,7 +88,7 @@ type partitionProducer struct {
 	state  int32
 	client *client
 	topic  string
-	log    *log.Entry
+	log    log.Logger
 	cnx    internal.Connection
 
 	options             *ProducerOptions
@@ -125,11 +124,12 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		maxPendingMessages = options.MaxPendingMessages
 	}
 
+	logger := client.log.SubLogger(log.Fields{"topic": topic})
 	p := &partitionProducer{
 		state:            producerInit,
-		log:              log.WithField("topic", topic),
 		client:           client,
 		topic:            topic,
+		log:              logger,
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, maxPendingMessages),
@@ -146,12 +146,15 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	err := p.grabCnx()
 	if err != nil {
-		log.WithError(err).Errorf("Failed to create producer")
+		logger.WithError(err).Error("Failed to create producer")
 		return nil, err
 	}
 
-	p.log = p.log.WithField("producer_name", p.producerName).
-		WithField("producerID", p.producerID)
+	p.log = p.log.SubLogger(log.Fields{
+		"producer_name": p.producerName,
+		"producerID":    p.producerID,
+	})
+
 	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
 	atomic.StoreInt32(&p.state, producerReady)
 
@@ -195,7 +198,8 @@ func (p *partitionProducer) grabCnx() error {
 		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
-			p)
+			p,
+			p.log)
 		if err != nil {
 			return err
 		}
@@ -295,9 +299,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if len(msg.Payload) > int(p.cnx.GetMaxMessageSize()) {
 		p.publishSemaphore.Release()
 		request.callback(nil, request.msg, errMessageTooLarge)
-		p.log.WithField("size", len(msg.Payload)).
+		p.log.WithError(errMessageTooLarge).
+			WithField("size", len(msg.Payload)).
 			WithField("properties", msg.Properties).
-			WithError(errMessageTooLarge).Error()
+			Error()
 		publishErrors.Inc()
 		return
 	}

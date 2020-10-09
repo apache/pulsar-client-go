@@ -28,11 +28,10 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
@@ -159,7 +158,7 @@ type partitionConsumer struct {
 	nackTracker *negativeAcksTracker
 	dlq         *dlqRouter
 
-	log *log.Entry
+	log log.Logger
 
 	compressionProviders map[pb.CompressionType]compression.Provider
 }
@@ -185,16 +184,18 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
-		log:                  log.WithField("topic", options.topic),
 	}
-	pc.log = pc.log.WithField("name", pc.name).
-		WithField("subscription", options.subscription).
-		WithField("consumerID", pc.consumerID)
-	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay)
+	pc.log = client.log.SubLogger(log.Fields{
+		"name":         pc.name,
+		"topic":        options.topic,
+		"subscription": options.subscription,
+		"consumerID":   pc.consumerID,
+	})
+	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, pc.log)
 
 	err := pc.grabConn()
 	if err != nil {
-		log.WithError(err).Errorf("Failed to create consumer")
+		pc.log.WithError(err).Error("Failed to create consumer")
 		return nil, err
 	}
 	pc.log.Info("Created consumer")

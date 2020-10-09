@@ -29,10 +29,9 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
@@ -80,7 +79,7 @@ type consumer struct {
 	errorCh   chan error
 	ticker    *time.Ticker
 
-	log *log.Entry
+	log log.Logger
 }
 
 func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
@@ -146,11 +145,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 	}
 
-	dlq, err := newDlqRouter(client, options.DLQ)
+	dlq, err := newDlqRouter(client, options.DLQ, client.log)
 	if err != nil {
 		return nil, err
 	}
-	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable)
+	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable, client.log)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +205,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
 		rlq:                       rlq,
-		log:                       log.WithField("topic", topic),
+		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
 	}
 

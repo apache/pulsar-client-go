@@ -25,8 +25,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
-
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 // ConnectionPool is a interface of connection pool.
@@ -45,6 +44,8 @@ type connectionPool struct {
 	auth                  auth.Provider
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
+
+	log log.Logger
 }
 
 // NewConnectionPool init connection pool.
@@ -52,12 +53,14 @@ func NewConnectionPool(
 	tlsOptions *TLSOptions,
 	auth auth.Provider,
 	connectionTimeout time.Duration,
-	maxConnectionsPerHost int) ConnectionPool {
+	maxConnectionsPerHost int,
+	logger log.Logger) ConnectionPool {
 	return &connectionPool{
 		tlsOptions:            tlsOptions,
 		auth:                  auth,
 		connectionTimeout:     connectionTimeout,
 		maxConnectionsPerHost: int32(maxConnectionsPerHost),
+		log:                   logger,
 	}
 }
 
@@ -66,7 +69,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	cachedCnx, found := p.pool.Load(key)
 	if found {
 		cnx := cachedCnx.(*connection)
-		log.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
+		p.log.Debug("Found connection in cache:", cnx.logicalAddr, cnx.physicalAddr)
 
 		if err := cnx.waitUntilReady(); err == nil {
 			// Connection is ready to be used
@@ -74,11 +77,18 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		}
 		// The cached connection is failed
 		p.pool.Delete(key)
-		log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
+		p.log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
 	}
 
 	// Try to create a new connection
-	newConnection := newConnection(logicalAddr, physicalAddr, p.tlsOptions, p.connectionTimeout, p.auth)
+	newConnection := newConnection(connectionOptions{
+		logicalAddr:       logicalAddr,
+		physicalAddr:      physicalAddr,
+		tls:               p.tlsOptions,
+		connectionTimeout: p.connectionTimeout,
+		auth:              p.auth,
+		logger:            p.log,
+	})
 	newCnx, wasCached := p.pool.LoadOrStore(key, newConnection)
 	cnx := newCnx.(*connection)
 

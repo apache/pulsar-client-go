@@ -33,10 +33,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/gogo/protobuf/proto"
-	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -167,7 +167,7 @@ type connection struct {
 	pingTicker           *time.Ticker
 	pingCheckTicker      *time.Ticker
 
-	log *log.Entry
+	log log.Logger
 
 	requestIDGenerator uint64
 
@@ -189,21 +189,30 @@ type connection struct {
 	maxMessageSize int32
 }
 
-func newConnection(logicalAddr *url.URL, physicalAddr *url.URL, tlsOptions *TLSOptions,
-	connectionTimeout time.Duration, auth auth.Provider) *connection {
+// connectionOptions defines configurations for creating connection.
+type connectionOptions struct {
+	logicalAddr       *url.URL
+	physicalAddr      *url.URL
+	tls               *TLSOptions
+	connectionTimeout time.Duration
+	auth              auth.Provider
+	logger            log.Logger
+}
+
+func newConnection(opts connectionOptions) *connection {
 	cnx := &connection{
 		state:                int32(connectionInit),
-		connectionTimeout:    connectionTimeout,
-		logicalAddr:          logicalAddr,
-		physicalAddr:         physicalAddr,
+		connectionTimeout:    opts.connectionTimeout,
+		logicalAddr:          opts.logicalAddr,
+		physicalAddr:         opts.physicalAddr,
 		writeBuffer:          NewBuffer(4096),
-		log:                  log.WithField("remote_addr", physicalAddr),
+		log:                  opts.logger.SubLogger(log.Fields{"remote_addr": opts.physicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
 		pingTicker:           time.NewTicker(keepAliveInterval),
 		pingCheckTicker:      time.NewTicker(keepAliveInterval),
-		tlsOptions:           tlsOptions,
-		auth:                 auth,
+		tlsOptions:           opts.tls,
+		auth:                 opts.auth,
 
 		closeCh:            make(chan interface{}),
 		incomingRequestsCh: make(chan *request, 10),
@@ -273,7 +282,7 @@ func (c *connection) connect() bool {
 
 	c.Lock()
 	c.cnx = cnx
-	c.log = c.log.WithField("local_addr", c.cnx.LocalAddr())
+	c.log = c.log.SubLogger(log.Fields{"local_addr": c.cnx.LocalAddr()})
 	c.log.Info("TCP connection established")
 	c.Unlock()
 
@@ -473,7 +482,8 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	c.writeBuffer.ResizeIfNeeded(cmdSize)
 	_, err := cmd.MarshalToSizedBuffer(c.writeBuffer.WritableSlice()[:cmdSize])
 	if err != nil {
-		c.log.WithError(err).Fatal("Protobuf serialization error")
+		c.log.WithError(err).Error("Protobuf serialization error")
+		panic("Protobuf serialization error")
 	}
 
 	c.writeBuffer.WrittenBytes(cmdSize)
@@ -628,7 +638,10 @@ func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		err := consumer.MessageReceived(response, payload)
 		if err != nil {
-			c.log.WithField("consumerID", consumerID).WithError(err).Error("handle message Id: ", response.MessageId)
+			c.log.
+				WithError(err).
+				WithField("consumerID", consumerID).
+				Error("handle message Id: ", response.MessageId)
 		}
 	} else {
 		c.log.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)

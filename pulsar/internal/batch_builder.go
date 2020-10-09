@@ -20,11 +20,11 @@ package internal
 import (
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -63,12 +63,14 @@ type BatchBuilder struct {
 
 	compressionProvider compression.Provider
 	buffersPool         BuffersPool
+
+	log log.Logger
 }
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
 func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool) (*BatchBuilder, error) {
+	bufferPool BuffersPool, logger log.Logger) (*BatchBuilder, error) {
 	if maxMessages == 0 {
 		maxMessages = DefaultMaxMessagesPerBatch
 	}
@@ -92,6 +94,7 @@ func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, p
 		callbacks:           []interface{}{},
 		compressionProvider: getCompressionProvider(compressionType, level),
 		buffersPool:         bufferPool,
+		log:                 logger,
 	}
 
 	if compressionType != pb.CompressionType_NONE {
@@ -162,7 +165,7 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 		// No-Op for empty batch
 		return nil, 0, nil
 	}
-	log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
+	bb.log.Debug("BatchBuilder flush: messages: ", bb.numMessages)
 
 	bb.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bb.numMessages))
 	bb.cmdSend.Send.NumMessages = proto.Int32(int32(bb.numMessages))
@@ -198,7 +201,6 @@ func getCompressionProvider(compressionType pb.CompressionType,
 	case pb.CompressionType_ZSTD:
 		return compression.NewZStdProvider(level)
 	default:
-		log.Panic("unsupported compression type")
-		return nil
+		panic("unsupported compression type")
 	}
 }

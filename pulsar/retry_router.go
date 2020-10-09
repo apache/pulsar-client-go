@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	log "github.com/sirupsen/logrus"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -49,13 +49,14 @@ type retryRouter struct {
 	policy    *DLQPolicy
 	messageCh chan RetryMessage
 	closeCh   chan interface{}
-	log       *log.Entry
+	log       log.Logger
 }
 
-func newRetryRouter(client Client, policy *DLQPolicy, retryEnabled bool) (*retryRouter, error) {
+func newRetryRouter(client Client, policy *DLQPolicy, retryEnabled bool, logger log.Logger) (*retryRouter, error) {
 	r := &retryRouter{
 		client: client,
 		policy: policy,
+		log:    logger,
 	}
 
 	if policy != nil && retryEnabled {
@@ -69,7 +70,7 @@ func newRetryRouter(client Client, policy *DLQPolicy, retryEnabled bool) (*retry
 
 		r.messageCh = make(chan RetryMessage)
 		r.closeCh = make(chan interface{}, 1)
-		r.log = log.WithField("rlq-topic", policy.RetryLetterTopic)
+		r.log = logger.SubLogger(log.Fields{"rlq-topic": policy.RetryLetterTopic})
 		go r.run()
 	}
 	return r, nil
