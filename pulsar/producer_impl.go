@@ -27,9 +27,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
@@ -60,8 +59,7 @@ type producer struct {
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 	ticker        *time.Ticker
 	tickerStop    chan struct{}
-
-	log *log.Entry
+	log           log.Logger
 }
 
 const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
@@ -88,7 +86,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		options: options,
 		topic:   options.Topic,
 		client:  client,
-		log:     log.WithField("topic", options.Topic),
+		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
 	}
 
 	var batchingMaxPublishDelay time.Duration
@@ -286,8 +284,8 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) Close() {
-	p.RLock()
-	defer p.RUnlock()
+	p.Lock()
+	defer p.Unlock()
 	if p.ticker != nil {
 		p.ticker.Stop()
 		close(p.tickerStop)

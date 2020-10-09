@@ -26,8 +26,9 @@ import (
 
 // TopicName abstract a struct contained in a Topic
 type TopicName struct {
-	Name      string
+	Domain    string
 	Namespace string
+	Name      string
 	Partition int
 }
 
@@ -68,6 +69,7 @@ func ParseTopicName(topic string) (*TopicName, error) {
 	if domain != "persistent" && domain != "non-persistent" {
 		return nil, errors.New("Invalid topic domain: " + domain)
 	}
+	tn.Domain = domain
 
 	rest := parts[1]
 	var err error

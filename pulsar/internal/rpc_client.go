@@ -27,10 +27,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
+	"github.com/apache/pulsar-client-go/pulsar/log"
+
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
-
-	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -71,16 +71,16 @@ type rpcClient struct {
 	requestIDGenerator  uint64
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
-
-	log *log.Entry
+	log                 log.Logger
 }
 
-func NewRPCClient(serviceURL *url.URL, pool ConnectionPool, requestTimeout time.Duration) RPCClient {
+func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
+	requestTimeout time.Duration, logger log.Logger) RPCClient {
 	return &rpcClient{
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
-		log:            log.WithField("serviceURL", serviceURL),
+		log:            logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 	}
 }
 

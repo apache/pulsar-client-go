@@ -23,6 +23,7 @@ import (
 	"net/http"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -64,7 +65,6 @@ func TestProducerNoTopic(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://localhost:6650",
 	})
-
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -151,13 +151,12 @@ func TestProducerAsyncSend(t *testing.T) {
 }
 
 func TestProducerCompression(t *testing.T) {
-
 	type testProvider struct {
 		name            string
 		compressionType CompressionType
 	}
 
-	var providers = []testProvider{
+	providers := []testProvider{
 		{"zlib", ZLib},
 		{"lz4", LZ4},
 		{"zstd", ZSTD},
@@ -703,6 +702,71 @@ func TestBatchMessageFlushing(t *testing.T) {
 	}
 
 	assert.Equal(t, 2, published, "expected to publish two messages")
+}
+
+// test for issue #367
+func TestBatchDelayMessage(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	batchingDelay := time.Second
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		BatchingMaxPublishDelay: batchingDelay,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "subName",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	ctx := context.Background()
+	delayMsg := &ProducerMessage{
+		Payload:      []byte("delay: 3s"),
+		DeliverAfter: 3 * time.Second,
+	}
+	var delayMsgID int64
+	ch := make(chan struct{}, 2)
+	producer.SendAsync(ctx, delayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		atomic.StoreInt64(&delayMsgID, id.(messageID).entryID)
+		ch <- struct{}{}
+	})
+	delayMsgPublished := false
+	select {
+	case <-ch:
+		delayMsgPublished = true
+	case <-time.After(batchingDelay):
+	}
+	assert.Equal(t, delayMsgPublished, true, "delay message is not published individually when batching is enabled")
+
+	noDelayMsg := &ProducerMessage{
+		Payload: []byte("no delay"),
+	}
+	var noDelayMsgID int64
+	producer.SendAsync(ctx, noDelayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		atomic.StoreInt64(&noDelayMsgID, id.(messageID).entryID)
+	})
+	for i := 0; i < 2; i++ {
+		msg, err := consumer.Receive(context.Background())
+		assert.Nil(t, err, "unexpected error occurred when recving message from topic")
+
+		switch msg.ID().(trackingMessageID).entryID {
+		case atomic.LoadInt64(&noDelayMsgID):
+			assert.LessOrEqual(t, time.Since(msg.PublishTime()).Nanoseconds(), int64(batchingDelay*2))
+		case atomic.LoadInt64(&delayMsgID):
+			assert.GreaterOrEqual(t, time.Since(msg.PublishTime()).Nanoseconds(), int64(time.Second*3))
+		default:
+			t.Fatalf("got an unexpected message from topic, id:%v", msg.ID().Serialize())
+		}
+	}
 }
 
 func TestDelayRelative(t *testing.T) {

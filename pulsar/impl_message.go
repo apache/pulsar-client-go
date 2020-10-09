@@ -104,6 +104,10 @@ func (id messageID) Serialize() []byte {
 	return data
 }
 
+func (id messageID) String() string {
+	return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
+}
+
 func deserializeMessageID(data []byte) (MessageID, error) {
 	msgID := &pb.MessageIdData{}
 	err := proto.Unmarshal(data, msgID)
