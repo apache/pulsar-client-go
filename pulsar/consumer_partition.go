@@ -749,8 +749,7 @@ func (pc *partitionConsumer) runEventsLoop() {
 	}()
 
 	for {
-		select {
-		case i := <-pc.eventsCh:
+		for i := range pc.eventsCh {
 			switch v := i.(type) {
 			case *ackRequest:
 				pc.internalAck(v)

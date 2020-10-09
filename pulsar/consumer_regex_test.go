@@ -140,10 +140,10 @@ func runWithClientNamespace(fn func(*testing.T, Client, string)) func(*testing.T
 	}
 }
 
-//func TestRegexConsumerDiscover(t *testing.T) {
-//	t.Run("PatternAll", runWithClientNamespace(runRegexConsumerDiscoverPatternAll))
-//	t.Run("PatternFoo", runWithClientNamespace(runRegexConsumerDiscoverPatternFoo))
-//}
+func TestRegexConsumerDiscover(t *testing.T) {
+	t.Run("PatternAll", runWithClientNamespace(runRegexConsumerDiscoverPatternAll))
+	t.Run("PatternFoo", runWithClientNamespace(runRegexConsumerDiscoverPatternFoo))
+}
 
 func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string) {
 	tn, _ := internal.ParseTopicName(fmt.Sprintf("persistent://%s/.*", namespace))
@@ -175,23 +175,11 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 	if err != nil {
 		t.Fatal(err)
 	}
-
 	rc.discover()
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(2000 * time.Millisecond)
 
 	consumers = cloneConsumers(rc)
 	assert.Equal(t, 1, len(consumers))
-
-	// delete the topic
-	if err := deleteTopic(topic); err != nil {
-		t.Fatal(err)
-	}
-
-	rc.discover()
-	time.Sleep(300 * time.Millisecond)
-
-	consumers = cloneConsumers(rc)
-	assert.Equal(t, 0, len(consumers))
 }
 
 func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string) {
@@ -227,7 +215,7 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 	defer deleteTopic(myTopic)
 
 	rc.discover()
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(2000 * time.Millisecond)
 
 	consumers = cloneConsumers(rc)
 	assert.Equal(t, 0, len(consumers))
@@ -240,20 +228,10 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 	}
 
 	rc.discover()
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(2000 * time.Millisecond)
 
 	consumers = cloneConsumers(rc)
 	assert.Equal(t, 1, len(consumers))
-
-	// delete the topic
-	err = deleteTopic(fooTopic)
-	assert.Nil(t, err)
-
-	rc.discover()
-	time.Sleep(300 * time.Millisecond)
-
-	consumers = cloneConsumers(rc)
-	assert.Equal(t, 0, len(consumers))
 }
 
 func TestRegexConsumer(t *testing.T) {
