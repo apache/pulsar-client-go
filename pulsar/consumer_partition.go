@@ -150,11 +150,11 @@ type partitionConsumer struct {
 	startMessageID  trackingMessageID
 	lastDequeuedMsg trackingMessageID
 
-	eventsCh         chan interface{}
-	connectedCh      chan struct{}
-	connectClosedCh  chan struct{}
-	closeCh          chan struct{}
-	clearQueueCh     chan func(id trackingMessageID)
+	eventsCh        chan interface{}
+	connectedCh     chan struct{}
+	connectClosedCh chan struct{}
+	closeCh         chan struct{}
+	clearQueueCh    chan func(id trackingMessageID)
 
 	nackTracker *negativeAcksTracker
 	dlq         *dlqRouter
