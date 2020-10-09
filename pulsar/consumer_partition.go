@@ -152,7 +152,7 @@ type partitionConsumer struct {
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
-	connectClosedCh chan struct{}
+	connectClosedCh chan connectionClosed
 	closeCh         chan struct{}
 	clearQueueCh    chan func(id trackingMessageID)
 
@@ -175,13 +175,13 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		name:                 options.consumerName,
 		consumerID:           client.rpcClient.NewConsumerID(),
 		partitionIdx:         int32(options.partitionIdx),
-		eventsCh:             make(chan interface{}, 3),
+		eventsCh:             make(chan interface{}, 10),
 		queueSize:            int32(options.receiverQueueSize),
 		queueCh:              make(chan []*message, options.receiverQueueSize),
 		startMessageID:       options.startMessageID,
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
-		connectClosedCh:      make(chan struct{}),
+		connectClosedCh:      make(chan connectionClosed, 10),
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
