@@ -110,9 +110,9 @@ type ConsumerHandler interface {
 type connectionState int32
 
 const (
-	connectionInit         = 0
-	connectionReady        = 1
-	connectionClosed       = 2
+	connectionInit   = 0
+	connectionReady  = 1
+	connectionClosed = 2
 )
 
 func (s connectionState) String() string {
@@ -569,14 +569,14 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
 	if c.state == connectionClosed {
 		return ErrConnectionClosed
-	} else {
-		c.incomingRequestsCh <- &request{
-			id:       nil,
-			cmd:      req,
-			callback: nil,
-		}
-		return nil
 	}
+
+	c.incomingRequestsCh <- &request{
+		id:       nil,
+		cmd:      req,
+		callback: nil,
+	}
+	return nil
 }
 
 func (c *connection) internalSendRequest(req *request) {
