@@ -641,9 +641,10 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	producerID := response.GetProducerId()
 
 	c.Lock()
-	defer c.Unlock()
+	producer, ok := c.listeners[producerID]
+	c.Unlock()
 
-	if producer, ok := c.listeners[producerID]; ok {
+	if ok {
 		producer.ReceivedSendReceipt(response)
 	} else {
 		c.log.WithField("producerID", producerID).Warn("Got unexpected send receipt for message: ", response.MessageId)
