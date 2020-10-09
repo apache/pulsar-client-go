@@ -737,14 +737,9 @@ func (pc *partitionConsumer) runEventsLoop() {
 	pc.log.Debug("get into runEventsLoop")
 
 	go func() {
-		for {
-			select {
-			case <-pc.closeCh:
-				return
-			case <-pc.connectClosedCh:
-				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker()
-			}
+		for range pc.connectClosedCh {
+			pc.log.Debug("runEventsLoop will reconnect")
+			pc.reconnectToBroker()
 		}
 	}()
 
