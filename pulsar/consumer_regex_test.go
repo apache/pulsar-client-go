@@ -140,10 +140,10 @@ func runWithClientNamespace(fn func(*testing.T, Client, string)) func(*testing.T
 	}
 }
 
-func TestRegexConsumerDiscover(t *testing.T) {
-	t.Run("PatternAll", runWithClientNamespace(runRegexConsumerDiscoverPatternAll))
-	t.Run("PatternFoo", runWithClientNamespace(runRegexConsumerDiscoverPatternFoo))
-}
+//func TestRegexConsumerDiscover(t *testing.T) {
+//	t.Run("PatternAll", runWithClientNamespace(runRegexConsumerDiscoverPatternAll))
+//	t.Run("PatternFoo", runWithClientNamespace(runRegexConsumerDiscoverPatternFoo))
+//}
 
 func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string) {
 	tn, _ := internal.ParseTopicName(fmt.Sprintf("persistent://%s/.*", namespace))
