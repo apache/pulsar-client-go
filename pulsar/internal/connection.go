@@ -89,7 +89,7 @@ type ConnectionListener interface {
 // Connection is a interface of client cnx.
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
-	SendRequestNoWait(req *pb.BaseCommand)
+	SendRequestNoWait(req *pb.BaseCommand) error
 	WriteData(data Buffer)
 	RegisterListener(id uint64, listener ConnectionListener)
 	UnregisterListener(id uint64)
@@ -110,21 +110,15 @@ type ConsumerHandler interface {
 type connectionState int32
 
 const (
-	connectionInit         = 0
-	connectionConnecting   = 1
-	connectionTCPConnected = 2
-	connectionReady        = 3
-	connectionClosed       = 4
+	connectionInit   = 0
+	connectionReady  = 1
+	connectionClosed = 2
 )
 
 func (s connectionState) String() string {
 	switch s {
 	case connectionInit:
 		return "Initializing"
-	case connectionConnecting:
-		return "Connecting"
-	case connectionTCPConnected:
-		return "TCPConnected"
 	case connectionReady:
 		return "Ready"
 	case connectionClosed:
@@ -286,8 +280,6 @@ func (c *connection) connect() bool {
 	c.log.Info("TCP connection established")
 	c.Unlock()
 
-	c.changeState(connectionTCPConnected)
-
 	return true
 }
 
@@ -358,10 +350,19 @@ func (c *connection) waitUntilReady() error {
 	return nil
 }
 
+func (c *connection) failLeftRequestsWhenClose() {
+	for req := range c.incomingRequestsCh {
+		c.internalSendRequest(req)
+	}
+	close(c.incomingRequestsCh)
+}
+
 func (c *connection) run() {
 	// All reads come from the reader goroutine
 	go c.reader.readFromConnection()
 	go c.runPingCheck()
+
+	c.log.Debugf("Connection run start channel %+v, requestLength %d", c, len(c.incomingRequestsCh))
 
 	defer func() {
 		// all the accesses to the pendingReqs should be happened in this run loop thread,
@@ -379,6 +380,7 @@ func (c *connection) run() {
 		for {
 			select {
 			case <-c.closeCh:
+				c.failLeftRequestsWhenClose()
 				return
 
 			case req := <-c.incomingRequestsCh:
@@ -563,19 +565,28 @@ func (c *connection) Write(data Buffer) {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
-	c.incomingRequestsCh <- &request{
-		id:       &requestID,
-		cmd:      req,
-		callback: callback,
+	if c.state == connectionClosed {
+		callback(req, ErrConnectionClosed)
+	} else {
+		c.incomingRequestsCh <- &request{
+			id:       &requestID,
+			cmd:      req,
+			callback: callback,
+		}
 	}
 }
 
-func (c *connection) SendRequestNoWait(req *pb.BaseCommand) {
+func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
+	if c.state == connectionClosed {
+		return ErrConnectionClosed
+	}
+
 	c.incomingRequestsCh <- &request{
 		id:       nil,
 		cmd:      req,
 		callback: nil,
 	}
+	return nil
 }
 
 func (c *connection) internalSendRequest(req *request) {
@@ -584,7 +595,14 @@ func (c *connection) internalSendRequest(req *request) {
 		c.pendingReqs[*req.id] = req
 	}
 	c.pendingLock.Unlock()
-	c.writeCommand(req.cmd)
+	if c.state == connectionClosed {
+		c.log.Warnf("internalSendRequest failed for connectionClosed")
+		if req.callback != nil {
+			req.callback(req.cmd, ErrConnectionClosed)
+		}
+	} else {
+		c.writeCommand(req.cmd)
+	}
 }
 
 func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
