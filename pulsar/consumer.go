@@ -110,6 +110,9 @@ type ConsumerOptions struct {
 	// By default is nil and there's no DLQ
 	DLQ *DLQPolicy
 
+	// Configuration for Key Shared consumer policy.
+	KeySharedPolicy *KeySharedPolicy
+
 	// Auto retry send messages to default filled DLQPolicy topics
 	// Default is false
 	RetryEnable bool
