@@ -93,7 +93,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	}
 
 	if options.ReceiverQueueSize <= 0 {
-		options.ReceiverQueueSize = 1000
+		options.ReceiverQueueSize = defaultReceiverQueueSize
 	}
 
 	if options.Interceptors == nil {

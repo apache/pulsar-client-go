@@ -85,7 +85,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	subscriptionName += "-" + generateRandomName()
 
 	receiverQueueSize := options.ReceiverQueueSize
-	if receiverQueueSize == 0 {
+	if receiverQueueSize <= 0 {
 		receiverQueueSize = defaultReceiverQueueSize
 	}
 
