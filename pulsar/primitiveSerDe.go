@@ -31,7 +31,6 @@ const (
 )
 
 var (
-	bigEndian = binary.BigEndian
 	littleEndian = binary.LittleEndian
 )
 
@@ -234,7 +233,7 @@ func readElement(r io.Reader, element interface{}) error {
 		return nil
 
 	case *int16:
-		rv, err := BinarySerializer.Uint16(r, bigEndian)
+		rv, err := BinarySerializer.Uint16(r, littleEndian)
 		if err != nil {
 			return err
 		}
@@ -242,7 +241,7 @@ func readElement(r io.Reader, element interface{}) error {
 		return nil
 
 	case *int32:
-		rv, err := BinarySerializer.Uint32(r, bigEndian)
+		rv, err := BinarySerializer.Uint32(r, littleEndian)
 		if err != nil {
 			return err
 		}
@@ -250,7 +249,7 @@ func readElement(r io.Reader, element interface{}) error {
 		return nil
 
 	case *int64:
-		rv, err := BinarySerializer.Uint64(r, bigEndian)
+		rv, err := BinarySerializer.Uint64(r, littleEndian)
 		if err != nil {
 			return err
 		}
@@ -269,7 +268,7 @@ func readElement(r io.Reader, element interface{}) error {
 		}
 		return nil
 	}
-	return binary.Read(r, bigEndian, element)
+	return binary.Read(r, littleEndian, element)
 }
 
 func writeElement(w io.Writer, element interface{}) error {
@@ -282,21 +281,21 @@ func writeElement(w io.Writer, element interface{}) error {
 		return nil
 
 	case int16:
-		err := BinarySerializer.PutUint16(w, bigEndian, uint16(e))
+		err := BinarySerializer.PutUint16(w, littleEndian, uint16(e))
 		if err != nil {
 			return err
 		}
 		return nil
 
 	case int32:
-		err := BinarySerializer.PutUint32(w, bigEndian, uint32(e))
+		err := BinarySerializer.PutUint32(w, littleEndian, uint32(e))
 		if err != nil {
 			return err
 		}
 		return nil
 
 	case int64:
-		err := BinarySerializer.PutUint64(w, bigEndian, uint64(e))
+		err := BinarySerializer.PutUint64(w, littleEndian, uint64(e))
 		if err != nil {
 			return err
 		}
@@ -314,5 +313,5 @@ func writeElement(w io.Writer, element interface{}) error {
 		}
 		return nil
 	}
-	return binary.Write(w, bigEndian, element)
+	return binary.Write(w, littleEndian, element)
 }
