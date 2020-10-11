@@ -198,7 +198,7 @@ func (b BinaryFreeList) PutFloat(datum interface{}) ([]byte, error) {
 	}
 	var buf []byte
 	buf = append(buf, 0, 0, 0, 0)
-	binary.BigEndian.PutUint32(buf[len(buf)-4:], uint32(math.Float32bits(value)))
+	binary.BigEndian.PutUint32(buf[len(buf)-4:], math.Float32bits(value))
 	return buf, nil
 }
 
