@@ -221,7 +221,7 @@ func (msg *message) GetReplicatedFrom() string {
 	return msg.replicatedFrom
 }
 
-func (msg *message) GetSchemaValue(v interface{}) error  {
+func (msg *message) GetSchemaValue(v interface{}) error {
 	return msg.schema.Decode(msg.payLoad, v)
 }
 
