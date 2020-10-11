@@ -59,7 +59,7 @@ type RPCClient interface {
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message)
+	RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error
 
 	RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 }
@@ -103,7 +103,6 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	}
 	ch := make(chan Res, 10)
 
-	// TODO: in here, the error of callback always nil
 	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
 		ch <- Res{&RPCResult{
 			Cnx:      cnx,
@@ -162,9 +161,9 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 	return rpcResult, rpcErr
 }
 
-func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) {
+func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
 	rpcRequestCount.Inc()
-	cnx.SendRequestNoWait(baseCommand(cmdType, message))
+	return cnx.SendRequestNoWait(baseCommand(cmdType, message))
 }
 
 func (c *rpcClient) NewRequestID() uint64 {

@@ -99,8 +99,9 @@ func (c *mockedRPCClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType
 	return nil, nil
 }
 
-func (c *mockedRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) {
+func (c *mockedRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
 	assert.Fail(c.t, "Shouldn't be called")
+	return nil
 }
 
 func responseType(r pb.CommandLookupTopicResponse_LookupType) *pb.CommandLookupTopicResponse_LookupType {
