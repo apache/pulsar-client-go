@@ -222,8 +222,6 @@ func (msg *message) GetReplicatedFrom() string {
 }
 
 func (msg *message) GetSchemaValue(v interface{}) error  {
-	fmt.Println("=================")
-	fmt.Println(msg.Payload())
 	return msg.schema.Decode(msg.payLoad, v)
 }
 

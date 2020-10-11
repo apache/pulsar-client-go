@@ -49,11 +49,11 @@ const (
 	_                              //
 	_                              //
 	_                              //
-	KEY_VALUE                      //A Schema that contains Key Schema and Value Schema.
-	BYTES        = -1              //A bytes array.
-	AUTO         = -2              //
-	AUTO_CONSUME = -3              //Auto Consume Type.
-	AUTO_PUBLISH = -4              // Auto Publish Type.
+	KeyValue                       //A Schema that contains Key Schema and Value Schema.
+	BYTES       = -1               //A bytes array.
+	AUTO        = -2               //
+	AutoConsume = -3               //Auto Consume Type.
+	AutoPublish = -4               // Auto Publish Type.
 )
 
 // Encapsulates data around the schema definition
@@ -88,13 +88,13 @@ func initAvroCodec(codec string) (*goavro.Codec, error) {
 	return goavro.NewCodec(codec)
 }
 
-type JsonSchema struct {
+type JSONSchema struct {
 	AvroCodec
 	SchemaInfo
 }
 
-func NewJsonSchema(jsonAvroSchemaDef string, properties map[string]string) *JsonSchema {
-	js := new(JsonSchema)
+func NewJSONSchema(jsonAvroSchemaDef string, properties map[string]string) *JSONSchema {
+	js := new(JSONSchema)
 	avroCodec, err := initAvroCodec(jsonAvroSchemaDef)
 	if err != nil {
 		log.Fatalf("init codec error:%v", err)
@@ -107,19 +107,19 @@ func NewJsonSchema(jsonAvroSchemaDef string, properties map[string]string) *Json
 	return js
 }
 
-func (js *JsonSchema) Encode(data interface{}) ([]byte, error) {
+func (js *JSONSchema) Encode(data interface{}) ([]byte, error) {
 	return json.Marshal(data)
 }
 
-func (js *JsonSchema) Decode(data []byte, v interface{}) error {
+func (js *JSONSchema) Decode(data []byte, v interface{}) error {
 	return json.Unmarshal(data, v)
 }
 
-func (js *JsonSchema) Validate(message []byte) error {
+func (js *JSONSchema) Validate(message []byte) error {
 	return js.Decode(message, nil)
 }
 
-func (js *JsonSchema) GetSchemaInfo() *SchemaInfo {
+func (js *JSONSchema) GetSchemaInfo() *SchemaInfo {
 	return &js.SchemaInfo
 }
 
