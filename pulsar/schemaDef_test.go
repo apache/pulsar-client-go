@@ -24,34 +24,35 @@ import (
 )
 
 func TestSchemaDef(t *testing.T) {
-	errSchemaDef := "{\"type\":\"record\",\"name\":\"Example\",\"namespace\":\"test\"," +
-		"\"fields\":[{\"name\":\"ID\",\"type\":\"int64\"},{\"name\":\"Name\",\"type\":\"string\"}]}"
+	errSchemaDef := `{"type":"record","name":"Example","namespace":"test"," +
+		""fields":[{"name":"ID","type":"int64"},{"name":"Name","type":"string"}]}`
+
 	_, err := initAvroCodec(errSchemaDef)
 	assert.NotNil(t, err)
 
-	errSchemaDef1 := "{\"type\":\"record\",\"name\":\"Example\",\"namespace\":\"test\"," +
-		"\"fields\":[{\"name\":\"ID\",\"type\":\"bool\"},{\"name\":\"Name\",\"type\":\"string\"}]}"
+	errSchemaDef1 := `"{"type":"record","name":"Example","namespace":"test"," +
+		""fields":[{"name":"ID","type":"bool"},{"name":"Name","type":"string"}]}`
 	_, err = initAvroCodec(errSchemaDef1)
 	assert.NotNil(t, err)
 
-	errSchemaDef2 := "{\"type\":\"record\",\"name\":\"Example\",\"namespace\":\"test\"," +
-		"\"fields\":[{\"name\":\"ID\",\"type\":\"float32\"},{\"name\":\"Name\",\"type\":\"string\"}]}"
+	errSchemaDef2 := `"{"type":"record","name":"Example","namespace":"test"," +
+		""fields":[{"name":"ID","type":"float32"},{"name":"Name","type":"string"}]}`
 	_, err = initAvroCodec(errSchemaDef2)
 	assert.NotNil(t, err)
 
-	errSchemaDef3 := "{\"type\":\"record\",\"name\":\"Example\",\"namespace\":\"test\"," +
-		"\"fields\":[{\"name\":\"ID\",\"type\":\"float64\"},{\"name\":\"Name\",\"type\":\"string\"}]}"
+	errSchemaDef3 := `{"type":"record","name":"Example","namespace":"test"," +
+		""fields":[{"name":"ID","type":"float64"},{"name":"Name","type":"string"}]}`
 	_, err = initAvroCodec(errSchemaDef3)
 	assert.NotNil(t, err)
 
-	errSchemaDef4 := "{\"type\":\"record\",\"name\":\"Example\",\"namespace\":\"test\"," +
-		"\"fields\":[{\"name\":\"ID\",\"type\":\"byte\"},{\"name\":\"Name\",\"type\":\"string\"}]}"
+	errSchemaDef4 := `{"type":"record","name":"Example","namespace":"test"," +
+		""fields":[{"name":"ID","type":"byte"},{"name":"Name","type":"string"}]}`
 	_, err = initAvroCodec(errSchemaDef4)
 	assert.NotNil(t, err)
 
-	errSchemaDef5 := "{\"type\":\"record\",\"name\":\"Example\",\"namespace\":\"operation.createJsonConsumer\"," +
-		"\"fields\":[{\"name\":\"ID\",\"type\":\"byte\"},{\"name\":\"Name\",\"" +
-		"type\":\":[\"null\",\"string\"],\"default\":null\"}]}"
+	errSchemaDef5 := `{"type":"record","name":"Example","namespace":"operation.createJsonConsumer"," +
+		""fields":[{"name":"ID","type":"byte"},{"name":"Name","" +
+		"type":":["null","string"],"default":null"}]}`
 	_, err = initAvroCodec(errSchemaDef5)
 	assert.NotNil(t, err)
 }
