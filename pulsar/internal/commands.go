@@ -20,7 +20,6 @@ package internal
 import (
 	"errors"
 	"fmt"
-
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"

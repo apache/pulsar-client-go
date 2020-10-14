@@ -102,7 +102,7 @@ func NewJSONSchema(jsonAvroSchemaDef string, properties map[string]string) *JSON
 	js.SchemaInfo.Schema = schemaDef.Codec.Schema()
 	js.SchemaInfo.Type = JSON
 	js.SchemaInfo.Properties = properties
-	js.SchemaInfo.Name = "Json"
+	js.SchemaInfo.Name = "JSON"
 	return js
 }
 

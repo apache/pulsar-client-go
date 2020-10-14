@@ -112,6 +112,12 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		p.messageRouter = options.MessageRouter
 	}
 
+	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
+		if options.Schema.GetSchemaInfo().Type == NONE {
+			options.Schema = NewBytesSchema(nil)
+		}
+	}
+
 	err := p.internalCreatePartitionsProducers()
 	if err != nil {
 		return nil, err
