@@ -853,9 +853,8 @@ func (pc *partitionConsumer) grabConn() error {
 
 	pbSchema := new(pb.Schema)
 
-	tmpSchemaType := pb.Schema_Type(int32(pc.options.schema.GetSchemaInfo().Type))
-
 	if pc.options.schema != nil {
+		tmpSchemaType := pb.Schema_Type(int32(pc.options.schema.GetSchemaInfo().Type))
 		pc.log.Infof("The partition consumer schema name is: %s", pc.options.schema.GetSchemaInfo().Name)
 		pbSchema = &pb.Schema{
 			Name:       proto.String(pc.options.schema.GetSchemaInfo().Name),

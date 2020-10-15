@@ -126,6 +126,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	logger := client.log.SubLogger(log.Fields{"topic": topic})
+
 	p := &partitionProducer{
 		state:            producerInit,
 		client:           client,
@@ -139,8 +140,13 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
-		schemaInfo:       options.Schema.GetSchemaInfo(),
 		partitionIdx:     int32(partitionIdx),
+	}
+
+	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
+		p.schemaInfo = options.Schema.GetSchemaInfo()
+	} else {
+		p.schemaInfo = nil
 	}
 
 	if options.Name != "" {
@@ -177,9 +183,11 @@ func (p *partitionProducer) grabCnx() error {
 	id := p.client.rpcClient.NewRequestID()
 
 	// set schema info for producer
+
+
 	pbSchema := new(pb.Schema)
-	tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
 	if p.schemaInfo != nil {
+		tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
 		p.log.Infof("The partition producer schema name is: %s", p.schemaInfo.Name)
 		pbSchema = &pb.Schema{
 			Name:       proto.String(p.schemaInfo.Name),
