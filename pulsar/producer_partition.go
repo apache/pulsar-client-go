@@ -322,9 +322,13 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	msg := request.msg
 
 	payload := msg.Payload
-	schemaPayload, err := p.options.Schema.Encode(msg.Value)
-	if err != nil {
-		return
+	var schemaPayload []byte
+	var err error
+	if p.options.Schema != nil {
+		schemaPayload, err = p.options.Schema.Encode(msg.Value)
+		if err != nil {
+			return
+		}
 	}
 
 	if payload == nil {
