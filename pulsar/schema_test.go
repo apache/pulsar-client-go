@@ -26,7 +26,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-type testJson struct {
+type testJSON struct {
 	ID   int    `json:"id"`
 	Name string `json:"name"`
 }
@@ -45,9 +45,9 @@ var (
 
 func createClient() Client {
 	// create client
-	lookupUrl := "pulsar://localhost:6650"
+	lookupURL := "pulsar://localhost:6650"
 	client, err := NewClient(ClientOptions{
-		URL: lookupUrl,
+		URL: lookupURL,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -66,8 +66,10 @@ func TestJsonSchema(t *testing.T) {
 		Topic:  "jsonTopic",
 		Schema: jsonSchemaWithProperties,
 	})
+	assert.Nil(t, err)
+
 	_, err = producer1.Send(context.Background(), &ProducerMessage{
-		Value: &testJson{
+		Value: &testJSON{
 			ID:   100,
 			Name: "pulsar",
 		},
@@ -78,7 +80,7 @@ func TestJsonSchema(t *testing.T) {
 	producer1.Close()
 
 	//create consumer
-	var s testJson
+	var s testJSON
 
 	consumerJS := NewJSONSchema(exampleSchemaDef, nil)
 	consumer, err := client.Subscribe(ConsumerOptions{
@@ -108,6 +110,8 @@ func TestProtoSchema(t *testing.T) {
 		Topic:  "proto",
 		Schema: psProducer,
 	})
+	assert.Nil(t, err)
+
 	if _, err := producer.Send(context.Background(), &ProducerMessage{
 		Value: &pb.Test{
 			Num: 100,
@@ -207,6 +211,7 @@ func TestStringSchema(t *testing.T) {
 	msg, err := consumer.Receive(context.Background())
 	assert.Nil(t, err)
 	err = msg.GetSchemaValue(&res)
+	assert.Nil(t, err)
 	assert.Equal(t, *res, "hello pulsar")
 
 	defer consumer.Close()

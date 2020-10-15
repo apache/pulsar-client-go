@@ -184,7 +184,6 @@ func (p *partitionProducer) grabCnx() error {
 
 	// set schema info for producer
 
-
 	pbSchema := new(pb.Schema)
 	if p.schemaInfo != nil {
 		tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
