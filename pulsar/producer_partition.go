@@ -187,7 +187,7 @@ func (p *partitionProducer) grabCnx() error {
 	pbSchema := new(pb.Schema)
 	if p.schemaInfo != nil {
 		tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
-		p.log.Infof("The partition producer schema name is: %s", p.schemaInfo.Name)
+		p.log.Debugf("The partition producer schema name is: %s", p.schemaInfo.Name)
 		pbSchema = &pb.Schema{
 			Name:       proto.String(p.schemaInfo.Name),
 			Type:       &tmpSchemaType,

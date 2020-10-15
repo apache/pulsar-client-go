@@ -16,7 +16,6 @@ linters:
     - ineffassign
     - interfacer
     - misspell
-    - staticcheck
     - structcheck
     - stylecheck
     - typecheck
