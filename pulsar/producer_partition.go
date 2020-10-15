@@ -187,15 +187,16 @@ func (p *partitionProducer) grabCnx() error {
 	pbSchema := new(pb.Schema)
 	if p.schemaInfo != nil {
 		tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
-		p.log.Debugf("The partition producer schema name is: %s", p.schemaInfo.Name)
 		pbSchema = &pb.Schema{
 			Name:       proto.String(p.schemaInfo.Name),
 			Type:       &tmpSchemaType,
 			SchemaData: []byte(p.schemaInfo.Schema),
 			Properties: internal.ConvertFromStringMap(p.schemaInfo.Properties),
 		}
+		p.log.Debugf("The partition consumer schema name is: %s", pbSchema.Name)
 	} else {
 		pbSchema = nil
+		p.log.Debug("The partition consumer schema is nil")
 	}
 
 	cmdProducer := &pb.CommandProducer{
