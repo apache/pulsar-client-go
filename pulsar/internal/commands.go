@@ -28,13 +28,13 @@ import (
 )
 
 const (
-	// MaxFrameSize limit the maximum size that pulsar allows for messages to be sent.
-	MaxFrameSize = 5 * 1024 * 1024
+	// MaxMessageSize limit message size for transfer
+	MaxMessageSize = 5 * 1024 * 1024
 	// MessageFramePadding is for metadata and other frame headers
 	MessageFramePadding = 10 * 1024
-	// MaxMessageSize limit message size for transfer
-	MaxMessageSize        = MaxFrameSize - MessageFramePadding
-	magicCrc32c    uint16 = 0x0e01
+	// MaxFrameSize limit the maximum size that pulsar allows for messages to be sent.
+	MaxFrameSize        = MaxMessageSize + MessageFramePadding
+	magicCrc32c  uint16 = 0x0e01
 )
 
 // ErrCorruptedMessage is the error returned by ReadMessageData when it has detected corrupted data.
