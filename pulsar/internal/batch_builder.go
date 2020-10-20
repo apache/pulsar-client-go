@@ -27,14 +27,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-const (
-	// DefaultMaxBatchSize init default for maximum number of bytes per batch
-	DefaultMaxBatchSize = 128 * 1024
-
-	// DefaultMaxMessagesPerBatch init default num of entries in per batch.
-	DefaultMaxMessagesPerBatch = 1000
-)
-
 type BuffersPool interface {
 	GetBuffer() Buffer
 }
@@ -71,12 +63,7 @@ type BatchBuilder struct {
 func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, logger log.Logger) (*BatchBuilder, error) {
-	if maxMessages == 0 {
-		maxMessages = DefaultMaxMessagesPerBatch
-	}
-	if maxBatchSize == 0 {
-		maxBatchSize = DefaultMaxBatchSize
-	}
+
 	bb := &BatchBuilder{
 		buffer:       NewBuffer(4096),
 		numMessages:  0,
