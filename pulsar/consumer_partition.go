@@ -120,6 +120,7 @@ type partitionConsumerOpts struct {
 	readCompacted              bool
 	disableForceTopicCreation  bool
 	interceptors               ConsumerInterceptors
+	maxReconnectToBroker       *uint
 	keySharedPolicy            *KeySharedPolicy
 }
 
@@ -815,8 +816,18 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 }
 
 func (pc *partitionConsumer) reconnectToBroker() {
-	backoff := internal.Backoff{}
-	for {
+	var (
+		maxRetry int
+		backoff  = internal.Backoff{}
+	)
+
+	if pc.options.maxReconnectToBroker == nil {
+		maxRetry = -1
+	} else {
+		maxRetry = int(*pc.options.maxReconnectToBroker)
+	}
+
+	for maxRetry != 0 {
 		if pc.state != consumerReady {
 			// Consumer is already closing
 			return
@@ -831,6 +842,10 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
 			return
+		}
+
+		if maxRetry > 0 {
+			maxRetry--
 		}
 	}
 }

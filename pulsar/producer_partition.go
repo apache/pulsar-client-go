@@ -243,8 +243,18 @@ func (p *partitionProducer) ConnectionClosed() {
 }
 
 func (p *partitionProducer) reconnectToBroker() {
-	backoff := internal.Backoff{}
-	for {
+	var (
+		maxRetry int
+		backoff  = internal.Backoff{}
+	)
+
+	if p.options.MaxReconnectToBroker == nil {
+		maxRetry = -1
+	} else {
+		maxRetry = int(*p.options.MaxReconnectToBroker)
+	}
+
+	for maxRetry != 0 {
 		if atomic.LoadInt32(&p.state) != producerReady {
 			// Producer is already closing
 			return
@@ -259,6 +269,10 @@ func (p *partitionProducer) reconnectToBroker() {
 			// Successfully reconnected
 			p.log.WithField("cnx", p.cnx.ID()).Info("Reconnected producer to broker")
 			return
+		}
+
+		if maxRetry > 0 {
+			maxRetry--
 		}
 	}
 }

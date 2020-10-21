@@ -309,6 +309,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				subscriptionMode:           durable,
 				readCompacted:              c.options.ReadCompacted,
 				interceptors:               c.options.Interceptors,
+				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq)

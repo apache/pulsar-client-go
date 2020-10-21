@@ -138,6 +138,9 @@ type ProducerOptions struct {
 
 	// A chain of interceptors, These interceptors will be called at some points defined in ProducerInterceptor interface
 	Interceptors ProducerInterceptors
+
+	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
+	MaxReconnectToBroker *uint
 }
 
 // Producer is used to publish messages on a topic
