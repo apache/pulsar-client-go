@@ -315,6 +315,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				subscriptionMode:           durable,
 				readCompacted:              c.options.ReadCompacted,
 				interceptors:               c.options.Interceptors,
+				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
 			}

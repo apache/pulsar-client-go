@@ -140,6 +140,9 @@ type ProducerOptions struct {
 	Interceptors ProducerInterceptors
 
 	Schema Schema
+
+	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
+	MaxReconnectToBroker *uint
 }
 
 // Producer is used to publish messages on a topic

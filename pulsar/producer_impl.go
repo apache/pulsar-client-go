@@ -31,6 +31,17 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
+const (
+	// defaultBatchingMaxPublishDelay init default for maximum delay to batch messages
+	defaultBatchingMaxPublishDelay = 10 * time.Millisecond
+
+	// defaultMaxBatchSize init default for maximum number of bytes per batch
+	defaultMaxBatchSize = 128 * 1024
+
+	// defaultMaxMessagesPerBatch init default num of entries in per batch.
+	defaultMaxMessagesPerBatch = 1000
+)
+
 var (
 	producersOpened = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "pulsar_client_producers_opened",
@@ -62,8 +73,6 @@ type producer struct {
 	log           log.Logger
 }
 
-const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
-
 var partitionsAutoDiscoveryInterval = 1 * time.Minute
 
 func getHashingFunction(s HashingScheme) func(string) uint32 {
@@ -82,6 +91,16 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
 	}
 
+	if options.BatchingMaxMessages == 0 {
+		options.BatchingMaxMessages = defaultMaxMessagesPerBatch
+	}
+	if options.BatchingMaxSize == 0 {
+		options.BatchingMaxSize = defaultMaxBatchSize
+	}
+	if options.BatchingMaxPublishDelay == 0 {
+		options.BatchingMaxPublishDelay = defaultBatchingMaxPublishDelay
+	}
+
 	p := &producer{
 		options: options,
 		topic:   options.Topic,
@@ -89,24 +108,19 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
 	}
 
-	var batchingMaxPublishDelay time.Duration
-	if options.BatchingMaxPublishDelay != 0 {
-		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
-	} else {
-		batchingMaxPublishDelay = defaultBatchingMaxPublishDelay
-	}
-
 	if options.Interceptors == nil {
 		options.Interceptors = defaultProducerInterceptors
 	}
 
 	if options.MessageRouter == nil {
-		internalRouter := internal.NewDefaultRouter(
-			internal.NewSystemClock(),
+		internalRouter := NewDefaultRouter(
 			getHashingFunction(options.HashingScheme),
-			batchingMaxPublishDelay, options.DisableBatching)
+			options.BatchingMaxMessages,
+			options.BatchingMaxSize,
+			options.BatchingMaxPublishDelay,
+			options.DisableBatching)
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
-			return internalRouter(message.Key, metadata.NumPartitions())
+			return internalRouter(message, metadata.NumPartitions())
 		}
 	} else {
 		p.messageRouter = options.MessageRouter

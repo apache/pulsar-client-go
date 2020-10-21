@@ -152,6 +152,9 @@ type ConsumerOptions struct {
 	Interceptors ConsumerInterceptors
 
 	Schema Schema
+
+	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
+	MaxReconnectToBroker *uint
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
