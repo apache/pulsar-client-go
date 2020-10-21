@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"fmt"
 	"math/big"
 	"strings"
 	"sync"
@@ -101,6 +102,10 @@ func (id messageID) Serialize() []byte {
 	}
 	data, _ := proto.Marshal(msgID)
 	return data
+}
+
+func (id messageID) String() string {
+	return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
 }
 
 func deserializeMessageID(data []byte) (MessageID, error) {

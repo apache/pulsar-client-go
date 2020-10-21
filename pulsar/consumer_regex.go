@@ -28,9 +28,8 @@ import (
 
 	pkgerrors "github.com/pkg/errors"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -40,6 +39,7 @@ const (
 type regexConsumer struct {
 	client *client
 	dlq    *dlqRouter
+	rlq    *retryRouter
 
 	options ConsumerOptions
 
@@ -58,16 +58,17 @@ type regexConsumer struct {
 
 	ticker *time.Ticker
 
-	log *log.Entry
+	log log.Logger
 
 	consumerName string
 }
 
 func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
-	msgCh chan ConsumerMessage, dlq *dlqRouter) (Consumer, error) {
+	msgCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
 	rc := &regexConsumer{
 		client:    c,
 		dlq:       dlq,
+		rlq:       rlq,
 		options:   opts,
 		messageCh: msgCh,
 
@@ -80,7 +81,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 		closeCh: make(chan struct{}),
 
-		log:          log.WithField("topic", tn.Name),
+		log:          c.log.SubLogger(log.Fields{"topic": tn.Name}),
 		consumerName: opts.Name,
 	}
 
@@ -90,7 +91,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 	}
 
 	var errs error
-	for ce := range subscriber(c, topics, opts, msgCh, dlq) {
+	for ce := range subscriber(c, topics, opts, msgCh, dlq, rlq) {
 		if ce.err != nil {
 			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
@@ -163,6 +164,10 @@ func (c *regexConsumer) Ack(msg Message) {
 	c.AckID(msg.ID())
 }
 
+func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
+	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
+}
+
 // Ack the consumption of a single message, identified by its MessageID
 func (c *regexConsumer) AckID(msgID MessageID) {
 	mid, ok := toTrackingMessageID(msgID)
@@ -215,6 +220,7 @@ func (c *regexConsumer) Close() {
 		}
 		wg.Wait()
 		c.dlq.close()
+		c.rlq.close()
 		consumersClosed.Inc()
 	})
 }
@@ -253,7 +259,7 @@ func (c *regexConsumer) monitor() {
 			}
 		case topics := <-c.subscribeCh:
 			if len(topics) > 0 && !c.closed() {
-				c.subscribe(topics, c.dlq)
+				c.subscribe(topics, c.dlq, c.rlq)
 			}
 		case topics := <-c.unsubscribeCh:
 			if len(topics) > 0 && !c.closed() {
@@ -273,13 +279,12 @@ func (c *regexConsumer) discover() {
 	newTopics := topicsDiff(topics, known)
 	staleTopics := topicsDiff(known, topics)
 
-	if log.GetLevel() == log.DebugLevel {
-		l := c.log.WithFields(log.Fields{
+	c.log.
+		WithFields(log.Fields{
 			"new_topics": newTopics,
 			"old_topics": staleTopics,
-		})
-		l.Debug("discover topics")
-	}
+		}).
+		Debug("discover topics")
 
 	c.unsubscribeCh <- staleTopics
 	c.subscribeCh <- newTopics
@@ -298,12 +303,10 @@ func (c *regexConsumer) knownTopics() []string {
 	return topics
 }
 
-func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter) {
-	if log.GetLevel() == log.DebugLevel {
-		c.log.WithField("topics", topics).Debug("subscribe")
-	}
+func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter, rlq *retryRouter) {
+	c.log.WithField("topics", topics).Debug("subscribe")
 	consumers := make(map[string]Consumer, len(topics))
-	for ce := range subscriber(c.client, topics, c.options, c.messageCh, dlq) {
+	for ce := range subscriber(c.client, topics, c.options, c.messageCh, dlq, rlq) {
 		if ce.err != nil {
 			c.log.Warnf("Failed to subscribe to topic=%s", ce.topic)
 		} else {
@@ -319,11 +322,11 @@ func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter) {
 }
 
 func (c *regexConsumer) unsubscribe(topics []string) {
-	if log.GetLevel() == log.DebugLevel {
-		c.log.WithField("topics", topics).Debug("unsubscribe")
-	}
+	c.log.WithField("topics", topics).Debug("unsubscribe")
+
 	consumers := make(map[string]Consumer, len(topics))
 	c.consumersLock.Lock()
+
 	for _, t := range topics {
 		if consumer, ok := c.consumers[t]; ok {
 			consumers[t] = consumer
@@ -333,7 +336,7 @@ func (c *regexConsumer) unsubscribe(topics []string) {
 	c.consumersLock.Unlock()
 
 	for t, consumer := range consumers {
-		log.Debugf("unsubscribe from topic=%s subscription=%s", t, c.options.SubscriptionName)
+		c.log.Debugf("unsubscribe from topic=%s subscription=%s", t, c.options.SubscriptionName)
 		if err := consumer.Unsubscribe(); err != nil {
 			c.log.Warnf("unable to unsubscribe from topic=%s subscription=%s",
 				t, c.options.SubscriptionName)
@@ -359,7 +362,7 @@ type consumerError struct {
 }
 
 func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan ConsumerMessage,
-	dlq *dlqRouter) <-chan consumerError {
+	dlq *dlqRouter, rlq *retryRouter) <-chan consumerError {
 	consumerErrorCh := make(chan consumerError, len(topics))
 	var wg sync.WaitGroup
 	wg.Add(len(topics))
@@ -371,7 +374,7 @@ func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan Consum
 	for _, t := range topics {
 		go func(topic string) {
 			defer wg.Done()
-			c, err := newInternalConsumer(c, opts, topic, ch, dlq, true)
+			c, err := newInternalConsumer(c, opts, topic, ch, dlq, rlq, true)
 			consumerErrorCh <- consumerError{
 				err:      err,
 				topic:    topic,

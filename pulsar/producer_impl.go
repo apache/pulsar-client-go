@@ -27,9 +27,19 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/log"
+)
+
+const (
+	// defaultBatchingMaxPublishDelay init default for maximum delay to batch messages
+	defaultBatchingMaxPublishDelay = 10 * time.Millisecond
+
+	// defaultMaxBatchSize init default for maximum number of bytes per batch
+	defaultMaxBatchSize = 128 * 1024
+
+	// defaultMaxMessagesPerBatch init default num of entries in per batch.
+	defaultMaxMessagesPerBatch = 1000
 )
 
 var (
@@ -60,11 +70,8 @@ type producer struct {
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 	ticker        *time.Ticker
 	tickerStop    chan struct{}
-
-	log *log.Entry
+	log           log.Logger
 }
-
-const defaultBatchingMaxPublishDelay = 10 * time.Millisecond
 
 var partitionsAutoDiscoveryInterval = 1 * time.Minute
 
@@ -84,18 +91,21 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
 	}
 
+	if options.BatchingMaxMessages == 0 {
+		options.BatchingMaxMessages = defaultMaxMessagesPerBatch
+	}
+	if options.BatchingMaxSize == 0 {
+		options.BatchingMaxSize = defaultMaxBatchSize
+	}
+	if options.BatchingMaxPublishDelay == 0 {
+		options.BatchingMaxPublishDelay = defaultBatchingMaxPublishDelay
+	}
+
 	p := &producer{
 		options: options,
 		topic:   options.Topic,
 		client:  client,
-		log:     log.WithField("topic", options.Topic),
-	}
-
-	var batchingMaxPublishDelay time.Duration
-	if options.BatchingMaxPublishDelay != 0 {
-		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
-	} else {
-		batchingMaxPublishDelay = defaultBatchingMaxPublishDelay
+		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
 	}
 
 	if options.Interceptors == nil {
@@ -103,12 +113,14 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	}
 
 	if options.MessageRouter == nil {
-		internalRouter := internal.NewDefaultRouter(
-			internal.NewSystemClock(),
+		internalRouter := NewDefaultRouter(
 			getHashingFunction(options.HashingScheme),
-			batchingMaxPublishDelay, options.DisableBatching)
+			options.BatchingMaxMessages,
+			options.BatchingMaxSize,
+			options.BatchingMaxPublishDelay,
+			options.DisableBatching)
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
-			return internalRouter(message.Key, metadata.NumPartitions())
+			return internalRouter(message, metadata.NumPartitions())
 		}
 	} else {
 		p.messageRouter = options.MessageRouter
@@ -286,8 +298,8 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) Close() {
-	p.RLock()
-	defer p.RUnlock()
+	p.Lock()
+	defer p.Unlock()
 	if p.ticker != nil {
 		p.ticker.Stop()
 		close(p.tickerStop)

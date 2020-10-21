@@ -28,11 +28,10 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	log "github.com/sirupsen/logrus"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
@@ -122,6 +121,7 @@ type partitionConsumerOpts struct {
 	disableForceTopicCreation  bool
 	interceptors               ConsumerInterceptors
 	maxReconnectToBroker       *uint
+	keySharedPolicy            *KeySharedPolicy
 }
 
 type partitionConsumer struct {
@@ -151,15 +151,16 @@ type partitionConsumer struct {
 	startMessageID  trackingMessageID
 	lastDequeuedMsg trackingMessageID
 
-	eventsCh     chan interface{}
-	connectedCh  chan struct{}
-	closeCh      chan struct{}
-	clearQueueCh chan func(id trackingMessageID)
+	eventsCh        chan interface{}
+	connectedCh     chan struct{}
+	connectClosedCh chan connectionClosed
+	closeCh         chan struct{}
+	clearQueueCh    chan func(id trackingMessageID)
 
 	nackTracker *negativeAcksTracker
 	dlq         *dlqRouter
 
-	log *log.Entry
+	log log.Logger
 
 	compressionProviders map[pb.CompressionType]compression.Provider
 }
@@ -175,26 +176,29 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		name:                 options.consumerName,
 		consumerID:           client.rpcClient.NewConsumerID(),
 		partitionIdx:         int32(options.partitionIdx),
-		eventsCh:             make(chan interface{}, 3),
+		eventsCh:             make(chan interface{}, 10),
 		queueSize:            int32(options.receiverQueueSize),
 		queueCh:              make(chan []*message, options.receiverQueueSize),
 		startMessageID:       options.startMessageID,
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
+		connectClosedCh:      make(chan connectionClosed, 10),
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
-		log:                  log.WithField("topic", options.topic),
 	}
-	pc.log = pc.log.WithField("name", pc.name).
-		WithField("subscription", options.subscription).
-		WithField("consumerID", pc.consumerID)
-	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay)
+	pc.log = client.log.SubLogger(log.Fields{
+		"name":         pc.name,
+		"topic":        options.topic,
+		"subscription": options.subscription,
+		"consumerID":   pc.consumerID,
+	})
+	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, pc.log)
 
 	err := pc.grabConn()
 	if err != nil {
-		log.WithError(err).Errorf("Failed to create consumer")
+		pc.log.WithError(err).Error("Failed to create consumer")
 		return nil, err
 	}
 	pc.log.Info("Created consumer")
@@ -565,7 +569,8 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) b
 
 func (pc *partitionConsumer) ConnectionClosed() {
 	// Trigger reconnection in the consumer goroutine
-	pc.eventsCh <- &connectionClosed{}
+	pc.log.Debug("connection closed and send to connectClosedCh")
+	pc.connectClosedCh <- connectionClosed{}
 }
 
 // Flow command gives additional permits to send messages to the consumer.
@@ -732,11 +737,22 @@ func (pc *partitionConsumer) runEventsLoop() {
 	defer func() {
 		pc.log.Debug("exiting events loop")
 	}()
+	pc.log.Debug("get into runEventsLoop")
+
+	go func() {
+		for {
+			select {
+			case <-pc.closeCh:
+				return
+			case <-pc.connectClosedCh:
+				pc.log.Debug("runEventsLoop will reconnect")
+				pc.reconnectToBroker()
+			}
+		}
+	}()
+
 	for {
-		select {
-		case <-pc.closeCh:
-			return
-		case i := <-pc.eventsCh:
+		for i := range pc.eventsCh {
 			switch v := i.(type) {
 			case *ackRequest:
 				pc.internalAck(v)
@@ -750,8 +766,6 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.internalSeek(v)
 			case *seekByTimeRequest:
 				pc.internalSeekByTime(v)
-			case *connectionClosed:
-				pc.reconnectToBroker()
 			case *closeRequest:
 				pc.internalClose(v)
 				return
@@ -846,6 +860,7 @@ func (pc *partitionConsumer) grabConn() error {
 
 	subType := toProtoSubType(pc.options.subscriptionType)
 	initialPosition := toProtoInitialPosition(pc.options.subscriptionInitPos)
+	keySharedMeta := toProtoKeySharedMeta(pc.options.keySharedPolicy)
 	requestID := pc.client.rpcClient.NewRequestID()
 	cmdSubscribe := &pb.CommandSubscribe{
 		Topic:                      proto.String(pc.topic),
@@ -861,6 +876,7 @@ func (pc *partitionConsumer) grabConn() error {
 		Schema:                     nil,
 		InitialPosition:            initialPosition.Enum(),
 		ReplicateSubscriptionState: proto.Bool(pc.options.replicateSubscriptionState),
+		KeySharedMeta:              keySharedMeta,
 	}
 
 	pc.startMessageID = pc.clearReceiverQueue()
