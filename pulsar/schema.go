@@ -27,7 +27,7 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/linkedin/goavro"
+	"github.com/linkedin/goavro/v2"
 )
 
 type SchemaType int
