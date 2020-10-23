@@ -103,6 +103,12 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.Name = generateRandomName()
 	}
 
+	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
+		if options.Schema.GetSchemaInfo().Type == NONE {
+			options.Schema = NewBytesSchema(nil)
+		}
+	}
+
 	// did the user pass in a message channel?
 	messageCh := options.MessageChannel
 	if options.MessageChannel == nil {
@@ -311,6 +317,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				interceptors:               c.options.Interceptors,
 				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
+				schema:                     c.options.Schema,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq)
 			ch <- ConsumerError{

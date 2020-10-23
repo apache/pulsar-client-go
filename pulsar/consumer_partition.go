@@ -122,6 +122,7 @@ type partitionConsumerOpts struct {
 	interceptors               ConsumerInterceptors
 	maxReconnectToBroker       *uint
 	keySharedPolicy            *KeySharedPolicy
+	schema                     Schema
 }
 
 type partitionConsumer struct {
@@ -521,6 +522,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				topic:               pc.topic,
 				msgID:               msgID,
 				payLoad:             payload,
+				schema:              pc.options.schema,
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
@@ -535,6 +537,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				topic:               pc.topic,
 				msgID:               msgID,
 				payLoad:             payload,
+				schema:              pc.options.schema,
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
@@ -862,6 +865,23 @@ func (pc *partitionConsumer) grabConn() error {
 	initialPosition := toProtoInitialPosition(pc.options.subscriptionInitPos)
 	keySharedMeta := toProtoKeySharedMeta(pc.options.keySharedPolicy)
 	requestID := pc.client.rpcClient.NewRequestID()
+
+	pbSchema := new(pb.Schema)
+
+	if pc.options.schema != nil && pc.options.schema.GetSchemaInfo() != nil {
+		tmpSchemaType := pb.Schema_Type(int32(pc.options.schema.GetSchemaInfo().Type))
+		pbSchema = &pb.Schema{
+			Name:       proto.String(pc.options.schema.GetSchemaInfo().Name),
+			Type:       &tmpSchemaType,
+			SchemaData: []byte(pc.options.schema.GetSchemaInfo().Schema),
+			Properties: internal.ConvertFromStringMap(pc.options.schema.GetSchemaInfo().Properties),
+		}
+		pc.log.Debugf("The partition consumer schema name is: %s", pbSchema.Name)
+	} else {
+		pbSchema = nil
+		pc.log.Debug("The partition consumer schema is nil")
+	}
+
 	cmdSubscribe := &pb.CommandSubscribe{
 		Topic:                      proto.String(pc.topic),
 		Subscription:               proto.String(pc.options.subscription),
@@ -873,7 +893,7 @@ func (pc *partitionConsumer) grabConn() error {
 		Durable:                    proto.Bool(pc.options.subscriptionMode == durable),
 		Metadata:                   internal.ConvertFromStringMap(pc.options.metadata),
 		ReadCompacted:              proto.Bool(pc.options.readCompacted),
-		Schema:                     nil,
+		Schema:                     pbSchema,
 		InitialPosition:            initialPosition.Enum(),
 		ReplicateSubscriptionState: proto.Bool(pc.options.replicateSubscriptionState),
 		KeySharedMeta:              keySharedMeta,

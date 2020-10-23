@@ -99,15 +99,14 @@ type partitionProducer struct {
 	batchFlushTicker    *time.Ticker
 
 	// Channel where app is posting messages to be published
-	eventsChan chan interface{}
-
+	eventsChan      chan interface{}
 	connectClosedCh chan connectionClosed
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
 	lastSequenceID   int64
-
-	partitionIdx int32
+	schemaInfo       *SchemaInfo
+	partitionIdx     int32
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (
@@ -127,6 +126,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	logger := client.log.SubLogger(log.Fields{"topic": topic})
+
 	p := &partitionProducer{
 		state:            producerInit,
 		client:           client,
@@ -141,6 +141,12 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
 		partitionIdx:     int32(partitionIdx),
+	}
+
+	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
+		p.schemaInfo = options.Schema.GetSchemaInfo()
+	} else {
+		p.schemaInfo = nil
 	}
 
 	if options.Name != "" {
@@ -175,12 +181,30 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.log.Debug("Lookup result: ", lr)
 	id := p.client.rpcClient.NewRequestID()
+
+	// set schema info for producer
+
+	pbSchema := new(pb.Schema)
+	if p.schemaInfo != nil {
+		tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
+		pbSchema = &pb.Schema{
+			Name:       proto.String(p.schemaInfo.Name),
+			Type:       &tmpSchemaType,
+			SchemaData: []byte(p.schemaInfo.Schema),
+			Properties: internal.ConvertFromStringMap(p.schemaInfo.Properties),
+		}
+		p.log.Debugf("The partition consumer schema name is: %s", pbSchema.Name)
+	} else {
+		pbSchema = nil
+		p.log.Debug("The partition consumer schema is nil")
+	}
+
 	cmdProducer := &pb.CommandProducer{
 		RequestId:  proto.Uint64(id),
 		Topic:      proto.String(p.topic),
 		Encrypted:  nil,
 		ProducerId: proto.Uint64(p.producerID),
-		Schema:     nil,
+		Schema:     pbSchema,
 	}
 
 	if p.producerName != "" {
@@ -311,12 +335,26 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	msg := request.msg
 
+	payload := msg.Payload
+	var schemaPayload []byte
+	var err error
+	if p.options.Schema != nil {
+		schemaPayload, err = p.options.Schema.Encode(msg.Value)
+		if err != nil {
+			return
+		}
+	}
+
+	if payload == nil {
+		payload = schemaPayload
+	}
+
 	// if msg is too large
-	if len(msg.Payload) > int(p.cnx.GetMaxMessageSize()) {
+	if len(payload) > int(p.cnx.GetMaxMessageSize()) {
 		p.publishSemaphore.Release()
 		request.callback(nil, request.msg, errMessageTooLarge)
 		p.log.WithError(errMessageTooLarge).
-			WithField("size", len(msg.Payload)).
+			WithField("size", len(payload)).
 			WithField("properties", msg.Properties).
 			Error()
 		publishErrors.Inc()
@@ -333,7 +371,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		deliverAt.UnixNano() < 0
 
 	smm := &pb.SingleMessageMetadata{
-		PayloadSize: proto.Int(len(msg.Payload)),
+		PayloadSize: proto.Int(len(payload)),
 	}
 
 	if msg.EventTime.UnixNano() != 0 {
@@ -358,18 +396,18 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if !sendAsBatch {
 		p.internalFlushCurrentBatch()
 	}
-	added := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
+	added := p.batchBuilder.Add(smm, sequenceID, payload, request,
 		msg.ReplicationClusters, deliverAt)
 	if !added {
 		// The current batch is full.. flush it and retry
 		p.internalFlushCurrentBatch()
 
 		// after flushing try again to add the current payload
-		if ok := p.batchBuilder.Add(smm, sequenceID, msg.Payload, request,
+		if ok := p.batchBuilder.Add(smm, sequenceID, payload, request,
 			msg.ReplicationClusters, deliverAt); !ok {
 			p.publishSemaphore.Release()
 			request.callback(nil, request.msg, errFailAddBatch)
-			p.log.WithField("size", len(msg.Payload)).
+			p.log.WithField("size", len(payload)).
 				WithField("sequenceID", sequenceID).
 				WithField("properties", msg.Properties).
 				Error("unable to add message to batch")

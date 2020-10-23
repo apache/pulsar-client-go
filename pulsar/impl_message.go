@@ -178,6 +178,7 @@ type message struct {
 	replicationClusters []string
 	replicatedFrom      string
 	redeliveryCount     uint32
+	schema              Schema
 }
 
 func (msg *message) Topic() string {
@@ -218,6 +219,10 @@ func (msg *message) IsReplicated() bool {
 
 func (msg *message) GetReplicatedFrom() string {
 	return msg.replicatedFrom
+}
+
+func (msg *message) GetSchemaValue(v interface{}) error {
+	return msg.schema.Decode(msg.payLoad, v)
 }
 
 func (msg *message) ProducerName() string {
