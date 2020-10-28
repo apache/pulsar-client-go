@@ -24,7 +24,7 @@
 package compression
 
 import (
-	"github.com/DataDog/zstd"
+	"github.com/datadog/zstd"
 	log "github.com/sirupsen/logrus"
 )
 
