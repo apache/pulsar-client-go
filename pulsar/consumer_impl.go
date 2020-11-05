@@ -160,6 +160,8 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		return nil, err
 	}
 
+	// normalize as FQDN topics
+	var tns []*internal.TopicName
 	// single topic consumer
 	if options.Topic != "" || len(options.Topics) == 1 {
 		topic := options.Topic
@@ -167,16 +169,19 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			topic = options.Topics[0]
 		}
 
-		if err := validateTopicNames(topic); err != nil {
+		if tns, err = validateTopicNames(topic); err != nil {
 			return nil, err
 		}
-
+		topic = tns[0].Name
 		return topicSubscribe(client, options, topic, messageCh, dlq, rlq)
 	}
 
 	if len(options.Topics) > 1 {
-		if err := validateTopicNames(options.Topics...); err != nil {
+		if tns, err = validateTopicNames(options.Topics...); err != nil {
 			return nil, err
+		}
+		for i := range options.Topics {
+			options.Topics[i] = tns[i].Name
 		}
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)

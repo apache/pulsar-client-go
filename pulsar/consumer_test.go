@@ -1147,7 +1147,7 @@ func TestDLQMultiTopics(t *testing.T) {
 }
 
 func TestRLQ(t *testing.T) {
-	topic := "persistent://public/default/" + newTopicName()
+	topic := newTopicName()
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
 	maxRedeliveries := 2
 	N := 100
@@ -1243,7 +1243,7 @@ func TestRLQ(t *testing.T) {
 func TestRLQMultiTopics(t *testing.T) {
 	now := time.Now().Unix()
 	topic01 := fmt.Sprintf("persistent://public/default/topic-%d-1", now)
-	topic02 := fmt.Sprintf("persistent://public/default/topic-%d-2", now)
+	topic02 := fmt.Sprintf("topic-%d-2", now)
 	topics := []string{topic01, topic02}
 
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
@@ -1270,7 +1270,7 @@ func TestRLQMultiTopics(t *testing.T) {
 
 	// subscribe DLQ Topic
 	dlqConsumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       "persistent://public/default/" + subName + "-DLQ",
+		Topic:                       subName + "-DLQ",
 		SubscriptionName:            subName,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
