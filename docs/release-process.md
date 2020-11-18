@@ -136,7 +136,7 @@ $ git push origin v0.X.0
 Promote the artifacts on the release location (need PMC permissions):
 
 ```
-svn move -m https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go-0.X.0-candidate-1 \
+svn move -m "release 0.X.0" https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go-0.X.0-candidate-1 \
          https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go-0.X.0
 Remove the old releases (if any). We only need the latest release there, older releases are available through the Apache archive:
 ```
