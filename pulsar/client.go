@@ -33,7 +33,8 @@ func NewClient(options ClientOptions) (Client, error) {
 type Authentication interface{}
 
 func NewAuthentication(name string, params string) (Authentication, error) {
-	return auth.NewProvider(name, params)
+	// test bot, make sure the license check failed.
+	return auth.NewProvider(name,         params)
 }
 
 // Create new Authentication provider with specified auth token
