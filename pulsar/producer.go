@@ -76,6 +76,15 @@ type ProducerOptions struct {
 	// This properties will be visible in the topic stats
 	Properties map[string]string
 
+	// SendTimeout set the timeout for a message that not be acknowledged by server since sent.
+	// Send and SendAsync returns an error after timeout.
+	// Default is 30 seconds, -1 to disable.
+	SendTimeout time.Duration
+
+	// BlockIfQueueFull control whether Send and SendAsync return error if producer's message queue is full.
+	// Default is false.
+	BlockIfQueueFull bool
+
 	// MaxPendingMessages set the max size of the queue holding the messages pending to receive an
 	// acknowledgment from the broker.
 	MaxPendingMessages int
