@@ -82,6 +82,12 @@ var (
 		Help:    "Publish latency experienced by the client",
 		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 	})
+
+	publishInternalLatency = promauto.NewHistogram(prometheus.HistogramOpts{
+		Name:    "pulsar_client_producer_internal_latency_seconds",
+		Help:    "Publish latency experienced internally by the client when sending data to receiving an ack",
+		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+	})
 )
 
 type partitionProducer struct {
@@ -424,6 +430,7 @@ type pendingItem struct {
 	sync.Mutex
 	batchData    internal.Buffer
 	sequenceID   uint64
+	sentAt       int64
 	sendRequests []interface{}
 	completed    bool
 }
@@ -437,6 +444,7 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 	p.pendingQueue.Put(&pendingItem{
 		batchData:    batchData,
 		sequenceID:   sequenceID,
+		sentAt:       time.Now().UnixNano(),
 		sendRequests: callbacks,
 	})
 	p.cnx.WriteData(batchData)
@@ -545,6 +553,9 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
+	if pi.sentAt > 0 {
+		publishInternalLatency.Observe(float64(now-pi.sentAt) / 1.0e9)
+	}
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
 		if sr.msg != nil {
