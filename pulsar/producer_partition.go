@@ -110,7 +110,6 @@ type partitionProducer struct {
 	eventsChan      chan interface{}
 	connectClosedCh chan connectionClosed
 
-	queueLock        sync.Mutex
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
 	lastSequenceID   int64
@@ -146,7 +145,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		eventsChan:       make(chan interface{}, maxPendingMessages),
 		connectClosedCh:  make(chan connectionClosed, 10),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
-		queueLock:        sync.Mutex{},
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
@@ -178,10 +176,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	atomic.StoreInt32(&p.state, producerReady)
 
 	go p.runEventsLoop()
-
-	if options.SendTimeout > 0 {
-		go p.failTimeoutMessages(options.SendTimeout)
-	}
 
 	return p, nil
 }
@@ -254,9 +248,7 @@ func (p *partitionProducer) grabCnx() error {
 	p.cnx.RegisterListener(p.producerID, p)
 	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
 
-	p.queueLock.Lock()
 	pendingItems := p.pendingQueue.ReadableSlice()
-	p.queueLock.Unlock()
 	if len(pendingItems) > 0 {
 		p.log.Infof("Resending %d pending batches", len(pendingItems))
 		for _, pi := range pendingItems {
@@ -446,84 +438,72 @@ type pendingItem struct {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
+	if p.options.SendTimeout > 0 {
+		p.failTimeoutMessages()
+	}
+
 	batchData, sequenceID, callbacks := p.batchBuilder.Flush()
 	if batchData == nil {
 		return
 	}
 
-	p.queueLock.Lock()
 	p.pendingQueue.Put(&pendingItem{
 		sentAt:       time.Now(),
 		batchData:    batchData,
 		sequenceID:   sequenceID,
 		sendRequests: callbacks,
 	})
-	p.queueLock.Unlock()
-
 	p.cnx.WriteData(batchData)
 }
 
-func (p *partitionProducer) failTimeoutMessages(sendTimeout time.Duration) {
-	t := time.NewTimer(sendTimeout)
-	var state int32
-	for range t.C {
-		// since Closing/Closed state could not be reopen, load and compare is safe
-		state = atomic.LoadInt32(&p.state)
-		if state == producerClosing || state == producerClosed {
-			t.Stop()
-			return
-		}
+func (p *partitionProducer) failTimeoutMessages() {
+	// since Closing/Closed connection couldn't be reopen, load and compare is safe
+	state := atomic.LoadInt32(&p.state)
+	if state == producerClosing || state == producerClosed {
+		return
+	}
 
-		p.queueLock.Lock()
-		item := p.pendingQueue.Peek()
-		if item == nil {
-			t.Reset(p.options.SendTimeout)
-			p.queueLock.Unlock()
-			continue
-		}
+	item := p.pendingQueue.Peek()
+	if item == nil {
+		// pending queue is empty
+		return
+	}
 
-		pi := item.(*pendingItem)
-		diff := p.options.SendTimeout - time.Since(pi.sentAt)
-		if diff > 0 {
-			// pending messages not timeout yet
-			t.Reset(diff)
-			p.queueLock.Unlock()
-			continue
-		}
+	pi := item.(*pendingItem)
+	diff := p.options.SendTimeout - time.Since(pi.sentAt)
+	if diff > 0 {
+		// pending messages not timeout yet
+		return
+	}
 
-		p.log.Infof("Failing %d messages", p.pendingQueue.Size())
-		for p.pendingQueue.Size() > 0 {
-			pi = p.pendingQueue.Poll().(*pendingItem)
-			pi.Lock()
-			for _, i := range pi.sendRequests {
-				sr := i.(*sendRequest)
-				if sr.msg != nil {
-					size := len(sr.msg.Payload)
-					p.publishSemaphore.Release()
-					messagesPending.Dec()
-					bytesPending.Sub(float64(size))
-					publishErrors.Inc()
-					p.log.WithError(errSendTimeout).
-						WithField("size", size).
-						WithField("properties", sr.msg.Properties)
-				}
-				if sr.callback != nil {
-					sr.callback(nil, sr.msg, errSendTimeout)
-				}
+	p.log.Infof("Failing %d messages", p.pendingQueue.Size())
+	for p.pendingQueue.Size() > 0 {
+		pi = p.pendingQueue.Poll().(*pendingItem)
+		pi.Lock()
+		for _, i := range pi.sendRequests {
+			sr := i.(*sendRequest)
+			if sr.msg != nil {
+				size := len(sr.msg.Payload)
+				p.publishSemaphore.Release()
+				messagesPending.Dec()
+				bytesPending.Sub(float64(size))
+				publishErrors.Inc()
+				p.log.WithError(errSendTimeout).
+					WithField("size", size).
+					WithField("properties", sr.msg.Properties)
 			}
-			buffersPool.Put(pi.batchData)
-			pi.Unlock()
+			if sr.callback != nil {
+				sr.callback(nil, sr.msg, errSendTimeout)
+			}
 		}
-		t.Reset(p.options.SendTimeout)
-		p.queueLock.Unlock()
+		buffersPool.Put(pi.batchData)
+		pi.Unlock()
 	}
 }
 
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
 	p.internalFlushCurrentBatch()
 
-	p.queueLock.Lock()
-	defer p.queueLock.Unlock()
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
 	if !ok {
 		fr.waitGroup.Done()
@@ -605,7 +585,6 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
-	p.queueLock.Lock()
 	pi, ok := p.pendingQueue.Peek().(*pendingItem)
 
 	if !ok {
@@ -614,7 +593,6 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		// the state discrepancy.
 		p.log.Warnf("Received ack for %v although the pending queue is empty, closing connection", response.GetMessageId())
 		p.cnx.Close()
-		p.queueLock.Unlock()
 		return
 	}
 
@@ -625,13 +603,11 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		p.cnx.Close()
-		p.queueLock.Unlock()
 		return
 	}
 
 	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 	p.pendingQueue.Poll()
-	p.queueLock.Unlock()
 
 	now := time.Now().UnixNano()
 
