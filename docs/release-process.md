@@ -27,7 +27,7 @@ In these instructions, I'm referring to an fictitious release `0.X.0`. Change th
 It is recommended to create a fresh clone of the repository to avoid any local files interfering in the process:
 
 ```
-git clone git@github.com:apache/pulsar-client-go.git
+git clone https://github.com/apache/pulsar-client-go.git
 cd pulsar-client-go
 git checkout -b branch-0.X.0 origin/master
 ```
@@ -39,10 +39,10 @@ Update the information of the new release to the `VERSION` file and `stable.txt`
 During the release process, you can create a "candidate" tag which will get promoted to the "real" final tag after verification and approval.
 
 ```
-# Commit 
-$ git commit -m "Release 0.X.0" -a
 # Create a "candidate" tag
-$ git tag -u $USER@apache.org v0.X.0-candidate-1 -m 'Release v0.X.0-candidate-1'
+export GPG_TTY=$(tty)
+git tag -u $USER@apache.org v0.X.0-candidate-1 -m 'Release v0.X.0-candidate-1'
+
 # Push both the branch and the tag to Github repo
 git push origin branch-0.X.0
 git push origin v0.X.0-candidate-1
@@ -56,23 +56,26 @@ Generate a release candidate package.
 $ tar -zcvf apache-pulsar-client-go-0.X.0-src.tar.gz .
 ```
 
-4. Sign and stage the artifacts The src artifact need to be signed and uploaded to the dist SVN repository for staging.
+4. Sign and stage the artifacts 
+
+The src artifact need to be signed and uploaded to the dist SVN repository for staging.
 
 ```
 $ gpg -b --armor apache-pulsar-client-go-0.X.0-src.tar.gz
-$ shasum -a 512 apache-pulsar-client-go-0.X.0-src.tar.gz > apache-pulsar-client-go-0.X.0-src.tar.gz.sha512
-$ svn co https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go pulsar-client-go
-$ cd pulsar-client-go
+$ shasum -a 512 apache-pulsar-client-go-0.X.0-src.tar.gz > apache-pulsar-client-go-0.X.0-src.tar.gz.sha512 
+```
+
+```
 $ mkdir pulsar-client-go-0.X.0-candidate-1
 $ cd pulsar-client-go-0.X.0-candidate-1
-$ cp ../apache-pulsar-client-go-0.X.0-src.tar.gz .
+$ cp ../apache-pulsar-client-go-0.X.0-* .
 $ svn add *
-$ svn ci -m 'Staging artifacts and signature for Pulsar Client Go release 0.X.0'
+$ svn ci -m 'Staging artifacts and signature for Pulsar Client Go release 0.X.0-candidate-1'
 ```
 
 Since this needs to be merged in master, we need to follow the regular process and create a Pull Request on GitHub.
 
-5. Write a release note.
+5. Write a release note and update `CHANGELOG.md`.
 
 Check the milestone in GitHub associated with the release. 
 
@@ -94,19 +97,21 @@ Please review and vote on the release candidate #1 for the version 0.X.0, as fol
 This is the first release candidate for Apache Pulsar Go client, version 0.X.0.
 
 It fixes the following issues:
-
 https://github.com/apache/pulsar-client-go/milestone/1?closed=1
-Pulsar Client Go's KEYS file contains PGP keys we used to sign this release:
-https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/KEYS
-Please download these packages and review this release candidate:
 
+Pulsar Client Go's KEYS file contains PGP keys we used to sign this release:
+https://dist.apache.org/repos/dist/release/pulsar/KEYS
+
+Please download these packages and review this release candidate:
 - Review release notes
 - Download the source package (verify shasum, and asc) and follow the
 README.md to build and run the pulsar-client-go.
+
 The vote will be open for at least 72 hours. It is adopted by majority approval, with at least 3 PMC affirmative votes.
 
 Source file:
 https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go/apache-pulsar-client-go-0.X.0-src.tar.gz
+
 The tag to be voted upon:
 v0.X.0
 https://github.com/apache/pulsar-client-node/releases/tag/v0.X.0
@@ -123,6 +128,7 @@ If the release is approved here, we can then proceed to the next step.
 
 ```
 $ git checkout branch-0.X.0
+$ export GPG_TTY=$(tty)
 $ git tag -u $USER@apache.org v0.X.0 -m 'Release v0.X.0'
 $ git push origin v0.X.0
 ```
@@ -130,11 +136,13 @@ $ git push origin v0.X.0
 Promote the artifacts on the release location (need PMC permissions):
 
 ```
-svn move https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go/pulsar-client-go-0.X.0-candidate-1 \
-         https://dist.apache.org/repos/dist/release/pulsar/puslar-client-go/pulsar-client-go-0.X.0
+svn move -m "release 0.X.0" https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go-0.X.0-candidate-1 \
+         https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go-0.X.0
 Remove the old releases (if any). We only need the latest release there, older releases are available through the Apache archive:
 ```
+
 # Get the list of releases
+
 svn ls https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/
 
 # Delete each release (except for the last one)
@@ -142,17 +150,20 @@ svn ls https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/
 ```
 svn rm https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/pulsar-client-go-0.X.0
 ```
+
 8. Update the release note.
+
 Add the release note to [Pulsar Client Go](https://github.com/apache/pulsar-client-go/releases)
 
 9. Announce the release.
+
 Once the release process is available , you can announce the release and send an email as below:
 
 ```
 To: dev@pulsar.apache.org, users@pulsar.apache.org, announce@apache.org
-Subject: [ANNOUNCE] Apache Pulsar 2.X.0 released
+Subject: [ANNOUNCE] Apache Pulsar Go Client 0.X.0 released
 
-The Apache Pulsar team is proud to announce Apache Pulsar version 2.X.0.
+The Apache Pulsar team is proud to announce Apache Pulsar Go Client version 0.X.0.
 
 Pulsar is a highly scalable, low latency messaging platform running on
 commodity hardware. It provides simple pub-sub semantics over topics,
@@ -160,11 +171,10 @@ guaranteed at-least-once delivery of messages, automatic cursor management for
 subscribers, and cross-datacenter replication.
 
 For Pulsar release details and downloads, visit:
-
-http://pulsar.apache.org/en/download/
+https://github.com/apache/pulsar-client-go/releases/tag/v0.x.0
 
 Release Notes are at:
-http://pulsar.apache.org/en/pulsar-client-go-release-notes/
+https://github.com/apache/pulsar-client-go/blob/master/CHANGELOG.md
 
 We would like to thank the contributors that made the release possible.
 
