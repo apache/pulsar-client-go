@@ -96,8 +96,6 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 
 	if options.SendTimeout == 0 {
 		options.SendTimeout = defaultSendTimeout
-	} else if options.SendTimeout == -1 {
-		options.SendTimeout = 0
 	}
 	if options.BatchingMaxMessages == 0 {
 		options.BatchingMaxMessages = defaultMaxMessagesPerBatch

@@ -78,7 +78,7 @@ type ProducerOptions struct {
 
 	// SendTimeout set the timeout for a message that not be acknowledged by server since sent.
 	// Send and SendAsync returns an error after timeout.
-	// Default is 30 seconds, -1 to disable.
+	// Default is 30 seconds, negative such as -1 to disable.
 	SendTimeout time.Duration
 
 	// DisableBlockIfQueueFull control whether Send and SendAsync block if producer's message queue is full.
