@@ -52,7 +52,8 @@ func newClient(options ClientOptions) (Client, error) {
 	if options.Logger != nil {
 		logger = options.Logger
 	} else {
-		logger = log.NewLoggerWithLogrus(logrus.StandardLogger())
+		l := logrus.StandardLogger()
+		logger = log.NewLoggerWithLogrus(l)
 	}
 
 	if options.URL == "" {

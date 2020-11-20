@@ -179,7 +179,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		partitionIdx:         int32(options.partitionIdx),
 		eventsCh:             make(chan interface{}, 10),
 		queueSize:            int32(options.receiverQueueSize),
-		queueCh:              make(chan []*message, options.receiverQueueSize),
+		queueCh:              make(chan []*message, 5),
 		startMessageID:       options.startMessageID,
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
@@ -644,6 +644,9 @@ func (pc *partitionConsumer) dispatcher() {
 			// reset available permits
 			pc.availablePermits = 0
 			initialPermits := uint32(pc.queueSize)
+			if initialPermits <= 0 {
+				initialPermits = 1
+			}
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
 			// send initial permits
@@ -665,20 +668,7 @@ func (pc *partitionConsumer) dispatcher() {
 			messages[0] = nil
 			messages = messages[1:]
 
-			// TODO implement a better flow controller
-			// send more permits if needed
 			pc.availablePermits++
-			flowThreshold := int32(math.Max(float64(pc.queueSize/2), 1))
-			if pc.availablePermits >= flowThreshold {
-				availablePermits := pc.availablePermits
-				requestedPermits := availablePermits
-				pc.availablePermits = 0
-
-				pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
-				if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
-					pc.log.WithError(err).Error("unable to send permits")
-				}
-			}
 
 		case clearQueueCb := <-pc.clearQueueCh:
 			// drain the message queue on any new connection by sending a
@@ -699,6 +689,24 @@ func (pc *partitionConsumer) dispatcher() {
 			clearQueueCb(nextMessageInQueue)
 		}
 	}
+}
+
+func (pc *partitionConsumer) nudgePermits() {
+	pc.log.Debugf("nudgePermits")
+	// TODO implement a better flow controller
+	// send more permits if needed
+	flowThreshold := int32(math.Max(float64(pc.queueSize/2), 1))
+	if pc.availablePermits >= flowThreshold {
+		availablePermits := pc.availablePermits
+		requestedPermits := availablePermits
+		pc.availablePermits = 0
+
+		pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
+		if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
+			pc.log.WithError(err).Error("unable to send permits")
+		}
+	}
+
 }
 
 type ackRequest struct {

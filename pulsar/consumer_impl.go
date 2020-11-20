@@ -91,7 +91,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		return nil, newError(SubscriptionNotFound, "subscription name is required for consumer")
 	}
 
-	if options.ReceiverQueueSize <= 0 {
+	if options.ReceiverQueueSize < 0 {
 		options.ReceiverQueueSize = defaultReceiverQueueSize
 	}
 
@@ -391,6 +391,10 @@ func (c *consumer) Unsubscribe() error {
 }
 
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
+	for _, consumer := range c.consumers {
+		consumer.nudgePermits()
+	}
+
 	for {
 		select {
 		case <-c.closeCh:
