@@ -470,8 +470,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 	}
 
 	pi := item.(*pendingItem)
-	diff := p.options.SendTimeout - time.Since(pi.sentAt)
-	if diff > 0 {
+	if time.Since(pi.sentAt) < p.options.SendTimeout {
 		// pending messages not timeout yet
 		return
 	}
