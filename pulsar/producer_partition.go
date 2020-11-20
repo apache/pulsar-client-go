@@ -589,7 +589,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	}
 	p.options.Interceptors.BeforeSend(p, msg)
 
-	if p.options.NonBlockIfQueueFull {
+	if p.options.DisableBlockIfQueueFull {
 		if !p.publishSemaphore.TryAcquire() {
 			if callback != nil {
 				callback(nil, msg, errSendQueueIsFull)

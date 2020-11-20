@@ -81,9 +81,9 @@ type ProducerOptions struct {
 	// Default is 30 seconds, -1 to disable.
 	SendTimeout time.Duration
 
-	// NonBlockIfQueueFull control whether Send and SendAsync block if producer's message queue is full.
+	// DisableBlockIfQueueFull control whether Send and SendAsync block if producer's message queue is full.
 	// Default is false, if set to true then Send and SendAsync return error when queue is full.
-	NonBlockIfQueueFull bool
+	DisableBlockIfQueueFull bool
 
 	// MaxPendingMessages set the max size of the queue holding the messages pending to receive an
 	// acknowledgment from the broker.
