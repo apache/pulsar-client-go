@@ -440,9 +440,8 @@ type pendingItem struct {
 	sync.Mutex
 	batchData    internal.Buffer
 	sequenceID   uint64
-	sentAt       int64
+	sentAt       time.Time
 	sendRequests []interface{}
-	createdAt    time.Time
 	completed    bool
 }
 
@@ -454,10 +453,9 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 
 	p.queueLock.Lock()
 	p.pendingQueue.Put(&pendingItem{
-		createdAt:    time.Now(),
+		sentAt:       time.Now(),
 		batchData:    batchData,
 		sequenceID:   sequenceID,
-		sentAt:       time.Now().UnixNano(),
 		sendRequests: callbacks,
 	})
 	p.queueLock.Unlock()
@@ -485,7 +483,7 @@ func (p *partitionProducer) failTimeoutMessages(sendTimeout time.Duration) {
 		}
 
 		pi := item.(*pendingItem)
-		diff := p.options.SendTimeout - time.Since(pi.createdAt)
+		diff := p.options.SendTimeout - time.Since(pi.sentAt)
 		if diff > 0 {
 			// pending messages not timeout yet
 			t.Reset(diff)
@@ -640,9 +638,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
-	if pi.sentAt > 0 {
-		publishRPCLatency.Observe(float64(now-pi.sentAt) / 1.0e9)
-	}
+	publishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
 		if sr.msg != nil {
