@@ -581,17 +581,20 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	}
 	p.options.Interceptors.BeforeSend(p, msg)
 
+	if p.options.NonBlockIfQueueFull {
+		if !p.publishSemaphore.TryAcquire() {
+			if callback != nil {
+				callback(nil, msg, errSendQueueIsFull)
+			}
+			return
+		}
+	} else {
+		p.publishSemaphore.Acquire()
+	}
+
 	messagesPending.Inc()
 	bytesPending.Add(float64(len(sr.msg.Payload)))
 
-	if p.options.BlockIfQueueFull {
-		p.publishSemaphore.Acquire()
-	} else if !p.publishSemaphore.TryAcquire() {
-		if callback != nil {
-			callback(nil, msg, errSendQueueIsFull)
-		}
-		return
-	}
 	p.eventsChan <- sr
 }
 
