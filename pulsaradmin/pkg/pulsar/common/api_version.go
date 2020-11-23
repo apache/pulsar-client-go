@@ -20,7 +20,8 @@ package common
 type APIVersion int
 
 const (
-	V1 APIVersion = iota
+	undefined APIVersion = iota
+	V1
 	V2
 	V3
 )
@@ -29,6 +30,8 @@ const DefaultAPIVersion = "v2"
 
 func (v APIVersion) String() string {
 	switch v {
+	case undefined:
+		return DefaultAPIVersion
 	case V1:
 		return ""
 	case V2:
