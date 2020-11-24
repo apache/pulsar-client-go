@@ -20,6 +20,7 @@ package pulsar
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"path"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/auth"
@@ -102,5 +103,12 @@ func NewWithAuthProvider(config *common.Config, authProvider auth.Provider) Clie
 }
 
 func (c *pulsarClient) endpoint(componentPath string, parts ...string) string {
-	return path.Join(utils.MakeHTTPPath(c.APIVersion.String(), componentPath), path.Join(parts...))
+	escapedParts := make([]string, len(parts))
+	for i, part := range parts {
+		escapedParts[i] = url.PathEscape(part)
+	}
+	return path.Join(
+		utils.MakeHTTPPath(c.APIVersion.String(), componentPath),
+		path.Join(escapedParts...),
+	)
 }
