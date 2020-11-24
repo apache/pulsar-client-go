@@ -1758,14 +1758,15 @@ func TestKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 				Payload: []byte(fmt.Sprintf("value-%d", i)),
 			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
 				assert.Nil(t, err)
-			})
+			},
+			)
 		}
 	}
 
 	receivedConsumer1 := 0
 	receivedConsumer2 := 0
-	consumer1Keys := make(map[string]int, 0)
-	consumer2Keys := make(map[string]int, 0)
+	consumer1Keys := make(map[string]int)
+	consumer2Keys := make(map[string]int)
 	for (receivedConsumer1 + receivedConsumer2) < 300 {
 		select {
 		case cm, ok := <-consumer1.Chan():
@@ -1844,13 +1845,14 @@ func TestOrderingOfKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 				Payload: []byte(fmt.Sprintf("value-%d", i)),
 			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
 				assert.Nil(t, err)
-			})
+			},
+			)
 		}
 	}
 
 	var receivedKey string
 	var receivedMessageIndex int
-	for i := 0; i < len(keys)*MsgBatchCount; i += 1 {
+	for i := 0; i < len(keys)*MsgBatchCount; i++ {
 		cm, ok := <-consumer1.Chan()
 		if !ok {
 			break
@@ -1859,9 +1861,12 @@ func TestOrderingOfKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 			receivedKey = cm.Key()
 			receivedMessageIndex = 0
 		}
-		assert.Equal(t, fmt.Sprintf("value-%d", receivedMessageIndex%10), string(cm.Payload()))
+		assert.Equal(
+			t, fmt.Sprintf("value-%d", receivedMessageIndex%10),
+			string(cm.Payload()),
+		)
 		consumer1.Ack(cm.Message)
-		receivedMessageIndex += 1
+		receivedMessageIndex++
 	}
 
 	// TODO: add OrderingKey support

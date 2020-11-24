@@ -19,12 +19,13 @@ package internal
 
 import (
 	"encoding/base64"
-	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	"github.com/apache/pulsar-client-go/pulsar/log"
 	"sort"
 	"sync"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 type keyBasedBatches struct {
@@ -64,13 +65,18 @@ func (h *keyBasedBatches) Val(key string) *batchContainer {
 	return h.containers[key]
 }
 
-func NewKeyBasedBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+func NewKeyBasedBatchBuilder(
+	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger) (BatchBuilder, error) {
+	bufferPool BuffersPool, logger log.Logger,
+) (BatchBuilder, error) {
 
 	bb := &keyBasedBatchContainer{
-		batches:         newKeyBasedBatches(),
-		batchContainer:  newBatchContainer(maxMessages, maxBatchSize, producerName, producerID, compressionType, level, bufferPool, logger),
+		batches: newKeyBasedBatches(),
+		batchContainer: newBatchContainer(
+			maxMessages, maxBatchSize, producerName, producerID,
+			compressionType, level, bufferPool, logger,
+		),
 		compressionType: compressionType,
 		level:           level,
 	}
@@ -97,8 +103,11 @@ func (bc *keyBasedBatchContainer) hasSpace(payload []byte) bool {
 }
 
 // Add will add single message to batch.
-func (bc *keyBasedBatchContainer) Add(metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64, payload []byte,
-	callback interface{}, replicateTo []string, deliverAt time.Time) bool {
+func (bc *keyBasedBatchContainer) Add(
+	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
+	payload []byte,
+	callback interface{}, replicateTo []string, deliverAt time.Time,
+) bool {
 	if replicateTo != nil && bc.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
 		// then we need to force the current batch to flush and send the message individually
@@ -115,12 +124,18 @@ func (bc *keyBasedBatchContainer) Add(metadata *pb.SingleMessageMetadata, sequen
 	var msgKey = getMessageKey(metadata)
 	batchPart := bc.batches.Val(msgKey)
 	if batchPart == nil {
-		t := newBatchContainer(bc.maxMessages, bc.maxBatchSize, bc.producerName, bc.producerID, bc.compressionType, bc.level, bc.buffersPool, bc.log)
+		t := newBatchContainer(
+			bc.maxMessages, bc.maxBatchSize, bc.producerName, bc.producerID,
+			bc.compressionType, bc.level, bc.buffersPool, bc.log,
+		)
 		batchPart = &t
 		bc.batches.Add(msgKey, &t)
 	}
 
-	batchPart.Add(metadata, sequenceIDGenerator, payload, callback, replicateTo, deliverAt)
+	batchPart.Add(
+		metadata, sequenceIDGenerator, payload, callback, replicateTo,
+		deliverAt,
+	)
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
 
 	bc.numMessages++
@@ -142,7 +157,9 @@ func (bc *keyBasedBatchContainer) reset() {
 	bc.batches.containers = map[string]*batchContainer{}
 }
 
-func (bc *keyBasedBatchContainer) FlushBatches() (batchesData []Buffer, sequenceIDs []uint64, callbacks [][]interface{}) {
+func (bc *keyBasedBatchContainer) FlushBatches() (
+	batchesData []Buffer, sequenceIDs []uint64, callbacks [][]interface{},
+) {
 	if bc.numMessages == 0 {
 		// No-Op for empty batch
 		return nil, nil, nil
@@ -171,14 +188,16 @@ func (bc *keyBasedBatchContainer) FlushBatches() (batchesData []Buffer, sequence
 			sequenceIDs[idx] = s
 			callbacks[idx] = c
 		}
-		idx += 1
+		idx++
 	}
 
 	bc.reset()
 	return batchesData, sequenceIDs, callbacks
 }
 
-func (bc *keyBasedBatchContainer) Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}) {
+func (bc *keyBasedBatchContainer) Flush() (
+	batchData Buffer, sequenceID uint64, callbacks []interface{},
+) {
 	panic("multi batches container not support Flush(), please use FlushBatches() instead")
 }
 

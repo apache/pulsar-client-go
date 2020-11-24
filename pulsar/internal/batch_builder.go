@@ -31,16 +31,23 @@ type BuffersPool interface {
 	GetBuffer() Buffer
 }
 
-type BatcherBuilderProvider func(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+type BatcherBuilderProvider func(
+	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger) (BatchBuilder, error)
+	bufferPool BuffersPool, logger log.Logger,
+) (BatchBuilder, error)
 
 type BatchBuilder interface {
 	IsFull() bool
-	Add(metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64, payload []byte,
-		callback interface{}, replicateTo []string, deliverAt time.Time) bool
+	Add(
+		metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
+		payload []byte,
+		callback interface{}, replicateTo []string, deliverAt time.Time,
+	) bool
 	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{})
-	FlushBatches() (batchData []Buffer, sequenceID []uint64, callbacks [][]interface{})
+	FlushBatches() (
+		batchData []Buffer, sequenceID []uint64, callbacks [][]interface{},
+	)
 	reset()
 	Close() error
 	IsMultiBatches() bool
@@ -74,7 +81,9 @@ type batchContainer struct {
 	log log.Logger
 }
 
-func (bb *batchContainer) FlushBatches() (batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}) {
+func (bb *batchContainer) FlushBatches() (
+	batchData []Buffer, sequenceID []uint64, callbacks [][]interface{},
+) {
 	panic("single batch container not support FlushBatches(), please use Flush() instead")
 }
 
@@ -82,9 +91,11 @@ func (bb *batchContainer) IsMultiBatches() bool {
 	return false
 }
 
-func newBatchContainer(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+func newBatchContainer(
+	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger) batchContainer {
+	bufferPool BuffersPool, logger log.Logger,
+) batchContainer {
 
 	bc := batchContainer{
 		buffer:       NewBuffer(4096),
@@ -93,10 +104,12 @@ func newBatchContainer(maxMessages uint, maxBatchSize uint, producerName string,
 		maxBatchSize: maxBatchSize,
 		producerName: producerName,
 		producerID:   producerID,
-		cmdSend: baseCommand(pb.BaseCommand_SEND,
+		cmdSend: baseCommand(
+			pb.BaseCommand_SEND,
 			&pb.CommandSend{
 				ProducerId: &producerID,
-			}),
+			},
+		),
 		msgMetadata: &pb.MessageMetadata{
 			ProducerName: &producerName,
 		},
@@ -114,11 +127,16 @@ func newBatchContainer(maxMessages uint, maxBatchSize uint, producerName string,
 }
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
-func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+func NewBatchBuilder(
+	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger) (BatchBuilder, error) {
+	bufferPool BuffersPool, logger log.Logger,
+) (BatchBuilder, error) {
 
-	bc := newBatchContainer(maxMessages, maxBatchSize, producerName, producerID, compressionType, level, bufferPool, logger)
+	bc := newBatchContainer(
+		maxMessages, maxBatchSize, producerName, producerID, compressionType,
+		level, bufferPool, logger,
+	)
 
 	return &bc, nil
 }
@@ -134,8 +152,11 @@ func (bb *batchContainer) hasSpace(payload []byte) bool {
 }
 
 // Add will add single message to batch.
-func (bb *batchContainer) Add(metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64, payload []byte,
-	callback interface{}, replicateTo []string, deliverAt time.Time) bool {
+func (bb *batchContainer) Add(
+	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
+	payload []byte,
+	callback interface{}, replicateTo []string, deliverAt time.Time,
+) bool {
 	if replicateTo != nil && bb.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
 		// then we need to force the current batch to flush and send the message individually
@@ -152,7 +173,7 @@ func (bb *batchContainer) Add(metadata *pb.SingleMessageMetadata, sequenceIDGene
 	if bb.numMessages == 0 {
 		var sequenceID uint64
 		if metadata.SequenceId != nil {
-			sequenceID = uint64(*metadata.SequenceId)
+			sequenceID = *metadata.SequenceId
 		} else {
 			sequenceID = GetAndAdd(sequenceIDGenerator, 1)
 		}
@@ -184,7 +205,9 @@ func (bb *batchContainer) reset() {
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-func (bb *batchContainer) Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}) {
+func (bb *batchContainer) Flush() (
+	batchData Buffer, sequenceID uint64, callbacks []interface{},
+) {
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
 		return nil, 0, nil
@@ -201,7 +224,9 @@ func (bb *batchContainer) Flush() (batchData Buffer, sequenceID uint64, callback
 	if buffer == nil {
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
-	serializeBatch(buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider)
+	serializeBatch(
+		buffer, bb.cmdSend, bb.msgMetadata, bb.buffer, bb.compressionProvider,
+	)
 
 	callbacks = bb.callbacks
 	sequenceID = bb.cmdSend.Send.GetSequenceId()
@@ -213,8 +238,10 @@ func (bb *batchContainer) Close() error {
 	return bb.compressionProvider.Close()
 }
 
-func getCompressionProvider(compressionType pb.CompressionType,
-	level compression.Level) compression.Provider {
+func getCompressionProvider(
+	compressionType pb.CompressionType,
+	level compression.Level,
+) compression.Provider {
 	switch compressionType {
 	case pb.CompressionType_NONE:
 		return compression.NewNoopProvider()

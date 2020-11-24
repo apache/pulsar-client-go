@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"errors"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
@@ -29,7 +30,9 @@ const (
 	KeyBasedBatchBuilder
 )
 
-func GetBatcherBuilderProvider(typ BatcherBuilderType) (internal.BatcherBuilderProvider, error) {
+func GetBatcherBuilderProvider(typ BatcherBuilderType) (
+	internal.BatcherBuilderProvider, error,
+) {
 	switch typ {
 	case DefaultBatchBuilder:
 		return internal.NewBatchBuilder, nil

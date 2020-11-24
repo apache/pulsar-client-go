@@ -420,8 +420,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if msg.SequenceID != nil {
-		var sequenceID uint64
-		sequenceID = uint64(*msg.SequenceID)
+		sequenceID := uint64(*msg.SequenceID)
 		smm.SequenceId = proto.Uint64(sequenceID)
 	}
 
