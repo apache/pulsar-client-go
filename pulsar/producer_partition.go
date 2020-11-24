@@ -108,7 +108,7 @@ type partitionProducer struct {
 	options             *ProducerOptions
 	producerName        string
 	producerID          uint64
-	batchBuilder        *internal.BatchBuilder
+	batchBuilder        internal.BatchBuilder
 	sequenceIDGenerator *uint64
 	batchFlushTicker    *time.Ticker
 
@@ -235,8 +235,23 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
-	if p.batchBuilder == nil {
-		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+	if p.options.DisableBatching {
+		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
+			compression.Level(p.options.CompressionLevel),
+			p,
+			p.log)
+		if err != nil {
+			return err
+		}
+	} else if p.batchBuilder == nil {
+		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
+		if err != nil {
+			provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
+		}
+
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
@@ -331,7 +346,11 @@ func (p *partitionProducer) runEventsLoop() {
 		case <-p.connectClosedCh:
 			p.reconnectToBroker()
 		case <-p.batchFlushTicker.C:
-			p.internalFlushCurrentBatch()
+			if p.batchBuilder.IsMultiBatches() {
+				p.internalFlushCurrentBatches()
+			} else {
+				p.internalFlushCurrentBatch()
+			}
 		}
 	}
 }
@@ -400,29 +419,27 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		smm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}
 
-	var sequenceID uint64
 	if msg.SequenceID != nil {
+		var sequenceID uint64
 		sequenceID = uint64(*msg.SequenceID)
-	} else {
-		sequenceID = internal.GetAndAdd(p.sequenceIDGenerator, 1)
+		smm.SequenceId = proto.Uint64(sequenceID)
 	}
 
 	if !sendAsBatch {
 		p.internalFlushCurrentBatch()
 	}
-	added := p.batchBuilder.Add(smm, sequenceID, payload, request,
+	added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
 		msg.ReplicationClusters, deliverAt)
 	if !added {
 		// The current batch is full.. flush it and retry
 		p.internalFlushCurrentBatch()
 
 		// after flushing try again to add the current payload
-		if ok := p.batchBuilder.Add(smm, sequenceID, payload, request,
+		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
 			msg.ReplicationClusters, deliverAt); !ok {
 			p.publishSemaphore.Release()
 			request.callback(nil, request.msg, errFailAddBatch)
 			p.log.WithField("size", len(payload)).
-				WithField("sequenceID", sequenceID).
 				WithField("properties", msg.Properties).
 				Error("unable to add message to batch")
 			return
@@ -430,7 +447,11 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if !sendAsBatch || request.flushImmediately {
-		p.internalFlushCurrentBatch()
+		if p.batchBuilder.IsMultiBatches() {
+			p.internalFlushCurrentBatches()
+		} else {
+			p.internalFlushCurrentBatch()
+		}
 	}
 }
 
@@ -506,8 +527,32 @@ func (p *partitionProducer) failTimeoutMessages() {
 	}
 }
 
+func (p *partitionProducer) internalFlushCurrentBatches() {
+	batchesData, sequenceIDs, callbacks := p.batchBuilder.FlushBatches()
+	if batchesData == nil {
+		return
+	}
+
+	for i := range batchesData {
+		if batchesData[i] == nil {
+			continue
+		}
+		p.pendingQueue.Put(&pendingItem{
+			batchData:    batchesData[i],
+			sequenceID:   sequenceIDs[i],
+			sendRequests: callbacks[i],
+		})
+		p.cnx.WriteData(batchesData[i])
+	}
+
+}
+
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
-	p.internalFlushCurrentBatch()
+	if p.batchBuilder.IsMultiBatches() {
+		p.internalFlushCurrentBatches()
+	} else {
+		p.internalFlushCurrentBatch()
+	}
 
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
 	if !ok {

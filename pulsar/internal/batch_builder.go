@@ -31,8 +31,23 @@ type BuffersPool interface {
 	GetBuffer() Buffer
 }
 
-// BatchBuilder wraps the objects needed to build a batch.
-type BatchBuilder struct {
+type BatcherBuilderProvider func(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	compressionType pb.CompressionType, level compression.Level,
+	bufferPool BuffersPool, logger log.Logger) (BatchBuilder, error)
+
+type BatchBuilder interface {
+	IsFull() bool
+	Add(metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64, payload []byte,
+		callback interface{}, replicateTo []string, deliverAt time.Time) bool
+	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{})
+	FlushBatches() (batchData []Buffer, sequenceID []uint64, callbacks [][]interface{})
+	reset()
+	Close() error
+	IsMultiBatches() bool
+}
+
+// batchContainer wraps the objects needed to a batch.
+type batchContainer struct {
 	buffer Buffer
 
 	// Current number of messages in the batch
@@ -41,7 +56,7 @@ type BatchBuilder struct {
 	// Max number of message allowed in the batch
 	maxMessages uint
 
-	// The largest size for a batch sent from this praticular producer.
+	// The largest size for a batch sent from this particular producer.
 	// This is used as a baseline to allocate a new buffer that can hold the entire batch
 	// without needing costly re-allocations.
 	maxBatchSize uint
@@ -59,12 +74,19 @@ type BatchBuilder struct {
 	log log.Logger
 }
 
-// NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
-func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
-	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger) (*BatchBuilder, error) {
+func (bb *batchContainer) FlushBatches() (batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}) {
+	panic("single batch container not support FlushBatches(), please use Flush() instead")
+}
 
-	bb := &BatchBuilder{
+func (bb *batchContainer) IsMultiBatches() bool {
+	return false
+}
+
+func newBatchContainer(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	compressionType pb.CompressionType, level compression.Level,
+	bufferPool BuffersPool, logger log.Logger) batchContainer {
+
+	bc := batchContainer{
 		buffer:       NewBuffer(4096),
 		numMessages:  0,
 		maxMessages:  maxMessages,
@@ -85,24 +107,34 @@ func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, p
 	}
 
 	if compressionType != pb.CompressionType_NONE {
-		bb.msgMetadata.Compression = &compressionType
+		bc.msgMetadata.Compression = &compressionType
 	}
 
-	return bb, nil
+	return bc
+}
+
+// NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
+func NewBatchBuilder(maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	compressionType pb.CompressionType, level compression.Level,
+	bufferPool BuffersPool, logger log.Logger) (BatchBuilder, error) {
+
+	bc := newBatchContainer(maxMessages, maxBatchSize, producerName, producerID, compressionType, level, bufferPool, logger)
+
+	return &bc, nil
 }
 
 // IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
-func (bb *BatchBuilder) IsFull() bool {
+func (bb *batchContainer) IsFull() bool {
 	return bb.numMessages >= bb.maxMessages || bb.buffer.ReadableBytes() > uint32(bb.maxBatchSize)
 }
 
-func (bb *BatchBuilder) hasSpace(payload []byte) bool {
+func (bb *batchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
 	return bb.numMessages > 0 && (bb.buffer.ReadableBytes()+msgSize) > uint32(bb.maxBatchSize)
 }
 
 // Add will add single message to batch.
-func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint64, payload []byte,
+func (bb *batchContainer) Add(metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64, payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time) bool {
 	if replicateTo != nil && bb.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
@@ -118,9 +150,14 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint6
 	}
 
 	if bb.numMessages == 0 {
+		var sequenceID uint64
+		if metadata.SequenceId != nil {
+			sequenceID = uint64(*metadata.SequenceId)
+		} else {
+			sequenceID = GetAndAdd(sequenceIDGenerator, 1)
+		}
 		bb.msgMetadata.SequenceId = proto.Uint64(sequenceID)
 		bb.msgMetadata.PublishTime = proto.Uint64(TimestampMillis(time.Now()))
-		bb.msgMetadata.SequenceId = proto.Uint64(sequenceID)
 		bb.msgMetadata.ProducerName = &bb.producerName
 		bb.msgMetadata.ReplicateTo = replicateTo
 		bb.msgMetadata.PartitionKey = metadata.PartitionKey
@@ -138,7 +175,7 @@ func (bb *BatchBuilder) Add(metadata *pb.SingleMessageMetadata, sequenceID uint6
 	return true
 }
 
-func (bb *BatchBuilder) reset() {
+func (bb *batchContainer) reset() {
 	bb.numMessages = 0
 	bb.buffer.Clear()
 	bb.callbacks = []interface{}{}
@@ -147,7 +184,7 @@ func (bb *BatchBuilder) reset() {
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}) {
+func (bb *batchContainer) Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}) {
 	if bb.numMessages == 0 {
 		// No-Op for empty batch
 		return nil, 0, nil
@@ -172,7 +209,7 @@ func (bb *BatchBuilder) Flush() (batchData Buffer, sequenceID uint64, callbacks 
 	return buffer, sequenceID, callbacks
 }
 
-func (bb *BatchBuilder) Close() error {
+func (bb *batchContainer) Close() error {
 	return bb.compressionProvider.Close()
 }
 

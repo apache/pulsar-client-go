@@ -152,6 +152,8 @@ type ProducerOptions struct {
 
 	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
+
+	BatcherBuilderType
 }
 
 // Producer is used to publish messages on a topic
