@@ -28,11 +28,25 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
+/**
+ * Key based batch message container
+ *
+ * incoming single messages:
+ * (k1, v1), (k2, v1), (k3, v1), (k1, v2), (k2, v2), (k3, v2), (k1, v3), (k2, v3), (k3, v3)
+ *
+ * batched into multiple batch messages:
+ * [(k1, v1), (k1, v2), (k1, v3)], [(k2, v1), (k2, v2), (k2, v3)], [(k3, v1), (k3, v2), (k3, v3)]
+ */
+
+// keyBasedBatches is a simple concurrent-safe map for the batchContainer type
 type keyBasedBatches struct {
 	containers map[string]*batchContainer
 	l          *sync.RWMutex
 }
 
+// keyBasedBatchContainer wraps the objects needed to key based batch.
+// keyBasedBatchContainer implement BatchBuilder as a multiple batches
+// container.
 type keyBasedBatchContainer struct {
 	batches keyBasedBatches
 	batchContainer
@@ -40,6 +54,7 @@ type keyBasedBatchContainer struct {
 	level           compression.Level
 }
 
+// newKeyBasedBatches init a keyBasedBatches
 func newKeyBasedBatches() keyBasedBatches {
 	return keyBasedBatches{
 		containers: map[string]*batchContainer{},
@@ -65,6 +80,8 @@ func (h *keyBasedBatches) Val(key string) *batchContainer {
 	return h.containers[key]
 }
 
+// NewKeyBasedBatchBuilder init batch builder and return BatchBuilder
+// pointer. Build a new key based batch message container.
 func NewKeyBasedBatchBuilder(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
@@ -102,7 +119,7 @@ func (bc *keyBasedBatchContainer) hasSpace(payload []byte) bool {
 	return bc.numMessages > 0 && (bc.buffer.ReadableBytes()+msgSize) > uint32(bc.maxBatchSize)
 }
 
-// Add will add single message to batch.
+// Add will add single message to key-based batch with message key.
 func (bc *keyBasedBatchContainer) Add(
 	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
 	payload []byte,
@@ -124,6 +141,7 @@ func (bc *keyBasedBatchContainer) Add(
 	var msgKey = getMessageKey(metadata)
 	batchPart := bc.batches.Val(msgKey)
 	if batchPart == nil {
+		// create batchContainer for new key
 		t := newBatchContainer(
 			bc.maxMessages, bc.maxBatchSize, bc.producerName, bc.producerID,
 			bc.compressionType, bc.level, bc.buffersPool, bc.log,
@@ -132,6 +150,7 @@ func (bc *keyBasedBatchContainer) Add(
 		bc.batches.Add(msgKey, &t)
 	}
 
+	// add message to batch container
 	batchPart.Add(
 		metadata, sequenceIDGenerator, payload, callback, replicateTo,
 		deliverAt,
@@ -157,6 +176,8 @@ func (bc *keyBasedBatchContainer) reset() {
 	bc.batches.containers = map[string]*batchContainer{}
 }
 
+// Flush all the messages buffered in multiple batches and wait until all
+// messages have been successfully persisted.
 func (bc *keyBasedBatchContainer) FlushBatches() (
 	batchesData []Buffer, sequenceIDs []uint64, callbacks [][]interface{},
 ) {
@@ -205,6 +226,9 @@ func (bc *keyBasedBatchContainer) Close() error {
 	return bc.compressionProvider.Close()
 }
 
+// getMessageKey extracts message key from message metadata.
+// If the OrderingKey exists, the base64-encoded string is returned,
+// otherwise the PartitionKey is returned.
 func getMessageKey(metadata *pb.SingleMessageMetadata) string {
 	if k := metadata.GetOrderingKey(); k != nil {
 		return base64.StdEncoding.EncodeToString(k)
