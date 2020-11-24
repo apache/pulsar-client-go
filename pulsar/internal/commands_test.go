@@ -26,7 +26,7 @@ import (
 func TestConvertStringMap(t *testing.T) {
 	m := make(map[string]string)
 	m["a"] = "1"
-	m["containers"] = "2"
+	m["b"] = "2"
 
 	pbm := ConvertFromStringMap(m)
 
@@ -35,7 +35,7 @@ func TestConvertStringMap(t *testing.T) {
 	m2 := ConvertToStringMap(pbm)
 	assert.Equal(t, 2, len(m2))
 	assert.Equal(t, "1", m2["a"])
-	assert.Equal(t, "2", m2["containers"])
+	assert.Equal(t, "2", m2["b"])
 }
 
 func TestReadMessageMetadata(t *testing.T) {
@@ -50,7 +50,7 @@ func TestReadMessageMetadata(t *testing.T) {
 	assert.Equal(t, len(props), 2)
 	assert.Equal(t, "a", props[0].GetKey())
 	assert.Equal(t, "1", props[0].GetValue())
-	assert.Equal(t, "containers", props[1].GetKey())
+	assert.Equal(t, "b", props[1].GetKey())
 	assert.Equal(t, "2", props[1].GetValue())
 
 	// read message with batch of 1
@@ -132,7 +132,7 @@ func TestReadMessagesBatchSize10(t *testing.T) {
 }
 
 // Raw single message in old format
-// metadata properties:<key:"a" value:"1" > properties:<key:"containers" value:"2" >
+// metadata properties:<key:"a" value:"1" > properties:<key:"b" value:"2" >
 // payload = "hello"
 var rawCompatSingleMessage = []byte{
 	0x0e, 0x01, 0x08, 0x36, 0xb4, 0x66, 0x00, 0x00,
@@ -146,7 +146,7 @@ var rawCompatSingleMessage = []byte{
 }
 
 // Message with batch of 1
-// singe message metadata properties:<key:"a" value:"1" > properties:<key:"containers" value:"2" >
+// singe message metadata properties:<key:"a" value:"1" > properties:<key:"b" value:"2" >
 // payload = "hello"
 var rawBatchMessage1 = []byte{
 	0x0e, 0x01, 0x1f, 0x80, 0x09, 0x68, 0x00, 0x00,
@@ -161,7 +161,7 @@ var rawBatchMessage1 = []byte{
 }
 
 // Message with batch of 10
-// singe message metadata properties:<key:"a" value:"1" > properties:<key:"containers" value:"2" >
+// singe message metadata properties:<key:"a" value:"1" > properties:<key:"b" value:"2" >
 // payload = "hello"
 var rawBatchMessage10 = []byte{
 	0x0e, 0x01, 0x7b, 0x28, 0x8c, 0x08,
