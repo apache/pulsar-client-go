@@ -46,6 +46,8 @@ const (
 
 var (
 	errFailAddBatch    = errors.New("message send failed")
+	errSendTimeout     = errors.New("message send timeout")
+	errSendQueueIsFull = errors.New("producer send queue is full")
 	errMessageTooLarge = errors.New("message size exceeds MaxMessageSize")
 
 	buffersPool sync.Pool
@@ -430,24 +432,72 @@ type pendingItem struct {
 	sync.Mutex
 	batchData    internal.Buffer
 	sequenceID   uint64
-	sentAt       int64
+	sentAt       time.Time
 	sendRequests []interface{}
 	completed    bool
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
+	if p.options.SendTimeout > 0 {
+		p.failTimeoutMessages()
+	}
+
 	batchData, sequenceID, callbacks := p.batchBuilder.Flush()
 	if batchData == nil {
 		return
 	}
 
 	p.pendingQueue.Put(&pendingItem{
+		sentAt:       time.Now(),
 		batchData:    batchData,
 		sequenceID:   sequenceID,
-		sentAt:       time.Now().UnixNano(),
 		sendRequests: callbacks,
 	})
 	p.cnx.WriteData(batchData)
+}
+
+func (p *partitionProducer) failTimeoutMessages() {
+	// since Closing/Closed connection couldn't be reopen, load and compare is safe
+	state := atomic.LoadInt32(&p.state)
+	if state == producerClosing || state == producerClosed {
+		return
+	}
+
+	item := p.pendingQueue.Peek()
+	if item == nil {
+		// pending queue is empty
+		return
+	}
+
+	pi := item.(*pendingItem)
+	if time.Since(pi.sentAt) < p.options.SendTimeout {
+		// pending messages not timeout yet
+		return
+	}
+
+	p.log.Infof("Failing %d messages", p.pendingQueue.Size())
+	for p.pendingQueue.Size() > 0 {
+		pi = p.pendingQueue.Poll().(*pendingItem)
+		pi.Lock()
+		for _, i := range pi.sendRequests {
+			sr := i.(*sendRequest)
+			if sr.msg != nil {
+				size := len(sr.msg.Payload)
+				p.publishSemaphore.Release()
+				messagesPending.Dec()
+				bytesPending.Sub(float64(size))
+				publishErrors.Inc()
+				p.log.WithError(errSendTimeout).
+					WithField("size", size).
+					WithField("properties", sr.msg.Properties)
+			}
+			if sr.callback != nil {
+				sr.callback(nil, sr.msg, errSendTimeout)
+			}
+		}
+		buffersPool.Put(pi.batchData)
+		pi.Unlock()
+	}
 }
 
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
@@ -516,10 +566,20 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	}
 	p.options.Interceptors.BeforeSend(p, msg)
 
+	if p.options.DisableBlockIfQueueFull {
+		if !p.publishSemaphore.TryAcquire() {
+			if callback != nil {
+				callback(nil, msg, errSendQueueIsFull)
+			}
+			return
+		}
+	} else {
+		p.publishSemaphore.Acquire()
+	}
+
 	messagesPending.Inc()
 	bytesPending.Add(float64(len(sr.msg.Payload)))
 
-	p.publishSemaphore.Acquire()
 	p.eventsChan <- sr
 }
 
@@ -553,9 +613,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
-	if pi.sentAt > 0 {
-		publishRPCLatency.Observe(float64(now-pi.sentAt) / 1.0e9)
-	}
+	publishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
 		if sr.msg != nil {

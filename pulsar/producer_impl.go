@@ -32,6 +32,9 @@ import (
 )
 
 const (
+	// defaultSendTimeout init default timeout for ack since sent.
+	defaultSendTimeout = 30 * time.Second
+
 	// defaultBatchingMaxPublishDelay init default for maximum delay to batch messages
 	defaultBatchingMaxPublishDelay = 10 * time.Millisecond
 
@@ -91,13 +94,16 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
 	}
 
+	if options.SendTimeout == 0 {
+		options.SendTimeout = defaultSendTimeout
+	}
 	if options.BatchingMaxMessages == 0 {
 		options.BatchingMaxMessages = defaultMaxMessagesPerBatch
 	}
 	if options.BatchingMaxSize == 0 {
 		options.BatchingMaxSize = defaultMaxBatchSize
 	}
-	if options.BatchingMaxPublishDelay == 0 {
+	if options.BatchingMaxPublishDelay <= 0 {
 		options.BatchingMaxPublishDelay = defaultBatchingMaxPublishDelay
 	}
 
