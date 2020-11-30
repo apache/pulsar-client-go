@@ -115,7 +115,7 @@ func newClient(options ClientOptions) (Client, error) {
 		log:     logger,
 	}
 	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger)
-	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil, logger)
+	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil, options.ListenerName, logger)
 	c.handlers = internal.NewClientHandlers()
 	return c, nil
 }

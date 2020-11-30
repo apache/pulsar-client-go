@@ -101,6 +101,9 @@ type ClientOptions struct {
 	// Configure whether the Pulsar client verify the validity of the host name from broker (default: false)
 	TLSValidateHostname bool
 
+	// Configure the net model for vpc user to connect the pulsar broker
+	ListenerName string
+
 	// Max number of connections to a single broker that will kept in the pool. (Default: 1 connection)
 	MaxConnectionsPerBroker int
 

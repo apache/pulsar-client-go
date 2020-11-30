@@ -51,20 +51,22 @@ type LookupService interface {
 }
 
 type lookupService struct {
-	rpcClient  RPCClient
-	serviceURL *url.URL
-	tlsEnabled bool
-	log        log.Logger
+	rpcClient    RPCClient
+	serviceURL   *url.URL
+	tlsEnabled   bool
+	listenerName string
+	log          log.Logger
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL,
-	tlsEnabled bool, logger log.Logger) LookupService {
+	tlsEnabled bool, listenerName string, logger log.Logger) LookupService {
 	return &lookupService{
-		rpcClient:  rpcClient,
-		serviceURL: serviceURL,
-		tlsEnabled: tlsEnabled,
-		log:        logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		rpcClient:    rpcClient,
+		serviceURL:   serviceURL,
+		tlsEnabled:   tlsEnabled,
+		listenerName: listenerName,
+		log:          logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 	}
 }
 
@@ -97,9 +99,10 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	lookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
 	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-		RequestId:     &id,
-		Topic:         &topic,
-		Authoritative: proto.Bool(false),
+		RequestId:              &id,
+		Topic:                  &topic,
+		Authoritative:          proto.Bool(false),
+		AdvertisedListenerName: proto.String(ls.listenerName),
 	})
 	if err != nil {
 		return nil, err
@@ -121,9 +124,10 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 
 			id := ls.rpcClient.NewRequestID()
 			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-				RequestId:     &id,
-				Topic:         &topic,
-				Authoritative: lr.Authoritative,
+				RequestId:              &id,
+				Topic:                  &topic,
+				Authoritative:          lr.Authoritative,
+				AdvertisedListenerName: proto.String(ls.listenerName),
 			})
 			if err != nil {
 				return nil, err
