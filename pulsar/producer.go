@@ -152,6 +152,13 @@ type ProducerOptions struct {
 
 	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
+
+	// BatcherBuilderType sets the batch builder type (default DefaultBatchBuilder)
+	// This will be used to create batch container when batching is enabled.
+	// Options:
+	// - DefaultBatchBuilder
+	// - KeyBasedBatchBuilder
+	BatcherBuilderType
 }
 
 // Producer is used to publish messages on a topic
