@@ -35,8 +35,8 @@ import (
 
 var (
 	rpcRequestCount = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_rpc_count",
-		Help: "Counter of RPC requests made by the client",
+		Name:        "pulsar_client_rpc_count",
+		Help:        "Counter of RPC requests made by the client",
 		ConstLabels: constLabels(),
 	})
 )
