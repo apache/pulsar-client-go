@@ -1879,3 +1879,84 @@ func TestOrderingOfKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 
 	// TODO: add OrderingKey support, see GH issue #401
 }
+
+func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
+	client, err := NewClient(
+		ClientOptions{
+			URL: lookupURL,
+		},
+	)
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/test-key-shared-with-ordering-key"
+
+	consumer1, err := client.Subscribe(
+		ConsumerOptions{
+			Topic:            topic,
+			SubscriptionName: "sub-1",
+			Type:             KeyShared,
+		},
+	)
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	consumer2, err := client.Subscribe(
+		ConsumerOptions{
+			Topic:            topic,
+			SubscriptionName: "sub-1",
+			Type:             KeyShared,
+		},
+	)
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(
+		ProducerOptions{
+			Topic:           topic,
+			DisableBatching: true,
+		},
+	)
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	for i := 0; i < 100; i++ {
+		_, err := producer.Send(
+			ctx, &ProducerMessage{
+				Key:     fmt.Sprintf("key-shared-%d", i%3),
+				Payload: []byte(fmt.Sprintf("value-%d", i)),
+			},
+		)
+		assert.Nil(t, err)
+	}
+
+	receivedConsumer1 := 0
+	receivedConsumer2 := 0
+	for (receivedConsumer1 + receivedConsumer2) < 100 {
+		select {
+		case cm, ok := <-consumer1.Chan():
+			if !ok {
+				break
+			}
+			receivedConsumer1++
+			consumer1.Ack(cm.Message)
+		case cm, ok := <-consumer2.Chan():
+			if !ok {
+				break
+			}
+			receivedConsumer2++
+			consumer2.Ack(cm.Message)
+		}
+	}
+
+	assert.NotEqual(t, 0, receivedConsumer1)
+	assert.NotEqual(t, 0, receivedConsumer2)
+
+	fmt.Printf(
+		"TestConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
+		receivedConsumer1, receivedConsumer2,
+	)
+	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
+}
