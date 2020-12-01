@@ -53,6 +53,12 @@ var (
 	buffersPool sync.Pool
 )
 
+// metric error types
+const(
+	publishErrorTimeout = "timeout"
+	publishErrorMsgTooLarge = "msg_too_large"
+)
+
 var (
 	messagesPublished = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "pulsar_client_messages_published",
@@ -74,10 +80,10 @@ var (
 		Help: "Counter of bytes pending to be published by the client",
 	})
 
-	publishErrors = promauto.NewCounter(prometheus.CounterOpts{
+	publishErrors = promauto.NewCounterVec(prometheus.CounterOpts{
 		Name: "pulsar_client_producer_errors",
 		Help: "Counter of publish errors",
-	})
+	}, []string{"error"})
 
 	publishLatency = promauto.NewHistogram(prometheus.HistogramOpts{
 		Name:    "pulsar_client_producer_latency_seconds",
@@ -365,7 +371,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			WithField("size", len(payload)).
 			WithField("properties", msg.Properties).
 			Error()
-		publishErrors.Inc()
+		publishErrors.WithLabelValues(publishErrorMsgTooLarge).Inc()
 		return
 	}
 
@@ -486,7 +492,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 				p.publishSemaphore.Release()
 				messagesPending.Dec()
 				bytesPending.Sub(float64(size))
-				publishErrors.Inc()
+				publishErrors.WithLabelValues(publishErrorTimeout).Inc()
 				p.log.WithError(errSendTimeout).
 					WithField("size", size).
 					WithField("properties", sr.msg.Properties)
