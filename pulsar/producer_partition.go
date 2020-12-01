@@ -54,8 +54,8 @@ var (
 )
 
 // metric error types
-const(
-	publishErrorTimeout = "timeout"
+const (
+	publishErrorTimeout     = "timeout"
 	publishErrorMsgTooLarge = "msg_too_large"
 )
 
