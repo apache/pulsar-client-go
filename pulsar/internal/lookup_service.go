@@ -34,6 +34,7 @@ var (
 	lookupRequestsCount = promauto.NewCounter(prometheus.CounterOpts{
 		Name: "pulsar_client_lookup_count",
 		Help: "Counter of lookup requests made by the client",
+		ConstLabels: constLabels(),
 	})
 )
 

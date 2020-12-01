@@ -36,44 +36,52 @@ import (
 
 var (
 	messagesReceived = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_messages_received",
-		Help: "Counter of messages received by the client",
+		Name:        "pulsar_client_messages_received",
+		Help:        "Counter of messages received by the client",
+		ConstLabels: constLabels(),
 	})
 
 	bytesReceived = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_bytes_received",
-		Help: "Counter of bytes received by the client",
+		Name:        "pulsar_client_bytes_received",
+		Help:        "Counter of bytes received by the client",
+		ConstLabels: constLabels(),
 	})
 
 	prefetchedMessages = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "pulsar_client_consumer_prefetched_messages",
-		Help: "Number of messages currently sitting in the consumer pre-fetch queue",
+		Name:        "pulsar_client_consumer_prefetched_messages",
+		Help:        "Number of messages currently sitting in the consumer pre-fetch queue",
+		ConstLabels: constLabels(),
 	})
 
 	prefetchedBytes = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "pulsar_client_consumer_prefetched_bytes",
-		Help: "Total number of bytes currently sitting in the consumer pre-fetch queue",
+		Name:        "pulsar_client_consumer_prefetched_bytes",
+		Help:        "Total number of bytes currently sitting in the consumer pre-fetch queue",
+		ConstLabels: constLabels(),
 	})
 
 	acksCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_consumer_acks",
-		Help: "Counter of messages acked by client",
+		Name:        "pulsar_client_consumer_acks",
+		Help:        "Counter of messages acked by client",
+		ConstLabels: constLabels(),
 	})
 
 	nacksCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_consumer_nacks",
-		Help: "Counter of messages nacked by client",
+		Name:        "pulsar_client_consumer_nacks",
+		Help:        "Counter of messages nacked by client",
+		ConstLabels: constLabels(),
 	})
 
 	dlqCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_consumer_dlq_messages",
-		Help: "Counter of messages sent to Dead letter queue",
+		Name:        "pulsar_client_consumer_dlq_messages",
+		Help:        "Counter of messages sent to Dead letter queue",
+		ConstLabels: constLabels(),
 	})
 
 	processingTime = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "pulsar_client_consumer_processing_time_seconds",
-		Help:    "Time it takes for application to process messages",
-		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		Name:        "pulsar_client_consumer_processing_time_seconds",
+		Help:        "Time it takes for application to process messages",
+		Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		ConstLabels: constLabels(),
 	})
 
 	lastestMessageID = LatestMessageID()

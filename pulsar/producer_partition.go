@@ -61,40 +61,47 @@ const (
 
 var (
 	messagesPublished = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_messages_published",
-		Help: "Counter of messages published by the client",
+		Name:        "pulsar_client_messages_published",
+		Help:        "Counter of messages published by the client",
+		ConstLabels: constLabels(),
 	})
 
 	bytesPublished = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_bytes_published",
-		Help: "Counter of messages published by the client",
+		Name:        "pulsar_client_bytes_published",
+		Help:        "Counter of messages published by the client",
+		ConstLabels: constLabels(),
 	})
 
 	messagesPending = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "pulsar_client_producer_pending_messages",
-		Help: "Counter of messages pending to be published by the client",
+		Name:        "pulsar_client_producer_pending_messages",
+		Help:        "Counter of messages pending to be published by the client",
+		ConstLabels: constLabels(),
 	})
 
 	bytesPending = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "pulsar_client_producer_pending_bytes",
-		Help: "Counter of bytes pending to be published by the client",
+		Name:        "pulsar_client_producer_pending_bytes",
+		Help:        "Counter of bytes pending to be published by the client",
+		ConstLabels: constLabels(),
 	})
 
 	publishErrors = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name: "pulsar_client_producer_errors",
-		Help: "Counter of publish errors",
+		Name:        "pulsar_client_producer_errors",
+		Help:        "Counter of publish errors",
+		ConstLabels: constLabels(),
 	}, []string{"error"})
 
 	publishLatency = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "pulsar_client_producer_latency_seconds",
-		Help:    "Publish latency experienced by the client",
-		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		Name:        "pulsar_client_producer_latency_seconds",
+		Help:        "Publish latency experienced by the client",
+		ConstLabels: constLabels(),
+		Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 	})
 
 	publishRPCLatency = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "pulsar_client_producer_rpc_latency_seconds",
-		Help:    "Publish RPC latency experienced internally by the client when sending data to receiving an ack",
-		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+		Name:        "pulsar_client_producer_rpc_latency_seconds",
+		Help:        "Publish RPC latency experienced internally by the client when sending data to receiving an ack",
+		ConstLabels: constLabels(),
+		Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 	})
 )
 
