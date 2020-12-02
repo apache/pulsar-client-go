@@ -47,7 +47,7 @@ func TestDefaultRouterRoutingBecauseBatchingDisabled(t *testing.T) {
 
 func TestDefaultRouterRoutingBecauseMaxPublishDelayReached(t *testing.T) {
 	maxPublishDelay := time.Nanosecond * 10
-	router := NewDefaultRouter(internal.JavaStringHash, 20, 100, maxPublishDelay, false)
+	router := NewDefaultRouter(internal.JavaStringHash, 10, 100, maxPublishDelay, false)
 	const numPartitions = uint32(3)
 	p1 := router(&ProducerMessage{
 		Payload: []byte("message 1"),
