@@ -119,7 +119,8 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost, logger, metrics),
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost, logger,
+			metrics),
 		log:     logger,
 		metrics: metrics,
 	}

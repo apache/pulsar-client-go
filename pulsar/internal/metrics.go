@@ -19,14 +19,11 @@ package internal
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var topicLabelNames = []string{"pulsar_tenant", "pulsar_namespace", "topic"}
 
 type Metrics struct {
-	userDefinedLabels map[string]string
-
 	messagesPublished *prometheus.CounterVec
 	bytesPublished    *prometheus.CounterVec
 	messagesPending   *prometheus.GaugeVec
@@ -91,14 +88,6 @@ type TopicMetrics struct {
 	ReadersClosed       prometheus.Counter
 }
 
-func keys(m map[string]string) []string {
-	keys := make([]string, 0, len(m))
-	for key := range m {
-		keys = append(keys, key)
-	}
-	return keys
-}
-
 func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 	constLabels := map[string]string{
 		"client": "go",
@@ -107,185 +96,218 @@ func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 		constLabels[k] = v
 	}
 
-	return &Metrics{
-		userDefinedLabels: userDefinedLabels,
-		messagesPublished: promauto.NewCounterVec(prometheus.CounterOpts{
+	metrics := &Metrics{
+		messagesPublished: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_messages_published",
 			Help:        "Counter of messages published by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		bytesPublished: promauto.NewCounterVec(prometheus.CounterOpts{
+		bytesPublished: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_bytes_published",
 			Help:        "Counter of messages published by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		messagesPending: promauto.NewGaugeVec(prometheus.GaugeOpts{
+		messagesPending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_producer_pending_messages",
 			Help:        "Counter of messages pending to be published by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		bytesPending: promauto.NewGaugeVec(prometheus.GaugeOpts{
+		bytesPending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_producer_pending_bytes",
 			Help:        "Counter of bytes pending to be published by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		publishErrors: promauto.NewCounterVec(prometheus.CounterOpts{
+		publishErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_producer_errors",
 			Help:        "Counter of publish errors",
 			ConstLabels: constLabels,
 		}, append(topicLabelNames, "error")),
 
-		publishLatency: promauto.NewHistogramVec(prometheus.HistogramOpts{
+		publishLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "pulsar_client_producer_latency_seconds",
 			Help:        "Publish latency experienced by the client",
 			ConstLabels: constLabels,
 			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 		}, topicLabelNames),
 
-		publishRPCLatency: promauto.NewHistogramVec(prometheus.HistogramOpts{
+		publishRPCLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "pulsar_client_producer_rpc_latency_seconds",
 			Help:        "Publish RPC latency experienced internally by the client when sending data to receiving an ack",
 			ConstLabels: constLabels,
 			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 		}, topicLabelNames),
 
-		producersOpened: promauto.NewCounterVec(prometheus.CounterOpts{
+		producersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_producers_opened",
 			Help:        "Counter of producers created by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		producersClosed: promauto.NewCounterVec(prometheus.CounterOpts{
+		producersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_producers_closed",
 			Help:        "Counter of producers closed by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		producersPartitions: promauto.NewGaugeVec(prometheus.GaugeOpts{
+		producersPartitions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_producers_partitions_active",
 			Help:        "Counter of individual partitions the producers are currently active",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		consumersOpened: promauto.NewCounterVec(prometheus.CounterOpts{
+		consumersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumers_opened",
 			Help:        "Counter of consumers created by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		consumersClosed: promauto.NewCounterVec(prometheus.CounterOpts{
+		consumersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumers_closed",
 			Help:        "Counter of consumers closed by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		consumersPartitions: promauto.NewGaugeVec(prometheus.GaugeOpts{
+		consumersPartitions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_consumers_partitions_active",
 			Help:        "Counter of individual partitions the consumers are currently active",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		messagesReceived: promauto.NewCounterVec(prometheus.CounterOpts{
+		messagesReceived: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_messages_received",
 			Help:        "Counter of messages received by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		bytesReceived: promauto.NewCounterVec(prometheus.CounterOpts{
+		bytesReceived: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_bytes_received",
 			Help:        "Counter of bytes received by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		prefetchedMessages: promauto.NewGaugeVec(prometheus.GaugeOpts{
+		prefetchedMessages: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_consumer_prefetched_messages",
 			Help:        "Number of messages currently sitting in the consumer pre-fetch queue",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		prefetchedBytes: promauto.NewGaugeVec(prometheus.GaugeOpts{
+		prefetchedBytes: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_consumer_prefetched_bytes",
 			Help:        "Total number of bytes currently sitting in the consumer pre-fetch queue",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		acksCounter: promauto.NewCounterVec(prometheus.CounterOpts{
+		acksCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumer_acks",
 			Help:        "Counter of messages acked by client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		nacksCounter: promauto.NewCounterVec(prometheus.CounterOpts{
+		nacksCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumer_nacks",
 			Help:        "Counter of messages nacked by client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		dlqCounter: promauto.NewCounterVec(prometheus.CounterOpts{
+		dlqCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumer_dlq_messages",
 			Help:        "Counter of messages sent to Dead letter queue",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		processingTime: promauto.NewHistogramVec(prometheus.HistogramOpts{
+		processingTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "pulsar_client_consumer_processing_time_seconds",
 			Help:        "Time it takes for application to process messages",
 			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		readersOpened: promauto.NewCounterVec(prometheus.CounterOpts{
+		readersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_readers_opened",
 			Help:        "Counter of readers created by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		readersClosed: promauto.NewCounterVec(prometheus.CounterOpts{
+		readersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_readers_closed",
 			Help:        "Counter of readers closed by the client",
 			ConstLabels: constLabels,
 		}, topicLabelNames),
 
-		ConnectionsOpened: promauto.NewCounter(prometheus.CounterOpts{
+		ConnectionsOpened: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_connections_opened",
 			Help:        "Counter of connections created by the client",
 			ConstLabels: constLabels,
 		}),
 
-		ConnectionsClosed: promauto.NewCounter(prometheus.CounterOpts{
+		ConnectionsClosed: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_connections_closed",
 			Help:        "Counter of connections closed by the client",
 			ConstLabels: constLabels,
 		}),
 
-		ConnectionsEstablishmentErrors: promauto.NewCounter(prometheus.CounterOpts{
+		ConnectionsEstablishmentErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_connections_establishment_errors",
 			Help:        "Counter of errors in connections establishment",
 			ConstLabels: constLabels,
 		}),
 
-		ConnectionsHandshakeErrors: promauto.NewCounter(prometheus.CounterOpts{
+		ConnectionsHandshakeErrors: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_connections_handshake_errors",
 			Help:        "Counter of errors in connections handshake (eg: authz)",
 			ConstLabels: constLabels,
 		}),
 
-		LookupRequestsCount: promauto.NewCounter(prometheus.CounterOpts{
+		LookupRequestsCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_lookup_count",
 			Help:        "Counter of lookup requests made by the client",
 			ConstLabels: constLabels,
 		}),
 
-		RpcRequestCount: promauto.NewCounter(prometheus.CounterOpts{
+		RpcRequestCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_rpc_count",
 			Help:        "Counter of RPC requests made by the client",
 			ConstLabels: constLabels,
 		}),
 	}
+
+	prometheus.DefaultRegisterer.Register(metrics.messagesPublished)
+	prometheus.DefaultRegisterer.Register(metrics.bytesPublished)
+	prometheus.DefaultRegisterer.Register(metrics.messagesPending)
+	prometheus.DefaultRegisterer.Register(metrics.bytesPending)
+	prometheus.DefaultRegisterer.Register(metrics.publishErrors)
+	prometheus.DefaultRegisterer.Register(metrics.publishLatency)
+	prometheus.DefaultRegisterer.Register(metrics.publishRPCLatency)
+
+	prometheus.DefaultRegisterer.Register(metrics.messagesReceived)
+	prometheus.DefaultRegisterer.Register(metrics.bytesReceived)
+	prometheus.DefaultRegisterer.Register(metrics.prefetchedMessages)
+	prometheus.DefaultRegisterer.Register(metrics.prefetchedBytes)
+	prometheus.DefaultRegisterer.Register(metrics.acksCounter)
+	prometheus.DefaultRegisterer.Register(metrics.nacksCounter)
+	prometheus.DefaultRegisterer.Register(metrics.dlqCounter)
+	prometheus.DefaultRegisterer.Register(metrics.processingTime)
+
+	prometheus.DefaultRegisterer.Register(metrics.producersOpened)
+	prometheus.DefaultRegisterer.Register(metrics.producersClosed)
+	prometheus.DefaultRegisterer.Register(metrics.producersPartitions)
+	prometheus.DefaultRegisterer.Register(metrics.consumersOpened)
+	prometheus.DefaultRegisterer.Register(metrics.consumersClosed)
+	prometheus.DefaultRegisterer.Register(metrics.consumersPartitions)
+	prometheus.DefaultRegisterer.Register(metrics.readersOpened)
+	prometheus.DefaultRegisterer.Register(metrics.readersClosed)
+
+	prometheus.DefaultRegisterer.Register(metrics.ConnectionsOpened)
+	prometheus.DefaultRegisterer.Register(metrics.ConnectionsClosed)
+	prometheus.DefaultRegisterer.Register(metrics.ConnectionsEstablishmentErrors)
+	prometheus.DefaultRegisterer.Register(metrics.ConnectionsHandshakeErrors)
+	prometheus.DefaultRegisterer.Register(metrics.LookupRequestsCount)
+	prometheus.DefaultRegisterer.Register(metrics.RpcRequestCount)
+	return metrics
 }
 
 func (mp *Metrics) GetTopicMetrics(t string) *TopicMetrics {
