@@ -157,7 +157,7 @@ type connection struct {
 	auth       auth.Provider
 
 	maxMessageSize int32
-	metrics *Metrics
+	metrics        *Metrics
 }
 
 // connectionOptions defines configurations for creating connection.

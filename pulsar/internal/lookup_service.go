@@ -28,10 +28,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-var (
-
-)
-
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
 type LookupResult struct {
 	LogicalAddr  *url.URL

@@ -20,10 +20,10 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
