@@ -23,19 +23,13 @@ import (
 	"net/url"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
-	lookupRequestsCount = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_lookup_count",
-		Help:        "Counter of lookup requests made by the client",
-		ConstLabels: constLabels(),
-	})
+
 )
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
@@ -56,16 +50,18 @@ type lookupService struct {
 	serviceURL *url.URL
 	tlsEnabled bool
 	log        log.Logger
+	metrics    *Metrics
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL,
-	tlsEnabled bool, logger log.Logger) LookupService {
+	tlsEnabled bool, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
 		rpcClient:  rpcClient,
 		serviceURL: serviceURL,
 		tlsEnabled: tlsEnabled,
 		log:        logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		metrics:    metrics,
 	}
 }
 
@@ -95,7 +91,7 @@ func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (lo
 const lookupResultMaxRedirect = 20
 
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
-	lookupRequestsCount.Inc()
+	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
 	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
 		RequestId:     &id,

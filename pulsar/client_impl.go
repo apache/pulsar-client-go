@@ -43,6 +43,7 @@ type client struct {
 	rpcClient     internal.RPCClient
 	handlers      internal.ClientHandlers
 	lookupService internal.LookupService
+	metrics       *internal.Metrics
 
 	log log.Logger
 }
@@ -110,13 +111,23 @@ func newClient(options ClientOptions) (Client, error) {
 		maxConnectionsPerHost = 1
 	}
 
-	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost, logger),
-		log:     logger,
+	var metrics *internal.Metrics
+	if options.CustomMetricsLabels != nil {
+		metrics = internal.NewMetricsProvider(options.CustomMetricsLabels)
+	} else {
+		metrics = internal.NewMetricsProvider(map[string]string{})
 	}
-	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger)
-	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil, logger)
+
+	c := &client{
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost, logger, metrics),
+		log:     logger,
+		metrics: metrics,
+	}
+	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger, metrics)
+	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil, logger, metrics)
 	c.handlers = internal.NewClientHandlers()
+
+
 	return c, nil
 }
 

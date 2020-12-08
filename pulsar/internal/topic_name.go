@@ -27,6 +27,7 @@ import (
 // TopicName abstract a struct contained in a Topic
 type TopicName struct {
 	Domain    string
+	Tenant    string
 	Namespace string
 	Name      string
 	Partition int
@@ -81,6 +82,7 @@ func ParseTopicName(topic string) (*TopicName, error) {
 	// 1. some/name/xyz//
 	// 2. /xyz-123/feeder-2
 	parts = strings.SplitN(rest, "/", 4)
+	tn.Tenant = parts[0]
 	if len(parts) == 3 {
 		// New topic name without cluster name
 		tn.Namespace = parts[0] + "/" + parts[1]

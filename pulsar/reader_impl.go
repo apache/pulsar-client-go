@@ -20,11 +20,9 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"sync"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -33,24 +31,13 @@ const (
 	defaultReceiverQueueSize = 1000
 )
 
-var (
-	readersOpened = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_readers_opened",
-		Help: "Counter of readers created by the client",
-	})
-
-	readersClosed = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_readers_closed",
-		Help: "Counter of readers closed by the client",
-	})
-)
-
 type reader struct {
 	sync.Mutex
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
 	log                 log.Logger
+	metrics             *internal.TopicMetrics
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -106,6 +93,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
 		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
+		metrics:   client.metrics.GetTopicMetrics(options.Topic),
 	}
 
 	// Provide dummy dlq router with not dlq policy
@@ -114,14 +102,14 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, err
 	}
 
-	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq)
+	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq, reader.metrics)
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err
 	}
 
 	reader.pc = pc
-	readersOpened.Inc()
+	reader.metrics.ReadersOpened.Inc()
 	return reader, nil
 }
 
@@ -186,7 +174,7 @@ func (r *reader) hasMoreMessages() bool {
 
 func (r *reader) Close() {
 	r.pc.Close()
-	readersClosed.Inc()
+	r.metrics.ReadersClosed.Inc()
 }
 
 func (r *reader) messageID(msgID MessageID) (trackingMessageID, bool) {
