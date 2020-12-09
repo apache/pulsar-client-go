@@ -79,6 +79,7 @@ type consumer struct {
 	rlq       *retryRouter
 	closeOnce sync.Once
 	closeCh   chan struct{}
+	exitDisCh chan struct{}
 	errorCh   chan error
 	ticker    *time.Ticker
 
@@ -216,6 +217,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		disableForceTopicCreation: disableForceTopicCreation,
 		messageCh:                 messageCh,
 		closeCh:                   make(chan struct{}),
+		exitDisCh:                 make(chan struct{}),
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
 		rlq:                       rlq,
@@ -236,9 +238,14 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	consumer.ticker = time.NewTicker(duration)
 
 	go func() {
-		for range consumer.ticker.C {
-			consumer.log.Debug("Auto discovering new partitions")
-			consumer.internalTopicSubscribeToPartitions()
+		for {
+			select {
+			case <-consumer.exitDisCh:
+				return
+			case <-consumer.ticker.C:
+				consumer.log.Debug("Auto discovering new partitions")
+				consumer.internalTopicSubscribeToPartitions()
+			}
 		}
 	}()
 
@@ -515,6 +522,7 @@ func (c *consumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		close(c.exitDisCh)
 		c.ticker.Stop()
 		c.client.handlers.Del(c)
 		c.dlq.close()
