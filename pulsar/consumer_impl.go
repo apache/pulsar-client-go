@@ -215,9 +215,14 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	consumer.ticker = time.NewTicker(duration)
 
 	go func() {
-		for range consumer.ticker.C {
-			consumer.log.Debug("Auto discovering new partitions")
-			consumer.internalTopicSubscribeToPartitions()
+		for {
+			select {
+			case <-consumer.closeCh:
+				return
+			case <-consumer.ticker.C:
+				consumer.log.Debug("Auto discovering new partitions")
+				consumer.internalTopicSubscribeToPartitions()
+			}
 		}
 	}()
 
