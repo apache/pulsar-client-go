@@ -17,6 +17,7 @@
 
 package internal
 
+import "C"
 import (
 	"crypto/tls"
 	"crypto/x509"
@@ -28,9 +29,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -45,32 +43,6 @@ const (
 	ClientVersionString = "Pulsar Go " + PulsarVersion
 
 	PulsarProtocolVersion = int32(pb.ProtocolVersion_v13)
-)
-
-var (
-	connectionsOpened = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_connections_opened",
-		Help:        "Counter of connections created by the client",
-		ConstLabels: constLabels(),
-	})
-
-	connectionsClosed = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_connections_closed",
-		Help:        "Counter of connections closed by the client",
-		ConstLabels: constLabels(),
-	})
-
-	connectionsEstablishmentErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_connections_establishment_errors",
-		Help:        "Counter of errors in connections establishment",
-		ConstLabels: constLabels(),
-	})
-
-	connectionsHandshakeErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_connections_handshake_errors",
-		Help:        "Counter of errors in connections handshake (eg: authz)",
-		ConstLabels: constLabels(),
-	})
 )
 
 type TLSOptions struct {
@@ -185,6 +157,7 @@ type connection struct {
 	auth       auth.Provider
 
 	maxMessageSize int32
+	metrics        *Metrics
 }
 
 // connectionOptions defines configurations for creating connection.
@@ -195,6 +168,7 @@ type connectionOptions struct {
 	connectionTimeout time.Duration
 	auth              auth.Provider
 	logger            log.Logger
+	metrics           *Metrics
 }
 
 func newConnection(opts connectionOptions) *connection {
@@ -224,6 +198,7 @@ func newConnection(opts connectionOptions) *connection {
 		writeRequestsCh:  make(chan Buffer, 256),
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
+		metrics:          opts.metrics,
 	}
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
@@ -235,14 +210,14 @@ func (c *connection) start() {
 	go func() {
 		if c.connect() {
 			if c.doHandshake() {
-				connectionsOpened.Inc()
+				c.metrics.ConnectionsOpened.Inc()
 				c.run()
 			} else {
-				connectionsHandshakeErrors.Inc()
+				c.metrics.ConnectionsHandshakeErrors.Inc()
 				c.changeState(connectionClosed)
 			}
 		} else {
-			connectionsEstablishmentErrors.Inc()
+			c.metrics.ConnectionsEstablishmentErrors.Inc()
 			c.changeState(connectionClosed)
 		}
 	}()
@@ -808,7 +783,7 @@ func (c *connection) Close() {
 		handler.ConnectionClosed()
 	}
 
-	connectionsClosed.Inc()
+	c.metrics.ConnectionsClosed.Inc()
 }
 
 func (c *connection) changeState(state connectionState) {

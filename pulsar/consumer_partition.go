@@ -23,9 +23,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -35,55 +32,6 @@ import (
 )
 
 var (
-	messagesReceived = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_messages_received",
-		Help:        "Counter of messages received by the client",
-		ConstLabels: constLabels(),
-	})
-
-	bytesReceived = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_bytes_received",
-		Help:        "Counter of bytes received by the client",
-		ConstLabels: constLabels(),
-	})
-
-	prefetchedMessages = promauto.NewGauge(prometheus.GaugeOpts{
-		Name:        "pulsar_client_consumer_prefetched_messages",
-		Help:        "Number of messages currently sitting in the consumer pre-fetch queue",
-		ConstLabels: constLabels(),
-	})
-
-	prefetchedBytes = promauto.NewGauge(prometheus.GaugeOpts{
-		Name:        "pulsar_client_consumer_prefetched_bytes",
-		Help:        "Total number of bytes currently sitting in the consumer pre-fetch queue",
-		ConstLabels: constLabels(),
-	})
-
-	acksCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_consumer_acks",
-		Help:        "Counter of messages acked by client",
-		ConstLabels: constLabels(),
-	})
-
-	nacksCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_consumer_nacks",
-		Help:        "Counter of messages nacked by client",
-		ConstLabels: constLabels(),
-	})
-
-	dlqCounter = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_consumer_dlq_messages",
-		Help:        "Counter of messages sent to Dead letter queue",
-		ConstLabels: constLabels(),
-	})
-
-	processingTime = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:        "pulsar_client_consumer_processing_time_seconds",
-		Help:        "Time it takes for application to process messages",
-		Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-		ConstLabels: constLabels(),
-	})
-
 	lastestMessageID = LatestMessageID()
 )
 
@@ -172,10 +120,12 @@ type partitionConsumer struct {
 	log log.Logger
 
 	compressionProviders map[pb.CompressionType]compression.Provider
+	metrics              *internal.TopicMetrics
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
-	messageCh chan ConsumerMessage, dlq *dlqRouter) (*partitionConsumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter,
+	metrics *internal.TopicMetrics) (*partitionConsumer, error) {
 	pc := &partitionConsumer{
 		state:                consumerInit,
 		parentConsumer:       parent,
@@ -196,6 +146,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
+		metrics:              metrics,
 	}
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
@@ -308,8 +259,8 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 
 func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
 	if !msgID.Undefined() && msgID.ack() {
-		acksCounter.Inc()
-		processingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
+		pc.metrics.AcksCounter.Inc()
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
 		req := &ackRequest{
 			msgID: msgID,
 		}
@@ -321,7 +272,7 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
 
 func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
 	pc.nackTracker.Add(msgID.messageID)
-	nacksCounter.Inc()
+	pc.metrics.NacksCounter.Inc()
 }
 
 func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
@@ -492,8 +443,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		ackTracker = newAckTracker(numMsgs)
 	}
 
-	messagesReceived.Add(float64(numMsgs))
-	prefetchedMessages.Add(float64(numMsgs))
+	pc.metrics.MessagesReceived.Add(float64(numMsgs))
+	pc.metrics.PrefetchedMessages.Add(float64(numMsgs))
 
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
@@ -502,8 +453,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return err
 		}
 
-		bytesReceived.Add(float64(len(payload)))
-		prefetchedBytes.Add(float64(len(payload)))
+		pc.metrics.BytesReceived.Add(float64(len(payload)))
+		pc.metrics.PrefetchedBytes.Add(float64(len(payload)))
 
 		msgID := newTrackingMessageID(
 			int64(pbMsgID.GetLedgerId()),
@@ -623,15 +574,15 @@ func (pc *partitionConsumer) dispatcher() {
 
 			if pc.dlq.shouldSendToDlq(&nextMessage) {
 				// pass the message to the DLQ router
-				dlqCounter.Inc()
+				pc.metrics.DlqCounter.Inc()
 				messageCh = pc.dlq.Chan()
 			} else {
 				// pass the message to application channel
 				messageCh = pc.messageCh
 			}
 
-			prefetchedMessages.Dec()
-			prefetchedBytes.Sub(float64(len(messages[0].payLoad)))
+			pc.metrics.PrefetchedMessages.Dec()
+			pc.metrics.PrefetchedBytes.Sub(float64(len(messages[0].payLoad)))
 		} else {
 			// we are ready for more messages
 			queueCh = pc.queueCh

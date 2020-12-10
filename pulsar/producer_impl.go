@@ -24,9 +24,6 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -45,26 +42,6 @@ const (
 	defaultMaxMessagesPerBatch = 1000
 )
 
-var (
-	producersOpened = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_producers_opened",
-		Help:        "Counter of producers created by the client",
-		ConstLabels: constLabels(),
-	})
-
-	producersClosed = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_producers_closed",
-		Help:        "Counter of producers closed by the client",
-		ConstLabels: constLabels(),
-	})
-
-	producersPartitions = promauto.NewGauge(prometheus.GaugeOpts{
-		Name:        "pulsar_client_producers_partitions_active",
-		Help:        "Counter of individual partitions the producers are currently active",
-		ConstLabels: constLabels(),
-	})
-)
-
 type producer struct {
 	sync.RWMutex
 	client        *client
@@ -77,6 +54,7 @@ type producer struct {
 	ticker        *time.Ticker
 	tickerStop    chan struct{}
 	log           log.Logger
+	metrics       *internal.TopicMetrics
 }
 
 var partitionsAutoDiscoveryInterval = 1 * time.Minute
@@ -115,6 +93,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		topic:   options.Topic,
 		client:  client,
 		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
+		metrics: client.metrics.GetTopicMetrics(options.Topic),
 	}
 
 	if options.Interceptors == nil {
@@ -162,7 +141,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		}
 	}()
 
-	producersOpened.Inc()
+	p.metrics.ProducersOpened.Inc()
 	return p, nil
 }
 
@@ -212,7 +191,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		partition := partitions[partitionIdx]
 
 		go func(partitionIdx int, partition string) {
-			prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx)
+			prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx, p.metrics)
 			c <- ProducerError{
 				partition: partitionIdx,
 				prod:      prod,
@@ -242,7 +221,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		return err
 	}
 
-	producersPartitions.Add(float64(partitionsToAdd))
+	p.metrics.ProducersPartitions.Add(float64(partitionsToAdd))
 	atomic.StorePointer(&p.producersPtr, unsafe.Pointer(&p.producers))
 	atomic.StoreUint32(&p.numPartitions, uint32(len(p.producers)))
 	return nil
@@ -325,6 +304,6 @@ func (p *producer) Close() {
 		pp.Close()
 	}
 	p.client.handlers.Del(p)
-	producersPartitions.Sub(float64(len(p.producers)))
-	producersClosed.Inc()
+	p.metrics.ProducersPartitions.Sub(float64(len(p.producers)))
+	p.metrics.ProducersClosed.Inc()
 }

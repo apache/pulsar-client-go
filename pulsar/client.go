@@ -109,6 +109,9 @@ type ClientOptions struct {
 	// log.NewLoggerWithLogrus(logrus.StandardLogger())
 	// FIXME: use `logger` as internal field name instead of `log` as it's more idiomatic
 	Logger log.Logger
+
+	// Add custom labels to all the metrics reported by this client instance
+	CustomMetricsLabels map[string]string
 }
 
 type Client interface {

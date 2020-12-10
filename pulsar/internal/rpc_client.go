@@ -24,21 +24,10 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
-)
-
-var (
-	rpcRequestCount = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_rpc_count",
-		Help:        "Counter of RPC requests made by the client",
-		ConstLabels: constLabels(),
-	})
 )
 
 type RPCResult struct {
@@ -73,15 +62,17 @@ type rpcClient struct {
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
 	log                 log.Logger
+	metrics             *Metrics
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
-	requestTimeout time.Duration, logger log.Logger) RPCClient {
+	requestTimeout time.Duration, logger log.Logger, metrics *Metrics) RPCClient {
 	return &rpcClient{
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
 		log:            logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		metrics:        metrics,
 	}
 }
 
@@ -92,7 +83,7 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	rpcRequestCount.Inc()
+	c.metrics.RpcRequestCount.Inc()
 	cnx, err := c.getConn(logicalAddr, physicalAddr)
 	if err != nil {
 		return nil, err
@@ -143,7 +134,7 @@ func (c *rpcClient) getConn(logicalAddr *url.URL, physicalAddr *url.URL) (Connec
 
 func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
-	rpcRequestCount.Inc()
+	c.metrics.RpcRequestCount.Inc()
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -163,7 +154,7 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 }
 
 func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
-	rpcRequestCount.Inc()
+	c.metrics.RpcRequestCount.Inc()
 	return cnx.SendRequestNoWait(baseCommand(cmdType, message))
 }
 

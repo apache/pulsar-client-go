@@ -24,9 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 
 	"github.com/gogo/protobuf/proto"
@@ -53,58 +50,6 @@ var (
 	buffersPool sync.Pool
 )
 
-// metric error types
-const (
-	publishErrorTimeout     = "timeout"
-	publishErrorMsgTooLarge = "msg_too_large"
-)
-
-var (
-	messagesPublished = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_messages_published",
-		Help:        "Counter of messages published by the client",
-		ConstLabels: constLabels(),
-	})
-
-	bytesPublished = promauto.NewCounter(prometheus.CounterOpts{
-		Name:        "pulsar_client_bytes_published",
-		Help:        "Counter of messages published by the client",
-		ConstLabels: constLabels(),
-	})
-
-	messagesPending = promauto.NewGauge(prometheus.GaugeOpts{
-		Name:        "pulsar_client_producer_pending_messages",
-		Help:        "Counter of messages pending to be published by the client",
-		ConstLabels: constLabels(),
-	})
-
-	bytesPending = promauto.NewGauge(prometheus.GaugeOpts{
-		Name:        "pulsar_client_producer_pending_bytes",
-		Help:        "Counter of bytes pending to be published by the client",
-		ConstLabels: constLabels(),
-	})
-
-	publishErrors = promauto.NewCounterVec(prometheus.CounterOpts{
-		Name:        "pulsar_client_producer_errors",
-		Help:        "Counter of publish errors",
-		ConstLabels: constLabels(),
-	}, []string{"error"})
-
-	publishLatency = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:        "pulsar_client_producer_latency_seconds",
-		Help:        "Publish latency experienced by the client",
-		ConstLabels: constLabels(),
-		Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-	})
-
-	publishRPCLatency = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:        "pulsar_client_producer_rpc_latency_seconds",
-		Help:        "Publish RPC latency experienced internally by the client when sending data to receiving an ack",
-		ConstLabels: constLabels(),
-		Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-	})
-)
-
 type partitionProducer struct {
 	state  int32
 	client *client
@@ -128,9 +73,11 @@ type partitionProducer struct {
 	lastSequenceID   int64
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
+	metrics          *internal.TopicMetrics
 }
 
-func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (
+func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
+	metrics *internal.TopicMetrics) (
 	*partitionProducer, error) {
 	var batchingMaxPublishDelay time.Duration
 	if options.BatchingMaxPublishDelay != 0 {
@@ -162,6 +109,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
 		partitionIdx:     int32(partitionIdx),
+		metrics:          metrics,
 	}
 
 	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
@@ -397,7 +345,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			WithField("size", len(payload)).
 			WithField("properties", msg.Properties).
 			Error()
-		publishErrors.WithLabelValues(publishErrorMsgTooLarge).Inc()
+		p.metrics.PublishErrorsMsgTooLarge.Inc()
 		return
 	}
 
@@ -517,9 +465,9 @@ func (p *partitionProducer) failTimeoutMessages() {
 			if sr.msg != nil {
 				size := len(sr.msg.Payload)
 				p.publishSemaphore.Release()
-				messagesPending.Dec()
-				bytesPending.Sub(float64(size))
-				publishErrors.WithLabelValues(publishErrorTimeout).Inc()
+				p.metrics.MessagesPending.Dec()
+				p.metrics.BytesPending.Sub(float64(size))
+				p.metrics.PublishErrorsTimeout.Inc()
 				p.log.WithError(errSendTimeout).
 					WithField("size", size).
 					WithField("properties", sr.msg.Properties)
@@ -634,8 +582,8 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		p.publishSemaphore.Acquire()
 	}
 
-	messagesPending.Inc()
-	bytesPending.Add(float64(len(sr.msg.Payload)))
+	p.metrics.MessagesPending.Inc()
+	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
 
 	p.eventsChan <- sr
 }
@@ -670,19 +618,19 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
-	publishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
+	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
 		if sr.msg != nil {
 			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
 			p.publishSemaphore.Release()
 
-			publishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
-			messagesPublished.Inc()
-			messagesPending.Dec()
+			p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
+			p.metrics.MessagesPublished.Inc()
+			p.metrics.MessagesPending.Dec()
 			payloadSize := float64(len(sr.msg.Payload))
-			bytesPublished.Add(payloadSize)
-			bytesPending.Sub(payloadSize)
+			p.metrics.BytesPublished.Add(payloadSize)
+			p.metrics.BytesPending.Sub(payloadSize)
 		}
 
 		if sr.callback != nil || len(p.options.Interceptors) > 0 {
