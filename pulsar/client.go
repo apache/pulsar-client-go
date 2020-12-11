@@ -80,7 +80,7 @@ type ClientOptions struct {
 	// This parameter is required
 	URL string
 
-	// Timeout for the establishment of a TCP connection (default: 30 seconds)
+	// Timeout for the establishment of a TCP connection (default: 5 seconds)
 	ConnectionTimeout time.Duration
 
 	// Set the operation timeout (default: 30 seconds)

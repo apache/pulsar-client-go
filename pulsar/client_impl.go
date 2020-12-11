@@ -34,7 +34,7 @@ import (
 )
 
 const (
-	defaultConnectionTimeout = 30 * time.Second
+	defaultConnectionTimeout = 5 * time.Second
 	defaultOperationTimeout  = 30 * time.Second
 )
 
