@@ -931,6 +931,10 @@ func (pc *partitionConsumer) clearQueueAndGetNextMessage() trackingMessageID {
 func (pc *partitionConsumer) clearReceiverQueue() trackingMessageID {
 	nextMessageInQueue := pc.clearQueueAndGetNextMessage()
 
+	if pc.startMessageID.Undefined() {
+		return pc.startMessageID
+	}
+
 	if !nextMessageInQueue.Undefined() {
 		return getPreviousMessage(nextMessageInQueue)
 	} else if !pc.lastDequeuedMsg.Undefined() {
