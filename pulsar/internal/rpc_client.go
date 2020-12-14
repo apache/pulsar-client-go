@@ -108,7 +108,7 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	c.metrics.RpcRequestCount.Inc()
+	c.metrics.RPCRequestCount.Inc()
 	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
 	if err != nil {
 		return nil, err
@@ -138,7 +138,7 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 
 func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
-	c.metrics.RpcRequestCount.Inc()
+	c.metrics.RPCRequestCount.Inc()
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
@@ -158,7 +158,7 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 }
 
 func (c *rpcClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
-	c.metrics.RpcRequestCount.Inc()
+	c.metrics.RPCRequestCount.Inc()
 	return cnx.SendRequestNoWait(baseCommand(cmdType, message))
 }
 

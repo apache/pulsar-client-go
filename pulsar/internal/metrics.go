@@ -56,7 +56,7 @@ type Metrics struct {
 	ConnectionsEstablishmentErrors prometheus.Counter
 	ConnectionsHandshakeErrors     prometheus.Counter
 	LookupRequestsCount            prometheus.Counter
-	RpcRequestCount                prometheus.Counter
+	RPCRequestCount                prometheus.Counter
 }
 
 type TopicMetrics struct {
@@ -268,7 +268,7 @@ func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 			ConstLabels: constLabels,
 		}),
 
-		RpcRequestCount: prometheus.NewCounter(prometheus.CounterOpts{
+		RPCRequestCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_rpc_count",
 			Help:        "Counter of RPC requests made by the client",
 			ConstLabels: constLabels,
@@ -306,7 +306,7 @@ func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 	prometheus.DefaultRegisterer.Register(metrics.ConnectionsEstablishmentErrors)
 	prometheus.DefaultRegisterer.Register(metrics.ConnectionsHandshakeErrors)
 	prometheus.DefaultRegisterer.Register(metrics.LookupRequestsCount)
-	prometheus.DefaultRegisterer.Register(metrics.RpcRequestCount)
+	prometheus.DefaultRegisterer.Register(metrics.RPCRequestCount)
 	return metrics
 }
 
