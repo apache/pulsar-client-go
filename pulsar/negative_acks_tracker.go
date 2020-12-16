@@ -32,6 +32,7 @@ type negativeAcksTracker struct {
 	sync.Mutex
 
 	doneCh       chan interface{}
+	doneOnce     sync.Once
 	negativeAcks map[messageID]time.Time
 	rc           redeliveryConsumer
 	tick         *time.Ticker
@@ -84,10 +85,11 @@ func (t *negativeAcksTracker) track() {
 
 		case <-t.tick.C:
 			{
-				t.Lock()
-
 				now := time.Now()
 				msgIds := make([]messageID, 0)
+
+				t.Lock()
+
 				for msgID, targetTime := range t.negativeAcks {
 					t.log.Debugf("MsgId: %v -- targetTime: %v -- now: %v", msgID, targetTime, now)
 					if targetTime.Before(now) {
@@ -109,5 +111,9 @@ func (t *negativeAcksTracker) track() {
 }
 
 func (t *negativeAcksTracker) Close() {
-	t.doneCh <- nil
+	// allow Close() to be invoked multiple times by consumer_partition to avoid panic
+	t.doneOnce.Do(func() {
+		t.tick.Stop()
+		t.doneCh <- nil
+	})
 }
