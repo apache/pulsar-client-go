@@ -361,6 +361,7 @@ func (pc *partitionConsumer) requestSeek(msgID messageID) error {
 		pc.log.WithError(err).Error("Failed to reset to message id")
 		return err
 	}
+	pc.clearMessageChannels()
 	return nil
 }
 
@@ -395,6 +396,17 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to reset to message publish time")
 		seek.err = err
+		return
+	}
+	pc.clearMessageChannels()
+}
+
+func (pc *partitionConsumer) clearMessageChannels() {
+	for len(pc.queueCh) > 0 {
+		<-pc.queueCh
+	}
+	for len(pc.messageCh) > 0 {
+		<-pc.messageCh
 	}
 }
 

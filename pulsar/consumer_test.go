@@ -794,20 +794,22 @@ func TestConsumerSeek(t *testing.T) {
 	assert.Nil(t, err)
 	defer consumer.Close()
 
-	const N = 10
+	// Use value bigger than 1000 to full-fill queue channel with size 1000 and message channel with size 10
+	const N = 1100
 	var seekID MessageID
-	for i := 0; i < 10; i++ {
+	for i := 0; i < N; i++ {
 		id, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
 		assert.Nil(t, err)
 
-		if i == 4 {
+		if i == N-50 {
 			seekID = id
 		}
 	}
 
-	for i := 0; i < N; i++ {
+	// Don't consume all messages so some stay in queues
+	for i := 0; i < N-20; i++ {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
@@ -819,7 +821,7 @@ func TestConsumerSeek(t *testing.T) {
 
 	msg, err := consumer.Receive(ctx)
 	assert.Nil(t, err)
-	assert.Equal(t, "hello-4", string(msg.Payload()))
+	assert.Equal(t, fmt.Sprintf("hello-%d", N-50), string(msg.Payload()))
 }
 
 func TestConsumerSeekByTime(t *testing.T) {
@@ -846,19 +848,21 @@ func TestConsumerSeekByTime(t *testing.T) {
 	assert.Nil(t, err)
 	defer consumer.Close()
 
-	const N = 10
+	// Use value bigger than 1000 to full-fill queue channel with size 1000 and message channel with size 10
+	const N = 1100
 	resetTimeStr := "100s"
 	retentionTimeInSecond, err := internal.ParseRelativeTimeInSeconds(resetTimeStr)
 	assert.Nil(t, err)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < N; i++ {
 		_, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
 		assert.Nil(t, err)
 	}
 
-	for i := 0; i < N; i++ {
+	// Don't consume all messages so some stay in queues
+	for i := 0; i < N-20; i++ {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
