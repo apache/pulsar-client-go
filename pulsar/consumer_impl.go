@@ -164,6 +164,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		for i := range options.Topics {
 			options.Topics[i] = tns[i].Name
 		}
+		options.Topics = distinct(options.Topics)
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
 	}
@@ -552,6 +553,18 @@ func generateRandomName() string {
 		bytes[i] = chars[r.R.Intn(len(chars))]
 	}
 	return string(bytes)
+}
+
+func distinct(fqdnTopics []string) []string {
+	set := make(map[string]struct{})
+	uniques := make([]string, 0, len(fqdnTopics))
+	for _, topic := range fqdnTopics {
+		if _, ok := set[topic]; !ok {
+			set[topic] = struct{}{}
+			uniques = append(uniques, topic)
+		}
+	}
+	return uniques
 }
 
 func toProtoSubType(st SubscriptionType) pb.CommandSubscribe_SubType {
