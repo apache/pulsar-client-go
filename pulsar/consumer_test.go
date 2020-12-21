@@ -1148,6 +1148,9 @@ func TestDLQMultiTopics(t *testing.T) {
 
 func TestRLQ(t *testing.T) {
 	topic := newTopicName()
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/partitions"
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
+
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
 	maxRedeliveries := 2
 	N := 100
