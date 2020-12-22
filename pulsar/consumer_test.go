@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -1877,7 +1878,40 @@ func TestOrderingOfKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 		receivedMessageIndex++
 	}
 
-	// TODO: add OrderingKey support, see GH issue #401
+	// Test OrderingKey
+	for i := 0; i < MsgBatchCount; i++ {
+		for _, k := range keys {
+			u := uuid.New()
+			producer.SendAsync(ctx, &ProducerMessage{
+				Key:         u.String(),
+				OrderingKey: k,
+				Payload:     []byte(fmt.Sprintf("value-%d", i)),
+			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+				assert.Nil(t, err)
+			},
+			)
+		}
+	}
+
+	receivedKey = ""
+	receivedMessageIndex = 0
+	for i := 0; i < len(keys)*MsgBatchCount; i++ {
+		cm, ok := <-consumer1.Chan()
+		if !ok {
+			break
+		}
+		if receivedKey != cm.OrderingKey() {
+			receivedKey = cm.OrderingKey()
+			receivedMessageIndex = 0
+		}
+		assert.Equal(
+			t, fmt.Sprintf("value-%d", receivedMessageIndex%10),
+			string(cm.Payload()),
+		)
+		consumer1.Ack(cm.Message)
+		receivedMessageIndex++
+	}
+
 }
 
 func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
@@ -1923,10 +1957,12 @@ func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
 
 	ctx := context.Background()
 	for i := 0; i < 100; i++ {
+		u := uuid.New()
 		_, err := producer.Send(
 			ctx, &ProducerMessage{
-				Key:     fmt.Sprintf("key-shared-%d", i%3),
-				Payload: []byte(fmt.Sprintf("value-%d", i)),
+				Key:         u.String(),
+				OrderingKey: fmt.Sprintf("key-shared-%d", i%3),
+				Payload:     []byte(fmt.Sprintf("value-%d", i)),
 			},
 		)
 		assert.Nil(t, err)
@@ -1955,7 +1991,7 @@ func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
 	assert.NotEqual(t, 0, receivedConsumer2)
 
 	fmt.Printf(
-		"TestConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
+		"TestConsumerKeySharedWithOrderingKey received messages consumer1: %d consumser2: %d\n",
 		receivedConsumer1, receivedConsumer2,
 	)
 	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
