@@ -26,7 +26,6 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -64,10 +63,7 @@ func NewClient() (pulsar.Client, error) {
 		clientOpts.Authentication = pulsar.NewAuthenticationToken(string(tokenBytes))
 	}
 
-	if strings.HasPrefix(clientArgs.ServiceURL, "pulsar+ssl://") {
-		if clientArgs.TLSTrustCertFile == "" {
-			return nil, fmt.Errorf("fatal error: missing trustStore while pulsar+ssl tls is enabled")
-		}
+	if clientArgs.TLSTrustCertFile != "" {
 		clientOpts.TLSTrustCertsFilePath = clientArgs.TLSTrustCertFile
 	}
 	return pulsar.NewClient(clientOpts)
