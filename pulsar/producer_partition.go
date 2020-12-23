@@ -370,6 +370,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		smm.PartitionKey = proto.String(msg.Key)
 	}
 
+	if len(msg.OrderingKey) != 0 {
+		smm.OrderingKey = []byte(msg.OrderingKey)
+	}
+
 	if msg.Properties != nil {
 		smm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}

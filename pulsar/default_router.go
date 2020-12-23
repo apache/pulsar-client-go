@@ -55,6 +55,11 @@ func NewDefaultRouter(
 			return 0
 		}
 
+		if len(message.OrderingKey) != 0 {
+			// When an OrderingKey is specified, use the hash of that key
+			return int(hashFunc(message.OrderingKey) % numPartitions)
+		}
+
 		if len(message.Key) != 0 {
 			// When a key is specified, use the hash of that key
 			return int(hashFunc(message.Key) % numPartitions)

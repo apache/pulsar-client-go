@@ -97,6 +97,7 @@ func (r *dlqRouter) run() {
 			producer.SendAsync(context.Background(), &ProducerMessage{
 				Payload:             msg.Payload(),
 				Key:                 msg.Key(),
+				OrderingKey:         msg.OrderingKey(),
 				Properties:          msg.Properties(),
 				EventTime:           msg.EventTime(),
 				ReplicationClusters: msg.replicationClusters,

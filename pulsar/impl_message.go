@@ -170,6 +170,7 @@ type message struct {
 	publishTime         time.Time
 	eventTime           time.Time
 	key                 string
+	orderingKey         string
 	producerName        string
 	payLoad             []byte
 	msgID               MessageID
@@ -207,6 +208,10 @@ func (msg *message) EventTime() time.Time {
 
 func (msg *message) Key() string {
 	return msg.key
+}
+
+func (msg *message) OrderingKey() string {
+	return msg.orderingKey
 }
 
 func (msg *message) RedeliveryCount() uint32 {
