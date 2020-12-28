@@ -3,7 +3,7 @@ module github.com/streamnative/pulsar-admin-go
 go 1.12
 
 require (
-	github.com/99designs/keyring v1.1.5
+	github.com/99designs/keyring v1.1.6
 	github.com/apache/pulsar-client-go/oauth2 v0.0.0-20200715083626-b9f8c5cedefb
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible
 	github.com/docker/go-connections v0.4.0
