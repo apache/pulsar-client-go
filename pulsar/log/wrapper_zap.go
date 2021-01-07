@@ -41,7 +41,7 @@ func (z *zapWrapper) SubLogger(fs Fields) Logger {
 // WithFields injects a set of fields into a log entry.
 // Due to the way zap works, this is equivalent to creating a new logger with the additional fields.
 func (z *zapWrapper) WithFields(fs Fields) Entry {
-	var kv []interface{}
+	kv := make([]interface{}, 0, 2*len(fs))
 	for k, v := range fs {
 		kv = append(kv, k, v)
 	}
