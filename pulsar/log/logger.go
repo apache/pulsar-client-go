@@ -25,7 +25,8 @@
 // logging library.
 //
 // Besides the interfaces, this log library also provides an
-// implementation based on logrus, and a No-op one as well.
+// implementation based on logrus, an implementation based on zap,
+// and a no-op one as well.
 package log
 
 // Fields type, used to pass to `WithFields`.
