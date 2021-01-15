@@ -71,6 +71,10 @@ func (id trackingMessageID) ack() bool {
 	return true
 }
 
+func (id messageID) isEntryIDValid() bool {
+	return id.entryID >= 0
+}
+
 func (id messageID) greater(other messageID) bool {
 	if id.ledgerID != other.ledgerID {
 		return id.ledgerID > other.ledgerID

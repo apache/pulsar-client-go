@@ -161,15 +161,15 @@ func (r *reader) HasNext() bool {
 
 func (r *reader) hasMoreMessages() bool {
 	if !r.pc.lastDequeuedMsg.Undefined() {
-		return r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg.messageID)
+		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg.messageID)
 	}
 
 	if r.pc.options.startMessageIDInclusive {
-		return r.lastMessageInBroker.greaterEqual(r.pc.startMessageID.messageID)
+		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greaterEqual(r.pc.startMessageID.messageID)
 	}
 
 	// Non-inclusive
-	return r.lastMessageInBroker.greater(r.pc.startMessageID.messageID)
+	return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.startMessageID.messageID)
 }
 
 func (r *reader) Close() {
