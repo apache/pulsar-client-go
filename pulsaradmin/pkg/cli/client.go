@@ -120,6 +120,9 @@ func (c *Client) GetWithQueryParams(endpoint string, obj interface{}, params map
 
 	if obj != nil {
 		if err := decodeJSONBody(resp, &obj); err != nil {
+			if err == io.EOF {
+				return nil, nil
+			}
 			return nil, err
 		}
 	} else if !decode {
