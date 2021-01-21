@@ -8,7 +8,7 @@ require (
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/datadog/zstd v1.4.6-0.20200617134701-89f69fb7df32
 	github.com/davecgh/go-spew v1.1.1
-	github.com/gogo/protobuf v1.3.1
+	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.4.2
 	github.com/google/uuid v1.1.2
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
