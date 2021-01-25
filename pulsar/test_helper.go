@@ -84,6 +84,10 @@ func httpGet(requestPath string, out interface{}) error {
 	return httpDo(http.MethodGet, requestPath, nil, out)
 }
 
+func httpGetList(requestPath string, out *[]string) error {
+	return httpDo(http.MethodGet, requestPath, nil, out)
+}
+
 func httpDo(method string, requestPath string, in interface{}, out interface{}) error {
 	client := http.DefaultClient
 	endpoint := testEndpoint(requestPath)
@@ -155,6 +159,17 @@ func topicStats(topic string) (map[string]interface{}, error) {
 	var metadata map[string]interface{}
 	err := httpGet("admin/v2/persistent/"+topicPath(topic)+"/stats", &metadata)
 	return metadata, err
+}
+
+func getNamespaceTopics(namespace string) ([]string, error) {
+	var topics []string
+	err := httpGetList("admin/v2/persistent/"+namespace, &topics)
+	if err == nil {
+		for i := range topics {
+			topics[i] = strings.TrimPrefix(topics[i], "persistent://")
+		}
+	}
+	return topics, err
 }
 
 func topicPath(topic string) string {
