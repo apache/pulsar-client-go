@@ -316,9 +316,9 @@ func (c *connection) waitUntilReady() error {
 	c.Lock()
 	defer c.Unlock()
 
-	for c.state != connectionReady {
-		c.log.Debugf("Wait until connection is ready. State: %s", connectionState(c.state))
-		if c.state == connectionClosed {
+	for atomic.LoadInt32(&c.state) != connectionReady {
+		c.log.Debugf("Wait until connection is ready. State: %s", connectionState(atomic.LoadInt32(&c.state)))
+		if atomic.LoadInt32(&c.state) == connectionClosed {
 			return errors.New("connection error")
 		}
 		// wait for a new connection state change
@@ -543,7 +543,7 @@ func (c *connection) Write(data Buffer) {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
-	if c.state == connectionClosed {
+	if atomic.LoadInt32(&c.state) == connectionClosed {
 		callback(req, ErrConnectionClosed)
 	} else {
 		c.incomingRequestsCh <- &request{
@@ -555,7 +555,7 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 }
 
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
-	if c.state == connectionClosed {
+	if atomic.LoadInt32(&c.state) == connectionClosed {
 		return ErrConnectionClosed
 	}
 
@@ -573,7 +573,7 @@ func (c *connection) internalSendRequest(req *request) {
 		c.pendingReqs[*req.id] = req
 	}
 	c.pendingLock.Unlock()
-	if c.state == connectionClosed {
+	if atomic.LoadInt32(&c.state) == connectionClosed {
 		c.log.Warnf("internalSendRequest failed for connectionClosed")
 		if req.callback != nil {
 			req.callback(req.cmd, ErrConnectionClosed)
@@ -757,12 +757,13 @@ func (c *connection) Close() {
 
 	c.cond.Broadcast()
 
-	if c.state == connectionClosed {
+	if atomic.LoadInt32(&c.state) == connectionClosed {
 		return
 	}
 
 	c.log.Info("Connection closed")
-	c.state = connectionClosed
+	// do not use changeState() since they share the same lock
+	atomic.StoreInt32(&c.state, connectionClosed)
 	c.TriggerClose()
 	c.pingTicker.Stop()
 	c.pingCheckTicker.Stop()
