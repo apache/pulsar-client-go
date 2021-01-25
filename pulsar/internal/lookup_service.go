@@ -140,12 +140,9 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			}, nil
 
 		case pb.CommandLookupTopicResponse_Failed:
-			errorMsg := ""
-			if lr.Error != nil {
-				errorMsg = lr.Error.String()
-			}
-			ls.log.Warnf("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
-			return nil, fmt.Errorf("failed to lookup topic: %s", errorMsg)
+			err := fmt.Errorf("failed to lookup topic: %s, error: %s, message: %s", topic, lr.GetError(), lr.GetMessage())
+			ls.log.Warn(err)
+			return nil, err
 		}
 	}
 
