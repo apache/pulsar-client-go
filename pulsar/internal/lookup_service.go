@@ -19,7 +19,6 @@ package internal
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 
 	"github.com/gogo/protobuf/proto"
@@ -140,12 +139,12 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			}, nil
 
 		case pb.CommandLookupTopicResponse_Failed:
-			errorMsg := ""
-			if lr.Error != nil {
-				errorMsg = lr.Error.String()
-			}
-			ls.log.Warnf("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
-			return nil, fmt.Errorf("failed to lookup topic: %s", errorMsg)
+			ls.log.WithFields(log.Fields{
+				"topic":   topic,
+				"error":   lr.GetError(),
+				"message": lr.GetMessage(),
+			}).Warn("Failed to lookup topic")
+			return nil, errors.New(lr.GetError().String())
 		}
 	}
 
