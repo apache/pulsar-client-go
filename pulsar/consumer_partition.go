@@ -108,11 +108,12 @@ type partitionConsumer struct {
 	startMessageID  trackingMessageID
 	lastDequeuedMsg trackingMessageID
 
-	eventsCh        chan interface{}
-	connectedCh     chan struct{}
-	connectClosedCh chan connectionClosed
-	closeCh         chan struct{}
-	clearQueueCh    chan func(id trackingMessageID)
+	eventsCh             chan interface{}
+	connectedCh          chan struct{}
+	connectClosedCh      chan connectionClosed
+	closeCh              chan struct{}
+	clearQueueCh         chan func(id trackingMessageID)
+	clearMessageQueuesCh chan chan struct{}
 
 	nackTracker *negativeAcksTracker
 	dlq         *dlqRouter
@@ -144,6 +145,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		connectClosedCh:      make(chan connectionClosed, 10),
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id trackingMessageID)),
+		clearMessageQueuesCh: make(chan chan struct{}),
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
 		metrics:              metrics,
@@ -361,6 +363,7 @@ func (pc *partitionConsumer) requestSeek(msgID messageID) error {
 		pc.log.WithError(err).Error("Failed to reset to message id")
 		return err
 	}
+	pc.clearMessageChannels()
 	return nil
 }
 
@@ -395,7 +398,15 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to reset to message publish time")
 		seek.err = err
+		return
 	}
+	pc.clearMessageChannels()
+}
+
+func (pc *partitionConsumer) clearMessageChannels() {
+	doneCh := make(chan struct{})
+	pc.clearMessageQueuesCh <- doneCh
+	<-doneCh
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
@@ -659,6 +670,27 @@ func (pc *partitionConsumer) dispatcher() {
 			}
 
 			clearQueueCb(nextMessageInQueue)
+
+		case doneCh := <-pc.clearMessageQueuesCh:
+			for len(pc.queueCh) > 0 {
+				<-pc.queueCh
+			}
+			for len(pc.messageCh) > 0 {
+				<-pc.messageCh
+			}
+			messages = nil
+
+			// reset available permits
+			pc.availablePermits = 0
+			initialPermits := uint32(pc.queueSize)
+
+			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
+			// send initial permits
+			if err := pc.internalFlow(initialPermits); err != nil {
+				pc.log.WithError(err).Error("unable to send initial permits to broker")
+			}
+
+			close(doneCh)
 		}
 	}
 }
