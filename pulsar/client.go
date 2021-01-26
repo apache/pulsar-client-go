@@ -89,9 +89,9 @@ type ClientOptions struct {
 	OperationTimeout time.Duration
 
 	// Set the initial duration of time for a backoff interval (default: 100ms)
-	InitBackoff time.Duration
+	StartingBackoffInterval time.Duration
 	// Set the maximum duration of time for a backoff interval (default: 60s)
-	MaxBackoff time.Duration
+	MaxBackoffInterval time.Duration
 
 	// Configure the authentication provider. (default: no authentication)
 	// Example: `Authentication: NewAuthenticationTLS("my-cert.pem", "my-key.pem")`

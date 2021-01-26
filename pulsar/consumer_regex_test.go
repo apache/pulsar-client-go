@@ -156,8 +156,10 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 
 	cli, ok := c.(*client)
 	assert.True(t, ok)
-	dlq, _ := newDlqRouter(cli, nil, log.DefaultNopLogger(), cli.options.InitBackoff, cli.options.MaxBackoff)
-	rlq, _ := newRetryRouter(cli, nil, false, log.DefaultNopLogger(), cli.options.InitBackoff, cli.options.MaxBackoff)
+	dlq, _ := newDlqRouter(cli, nil, log.DefaultNopLogger(),
+		cli.options.StartingBackoffInterval, cli.options.MaxBackoffInterval)
+	rlq, _ := newRetryRouter(cli, nil, false, log.DefaultNopLogger(),
+		cli.options.StartingBackoffInterval, cli.options.MaxBackoffInterval)
 	consumer, err := newRegexConsumer(cli, opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
 	if err != nil {
 		t.Fatal(err)
@@ -195,8 +197,10 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 
 	cli, ok := c.(*client)
 	assert.True(t, ok)
-	dlq, _ := newDlqRouter(cli, nil, log.DefaultNopLogger(), cli.options.InitBackoff, cli.options.MaxBackoff)
-	rlq, _ := newRetryRouter(cli, nil, false, log.DefaultNopLogger(), cli.options.InitBackoff, cli.options.MaxBackoff)
+	dlq, _ := newDlqRouter(cli, nil, log.DefaultNopLogger(),
+		cli.options.StartingBackoffInterval, cli.options.MaxBackoffInterval)
+	rlq, _ := newRetryRouter(cli, nil, false, log.DefaultNopLogger(),
+		cli.options.StartingBackoffInterval, cli.options.MaxBackoffInterval)
 	consumer, err := newRegexConsumer(cli, opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
 	if err != nil {
 		t.Fatal(err)
