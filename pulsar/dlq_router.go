@@ -38,7 +38,8 @@ type dlqRouter struct {
 	maxBackoff  time.Duration
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger, initBackoff, maxBackoff time.Duration) (*dlqRouter, error) {
+func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger,
+	initBackoff, maxBackoff time.Duration) (*dlqRouter, error) {
 	r := &dlqRouter{
 		client:      client,
 		policy:      policy,
