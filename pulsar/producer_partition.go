@@ -267,7 +267,7 @@ func (p *partitionProducer) reconnectToBroker() {
 	}
 
 	for maxRetry != 0 {
-		if p.getProduerState() != producerReady {
+		if p.getProducerState() != producerReady {
 			// Producer is already closing
 			return
 		}
@@ -447,7 +447,7 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 
 func (p *partitionProducer) failTimeoutMessages() {
 	// since Closing/Closed connection couldn't be reopen, load and compare is safe
-	state := p.getProduerState()
+	state := p.getProducerState()
 	if state == producerClosing || state == producerClosed {
 		return
 	}
@@ -707,7 +707,7 @@ func (p *partitionProducer) Flush() error {
 	return cp.err
 }
 
-func (p *partitionProducer) getProduerState() producerState {
+func (p *partitionProducer) getProducerState() producerState {
 	return producerState(p.state.Load())
 }
 
@@ -722,7 +722,7 @@ func (p *partitionProducer) casProducerState(oldState, newState producerState) b
 }
 
 func (p *partitionProducer) Close() {
-	if p.getProduerState() != producerReady {
+	if p.getProducerState() != producerReady {
 		// Producer is closing
 		return
 	}
