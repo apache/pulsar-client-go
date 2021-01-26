@@ -319,7 +319,7 @@ func (c *connection) waitUntilReady() error {
 	defer c.Unlock()
 
 	for c.getState() != connectionReady {
-		c.log.Debugf("Wait until connection is ready. State: %s", connectionState(c.getState()))
+		c.log.Debugf("Wait until connection is ready. State: %s", c.getState().String())
 		if c.getState() == connectionClosed {
 			return errors.New("connection error")
 		}
