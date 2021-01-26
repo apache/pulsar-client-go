@@ -31,11 +31,15 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+
+	ua "go.uber.org/atomic"
 )
+
+type producerState int32
 
 const (
 	// producer states
-	producerInit int32 = iota
+	producerInit = iota
 	producerReady
 	producerClosing
 	producerClosed
@@ -51,7 +55,7 @@ var (
 )
 
 type partitionProducer struct {
-	state  int32
+	state  ua.Int32
 	client *client
 	topic  string
 	log    log.Logger
@@ -96,7 +100,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	logger := client.log.SubLogger(log.Fields{"topic": topic})
 
 	p := &partitionProducer{
-		state:            producerInit,
 		client:           client,
 		topic:            topic,
 		log:              logger,
@@ -111,6 +114,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
 	}
+	p.setProducerState(producerInit)
 
 	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
 		p.schemaInfo = options.Schema.GetSchemaInfo()
@@ -134,7 +138,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	})
 
 	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
-	atomic.StoreInt32(&p.state, producerReady)
+	p.setProducerState(producerReady)
 
 	go p.runEventsLoop()
 
@@ -263,7 +267,7 @@ func (p *partitionProducer) reconnectToBroker() {
 	}
 
 	for maxRetry != 0 {
-		if atomic.LoadInt32(&p.state) != producerReady {
+		if p.getProducerState() != producerReady {
 			// Producer is already closing
 			return
 		}
@@ -443,7 +447,7 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 
 func (p *partitionProducer) failTimeoutMessages() {
 	// since Closing/Closed connection couldn't be reopen, load and compare is safe
-	state := atomic.LoadInt32(&p.state)
+	state := p.getProducerState()
 	if state == producerClosing || state == producerClosed {
 		return
 	}
@@ -661,7 +665,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer req.waitGroup.Done()
-	if !atomic.CompareAndSwapInt32(&p.state, producerReady, producerClosing) {
+	if !p.casProducerState(producerReady, producerClosing) {
 		return
 	}
 
@@ -683,7 +687,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.WithError(err).Warn("Failed to close batch builder")
 	}
 
-	atomic.StoreInt32(&p.state, producerClosed)
+	p.setProducerState(producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
 }
@@ -703,8 +707,22 @@ func (p *partitionProducer) Flush() error {
 	return cp.err
 }
 
+func (p *partitionProducer) getProducerState() producerState {
+	return producerState(p.state.Load())
+}
+
+func (p *partitionProducer) setProducerState(state producerState) {
+	p.state.Swap(int32(state))
+}
+
+// set a new consumerState and return the last state
+// returns bool if the new state has been set or not
+func (p *partitionProducer) casProducerState(oldState, newState producerState) bool {
+	return p.state.CAS(int32(oldState), int32(newState))
+}
+
 func (p *partitionProducer) Close() {
-	if atomic.LoadInt32(&p.state) != producerReady {
+	if p.getProducerState() != producerReady {
 		// Producer is closing
 		return
 	}

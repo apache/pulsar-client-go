@@ -29,6 +29,8 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+
+	"go.uber.org/atomic"
 )
 
 var (
@@ -38,7 +40,8 @@ var (
 type consumerState int
 
 const (
-	consumerInit consumerState = iota
+	// consumer states
+	consumerInit = iota
 	consumerReady
 	consumerClosing
 	consumerClosed
@@ -86,7 +89,7 @@ type partitionConsumer struct {
 
 	// this is needed for sending ConsumerMessage on the messageCh
 	parentConsumer Consumer
-	state          consumerState
+	state          atomic.Int32
 	options        *partitionConsumerOpts
 
 	conn internal.Connection
@@ -128,7 +131,6 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	messageCh chan ConsumerMessage, dlq *dlqRouter,
 	metrics *internal.TopicMetrics) (*partitionConsumer, error) {
 	pc := &partitionConsumer{
-		state:                consumerInit,
 		parentConsumer:       parent,
 		client:               client,
 		options:              options,
@@ -150,6 +152,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		metrics:              metrics,
 	}
+	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
 		"topic":        options.topic,
@@ -165,7 +168,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		return nil, err
 	}
 	pc.log.Info("Created consumer")
-	pc.state = consumerReady
+	pc.setConsumerState(consumerReady)
 
 	if pc.options.startMessageIDInclusive && pc.startMessageID == lastestMessageID {
 		msgID, err := pc.requestGetLastMessageID()
@@ -203,12 +206,13 @@ func (pc *partitionConsumer) Unsubscribe() error {
 func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	defer close(unsub.doneCh)
 
-	if pc.state == consumerClosed || pc.state == consumerClosing {
+	state := pc.getConsumerState()
+	if state == consumerClosed || state == consumerClosing {
 		pc.log.Error("Failed to unsubscribe consumer, the consumer is closing or consumer has been closed")
 		return
 	}
 
-	pc.state = consumerClosing
+	pc.setConsumerState(consumerClosing)
 	requestID := pc.client.rpcClient.NewRequestID()
 	cmdUnsubscribe := &pb.CommandUnsubscribe{
 		RequestId:  proto.Uint64(requestID),
@@ -219,7 +223,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 		pc.log.WithError(err).Error("Failed to unsubscribe consumer")
 		unsub.err = err
 		// Set the state to ready for closing the consumer
-		pc.state = consumerReady
+		pc.setConsumerState(consumerReady)
 		// Should'nt remove the consumer handler
 		return
 	}
@@ -229,7 +233,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 		pc.nackTracker.Close()
 	}
 	pc.log.Infof("The consumer[%d] successfully unsubscribed", pc.consumerID)
-	pc.state = consumerClosed
+	pc.setConsumerState(consumerClosed)
 }
 
 func (pc *partitionConsumer) getLastMessageID() (trackingMessageID, error) {
@@ -309,8 +313,17 @@ func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
 		})
 }
 
+func (pc *partitionConsumer) getConsumerState() consumerState {
+	return consumerState(pc.state.Load())
+}
+
+func (pc *partitionConsumer) setConsumerState(state consumerState) {
+	pc.state.Store(int32(state))
+}
+
 func (pc *partitionConsumer) Close() {
-	if pc.state != consumerReady {
+
+	if pc.getConsumerState() != consumerReady {
 		return
 	}
 
@@ -339,7 +352,8 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 }
 
 func (pc *partitionConsumer) requestSeek(msgID messageID) error {
-	if pc.state == consumerClosing || pc.state == consumerClosed {
+	state := pc.getConsumerState()
+	if state == consumerClosing || state == consumerClosed {
 		pc.log.Error("Consumer was already closed")
 		return nil
 	}
@@ -382,7 +396,8 @@ func (pc *partitionConsumer) SeekByTime(time time.Time) error {
 func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 	defer close(seek.doneCh)
 
-	if pc.state == consumerClosing || pc.state == consumerClosed {
+	state := pc.getConsumerState()
+	if state == consumerClosing || state == consumerClosed {
 		pc.log.Error("Consumer was already closed")
 		return
 	}
@@ -773,7 +788,8 @@ func (pc *partitionConsumer) runEventsLoop() {
 
 func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	defer close(req.doneCh)
-	if pc.state != consumerReady {
+	state := pc.getConsumerState()
+	if state != consumerReady {
 		// this might be redundant but to ensure nack tracker is closed
 		if pc.nackTracker != nil {
 			pc.nackTracker.Close()
@@ -781,7 +797,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		return
 	}
 
-	if pc.state == consumerClosed || pc.state == consumerClosing {
+	if state == consumerClosed || state == consumerClosing {
 		pc.log.Error("The consumer is closing or has been closed")
 		if pc.nackTracker != nil {
 			pc.nackTracker.Close()
@@ -789,7 +805,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		return
 	}
 
-	pc.state = consumerClosing
+	pc.setConsumerState(consumerClosing)
 	pc.log.Infof("Closing consumer=%d", pc.consumerID)
 
 	requestID := pc.client.rpcClient.NewRequestID()
@@ -808,7 +824,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		provider.Close()
 	}
 
-	pc.state = consumerClosed
+	pc.setConsumerState(consumerClosed)
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
 	if pc.nackTracker != nil {
 		pc.nackTracker.Close()
@@ -829,7 +845,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 	}
 
 	for maxRetry != 0 {
-		if pc.state != consumerReady {
+		if pc.getConsumerState() != consumerReady {
 			// Consumer is already closing
 			return
 		}
@@ -947,7 +963,7 @@ func (pc *partitionConsumer) grabConn() error {
 }
 
 func (pc *partitionConsumer) clearQueueAndGetNextMessage() trackingMessageID {
-	if pc.state != consumerReady {
+	if pc.getConsumerState() != consumerReady {
 		return trackingMessageID{}
 	}
 	wg := &sync.WaitGroup{}
