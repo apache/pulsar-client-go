@@ -33,13 +33,18 @@ type dlqRouter struct {
 	messageCh chan ConsumerMessage
 	closeCh   chan interface{}
 	log       log.Logger
+
+	initBackoff time.Duration
+	maxBackoff  time.Duration
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger) (*dlqRouter, error) {
+func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger, initBackoff, maxBackoff time.Duration) (*dlqRouter, error) {
 	r := &dlqRouter{
-		client: client,
-		policy: policy,
-		log:    logger,
+		client:      client,
+		policy:      policy,
+		log:         logger,
+		initBackoff: initBackoff,
+		maxBackoff:  maxBackoff,
 	}
 
 	if policy != nil {
@@ -135,7 +140,7 @@ func (r *dlqRouter) getProducer() Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := internal.NewBackoff(100*time.Millisecond, 60*time.Second, 0)
+	backoff := internal.NewBackoff(r.initBackoff, r.maxBackoff, 0)
 	for {
 		producer, err := r.client.CreateProducer(ProducerOptions{
 			Topic:                   r.policy.DeadLetterTopic,

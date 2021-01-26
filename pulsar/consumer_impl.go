@@ -132,11 +132,12 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 	}
 
-	dlq, err := newDlqRouter(client, options.DLQ, client.log)
+	dlq, err := newDlqRouter(client, options.DLQ, client.log, client.options.InitBackoff, client.options.MaxBackoff)
 	if err != nil {
 		return nil, err
 	}
-	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable, client.log)
+	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable, client.log,
+		client.options.InitBackoff, client.options.MaxBackoff)
 	if err != nil {
 		return nil, err
 	}

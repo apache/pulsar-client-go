@@ -257,7 +257,7 @@ func (p *partitionProducer) ConnectionClosed() {
 func (p *partitionProducer) reconnectToBroker() {
 	var (
 		maxRetry int
-		backoff  = internal.NewBackoff(100*time.Millisecond, 60*time.Second,
+		backoff  = internal.NewBackoff(p.client.options.InitBackoff, p.client.options.MaxBackoff,
 			internal.MaxDuration(100*time.Millisecond, p.options.SendTimeout-100*time.Millisecond))
 	)
 

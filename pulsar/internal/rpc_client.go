@@ -59,6 +59,8 @@ type rpcClient struct {
 	serviceURL          *url.URL
 	pool                ConnectionPool
 	requestTimeout      time.Duration
+	initBackoff         time.Duration
+	maxBackoff          time.Duration
 	requestIDGenerator  uint64
 	producerIDGenerator uint64
 	consumerIDGenerator uint64
@@ -67,11 +69,13 @@ type rpcClient struct {
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
-	requestTimeout time.Duration, logger log.Logger, metrics *Metrics) RPCClient {
+	requestTimeout, initBackoff, maxBackoff time.Duration, logger log.Logger, metrics *Metrics) RPCClient {
 	return &rpcClient{
 		serviceURL:     serviceURL,
 		pool:           pool,
 		requestTimeout: requestTimeout,
+		initBackoff:    initBackoff,
+		maxBackoff:     maxBackoff,
 		log:            logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 		metrics:        metrics,
 	}
@@ -84,7 +88,7 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 	if _, ok := err.(net.Error); ok {
 		// We can retry this kind of requests over a connection error because they're
 		// not specific to a particular broker.
-		backoff := NewBackoff(100*time.Millisecond, 60*time.Second, 0)
+		backoff := NewBackoff(c.initBackoff, c.maxBackoff, 0)
 		startTime := time.Now()
 		var retryTime time.Duration
 

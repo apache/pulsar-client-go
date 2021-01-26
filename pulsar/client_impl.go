@@ -36,6 +36,8 @@ import (
 const (
 	defaultConnectionTimeout = 5 * time.Second
 	defaultOperationTimeout  = 30 * time.Second
+	defaultInitBackoff       = 100 * time.Millisecond
+	defaultMaxBackoff        = 60 * time.Second
 )
 
 type client struct {
@@ -45,7 +47,8 @@ type client struct {
 	lookupService internal.LookupService
 	metrics       *internal.Metrics
 
-	log log.Logger
+	log     log.Logger
+	options ClientOptions
 }
 
 func newClient(options ClientOptions) (Client, error) {
@@ -106,6 +109,13 @@ func newClient(options ClientOptions) (Client, error) {
 		operationTimeout = defaultOperationTimeout
 	}
 
+	if options.InitBackoff <= 0 {
+		options.InitBackoff = defaultInitBackoff
+	}
+	if options.MaxBackoff <= 0 {
+		options.MaxBackoff = defaultMaxBackoff
+	}
+
 	maxConnectionsPerHost := options.MaxConnectionsPerBroker
 	if maxConnectionsPerHost <= 0 {
 		maxConnectionsPerHost = 1
@@ -123,8 +133,10 @@ func newClient(options ClientOptions) (Client, error) {
 			metrics),
 		log:     logger,
 		metrics: metrics,
+		options: options,
 	}
-	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger, metrics)
+	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, options.InitBackoff, options.MaxBackoff,
+		logger, metrics)
 	c.lookupService = internal.NewLookupService(c.rpcClient, url, tlsConfig != nil, logger, metrics)
 	c.handlers = internal.NewClientHandlers()
 
