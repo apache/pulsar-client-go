@@ -70,3 +70,21 @@ func ParseRelativeTimeInSeconds(relativeTime string) (time.Duration, error) {
 		return -1, errors.Errorf("invalid time unit '%s'", unitTime)
 	}
 }
+
+func MaxDuration(d1 time.Duration, ds ...time.Duration) time.Duration {
+	for _, d := range ds {
+		if d > d1 {
+			d1 = d
+		}
+	}
+	return d1
+}
+
+func MinDuration(d1 time.Duration, ds ...time.Duration) time.Duration {
+	for _, d := range ds {
+		if d < d1 {
+			d1 = d
+		}
+	}
+	return d1
+}

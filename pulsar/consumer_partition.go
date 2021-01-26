@@ -819,7 +819,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 func (pc *partitionConsumer) reconnectToBroker() {
 	var (
 		maxRetry int
-		backoff  = internal.Backoff{}
+		backoff  = internal.NewBackoff(100*time.Millisecond, 60*time.Second, 0)
 	)
 
 	if pc.options.maxReconnectToBroker == nil {

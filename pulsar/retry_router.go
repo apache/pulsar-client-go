@@ -119,7 +119,7 @@ func (r *retryRouter) getProducer() Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.Backoff{}
+	backoff := internal.NewBackoff(100*time.Millisecond, 60*time.Second, 0)
 	for {
 		producer, err := r.client.CreateProducer(ProducerOptions{
 			Topic:                   r.policy.RetryLetterTopic,

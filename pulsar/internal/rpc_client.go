@@ -84,7 +84,7 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 	if _, ok := err.(net.Error); ok {
 		// We can retry this kind of requests over a connection error because they're
 		// not specific to a particular broker.
-		backoff := Backoff{100 * time.Millisecond}
+		backoff := NewBackoff(100*time.Millisecond, 60*time.Second, 0)
 		startTime := time.Now()
 		var retryTime time.Duration
 

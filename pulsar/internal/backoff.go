@@ -18,28 +18,64 @@
 package internal
 
 import (
+	"math/rand"
 	"time"
 )
 
-// Backoff
-type Backoff struct {
-	backoff time.Duration
+func init() {
+	rand.Seed(time.Now().UnixNano())
 }
 
-const (
-	minBackoff = 100 * time.Millisecond
-	maxBackoff = 60 * time.Second
-)
+type Backoff struct {
+	initGap, nextGap, maxGap time.Duration
 
-// Next
+	firstRetry       time.Time
+	mandatoryStop    time.Duration
+	mandatoryStopped bool
+}
+
+func NewBackoff(initGap, maxGap, mandatoryStop time.Duration) *Backoff {
+	return &Backoff{
+		initGap:          initGap,
+		nextGap:          initGap,
+		maxGap:           maxGap,
+		firstRetry:       time.Time{},
+		mandatoryStop:    mandatoryStop,
+		mandatoryStopped: false,
+	}
+}
+
+// for test mock convenience
+type nowTimeProvider func() time.Time
+
+var systemNow nowTimeProvider = func() time.Time {
+	return time.Now()
+}
+
 func (b *Backoff) Next() time.Duration {
-	// Double the delay each time
-	b.backoff += b.backoff
-	if b.backoff.Nanoseconds() < minBackoff.Nanoseconds() {
-		b.backoff = minBackoff
-	} else if b.backoff.Nanoseconds() > maxBackoff.Nanoseconds() {
-		b.backoff = maxBackoff
+	curGap := b.nextGap
+	if curGap < b.maxGap {
+		b.nextGap = MinDuration(2*b.nextGap, b.maxGap)
 	}
 
-	return b.backoff
+	if b.mandatoryStop > 0 && !b.mandatoryStopped {
+		now := systemNow()
+		tried := time.Duration(0)
+		if curGap == b.initGap {
+			b.firstRetry = now
+		} else {
+			tried = now.Sub(b.firstRetry)
+		}
+		if tried+curGap > b.mandatoryStop {
+			// reached mandatory stop, reset current retry gap
+			curGap = MaxDuration(b.mandatoryStop-tried, b.initGap)
+			b.mandatoryStopped = true
+		}
+	}
+
+	// randomly decrease the timeout up to 10% to avoid simultaneous retries
+	if curGap > 10 {
+		curGap -= time.Duration(rand.Int63n(int64(curGap) / 10))
+	}
+	return MaxDuration(curGap, b.initGap)
 }
