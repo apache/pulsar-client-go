@@ -34,6 +34,8 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+
+	ua "go.uber.org/atomic"
 )
 
 const (
@@ -85,9 +87,9 @@ type ConsumerHandler interface {
 type connectionState int32
 
 const (
-	connectionInit   = 0
-	connectionReady  = 1
-	connectionClosed = 2
+	connectionInit = iota
+	connectionReady
+	connectionClosed
 )
 
 func (s connectionState) String() string {
@@ -119,7 +121,7 @@ type incomingCmd struct {
 type connection struct {
 	sync.Mutex
 	cond              *sync.Cond
-	state             int32
+	state             ua.Int32
 	connectionTimeout time.Duration
 	closeOnce         sync.Once
 
@@ -172,7 +174,6 @@ type connectionOptions struct {
 
 func newConnection(opts connectionOptions) *connection {
 	cnx := &connection{
-		state:                int32(connectionInit),
 		connectionTimeout:    opts.connectionTimeout,
 		logicalAddr:          opts.logicalAddr,
 		physicalAddr:         opts.physicalAddr,
@@ -199,6 +200,7 @@ func newConnection(opts connectionOptions) *connection {
 		consumerHandlers: make(map[uint64]ConsumerHandler),
 		metrics:          opts.metrics,
 	}
+	cnx.setState(connectionInit)
 	cnx.reader = newConnectionReader(cnx)
 	cnx.cond = sync.NewCond(cnx)
 	return cnx
@@ -316,9 +318,9 @@ func (c *connection) waitUntilReady() error {
 	c.Lock()
 	defer c.Unlock()
 
-	for atomic.LoadInt32(&c.state) != connectionReady {
-		c.log.Debugf("Wait until connection is ready. State: %s", connectionState(atomic.LoadInt32(&c.state)))
-		if atomic.LoadInt32(&c.state) == connectionClosed {
+	for c.getState() != connectionReady {
+		c.log.Debugf("Wait until connection is ready. State: %s", connectionState(c.getState()))
+		if c.getState() == connectionClosed {
 			return errors.New("connection error")
 		}
 		// wait for a new connection state change
@@ -428,7 +430,7 @@ func (c *connection) WriteData(data Buffer) {
 			// 1. blocked, in which case we need to wait until we have space
 			// 2. the connection is already closed, then we need to bail out
 			c.log.Debug("Couldn't write on connection channel immediately")
-			state := connectionState(atomic.LoadInt32(&c.state))
+			state := c.getState()
 			if state != connectionReady {
 				c.log.Debug("Connection was already closed")
 				return
@@ -543,7 +545,7 @@ func (c *connection) Write(data Buffer) {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
-	if atomic.LoadInt32(&c.state) == connectionClosed {
+	if c.getState() == connectionClosed {
 		callback(req, ErrConnectionClosed)
 	} else {
 		c.incomingRequestsCh <- &request{
@@ -555,7 +557,7 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 }
 
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
-	if atomic.LoadInt32(&c.state) == connectionClosed {
+	if c.getState() == connectionClosed {
 		return ErrConnectionClosed
 	}
 
@@ -573,7 +575,7 @@ func (c *connection) internalSendRequest(req *request) {
 		c.pendingReqs[*req.id] = req
 	}
 	c.pendingLock.Unlock()
-	if atomic.LoadInt32(&c.state) == connectionClosed {
+	if c.getState() == connectionClosed {
 		c.log.Warnf("internalSendRequest failed for connectionClosed")
 		if req.callback != nil {
 			req.callback(req.cmd, ErrConnectionClosed)
@@ -757,13 +759,13 @@ func (c *connection) Close() {
 
 	c.cond.Broadcast()
 
-	if atomic.LoadInt32(&c.state) == connectionClosed {
+	if c.getState() == connectionClosed {
 		return
 	}
 
 	c.log.Info("Connection closed")
 	// do not use changeState() since they share the same lock
-	atomic.StoreInt32(&c.state, connectionClosed)
+	c.setState(connectionClosed)
 	c.TriggerClose()
 	c.pingTicker.Stop()
 	c.pingCheckTicker.Stop()
@@ -788,9 +790,17 @@ func (c *connection) Close() {
 
 func (c *connection) changeState(state connectionState) {
 	c.Lock()
-	atomic.StoreInt32(&c.state, int32(state))
+	c.setState(state)
 	c.cond.Broadcast()
 	c.Unlock()
+}
+
+func (c *connection) getState() connectionState {
+	return connectionState(c.state.Load())
+}
+
+func (c *connection) setState(state connectionState) {
+	c.state.Store(int32(state))
 }
 
 func (c *connection) newRequestID() uint64 {
