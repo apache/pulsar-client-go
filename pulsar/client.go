@@ -88,9 +88,9 @@ type ClientOptions struct {
 	// operation will be marked as failed
 	OperationTimeout time.Duration
 
-	// Set the initial duration of time for a backoff interval (default: 100ms)
+	// Set the initial duration of time for a backoff interval, at least 1ms, default 100ms
 	StartingBackoffInterval time.Duration
-	// Set the maximum duration of time for a backoff interval (default: 60s)
+	// Set the maximum duration of time for a backoff interval, at least 1 seconds, default 60 seconds
 	MaxBackoffInterval time.Duration
 
 	// Configure the authentication provider. (default: no authentication)
