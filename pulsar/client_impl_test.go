@@ -448,6 +448,30 @@ func TestNamespaceTopics(t *testing.T) {
 	assert.Equal(t, 2, len(topics))
 }
 
+func TestMisconfiguredBackoff(t *testing.T) {
+	c, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+
+	cli, ok := c.(*client)
+	assert.True(t, ok)
+	assert.Equal(t, defaultInitBackoff, cli.options.StartingBackoffInterval)
+	assert.Equal(t, defaultMaxBackoff, cli.options.MaxBackoffInterval)
+
+	_, err = NewClient(ClientOptions{
+		URL:                     serviceURL,
+		StartingBackoffInterval: 999 * time.Microsecond,
+	})
+	assert.Equal(t, ResultInvalidConfiguration, err.(*Error).Result())
+
+	_, err = NewClient(ClientOptions{
+		URL:                serviceURL,
+		MaxBackoffInterval: 999 * time.Millisecond,
+	})
+	assert.Equal(t, ResultInvalidConfiguration, err.(*Error).Result())
+}
+
 func anonymousNamespacePolicy() map[string]interface{} {
 	return map[string]interface{}{
 		"auth_policies": map[string]interface{}{

@@ -34,10 +34,13 @@ import (
 )
 
 const (
-	defaultConnectionTimeout   = 5 * time.Second
-	defaultOperationTimeout    = 30 * time.Second
-	defaultInitBackoffInterval = 100 * time.Millisecond
-	defaultMaxBackoffInterval  = 60 * time.Second
+	defaultConnectionTimeout = 5 * time.Second
+	defaultOperationTimeout  = 30 * time.Second
+
+	defaultInitBackoff = 100 * time.Millisecond
+	minInitBackoff     = 1 * time.Millisecond
+	defaultMaxBackoff  = 60 * time.Second
+	minMaxBackoff      = 1 * time.Second
 )
 
 type client struct {
@@ -110,10 +113,19 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	if options.StartingBackoffInterval <= 0 {
-		options.StartingBackoffInterval = defaultInitBackoffInterval
+		options.StartingBackoffInterval = defaultInitBackoff
 	}
 	if options.MaxBackoffInterval <= 0 {
-		options.MaxBackoffInterval = defaultMaxBackoffInterval
+		options.MaxBackoffInterval = defaultMaxBackoff
+	}
+	// prevent misconfigured clients make a flood of requests
+	if options.StartingBackoffInterval < minInitBackoff {
+		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("StartingBackoffInterval %v shouldn't be less than %v",
+			options.StartingBackoffInterval, minInitBackoff))
+	}
+	if options.MaxBackoffInterval < minMaxBackoff {
+		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("MaxBackoffInterval %v shouldn't be less than %v",
+			options.StartingBackoffInterval, minMaxBackoff))
 	}
 
 	maxConnectionsPerHost := options.MaxConnectionsPerBroker
