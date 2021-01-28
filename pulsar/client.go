@@ -90,7 +90,7 @@ type ClientOptions struct {
 
 	// Set the initial duration of time for a backoff interval, at least 1ms, default 100ms
 	StartingBackoffInterval time.Duration
-	// Set the maximum duration of time for a backoff interval, at least 1 seconds, default 60 seconds
+	// Set the maximum duration of time for a backoff interval, at least 1 second, default 60 seconds
 	MaxBackoffInterval time.Duration
 
 	// Configure the authentication provider. (default: no authentication)
