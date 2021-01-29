@@ -373,7 +373,7 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 func (pc *partitionConsumer) requestSeek(msgID messageID) error {
 	state := pc.getConsumerState()
 	if state == consumerClosing || state == consumerClosed {
-		pc.log.Error("Consumer was already closed")
+		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
 		return nil
 	}
 
@@ -417,7 +417,7 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 
 	state := pc.getConsumerState()
 	if state == consumerClosing || state == consumerClosed {
-		pc.log.Error("Consumer was already closed")
+		pc.log.WithField("state", pc.state).Error("Consumer is closing or has closed")
 		return
 	}
 
@@ -817,7 +817,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	}
 
 	if state == consumerClosed || state == consumerClosing {
-		pc.log.Error("The consumer is closing or has been closed")
+		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
 		if pc.nackTracker != nil {
 			pc.nackTracker.Close()
 		}
