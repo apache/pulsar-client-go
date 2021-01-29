@@ -42,7 +42,7 @@ func (m *MockClientCredentialsProvider) GetClientCredentials() (*KeyFile, error)
 var _ ClientCredentialsProvider = &MockClientCredentialsProvider{}
 
 var clientCredentials = KeyFile{
-	Type:         KeyFileTypeServiceAccount,
+	Type:         "resource",
 	ClientID:     "test_clientID",
 	ClientSecret: "test_clientSecret",
 	ClientEmail:  "test_clientEmail",
