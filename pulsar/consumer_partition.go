@@ -47,6 +47,21 @@ const (
 	consumerClosed
 )
 
+func (s consumerState) String() string {
+	switch s {
+	case consumerInit:
+		return "Initializing"
+	case consumerReady:
+		return "Ready"
+	case consumerClosing:
+		return "Closing"
+	case consumerClosed:
+		return "Closed"
+	default:
+		return "Unknown"
+	}
+}
+
 type subscriptionMode int
 
 const (
@@ -195,6 +210,11 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 }
 
 func (pc *partitionConsumer) Unsubscribe() error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to unsubscribe closing or closed consumer")
+		return nil
+	}
+
 	req := &unsubscribeRequest{doneCh: make(chan struct{})}
 	pc.eventsCh <- req
 
@@ -206,9 +226,8 @@ func (pc *partitionConsumer) Unsubscribe() error {
 func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	defer close(unsub.doneCh)
 
-	state := pc.getConsumerState()
-	if state == consumerClosed || state == consumerClosing {
-		pc.log.Error("Failed to unsubscribe consumer, the consumer is closing or consumer has been closed")
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to unsubscribe closing or closed consumer")
 		return
 	}
 
