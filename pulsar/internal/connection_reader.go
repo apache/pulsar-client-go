@@ -74,8 +74,9 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 
 	// We have enough to read frame size
 	frameSize := r.buffer.ReadUint32()
-	if r.cnx.maxMessageSize != 0 && int32(frameSize) > (r.cnx.maxMessageSize+MessageFramePadding) {
-		frameSizeError := fmt.Errorf("Received too big frame size. size=%d maxFrameSize=%d", frameSize, r.cnx.maxMessageSize+MessageFramePadding)
+	maxFrameSize := r.cnx.maxMessageSize + MessageFramePadding
+	if r.cnx.maxMessageSize != 0 && int32(frameSize) > maxFrameSize {
+		frameSizeError := fmt.Errorf("received too big frame size=%d maxFrameSize=%d", frameSize, maxFrameSize)
 		r.cnx.log.Error(frameSizeError)
 		r.cnx.TriggerClose()
 		return nil, nil, frameSizeError
