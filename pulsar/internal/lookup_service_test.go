@@ -117,9 +117,10 @@ func TestLookupSuccess(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -149,9 +150,10 @@ func TestTlsLookupSuccess(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -181,9 +183,10 @@ func TestLookupWithProxy(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -214,9 +217,10 @@ func TestTlsLookupWithProxy(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -248,14 +252,16 @@ func TestLookupWithRedirect(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 			{
-				RequestId:     proto.Uint64(2),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(true),
+				RequestId:              proto.Uint64(2),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(true),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -292,14 +298,16 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 			{
-				RequestId:     proto.Uint64(2),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(true),
+				RequestId:              proto.Uint64(2),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(true),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -335,9 +343,10 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -365,9 +374,10 @@ func TestLookupWithLookupFailure(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
