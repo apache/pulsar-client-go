@@ -41,24 +41,24 @@ type LookupService interface {
 }
 
 type lookupService struct {
-	rpcClient  RPCClient
-	serviceURL *url.URL
-	tlsEnabled bool
+	rpcClient    RPCClient
+	serviceURL   *url.URL
+	tlsEnabled   bool
 	listenerName string
-	log        log.Logger
-	metrics    *Metrics
+	log          log.Logger
+	metrics      *Metrics
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL,
 	tlsEnabled bool, listenerName string, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
-		rpcClient:  rpcClient,
-		serviceURL: serviceURL,
-		tlsEnabled: tlsEnabled,
+		rpcClient:    rpcClient,
+		serviceURL:   serviceURL,
+		tlsEnabled:   tlsEnabled,
 		listenerName: listenerName,
-		log:        logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
-		metrics:    metrics,
+		log:          logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		metrics:      metrics,
 	}
 }
 
