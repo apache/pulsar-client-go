@@ -130,7 +130,7 @@ func TestLookupSuccess(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -162,7 +162,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, true, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -195,7 +195,7 @@ func TestLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -228,7 +228,7 @@ func TestTlsLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, true, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -272,7 +272,7 @@ func TestLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -316,7 +316,7 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, true, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -349,7 +349,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(false),
 			},
 		},
-	}, url, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -377,7 +377,7 @@ func TestLookupWithLookupFailure(t *testing.T) {
 				Authoritative: proto.Bool(true),
 			},
 		},
-	}, url, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
