@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -794,20 +795,22 @@ func TestConsumerSeek(t *testing.T) {
 	assert.Nil(t, err)
 	defer consumer.Close()
 
-	const N = 10
+	// Use value bigger than 1000 to full-fill queue channel with size 1000 and message channel with size 10
+	const N = 1100
 	var seekID MessageID
-	for i := 0; i < 10; i++ {
+	for i := 0; i < N; i++ {
 		id, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
 		assert.Nil(t, err)
 
-		if i == 4 {
+		if i == N-50 {
 			seekID = id
 		}
 	}
 
-	for i := 0; i < N; i++ {
+	// Don't consume all messages so some stay in queues
+	for i := 0; i < N-20; i++ {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
@@ -819,7 +822,7 @@ func TestConsumerSeek(t *testing.T) {
 
 	msg, err := consumer.Receive(ctx)
 	assert.Nil(t, err)
-	assert.Equal(t, "hello-4", string(msg.Payload()))
+	assert.Equal(t, fmt.Sprintf("hello-%d", N-50), string(msg.Payload()))
 }
 
 func TestConsumerSeekByTime(t *testing.T) {
@@ -846,19 +849,21 @@ func TestConsumerSeekByTime(t *testing.T) {
 	assert.Nil(t, err)
 	defer consumer.Close()
 
-	const N = 10
+	// Use value bigger than 1000 to full-fill queue channel with size 1000 and message channel with size 10
+	const N = 1100
 	resetTimeStr := "100s"
 	retentionTimeInSecond, err := internal.ParseRelativeTimeInSeconds(resetTimeStr)
 	assert.Nil(t, err)
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < N; i++ {
 		_, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
 		assert.Nil(t, err)
 	}
 
-	for i := 0; i < N; i++ {
+	// Don't consume all messages so some stay in queues
+	for i := 0; i < N-20; i++ {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
@@ -1148,6 +1153,9 @@ func TestDLQMultiTopics(t *testing.T) {
 
 func TestRLQ(t *testing.T) {
 	topic := newTopicName()
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/partitions"
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
+
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
 	maxRedeliveries := 2
 	N := 100
@@ -1711,4 +1719,287 @@ func TestConsumerName(t *testing.T) {
 	defer consumer.Close()
 
 	assert.Equal(consumerName, consumer.Name())
+}
+
+func TestKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
+	const MsgBatchCount = 100
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/test-key-based-batch-with-key-shared"
+
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "sub-1",
+		Type:             KeyShared,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "sub-1",
+		Type:             KeyShared,
+	})
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		DisableBatching:     false,
+		BatcherBuilderType:  KeyBasedBatchBuilder,
+		BatchingMaxMessages: 10,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	keys := []string{"key1", "key2", "key3"}
+	for i := 0; i < MsgBatchCount; i++ {
+		for _, k := range keys {
+			producer.SendAsync(ctx, &ProducerMessage{
+				Key:     k,
+				Payload: []byte(fmt.Sprintf("value-%d", i)),
+			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+				assert.Nil(t, err)
+			},
+			)
+		}
+	}
+
+	receivedConsumer1 := 0
+	receivedConsumer2 := 0
+	consumer1Keys := make(map[string]int)
+	consumer2Keys := make(map[string]int)
+	for (receivedConsumer1 + receivedConsumer2) < 300 {
+		select {
+		case cm, ok := <-consumer1.Chan():
+			if !ok {
+				break
+			}
+			receivedConsumer1++
+			cnt := 0
+			if _, has := consumer1Keys[cm.Key()]; has {
+				cnt = consumer1Keys[cm.Key()]
+			}
+			assert.Equal(
+				t, fmt.Sprintf("value-%d", cnt),
+				string(cm.Payload()),
+			)
+			consumer1Keys[cm.Key()] = cnt + 1
+			consumer1.Ack(cm.Message)
+		case cm, ok := <-consumer2.Chan():
+			if !ok {
+				break
+			}
+			receivedConsumer2++
+			cnt := 0
+			if _, has := consumer2Keys[cm.Key()]; has {
+				cnt = consumer2Keys[cm.Key()]
+			}
+			assert.Equal(
+				t, fmt.Sprintf("value-%d", cnt),
+				string(cm.Payload()),
+			)
+			consumer2Keys[cm.Key()] = cnt + 1
+			consumer2.Ack(cm.Message)
+		}
+	}
+
+	assert.NotEqual(t, 0, receivedConsumer1)
+	assert.NotEqual(t, 0, receivedConsumer2)
+	assert.Equal(t, len(consumer1Keys)*MsgBatchCount, receivedConsumer1)
+	assert.Equal(t, len(consumer2Keys)*MsgBatchCount, receivedConsumer2)
+
+	fmt.Printf("TestKeyBasedBatchProducerConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
+		receivedConsumer1, receivedConsumer2)
+	assert.Equal(t, 300, receivedConsumer1+receivedConsumer2)
+
+	fmt.Printf("TestKeyBasedBatchProducerConsumerKeyShared received messages keys consumer1: %v consumser2: %v\n",
+		consumer1Keys, consumer2Keys)
+}
+
+func TestOrderingOfKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
+	const MsgBatchCount = 10
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/test-ordering-of-key-based-batch-with-key-shared"
+
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "sub-1",
+		Type:             KeyShared,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		DisableBatching:         false,
+		BatcherBuilderType:      KeyBasedBatchBuilder,
+		BatchingMaxMessages:     30,
+		BatchingMaxPublishDelay: time.Second * 5,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	keys := []string{"key1", "key2", "key3"}
+	for i := 0; i < MsgBatchCount; i++ {
+		for _, k := range keys {
+			producer.SendAsync(ctx, &ProducerMessage{
+				Key:     k,
+				Payload: []byte(fmt.Sprintf("value-%d", i)),
+			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+				assert.Nil(t, err)
+			},
+			)
+		}
+	}
+
+	var receivedKey string
+	var receivedMessageIndex int
+	for i := 0; i < len(keys)*MsgBatchCount; i++ {
+		cm, ok := <-consumer1.Chan()
+		if !ok {
+			break
+		}
+		if receivedKey != cm.Key() {
+			receivedKey = cm.Key()
+			receivedMessageIndex = 0
+		}
+		assert.Equal(
+			t, fmt.Sprintf("value-%d", receivedMessageIndex%10),
+			string(cm.Payload()),
+		)
+		consumer1.Ack(cm.Message)
+		receivedMessageIndex++
+	}
+
+	// Test OrderingKey
+	for i := 0; i < MsgBatchCount; i++ {
+		for _, k := range keys {
+			u := uuid.New()
+			producer.SendAsync(ctx, &ProducerMessage{
+				Key:         u.String(),
+				OrderingKey: k,
+				Payload:     []byte(fmt.Sprintf("value-%d", i)),
+			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+				assert.Nil(t, err)
+			},
+			)
+		}
+	}
+
+	receivedKey = ""
+	receivedMessageIndex = 0
+	for i := 0; i < len(keys)*MsgBatchCount; i++ {
+		cm, ok := <-consumer1.Chan()
+		if !ok {
+			break
+		}
+		if receivedKey != cm.OrderingKey() {
+			receivedKey = cm.OrderingKey()
+			receivedMessageIndex = 0
+		}
+		assert.Equal(
+			t, fmt.Sprintf("value-%d", receivedMessageIndex%10),
+			string(cm.Payload()),
+		)
+		consumer1.Ack(cm.Message)
+		receivedMessageIndex++
+	}
+
+}
+
+func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
+	client, err := NewClient(
+		ClientOptions{
+			URL: lookupURL,
+		},
+	)
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/test-key-shared-with-ordering-key"
+
+	consumer1, err := client.Subscribe(
+		ConsumerOptions{
+			Topic:            topic,
+			SubscriptionName: "sub-1",
+			Type:             KeyShared,
+		},
+	)
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	consumer2, err := client.Subscribe(
+		ConsumerOptions{
+			Topic:            topic,
+			SubscriptionName: "sub-1",
+			Type:             KeyShared,
+		},
+	)
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(
+		ProducerOptions{
+			Topic:           topic,
+			DisableBatching: true,
+		},
+	)
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	for i := 0; i < 100; i++ {
+		u := uuid.New()
+		_, err := producer.Send(
+			ctx, &ProducerMessage{
+				Key:         u.String(),
+				OrderingKey: fmt.Sprintf("key-shared-%d", i%3),
+				Payload:     []byte(fmt.Sprintf("value-%d", i)),
+			},
+		)
+		assert.Nil(t, err)
+	}
+
+	receivedConsumer1 := 0
+	receivedConsumer2 := 0
+	for (receivedConsumer1 + receivedConsumer2) < 100 {
+		select {
+		case cm, ok := <-consumer1.Chan():
+			if !ok {
+				break
+			}
+			receivedConsumer1++
+			consumer1.Ack(cm.Message)
+		case cm, ok := <-consumer2.Chan():
+			if !ok {
+				break
+			}
+			receivedConsumer2++
+			consumer2.Ack(cm.Message)
+		}
+	}
+
+	assert.NotEqual(t, 0, receivedConsumer1)
+	assert.NotEqual(t, 0, receivedConsumer2)
+
+	fmt.Printf(
+		"TestConsumerKeySharedWithOrderingKey received messages consumer1: %d consumser2: %d\n",
+		receivedConsumer1, receivedConsumer2,
+	)
+	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
 }

@@ -76,19 +76,19 @@ func (l *logrusWrapper) Error(args ...interface{}) {
 }
 
 func (l *logrusWrapper) Debugf(format string, args ...interface{}) {
-	l.l.Debugf(format, args)
+	l.l.Debugf(format, args...)
 }
 
 func (l *logrusWrapper) Infof(format string, args ...interface{}) {
-	l.l.Infof(format, args)
+	l.l.Infof(format, args...)
 }
 
 func (l *logrusWrapper) Warnf(format string, args ...interface{}) {
-	l.l.Warnf(format, args)
+	l.l.Warnf(format, args...)
 }
 
 func (l *logrusWrapper) Errorf(format string, args ...interface{}) {
-	l.l.Errorf(format, args)
+	l.l.Errorf(format, args...)
 }
 
 type logrusEntry struct {
@@ -124,17 +124,17 @@ func (l logrusEntry) Error(args ...interface{}) {
 }
 
 func (l logrusEntry) Debugf(format string, args ...interface{}) {
-	l.e.Debugf(format, args)
+	l.e.Debugf(format, args...)
 }
 
 func (l logrusEntry) Infof(format string, args ...interface{}) {
-	l.e.Infof(format, args)
+	l.e.Infof(format, args...)
 }
 
 func (l logrusEntry) Warnf(format string, args ...interface{}) {
-	l.e.Warnf(format, args)
+	l.e.Warnf(format, args...)
 }
 
 func (l logrusEntry) Errorf(format string, args ...interface{}) {
-	l.e.Errorf(format, args)
+	l.e.Errorf(format, args...)
 }

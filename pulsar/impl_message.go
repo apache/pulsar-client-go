@@ -71,6 +71,10 @@ func (id trackingMessageID) ack() bool {
 	return true
 }
 
+func (id messageID) isEntryIDValid() bool {
+	return id.entryID >= 0
+}
+
 func (id messageID) greater(other messageID) bool {
 	if id.ledgerID != other.ledgerID {
 		return id.ledgerID > other.ledgerID
@@ -170,6 +174,7 @@ type message struct {
 	publishTime         time.Time
 	eventTime           time.Time
 	key                 string
+	orderingKey         string
 	producerName        string
 	payLoad             []byte
 	msgID               MessageID
@@ -207,6 +212,10 @@ func (msg *message) EventTime() time.Time {
 
 func (msg *message) Key() string {
 	return msg.key
+}
+
+func (msg *message) OrderingKey() string {
+	return msg.orderingKey
 }
 
 func (msg *message) RedeliveryCount() uint32 {

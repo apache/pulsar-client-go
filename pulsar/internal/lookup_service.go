@@ -19,22 +19,12 @@ package internal
 
 import (
 	"errors"
-	"fmt"
 	"net/url"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-)
-
-var (
-	lookupRequestsCount = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_lookup_count",
-		Help: "Counter of lookup requests made by the client",
-	})
 )
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
@@ -51,22 +41,24 @@ type LookupService interface {
 }
 
 type lookupService struct {
-	rpcClient    RPCClient
-	serviceURL   *url.URL
-	tlsEnabled   bool
+	rpcClient  RPCClient
+	serviceURL *url.URL
+	tlsEnabled bool
 	listenerName string
-	log          log.Logger
+	log        log.Logger
+	metrics    *Metrics
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL,
-	tlsEnabled bool, listenerName string, logger log.Logger) LookupService {
+	tlsEnabled bool, listenerName string, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
-		rpcClient:    rpcClient,
-		serviceURL:   serviceURL,
-		tlsEnabled:   tlsEnabled,
+		rpcClient:  rpcClient,
+		serviceURL: serviceURL,
+		tlsEnabled: tlsEnabled,
 		listenerName: listenerName,
-		log:          logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		log:        logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		metrics:    metrics,
 	}
 }
 
@@ -96,7 +88,7 @@ func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (lo
 const lookupResultMaxRedirect = 20
 
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
-	lookupRequestsCount.Inc()
+	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
 	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
 		RequestId:              &id,
@@ -151,12 +143,12 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			}, nil
 
 		case pb.CommandLookupTopicResponse_Failed:
-			errorMsg := ""
-			if lr.Error != nil {
-				errorMsg = lr.Error.String()
-			}
-			ls.log.Warnf("Failed to lookup topic: %s, error msg: %s", topic, errorMsg)
-			return nil, fmt.Errorf("failed to lookup topic: %s", errorMsg)
+			ls.log.WithFields(log.Fields{
+				"topic":   topic,
+				"error":   lr.GetError(),
+				"message": lr.GetMessage(),
+			}).Warn("Failed to lookup topic")
+			return nil, errors.New(lr.GetError().String())
 		}
 	}
 

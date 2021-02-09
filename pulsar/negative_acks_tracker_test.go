@@ -102,6 +102,8 @@ func TestNacksTracker(t *testing.T) {
 	assert.Equal(t, int64(2), msgIds[1].entryID)
 
 	nacks.Close()
+	// allow multiple Close without panicing
+	nacks.Close()
 }
 
 func TestNacksWithBatchesTracker(t *testing.T) {

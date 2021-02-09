@@ -35,6 +35,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
@@ -65,6 +66,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
@@ -95,6 +97,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)

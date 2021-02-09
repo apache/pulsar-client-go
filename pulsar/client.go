@@ -80,7 +80,7 @@ type ClientOptions struct {
 	// This parameter is required
 	URL string
 
-	// Timeout for the establishment of a TCP connection (default: 30 seconds)
+	// Timeout for the establishment of a TCP connection (default: 5 seconds)
 	ConnectionTimeout time.Duration
 
 	// Set the operation timeout (default: 30 seconds)
@@ -112,6 +112,9 @@ type ClientOptions struct {
 	// log.NewLoggerWithLogrus(logrus.StandardLogger())
 	// FIXME: use `logger` as internal field name instead of `log` as it's more idiomatic
 	Logger log.Logger
+
+	// Add custom labels to all the metrics reported by this client instance
+	CustomMetricsLabels map[string]string
 }
 
 type Client interface {

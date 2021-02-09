@@ -26,29 +26,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-)
-
-var (
-	consumersOpened = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_consumers_opened",
-		Help: "Counter of consumers created by the client",
-	})
-
-	consumersClosed = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_consumers_closed",
-		Help: "Counter of consumers closed by the client",
-	})
-
-	consumersPartitions = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "pulsar_client_consumers_partitions_active",
-		Help: "Counter of individual partitions the consumers are currently active",
-	})
 )
 
 var ErrConsumerClosed = errors.New("consumer closed")
@@ -79,7 +59,8 @@ type consumer struct {
 	errorCh   chan error
 	ticker    *time.Ticker
 
-	log log.Logger
+	log     log.Logger
+	metrics *internal.TopicMetrics
 }
 
 func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
@@ -183,6 +164,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		for i := range options.Topics {
 			options.Topics[i] = tns[i].Name
 		}
+		options.Topics = distinct(options.Topics)
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
 	}
@@ -218,6 +200,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		rlq:                       rlq,
 		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
+		metrics:                   client.metrics.GetTopicMetrics(topic),
 	}
 
 	err := consumer.internalTopicSubscribeToPartitions()
@@ -233,9 +216,14 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	consumer.ticker = time.NewTicker(duration)
 
 	go func() {
-		for range consumer.ticker.C {
-			consumer.log.Debug("Auto discovering new partitions")
-			consumer.internalTopicSubscribeToPartitions()
+		for {
+			select {
+			case <-consumer.closeCh:
+				return
+			case <-consumer.ticker.C:
+				consumer.log.Debug("Auto discovering new partitions")
+				consumer.internalTopicSubscribeToPartitions()
+			}
 		}
 	}()
 
@@ -324,7 +312,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
 			}
-			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq)
+			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
 				err:       err,
 				partition: idx,
@@ -357,7 +345,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		return err
 	}
 
-	consumersPartitions.Add(float64(partitionsToAdd))
+	c.metrics.ConsumersPartitions.Add(float64(partitionsToAdd))
 	return nil
 }
 
@@ -365,7 +353,7 @@ func topicSubscribe(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlqRouter *dlqRouter, retryRouter *retryRouter) (Consumer, error) {
 	c, err := newInternalConsumer(client, options, topic, messageCh, dlqRouter, retryRouter, false)
 	if err == nil {
-		consumersOpened.Inc()
+		c.metrics.ConsumersOpened.Inc()
 	}
 	return c, err
 }
@@ -472,6 +460,7 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 			producerMsg: ProducerMessage{
 				Payload:      msg.Payload(),
 				Key:          msg.Key(),
+				OrderingKey:  msg.OrderingKey(),
 				Properties:   props,
 				DeliverAfter: delay,
 			},
@@ -516,8 +505,8 @@ func (c *consumer) Close() {
 		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()
-		consumersClosed.Inc()
-		consumersPartitions.Sub(float64(len(c.consumers)))
+		c.metrics.ConsumersClosed.Inc()
+		c.metrics.ConsumersPartitions.Sub(float64(len(c.consumers)))
 	})
 }
 
@@ -565,6 +554,18 @@ func generateRandomName() string {
 		bytes[i] = chars[r.R.Intn(len(chars))]
 	}
 	return string(bytes)
+}
+
+func distinct(fqdnTopics []string) []string {
+	set := make(map[string]struct{})
+	uniques := make([]string, 0, len(fqdnTopics))
+	for _, topic := range fqdnTopics {
+		if _, ok := set[topic]; !ok {
+			set[topic] = struct{}{}
+			uniques = append(uniques, topic)
+		}
+	}
+	return uniques
 }
 
 func toProtoSubType(st SubscriptionType) pb.CommandSubscribe_SubType {

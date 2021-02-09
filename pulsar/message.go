@@ -33,6 +33,9 @@ type ProducerMessage struct {
 	// Key sets the key of the message for routing policy
 	Key string
 
+	// OrderingKey sets the ordering key of the message
+	OrderingKey string
+
 	// Properties attach application defined properties on the message
 	Properties map[string]string
 
@@ -92,6 +95,9 @@ type Message interface {
 
 	// Key get the key of the message, if any
 	Key() string
+
+	// OrderingKey get the ordering key of the message, if any
+	OrderingKey() string
 
 	// Get message redelivery count, redelivery count maintain in pulsar broker. When client nack acknowledge messages,
 	// broker will dispatch message again with message redelivery count in CommandMessage defined.

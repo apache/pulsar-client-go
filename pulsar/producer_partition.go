@@ -24,9 +24,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promauto"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 
 	"github.com/gogo/protobuf/proto"
@@ -34,11 +31,15 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+
+	ua "go.uber.org/atomic"
 )
+
+type producerState int32
 
 const (
 	// producer states
-	producerInit int32 = iota
+	producerInit = iota
 	producerReady
 	producerClosing
 	producerClosed
@@ -46,52 +47,15 @@ const (
 
 var (
 	errFailAddBatch    = errors.New("message send failed")
+	errSendTimeout     = errors.New("message send timeout")
+	errSendQueueIsFull = errors.New("producer send queue is full")
 	errMessageTooLarge = errors.New("message size exceeds MaxMessageSize")
 
 	buffersPool sync.Pool
 )
 
-var (
-	messagesPublished = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_messages_published",
-		Help: "Counter of messages published by the client",
-	})
-
-	bytesPublished = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_bytes_published",
-		Help: "Counter of messages published by the client",
-	})
-
-	messagesPending = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "pulsar_client_producer_pending_messages",
-		Help: "Counter of messages pending to be published by the client",
-	})
-
-	bytesPending = promauto.NewGauge(prometheus.GaugeOpts{
-		Name: "pulsar_client_producer_pending_bytes",
-		Help: "Counter of bytes pending to be published by the client",
-	})
-
-	publishErrors = promauto.NewCounter(prometheus.CounterOpts{
-		Name: "pulsar_client_producer_errors",
-		Help: "Counter of publish errors",
-	})
-
-	publishLatency = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "pulsar_client_producer_latency_seconds",
-		Help:    "Publish latency experienced by the client",
-		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-	})
-
-	publishRPCLatency = promauto.NewHistogram(prometheus.HistogramOpts{
-		Name:    "pulsar_client_producer_rpc_latency_seconds",
-		Help:    "Publish RPC latency experienced internally by the client when sending data to receiving an ack",
-		Buckets: []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-	})
-)
-
 type partitionProducer struct {
-	state  int32
+	state  ua.Int32
 	client *client
 	topic  string
 	log    log.Logger
@@ -100,7 +64,7 @@ type partitionProducer struct {
 	options             *ProducerOptions
 	producerName        string
 	producerID          uint64
-	batchBuilder        *internal.BatchBuilder
+	batchBuilder        internal.BatchBuilder
 	sequenceIDGenerator *uint64
 	batchFlushTicker    *time.Ticker
 
@@ -113,9 +77,11 @@ type partitionProducer struct {
 	lastSequenceID   int64
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
+	metrics          *internal.TopicMetrics
 }
 
-func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int) (
+func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
+	metrics *internal.TopicMetrics) (
 	*partitionProducer, error) {
 	var batchingMaxPublishDelay time.Duration
 	if options.BatchingMaxPublishDelay != 0 {
@@ -134,7 +100,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	logger := client.log.SubLogger(log.Fields{"topic": topic})
 
 	p := &partitionProducer{
-		state:            producerInit,
 		client:           client,
 		topic:            topic,
 		log:              logger,
@@ -147,7 +112,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
 		partitionIdx:     int32(partitionIdx),
+		metrics:          metrics,
 	}
+	p.setProducerState(producerInit)
 
 	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
 		p.schemaInfo = options.Schema.GetSchemaInfo()
@@ -171,8 +138,11 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	})
 
 	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
-	atomic.StoreInt32(&p.state, producerReady)
+	p.setProducerState(producerReady)
 
+	if p.options.SendTimeout > 0 {
+		go p.failTimeoutMessages()
+	}
 	go p.runEventsLoop()
 
 	return p, nil
@@ -227,8 +197,23 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
-	if p.batchBuilder == nil {
-		p.batchBuilder, err = internal.NewBatchBuilder(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+	if p.options.DisableBatching {
+		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
+			compression.Level(p.options.CompressionLevel),
+			p,
+			p.log)
+		if err != nil {
+			return err
+		}
+	} else if p.batchBuilder == nil {
+		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
+		if err != nil {
+			provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
+		}
+
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
@@ -285,7 +270,7 @@ func (p *partitionProducer) reconnectToBroker() {
 	}
 
 	for maxRetry != 0 {
-		if atomic.LoadInt32(&p.state) != producerReady {
+		if p.getProducerState() != producerReady {
 			// Producer is already closing
 			return
 		}
@@ -323,7 +308,11 @@ func (p *partitionProducer) runEventsLoop() {
 		case <-p.connectClosedCh:
 			p.reconnectToBroker()
 		case <-p.batchFlushTicker.C:
-			p.internalFlushCurrentBatch()
+			if p.batchBuilder.IsMultiBatches() {
+				p.internalFlushCurrentBatches()
+			} else {
+				p.internalFlushCurrentBatch()
+			}
 		}
 	}
 }
@@ -363,7 +352,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			WithField("size", len(payload)).
 			WithField("properties", msg.Properties).
 			Error()
-		publishErrors.Inc()
+		p.metrics.PublishErrorsMsgTooLarge.Inc()
 		return
 	}
 
@@ -388,33 +377,34 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		smm.PartitionKey = proto.String(msg.Key)
 	}
 
+	if len(msg.OrderingKey) != 0 {
+		smm.OrderingKey = []byte(msg.OrderingKey)
+	}
+
 	if msg.Properties != nil {
 		smm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}
 
-	var sequenceID uint64
 	if msg.SequenceID != nil {
-		sequenceID = uint64(*msg.SequenceID)
-	} else {
-		sequenceID = internal.GetAndAdd(p.sequenceIDGenerator, 1)
+		sequenceID := uint64(*msg.SequenceID)
+		smm.SequenceId = proto.Uint64(sequenceID)
 	}
 
 	if !sendAsBatch {
 		p.internalFlushCurrentBatch()
 	}
-	added := p.batchBuilder.Add(smm, sequenceID, payload, request,
+	added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
 		msg.ReplicationClusters, deliverAt)
 	if !added {
 		// The current batch is full.. flush it and retry
 		p.internalFlushCurrentBatch()
 
 		// after flushing try again to add the current payload
-		if ok := p.batchBuilder.Add(smm, sequenceID, payload, request,
+		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
 			msg.ReplicationClusters, deliverAt); !ok {
 			p.publishSemaphore.Release()
 			request.callback(nil, request.msg, errFailAddBatch)
 			p.log.WithField("size", len(payload)).
-				WithField("sequenceID", sequenceID).
 				WithField("properties", msg.Properties).
 				Error("unable to add message to batch")
 			return
@@ -422,7 +412,11 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if !sendAsBatch || request.flushImmediately {
-		p.internalFlushCurrentBatch()
+		if p.batchBuilder.IsMultiBatches() {
+			p.internalFlushCurrentBatches()
+		} else {
+			p.internalFlushCurrentBatch()
+		}
 	}
 }
 
@@ -430,7 +424,7 @@ type pendingItem struct {
 	sync.Mutex
 	batchData    internal.Buffer
 	sequenceID   uint64
-	sentAt       int64
+	sentAt       time.Time
 	sendRequests []interface{}
 	completed    bool
 }
@@ -442,16 +436,129 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 	}
 
 	p.pendingQueue.Put(&pendingItem{
+		sentAt:       time.Now(),
 		batchData:    batchData,
 		sequenceID:   sequenceID,
-		sentAt:       time.Now().UnixNano(),
 		sendRequests: callbacks,
 	})
 	p.cnx.WriteData(batchData)
 }
 
+func (p *partitionProducer) failTimeoutMessages() {
+	diff := func(sentAt time.Time) time.Duration {
+		return p.options.SendTimeout - time.Since(sentAt)
+	}
+
+	t := time.NewTimer(p.options.SendTimeout)
+	defer t.Stop()
+
+	for range t.C {
+		state := p.getProducerState()
+		if state == producerClosing || state == producerClosed {
+			return
+		}
+
+		item := p.pendingQueue.Peek()
+		if item == nil {
+			// pending queue is empty
+			t.Reset(p.options.SendTimeout)
+			continue
+		}
+		oldestItem := item.(*pendingItem)
+		if nextWaiting := diff(oldestItem.sentAt); nextWaiting > 0 {
+			// none of these pending messages have timed out, wait and retry
+			t.Reset(nextWaiting)
+			continue
+		}
+
+		// since pending queue is not thread safe because of there is no global iteration lock
+		// to control poll from pending queue, current goroutine and connection receipt handler
+		// iterate pending queue at the same time, this maybe a performance trade-off
+		// see https://github.com/apache/pulsar-client-go/pull/301
+		curViewItems := p.pendingQueue.ReadableSlice()
+		viewSize := len(curViewItems)
+		if viewSize <= 0 {
+			// double check
+			t.Reset(p.options.SendTimeout)
+			continue
+		}
+		p.log.Infof("Failing %d messages", viewSize)
+		lastViewItem := curViewItems[viewSize-1].(*pendingItem)
+
+		// iterate at most viewSize items
+		for i := 0; i < viewSize; i++ {
+			item := p.pendingQueue.Poll()
+			if item == nil {
+				t.Reset(p.options.SendTimeout)
+				break
+			}
+
+			pi := item.(*pendingItem)
+			pi.Lock()
+			if nextWaiting := diff(pi.sentAt); nextWaiting > 0 {
+				// current and subsequent items not timeout yet, stop iterating
+				t.Reset(nextWaiting)
+				pi.Unlock()
+				break
+			}
+
+			for _, i := range pi.sendRequests {
+				sr := i.(*sendRequest)
+				if sr.msg != nil {
+					size := len(sr.msg.Payload)
+					p.publishSemaphore.Release()
+					p.metrics.MessagesPending.Dec()
+					p.metrics.BytesPending.Sub(float64(size))
+					p.metrics.PublishErrorsTimeout.Inc()
+					p.log.WithError(errSendTimeout).
+						WithField("size", size).
+						WithField("properties", sr.msg.Properties)
+				}
+				if sr.callback != nil {
+					sr.callback(nil, sr.msg, errSendTimeout)
+				}
+			}
+
+			// flag the send has completed with error, flush make no effect
+			pi.completed = true
+			buffersPool.Put(pi.batchData)
+			pi.Unlock()
+
+			// finally reached the last view item, current iteration ends
+			if pi == lastViewItem {
+				t.Reset(p.options.SendTimeout)
+				break
+			}
+		}
+	}
+}
+
+func (p *partitionProducer) internalFlushCurrentBatches() {
+	batchesData, sequenceIDs, callbacks := p.batchBuilder.FlushBatches()
+	if batchesData == nil {
+		return
+	}
+
+	for i := range batchesData {
+		if batchesData[i] == nil {
+			continue
+		}
+		p.pendingQueue.Put(&pendingItem{
+			batchData:    batchesData[i],
+			sequenceID:   sequenceIDs[i],
+			sendRequests: callbacks[i],
+		})
+		p.cnx.WriteData(batchesData[i])
+	}
+
+}
+
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
-	p.internalFlushCurrentBatch()
+	if p.batchBuilder.IsMultiBatches() {
+		p.internalFlushCurrentBatches()
+	} else {
+		p.internalFlushCurrentBatch()
+	}
 
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
 	if !ok {
@@ -516,10 +623,20 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	}
 	p.options.Interceptors.BeforeSend(p, msg)
 
-	messagesPending.Inc()
-	bytesPending.Add(float64(len(sr.msg.Payload)))
+	if p.options.DisableBlockIfQueueFull {
+		if !p.publishSemaphore.TryAcquire() {
+			if callback != nil {
+				callback(nil, msg, errSendQueueIsFull)
+			}
+			return
+		}
+	} else {
+		p.publishSemaphore.Acquire()
+	}
 
-	p.publishSemaphore.Acquire()
+	p.metrics.MessagesPending.Inc()
+	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
+
 	p.eventsChan <- sr
 }
 
@@ -553,21 +670,19 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
-	if pi.sentAt > 0 {
-		publishRPCLatency.Observe(float64(now-pi.sentAt) / 1.0e9)
-	}
+	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
 		if sr.msg != nil {
 			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
 			p.publishSemaphore.Release()
 
-			publishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
-			messagesPublished.Inc()
-			messagesPending.Dec()
+			p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
+			p.metrics.MessagesPublished.Inc()
+			p.metrics.MessagesPending.Dec()
 			payloadSize := float64(len(sr.msg.Payload))
-			bytesPublished.Add(payloadSize)
-			bytesPending.Sub(payloadSize)
+			p.metrics.BytesPublished.Add(payloadSize)
+			p.metrics.BytesPending.Sub(payloadSize)
 		}
 
 		if sr.callback != nil || len(p.options.Interceptors) > 0 {
@@ -594,7 +709,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer req.waitGroup.Done()
-	if !atomic.CompareAndSwapInt32(&p.state, producerReady, producerClosing) {
+	if !p.casProducerState(producerReady, producerClosing) {
 		return
 	}
 
@@ -616,7 +731,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.WithError(err).Warn("Failed to close batch builder")
 	}
 
-	atomic.StoreInt32(&p.state, producerClosed)
+	p.setProducerState(producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
 }
@@ -636,8 +751,22 @@ func (p *partitionProducer) Flush() error {
 	return cp.err
 }
 
+func (p *partitionProducer) getProducerState() producerState {
+	return producerState(p.state.Load())
+}
+
+func (p *partitionProducer) setProducerState(state producerState) {
+	p.state.Swap(int32(state))
+}
+
+// set a new consumerState and return the last state
+// returns bool if the new state has been set or not
+func (p *partitionProducer) casProducerState(oldState, newState producerState) bool {
+	return p.state.CAS(int32(oldState), int32(newState))
+}
+
 func (p *partitionProducer) Close() {
-	if atomic.LoadInt32(&p.state) != producerReady {
+	if p.getProducerState() != producerReady {
 		// Producer is closing
 		return
 	}

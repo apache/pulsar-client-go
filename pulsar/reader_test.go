@@ -312,6 +312,26 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 	cancel()
 }
 
+func TestReaderHasNextAgainstEmptyTopic(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// create reader on 5th message (not included)
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          "an-empty-topic",
+		StartMessageID: EarliestMessageID(),
+	})
+
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	assert.Equal(t, reader.HasNext(), false)
+}
+
 func TestReaderHasNext(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

@@ -24,6 +24,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pkgerrors "github.com/pkg/errors"
 
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -74,7 +75,6 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 		return nil, errs
 	}
 
-	consumersOpened.Inc()
 	return mtc, nil
 }
 
@@ -137,7 +137,18 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) {
 }
 
 func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
-	consumer, ok := c.consumers[msg.Topic()]
+	names, err := validateTopicNames(msg.Topic())
+	if err != nil {
+		c.log.Errorf("validate msg topic %q failed: %v", msg.Topic(), err)
+		return
+	}
+	if len(names) != 1 {
+		c.log.Errorf("invalid msg topic %q names: %+v ", msg.Topic(), names)
+		return
+	}
+
+	fqdnTopic := internal.TopicNameWithoutPartitionPart(names[0])
+	consumer, ok := c.consumers[fqdnTopic]
 	if !ok {
 		c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
 		return
@@ -178,7 +189,6 @@ func (c *multiTopicConsumer) Close() {
 		close(c.closeCh)
 		c.dlq.close()
 		c.rlq.close()
-		consumersClosed.Inc()
 	})
 }
 

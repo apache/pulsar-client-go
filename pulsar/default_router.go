@@ -48,10 +48,16 @@ func NewDefaultRouter(
 		lastChangeTimestamp:    math.MinInt64,
 	}
 
+	readClockAfterNumMessages := uint32(maxBatchingMessages / 10)
 	return func(message *ProducerMessage, numPartitions uint32) int {
 		if numPartitions == 1 {
 			// When there are no partitions, don't even bother
 			return 0
+		}
+
+		if len(message.OrderingKey) != 0 {
+			// When an OrderingKey is specified, use the hash of that key
+			return int(hashFunc(message.OrderingKey) % numPartitions)
 		}
 
 		if len(message.Key) != 0 {
@@ -72,23 +78,34 @@ func NewDefaultRouter(
 		// Note that it is possible that we skip more than one partition if multiple goroutines increment
 		// currentPartitionCursor at the same time. If that happens it shouldn't be a problem because we only want to
 		// spread the data on different partitions but not necessarily in a specific sequence.
+		var now int64
 		size := uint32(len(message.Payload))
 		previousMessageCount := atomic.LoadUint32(&state.msgCounter)
 		previousBatchingMaxSize := atomic.LoadUint32(&state.cumulativeBatchSize)
 		previousLastChange := atomic.LoadInt64(&state.lastChangeTimestamp)
-		if (previousMessageCount >= uint32(maxBatchingMessages-1)) ||
-			(size >= uint32(maxBatchingSize)-previousBatchingMaxSize) ||
-			(time.Now().UnixNano()-previousLastChange >= maxBatchingDelay.Nanoseconds()) {
+
+		messageCountReached := previousMessageCount >= uint32(maxBatchingMessages-1)
+		sizeReached := (size >= uint32(maxBatchingSize)-previousBatchingMaxSize)
+		durationReached := false
+		if readClockAfterNumMessages == 0 || previousMessageCount%readClockAfterNumMessages == 0 {
+			now = time.Now().UnixNano()
+			durationReached = now-previousLastChange >= maxBatchingDelay.Nanoseconds()
+		}
+		if messageCountReached || sizeReached || durationReached {
 			atomic.AddUint32(&state.currentPartitionCursor, 1)
-			atomic.StoreInt64(&state.lastChangeTimestamp, time.Now().UnixNano())
-			atomic.StoreUint32(&state.cumulativeBatchSize, 0)
 			atomic.StoreUint32(&state.msgCounter, 0)
+			atomic.StoreUint32(&state.cumulativeBatchSize, 0)
+			if now != 0 {
+				atomic.StoreInt64(&state.lastChangeTimestamp, now)
+			}
 			return int(state.currentPartitionCursor % numPartitions)
 		}
 
-		atomic.StoreInt64(&state.lastChangeTimestamp, time.Now().UnixNano())
 		atomic.AddUint32(&state.msgCounter, 1)
 		atomic.AddUint32(&state.cumulativeBatchSize, size)
+		if now != 0 {
+			atomic.StoreInt64(&state.lastChangeTimestamp, now)
+		}
 		return int(state.currentPartitionCursor % numPartitions)
 	}
 }
