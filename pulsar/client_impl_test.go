@@ -93,7 +93,7 @@ func TestTLSConnection(t *testing.T) {
 
 func TestConnectionWithListenerName(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:          serviceURLTLS,
+		URL:          serviceURL,
 		ListenerName: listenerName,
 	})
 	assert.NoError(t, err)
