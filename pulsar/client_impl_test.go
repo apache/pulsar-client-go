@@ -91,6 +91,23 @@ func TestTLSConnection(t *testing.T) {
 	client.Close()
 }
 
+func TestConnectionWithListenerName(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:          serviceURLTLS,
+		ListenerName: listenerName,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
 func TestTLSConnectionHostNameVerification(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL:                   serviceURLTLS,

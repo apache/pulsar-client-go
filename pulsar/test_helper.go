@@ -44,6 +44,7 @@ const (
 	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"
 	tlsClientKeyPath  = "../integration-tests/certs/client-key.pem"
 	tokenFilePath     = "../integration-tests/tokens/token.txt"
+	listenerName      = "custom:pulsar-3rp2p5dp3n/vpc-jgv6lwof/subnet-8maev55i"
 )
 
 func newTopicName() string {
