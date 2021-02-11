@@ -102,6 +102,10 @@ func newClient(options ClientOptions) (Client, error) {
 		operationTimeout = defaultOperationTimeout
 	}
 
+	if options.DefaultMaxMessageSize < internal.MaxMessageSize {
+		options.DefaultMaxMessageSize = internal.MaxMessageSize
+	}
+
 	maxConnectionsPerHost := options.MaxConnectionsPerBroker
 	if maxConnectionsPerHost <= 0 {
 		maxConnectionsPerHost = 1
@@ -120,7 +124,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost, logger,
-			metrics),
+			options.DefaultMaxMessageSize, metrics),
 		log:     logger,
 		metrics: metrics,
 	}

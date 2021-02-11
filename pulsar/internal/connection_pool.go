@@ -46,6 +46,7 @@ type connectionPool struct {
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
 	metrics               *Metrics
+	defaultMaxMessageSize int
 
 	log log.Logger
 }
@@ -57,6 +58,7 @@ func NewConnectionPool(
 	connectionTimeout time.Duration,
 	maxConnectionsPerHost int,
 	logger log.Logger,
+	defaultMaxMsgSize int,
 	metrics *Metrics) ConnectionPool {
 	return &connectionPool{
 		connections:           make(map[string]*connection),
@@ -66,6 +68,7 @@ func NewConnectionPool(
 		maxConnectionsPerHost: int32(maxConnectionsPerHost),
 		log:                   logger,
 		metrics:               metrics,
+		defaultMaxMessageSize: defaultMaxMsgSize,
 	}
 }
 
@@ -89,13 +92,14 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 
 	if conn == nil {
 		conn = newConnection(connectionOptions{
-			logicalAddr:       logicalAddr,
-			physicalAddr:      physicalAddr,
-			tls:               p.tlsOptions,
-			connectionTimeout: p.connectionTimeout,
-			auth:              p.auth,
-			logger:            p.log,
-			metrics:           p.metrics,
+			logicalAddr:           logicalAddr,
+			physicalAddr:          physicalAddr,
+			tls:                   p.tlsOptions,
+			connectionTimeout:     p.connectionTimeout,
+			auth:                  p.auth,
+			logger:                p.log,
+			metrics:               p.metrics,
+			defaultMaxMessageSize: int32(p.defaultMaxMessageSize),
 		})
 		p.connections[key] = conn
 		p.Unlock()
