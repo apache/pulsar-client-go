@@ -3,10 +3,10 @@ module github.com/apache/pulsar-client-go
 go 1.13
 
 require (
+	github.com/DataDog/zstd v1.4.6-0.20210211175136-c6db21d202f4
 	github.com/apache/pulsar-client-go/oauth2 v0.0.0-20201120111947-b8bd55bc02bd
 	github.com/beefsack/go-rate v0.0.0-20180408011153-efa7637bb9b6
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
-	github.com/datadog/zstd v1.4.6-0.20200617134701-89f69fb7df32
 	github.com/davecgh/go-spew v1.1.1
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.4.2
