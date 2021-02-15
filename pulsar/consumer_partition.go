@@ -185,7 +185,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.log.Info("Created consumer")
 	pc.setConsumerState(consumerReady)
 
-	if pc.options.startMessageIDInclusive && pc.startMessageID == lastestMessageID {
+	if pc.options.startMessageIDInclusive && pc.startMessageID.equal(lastestMessageID.(messageID)) {
 		msgID, err := pc.requestGetLastMessageID()
 		if err != nil {
 			pc.nackTracker.Close()
@@ -194,7 +194,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		if msgID.entryID != noMessageEntry {
 			pc.startMessageID = msgID
 
-			err = pc.requestSeek(msgID.messageID)
+			// use the WithoutClear version because the dispatcher is not started yet
+			err = pc.requestSeekWithoutClear(msgID.messageID)
 			if err != nil {
 				pc.nackTracker.Close()
 				return nil, err
@@ -369,8 +370,15 @@ func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 	defer close(seek.doneCh)
 	seek.err = pc.requestSeek(seek.msgID.messageID)
 }
-
 func (pc *partitionConsumer) requestSeek(msgID messageID) error {
+	if err := pc.requestSeekWithoutClear(msgID); err != nil {
+		return err
+	}
+	pc.clearMessageChannels()
+	return nil
+}
+
+func (pc *partitionConsumer) requestSeekWithoutClear(msgID messageID) error {
 	state := pc.getConsumerState()
 	if state == consumerClosing || state == consumerClosed {
 		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
@@ -396,7 +404,6 @@ func (pc *partitionConsumer) requestSeek(msgID messageID) error {
 		pc.log.WithError(err).Error("Failed to reset to message id")
 		return err
 	}
-	pc.clearMessageChannels()
 	return nil
 }
 
