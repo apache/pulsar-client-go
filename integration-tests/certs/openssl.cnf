@@ -1,0 +1,19 @@
+[req]
+distinguished_name = req_distinguished_name
+prompt = no
+[req_distinguished_name]
+C = US
+ST = CA
+O = Apache
+OU = Apache Pulsar
+CN = localhost
+[v3_req]
+basicConstraints = CA:FALSE
+authorityKeyIdentifier=keyid,issuer
+subjectKeyIdentifier=hash
+[v3_ca]
+basicConstraints = CA:TRUE
+authorityKeyIdentifier=keyid,issuer
+subjectKeyIdentifier=hash
+
+
