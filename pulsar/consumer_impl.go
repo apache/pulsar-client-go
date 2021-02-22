@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -30,8 +29,6 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
-
-var ErrConsumerClosed = errors.New("consumer closed")
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
@@ -182,7 +179,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq)
 	}
 
-	return nil, newError(ResultInvalidTopicName, "topic name is required for consumer")
+	return nil, newError(InvalidTopicName, "topic name is required for consumer")
 }
 
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
@@ -382,10 +379,10 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {
 		case <-c.closeCh:
-			return nil, ErrConsumerClosed
+			return nil, newError(ConsumerClosed, "consumer closed")
 		case cm, ok := <-c.messageCh:
 			if !ok {
-				return nil, ErrConsumerClosed
+				return nil, newError(ConsumerClosed, "consumer closed")
 			}
 			return cm.Message, nil
 		case <-ctx.Done():
@@ -515,7 +512,7 @@ func (c *consumer) Seek(msgID MessageID) error {
 	defer c.Unlock()
 
 	if len(c.consumers) > 1 {
-		return errors.New("for partition topic, seek command should perform on the individual partitions")
+		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
 	mid, ok := c.messageID(msgID)
@@ -530,7 +527,7 @@ func (c *consumer) SeekByTime(time time.Time) error {
 	c.Lock()
 	defer c.Unlock()
 	if len(c.consumers) > 1 {
-		return errors.New("for partition topic, seek command should perform on the individual partitions")
+		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
 	return c.consumers[0].SeekByTime(time)

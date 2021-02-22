@@ -23,54 +23,82 @@ import "fmt"
 type Result int
 
 const (
-	// ResultOk means no errors
-	ResultOk Result = iota
-	// ResultUnknownError means unknown error happened on broker
-	ResultUnknownError
-	// ResultInvalidConfiguration means invalid configuration
-	ResultInvalidConfiguration
-	// ResultTimeoutError means operation timed out
-	ResultTimeoutError
-	// ResultLookupError means broker lookup failed
-	ResultLookupError
-	// ResultInvalidTopicName means invalid topic name
-	ResultInvalidTopicName
-	// ResultConnectError means failed to connect to broker
-	ResultConnectError
-
+	// Ok means no errors
+	Ok Result = iota
+	// UnknownError means unknown error happened on broker
+	UnknownError
+	// InvalidConfiguration means invalid configuration
+	InvalidConfiguration
+	// TimeoutError means operation timed out
+	TimeoutError
+	//LookupError means broker lookup failed
+	LookupError
+	// ConnectError means failed to connect to broker
+	ConnectError
 	// ReadError means failed to read from socket
-	//ReadError                      Result = 6
+	ReadError
 	// AuthenticationError means authentication failed on broker
-	//AuthenticationError            Result = 7
-	//AuthorizationError             Result = 8
-	//ErrorGettingAuthenticationData Result = 9  // Client cannot find authorization data
-	//BrokerMetadataError            Result = 10 // Broker failed in updating metadata
-	//BrokerPersistenceError         Result = 11 // Broker failed to persist entry
-	//ChecksumError                  Result = 12 // Corrupt message checksum failure
+	AuthenticationError
+	// AuthorizationError client is not authorized to create producer/consumer
+	AuthorizationError
+	// ErrorGettingAuthenticationData client cannot find authorization data
+	ErrorGettingAuthenticationData
+	// BrokerMetadataError broker failed in updating metadata
+	BrokerMetadataError
+	// BrokerPersistenceError broker failed to persist entry
+	BrokerPersistenceError
+	// ChecksumError corrupt message checksum failure
+	ChecksumError
 	// ConsumerBusy means Exclusive consumer is already connected
-	ConsumerBusy Result = 13
-	//NotConnectedError              Result = 14 // Producer/Consumer is not currently connected to broker
-	//AlreadyClosedError             Result = 15 // Producer/Consumer is already closed and not accepting any operation
-	//InvalidMessage                 Result = 16 // Error in publishing an already used message
-	//ConsumerNotInitialized         Result = 17 // Consumer is not initialized
-	//ProducerNotInitialized         Result = 18 // Producer is not initialized
-	//TooManyLookupRequestException  Result = 19 // Too Many concurrent LookupRequest
-	// InvalidUrl means Client Initialized with Invalid Broker Url (VIP Url passed to Client Constructor)
-	//InvalidUrl                            Result = 21
+	ConsumerBusy
+	// NotConnectedError producer/consumer is not currently connected to broker
+	NotConnectedError
+	// AlreadyClosedError producer/consumer is already closed and not accepting any operation
+	AlreadyClosedError
+	// InvalidMessage error in publishing an already used message
+	InvalidMessage
+	// ConsumerNotInitialized consumer is not initialized
+	ConsumerNotInitialized
+	// ProducerNotInitialized producer is not initialized
+	ProducerNotInitialized
+	// TooManyLookupRequestException too many concurrent LookupRequest
+	TooManyLookupRequestException
+	// InvalidTopicName means invalid topic name
+	InvalidTopicName
+	// InvalidURL means Client Initialized with Invalid Broker Url (VIP Url passed to Client Constructor)
+	InvalidURL
 	// ServiceUnitNotReady unloaded between client did lookup and producer/consumer got created
-	//ServiceUnitNotReady                   Result = 22
-	//OperationNotSupported                 Result = 23
-	//ProducerBlockedQuotaExceededError     Result = 24 // Producer is blocked
-	//ProducerBlockedQuotaExceededException Result = 25 // Producer is getting exception
-	//ProducerQueueIsFull                   Result = 26 // Producer queue is full
-	//MessageTooBig                         Result = 27 // Trying to send a messages exceeding the max size
-	TopicNotFound        Result = 28 // Topic not found
-	SubscriptionNotFound Result = 29 // Subscription not found
-	//ConsumerNotFound                      Result = 30 // Consumer not found
+	ServiceUnitNotReady
+	// OperationNotSupported operation not supported
+	OperationNotSupported
+	// ProducerBlockedQuotaExceededError producer is blocked
+	ProducerBlockedQuotaExceededError
+	// ProducerBlockedQuotaExceededException producer is getting exception
+	ProducerBlockedQuotaExceededException
+	// ProducerQueueIsFull producer queue is full
+	ProducerQueueIsFull
+	// MessageTooBig trying to send a messages exceeding the max size
+	MessageTooBig
+	// TopicNotFound topic not found
+	TopicNotFound
+	// SubscriptionNotFound subscription not found
+	SubscriptionNotFound
+	// ConsumerNotFound consumer not found
+	ConsumerNotFound
 	// UnsupportedVersionError when an older client/version doesn't support a required feature
-	//UnsupportedVersionError               Result = 31
-	//TopicTerminated                       Result = 32 // Topic was already terminated
-	//CryptoError                           Result = 33 // Error when crypto operation fails
+	UnsupportedVersionError
+	// TopicTerminated topic was already terminated
+	TopicTerminated
+	// CryptoError error when crypto operation fails
+	CryptoError
+	// ConsumerClosed means consumer already been closed
+	ConsumerClosed
+	// InvalidBatchBuilderType invalid batch builder type
+	InvalidBatchBuilderType
+	// AddToBatchFailed failed to add sendRequest to batchBuilder
+	AddToBatchFailed
+	// SeekFailed seek failed
+	SeekFailed
 )
 
 // Error implement error interface, composed of two parts: msg and result.
@@ -79,6 +107,7 @@ type Error struct {
 	result Result
 }
 
+// Result get error's original result.
 func (e *Error) Result() Result {
 	return e.result
 }
@@ -96,22 +125,82 @@ func newError(result Result, msg string) error {
 
 func getResultStr(r Result) string {
 	switch r {
-	case ResultOk:
+	case Ok:
 		return "OK"
-	case ResultUnknownError:
-		return "Unknown error"
-	case ResultInvalidConfiguration:
+	case UnknownError:
+		return "UnknownError"
+	case InvalidConfiguration:
 		return "InvalidConfiguration"
-	case ResultTimeoutError:
+	case TimeoutError:
 		return "TimeoutError"
-	case ResultLookupError:
+	case LookupError:
 		return "LookupError"
-	case ResultInvalidTopicName:
-		return "InvalidTopicName"
-	case ResultConnectError:
+	case ConnectError:
 		return "ConnectError"
+	case ReadError:
+		return "ReadError"
+	case AuthenticationError:
+		return "AuthenticationError"
+	case AuthorizationError:
+		return "AuthorizationError"
+	case ErrorGettingAuthenticationData:
+		return "ErrorGettingAuthenticationData"
+	case BrokerMetadataError:
+		return "BrokerMetadataError"
+	case BrokerPersistenceError:
+		return "BrokerPersistenceError"
+	case ChecksumError:
+		return "ChecksumError"
 	case ConsumerBusy:
 		return "ConsumerBusy"
+	case NotConnectedError:
+		return "NotConnectedError"
+	case AlreadyClosedError:
+		return "AlreadyClosedError"
+	case InvalidMessage:
+		return "InvalidMessage"
+	case ConsumerNotInitialized:
+		return "ConsumerNotInitialized"
+	case ProducerNotInitialized:
+		return "ProducerNotInitialized"
+	case TooManyLookupRequestException:
+		return "TooManyLookupRequestException"
+	case InvalidTopicName:
+		return "InvalidTopicName"
+	case InvalidURL:
+		return "InvalidURL"
+	case ServiceUnitNotReady:
+		return "ServiceUnitNotReady"
+	case OperationNotSupported:
+		return "OperationNotSupported"
+	case ProducerBlockedQuotaExceededError:
+		return "ProducerBlockedQuotaExceededError"
+	case ProducerBlockedQuotaExceededException:
+		return "ProducerBlockedQuotaExceededException"
+	case ProducerQueueIsFull:
+		return "ProducerQueueIsFull"
+	case MessageTooBig:
+		return "MessageTooBig"
+	case TopicNotFound:
+		return "TopicNotFound"
+	case SubscriptionNotFound:
+		return "SubscriptionNotFound"
+	case ConsumerNotFound:
+		return "ConsumerNotFound"
+	case UnsupportedVersionError:
+		return "UnsupportedVersionError"
+	case TopicTerminated:
+		return "TopicTerminated"
+	case CryptoError:
+		return "CryptoError"
+	case ConsumerClosed:
+		return "ConsumerClosed"
+	case InvalidBatchBuilderType:
+		return "InvalidBatchBuilderType"
+	case AddToBatchFailed:
+		return "AddToBatchFailed"
+	case SeekFailed:
+		return "SeekFailed"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
 	}

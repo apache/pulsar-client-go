@@ -42,11 +42,11 @@ type reader struct {
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
 	if options.Topic == "" {
-		return nil, newError(ResultInvalidConfiguration, "Topic is required")
+		return nil, newError(InvalidConfiguration, "Topic is required")
 	}
 
 	if options.StartMessageID == nil {
-		return nil, newError(ResultInvalidConfiguration, "StartMessageID is required")
+		return nil, newError(InvalidConfiguration, "StartMessageID is required")
 	}
 
 	startMessageID, ok := toTrackingMessageID(options.StartMessageID)
@@ -122,7 +122,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 		select {
 		case cm, ok := <-r.messageCh:
 			if !ok {
-				return nil, ErrConsumerClosed
+				return nil, newError(ConsumerClosed, "consumer closed")
 			}
 
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
@@ -133,7 +133,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 				r.pc.AckID(mid)
 				return cm.Message, nil
 			}
-			return nil, fmt.Errorf("invalid message id type %T", msgID)
+			return nil, newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}

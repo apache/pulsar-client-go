@@ -948,7 +948,7 @@ func TestConsumerReceiveErrAfterClose(t *testing.T) {
 	case <-time.After(200 * time.Millisecond):
 	case err = <-errorCh:
 	}
-	assert.Equal(t, ErrConsumerClosed, err)
+	assert.Equal(t, ConsumerClosed, err.(*Error).result)
 }
 
 func TestDLQ(t *testing.T) {

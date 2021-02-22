@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -44,11 +43,11 @@ func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger) (*dlqRout
 
 	if policy != nil {
 		if policy.MaxDeliveries <= 0 {
-			return nil, errors.New("DLQPolicy.MaxDeliveries needs to be > 0")
+			return nil, newError(InvalidConfiguration, "DLQPolicy.MaxDeliveries needs to be > 0")
 		}
 
 		if policy.DeadLetterTopic == "" {
-			return nil, errors.New("DLQPolicy.Topic needs to be set to a valid topic name")
+			return nil, newError(InvalidConfiguration, "DLQPolicy.Topic needs to be set to a valid topic name")
 		}
 
 		r.messageCh = make(chan ConsumerMessage)
