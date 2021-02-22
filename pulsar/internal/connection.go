@@ -331,10 +331,10 @@ func (c *connection) waitUntilReady() error {
 }
 
 func (c *connection) failLeftRequestsWhenClose() {
+	close(c.incomingRequestsCh)
 	for req := range c.incomingRequestsCh {
 		c.internalSendRequest(req)
 	}
-	close(c.incomingRequestsCh)
 }
 
 func (c *connection) run() {
