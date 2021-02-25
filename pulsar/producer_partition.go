@@ -397,7 +397,11 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		msg.ReplicationClusters, deliverAt)
 	if !added {
 		// The current batch is full.. flush it and retry
-		p.internalFlushCurrentBatch()
+		if p.batchBuilder.IsMultiBatches() {
+			p.internalFlushCurrentBatches()
+		} else {
+			p.internalFlushCurrentBatch()
+		}
 
 		// after flushing try again to add the current payload
 		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
