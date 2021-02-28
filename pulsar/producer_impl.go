@@ -51,6 +51,7 @@ type producer struct {
 	producersPtr  unsafe.Pointer
 	numPartitions uint32
 	messageRouter func(*ProducerMessage, TopicMetadata) int
+	closeOnce     sync.Once
 	stopDiscovery func()
 	log           log.Logger
 	metrics       *internal.TopicMetrics
@@ -303,18 +304,17 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) Close() {
-	if p.stopDiscovery != nil {
+	p.closeOnce.Do(func() {
 		p.stopDiscovery()
-		p.stopDiscovery = nil
-	}
 
-	p.Lock()
-	defer p.Unlock()
+		p.Lock()
+		defer p.Unlock()
 
-	for _, pp := range p.producers {
-		pp.Close()
-	}
-	p.client.handlers.Del(p)
-	p.metrics.ProducersPartitions.Sub(float64(len(p.producers)))
-	p.metrics.ProducersClosed.Inc()
+		for _, pp := range p.producers {
+			pp.Close()
+		}
+		p.client.handlers.Del(p)
+		p.metrics.ProducersPartitions.Sub(float64(len(p.producers)))
+		p.metrics.ProducersClosed.Inc()
+	})
 }
