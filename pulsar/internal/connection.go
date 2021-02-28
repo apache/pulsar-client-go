@@ -547,12 +547,18 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
 	if c.getState() == connectionClosed {
 		callback(req, ErrConnectionClosed)
-	} else {
-		c.incomingRequestsCh <- &request{
-			id:       &requestID,
-			cmd:      req,
-			callback: callback,
-		}
+		return
+	}
+
+	select {
+	case <-c.closeCh:
+		callback(req, ErrConnectionClosed)
+	case c.incomingRequestsCh <- &request{
+		id:       &requestID,
+		cmd:      req,
+		callback: callback,
+	}:
+		// ok
 	}
 }
 
@@ -561,12 +567,16 @@ func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
 		return ErrConnectionClosed
 	}
 
-	c.incomingRequestsCh <- &request{
+	select {
+	case <-c.closeCh:
+		return ErrConnectionClosed
+	case c.incomingRequestsCh <- &request{
 		id:       nil,
 		cmd:      req,
 		callback: nil,
+	}:
+		return nil
 	}
-	return nil
 }
 
 func (c *connection) internalSendRequest(req *request) {
