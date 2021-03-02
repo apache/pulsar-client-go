@@ -155,7 +155,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	return nil, errors.New("exceeded max number of redirection during topic lookup")
 }
 
-func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*pb.CommandPartitionedTopicMetadataResponse, error) {
+func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*pb.CommandPartitionedTopicMetadataResponse,
+	error) {
 	ls.metrics.PartitionedTopicMetadataRequestsCount.Inc()
 	topicName, err := ParseTopicName(topic)
 	if err != nil {

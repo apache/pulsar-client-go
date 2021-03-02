@@ -99,7 +99,8 @@ func (c *mockedLookupRPCClient) RequestOnCnx(cnx Connection, requestID uint64, c
 	return nil, nil
 }
 
-func (c *mockedLookupRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
+func (c *mockedLookupRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type,
+	message proto.Message) error {
 	assert.Fail(c.t, "Shouldn't be called")
 	return nil
 }
@@ -388,7 +389,6 @@ type mockedPartitionedTopicMetadataRPCClient struct {
 	requestIDGenerator uint64
 	t                  *testing.T
 
-	expectedURL      string
 	expectedRequests []pb.CommandPartitionedTopicMetadata
 	mockedResponses  []pb.CommandPartitionedTopicMetadataResponse
 }
@@ -406,7 +406,8 @@ func (m mockedPartitionedTopicMetadataRPCClient) NewConsumerID() uint64 {
 	return 1
 }
 
-func (m mockedPartitionedTopicMetadataRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (m mockedPartitionedTopicMetadataRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RPCResult, error) {
 	assert.Equal(m.t, cmdType, pb.BaseCommand_PARTITIONED_METADATA)
 
 	expectedRequest := &m.expectedRequests[0]
@@ -425,17 +426,20 @@ func (m mockedPartitionedTopicMetadataRPCClient) RequestToAnyBroker(requestID ui
 	}, nil
 }
 
-func (m mockedPartitionedTopicMetadataRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (m mockedPartitionedTopicMetadataRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil, nil
 }
 
-func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
+func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type,
+	message proto.Message) error {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil
 }
 
-func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnx(cnx Connection, requestID uint64,
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil, nil
 }
