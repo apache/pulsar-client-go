@@ -38,6 +38,10 @@ type LookupService interface {
 	// Lookup perform a lookup for the given topic, confirm the location of the broker
 	// where the topic is located, and return the LookupResult.
 	Lookup(topic string) (*LookupResult, error)
+
+	// GetPartitionedTopicMetadata perform a CommandPartitionedTopicMetadata request for
+	// the given topic, returns the CommandPartitionedTopicMetadataResponse as the result.
+	GetPartitionedTopicMetadata(topic string) (*pb.CommandPartitionedTopicMetadataResponse, error)
 }
 
 type lookupService struct {
@@ -149,4 +153,25 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	}
 
 	return nil, errors.New("exceeded max number of redirection during topic lookup")
+}
+
+func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*pb.CommandPartitionedTopicMetadataResponse, error) {
+	ls.metrics.PartitionedTopicMetadataRequestsCount.Inc()
+	topicName, err := ParseTopicName(topic)
+	if err != nil {
+		return nil, err
+	}
+
+	id := ls.rpcClient.NewRequestID()
+	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_PARTITIONED_METADATA,
+		&pb.CommandPartitionedTopicMetadata{
+			RequestId: &id,
+			Topic:     &topicName.Name,
+		})
+	if err != nil {
+		return nil, err
+	}
+	ls.log.Debugf("Got topic{%s} partitioned metadata response: %+v", topic, res)
+
+	return res.Response.PartitionMetadataResponse, nil
 }

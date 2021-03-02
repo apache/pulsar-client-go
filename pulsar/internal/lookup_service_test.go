@@ -28,7 +28,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-type mockedRPCClient struct {
+type mockedLookupRPCClient struct {
 	requestIDGenerator uint64
 	t                  *testing.T
 
@@ -38,20 +38,20 @@ type mockedRPCClient struct {
 }
 
 // Create a new unique request id
-func (c *mockedRPCClient) NewRequestID() uint64 {
+func (c *mockedLookupRPCClient) NewRequestID() uint64 {
 	c.requestIDGenerator++
 	return c.requestIDGenerator
 }
 
-func (c *mockedRPCClient) NewProducerID() uint64 {
+func (c *mockedLookupRPCClient) NewProducerID() uint64 {
 	return 1
 }
 
-func (c *mockedRPCClient) NewConsumerID() uint64 {
+func (c *mockedLookupRPCClient) NewConsumerID() uint64 {
 	return 1
 }
 
-func (c *mockedRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
+func (c *mockedLookupRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
 	assert.Equal(c.t, cmdType, pb.BaseCommand_LOOKUP)
 
@@ -71,7 +71,7 @@ func (c *mockedRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCo
 	}, nil
 }
 
-func (c *mockedRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
+func (c *mockedLookupRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	assert.Equal(c.t, cmdType, pb.BaseCommand_LOOKUP)
 	expectedRequest := &c.expectedRequests[0]
@@ -93,13 +93,13 @@ func (c *mockedRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, r
 	}, nil
 }
 
-func (c *mockedRPCClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
+func (c *mockedLookupRPCClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
 	assert.Fail(c.t, "Shouldn't be called")
 	return nil, nil
 }
 
-func (c *mockedRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
+func (c *mockedLookupRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
 	assert.Fail(c.t, "Shouldn't be called")
 	return nil
 }
@@ -112,7 +112,7 @@ func TestLookupSuccess(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRPCClient{
+	ls := NewLookupService(&mockedLookupRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -144,7 +144,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 	url, err := url.Parse("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRPCClient{
+	ls := NewLookupService(&mockedLookupRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -176,7 +176,7 @@ func TestLookupWithProxy(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRPCClient{
+	ls := NewLookupService(&mockedLookupRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -209,7 +209,7 @@ func TestTlsLookupWithProxy(t *testing.T) {
 	url, err := url.Parse("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRPCClient{
+	ls := NewLookupService(&mockedLookupRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -242,7 +242,7 @@ func TestLookupWithRedirect(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRPCClient{
+	ls := NewLookupService(&mockedLookupRPCClient{
 		t:           t,
 		expectedURL: "pulsar://broker-2:6650",
 
@@ -286,7 +286,7 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 	url, err := url.Parse("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRPCClient{
+	ls := NewLookupService(&mockedLookupRPCClient{
 		t:           t,
 		expectedURL: "pulsar+ssl://broker-2:6651",
 
@@ -330,7 +330,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRPCClient{
+	ls := NewLookupService(&mockedLookupRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -360,7 +360,7 @@ func TestLookupWithLookupFailure(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 
-	ls := NewLookupService(&mockedRPCClient{
+	ls := NewLookupService(&mockedLookupRPCClient{
 		t: t,
 
 		expectedRequests: []pb.CommandLookupTopic{
@@ -382,4 +382,88 @@ func TestLookupWithLookupFailure(t *testing.T) {
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
 	assert.Nil(t, lr)
+}
+
+type mockedPartitionedTopicMetadataRPCClient struct {
+	requestIDGenerator uint64
+	t                  *testing.T
+
+	expectedURL      string
+	expectedRequests []pb.CommandPartitionedTopicMetadata
+	mockedResponses  []pb.CommandPartitionedTopicMetadataResponse
+}
+
+func (m mockedPartitionedTopicMetadataRPCClient) NewRequestID() uint64 {
+	m.requestIDGenerator++
+	return m.requestIDGenerator
+}
+
+func (m mockedPartitionedTopicMetadataRPCClient) NewProducerID() uint64 {
+	return 1
+}
+
+func (m mockedPartitionedTopicMetadataRPCClient) NewConsumerID() uint64 {
+	return 1
+}
+
+func (m mockedPartitionedTopicMetadataRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	assert.Equal(m.t, cmdType, pb.BaseCommand_PARTITIONED_METADATA)
+
+	expectedRequest := &m.expectedRequests[0]
+	m.expectedRequests = m.expectedRequests[1:]
+
+	assert.Equal(m.t, *expectedRequest.RequestId, requestID)
+
+	mockedResponse := &m.mockedResponses[0]
+	m.mockedResponses = m.mockedResponses[1:]
+
+	return &RPCResult{
+		&pb.BaseCommand{
+			PartitionMetadataResponse: mockedResponse,
+		},
+		nil,
+	}, nil
+}
+
+func (m mockedPartitionedTopicMetadataRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	assert.Fail(m.t, "Shouldn't be called")
+	return nil, nil
+}
+
+func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error {
+	assert.Fail(m.t, "Shouldn't be called")
+	return nil
+}
+
+func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	assert.Fail(m.t, "Shouldn't be called")
+	return nil, nil
+}
+
+func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
+	url, err := url.Parse("pulsar://example:6650")
+	assert.NoError(t, err)
+
+	ls := NewLookupService(&mockedPartitionedTopicMetadataRPCClient{
+		t: t,
+
+		expectedRequests: []pb.CommandPartitionedTopicMetadata{
+			{
+				RequestId: proto.Uint64(1),
+				Topic:     proto.String("my-topic"),
+			},
+		},
+		mockedResponses: []pb.CommandPartitionedTopicMetadataResponse{
+			{
+				RequestId:  proto.Uint64(1),
+				Partitions: proto.Uint32(1),
+				Response:   pb.CommandPartitionedTopicMetadataResponse_Success.Enum(),
+			},
+		},
+	}, url, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+
+	metadata, err := ls.GetPartitionedTopicMetadata("my-topic")
+	assert.NoError(t, err)
+	assert.NotNil(t, metadata)
+	assert.Equal(t, metadata.GetPartitions(), uint32(1))
 }

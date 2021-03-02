@@ -51,12 +51,13 @@ type Metrics struct {
 	readersClosed       *prometheus.CounterVec
 
 	// Metrics that are not labeled with topic, are immediately available
-	ConnectionsOpened              prometheus.Counter
-	ConnectionsClosed              prometheus.Counter
-	ConnectionsEstablishmentErrors prometheus.Counter
-	ConnectionsHandshakeErrors     prometheus.Counter
-	LookupRequestsCount            prometheus.Counter
-	RPCRequestCount                prometheus.Counter
+	ConnectionsOpened                     prometheus.Counter
+	ConnectionsClosed                     prometheus.Counter
+	ConnectionsEstablishmentErrors        prometheus.Counter
+	ConnectionsHandshakeErrors            prometheus.Counter
+	LookupRequestsCount                   prometheus.Counter
+	PartitionedTopicMetadataRequestsCount prometheus.Counter
+	RPCRequestCount                       prometheus.Counter
 }
 
 type TopicMetrics struct {
@@ -268,6 +269,12 @@ func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 			ConstLabels: constLabels,
 		}),
 
+		PartitionedTopicMetadataRequestsCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Name:        "pulsar_client_partitioned_topic_metadata_count",
+			Help:        "Counter of partitioned_topic_metadata requests made by the client",
+			ConstLabels: constLabels,
+		}),
+
 		RPCRequestCount: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_rpc_count",
 			Help:        "Counter of RPC requests made by the client",
@@ -306,6 +313,7 @@ func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 	prometheus.DefaultRegisterer.Register(metrics.ConnectionsEstablishmentErrors)
 	prometheus.DefaultRegisterer.Register(metrics.ConnectionsHandshakeErrors)
 	prometheus.DefaultRegisterer.Register(metrics.LookupRequestsCount)
+	prometheus.DefaultRegisterer.Register(metrics.PartitionedTopicMetadataRequestsCount)
 	prometheus.DefaultRegisterer.Register(metrics.RPCRequestCount)
 	return metrics
 }
