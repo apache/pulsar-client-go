@@ -163,17 +163,10 @@ func (c *client) TopicPartitions(topic string) ([]string, error) {
 		return nil, err
 	}
 
-	id := c.rpcClient.NewRequestID()
-	res, err := c.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_PARTITIONED_METADATA,
-		&pb.CommandPartitionedTopicMetadata{
-			RequestId: &id,
-			Topic:     &topicName.Name,
-		})
+	r, err := c.lookupService.GetPartitionedTopicMetadata(topic)
 	if err != nil {
 		return nil, err
 	}
-
-	r := res.Response.PartitionMetadataResponse
 	if r != nil {
 		if r.Error != nil {
 			return nil, newError(ResultLookupError, r.GetError().String())
