@@ -351,7 +351,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		p.log.WithError(errMessageTooLarge).
 			WithField("size", len(payload)).
 			WithField("properties", msg.Properties).
-			Error()
+			Errorf("MaxMessageSize %d", int(p.cnx.GetMaxMessageSize()))
 		p.metrics.PublishErrorsMsgTooLarge.Inc()
 		return
 	}

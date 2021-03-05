@@ -19,6 +19,7 @@ package internal
 
 import (
 	"bufio"
+	"fmt"
 	"io"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -54,7 +55,7 @@ func (r *connectionReader) readFromConnection() {
 		if headersAndPayload != nil {
 			payloadLen = headersAndPayload.ReadableBytes()
 		}
-		r.cnx.log.Debug("Got command! ", cmd, " with payload size: ", payloadLen)
+		r.cnx.log.Debug("Got command! ", cmd, " with payload size: ", payloadLen, " maxMsgSize: ", r.cnx.maxMessageSize)
 		r.cnx.receivedCommand(cmd, headersAndPayload)
 	}
 }
@@ -73,10 +74,12 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 
 	// We have enough to read frame size
 	frameSize := r.buffer.ReadUint32()
-	if r.cnx.maxMessageSize != 0 && int32(frameSize) > (r.cnx.maxMessageSize+MessageFramePadding) {
-		r.cnx.log.Warnf("Received too big frame size. size=%d", frameSize)
+	maxFrameSize := r.cnx.maxMessageSize + MessageFramePadding
+	if r.cnx.maxMessageSize != 0 && int32(frameSize) > maxFrameSize {
+		frameSizeError := fmt.Errorf("received too big frame size=%d maxFrameSize=%d", frameSize, maxFrameSize)
+		r.cnx.log.Error(frameSizeError)
 		r.cnx.TriggerClose()
-		return nil, nil, errors.New("Frame size too big")
+		return nil, nil, frameSizeError
 	}
 
 	// Next, we read the rest of the frame

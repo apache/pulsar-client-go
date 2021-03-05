@@ -302,7 +302,7 @@ func (c *connection) doHandshake() bool {
 			cmd.Error.GetMessage())
 		return false
 	}
-	if cmd.Connected.MaxMessageSize != nil {
+	if cmd.Connected.MaxMessageSize != nil && *cmd.Connected.MaxMessageSize > 0 {
 		c.log.Debug("Got MaxMessageSize from handshake response:", *cmd.Connected.MaxMessageSize)
 		c.maxMessageSize = *cmd.Connected.MaxMessageSize
 	} else {
