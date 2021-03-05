@@ -72,7 +72,7 @@ func getHashingFunction(s HashingScheme) func(string) uint32 {
 
 func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	if options.Topic == "" {
-		return nil, newError(ResultInvalidTopicName, "Topic name is required for producer")
+		return nil, newError(InvalidTopicName, "Topic name is required for producer")
 	}
 
 	if options.SendTimeout == 0 {

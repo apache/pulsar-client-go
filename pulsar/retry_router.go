@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -61,11 +60,11 @@ func newRetryRouter(client Client, policy *DLQPolicy, retryEnabled bool, logger 
 
 	if policy != nil && retryEnabled {
 		if policy.MaxDeliveries <= 0 {
-			return nil, errors.New("DLQPolicy.MaxDeliveries needs to be > 0")
+			return nil, newError(InvalidConfiguration, "DLQPolicy.MaxDeliveries needs to be > 0")
 		}
 
 		if policy.RetryLetterTopic == "" {
-			return nil, errors.New("DLQPolicy.RetryLetterTopic needs to be set to a valid topic name")
+			return nil, newError(InvalidConfiguration, "DLQPolicy.RetryLetterTopic needs to be set to a valid topic name")
 		}
 
 		r.messageCh = make(chan RetryMessage)

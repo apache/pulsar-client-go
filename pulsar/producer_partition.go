@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -46,10 +45,10 @@ const (
 )
 
 var (
-	errFailAddBatch    = errors.New("message send failed")
-	errSendTimeout     = errors.New("message send timeout")
-	errSendQueueIsFull = errors.New("producer send queue is full")
-	errMessageTooLarge = errors.New("message size exceeds MaxMessageSize")
+	errFailAddToBatch  = newError(AddToBatchFailed, "message add to batch failed")
+	errSendTimeout     = newError(TimeoutError, "message send timeout")
+	errSendQueueIsFull = newError(ProducerQueueIsFull, "producer send queue is full")
+	errMessageTooLarge = newError(MessageTooBig, "message size exceeds MaxMessageSize")
 
 	buffersPool sync.Pool
 )
@@ -407,7 +406,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
 			msg.ReplicationClusters, deliverAt); !ok {
 			p.publishSemaphore.Release()
-			request.callback(nil, request.msg, errFailAddBatch)
+			request.callback(nil, request.msg, errFailAddToBatch)
 			p.log.WithField("size", len(payload)).
 				WithField("properties", msg.Properties).
 				Error("unable to add message to batch")

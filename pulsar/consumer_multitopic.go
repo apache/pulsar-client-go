@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -98,10 +97,10 @@ func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err 
 	for {
 		select {
 		case <-c.closeCh:
-			return nil, ErrConsumerClosed
+			return nil, newError(ConsumerClosed, "consumer closed")
 		case cm, ok := <-c.messageCh:
 			if !ok {
-				return nil, ErrConsumerClosed
+				return nil, newError(ConsumerClosed, "consumer closed")
 			}
 			return cm.Message, nil
 		case <-ctx.Done():
@@ -193,11 +192,11 @@ func (c *multiTopicConsumer) Close() {
 }
 
 func (c *multiTopicConsumer) Seek(msgID MessageID) error {
-	return errors.New("seek command not allowed for multi topic consumer")
+	return newError(SeekFailed, "seek command not allowed for multi topic consumer")
 }
 
 func (c *multiTopicConsumer) SeekByTime(time time.Time) error {
-	return errors.New("seek command not allowed for multi topic consumer")
+	return newError(SeekFailed, "seek command not allowed for multi topic consumer")
 }
 
 // Name returns the name of consumer.

@@ -18,8 +18,6 @@
 package pulsar
 
 import (
-	"errors"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
@@ -39,6 +37,6 @@ func GetBatcherBuilderProvider(typ BatcherBuilderType) (
 	case KeyBasedBatchBuilder:
 		return internal.NewKeyBasedBatchBuilder, nil
 	default:
-		return nil, errors.New("unsupported batcher builder provider type")
+		return nil, newError(InvalidBatchBuilderType, "unsupported batcher builder provider type")
 	}
 }

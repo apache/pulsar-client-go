@@ -18,7 +18,6 @@
 package pulsar
 
 import (
-	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -57,13 +56,13 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	if options.URL == "" {
-		return nil, newError(ResultInvalidConfiguration, "URL is required for client")
+		return nil, newError(InvalidConfiguration, "URL is required for client")
 	}
 
 	url, err := url.Parse(options.URL)
 	if err != nil {
 		logger.WithError(err).Error("Failed to parse service URL")
-		return nil, newError(ResultInvalidConfiguration, "Invalid service URL")
+		return nil, newError(InvalidConfiguration, "Invalid service URL")
 	}
 
 	var tlsConfig *internal.TLSOptions
@@ -77,7 +76,7 @@ func newClient(options ClientOptions) (Client, error) {
 			ValidateHostname:        options.TLSValidateHostname,
 		}
 	default:
-		return nil, newError(ResultInvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
+		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
 
 	var authProvider auth.Provider
@@ -88,7 +87,7 @@ func newClient(options ClientOptions) (Client, error) {
 	} else {
 		authProvider, ok = options.Authentication.(auth.Provider)
 		if !ok {
-			return nil, errors.New("invalid auth provider interface")
+			return nil, newError(AuthenticationError, "invalid auth provider interface")
 		}
 	}
 	err = authProvider.Init()
@@ -169,7 +168,7 @@ func (c *client) TopicPartitions(topic string) ([]string, error) {
 	}
 	if r != nil {
 		if r.Error != nil {
-			return nil, newError(ResultLookupError, r.GetError().String())
+			return nil, newError(LookupError, r.GetError().String())
 		}
 
 		if r.GetPartitions() > 0 {
@@ -201,7 +200,7 @@ func (c *client) namespaceTopics(namespace string) ([]string, error) {
 		return nil, err
 	}
 	if res.Response.Error != nil {
-		return []string{}, newError(ResultLookupError, res.Response.GetError().String())
+		return []string{}, newError(LookupError, res.Response.GetError().String())
 	}
 
 	return res.Response.GetTopicsOfNamespaceResponse.GetTopics(), nil

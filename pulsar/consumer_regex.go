@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -141,10 +140,10 @@ func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error
 	for {
 		select {
 		case <-c.closeCh:
-			return nil, ErrConsumerClosed
+			return nil, newError(ConsumerClosed, "consumer closed")
 		case cm, ok := <-c.messageCh:
 			if !ok {
-				return nil, ErrConsumerClosed
+				return nil, newError(ConsumerClosed, "consumer closed")
 			}
 			return cm.Message, nil
 		case <-ctx.Done():
@@ -224,11 +223,11 @@ func (c *regexConsumer) Close() {
 }
 
 func (c *regexConsumer) Seek(msgID MessageID) error {
-	return errors.New("seek command not allowed for regex consumer")
+	return newError(SeekFailed, "seek command not allowed for regex consumer")
 }
 
 func (c *regexConsumer) SeekByTime(time time.Time) error {
-	return errors.New("seek command not allowed for regex consumer")
+	return newError(SeekFailed, "seek command not allowed for regex consumer")
 }
 
 // Name returns the name of consumer.

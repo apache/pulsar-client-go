@@ -20,7 +20,6 @@ package pulsar
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"reflect"
 	"unsafe"
 
@@ -311,7 +310,7 @@ func (is8 *Int8Schema) Decode(data []byte, v interface{}) error {
 
 func (is8 *Int8Schema) Validate(message []byte) error {
 	if len(message) != 1 {
-		return errors.New("size of data received by Int8Schema is not 1")
+		return newError(InvalidMessage, "size of data received by Int8Schema is not 1")
 	}
 	return nil
 }
@@ -346,7 +345,7 @@ func (is16 *Int16Schema) Decode(data []byte, v interface{}) error {
 
 func (is16 *Int16Schema) Validate(message []byte) error {
 	if len(message) != 2 {
-		return errors.New("size of data received by Int16Schema is not 2")
+		return newError(InvalidMessage, "size of data received by Int16Schema is not 2")
 	}
 	return nil
 }
@@ -381,7 +380,7 @@ func (is32 *Int32Schema) Decode(data []byte, v interface{}) error {
 
 func (is32 *Int32Schema) Validate(message []byte) error {
 	if len(message) != 4 {
-		return errors.New("size of data received by Int32Schema is not 4")
+		return newError(InvalidMessage, "size of data received by Int32Schema is not 4")
 	}
 	return nil
 }
@@ -416,7 +415,7 @@ func (is64 *Int64Schema) Decode(data []byte, v interface{}) error {
 
 func (is64 *Int64Schema) Validate(message []byte) error {
 	if len(message) != 8 {
-		return errors.New("size of data received by Int64Schema is not 8")
+		return newError(InvalidMessage, "size of data received by Int64Schema is not 8")
 	}
 	return nil
 }
@@ -454,7 +453,7 @@ func (fs *FloatSchema) Decode(data []byte, v interface{}) error {
 
 func (fs *FloatSchema) Validate(message []byte) error {
 	if len(message) != 4 {
-		return errors.New("size of data received by FloatSchema is not 4")
+		return newError(InvalidMessage, "size of data received by FloatSchema is not 4")
 	}
 	return nil
 }
@@ -492,7 +491,7 @@ func (ds *DoubleSchema) Decode(data []byte, v interface{}) error {
 
 func (ds *DoubleSchema) Validate(message []byte) error {
 	if len(message) != 8 {
-		return errors.New("size of data received by DoubleSchema is not 8")
+		return newError(InvalidMessage, "size of data received by DoubleSchema is not 8")
 	}
 	return nil
 }
