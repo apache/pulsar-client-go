@@ -103,6 +103,10 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	}
 
 	if err := cnx.waitUntilReady(); err != nil {
+		if !wasCached {
+			p.pool.Delete(key)
+			p.log.Debug("Removed failed connection from pool:", cnx.logicalAddr, cnx.physicalAddr)
+		}
 		return nil, err
 	}
 	return cnx, nil
