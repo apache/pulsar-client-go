@@ -18,9 +18,10 @@
 package internal
 
 import (
-	"github.com/stretchr/testify/assert"
 	"net/url"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestResolveBeforeUpdateServiceUrl(t *testing.T) {
@@ -92,7 +93,7 @@ func TestMultipleHostsUrl(t *testing.T) {
 	assert.Contains(t, resolver.GetAddressList(), host2)
 	hosts := []*url.URL{host1, host2}
 	hosturis := []*PulsarServiceURI{host1uri, host2uri}
-	for i := 0; i<10; i++{
+	for i := 0; i < 10; i++ {
 		host, err := resolver.ResolveHost()
 		assert.Nil(t, err)
 		hosturi, err := resolver.ResolveHostUri()
@@ -119,7 +120,7 @@ func TestMultipleHostsTlsUrl(t *testing.T) {
 	assert.Contains(t, resolver.GetAddressList(), host2)
 	hosts := []*url.URL{host1, host2}
 	hosturis := []*PulsarServiceURI{host1uri, host2uri}
-	for i := 0; i<10; i++{
+	for i := 0; i < 10; i++ {
 		host, err := resolver.ResolveHost()
 		assert.Nil(t, err)
 		hosturi, err := resolver.ResolveHostUri()

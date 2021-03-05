@@ -495,9 +495,9 @@ func TestRetryWithMultipleHosts(t *testing.T) {
 	assert.Equal(t, 10, len(msgIds))
 
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "retry-multi-hosts-sub",
-		Type: Shared,
+		Topic:                       topic,
+		SubscriptionName:            "retry-multi-hosts-sub",
+		Type:                        Shared,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
 	assert.Nil(t, err)

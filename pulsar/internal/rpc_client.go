@@ -70,10 +70,10 @@ func NewRPCClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, 
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics) RPCClient {
 	return &rpcClient{
 		serviceNameResolver: serviceNameResolver,
-		pool:           pool,
-		requestTimeout: requestTimeout,
-		log:            logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
-		metrics:        metrics,
+		pool:                pool,
+		requestTimeout:      requestTimeout,
+		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		metrics:             metrics,
 	}
 }
 

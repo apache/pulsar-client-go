@@ -20,10 +20,11 @@ package internal
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"net"
 	"net/url"
 	"strings"
+
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -36,13 +37,14 @@ const (
 	HttpPort      = 80
 	HttpsPort     = 443
 )
+
 // map to ServiceURI.java
 type PulsarServiceURI struct {
-	ServiceName string
+	ServiceName  string
 	ServiceInfos []string
 	ServiceHosts []string
-	servicePath string
-	URL *url.URL
+	servicePath  string
+	URL          *url.URL
 }
 
 func NewPulsarServiceURIFromUriString(uri string) (*PulsarServiceURI, error) {
@@ -181,7 +183,7 @@ func validateHostName(serviceName string, serviceInfos []string, hostname string
 	if uri.Port() == "" {
 		p := getServicePort(serviceName, serviceInfos)
 		if p == -1 {
-			return "", errors.New(fmt.Sprintf("Invalid port : %d", p))
+			return "", fmt.Errorf("invalid port : %d", p)
 		}
 		port = fmt.Sprint(p)
 	}

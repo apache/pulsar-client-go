@@ -587,7 +587,6 @@ func TestReaderLatestInclusiveHasNext(t *testing.T) {
 	assert.False(t, reader.HasNext())
 }
 
-
 func TestReaderWithMultiHosts(t *testing.T) {
 	// Multi hosts included an unreached port and the actual port for verify retry logic
 	client, err := NewClient(ClientOptions{

@@ -20,11 +20,12 @@ package internal
 import (
 	"errors"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"math/rand"
 	"net/url"
 	"sync/atomic"
 	"time"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // Map: PulsarServiceNameResolver.java
@@ -39,10 +40,10 @@ type ServiceNameResolver interface {
 }
 
 type PulsarServiceNameResolver struct {
-	ServiceURI *PulsarServiceURI
-	ServiceURL *url.URL
+	ServiceURI   *PulsarServiceURI
+	ServiceURL   *url.URL
 	CurrentIndex int32
-	AddressList []*url.URL
+	AddressList  []*url.URL
 }
 
 func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
@@ -55,19 +56,18 @@ func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
 }
 
 func (r *PulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
-	if r.AddressList == nil  {
+	if r.AddressList == nil {
 		return nil, errors.New("no service url is provided yet")
 	}
 	if len(r.AddressList) == 0 {
-		return nil, errors.New(fmt.Sprintf("no hosts found for service url : %v", r.ServiceURL))
+		return nil, fmt.Errorf("no hosts found for service url : %v", r.ServiceURL)
 	}
 	if len(r.AddressList) == 1 {
 		return r.AddressList[0], nil
-	} else {
-		idx := (r.CurrentIndex + 1) % int32(len(r.AddressList))
-		atomic.StoreInt32(&r.CurrentIndex, idx)
-		return r.AddressList[idx], nil
 	}
+	idx := (r.CurrentIndex + 1) % int32(len(r.AddressList))
+	atomic.StoreInt32(&r.CurrentIndex, idx)
+	return r.AddressList[idx], nil
 }
 
 func (r *PulsarServiceNameResolver) ResolveHostUri() (*PulsarServiceURI, error) {

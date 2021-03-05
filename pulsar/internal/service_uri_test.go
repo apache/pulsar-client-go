@@ -18,18 +18,19 @@
 package internal
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestInvalidServiceUris(t *testing.T) {
 	uris := []string{
-		"://localhost:6650",                // missing scheme
-		"pulsar:///",                       // missing authority
-		"pulsar://localhost:6650:6651/",    // invalid hostname pair
-		"pulsar://localhost:xyz/",          // invalid port
-		"pulsar://localhost:-6650/",        // negative port
-		"pulsar://fec0:0:0:ffff::1:6650",   // missing brackets
+		"://localhost:6650",              // missing scheme
+		"pulsar:///",                     // missing authority
+		"pulsar://localhost:6650:6651/",  // invalid hostname pair
+		"pulsar://localhost:xyz/",        // invalid port
+		"pulsar://localhost:-6650/",      // negative port
+		"pulsar://fec0:0:0:ffff::1:6650", // missing brackets
 	}
 
 	for _, uri := range uris {
@@ -71,7 +72,8 @@ func TestUserInfo(t *testing.T) {
 
 func TestIpv6Uri(t *testing.T) {
 	serviceUri := "pulsar://pulsaruser@[fec0:0:0:ffff::1]:6650/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"[fec0:0:0:ffff::1]:6650"}, "/path/to/namespace", "pulsaruser")
+	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"[fec0:0:0:ffff::1]:6650"}, "/path/to/namespace",
+		"pulsaruser")
 }
 
 func TestIpv6UriWithoutPulsarPort(t *testing.T) {
@@ -81,32 +83,40 @@ func TestIpv6UriWithoutPulsarPort(t *testing.T) {
 
 func TestMultiIpv6Uri(t *testing.T) {
 	serviceUri := "pulsar://pulsaruser@[fec0:0:0:ffff::1]:6650,[fec0:0:0:ffff::2]:6650;[fec0:0:0:ffff::3]:6650/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"[fec0:0:0:ffff::1]:6650", "[fec0:0:0:ffff::2]:6650", "[fec0:0:0:ffff::3]:6650"}, "/path/to/namespace", "pulsaruser")
+	assertServiceUri(t, serviceUri, "pulsar", nil,
+		[]string{"[fec0:0:0:ffff::1]:6650", "[fec0:0:0:ffff::2]:6650", "[fec0:0:0:ffff::3]:6650"}, "/path/to/namespace",
+		"pulsaruser")
 }
 
 func TestMultiIpv6UriWithoutPulsarPort(t *testing.T) {
 	serviceUri := "pulsar://pulsaruser@[fec0:0:0:ffff::1],[fec0:0:0:ffff::2];[fec0:0:0:ffff::3]/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"[fec0:0:0:ffff::1]:6650", "[fec0:0:0:ffff::2]:6650", "[fec0:0:0:ffff::3]:6650"}, "/path/to/namespace", "pulsaruser")
+	assertServiceUri(t, serviceUri, "pulsar", nil,
+		[]string{"[fec0:0:0:ffff::1]:6650", "[fec0:0:0:ffff::2]:6650", "[fec0:0:0:ffff::3]:6650"}, "/path/to/namespace",
+		"pulsaruser")
 }
 
 func TestMultipleHostsSemiColon(t *testing.T) {
 	serviceUri := "pulsar://host1:6650;host2:6650;host3:6650/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6650", "host2:6650", "host3:6650"}, "/path/to/namespace", "")
+	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6650", "host2:6650", "host3:6650"},
+		"/path/to/namespace", "")
 }
 
 func TestMultipleHostsComma(t *testing.T) {
 	serviceUri := "pulsar://host1:6650,host2:6650,host3:6650/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6650", "host2:6650", "host3:6650"}, "/path/to/namespace", "")
+	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6650", "host2:6650", "host3:6650"},
+		"/path/to/namespace", "")
 }
 
 func TestMultipleHostsWithoutPulsarPorts(t *testing.T) {
 	serviceUri := "pulsar://host1,host2,host3/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6650", "host2:6650", "host3:6650"}, "/path/to/namespace", "")
+	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6650", "host2:6650", "host3:6650"},
+		"/path/to/namespace", "")
 }
 
 func TestMultipleHostsWithoutPulsarTlsPorts(t *testing.T) {
 	serviceUri := "pulsar+ssl://host1,host2,host3/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", []string{"ssl"}, []string{"host1:6651", "host2:6651", "host3:6651"}, "/path/to/namespace", "")
+	assertServiceUri(t, serviceUri, "pulsar", []string{"ssl"}, []string{"host1:6651", "host2:6651", "host3:6651"},
+		"/path/to/namespace", "")
 }
 
 func TestMultipleHostsWithoutHttpPorts(t *testing.T) {
@@ -116,22 +126,26 @@ func TestMultipleHostsWithoutHttpPorts(t *testing.T) {
 
 func TestMultipleHostsWithoutHttpsPorts(t *testing.T) {
 	serviceUri := "https://host1,host2,host3/path/to/namespace"
-	assertServiceUri(t, serviceUri, "https", nil, []string{"host1:443", "host2:443", "host3:443"}, "/path/to/namespace", "")
+	assertServiceUri(t, serviceUri, "https", nil, []string{"host1:443", "host2:443", "host3:443"}, "/path/to/namespace",
+		"")
 }
 
 func TestMultipleHostsMixedPorts(t *testing.T) {
 	serviceUri := "pulsar://host1:6640,host2:6650,host3:6660/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6640", "host2:6650", "host3:6660"}, "/path/to/namespace", "")
+	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6640", "host2:6650", "host3:6660"},
+		"/path/to/namespace", "")
 }
 
 func TestMultipleHostsMixed(t *testing.T) {
 	serviceUri := "pulsar://host1:6640,host2,host3:6660/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6640", "host2:6650", "host3:6660"}, "/path/to/namespace", "")
+	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6640", "host2:6650", "host3:6660"},
+		"/path/to/namespace", "")
 }
 
 func TestUserInfoWithMultipleHosts(t *testing.T) {
 	serviceUri := "pulsar://pulsaruser@host1:6650;host2:6650;host3:6650/path/to/namespace"
-	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6650", "host2:6650", "host3:6650"}, "/path/to/namespace", "pulsaruser")
+	assertServiceUri(t, serviceUri, "pulsar", nil, []string{"host1:6650", "host2:6650", "host3:6650"},
+		"/path/to/namespace", "pulsaruser")
 }
 
 func testInvalidServiceUri(t *testing.T, serviceUri string) {
