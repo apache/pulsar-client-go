@@ -479,20 +479,20 @@ func TestRetryWithMultipleHosts(t *testing.T) {
 	defer producer.Close()
 
 	ctx := context.Background()
-	var msgIds [][]byte
+	var msgIDs [][]byte
 
 	for i := 0; i < 10; i++ {
-		if msgId, err := producer.Send(ctx, &ProducerMessage{
+		if msgID, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
 			assert.Nil(t, err)
 		} else {
-			assert.NotNil(t, msgId)
-			msgIds = append(msgIds, msgId.Serialize())
+			assert.NotNil(t, msgID)
+			msgIDs = append(msgIDs, msgID.Serialize())
 		}
 	}
 
-	assert.Equal(t, 10, len(msgIds))
+	assert.Equal(t, 10, len(msgIDs))
 
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
@@ -506,7 +506,7 @@ func TestRetryWithMultipleHosts(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		msg, err := consumer.Receive(context.Background())
 		assert.Nil(t, err)
-		assert.Contains(t, msgIds, msg.ID().Serialize())
+		assert.Contains(t, msgIDs, msg.ID().Serialize())
 		consumer.Ack(msg)
 	}
 

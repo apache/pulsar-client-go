@@ -32,8 +32,8 @@ import (
 
 type ServiceNameResolver interface {
 	ResolveHost() (*url.URL, error)
-	ResolveHostUri() (*PulsarServiceURI, error)
-	UpdateServiceUrl(url *url.URL) error
+	ResolveHostURI() (*PulsarServiceURI, error)
+	UpdateServiceURL(url *url.URL) error
 	GetServiceURI() *PulsarServiceURI
 	GetServiceURL() *url.URL
 	GetAddressList() []*url.URL
@@ -48,7 +48,7 @@ type PulsarServiceNameResolver struct {
 
 func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
 	r := &PulsarServiceNameResolver{}
-	err := r.UpdateServiceUrl(url)
+	err := r.UpdateServiceURL(url)
 	if err != nil {
 		log.Errorf("create pulsar service name resolver failed : %v", err)
 	}
@@ -70,29 +70,29 @@ func (r *PulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
 	return r.AddressList[idx], nil
 }
 
-func (r *PulsarServiceNameResolver) ResolveHostUri() (*PulsarServiceURI, error) {
+func (r *PulsarServiceNameResolver) ResolveHostURI() (*PulsarServiceURI, error) {
 	host, err := r.ResolveHost()
 	if err != nil {
 		return nil, err
 	}
-	hostUrl := host.Scheme + "://" + host.Hostname() + ":" + host.Port()
-	return NewPulsarServiceURIFromUriString(hostUrl)
+	hostURL := host.Scheme + "://" + host.Hostname() + ":" + host.Port()
+	return NewPulsarServiceURIFromURIString(hostURL)
 }
 
-func (r *PulsarServiceNameResolver) UpdateServiceUrl(u *url.URL) error {
-	uri, err := NewPulsarServiceURIFromUrl(u)
+func (r *PulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
+	uri, err := NewPulsarServiceURIFromURL(u)
 	if err != nil {
 		log.Errorf("invalid service-url instance %s provided %v", u, err)
 		return err
 	}
 
 	hosts := uri.ServiceHosts
-	var addresses []*url.URL
+	addresses := []*url.URL{}
 	for _, host := range hosts {
-		hostUrl := uri.URL.Scheme + "://" + host
-		u, err := url.Parse(hostUrl)
+		hostURL := uri.URL.Scheme + "://" + host
+		u, err := url.Parse(hostURL)
 		if err != nil {
-			log.Errorf("invalid host-url %s provided %v", hostUrl, err)
+			log.Errorf("invalid host-url %s provided %v", hostURL, err)
 			return err
 		}
 		addresses = append(addresses, u)

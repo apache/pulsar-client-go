@@ -29,13 +29,13 @@ import (
 
 const (
 	BinaryService = "pulsar"
-	HttpService   = "http"
-	HttpsService  = "https"
+	HTTPService   = "http"
+	HTTPSService  = "https"
 	SSLService    = "ssl"
 	BinaryPort    = 6650
 	BinaryTLSPort = 6651
-	HttpPort      = 80
-	HttpsPort     = 443
+	HTTPPort      = 80
+	HTTPSPort     = 443
 )
 
 // map to ServiceURI.java
@@ -47,7 +47,7 @@ type PulsarServiceURI struct {
 	URL          *url.URL
 }
 
-func NewPulsarServiceURIFromUriString(uri string) (*PulsarServiceURI, error) {
+func NewPulsarServiceURIFromURIString(uri string) (*PulsarServiceURI, error) {
 	u, err := fromString(uri)
 	if err != nil {
 		log.Error(err)
@@ -56,7 +56,7 @@ func NewPulsarServiceURIFromUriString(uri string) (*PulsarServiceURI, error) {
 	return u, nil
 }
 
-func NewPulsarServiceURIFromUrl(url *url.URL) (*PulsarServiceURI, error) {
+func NewPulsarServiceURIFromURL(url *url.URL) (*PulsarServiceURI, error) {
 	u, err := fromURL(url)
 	if err != nil {
 		log.Error(err)
@@ -71,7 +71,7 @@ func fromString(uriStr string) (*PulsarServiceURI, error) {
 	}
 	if strings.Contains(uriStr, "[") && strings.Contains(uriStr, "]") {
 		// deal with ipv6 address
-		hosts := strings.FieldsFunc(uriStr, splitUri)
+		hosts := strings.FieldsFunc(uriStr, splitURI)
 		if len(hosts) > 1 {
 			// deal with ipv6 address
 			firstHost := hosts[0]
@@ -143,7 +143,7 @@ func fromURL(url *url.URL) (*PulsarServiceURI, error) {
 	}
 
 	var serviceHosts []string
-	hosts := strings.FieldsFunc(url.Host, splitUri)
+	hosts := strings.FieldsFunc(url.Host, splitURI)
 	for _, v := range hosts {
 		h, err := validateHostName(serviceName, serviceInfos, v)
 		if err == nil {
@@ -162,7 +162,7 @@ func fromURL(url *url.URL) (*PulsarServiceURI, error) {
 	}, nil
 }
 
-func splitUri(r rune) bool {
+func splitURI(r rune) bool {
 	return r == ',' || r == ';'
 }
 
@@ -203,10 +203,10 @@ func getServicePort(serviceName string, serviceInfos []string) int {
 		} else if len(serviceInfos) == 1 && strings.ToLower(serviceInfos[0]) == SSLService {
 			return BinaryTLSPort
 		}
-	case HttpService:
-		return HttpPort
-	case HttpsService:
-		return HttpsPort
+	case HTTPService:
+		return HTTPPort
+	case HTTPSService:
+		return HTTPSPort
 	}
 	return -1
 }
