@@ -38,7 +38,6 @@ const (
 	HTTPSPort     = 443
 )
 
-// map to ServiceURI.java
 type PulsarServiceURI struct {
 	ServiceName  string
 	ServiceInfos []string

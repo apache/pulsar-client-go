@@ -28,8 +28,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// Map: PulsarServiceNameResolver.java
-
 type ServiceNameResolver interface {
 	ResolveHost() (*url.URL, error)
 	ResolveHostURI() (*PulsarServiceURI, error)
@@ -39,7 +37,7 @@ type ServiceNameResolver interface {
 	GetAddressList() []*url.URL
 }
 
-type PulsarServiceNameResolver struct {
+type pulsarServiceNameResolver struct {
 	ServiceURI   *PulsarServiceURI
 	ServiceURL   *url.URL
 	CurrentIndex int32
@@ -47,7 +45,7 @@ type PulsarServiceNameResolver struct {
 }
 
 func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
-	r := &PulsarServiceNameResolver{}
+	r := &pulsarServiceNameResolver{}
 	err := r.UpdateServiceURL(url)
 	if err != nil {
 		log.Errorf("create pulsar service name resolver failed : %v", err)
@@ -55,7 +53,7 @@ func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
 	return r
 }
 
-func (r *PulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
+func (r *pulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
 	if r.AddressList == nil {
 		return nil, errors.New("no service url is provided yet")
 	}
@@ -70,7 +68,7 @@ func (r *PulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
 	return r.AddressList[idx], nil
 }
 
-func (r *PulsarServiceNameResolver) ResolveHostURI() (*PulsarServiceURI, error) {
+func (r *pulsarServiceNameResolver) ResolveHostURI() (*PulsarServiceURI, error) {
 	host, err := r.ResolveHost()
 	if err != nil {
 		return nil, err
@@ -79,7 +77,7 @@ func (r *PulsarServiceNameResolver) ResolveHostURI() (*PulsarServiceURI, error) 
 	return NewPulsarServiceURIFromURIString(hostURL)
 }
 
-func (r *PulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
+func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 	uri, err := NewPulsarServiceURIFromURL(u)
 	if err != nil {
 		log.Errorf("invalid service-url instance %s provided %v", u, err)
@@ -105,14 +103,14 @@ func (r *PulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 	return nil
 }
 
-func (r *PulsarServiceNameResolver) GetServiceURI() *PulsarServiceURI {
+func (r *pulsarServiceNameResolver) GetServiceURI() *PulsarServiceURI {
 	return r.ServiceURI
 }
 
-func (r *PulsarServiceNameResolver) GetServiceURL() *url.URL {
+func (r *pulsarServiceNameResolver) GetServiceURL() *url.URL {
 	return r.ServiceURL
 }
 
-func (r *PulsarServiceNameResolver) GetAddressList() []*url.URL {
+func (r *pulsarServiceNameResolver) GetAddressList() []*url.URL {
 	return r.AddressList
 }
