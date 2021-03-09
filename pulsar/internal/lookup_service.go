@@ -45,22 +45,22 @@ type LookupService interface {
 }
 
 type lookupService struct {
-	rpcClient  RPCClient
-	serviceURL *url.URL
-	tlsEnabled bool
-	log        log.Logger
-	metrics    *Metrics
+	rpcClient           RPCClient
+	serviceNameResolver ServiceNameResolver
+	tlsEnabled          bool
+	log                 log.Logger
+	metrics             *Metrics
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
-func NewLookupService(rpcClient RPCClient, serviceURL *url.URL,
+func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
 	tlsEnabled bool, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
-		rpcClient:  rpcClient,
-		serviceURL: serviceURL,
-		tlsEnabled: tlsEnabled,
-		log:        logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
-		metrics:    metrics,
+		rpcClient:           rpcClient,
+		serviceNameResolver: serviceNameResolver,
+		tlsEnabled:          tlsEnabled,
+		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		metrics:             metrics,
 	}
 }
 
@@ -78,7 +78,10 @@ func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (lo
 
 	var physicalAddr *url.URL
 	if lr.GetProxyThroughServiceUrl() {
-		physicalAddr = ls.serviceURL
+		physicalAddr, err = ls.serviceNameResolver.ResolveHost()
+		if err != nil {
+			return nil, nil, err
+		}
 	} else {
 		physicalAddr = logicalAddress
 	}

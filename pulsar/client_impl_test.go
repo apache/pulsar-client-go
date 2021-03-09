@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"io/ioutil"
@@ -457,4 +458,59 @@ func anonymousNamespacePolicy() map[string]interface{} {
 		},
 		"replication_clusters": []string{"standalone"},
 	}
+}
+
+func TestRetryWithMultipleHosts(t *testing.T) {
+	// Multi hosts included an unreached port and the actual port for verify retry logic
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6600,localhost:6650",
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/retry-multiple-hosts-" + generateRandomName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	var msgIDs [][]byte
+
+	for i := 0; i < 10; i++ {
+		if msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			assert.Nil(t, err)
+		} else {
+			assert.NotNil(t, msgID)
+			msgIDs = append(msgIDs, msgID.Serialize())
+		}
+	}
+
+	assert.Equal(t, 10, len(msgIDs))
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "retry-multi-hosts-sub",
+		Type:                        Shared,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		assert.Nil(t, err)
+		assert.Contains(t, msgIDs, msg.ID().Serialize())
+		consumer.Ack(msg)
+	}
+
+	err = consumer.Unsubscribe()
+	assert.Nil(t, err)
+
 }

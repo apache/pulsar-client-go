@@ -621,7 +621,7 @@ func TestProducerMetadata(t *testing.T) {
 	}
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:      topic,
-		Name:       "my-producer",
+		Name:       "meta-data-producer",
 		Properties: props,
 	})
 	if err != nil {
