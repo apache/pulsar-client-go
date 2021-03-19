@@ -346,6 +346,9 @@ func encodeJSONBody(obj interface{}) (io.Reader, error) {
 
 // decodeJSONBody is used to JSON decode a body
 func decodeJSONBody(resp *http.Response, out interface{}) error {
+	if resp.ContentLength == 0 {
+		return nil
+	}
 	dec := json.NewDecoder(resp.Body)
 	return dec.Decode(out)
 }
