@@ -784,7 +784,9 @@ func (pc *partitionConsumer) runEventsLoop() {
 				return
 			case <-pc.connectClosedCh:
 				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker()
+				if !pc.reconnectToBroker() {
+					pc.parentConsumer.Close()
+				}
 			}
 		}
 	}()
@@ -858,7 +860,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	close(pc.closeCh)
 }
 
-func (pc *partitionConsumer) reconnectToBroker() {
+func (pc *partitionConsumer) reconnectToBroker() bool {
 	var (
 		maxRetry int
 		backoff  = internal.Backoff{}
@@ -873,7 +875,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 	for maxRetry != 0 {
 		if pc.getConsumerState() != consumerReady {
 			// Consumer is already closing
-			return
+			return false
 		}
 
 		d := backoff.Next()
@@ -884,13 +886,15 @@ func (pc *partitionConsumer) reconnectToBroker() {
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
-			return
+			return true
 		}
 
 		if maxRetry > 0 {
 			maxRetry--
 		}
 	}
+
+	return false
 }
 
 func (pc *partitionConsumer) grabConn() error {

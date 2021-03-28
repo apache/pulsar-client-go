@@ -375,6 +375,10 @@ func (c *consumer) Unsubscribe() error {
 	return nil
 }
 
+func (c *consumer) Closed() <-chan struct{} {
+	return c.closeCh
+}
+
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {
