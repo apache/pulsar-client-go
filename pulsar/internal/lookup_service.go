@@ -46,21 +46,25 @@ type LookupService interface {
 
 type lookupService struct {
 	rpcClient           RPCClient
-	serviceNameResolver ServiceNameResolver
+	serviceURL          *url.URL
 	tlsEnabled          bool
+	listenerName        string
 	log                 log.Logger
 	metrics             *Metrics
+	serviceNameResolver ServiceNameResolver
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
-	tlsEnabled bool, logger log.Logger, metrics *Metrics) LookupService {
+	tlsEnabled bool, listenerName string, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
 		rpcClient:           rpcClient,
-		serviceNameResolver: serviceNameResolver,
+		serviceURL:          serviceURL,
 		tlsEnabled:          tlsEnabled,
+		listenerName:        listenerName,
 		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 		metrics:             metrics,
+		serviceNameResolver: serviceNameResolver,
 	}
 }
 
@@ -96,9 +100,10 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
 	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-		RequestId:     &id,
-		Topic:         &topic,
-		Authoritative: proto.Bool(false),
+		RequestId:              &id,
+		Topic:                  &topic,
+		Authoritative:          proto.Bool(false),
+		AdvertisedListenerName: proto.String(ls.listenerName),
 	})
 	if err != nil {
 		return nil, err
@@ -120,9 +125,10 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 
 			id := ls.rpcClient.NewRequestID()
 			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-				RequestId:     &id,
-				Topic:         &topic,
-				Authoritative: lr.Authoritative,
+				RequestId:              &id,
+				Topic:                  &topic,
+				Authoritative:          lr.Authoritative,
+				AdvertisedListenerName: proto.String(ls.listenerName),
 			})
 			if err != nil {
 				return nil, err

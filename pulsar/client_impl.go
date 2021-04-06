@@ -126,7 +126,8 @@ func newClient(options ClientOptions) (Client, error) {
 	serviceNameResolver := internal.NewPulsarServiceNameResolver(url)
 
 	c.rpcClient = internal.NewRPCClient(url, serviceNameResolver, c.cnxPool, operationTimeout, logger, metrics)
-	c.lookupService = internal.NewLookupService(c.rpcClient, url, serviceNameResolver, tlsConfig != nil, logger, metrics)
+	c.lookupService = internal.NewLookupService(c.rpcClient, url, serviceNameResolver,
+		tlsConfig != nil, options.ListenerName, logger, metrics)
 	c.handlers = internal.NewClientHandlers()
 
 	return c, nil
