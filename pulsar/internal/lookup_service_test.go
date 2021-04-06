@@ -496,9 +496,10 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				AdvertisedListenerName: proto.String(""),
+				Authoritative:          proto.Bool(false),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
