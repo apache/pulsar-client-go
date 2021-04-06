@@ -46,12 +46,11 @@ type LookupService interface {
 
 type lookupService struct {
 	rpcClient           RPCClient
-	serviceURL          *url.URL
+	serviceNameResolver ServiceNameResolver
 	tlsEnabled          bool
 	listenerName        string
 	log                 log.Logger
 	metrics             *Metrics
-	serviceNameResolver ServiceNameResolver
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
@@ -59,12 +58,11 @@ func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResol
 	tlsEnabled bool, listenerName string, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
 		rpcClient:           rpcClient,
-		serviceURL:          serviceURL,
+		serviceNameResolver: serviceNameResolver,
 		tlsEnabled:          tlsEnabled,
-		listenerName:        listenerName,
 		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 		metrics:             metrics,
-		serviceNameResolver: serviceNameResolver,
+		listenerName:        listenerName,
 	}
 }
 
