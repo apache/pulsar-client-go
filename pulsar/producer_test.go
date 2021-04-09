@@ -932,7 +932,8 @@ func TestSendTimeout(t *testing.T) {
 
 type noopProduceInterceptor struct{}
 
-func (noopProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {}
+func (noopProduceInterceptor) BeforeSend(ctx context.Context, producer Producer, message *ProducerMessage) {
+}
 
 func (noopProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
 }
@@ -943,7 +944,7 @@ type metricProduceInterceptor struct {
 	ackn  int
 }
 
-func (x *metricProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {
+func (x *metricProduceInterceptor) BeforeSend(ctx context.Context, producer Producer, message *ProducerMessage) {
 	x.sendn++
 }
 

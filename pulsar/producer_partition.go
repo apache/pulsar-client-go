@@ -624,7 +624,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
 	}
-	p.options.Interceptors.BeforeSend(p, msg)
+	p.options.Interceptors.BeforeSend(ctx, p, msg)
 
 	if p.options.DisableBlockIfQueueFull {
 		if !p.publishSemaphore.TryAcquire() {
