@@ -21,6 +21,8 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"reflect"
+	"runtime"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -39,6 +41,12 @@ func TestInvalidURL(t *testing.T) {
 	if client != nil || err == nil {
 		t.Fatal("Should have failed to create client")
 	}
+}
+
+func TestGetHashingFunction(t *testing.T) {
+	assertHashingFunctionEqual(t, internal.JavaStringHash, GetHashingFunction(-1))
+	assertHashingFunctionEqual(t, internal.JavaStringHash, GetHashingFunction(JavaStringHash))
+	assertHashingFunctionEqual(t, internal.Murmur3_32Hash, GetHashingFunction(Murmur3_32Hash))
 }
 
 func TestProducerConnectError(t *testing.T) {
@@ -1030,4 +1038,10 @@ func TestProducerWithInterceptors(t *testing.T) {
 
 	assert.Equal(t, 10, metric.sendn)
 	assert.Equal(t, 10, metric.ackn)
+}
+
+func assertHashingFunctionEqual(t *testing.T, func1, func2 func(string) uint32) {
+	funcName1 := runtime.FuncForPC(reflect.ValueOf(func1).Pointer()).Name()
+	funcName2 := runtime.FuncForPC(reflect.ValueOf(func2).Pointer()).Name()
+	assert.Equal(t, funcName1, funcName2)
 }

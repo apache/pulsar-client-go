@@ -20,6 +20,8 @@ package pulsar
 import (
 	"context"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 type HashingScheme int
@@ -198,4 +200,16 @@ type Producer interface {
 	// No more writes will be accepted from this producer. Waits until all pending write request are persisted. In case
 	// of errors, pending writes will not be retried.
 	Close()
+}
+
+// GetHashingFunction return the corresponding hashing function for the hashing scheme
+func GetHashingFunction(s HashingScheme) func(string) uint32 {
+	switch s {
+	case JavaStringHash:
+		return internal.JavaStringHash
+	case Murmur3_32Hash:
+		return internal.Murmur3_32Hash
+	default:
+		return internal.JavaStringHash
+	}
 }

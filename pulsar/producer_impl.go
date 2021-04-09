@@ -59,17 +59,6 @@ type producer struct {
 
 var partitionsAutoDiscoveryInterval = 1 * time.Minute
 
-func getHashingFunction(s HashingScheme) func(string) uint32 {
-	switch s {
-	case JavaStringHash:
-		return internal.JavaStringHash
-	case Murmur3_32Hash:
-		return internal.Murmur3_32Hash
-	default:
-		return internal.JavaStringHash
-	}
-}
-
 func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	if options.Topic == "" {
 		return nil, newError(InvalidTopicName, "Topic name is required for producer")
@@ -102,7 +91,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 
 	if options.MessageRouter == nil {
 		internalRouter := NewDefaultRouter(
-			getHashingFunction(options.HashingScheme),
+			GetHashingFunction(options.HashingScheme),
 			options.BatchingMaxMessages,
 			options.BatchingMaxSize,
 			options.BatchingMaxPublishDelay,
