@@ -399,7 +399,7 @@ func (c *connection) runPingCheck() {
 			return
 		case <-c.pingCheckTicker.C:
 			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
-				// We have not received a response to the previous Ping request, the
+				// We have not received a response to the previous Ping httpRequest, the
 				// connection to broker is stale
 				c.log.Warn("Detected stale connection to broker")
 				c.TriggerClose()
@@ -589,7 +589,7 @@ func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) 
 	c.pendingLock.Lock()
 	request, ok := c.pendingReqs[requestID]
 	if !ok {
-		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
+		c.log.Warnf("Received unexpected response for httpRequest %d of type %s", requestID, response.Type)
 		c.pendingLock.Unlock()
 		return
 	}
@@ -604,7 +604,7 @@ func (c *connection) handleResponseError(serverError *pb.CommandError) {
 	c.pendingLock.Lock()
 	request, ok := c.pendingReqs[requestID]
 	if !ok {
-		c.log.Warnf("Received unexpected error response for request %d of type %s",
+		c.log.Warnf("Received unexpected error response for httpRequest %d of type %s",
 			requestID, serverError.GetError())
 		c.pendingLock.Unlock()
 		return
@@ -670,7 +670,7 @@ func (c *connection) handlePong() {
 }
 
 func (c *connection) handlePing() {
-	c.log.Debug("Responding to PING request")
+	c.log.Debug("Responding to PING httpRequest")
 	c.writeCommand(baseCommand(pb.BaseCommand_PONG, &pb.CommandPong{}))
 }
 

@@ -18,10 +18,15 @@
 package internal
 
 import (
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -37,7 +42,7 @@ type mockedLookupRPCClient struct {
 	mockedResponses  []pb.CommandLookupTopicResponse
 }
 
-// Create a new unique request id
+// Create a new unique httpRequest id
 func (c *mockedLookupRPCClient) NewRequestID() uint64 {
 	c.requestIDGenerator++
 	return c.requestIDGenerator
@@ -483,7 +488,7 @@ func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
 	metadata, err := ls.GetPartitionedTopicMetadata("my-topic")
 	assert.NoError(t, err)
 	assert.NotNil(t, metadata)
-	assert.Equal(t, metadata.GetPartitions(), uint32(1))
+	assert.Equal(t, metadata.Partitions, uint32(1))
 }
 
 func TestLookupSuccessWithMultipleHosts(t *testing.T) {
@@ -518,4 +523,78 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 
 	assert.Equal(t, "pulsar://broker-1:6650", lr.LogicalAddr.String())
 	assert.Equal(t, "pulsar://broker-1:6650", lr.PhysicalAddr.String())
+}
+
+type MockHTTPClient struct {
+	ServiceNameResolver ServiceNameResolver
+}
+
+func (c *MockHTTPClient) Get(endpoint string, obj interface{}) error {
+	if strings.Contains(endpoint, HTTPLookupServiceBasePathV1) || strings.Contains(endpoint,
+		HTTPLookupServiceBasePathV2) {
+		return mockHTTPGetLookupResult(obj)
+	} else if strings.Contains(endpoint, "partitions") {
+		return mockHTTPGetPartitionedTopicMetadataResult(obj)
+	}
+	return errors.New("not supported request")
+}
+
+func mockHTTPGetLookupResult(obj interface{}) error {
+	jsonResponse := `{
+   		"brokerUrl": "pulsar://broker-1:6650",
+   		"brokerUrlTls": "",
+		"httpUrl": "http://broker-1:8080",
+		"httpUrlTls": ""
+  	}`
+	r := ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse)))
+	dec := json.NewDecoder(r)
+	err := dec.Decode(obj)
+	return err
+}
+
+func mockHTTPGetPartitionedTopicMetadataResult(obj interface{}) error {
+	jsonResponse := `{
+   		"partitions": 1
+  	}`
+	r := ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse)))
+	dec := json.NewDecoder(r)
+	err := dec.Decode(obj)
+	return err
+}
+
+func NewMockHTTPClient(serviceNameResolver ServiceNameResolver) HTTPClient {
+	h := &MockHTTPClient{}
+	h.ServiceNameResolver = serviceNameResolver
+	return h
+}
+
+func TestHttpLookupSuccess(t *testing.T) {
+	url, err := url.Parse("http://broker-1:8080")
+	assert.NoError(t, err)
+	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	httpClient := NewMockHTTPClient(serviceNameResolver)
+	ls := NewHTTPLookupService(httpClient, url, serviceNameResolver, false,
+		log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+
+	lr, err := ls.Lookup("my-topic")
+	assert.NoError(t, err)
+	assert.NotNil(t, lr)
+
+	assert.Equal(t, "pulsar://broker-1:6650", lr.LogicalAddr.String())
+	assert.Equal(t, "pulsar://broker-1:6650", lr.PhysicalAddr.String())
+}
+
+func TestHttpGetPartitionedTopicMetadataSuccess(t *testing.T) {
+	url, err := url.Parse("http://broker-1:8080")
+	assert.NoError(t, err)
+	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	httpClient := NewMockHTTPClient(serviceNameResolver)
+	ls := NewHTTPLookupService(httpClient, url, serviceNameResolver, false,
+		log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+
+	tMetadata, err := ls.GetPartitionedTopicMetadata("my-topic")
+	assert.NoError(t, err)
+	assert.NotNil(t, tMetadata)
+
+	assert.Equal(t, 1, tMetadata.Partitions)
 }

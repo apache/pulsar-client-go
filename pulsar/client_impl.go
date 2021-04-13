@@ -68,8 +68,10 @@ func newClient(options ClientOptions) (Client, error) {
 	var tlsConfig *internal.TLSOptions
 	switch url.Scheme {
 	case "pulsar":
+	case "http":
 		tlsConfig = nil
 	case "pulsar+ssl":
+	case "https":
 		tlsConfig = &internal.TLSOptions{
 			AllowInsecureConnection: options.TLSAllowInsecureConnection,
 			TrustCertsFilePath:      options.TLSTrustCertsFilePath,
@@ -126,8 +128,24 @@ func newClient(options ClientOptions) (Client, error) {
 	serviceNameResolver := internal.NewPulsarServiceNameResolver(url)
 
 	c.rpcClient = internal.NewRPCClient(url, serviceNameResolver, c.cnxPool, operationTimeout, logger, metrics)
-	c.lookupService = internal.NewLookupService(c.rpcClient, url, serviceNameResolver,
-		tlsConfig != nil, options.ListenerName, logger, metrics)
+
+	switch url.Scheme {
+	case "pulsar", "pulsar+ssl":
+		c.lookupService = internal.NewLookupService(c.rpcClient, url, serviceNameResolver,
+			tlsConfig != nil, options.ListenerName, logger, metrics)
+	case "http", "https":
+		httpClient, err := internal.NewHTTPClient(url, serviceNameResolver, tlsConfig,
+			operationTimeout, logger, metrics)
+		if err != nil {
+			return nil, newError(InvalidConfiguration, fmt.Sprintf("Failed to init http client with err: '%s'",
+				err.Error()))
+		}
+		c.lookupService = internal.NewHTTPLookupService(httpClient, url, serviceNameResolver,
+			tlsConfig != nil, logger, metrics)
+	default:
+		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
+	}
+
 	c.handlers = internal.NewClientHandlers()
 
 	return c, nil
@@ -170,13 +188,9 @@ func (c *client) TopicPartitions(topic string) ([]string, error) {
 		return nil, err
 	}
 	if r != nil {
-		if r.Error != nil {
-			return nil, newError(LookupError, r.GetError().String())
-		}
-
-		if r.GetPartitions() > 0 {
-			partitions := make([]string, r.GetPartitions())
-			for i := 0; i < int(r.GetPartitions()); i++ {
+		if r.Partitions > 0 {
+			partitions := make([]string, r.Partitions)
+			for i := 0; i < r.Partitions; i++ {
 				partitions[i] = fmt.Sprintf("%s-partition-%d", topic, i)
 			}
 			return partitions, nil
