@@ -488,7 +488,7 @@ func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
 	metadata, err := ls.GetPartitionedTopicMetadata("my-topic")
 	assert.NoError(t, err)
 	assert.NotNil(t, metadata)
-	assert.Equal(t, metadata.Partitions, uint32(1))
+	assert.Equal(t, metadata.Partitions, 1)
 }
 
 func TestLookupSuccessWithMultipleHosts(t *testing.T) {
