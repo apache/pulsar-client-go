@@ -42,7 +42,7 @@ func NewHTTPClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
 		metrics:             metrics,
 	}
 	c := &http.Client{Timeout: requestTimeout}
-	transport, err := GetDefaultTransport(tlsConfig)
+	transport, err := getDefaultTransport(tlsConfig)
 	if err != nil {
 		return nil, err
 	}
@@ -304,7 +304,7 @@ func responseError(resp *http.Response) error {
 	return errors.Errorf("Code: %d, Reason: %s", code, reason)
 }
 
-func GetDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
+func getDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
 	transport := http.DefaultTransport.(*http.Transport)
 	if tlsConfig != nil {
 		cfg := &tls.Config{

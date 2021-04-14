@@ -28,7 +28,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-// LookupResult encapsulates a struct for lookup a httpRequest, containing two parts: LogicalAddr, PhysicalAddr.
+// LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
 type LookupResult struct {
 	LogicalAddr  *url.URL
 	PhysicalAddr *url.URL
@@ -45,7 +45,7 @@ type LookupService interface {
 	// where the topic is located, and return the LookupResult.
 	Lookup(topic string) (*LookupResult, error)
 
-	// GetPartitionedTopicMetadata perform a CommandPartitionedTopicMetadata httpRequest for
+	// GetPartitionedTopicMetadata perform a CommandPartitionedTopicMetadata request for
 	// the given topic, returns the CommandPartitionedTopicMetadataResponse as the result.
 	GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata, error)
 }

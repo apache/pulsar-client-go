@@ -115,9 +115,6 @@ type ClientOptions struct {
 
 	// Add custom labels to all the metrics reported by this client instance
 	CustomMetricsLabels map[string]string
-
-	// Max Lookup redirects for HTTPLookupService
-	MaxLookupRedirects int
 }
 
 type Client interface {

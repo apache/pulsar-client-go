@@ -37,14 +37,14 @@ type RPCResult struct {
 }
 
 type RPCClient interface {
-	// Create a new unique httpRequest id
+	// Create a new unique request id
 	NewRequestID() uint64
 
 	NewProducerID() uint64
 
 	NewConsumerID() uint64
 
-	// Send a httpRequest and block until the result is available
+	// Send a request and block until the result is available
 	RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
@@ -81,7 +81,7 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 	message proto.Message) (*RPCResult, error) {
 	host, err := c.serviceNameResolver.ResolveHost()
 	if err != nil {
-		c.log.Errorf("httpRequest host resolve failed with error: {%v}", err)
+		c.log.Errorf("request host resolve failed with error: {%v}", err)
 		return nil, err
 	}
 	rpcResult, err := c.Request(host, host, requestID, cmdType, message)
@@ -94,11 +94,11 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 
 		for time.Since(startTime) < c.requestTimeout {
 			retryTime = backoff.Next()
-			c.log.Debugf("Retrying httpRequest in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
+			c.log.Debugf("Retrying request in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
 			time.Sleep(retryTime)
 			host, err = c.serviceNameResolver.ResolveHost()
 			if err != nil {
-				c.log.Errorf("Retrying httpRequest host resolve failed with error: {%v}", err)
+				c.log.Errorf("Retrying request host resolve failed with error: {%v}", err)
 				continue
 			}
 			rpcResult, err = c.Request(host, host, requestID, cmdType, message)
@@ -139,7 +139,7 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 	case res := <-ch:
 		return res.RPCResult, res.error
 	case <-time.After(c.requestTimeout):
-		return nil, errors.New("httpRequest timed out")
+		return nil, errors.New("request timed out")
 	}
 }
 

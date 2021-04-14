@@ -42,7 +42,7 @@ type mockedLookupRPCClient struct {
 	mockedResponses  []pb.CommandLookupTopicResponse
 }
 
-// Create a new unique httpRequest id
+// Create a new unique request id
 func (c *mockedLookupRPCClient) NewRequestID() uint64 {
 	c.requestIDGenerator++
 	return c.requestIDGenerator
