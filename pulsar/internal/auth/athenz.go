@@ -32,8 +32,9 @@ import (
 )
 
 const (
-	minExpire = 2 * time.Hour
-	maxExpire = 24 * time.Hour
+	minExpire            = 2 * time.Hour
+	maxExpire            = 24 * time.Hour
+	AthenzRoleAuthHeader = "Athenz-Role-Auth"
 )
 
 type athenzAuthProvider struct {
@@ -182,6 +183,11 @@ func parseURI(uri string) privateKeyURI {
 }
 
 func (p *athenzAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	tok, err := p.roleToken.RoleTokenValue()
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add(AthenzRoleAuthHeader, tok)
 	return p.T.RoundTrip(req)
 }
 
