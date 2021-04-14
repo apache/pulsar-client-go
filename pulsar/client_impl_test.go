@@ -690,3 +690,243 @@ func TestRetryWithMultipleHttpHosts(t *testing.T) {
 	assert.Nil(t, err)
 
 }
+
+func TestHTTPSAuthError(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSAuth(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSAuthWithCertSupplier(t *testing.T) {
+	supplier := func() (*tls.Certificate, error) {
+		cert, err := tls.LoadX509KeyPair(tlsClientCertPath, tlsClientKeyPath)
+		return &cert, err
+	}
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        NewAuthenticationFromTLSCertSupplier(supplier),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPTokenAuth(t *testing.T) {
+	token, err := ioutil.ReadFile(tokenFilePath)
+	assert.NoError(t, err)
+
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: NewAuthenticationToken(string(token)),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPTokenAuthWithSupplier(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: webServiceURL,
+		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
+			token, err := ioutil.ReadFile(tokenFilePath)
+			if err != nil {
+				return "", err
+			}
+
+			return string(token), nil
+		}),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPTokenAuthFromFile(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:            serviceURL,
+		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSTokenAuthFromFile(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+		Authentication:        NewAuthenticationTokenFromFile(tokenFilePath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPOAuth2Auth(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]string{
+		auth.ConfigParamType:      auth.ConfigParamTypeClientCredentials,
+		auth.ConfigParamIssuerURL: server.URL,
+		auth.ConfigParamClientID:  "client-id",
+		auth.ConfigParamAudience:  "audience",
+		auth.ConfigParamKeyFile:   kf,
+	}
+
+	oauth := NewAuthenticationOAuth2(params)
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: oauth,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSOAuth2Auth(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]string{
+		auth.ConfigParamType:      auth.ConfigParamTypeClientCredentials,
+		auth.ConfigParamIssuerURL: server.URL,
+		auth.ConfigParamClientID:  "client-id",
+		auth.ConfigParamAudience:  "audience",
+		auth.ConfigParamKeyFile:   kf,
+	}
+
+	oauth := NewAuthenticationOAuth2(params)
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+		Authentication:        oauth,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPOAuth2AuthFailed(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]string{
+		auth.ConfigParamType:      auth.ConfigParamTypeClientCredentials,
+		auth.ConfigParamIssuerURL: "error-url",
+		auth.ConfigParamClientID:  "client-id",
+		auth.ConfigParamAudience:  "audience",
+	}
+
+	oauth := NewAuthenticationOAuth2(params)
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: oauth,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	client.Close()
+}

@@ -12,6 +12,8 @@ import (
 	"path"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
 	"github.com/pkg/errors"
@@ -30,9 +32,9 @@ type HTTPClient interface {
 	Get(endpoint string, obj interface{}) error
 }
 
-func NewHTTPClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
-	tlsConfig *TLSOptions, requestTimeout time.Duration,
-	logger log.Logger, metrics *Metrics) (HTTPClient, error) {
+func NewHTTPClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, tlsConfig *TLSOptions,
+	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
+	authProvider auth.Provider) (HTTPClient, error) {
 	h := &httpClient{
 		ServiceNameResolver: serviceNameResolver,
 		requestTimeout:      requestTimeout,
@@ -40,12 +42,14 @@ func NewHTTPClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
 		metrics:             metrics,
 	}
 	c := &http.Client{Timeout: requestTimeout}
-	if tlsConfig != nil {
-		transport, err := GetDefaultTransport(tlsConfig)
-		if err != nil {
-			return nil, err
-		}
-		c.Transport = transport
+	transport, err := GetDefaultTransport(tlsConfig)
+	if err != nil {
+		return nil, err
+	}
+	c.Transport = transport
+	if authProvider.Name() != "" {
+		authProvider.WithTransport(c.Transport)
+		c.Transport = authProvider
 	}
 	h.HTTPClient = c
 	return h, nil
@@ -302,18 +306,20 @@ func responseError(resp *http.Response) error {
 
 func GetDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
 	transport := http.DefaultTransport.(*http.Transport)
-	cfg := &tls.Config{
-		InsecureSkipVerify: tlsConfig.AllowInsecureConnection,
-	}
-	if len(tlsConfig.TrustCertsFilePath) > 0 {
-		rootCA, err := ioutil.ReadFile(tlsConfig.TrustCertsFilePath)
-		if err != nil {
-			return nil, err
+	if tlsConfig != nil {
+		cfg := &tls.Config{
+			InsecureSkipVerify: tlsConfig.AllowInsecureConnection,
 		}
-		cfg.RootCAs = x509.NewCertPool()
-		cfg.RootCAs.AppendCertsFromPEM(rootCA)
+		if len(tlsConfig.TrustCertsFilePath) > 0 {
+			rootCA, err := ioutil.ReadFile(tlsConfig.TrustCertsFilePath)
+			if err != nil {
+				return nil, err
+			}
+			cfg.RootCAs = x509.NewCertPool()
+			cfg.RootCAs.AppendCertsFromPEM(rootCA)
+		}
+		transport.TLSClientConfig = cfg
 	}
 	transport.MaxIdleConnsPerHost = 10
-	transport.TLSClientConfig = cfg
 	return transport, nil
 }

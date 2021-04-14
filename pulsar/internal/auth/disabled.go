@@ -17,7 +17,10 @@
 
 package auth
 
-import "crypto/tls"
+import (
+	"crypto/tls"
+	"net/http"
+)
 
 type disabled struct{}
 
@@ -43,5 +46,17 @@ func (disabled) GetTLSCertificate() (*tls.Certificate, error) {
 }
 
 func (disabled) Close() error {
+	return nil
+}
+
+func (d disabled) RoundTrip(req *http.Request) (*http.Response, error) {
+	return nil, nil
+}
+
+func (d disabled) Transport() http.RoundTripper {
+	return nil
+}
+
+func (d disabled) WithTransport(tripper http.RoundTripper) error {
 	return nil
 }

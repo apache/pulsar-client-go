@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io/ioutil"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -47,6 +48,8 @@ type athenzAuthProvider struct {
 	roleToken          zts.RoleToken
 	zmsNewTokenBuilder func(domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error)
 	ztsNewRoleToken    func(tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken
+
+	T http.RoundTripper
 }
 
 type privateKeyURI struct {
@@ -176,4 +179,17 @@ func parseURI(uri string) privateKeyURI {
 	}
 
 	return uriSt
+}
+
+func (p *athenzAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	return p.T.RoundTrip(req)
+}
+
+func (p *athenzAuthProvider) Transport() http.RoundTripper {
+	return p.T
+}
+
+func (p *athenzAuthProvider) WithTransport(tripper http.RoundTripper) error {
+	p.T = tripper
+	return nil
 }

@@ -135,7 +135,7 @@ func newClient(options ClientOptions) (Client, error) {
 			tlsConfig != nil, options.ListenerName, logger, metrics)
 	case "http", "https":
 		httpClient, err := internal.NewHTTPClient(url, serviceNameResolver, tlsConfig,
-			operationTimeout, logger, metrics)
+			operationTimeout, logger, metrics, authProvider)
 		if err != nil {
 			return nil, newError(InvalidConfiguration, fmt.Sprintf("Failed to init http client with err: '%s'",
 				err.Error()))
