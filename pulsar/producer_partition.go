@@ -547,6 +547,7 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 			continue
 		}
 		p.pendingQueue.Put(&pendingItem{
+			sentAt:       time.Now(),
 			batchData:    batchesData[i],
 			sequenceID:   sequenceIDs[i],
 			sendRequests: callbacks[i],
