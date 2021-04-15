@@ -48,6 +48,9 @@ type LookupService interface {
 	// GetPartitionedTopicMetadata perform a CommandPartitionedTopicMetadata request for
 	// the given topic, returns the CommandPartitionedTopicMetadataResponse as the result.
 	GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata, error)
+
+	// Allow Lookup Service's internal client to be able to closed
+	Closable
 }
 
 type lookupService struct {
@@ -194,6 +197,8 @@ func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*Partitioned
 	return &PartitionedTopicMetadata{Partitions: int(res.Response.PartitionMetadataResponse.GetPartitions())}, nil
 }
 
+func (ls *lookupService) Close() {}
+
 const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
 const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
 const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
@@ -285,6 +290,10 @@ func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*Partitio
 	h.log.Debugf("Got topic{%s} partitioned metadata response: %+v", topic, tMetadata)
 
 	return tMetadata, nil
+}
+
+func (h *httpLookupService) Close() {
+	h.httpClient.Close()
 }
 
 // NewHTTPLookupService init a http based lookup service struct and return an object of LookupService.

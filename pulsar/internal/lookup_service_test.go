@@ -529,6 +529,8 @@ type MockHTTPClient struct {
 	ServiceNameResolver ServiceNameResolver
 }
 
+func (c *MockHTTPClient) Close() {}
+
 func (c *MockHTTPClient) Get(endpoint string, obj interface{}) error {
 	if strings.Contains(endpoint, HTTPLookupServiceBasePathV1) || strings.Contains(endpoint,
 		HTTPLookupServiceBasePathV2) {

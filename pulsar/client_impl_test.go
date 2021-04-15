@@ -715,11 +715,12 @@ func TestHTTPSAuth(t *testing.T) {
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
 	})
 	assert.NoError(t, err)
+	t.Logf("TestHTTPSAuth client %v", client)
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: newAuthTopicName(),
 	})
-
+	t.Logf("TestHTTPSAuth err %v", err)
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
@@ -737,11 +738,12 @@ func TestHTTPSAuthWithCertSupplier(t *testing.T) {
 		Authentication:        NewAuthenticationFromTLSCertSupplier(supplier),
 	})
 	assert.NoError(t, err)
+	t.Logf("TestHTTPSAuthWithCertSupplier client %v", client)
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: newAuthTopicName(),
 	})
-
+	t.Logf("TestHTTPSAuthWithCertSupplier err %v", err)
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 

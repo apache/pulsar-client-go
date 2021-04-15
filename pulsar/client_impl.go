@@ -202,6 +202,7 @@ func (c *client) TopicPartitions(topic string) ([]string, error) {
 func (c *client) Close() {
 	c.handlers.Close()
 	c.cnxPool.Close()
+	c.lookupService.Close()
 }
 
 func (c *client) namespaceTopics(namespace string) ([]string, error) {

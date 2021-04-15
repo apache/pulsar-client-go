@@ -45,8 +45,15 @@ type httpClient struct {
 	metrics             *Metrics
 }
 
+func (c *httpClient) Close() {
+	if c.HTTPClient != nil {
+		CloseIdleConnections(c.HTTPClient)
+	}
+}
+
 type HTTPClient interface {
 	Get(endpoint string, obj interface{}) error
+	Closable
 }
 
 func NewHTTPClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, tlsConfig *TLSOptions,
@@ -65,7 +72,10 @@ func NewHTTPClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
 	}
 	c.Transport = transport
 	if authProvider.Name() != "" {
-		authProvider.WithTransport(c.Transport)
+		err = authProvider.WithTransport(c.Transport)
+		if err != nil {
+			return nil, err
+		}
 		c.Transport = authProvider
 	}
 	h.HTTPClient = c
