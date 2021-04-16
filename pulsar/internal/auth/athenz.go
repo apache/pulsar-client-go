@@ -22,6 +22,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"io/ioutil"
+	"net/http"
 	"regexp"
 	"strings"
 	"time"
@@ -31,8 +32,9 @@ import (
 )
 
 const (
-	minExpire = 2 * time.Hour
-	maxExpire = 24 * time.Hour
+	minExpire            = 2 * time.Hour
+	maxExpire            = 24 * time.Hour
+	AthenzRoleAuthHeader = "Athenz-Role-Auth"
 )
 
 type athenzAuthProvider struct {
@@ -47,6 +49,8 @@ type athenzAuthProvider struct {
 	roleToken          zts.RoleToken
 	zmsNewTokenBuilder func(domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error)
 	ztsNewRoleToken    func(tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken
+
+	T http.RoundTripper
 }
 
 type privateKeyURI struct {
@@ -176,4 +180,22 @@ func parseURI(uri string) privateKeyURI {
 	}
 
 	return uriSt
+}
+
+func (p *athenzAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	tok, err := p.roleToken.RoleTokenValue()
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add(AthenzRoleAuthHeader, tok)
+	return p.T.RoundTrip(req)
+}
+
+func (p *athenzAuthProvider) Transport() http.RoundTripper {
+	return p.T
+}
+
+func (p *athenzAuthProvider) WithTransport(tripper http.RoundTripper) error {
+	p.T = tripper
+	return nil
 }

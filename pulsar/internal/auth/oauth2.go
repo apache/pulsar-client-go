@@ -20,6 +20,9 @@ package auth
 import (
 	"crypto/tls"
 	"fmt"
+	"net/http"
+
+	xoauth2 "golang.org/x/oauth2"
 
 	"github.com/apache/pulsar-client-go/oauth2"
 	"github.com/apache/pulsar-client-go/oauth2/cache"
@@ -37,10 +40,12 @@ const (
 )
 
 type oauth2AuthProvider struct {
-	clock  clock.Clock
-	issuer oauth2.Issuer
-	store  store.Store
-	source cache.CachingTokenSource
+	clock            clock.Clock
+	issuer           oauth2.Issuer
+	store            store.Store
+	source           cache.CachingTokenSource
+	defaultTransport http.RoundTripper
+	tokenTransport   *transport
 }
 
 // NewAuthenticationOAuth2WithParams return a interface of Provider with string map.
@@ -142,4 +147,57 @@ func (p *oauth2AuthProvider) getRefresher(t oauth2.AuthorizationGrantType) (oaut
 	default:
 		return nil, store.ErrUnsupportedAuthData
 	}
+}
+
+type transport struct {
+	source  cache.CachingTokenSource
+	wrapped *xoauth2.Transport
+}
+
+func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if len(req.Header.Get("Authorization")) != 0 {
+		return t.wrapped.Base.RoundTrip(req)
+	}
+
+	res, err := t.wrapped.RoundTrip(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.StatusCode == 401 {
+		err := t.source.InvalidateToken()
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	return res, nil
+}
+
+func (t *transport) WrappedRoundTripper() http.RoundTripper { return t.wrapped.Base }
+
+func (p *oauth2AuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	return p.tokenTransport.RoundTrip(req)
+}
+
+func (p *oauth2AuthProvider) Transport() http.RoundTripper {
+	return &transport{
+		source: p.source,
+		wrapped: &xoauth2.Transport{
+			Source: p.source,
+			Base:   p.defaultTransport,
+		},
+	}
+}
+
+func (p *oauth2AuthProvider) WithTransport(tripper http.RoundTripper) error {
+	p.defaultTransport = tripper
+	p.tokenTransport = &transport{
+		source: p.source,
+		wrapped: &xoauth2.Transport{
+			Source: p.source,
+			Base:   p.defaultTransport,
+		},
+	}
+	return nil
 }
