@@ -11,9 +11,9 @@ CN = localhost
 basicConstraints = CA:FALSE
 authorityKeyIdentifier=keyid,issuer
 subjectKeyIdentifier=hash
+subjectAltName=DNS:localhost
 [v3_ca]
 basicConstraints = CA:TRUE
 authorityKeyIdentifier=keyid,issuer
 subjectKeyIdentifier=hash
-
-
+subjectAltName=DNS:localhost

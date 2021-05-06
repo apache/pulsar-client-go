@@ -19,7 +19,9 @@ package auth
 
 import (
 	"crypto/tls"
+	"fmt"
 	"io/ioutil"
+	"net/http"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -27,6 +29,7 @@ import (
 
 type tokenAuthProvider struct {
 	tokenSupplier func() (string, error)
+	T             http.RoundTripper
 }
 
 // NewAuthenticationTokenWithParams return a interface of Provider with string map.
@@ -103,5 +106,20 @@ func (p *tokenAuthProvider) GetData() ([]byte, error) {
 }
 
 func (p *tokenAuthProvider) Close() error {
+	return nil
+}
+
+func (p *tokenAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	token, _ := p.tokenSupplier()
+	req.Header.Add("Authorization", strings.TrimSpace(fmt.Sprintf("Bearer %s", token)))
+	return p.T.RoundTrip(req)
+}
+
+func (p *tokenAuthProvider) Transport() http.RoundTripper {
+	return p.T
+}
+
+func (p *tokenAuthProvider) WithTransport(tripper http.RoundTripper) error {
+	p.T = tripper
 	return nil
 }

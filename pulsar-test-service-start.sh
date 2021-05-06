@@ -36,7 +36,7 @@ else
     docker run -d --rm --name pulsar-client-go-test \
                 -p 8080:8080 \
                 -p 6650:6650 \
-                -p 8443:8843 \
+                -p 8443:8443 \
                 -p 6651:6651 \
                 ${IMAGE_NAME} \
                 /pulsar/bin/pulsar standalone \
