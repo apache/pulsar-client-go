@@ -125,8 +125,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		}
 	}
 
-	err := p.internalCreatePartitionsProducers()
-	if err != nil {
+	if err := p.internalCreatePartitionsProducers(); err != nil {
 		return nil, err
 	}
 
