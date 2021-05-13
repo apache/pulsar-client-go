@@ -318,8 +318,12 @@ func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 	return metrics
 }
 
-func (mp *Metrics) GetTopicMetrics(t string) *TopicMetrics {
-	tn, _ := ParseTopicName(t)
+func (mp *Metrics) GetTopicMetrics(t string) (*TopicMetrics, error) {
+	tn, err := ParseTopicName(t)
+	if err != nil {
+		return nil, err
+	}
+
 	topic := TopicNameWithoutPartitionPart(tn)
 	labels := map[string]string{
 		"pulsar_tenant":    tn.Tenant,
@@ -356,7 +360,7 @@ func (mp *Metrics) GetTopicMetrics(t string) *TopicMetrics {
 		ReadersClosed:       mp.readersClosed.With(labels),
 	}
 
-	return tm
+	return tm, nil
 }
 
 func mergeMaps(a, b map[string]string) map[string]string {

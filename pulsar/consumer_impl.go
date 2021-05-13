@@ -185,6 +185,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (*consumer, error) {
 
+	ms, err := client.metrics.GetTopicMetrics(topic)
+	if err != nil {
+		return nil, err
+	}
+
 	consumer := &consumer{
 		topic:                     topic,
 		client:                    client,
@@ -197,11 +202,10 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		rlq:                       rlq,
 		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
-		metrics:                   client.metrics.GetTopicMetrics(topic),
+		metrics:                   ms,
 	}
 
-	err := consumer.internalTopicSubscribeToPartitions()
-	if err != nil {
+	if err := consumer.internalTopicSubscribeToPartitions(); err != nil {
 		return nil, err
 	}
 

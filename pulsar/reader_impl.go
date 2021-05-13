@@ -90,10 +90,15 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		replicateSubscriptionState: false,
 	}
 
+	ms, err := client.metrics.GetTopicMetrics(options.Topic)
+	if err != nil {
+		return nil, err
+	}
+
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
 		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics:   client.metrics.GetTopicMetrics(options.Topic),
+		metrics:   ms,
 	}
 
 	// Provide dummy dlq router with not dlq policy
