@@ -147,7 +147,11 @@ func TestRegexConsumerDiscover(t *testing.T) {
 }
 
 func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string) {
-	tn, _ := internal.ParseTopicName(fmt.Sprintf("persistent://%s/.*", namespace))
+	tn, err := internal.ParseTopicName(fmt.Sprintf("persistent://%s/.*", namespace))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	pattern := regexp.MustCompile(fmt.Sprintf("%s/.*", namespace))
 	opts := ConsumerOptions{
 		SubscriptionName:    "regex-sub",
@@ -184,7 +188,10 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 }
 
 func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string) {
-	tn, _ := internal.ParseTopicName(fmt.Sprintf("persistent://%s/foo-*", namespace))
+	tn, err := internal.ParseTopicName(fmt.Sprintf("persistent://%s/foo-*", namespace))
+	if err != nil {
+		t.Fatal(err)
+	}
 	pattern := regexp.MustCompile(fmt.Sprintf("%s/foo-*", namespace))
 	opts := ConsumerOptions{
 		SubscriptionName:    "regex-sub",

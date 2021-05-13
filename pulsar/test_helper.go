@@ -153,15 +153,24 @@ func deleteTopic(topic string) error {
 
 func topicStats(topic string) (map[string]interface{}, error) {
 	var metadata map[string]interface{}
-	err := httpGet("admin/v2/persistent/"+topicPath(topic)+"/stats", &metadata)
+	tp, err := topicPath(topic)
+	if err != nil {
+		return metadata, err
+	}
+	if err := httpGet("admin/v2/persistent/"+tp+"/stats", &metadata); err != nil {
+		return metadata, err
+	}
 	return metadata, err
 }
 
-func topicPath(topic string) string {
-	tn, _ := internal.ParseTopicName(topic)
+func topicPath(topic string) (string, error) {
+	tn, err := internal.ParseTopicName(topic)
+	if err != nil {
+		return "", err
+	}
 	idx := strings.LastIndex(tn.Name, "/")
 	if idx > 0 {
-		return tn.Namespace + "/" + tn.Name[idx:]
+		return tn.Namespace + "/" + tn.Name[idx:], nil
 	}
-	return tn.Name
+	return tn.Name, nil
 }
