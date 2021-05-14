@@ -56,8 +56,9 @@ type consumer struct {
 	errorCh       chan error
 	stopDiscovery func()
 
-	log     log.Logger
-	metrics *internal.TopicMetrics
+	log       log.Logger
+	metrics   *internal.TopicMetrics
+	topicName *internal.TopicName
 }
 
 func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
@@ -185,7 +186,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (*consumer, error) {
 
-	ms, err := client.metrics.GetTopicMetrics(topic)
+	tn, err := internal.ParseTopicName(topic)
 	if err != nil {
 		return nil, err
 	}
@@ -202,7 +203,8 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		rlq:                       rlq,
 		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
-		metrics:                   ms,
+		topicName:                 tn,
+		metrics:                   client.metrics.GetTopicMetrics(tn),
 	}
 
 	if err := consumer.internalTopicSubscribeToPartitions(); err != nil {

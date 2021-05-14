@@ -88,7 +88,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		options.BatchingMaxPublishDelay = defaultBatchingMaxPublishDelay
 	}
 
-	ms, err := client.metrics.GetTopicMetrics(options.Topic)
+	topicName, err := internal.ParseTopicName(options.Topic)
 	if err != nil {
 		return nil, err
 	}
@@ -98,7 +98,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		topic:   options.Topic,
 		client:  client,
 		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics: ms,
+		metrics: client.metrics.GetTopicMetrics(topicName),
 	}
 
 	if options.Interceptors == nil {
