@@ -76,6 +76,12 @@ type Namespaces interface {
 	// RemoveBacklogQuota removes a backlog quota policy from a namespace
 	RemoveBacklogQuota(namespace string) error
 
+	// SetTopicAutoCreation sets topic auto-creation config for a namespace, overriding broker settings
+	SetTopicAutoCreation(namespace utils.NameSpaceName, config utils.TopicAutoCreationConfig) error
+
+	// RemoveTopicAutoCreation removes topic auto-creation config for a namespace, defaulting to broker settings
+	RemoveTopicAutoCreation(namespace utils.NameSpaceName) error
+
 	// SetSchemaValidationEnforced sets schema validation enforced for namespace
 	SetSchemaValidationEnforced(namespace utils.NameSpaceName, schemaValidationEnforced bool) error
 
@@ -414,6 +420,16 @@ func (n *namespaces) RemoveBacklogQuota(namespace string) error {
 		"backlogQuotaType": string(utils.DestinationStorage),
 	}
 	return n.pulsar.Client.DeleteWithQueryParams(endpoint, params)
+}
+
+func (n *namespaces) SetTopicAutoCreation(namespace utils.NameSpaceName, config utils.TopicAutoCreationConfig) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "autoTopicCreation")
+	return n.pulsar.Client.Post(endpoint, &config)
+}
+
+func (n *namespaces) RemoveTopicAutoCreation(namespace utils.NameSpaceName) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "autoTopicCreation")
+	return n.pulsar.Client.Delete(endpoint)
 }
 
 func (n *namespaces) SetSchemaValidationEnforced(namespace utils.NameSpaceName, schemaValidationEnforced bool) error {

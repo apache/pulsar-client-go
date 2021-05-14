@@ -49,6 +49,7 @@ type Policies struct {
 	SubscriptionDispatchRate    map[string]DispatchRate           `json:"subscriptionDispatchRate"`
 	ReplicatorDispatchRate      map[string]DispatchRate           `json:"replicatorDispatchRate"`
 	ClusterSubscribeRate        map[string]SubscribeRate          `json:"clusterSubscribeRate"`
+	TopicAutoCreationConfig     TopicAutoCreationConfig           `json:"autoTopicCreationOverride"`
 	SchemaCompatibilityStrategy SchemaCompatibilityStrategy       `json:"schema_auto_update_compatibility_strategy"`
 	AuthPolicies                common.AuthPolicies               `json:"auth_policies"`
 	SubscriptionAuthMode        SubscriptionAuthMode              `json:"subscription_auth_mode"`
