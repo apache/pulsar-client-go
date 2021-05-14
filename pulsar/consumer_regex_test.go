@@ -42,7 +42,11 @@ func runFilterTopicsMatchingAllTopics(t *testing.T) {
 		"persistent://public/default/my-topic-1",
 	}
 
-	matching := filterTopics(topics, regex)
+	matching, err := filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	assert.Equal(t, topics, matching)
 
 	// test partitions
@@ -51,7 +55,10 @@ func runFilterTopicsMatchingAllTopics(t *testing.T) {
 		"persistent://public/default/my-topic-partition-1",
 		"persistent://public/default/my-topic-partition-3",
 	}
-	matching = filterTopics(topics, regex)
+	matching, err = filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 1, len(matching))
 	assert.Equal(t, "persistent://public/default/my-topic", matching[0])
 }
@@ -61,14 +68,20 @@ func runFilterTopicsMatchingFoo(t *testing.T) {
 	topics := []string{
 		"persistent://public/foo/foo",
 	}
-	matching := filterTopics(topics, regex)
+	matching, err := filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, topics, matching)
 
 	topics = []string{
 		"persistent://public/foo/foo",
 		"persistent://public/foo/fo-my-topic",
 	}
-	matching = filterTopics(topics, regex)
+	matching, err = filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 1, len(matching))
 	assert.Equal(t, topics[0], matching[0])
 
@@ -77,7 +90,10 @@ func runFilterTopicsMatchingFoo(t *testing.T) {
 		"persistent://public/foo/foobar",
 		"persistent://public/foo/foo-my-topic",
 	}
-	matching = filterTopics(topics, regex)
+	matching, err = filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 3, len(matching))
 	assert.Equal(t, topics, matching)
 
@@ -86,7 +102,10 @@ func runFilterTopicsMatchingFoo(t *testing.T) {
 		"persistent://public/foo/foobar-partition-0",
 		"persistent://public/foo/foobar-partition-1",
 	}
-	matching = filterTopics(topics, regex)
+	matching, err = filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 1, len(matching))
 	assert.Equal(t, "persistent://public/foo/foobar", matching[0])
 }
