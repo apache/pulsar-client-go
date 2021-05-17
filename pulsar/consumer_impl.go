@@ -56,9 +56,8 @@ type consumer struct {
 	errorCh       chan error
 	stopDiscovery func()
 
-	log       log.Logger
-	metrics   *internal.TopicMetrics
-	topicName *internal.TopicName
+	log     log.Logger
+	metrics *internal.TopicMetrics
 }
 
 func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
@@ -203,7 +202,6 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		rlq:                       rlq,
 		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
-		topicName:                 tn,
 		metrics:                   client.metrics.GetTopicMetrics(tn),
 	}
 
