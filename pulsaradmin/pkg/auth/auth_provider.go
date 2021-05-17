@@ -67,7 +67,7 @@ func GetAuthProvider(config *common.Config) (*Provider, error) {
 }
 
 func GetDefaultTransport(config *common.Config) http.RoundTripper {
-	transport := http.DefaultTransport.(*http.Transport)
+	transport := http.DefaultTransport.(*http.Transport).Clone()
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: config.TLSAllowInsecureConnection,
 	}
