@@ -24,10 +24,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/stretchr/testify/assert"
-	mock "github.com/stretchr/testify/mock"
 	zms "github.com/AthenZ/athenz/libs/go/zmssvctoken"
 	zts "github.com/AthenZ/athenz/libs/go/ztsroletoken"
+	"github.com/stretchr/testify/assert"
+	mock "github.com/stretchr/testify/mock"
 )
 
 const tlsClientKeyPath = "../../../integration-tests/certs/client-key.pem"
