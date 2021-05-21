@@ -23,6 +23,29 @@
 
 All notable changes to this project will be documented in this file.
 
+[0.5.0] 2021-05-14
+
+## Feature
+
+* Add http lookup service support, see [PR-510](https://github.com/apache/pulsar-client-go/pull/510).
+* Support listener name for go the client, see [PR-502](https://github.com/apache/pulsar-client-go/pull/502).
+* Add multiple hosts support, see [PR-484](https://github.com/apache/pulsar-client-go/pull/484).
+* Improve error log for frame size too big and maxMessageSize, see [PR-459](https://github.com/apache/pulsar-client-go/pull/459).
+* Update jwt-go version to v4, see [PR-481](https://github.com/apache/pulsar-client-go/pull/481).
+
+## Improve
+
+* Fix range channel deadlock error, see [PR-499](https://github.com/apache/pulsar-client-go/pull/499).
+* Add sentAt when put item into pendingQueue, see [PR-509](https://github.com/apache/pulsar-client-go/pull/509).
+* Fix race condition/goroutine leak in partition discovery goroutine, see [PR-474](https://github.com/apache/pulsar-client-go/pull/474).
+* Close cnxPool when closing a Client, see [PR-494](https://github.com/apache/pulsar-client-go/pull/494).
+* Use newError to build return error, see [PR-471](https://github.com/apache/pulsar-client-go/pull/471).
+* Move GetPartitionedTopicMetadata to lookup service, see [PR-478](https://github.com/apache/pulsar-client-go/pull/478).
+* Fix wrong batch flush method bug, see [PR-476](https://github.com/apache/pulsar-client-go/pull/476).
+* Fix reader with start latest message id inclusive, see [PR-467](https://github.com/apache/pulsar-client-go/pull/467).
+* Fix unexpected nil pointer when reading item from keyring, see [PR-470](https://github.com/apache/pulsar-client-go/pull/470).
+* Reverted datadog to DataDog, see [PR-465](https://github.com/apache/pulsar-client-go/pull/465).
+
 [0.4.0] 2021-02-09
 
 ## Feature
