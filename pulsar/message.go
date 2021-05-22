@@ -18,11 +18,12 @@
 package pulsar
 
 import (
-	"github.com/pkg/errors"
 	"math"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // ProducerMessage abstraction used in Pulsar producer
@@ -134,8 +135,8 @@ func DeserializeMessageID(data []byte) (MessageID, error) {
 	return deserializeMessageID(data)
 }
 
-func MessageIDFromParts(ledgerId, entryId int64, batchIdx, partitionIdx int32) MessageID {
-	return newMessageID(ledgerId, entryId, batchIdx, partitionIdx)
+func MessageIDFromParts(ledgerID, entryID int64, batchIdx, partitionIdx int32) MessageID {
+	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx)
 }
 
 func MessageIDFromString(str string) (MessageID, error) {
@@ -146,12 +147,12 @@ func MessageIDFromString(str string) (MessageID, error) {
 		return nil, errors.Errorf("invalid message id string. %s", str)
 	}
 
-	ledgerId, err := strconv.ParseInt(s[0], 10, 64)
+	ledgerID, err := strconv.ParseInt(s[0], 10, 64)
 	if err != nil {
 		return nil, errors.Errorf("invalid ledger id. %s", str)
 	}
 
-	entryId, err := strconv.ParseInt(s[1], 10, 64)
+	entryID, err := strconv.ParseInt(s[1], 10, 64)
 	if err != nil {
 		return nil, errors.Errorf("invalid entry id. %s", str)
 	}
@@ -173,7 +174,7 @@ func MessageIDFromString(str string) (MessageID, error) {
 		}
 		batchIdx = int32(bi)
 	}
-	return newMessageID(ledgerId, entryId, batchIdx, partitionIdx), nil
+	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx), nil
 }
 
 // EarliestMessageID returns a messageID that points to the earliest message available in a topic

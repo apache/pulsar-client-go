@@ -2,21 +2,22 @@ package pulsar
 
 import (
 	"github.com/stretchr/testify/assert"
+
 	"testing"
 )
 
 func TestMessageIDFromString(t *testing.T) {
 	id, err := MessageIDFromString("1:2")
 	assert.Nil(t, err)
-	assert.True(t, id.Equals(MessageIDFromParts(1, 2, -1,  -1)))
+	assert.True(t, id.Equals(MessageIDFromParts(1, 2, -1, -1)))
 
 	id, err = MessageIDFromString("1:2:3")
 	assert.Nil(t, err)
-	assert.True(t, id.Equals(MessageIDFromParts(1, 2, -1,  3)))
+	assert.True(t, id.Equals(MessageIDFromParts(1, 2, -1, 3)))
 
 	id, err = MessageIDFromString("1:2:3:4")
 	assert.Nil(t, err)
-	assert.True(t, id.Equals(MessageIDFromParts(1, 2, 4,  3)))
+	assert.True(t, id.Equals(MessageIDFromParts(1, 2, 4, 3)))
 }
 
 func TestMessageIDFromStringErrors(t *testing.T) {
