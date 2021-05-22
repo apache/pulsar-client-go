@@ -19,7 +19,11 @@ package pulsar
 
 import (
 	"math"
+	"strconv"
+	"strings"
 	"time"
+
+	"github.com/pkg/errors"
 )
 
 // ProducerMessage abstraction used in Pulsar producer
@@ -120,6 +124,10 @@ type Message interface {
 type MessageID interface {
 	// Serialize the message id into a sequence of bytes that can be stored somewhere else
 	Serialize() []byte
+	// String the message id represented as a string
+	String() string
+	// Equals indicates to message IDs are equal
+	Equals(other MessageID) bool
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation
@@ -127,12 +135,54 @@ func DeserializeMessageID(data []byte) (MessageID, error) {
 	return deserializeMessageID(data)
 }
 
+func MessageIDFromParts(ledgerID, entryID int64, batchIdx, partitionIdx int32) MessageID {
+	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx)
+}
+
+func MessageIDFromString(str string) (MessageID, error) {
+
+	s := strings.Split(str, ":")
+
+	if len(s) < 2 || len(s) > 4 {
+		return nil, errors.Errorf("invalid message id string. %s", str)
+	}
+
+	ledgerID, err := strconv.ParseInt(s[0], 10, 64)
+	if err != nil {
+		return nil, errors.Errorf("invalid ledger id. %s", str)
+	}
+
+	entryID, err := strconv.ParseInt(s[1], 10, 64)
+	if err != nil {
+		return nil, errors.Errorf("invalid entry id. %s", str)
+	}
+
+	partitionIdx := int32(-1)
+	if len(s) > 2 {
+		pi, err := strconv.Atoi(s[2])
+		if err != nil {
+			return nil, errors.Errorf("invalid partition index. %s", str)
+		}
+		partitionIdx = int32(pi)
+	}
+
+	batchIdx := int32(-1)
+	if len(s) == 4 {
+		bi, err := strconv.Atoi(s[3])
+		if err != nil {
+			return nil, errors.Errorf("invalid batch index. %s", str)
+		}
+		batchIdx = int32(bi)
+	}
+	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx), nil
+}
+
 // EarliestMessageID returns a messageID that points to the earliest message available in a topic
 func EarliestMessageID() MessageID {
 	return newMessageID(-1, -1, -1, -1)
 }
 
-// LatestMessage returns a messageID that points to the latest message
+// LatestMessageID returns a messageID that points to the latest message
 func LatestMessageID() MessageID {
 	return newMessageID(math.MaxInt64, math.MaxInt64, -1, -1)
 }
