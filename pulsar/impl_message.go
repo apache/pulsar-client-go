@@ -37,14 +37,14 @@ type messageID struct {
 	partitionIdx int32
 }
 
-var latestMessageId messageID = messageID{
+var latestMessageID messageID = messageID{
 	ledgerID:     math.MaxInt64,
 	entryID:      math.MaxInt64,
 	batchIdx:     -1,
 	partitionIdx: -1,
 }
 
-var earliestMessageId messageID = messageID{
+var earliestMessageID messageID = messageID{
 	ledgerID:     -1,
 	entryID:      -1,
 	batchIdx:     -1,

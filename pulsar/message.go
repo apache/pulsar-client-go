@@ -128,10 +128,10 @@ func DeserializeMessageID(data []byte) (MessageID, error) {
 
 // EarliestMessageID returns a messageID that points to the earliest message available in a topic
 func EarliestMessageID() MessageID {
-	return earliestMessageId
+	return earliestMessageID
 }
 
 // LatestMessage returns a messageID that points to the latest message
 func LatestMessageID() MessageID {
-	return latestMessageId
+	return latestMessageID
 }
