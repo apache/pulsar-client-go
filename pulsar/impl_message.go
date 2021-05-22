@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"math"
 	"math/big"
 	"strings"
 	"sync"
@@ -34,6 +35,20 @@ type messageID struct {
 	entryID      int64
 	batchIdx     int32
 	partitionIdx int32
+}
+
+var latestMessageId messageID = messageID{
+	ledgerID:     math.MaxInt64,
+	entryID:      math.MaxInt64,
+	batchIdx:     -1,
+	partitionIdx: -1,
+}
+
+var earliestMessageId messageID = messageID{
+	ledgerID:     -1,
+	entryID:      -1,
+	batchIdx:     -1,
+	partitionIdx: -1,
 }
 
 type trackingMessageID struct {

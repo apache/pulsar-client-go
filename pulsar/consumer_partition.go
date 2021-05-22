@@ -575,6 +575,10 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) b
 	if pc.startMessageID.Undefined() {
 		return false
 	}
+	// if we start at latest message, we should never discard
+	if pc.options.startMessageID.equal(latestMessageId) {
+		return false
+	}
 
 	if pc.options.startMessageIDInclusive {
 		return pc.startMessageID.greater(msgID.messageID)
