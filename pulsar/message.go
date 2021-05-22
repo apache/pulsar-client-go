@@ -18,7 +18,10 @@
 package pulsar
 
 import (
+	"github.com/pkg/errors"
 	"math"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -120,11 +123,55 @@ type Message interface {
 type MessageID interface {
 	// Serialize the message id into a sequence of bytes that can be stored somewhere else
 	Serialize() []byte
+	// String the message id represented as a string
+	String() string
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation
 func DeserializeMessageID(data []byte) (MessageID, error) {
 	return deserializeMessageID(data)
+}
+
+func MessageIDFromParts(ledgerId, entryId int64, batchIdx, partitionIdx int32) MessageID {
+	return newMessageID(ledgerId, entryId, batchIdx, partitionIdx)
+}
+
+func MessageIDFromString(str string) (MessageID, error) {
+
+	s := strings.Split(str, ":")
+
+	if len(s) < 2 || len(s) > 4 {
+		return nil, errors.Errorf("invalid message id string. %s", str)
+	}
+
+	ledgerId, err := strconv.ParseInt(s[0], 10, 64)
+	if err != nil {
+		return nil, errors.Errorf("invalid ledger id. %s", str)
+	}
+
+	entryId, err := strconv.ParseInt(s[1], 10, 64)
+	if err != nil {
+		return nil, errors.Errorf("invalid entry id. %s", str)
+	}
+
+	partitionIdx := int32(-1)
+	if len(s) > 2 {
+		pi, err := strconv.Atoi(s[2])
+		if err != nil {
+			return nil, errors.Errorf("invalid partition index. %s", str)
+		}
+		partitionIdx = int32(pi)
+	}
+
+	batchIdx := int32(-1)
+	if len(s) == 4 {
+		bi, err := strconv.Atoi(s[3])
+		if err != nil {
+			return nil, errors.Errorf("invalid batch index. %s", str)
+		}
+		batchIdx = int32(bi)
+	}
+	return newMessageID(ledgerId, entryId, batchIdx, partitionIdx), nil
 }
 
 // EarliestMessageID returns a messageID that points to the earliest message available in a topic
