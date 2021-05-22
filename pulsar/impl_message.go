@@ -112,6 +112,14 @@ func (id messageID) String() string {
 	return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
 }
 
+func (id messageID) Equals(other MessageID) bool {
+	rmsgid, ok := other.(messageID)
+	if !ok {
+		return false
+	}
+	return id.equal(rmsgid)
+}
+
 func deserializeMessageID(data []byte) (MessageID, error) {
 	msgID := &pb.MessageIdData{}
 	err := proto.Unmarshal(data, msgID)

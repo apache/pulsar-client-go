@@ -125,6 +125,8 @@ type MessageID interface {
 	Serialize() []byte
 	// String the message id represented as a string
 	String() string
+	// Equals indicates to message IDs are equal
+	Equals(other MessageID) bool
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation
@@ -179,7 +181,7 @@ func EarliestMessageID() MessageID {
 	return newMessageID(-1, -1, -1, -1)
 }
 
-// LatestMessage returns a messageID that points to the latest message
+// LatestMessageID returns a messageID that points to the latest message
 func LatestMessageID() MessageID {
 	return newMessageID(math.MaxInt64, math.MaxInt64, -1, -1)
 }
