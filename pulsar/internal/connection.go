@@ -331,8 +331,9 @@ func (c *connection) waitUntilReady() error {
 }
 
 func (c *connection) failLeftRequestsWhenClose() {
-	for req := range c.incomingRequestsCh {
-		c.internalSendRequest(req)
+	reqLen := len(c.incomingRequestsCh)
+	for i := 0; i < reqLen; i++ {
+		c.internalSendRequest(<-c.incomingRequestsCh)
 	}
 	close(c.incomingRequestsCh)
 }
@@ -548,10 +549,15 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	if c.getState() == connectionClosed {
 		callback(req, ErrConnectionClosed)
 	} else {
-		c.incomingRequestsCh <- &request{
+		select {
+		case <-c.closeCh:
+			callback(req, ErrConnectionClosed)
+
+		case c.incomingRequestsCh <- &request{
 			id:       &requestID,
 			cmd:      req,
 			callback: callback,
+		}:
 		}
 	}
 }
@@ -561,12 +567,17 @@ func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
 		return ErrConnectionClosed
 	}
 
-	c.incomingRequestsCh <- &request{
+	select {
+	case <-c.closeCh:
+		return ErrConnectionClosed
+
+	case c.incomingRequestsCh <- &request{
 		id:       nil,
 		cmd:      req,
 		callback: nil,
+	}:
+		return nil
 	}
-	return nil
 }
 
 func (c *connection) internalSendRequest(req *request) {

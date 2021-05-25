@@ -18,10 +18,15 @@
 package internal
 
 import (
+	"bytes"
+	"encoding/json"
+	"io/ioutil"
 	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -119,9 +124,10 @@ func TestLookupSuccess(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -132,7 +138,7 @@ func TestLookupSuccess(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, serviceNameResolver, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -152,9 +158,10 @@ func TestTlsLookupSuccess(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -165,7 +172,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, serviceNameResolver, true, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -185,9 +192,10 @@ func TestLookupWithProxy(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -199,7 +207,7 @@ func TestLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, serviceNameResolver, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -218,9 +226,10 @@ func TestTlsLookupWithProxy(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -232,7 +241,7 @@ func TestTlsLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), true, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -252,14 +261,16 @@ func TestLookupWithRedirect(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 			{
-				RequestId:     proto.Uint64(2),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(true),
+				RequestId:              proto.Uint64(2),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(true),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -276,7 +287,7 @@ func TestLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -296,14 +307,16 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 			{
-				RequestId:     proto.Uint64(2),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(true),
+				RequestId:              proto.Uint64(2),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(true),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -320,7 +333,7 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), true, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -339,9 +352,10 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -353,7 +367,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(false),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -369,9 +383,10 @@ func TestLookupWithLookupFailure(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				Authoritative:          proto.Bool(false),
+				AdvertisedListenerName: proto.String(""),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -381,7 +396,7 @@ func TestLookupWithLookupFailure(t *testing.T) {
 				Authoritative: proto.Bool(true),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -468,12 +483,12 @@ func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
 				Response:   pb.CommandPartitionedTopicMetadataResponse_Success.Enum(),
 			},
 		},
-	}, url, serviceNameResolver, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	metadata, err := ls.GetPartitionedTopicMetadata("my-topic")
 	assert.NoError(t, err)
 	assert.NotNil(t, metadata)
-	assert.Equal(t, metadata.GetPartitions(), uint32(1))
+	assert.Equal(t, metadata.Partitions, 1)
 }
 
 func TestLookupSuccessWithMultipleHosts(t *testing.T) {
@@ -486,9 +501,10 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 
 		expectedRequests: []pb.CommandLookupTopic{
 			{
-				RequestId:     proto.Uint64(1),
-				Topic:         proto.String("my-topic"),
-				Authoritative: proto.Bool(false),
+				RequestId:              proto.Uint64(1),
+				Topic:                  proto.String("my-topic"),
+				AdvertisedListenerName: proto.String(""),
+				Authoritative:          proto.Bool(false),
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -499,7 +515,7 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, serviceNameResolver, false, log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -507,4 +523,80 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 
 	assert.Equal(t, "pulsar://broker-1:6650", lr.LogicalAddr.String())
 	assert.Equal(t, "pulsar://broker-1:6650", lr.PhysicalAddr.String())
+}
+
+type MockHTTPClient struct {
+	ServiceNameResolver ServiceNameResolver
+}
+
+func (c *MockHTTPClient) Close() {}
+
+func (c *MockHTTPClient) Get(endpoint string, obj interface{}) error {
+	if strings.Contains(endpoint, HTTPLookupServiceBasePathV1) || strings.Contains(endpoint,
+		HTTPLookupServiceBasePathV2) {
+		return mockHTTPGetLookupResult(obj)
+	} else if strings.Contains(endpoint, "partitions") {
+		return mockHTTPGetPartitionedTopicMetadataResult(obj)
+	}
+	return errors.New("not supported request")
+}
+
+func mockHTTPGetLookupResult(obj interface{}) error {
+	jsonResponse := `{
+   		"brokerUrl": "pulsar://broker-1:6650",
+   		"brokerUrlTls": "",
+		"httpUrl": "http://broker-1:8080",
+		"httpUrlTls": ""
+  	}`
+	r := ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse)))
+	dec := json.NewDecoder(r)
+	err := dec.Decode(obj)
+	return err
+}
+
+func mockHTTPGetPartitionedTopicMetadataResult(obj interface{}) error {
+	jsonResponse := `{
+   		"partitions": 1
+  	}`
+	r := ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse)))
+	dec := json.NewDecoder(r)
+	err := dec.Decode(obj)
+	return err
+}
+
+func NewMockHTTPClient(serviceNameResolver ServiceNameResolver) HTTPClient {
+	h := &MockHTTPClient{}
+	h.ServiceNameResolver = serviceNameResolver
+	return h
+}
+
+func TestHttpLookupSuccess(t *testing.T) {
+	url, err := url.Parse("http://broker-1:8080")
+	assert.NoError(t, err)
+	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	httpClient := NewMockHTTPClient(serviceNameResolver)
+	ls := NewHTTPLookupService(httpClient, url, serviceNameResolver, false,
+		log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+
+	lr, err := ls.Lookup("my-topic")
+	assert.NoError(t, err)
+	assert.NotNil(t, lr)
+
+	assert.Equal(t, "pulsar://broker-1:6650", lr.LogicalAddr.String())
+	assert.Equal(t, "pulsar://broker-1:6650", lr.PhysicalAddr.String())
+}
+
+func TestHttpGetPartitionedTopicMetadataSuccess(t *testing.T) {
+	url, err := url.Parse("http://broker-1:8080")
+	assert.NoError(t, err)
+	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	httpClient := NewMockHTTPClient(serviceNameResolver)
+	ls := NewHTTPLookupService(httpClient, url, serviceNameResolver, false,
+		log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+
+	tMetadata, err := ls.GetPartitionedTopicMetadata("my-topic")
+	assert.NoError(t, err)
+	assert.NotNil(t, tMetadata)
+
+	assert.Equal(t, 1, tMetadata.Partitions)
 }

@@ -17,12 +17,16 @@
 
 package auth
 
-import "crypto/tls"
+import (
+	"crypto/tls"
+	"net/http"
+)
 
 type tlsAuthProvider struct {
 	certificatePath string
 	privateKeyPath  string
 	tlsCertSupplier func() (*tls.Certificate, error)
+	T               http.RoundTripper
 }
 
 // NewAuthenticationTLSWithParams initialize the authentication provider with map param.
@@ -70,5 +74,28 @@ func (p *tlsAuthProvider) GetData() ([]byte, error) {
 }
 
 func (tlsAuthProvider) Close() error {
+	return nil
+}
+
+func (p *tlsAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	return p.T.RoundTrip(req)
+}
+
+func (p *tlsAuthProvider) Transport() http.RoundTripper {
+	return p.T
+}
+
+func (p *tlsAuthProvider) WithTransport(tripper http.RoundTripper) error {
+	p.T = tripper
+	return p.configTLS()
+}
+
+func (p *tlsAuthProvider) configTLS() error {
+	cert, err := p.GetTLSCertificate()
+	if err != nil {
+		return err
+	}
+	transport := p.T.(*http.Transport)
+	transport.TLSClientConfig.Certificates = []tls.Certificate{*cert}
 	return nil
 }

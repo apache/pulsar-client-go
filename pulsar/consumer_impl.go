@@ -49,12 +49,12 @@ type consumer struct {
 	// channel used to deliver message to clients
 	messageCh chan ConsumerMessage
 
-	dlq       *dlqRouter
-	rlq       *retryRouter
-	closeOnce sync.Once
-	closeCh   chan struct{}
-	errorCh   chan error
-	ticker    *time.Ticker
+	dlq           *dlqRouter
+	rlq           *retryRouter
+	closeOnce     sync.Once
+	closeCh       chan struct{}
+	errorCh       chan error
+	stopDiscovery func()
 
 	log     log.Logger
 	metrics *internal.TopicMetrics
@@ -210,19 +210,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	if duration <= 0 {
 		duration = defaultAutoDiscoveryDuration
 	}
-	consumer.ticker = time.NewTicker(duration)
-
-	go func() {
-		for {
-			select {
-			case <-consumer.closeCh:
-				return
-			case <-consumer.ticker.C:
-				consumer.log.Debug("Auto discovering new partitions")
-				consumer.internalTopicSubscribeToPartitions()
-			}
-		}
-	}()
+	consumer.stopDiscovery = consumer.runBackgroundPartitionDiscovery(duration)
 
 	return consumer, nil
 }
@@ -230,6 +218,32 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 // Name returns the name of consumer.
 func (c *consumer) Name() string {
 	return c.consumerName
+}
+
+func (c *consumer) runBackgroundPartitionDiscovery(period time.Duration) (cancel func()) {
+	var wg sync.WaitGroup
+	stopDiscoveryCh := make(chan struct{})
+	ticker := time.NewTicker(period)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopDiscoveryCh:
+				return
+			case <-ticker.C:
+				c.log.Debug("Auto discovering new partitions")
+				c.internalTopicSubscribeToPartitions()
+			}
+		}
+	}()
+
+	return func() {
+		ticker.Stop()
+		close(stopDiscoveryCh)
+		wg.Wait()
+	}
 }
 
 func (c *consumer) internalTopicSubscribeToPartitions() error {
@@ -489,6 +503,8 @@ func (c *consumer) NackID(msgID MessageID) {
 
 func (c *consumer) Close() {
 	c.closeOnce.Do(func() {
+		c.stopDiscovery()
+
 		c.Lock()
 		defer c.Unlock()
 
@@ -502,7 +518,6 @@ func (c *consumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
-		c.ticker.Stop()
 		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()

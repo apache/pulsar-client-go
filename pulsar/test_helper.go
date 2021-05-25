@@ -38,7 +38,8 @@ const (
 	serviceURL    = "pulsar://localhost:6650"
 	serviceURLTLS = "pulsar+ssl://localhost:6651"
 
-	webServiceURL = "http://localhost:8080"
+	webServiceURL    = "http://localhost:8080"
+	webServiceURLTLS = "https://localhost:8443"
 
 	caCertsPath       = "../integration-tests/certs/cacert.pem"
 	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"

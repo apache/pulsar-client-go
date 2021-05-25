@@ -1491,7 +1491,6 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
 	// create producer
-	partitionsAutoDiscoveryInterval = 100 * time.Millisecond
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		MessageRouter: func(msg *ProducerMessage, topicMetadata TopicMetadata) int {
@@ -1500,6 +1499,7 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 			assert.NoError(t, err)
 			return i
 		},
+		PartitionsAutoDiscoveryInterval: 100 * time.Millisecond,
 	})
 	require.NoError(t, err)
 	defer producer.Close()

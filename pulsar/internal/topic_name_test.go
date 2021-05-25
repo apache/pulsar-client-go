@@ -37,6 +37,7 @@ func TestParseTopicName(t *testing.T) {
 	assert.Equal(t, "persistent://public/default/my-topic", topic.Name)
 	assert.Equal(t, "public", topic.Tenant)
 	assert.Equal(t, "public/default", topic.Namespace)
+	assert.Equal(t, "my-topic", topic.Topic)
 	assert.Equal(t, -1, topic.Partition)
 
 	topic, err = ParseTopicName("my-tenant/my-namespace/my-topic")
@@ -44,6 +45,7 @@ func TestParseTopicName(t *testing.T) {
 	assert.Equal(t, "persistent://my-tenant/my-namespace/my-topic", topic.Name)
 	assert.Equal(t, "my-tenant", topic.Tenant)
 	assert.Equal(t, "my-tenant/my-namespace", topic.Namespace)
+	assert.Equal(t, "my-topic", topic.Topic)
 	assert.Equal(t, -1, topic.Partition)
 
 	topic, err = ParseTopicName("non-persistent://my-tenant/my-namespace/my-topic")
@@ -51,6 +53,7 @@ func TestParseTopicName(t *testing.T) {
 	assert.Equal(t, "non-persistent://my-tenant/my-namespace/my-topic", topic.Name)
 	assert.Equal(t, "my-tenant", topic.Tenant)
 	assert.Equal(t, "my-tenant/my-namespace", topic.Namespace)
+	assert.Equal(t, "my-topic", topic.Topic)
 	assert.Equal(t, -1, topic.Partition)
 
 	topic, err = ParseTopicName("my-topic-partition-5")
@@ -58,6 +61,7 @@ func TestParseTopicName(t *testing.T) {
 	assert.Equal(t, "persistent://public/default/my-topic-partition-5", topic.Name)
 	assert.Equal(t, "public", topic.Tenant)
 	assert.Equal(t, "public/default", topic.Namespace)
+	assert.Equal(t, "my-topic-partition-5", topic.Topic)
 	assert.Equal(t, 5, topic.Partition)
 
 	// V1 topic name
@@ -66,6 +70,7 @@ func TestParseTopicName(t *testing.T) {
 	assert.Equal(t, "persistent://my-tenant/my-cluster/my-ns/my-topic", topic.Name)
 	assert.Equal(t, "my-tenant", topic.Tenant)
 	assert.Equal(t, "my-tenant/my-cluster/my-ns", topic.Namespace)
+	assert.Equal(t, "my-topic", topic.Topic)
 	assert.Equal(t, -1, topic.Partition)
 
 	topic, err = ParseTopicName("my-tenant/my-cluster/my-ns/my-topic")
@@ -73,6 +78,7 @@ func TestParseTopicName(t *testing.T) {
 	assert.Equal(t, "persistent://my-tenant/my-cluster/my-ns/my-topic", topic.Name)
 	assert.Equal(t, "my-tenant", topic.Tenant)
 	assert.Equal(t, "my-tenant/my-cluster/my-ns", topic.Namespace)
+	assert.Equal(t, "my-topic", topic.Topic)
 	assert.Equal(t, -1, topic.Partition)
 }
 
@@ -113,4 +119,68 @@ func TestTopicNameWithoutPartitionPart(t *testing.T) {
 	for _, test := range tests {
 		assert.Equal(t, test.expected, TopicNameWithoutPartitionPart(&test.tn))
 	}
+}
+
+func TestIsV2TopicName(t *testing.T) {
+	topic, err := ParseTopicName("persistent://my-tenant/my-ns/my-topic")
+
+	assert.Nil(t, err)
+	assert.True(t, IsV2TopicName(topic))
+
+	topic, err = ParseTopicName("my-topic")
+	assert.Nil(t, err)
+	assert.True(t, IsV2TopicName(topic))
+
+	topic, err = ParseTopicName("my-tenant/my-namespace/my-topic")
+	assert.Nil(t, err)
+	assert.True(t, IsV2TopicName(topic))
+
+	topic, err = ParseTopicName("non-persistent://my-tenant/my-namespace/my-topic")
+	assert.Nil(t, err)
+	assert.True(t, IsV2TopicName(topic))
+
+	topic, err = ParseTopicName("my-topic-partition-5")
+	assert.Nil(t, err)
+	assert.True(t, IsV2TopicName(topic))
+
+	// V1 topic name
+	topic, err = ParseTopicName("persistent://my-tenant/my-cluster/my-ns/my-topic")
+	assert.Nil(t, err)
+	assert.False(t, IsV2TopicName(topic))
+
+	topic, err = ParseTopicName("my-tenant/my-cluster/my-ns/my-topic")
+	assert.Nil(t, err)
+	assert.False(t, IsV2TopicName(topic))
+}
+
+func TestGetTopicRestPath(t *testing.T) {
+	topic, err := ParseTopicName("persistent://my-tenant/my-ns/my-topic")
+
+	assert.Nil(t, err)
+	assert.Equal(t, "persistent/my-tenant/my-ns/my-topic", GetTopicRestPath(topic))
+
+	topic, err = ParseTopicName("my-topic")
+	assert.Nil(t, err)
+	assert.Equal(t, "persistent/public/default/my-topic", GetTopicRestPath(topic))
+
+	topic, err = ParseTopicName("my-tenant/my-namespace/my-topic")
+	assert.Nil(t, err)
+	assert.Equal(t, "persistent/my-tenant/my-namespace/my-topic", GetTopicRestPath(topic))
+
+	topic, err = ParseTopicName("non-persistent://my-tenant/my-namespace/my-topic")
+	assert.Nil(t, err)
+	assert.Equal(t, "non-persistent/my-tenant/my-namespace/my-topic", GetTopicRestPath(topic))
+
+	topic, err = ParseTopicName("my-topic-partition-5")
+	assert.Nil(t, err)
+	assert.Equal(t, "persistent/public/default/my-topic-partition-5", GetTopicRestPath(topic))
+
+	// V1 topic name
+	topic, err = ParseTopicName("persistent://my-tenant/my-cluster/my-ns/my-topic")
+	assert.Nil(t, err)
+	assert.Equal(t, "persistent/my-tenant/my-cluster/my-ns/my-topic", GetTopicRestPath(topic))
+
+	topic, err = ParseTopicName("my-tenant/my-cluster/my-ns/my-topic")
+	assert.Nil(t, err)
+	assert.Equal(t, "persistent/my-tenant/my-cluster/my-ns/my-topic", GetTopicRestPath(topic))
 }

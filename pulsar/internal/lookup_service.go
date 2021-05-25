@@ -19,6 +19,7 @@ package internal
 
 import (
 	"errors"
+	"fmt"
 	"net/url"
 
 	"github.com/gogo/protobuf/proto"
@@ -33,6 +34,11 @@ type LookupResult struct {
 	PhysicalAddr *url.URL
 }
 
+// PartitionedTopicMetadata encapsulates a struct for metadata of a partitioned topic
+type PartitionedTopicMetadata struct {
+	Partitions int `json:"partitions"` // Number of partitions for the topic
+}
+
 // LookupService is a interface of lookup service.
 type LookupService interface {
 	// Lookup perform a lookup for the given topic, confirm the location of the broker
@@ -41,26 +47,31 @@ type LookupService interface {
 
 	// GetPartitionedTopicMetadata perform a CommandPartitionedTopicMetadata request for
 	// the given topic, returns the CommandPartitionedTopicMetadataResponse as the result.
-	GetPartitionedTopicMetadata(topic string) (*pb.CommandPartitionedTopicMetadataResponse, error)
+	GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata, error)
+
+	// Allow Lookup Service's internal client to be able to closed
+	Closable
 }
 
 type lookupService struct {
 	rpcClient           RPCClient
 	serviceNameResolver ServiceNameResolver
 	tlsEnabled          bool
+	listenerName        string
 	log                 log.Logger
 	metrics             *Metrics
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
-	tlsEnabled bool, logger log.Logger, metrics *Metrics) LookupService {
+	tlsEnabled bool, listenerName string, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
 		rpcClient:           rpcClient,
 		serviceNameResolver: serviceNameResolver,
 		tlsEnabled:          tlsEnabled,
 		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 		metrics:             metrics,
+		listenerName:        listenerName,
 	}
 }
 
@@ -96,9 +107,10 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
 	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-		RequestId:     &id,
-		Topic:         &topic,
-		Authoritative: proto.Bool(false),
+		RequestId:              &id,
+		Topic:                  &topic,
+		Authoritative:          proto.Bool(false),
+		AdvertisedListenerName: proto.String(ls.listenerName),
 	})
 	if err != nil {
 		return nil, err
@@ -120,9 +132,10 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 
 			id := ls.rpcClient.NewRequestID()
 			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-				RequestId:     &id,
-				Topic:         &topic,
-				Authoritative: lr.Authoritative,
+				RequestId:              &id,
+				Topic:                  &topic,
+				Authoritative:          lr.Authoritative,
+				AdvertisedListenerName: proto.String(ls.listenerName),
 			})
 			if err != nil {
 				return nil, err
@@ -158,7 +171,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	return nil, errors.New("exceeded max number of redirection during topic lookup")
 }
 
-func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*pb.CommandPartitionedTopicMetadataResponse,
+func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata,
 	error) {
 	ls.metrics.PartitionedTopicMetadataRequestsCount.Inc()
 	topicName, err := ParseTopicName(topic)
@@ -177,5 +190,121 @@ func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*pb.CommandP
 	}
 	ls.log.Debugf("Got topic{%s} partitioned metadata response: %+v", topic, res)
 
-	return res.Response.PartitionMetadataResponse, nil
+	if res.Response.PartitionMetadataResponse.Error != nil {
+		return nil, errors.New(res.Response.PartitionMetadataResponse.GetError().String())
+	}
+
+	return &PartitionedTopicMetadata{Partitions: int(res.Response.PartitionMetadataResponse.GetPartitions())}, nil
+}
+
+func (ls *lookupService) Close() {}
+
+const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
+const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
+const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
+const HTTPAdminServiceV2Format string = "/admin/v2/%s/partitions"
+
+type httpLookupData struct {
+	BrokerURL    string `json:"brokerUrl"`
+	BrokerURLTLS string `json:"brokerUrlTls"`
+	HTTPURL      string `json:"httpUrl"`
+	HTTPURLTLS   string `json:"httpUrlTls"`
+}
+
+type httpLookupService struct {
+	httpClient          HTTPClient
+	serviceNameResolver ServiceNameResolver
+	tlsEnabled          bool
+	log                 log.Logger
+	metrics             *Metrics
+}
+
+func (h *httpLookupService) getBrokerAddress(ld *httpLookupData) (logicalAddress *url.URL,
+	physicalAddress *url.URL, err error) {
+	if h.tlsEnabled {
+		logicalAddress, err = url.ParseRequestURI(ld.BrokerURLTLS)
+	} else {
+		logicalAddress, err = url.ParseRequestURI(ld.BrokerURL)
+	}
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return logicalAddress, logicalAddress, nil
+}
+
+func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
+	topicName, err := ParseTopicName(topic)
+	if err != nil {
+		return nil, err
+	}
+
+	basePath := HTTPLookupServiceBasePathV2
+	if !IsV2TopicName(topicName) {
+		basePath = HTTPLookupServiceBasePathV1
+	}
+
+	lookupData := &httpLookupData{}
+	err = h.httpClient.Get(basePath+GetTopicRestPath(topicName), lookupData)
+	if err != nil {
+		return nil, err
+	}
+
+	h.log.Debugf("Successfully looked up topic{%s} on http broker. %+v",
+		topic, lookupData)
+
+	logicalAddress, physicalAddress, err := h.getBrokerAddress(lookupData)
+	if err != nil {
+		return nil, err
+	}
+
+	return &LookupResult{
+		LogicalAddr:  logicalAddress,
+		PhysicalAddr: physicalAddress,
+	}, nil
+
+}
+
+func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata,
+	error) {
+	topicName, err := ParseTopicName(topic)
+	if err != nil {
+		return nil, err
+	}
+
+	format := HTTPAdminServiceV2Format
+	if !IsV2TopicName(topicName) {
+		format = HTTPAdminServiceV1Format
+	}
+
+	path := fmt.Sprintf(format, GetTopicRestPath(topicName))
+
+	tMetadata := &PartitionedTopicMetadata{}
+
+	err = h.httpClient.Get(path, tMetadata)
+	if err != nil {
+		return nil, err
+	}
+
+	h.log.Debugf("Got topic{%s} partitioned metadata response: %+v", topic, tMetadata)
+
+	return tMetadata, nil
+}
+
+func (h *httpLookupService) Close() {
+	h.httpClient.Close()
+}
+
+// NewHTTPLookupService init a http based lookup service struct and return an object of LookupService.
+func NewHTTPLookupService(httpClient HTTPClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
+	tlsEnabled bool, logger log.Logger, metrics *Metrics) LookupService {
+
+	return &httpLookupService{
+		httpClient:          httpClient,
+		serviceNameResolver: serviceNameResolver,
+		tlsEnabled:          tlsEnabled,
+		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		metrics:             metrics,
+	}
 }

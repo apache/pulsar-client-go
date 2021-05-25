@@ -376,6 +376,9 @@ message CommandLookupTopic {
     // to the proxy.
     optional string original_auth_data = 5;
     optional string original_auth_method = 6;
+
+    // net mode setting
+    optional string advertised_listener_name = 7;
 }
 
 message CommandLookupTopicResponse {
