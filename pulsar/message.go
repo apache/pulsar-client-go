@@ -18,7 +18,6 @@
 package pulsar
 
 import (
-	"math"
 	"time"
 )
 
@@ -129,10 +128,10 @@ func DeserializeMessageID(data []byte) (MessageID, error) {
 
 // EarliestMessageID returns a messageID that points to the earliest message available in a topic
 func EarliestMessageID() MessageID {
-	return newMessageID(-1, -1, -1, -1)
+	return earliestMessageID
 }
 
 // LatestMessage returns a messageID that points to the latest message
 func LatestMessageID() MessageID {
-	return newMessageID(math.MaxInt64, math.MaxInt64, -1, -1)
+	return latestMessageID
 }
