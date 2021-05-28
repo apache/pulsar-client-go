@@ -261,7 +261,8 @@ type LedgerInfo struct {
 	LedgerID  int64 `json:"ledgerId"`
 	Entries   int64 `json:"entries"`
 	Size      int64 `json:"size"`
-	Offloaded bool  `json:"offloaded"`
+	Timestamp int64 `json:"timestamp"`
+	Offloaded bool  `json:"isOffloaded"`
 }
 
 type CursorInfo struct {
