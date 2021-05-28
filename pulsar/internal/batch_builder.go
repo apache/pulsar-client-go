@@ -157,7 +157,7 @@ func (bc *batchContainer) IsFull() bool {
 
 func (bc *batchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
-	return bc.numMessages > 0 && (bc.buffer.ReadableBytes()+msgSize) > uint32(bc.maxBatchSize)
+	return bc.numMessages+1 > bc.maxMessages && (bc.buffer.ReadableBytes()+msgSize) > uint32(bc.maxBatchSize)
 }
 
 // Add will add single message to batch.
@@ -174,7 +174,7 @@ func (bc *batchContainer) Add(
 		// There's already a message with cluster replication list. need to flush before next
 		// message can be sent
 		return false
-	} else if bc.hasSpace(payload) {
+	} else if !bc.hasSpace(payload) {
 		// The current batch is full. Producer has to call Flush() to
 		return false
 	}
