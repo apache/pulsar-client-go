@@ -22,17 +22,24 @@ import (
 	"github.com/opentracing/opentracing-go"
 )
 
-func enrichConsumerSpan(message pulsar.ConsumerMessage, span opentracing.Span) {
+func enrichConsumerSpan(message *pulsar.ConsumerMessage, span opentracing.Span) {
 	spanCommonTags(span)
 
+	for k, v := range message.Properties() {
+		span.SetTag(k, v)
+	}
 	span.SetTag("message_bus.destination", message.Topic())
 	span.SetTag("messageId", message.ID())
 	span.SetTag("subscription", message.Subscription())
 }
 
-func enrichProducerSpan(producer pulsar.Producer, span opentracing.Span) {
+func enrichProducerSpan(message *pulsar.ProducerMessage, producer pulsar.Producer, span opentracing.Span) {
 	spanCommonTags(span)
 
+	for k, v := range message.Properties {
+		span.SetTag(k, v)
+	}
+	span.SetTag("span.kind", "producer")
 	span.SetTag("message_bus.destination", producer.Topic())
 	span.SetTag("sequenceId", producer.LastSequenceID())
 }

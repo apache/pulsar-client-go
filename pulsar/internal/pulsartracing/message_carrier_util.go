@@ -29,10 +29,6 @@ func InjectProducerMessageSpanContext(ctx context.Context, message *pulsar.Produ
 
 	span := opentracing.SpanFromContext(ctx)
 
-	for k, v := range message.Properties {
-		span.SetTag(k, v)
-	}
-
 	err := opentracing.GlobalTracer().Inject(span.Context(), opentracing.TextMap, injectAdapter)
 
 	if err != nil {
@@ -71,10 +67,6 @@ func InjectConsumerMessageSpanContext(ctx context.Context, message pulsar.Consum
 	if span == nil {
 		log.Warn("no span could be extracted from context, nothing will be injected into the message properties")
 		return
-	}
-
-	for k, v := range message.Properties() {
-		span.SetTag(k, v)
 	}
 
 	err := opentracing.GlobalTracer().Inject(span.Context(), opentracing.TextMap, injectAdapter)

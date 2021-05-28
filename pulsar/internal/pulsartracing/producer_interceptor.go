@@ -23,35 +23,34 @@ import (
 	"github.com/opentracing/opentracing-go"
 )
 
-const fromPrefix = "From__"
+const toPrefix = "To__"
 
-type ConsumerInterceptor struct {
+type ProducerInterceptor struct {
 }
 
-func (t *ConsumerInterceptor) BeforeConsume(message pulsar.ConsumerMessage) {
-	buildAndInjectChildSpan(message).Finish()
+func (t *ProducerInterceptor) BeforeSend(producer pulsar.Producer, message *pulsar.ProducerMessage) {
+	buildAndInjectSpan(message, producer).Finish()
 }
 
-func (t *ConsumerInterceptor) OnAcknowledge(consumer pulsar.Consumer, msgID pulsar.MessageID) {}
-
-func (t *ConsumerInterceptor) OnNegativeAcksSend(consumer pulsar.Consumer, msgIDs []pulsar.MessageID) {
+func (t *ProducerInterceptor) OnSendAcknowledgement(producer pulsar.Producer, message *pulsar.ProducerMessage, msgID pulsar.MessageID) {
 }
 
-func buildAndInjectChildSpan(message pulsar.ConsumerMessage) opentracing.Span {
+func buildAndInjectSpan(message *pulsar.ProducerMessage, producer pulsar.Producer) opentracing.Span {
 	tracer := opentracing.GlobalTracer()
-	parentContext := ExtractSpanContextFromConsumerMessage(message)
+	spanContext := ExtractSpanContextFromProducerMessage(message)
 
 	var span opentracing.Span
 
 	var startSpanOptions []opentracing.StartSpanOption
-	if parentContext != nil {
-		startSpanOptions = []opentracing.StartSpanOption{opentracing.FollowsFrom(parentContext)}
+	if spanContext != nil {
+		startSpanOptions = []opentracing.StartSpanOption{opentracing.FollowsFrom(spanContext)}
 	}
 
-	span = tracer.StartSpan(fromPrefix+message.Topic()+"__"+message.Subscription(), startSpanOptions...)
+	span = tracer.StartSpan(toPrefix+producer.Topic(), startSpanOptions...)
 
-	enrichConsumerSpan(message, span)
-	InjectConsumerMessageSpanContext(opentracing.ContextWithSpan(context.Background(), span), message)
+	enrichProducerSpan(message, producer, span)
+
+	InjectProducerMessageSpanContext(opentracing.ContextWithSpan(context.Background(), span), message)
 
 	return span
 }
