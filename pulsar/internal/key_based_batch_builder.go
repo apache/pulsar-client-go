@@ -117,7 +117,7 @@ func (bc *keyBasedBatchContainer) IsMultiBatches() bool {
 
 func (bc *keyBasedBatchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
-	return bc.numMessages+1 > bc.maxMessages && (bc.buffer.ReadableBytes()+msgSize) > uint32(bc.maxBatchSize)
+	return bc.numMessages+1 > bc.maxMessages || (bc.buffer.ReadableBytes()+msgSize) > uint32(bc.maxBatchSize)
 }
 
 // Add will add single message to key-based batch with message key.
