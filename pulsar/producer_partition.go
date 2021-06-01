@@ -490,20 +490,35 @@ func (p *partitionProducer) failTimeoutMessages() {
 
 		// iterate at most viewSize items
 		for i := 0; i < viewSize; i++ {
-			item := p.pendingQueue.Poll()
+			tickerNeedWaiting := time.Duration(0)
+			item := p.pendingQueue.CompareAndPoll(
+				func(m interface{}) bool {
+					if m == nil {
+						return false
+					}
+
+					pi := m.(*pendingItem)
+					pi.Lock()
+					defer pi.Unlock()
+					if nextWaiting := diff(pi.sentAt); nextWaiting > 0 {
+						// current and subsequent items not timeout yet, stop iterating
+						tickerNeedWaiting = nextWaiting
+						return false
+					}
+					return true
+				})
+
 			if item == nil {
 				t.Reset(p.options.SendTimeout)
 				break
 			}
 
-			pi := item.(*pendingItem)
-			pi.Lock()
-			if nextWaiting := diff(pi.sentAt); nextWaiting > 0 {
-				// current and subsequent items not timeout yet, stop iterating
-				t.Reset(nextWaiting)
-				pi.Unlock()
+			if tickerNeedWaiting > 0 {
+				t.Reset(tickerNeedWaiting)
 				break
 			}
+
+			pi := item.(*pendingItem)
 
 			for _, i := range pi.sendRequests {
 				sr := i.(*sendRequest)
