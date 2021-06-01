@@ -519,6 +519,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 			}
 
 			pi := item.(*pendingItem)
+			pi.Lock()
 
 			for _, i := range pi.sendRequests {
 				sr := i.(*sendRequest)
