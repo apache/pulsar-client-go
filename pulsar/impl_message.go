@@ -123,6 +123,22 @@ func (id messageID) Serialize() []byte {
 	return data
 }
 
+func (id messageID) LedgerID() int64 {
+	return id.ledgerID
+}
+
+func (id messageID) EntryID() int64 {
+	return id.entryID
+}
+
+func (id messageID) BatchIdx() int32 {
+	return id.batchIdx
+}
+
+func (id messageID) PartitionIdx() int32 {
+	return id.partitionIdx
+}
+
 func (id messageID) String() string {
 	return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
 }
