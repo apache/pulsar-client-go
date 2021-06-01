@@ -123,11 +123,11 @@ func (id messageID) Serialize() []byte {
 	return data
 }
 
-func (id messageID) LedgerId() int64 {
+func (id messageID) LedgerID() int64 {
 	return id.ledgerID
 }
 
-func (id messageID) EntryId() int64 {
+func (id messageID) EntryID() int64 {
 	return id.entryID
 }
 

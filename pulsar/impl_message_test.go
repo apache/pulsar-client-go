@@ -18,8 +18,9 @@
 package pulsar
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestMessageId(t *testing.T) {
@@ -47,8 +48,8 @@ func TestMessageId(t *testing.T) {
 func TestMessageIdGetFuncs(t *testing.T) {
 	// test LedgerId,EntryId,BatchIdx,PartitionIdx
 	id := newMessageID(1, 2, 3, 4)
-	assert.Equal(t, int64(1), id.LedgerId())
-	assert.Equal(t, int64(2), id.EntryId())
+	assert.Equal(t, int64(1), id.LedgerID())
+	assert.Equal(t, int64(2), id.EntryID())
 	assert.Equal(t, int32(3), id.BatchIdx())
 	assert.Equal(t, int32(4), id.PartitionIdx())
 }

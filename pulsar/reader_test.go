@@ -391,12 +391,12 @@ func (id *myMessageID) Serialize() []byte {
 	return id.data
 }
 
-func (id *myMessageID) LedgerId() int64 {
-	return id.LedgerId()
+func (id *myMessageID) LedgerID() int64 {
+	return id.LedgerID()
 }
 
-func (id *myMessageID) EntryId() int64 {
-	return id.EntryId()
+func (id *myMessageID) EntryID() int64 {
+	return id.EntryID()
 }
 
 func (id *myMessageID) BatchIdx() int32 {

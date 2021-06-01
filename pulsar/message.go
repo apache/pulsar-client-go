@@ -120,11 +120,11 @@ type MessageID interface {
 	// Serialize the message id into a sequence of bytes that can be stored somewhere else
 	Serialize() []byte
 
-	// Get the message ledgerId
-	LedgerId() int64
+	// Get the message ledgerID
+	LedgerID() int64
 
-	// Get the message entryId
-	EntryId() int64
+	// Get the message entryID
+	EntryID() int64
 
 	// Get the message batchIdx
 	BatchIdx() int32
