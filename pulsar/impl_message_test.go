@@ -18,9 +18,8 @@
 package pulsar
 
 import (
-	"testing"
-
 	"github.com/stretchr/testify/assert"
+	"testing"
 )
 
 func TestMessageId(t *testing.T) {
@@ -35,6 +34,11 @@ func TestMessageId(t *testing.T) {
 	assert.Equal(t, int64(2), id2.(messageID).entryID)
 	assert.Equal(t, int32(3), id2.(messageID).batchIdx)
 	assert.Equal(t, int32(4), id2.(messageID).partitionIdx)
+
+	assert.Equal(t, int64(1), id2.LedgerId())
+	assert.Equal(t, int64(2), id2.EntryId())
+	assert.Equal(t, int32(3), id2.BatchIdx())
+	assert.Equal(t, int32(4), id2.PartitionIdx())
 
 	id, err = DeserializeMessageID(nil)
 	assert.Error(t, err)
