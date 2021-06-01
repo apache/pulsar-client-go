@@ -35,11 +35,6 @@ func TestMessageId(t *testing.T) {
 	assert.Equal(t, int32(3), id2.(messageID).batchIdx)
 	assert.Equal(t, int32(4), id2.(messageID).partitionIdx)
 
-	assert.Equal(t, int64(1), id2.LedgerId())
-	assert.Equal(t, int64(2), id2.EntryId())
-	assert.Equal(t, int32(3), id2.BatchIdx())
-	assert.Equal(t, int32(4), id2.PartitionIdx())
-
 	id, err = DeserializeMessageID(nil)
 	assert.Error(t, err)
 	assert.Nil(t, id)
@@ -47,6 +42,15 @@ func TestMessageId(t *testing.T) {
 	id, err = DeserializeMessageID(make([]byte, 0))
 	assert.Error(t, err)
 	assert.Nil(t, id)
+}
+
+func TestMessageIdGetFuncs(t *testing.T) {
+	// test LedgerId,EntryId,BatchIdx,PartitionIdx
+	id := newMessageID(1, 2, 3, 4)
+	assert.Equal(t, int64(1), id.LedgerId())
+	assert.Equal(t, int64(2), id.EntryId())
+	assert.Equal(t, int32(3), id.BatchIdx())
+	assert.Equal(t, int32(4), id.PartitionIdx())
 }
 
 func TestAckTracker(t *testing.T) {
