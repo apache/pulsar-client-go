@@ -116,6 +116,15 @@ type Topics interface {
 
 	// RemoveMaxProducers Remove max number of producers for a topic
 	RemoveMaxProducers(utils.TopicName) error
+
+	// GetMaxConsumers Get max number of consumers for a topic
+	GetMaxConsumers(utils.TopicName) (int, error)
+
+	// SetMaxConsumers Set max number of consumers for a topic
+	SetMaxConsumers(utils.TopicName, int) error
+
+	// RemoveMaxConsumers Remove max number of consumers for a topic
+	RemoveMaxConsumers(utils.TopicName) error
 }
 
 type topics struct {
@@ -358,6 +367,25 @@ func (t *topics) SetMaxProducers(topic utils.TopicName, maxProducers int) error 
 
 func (t *topics) RemoveMaxProducers(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
+	err := t.pulsar.Client.Delete(endpoint)
+	return err
+}
+
+func (t *topics) GetMaxConsumers(topic utils.TopicName) (int, error) {
+	var maxConsumers int
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
+	err := t.pulsar.Client.Get(endpoint, &maxConsumers)
+	return maxConsumers, err
+}
+
+func (t *topics) SetMaxConsumers(topic utils.TopicName, maxConsumers int) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
+	err := t.pulsar.Client.Post(endpoint, &maxConsumers)
+	return err
+}
+
+func (t *topics) RemoveMaxConsumers(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
 	err := t.pulsar.Client.Delete(endpoint)
 	return err
 }
