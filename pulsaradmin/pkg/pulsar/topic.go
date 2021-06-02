@@ -107,6 +107,15 @@ type Topics interface {
 
 	// RemoveMessageTTL Remove the message TTL for a topic
 	RemoveMessageTTL(utils.TopicName) error
+
+	// GetMaxProducers Get max number of producers for a topic
+	GetMaxProducers(utils.TopicName) (int, error)
+
+	// SetMaxProducers Set max number of producers for a topic
+	SetMaxProducers(utils.TopicName, int) error
+
+	// RemoveMaxProducers Remove max number of producers for a topic
+	RemoveMaxProducers(utils.TopicName) error
 }
 
 type topics struct {
@@ -331,5 +340,24 @@ func (t *topics) RemoveMessageTTL(topic utils.TopicName) error {
 	var params = make(map[string]string)
 	params["messageTTL"] = strconv.Itoa(0)
 	err := t.pulsar.Client.DeleteWithQueryParams(endpoint, params)
+	return err
+}
+
+func (t *topics) GetMaxProducers(topic utils.TopicName) (int, error) {
+	var maxProducers int
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
+	err := t.pulsar.Client.Get(endpoint, &maxProducers)
+	return maxProducers, err
+}
+
+func (t *topics) SetMaxProducers(topic utils.TopicName, maxProducers int) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
+	err := t.pulsar.Client.Post(endpoint, &maxProducers)
+	return err
+}
+
+func (t *topics) RemoveMaxProducers(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
+	err := t.pulsar.Client.Delete(endpoint)
 	return err
 }
