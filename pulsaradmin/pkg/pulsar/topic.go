@@ -98,6 +98,15 @@ type Topics interface {
 
 	// CompactStatus checks the status of an ongoing compaction for a topic
 	CompactStatus(utils.TopicName) (utils.LongRunningProcessStatus, error)
+
+	// GetMessageTTL Get the message TTL for a topic
+	GetMessageTTL(utils.TopicName) (int, error)
+
+	// SetMessageTTL Set the message TTL for a topic
+	SetMessageTTL(utils.TopicName, int) error
+
+	// RemoveMessageTTL Remove the message TTL for a topic
+	RemoveMessageTTL(utils.TopicName) error
 }
 
 type topics struct {
@@ -300,4 +309,27 @@ func (t *topics) CompactStatus(topic utils.TopicName) (utils.LongRunningProcessS
 	var status utils.LongRunningProcessStatus
 	err := t.pulsar.Client.Get(endpoint, &status)
 	return status, err
+}
+
+func (t *topics) GetMessageTTL(topic utils.TopicName) (int, error) {
+	var ttl int
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
+	err := t.pulsar.Client.Get(endpoint, &ttl)
+	return ttl, err
+}
+
+func (t *topics) SetMessageTTL(topic utils.TopicName, messageTTL int) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
+	var params = make(map[string]string)
+	params["messageTTL"] = strconv.Itoa(messageTTL)
+	err := t.pulsar.Client.PostWithQueryParams(endpoint, params)
+	return err
+}
+
+func (t *topics) RemoveMessageTTL(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
+	var params = make(map[string]string)
+	params["messageTTL"] = strconv.Itoa(0)
+	err := t.pulsar.Client.DeleteWithQueryParams(endpoint, params)
+	return err
 }

@@ -277,6 +277,28 @@ func (c *Client) PostWithMultiPart(endpoint string, in interface{}, body io.Read
 	return nil
 }
 
+func (c *Client) PostWithQueryParams(endpoint string, params map[string]string) error {
+	req, err := c.newRequest(http.MethodPost, endpoint)
+	if err != nil {
+		return err
+	}
+	if params != nil {
+		query := req.url.Query()
+		for k, v := range params {
+			query.Add(k, v)
+		}
+		req.params = query
+	}
+	// nolint
+	resp, err := checkSuccessful(c.doRequest(req))
+	if err != nil {
+		return err
+	}
+	defer safeRespClose(resp)
+
+	return nil
+}
+
 type request struct {
 	method      string
 	contentType string
