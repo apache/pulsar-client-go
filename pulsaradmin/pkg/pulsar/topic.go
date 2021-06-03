@@ -125,6 +125,15 @@ type Topics interface {
 
 	// RemoveMaxConsumers Remove max number of consumers for a topic
 	RemoveMaxConsumers(utils.TopicName) error
+
+	// GetMaxUnackMessagesPerConsumer Get max unacked messages policy on consumer for a topic
+	GetMaxUnackMessagesPerConsumer(utils.TopicName) (int, error)
+
+	// SetMaxUnackMessagesPerConsumer Set max unacked messages policy on consumer for a topic
+	SetMaxUnackMessagesPerConsumer(utils.TopicName, int) error
+
+	// RemoveMaxUnackMessagesPerConsumer Remove max unacked messages policy on consumer for a topic
+	RemoveMaxUnackMessagesPerConsumer(utils.TopicName) error
 }
 
 type topics struct {
@@ -388,4 +397,21 @@ func (t *topics) RemoveMaxConsumers(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
 	err := t.pulsar.Client.Delete(endpoint)
 	return err
+}
+
+func (t *topics) GetMaxUnackMessagesPerConsumer(topic utils.TopicName) (int, error) {
+	var maxNum int
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
+	err := t.pulsar.Client.Get(endpoint, &maxNum)
+	return maxNum, err
+}
+
+func (t *topics) SetMaxUnackMessagesPerConsumer(topic utils.TopicName, maxUnackedNum int) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
+	return t.pulsar.Client.Post(endpoint, &maxUnackedNum)
+}
+
+func (t *topics) RemoveMaxUnackMessagesPerConsumer(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
+	return t.pulsar.Client.Delete(endpoint)
 }
