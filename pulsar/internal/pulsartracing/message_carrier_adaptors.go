@@ -19,6 +19,7 @@ package pulsartracing
 
 import (
 	"errors"
+
 	"github.com/apache/pulsar-client-go/pulsar"
 )
 
