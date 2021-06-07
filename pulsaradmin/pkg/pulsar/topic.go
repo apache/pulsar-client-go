@@ -134,6 +134,15 @@ type Topics interface {
 
 	// RemoveMaxUnackMessagesPerConsumer Remove max unacked messages policy on consumer for a topic
 	RemoveMaxUnackMessagesPerConsumer(utils.TopicName) error
+
+	// GetMaxUnackMessagesPerSubscription Get max unacked messages policy on subscription for a topic
+	GetMaxUnackMessagesPerSubscription(utils.TopicName) (int, error)
+
+	// SetMaxUnackMessagesPerSubscription Set max unacked messages policy on subscription for a topic
+	SetMaxUnackMessagesPerSubscription(utils.TopicName, int) error
+
+	// RemoveMaxUnackMessagesPerSubscription Remove max unacked messages policy on subscription for a topic
+	RemoveMaxUnackMessagesPerSubscription(utils.TopicName) error
 }
 
 type topics struct {
@@ -413,5 +422,22 @@ func (t *topics) SetMaxUnackMessagesPerConsumer(topic utils.TopicName, maxUnacke
 
 func (t *topics) RemoveMaxUnackMessagesPerConsumer(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
+	return t.pulsar.Client.Delete(endpoint)
+}
+
+func (t *topics) GetMaxUnackMessagesPerSubscription(topic utils.TopicName) (int, error) {
+	var maxNum int
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnSubscription")
+	err := t.pulsar.Client.Get(endpoint, &maxNum)
+	return maxNum, err
+}
+
+func (t *topics) SetMaxUnackMessagesPerSubscription(topic utils.TopicName, maxUnackedNum int) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnSubscription")
+	return t.pulsar.Client.Post(endpoint, &maxUnackedNum)
+}
+
+func (t *topics) RemoveMaxUnackMessagesPerSubscription(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnSubscription")
 	return t.pulsar.Client.Delete(endpoint)
 }
