@@ -203,7 +203,7 @@ func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*Partitioned
 
 		partitionedTopicMetadata.Partitions = int(res.Response.PartitionMetadataResponse.GetPartitions())
 	} else {
-		return nil, errors.New(fmt.Sprintf("Get topic{%s} partitioned metadata failed", topic))
+		return nil, fmt.Errorf("get topic{%s} partitioned metadata failed", topic)
 	}
 
 	return &partitionedTopicMetadata, nil
