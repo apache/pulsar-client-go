@@ -1071,6 +1071,7 @@ func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload int
 		var err error
 		if provider, err = pc.initializeCompressionProvider(msgMeta.GetCompression()); err != nil {
 			pc.log.WithError(err).Error("Failed to decompress message.")
+			pc.providersMutex.UnLock()
 			return nil, err
 		}
 
