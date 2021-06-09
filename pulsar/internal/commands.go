@@ -227,9 +227,9 @@ func serializeBatch(wb Buffer,
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
 	// compress the payload
 
-	maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
-	compressedPayload := make([]byte, maxSize)
-	compressionProvider.Compress(compressedPayload, uncompressedPayload.ReadableSlice())
+	// maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
+	// compressedPayload := make([]byte, maxSize)
+	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
 
 	// encrypt the payload if needed
 	// TODO: use cryto rand instead
