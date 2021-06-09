@@ -45,7 +45,7 @@ func TestProducerConsumer(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "my-topic"
+	topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
 	ctx := context.Background()
 
 	// create consumer
@@ -84,6 +84,8 @@ func TestProducerConsumer(t *testing.T) {
 		if err != nil {
 			log.Fatal(err)
 		}
+
+		fmt.Printf("Received : %v\n", string(msg.Payload()))
 
 		expectMsg := fmt.Sprintf("hello-%d", i)
 		expectProperties := map[string]string{
@@ -164,6 +166,7 @@ func TestBatchMessageReceive(t *testing.T) {
 
 	for i := 0; i < numOfMessages; i++ {
 		msg, err := consumer.Receive(ctx)
+		fmt.Printf("received : %v\n", string(msg.Payload()))
 		assert.Nil(t, err)
 		consumer.Ack(msg)
 		count++

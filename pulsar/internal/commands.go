@@ -20,11 +20,14 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -222,6 +225,31 @@ func serializeBatch(wb Buffer,
 	compressionProvider compression.Provider) {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
+	// compress the payload
+
+	maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
+	compressedPayload := make([]byte, maxSize)
+	compressionProvider.Compress(compressedPayload, uncompressedPayload.ReadableSlice())
+
+	// encrypt the payload if needed
+	// TODO: use cryto rand instead
+	nonce := make([]byte, 12)
+	_, err := rand.Read(nonce)
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	var dataKeyCrypto crypto.DataKeyCrypto = crypto.NewDefaultDataKeyCrypto()
+	encryptionProvider, err := crypto.NewDefaultMessageCrypto("testing", true, log.DefaultNopLogger())
+	if err != nil {
+		fmt.Println(err)
+	}
+
+	encryptedPayload, err := encryptionProvider.Encrypt([]string{"test-key"}, dataKeyCrypto, msgMetadata, compressedPayload)
+	if err != nil {
+		fmt.Println(err)
+	}
+
 	cmdSize := uint32(proto.Size(cmdSend))
 	msgMetadataSize := uint32(proto.Size(msgMetadata))
 
@@ -232,7 +260,7 @@ func serializeBatch(wb Buffer,
 	// Write cmd
 	wb.WriteUint32(cmdSize)
 	wb.ResizeIfNeeded(cmdSize)
-	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	_, err = cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
 	}
@@ -253,12 +281,14 @@ func serializeBatch(wb Buffer,
 	}
 	wb.WrittenBytes(msgMetadataSize)
 
+	wb.Write(encryptedPayload)
+
 	// Make sure the buffer has enough space to hold the compressed data
 	// and perform the compression in-place
-	maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
-	wb.ResizeIfNeeded(maxSize)
-	b := compressionProvider.Compress(wb.WritableSlice()[:0], uncompressedPayload.ReadableSlice())
-	wb.WrittenBytes(uint32(len(b)))
+	// maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
+	// wb.ResizeIfNeeded(maxSize)
+	// b := compressionProvider.Compress(wb.WritableSlice()[:0], uncompressedPayload.ReadableSlice())
+	// wb.WrittenBytes(uint32(len(b)))
 
 	// Write checksum at created checksum-placeholder
 	frameEndIdx := wb.WriterIndex()

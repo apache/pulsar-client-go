@@ -27,6 +27,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
@@ -478,13 +479,31 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		return err
 	}
 
-	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, headersAndPayload)
+	var uncompressedHeadersAndPayload internal.Buffer
+
+	// decrypt the data if needed
+	if msgMeta.EncryptionParam != nil {
+		var dataKeyCrypto crypto.DataKeyCrypto = crypto.NewDefaultDataKeyCrypto()
+
+		encryptionProvider, err := crypto.NewDefaultMessageCrypto("testing", false, log.DefaultNopLogger())
+		if err != nil {
+			fmt.Println(err)
+		}
+
+		decryptedPayload, err := encryptionProvider.Decrypt(msgMeta, headersAndPayload.ReadableSlice(), dataKeyCrypto)
+		if err != nil {
+			fmt.Println(err)
+		}
+		headersAndPayload = internal.NewBufferWrapper(decryptedPayload)
+	}
+
+	uncompressedHeadersAndPayload, err = pc.Decompress(msgMeta, headersAndPayload)
 	if err != nil {
 		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
 		return err
 	}
 
-	// Reset the reader on the uncompressed buffer
+	// // Reset the reader on the uncompressed buffer
 	reader.ResetBuffer(uncompressedHeadersAndPayload)
 
 	numMsgs := 1

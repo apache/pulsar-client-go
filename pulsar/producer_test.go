@@ -98,9 +98,8 @@ func TestSimpleProducer(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
-			Payload: []byte("hello"),
+			Payload: []byte(fmt.Sprintf("Hello : %v\n", i)),
 		})
-
 		assert.NoError(t, err)
 		assert.NotNil(t, ID)
 	}

@@ -4,6 +4,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"fmt"
 	"testing"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -24,6 +25,7 @@ func (t *testDataKeyCrypto) EncryptDataKey(dataKey []byte) ([]byte, error) {
 	}
 
 	t.nonce = make([]byte, gcm.NonceSize())
+	fmt.Println(gcm.NonceSize())
 
 	_, err = rand.Read(t.nonce)
 	if err != nil {
@@ -59,7 +61,7 @@ func (t *testDataKeyCrypto) getGCM() (cipher.AEAD, error) {
 func TestEncryptDecrypt(t *testing.T) {
 	msgMetadata := &pb.MessageMetadata{}
 
-	nonce := make([]byte, 16)
+	nonce := make([]byte, 12)
 	_, err := rand.Read(nonce)
 	if err != nil {
 		t.Error(err)
