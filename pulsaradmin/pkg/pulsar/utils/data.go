@@ -362,3 +362,10 @@ type ResourceQuotaData struct {
 	Memory       int64  `json:"memory"`
 	Dynamic      bool   `json:"dynamic"`
 }
+
+type PersistenceData struct {
+	BookkeeperEnsemble             int64   `json:"bookkeeperEnsemble"`
+	BookkeeperWriteQuorum          int64   `json:"bookkeeperWriteQuorum"`
+	BookkeeperAckQuorum            int64   `json:"bookkeeperAckQuorum"`
+	ManagedLedgerMaxMarkDeleteRate float64 `json:"managedLedgerMaxMarkDeleteRate"`
+}
