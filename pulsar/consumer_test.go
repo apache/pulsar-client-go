@@ -28,6 +28,8 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
+	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -61,6 +63,81 @@ func TestProducerConsumer(t *testing.T) {
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
 		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		fmt.Printf("Received : %v\n", string(msg.Payload()))
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		expectProperties := map[string]string{
+			"key-1": "pulsar-1",
+		}
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
+
+		// ack message
+		consumer.Ack(msg)
+	}
+}
+
+func TestProducerConsumerWithEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-enc-%v", time.Now().Nanosecond())
+	ctx := context.Background()
+
+	// create consumer
+	consumerMessageCrypto, err := crypto.NewDefaultMessageCrypto("testing", false, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub-enc",
+		Type:             Exclusive,
+		DataKeyCrypto:    crypto.NewDefaultDataKeyCrypto(),
+		MessageCrypto:    consumerMessageCrypto,
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producerMsgCrypto, err := crypto.NewDefaultMessageCrypto("testing-producer", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:            topic,
+		DisableBatching:  false,
+		EncryptionKeys:   []string{"my-app.key"},
+		DataKeyCrypto:    crypto.NewDefaultDataKeyCrypto(),
+		MessageKeyCrypto: producerMsgCrypto,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()

@@ -322,6 +322,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
+				cryptoKeyReader:            c.options.CryptoKeyReader,
+				dataKeyCrypto:              c.options.DataKeyCrypto,
+				messageCrypto:              c.options.MessageCrypto,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
