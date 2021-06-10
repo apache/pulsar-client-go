@@ -100,7 +100,7 @@ func (d *DefaultMessageCrypto) RemoveKeyCipher(keyName string) bool {
 	return true
 }
 
-func (d *DefaultMessageCrypto) Encrypt(encKeys []string, keyCrypto interface{}, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyCrypto interface{}, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
 	if len(encKeys) == 0 {
 		return payload, nil
 	}
@@ -182,7 +182,23 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string, keyCrypto interface{}, 
 	return gcm.Seal(nil, nonce, payload, nil), nil
 }
 
-func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, keyCrypto interface{}) ([]byte, error) {
+func (d *DefaultMessageCrypto) Encrypt(encKeys []string, cryptoKeyReader CryptoKeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+	return d.encrypt(encKeys, cryptoKeyReader, msgMetadata, payload)
+}
+
+func (d *DefaultMessageCrypto) EncryptWithDataKeyCrypto(encKeys []string, dataKeyCrypto DataKeyCrypto, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+	return d.encrypt(encKeys, dataKeyCrypto, msgMetadata, payload)
+}
+
+func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, cryptoKeyReader CryptoKeyReader) ([]byte, error) {
+	return d.decrypt(msgMetadata, payload, cryptoKeyReader)
+}
+
+func (d *DefaultMessageCrypto) DecryptWithDataKeyCrypto(msgMetadata *pb.MessageMetadata, payload []byte, dataKeyCrypto DataKeyCrypto) ([]byte, error) {
+	return d.decrypt(msgMetadata, payload, dataKeyCrypto)
+}
+
+func (d *DefaultMessageCrypto) decrypt(msgMetadata *pb.MessageMetadata, payload []byte, keyReader interface{}) ([]byte, error) {
 	// if data key is present, attempt to derypt using the existing key
 	if d.dataKey != nil {
 		decryptedData, err := d.getKeyAndDecryptData(msgMetadata, payload)
@@ -201,7 +217,7 @@ func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload 
 	encryptionKeys := []pb.EncryptionKeys{}
 
 	for _, key := range encKeys {
-		if d.decryptDataKey(key.GetKey(), key.GetValue(), key.GetMetadata(), keyCrypto) {
+		if d.decryptDataKey(key.GetKey(), key.GetValue(), key.GetMetadata(), keyReader) {
 			encryptionKeys = append(encryptionKeys, *key)
 		}
 	}

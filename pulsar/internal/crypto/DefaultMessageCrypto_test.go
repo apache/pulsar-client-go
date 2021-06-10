@@ -79,7 +79,7 @@ func TestEncryptDecrypt(t *testing.T) {
 		t.Error(err)
 	}
 
-	encryptedData, err := defaultMessageCrypto_producer.Encrypt([]string{"my-encryption-key-01"}, dataKeyCrypto, msgMetadata, testdata)
+	encryptedData, err := defaultMessageCrypto_producer.EncryptWithDataKeyCrypto([]string{"my-encryption-key-01"}, dataKeyCrypto, msgMetadata, testdata)
 	if err != nil {
 		t.Error(err)
 	}
@@ -90,7 +90,7 @@ func TestEncryptDecrypt(t *testing.T) {
 		t.Error(err)
 	}
 
-	decryptedData, err := defaultMessageCrypto_consumer.Decrypt(msgMetadata, encryptedData, dataKeyCrypto)
+	decryptedData, err := defaultMessageCrypto_consumer.DecryptWithDataKeyCrypto(msgMetadata, encryptedData, dataKeyCrypto)
 
 	if err != nil {
 		t.Error(err)

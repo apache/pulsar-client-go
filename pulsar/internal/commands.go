@@ -20,14 +20,12 @@ package internal
 import (
 	"errors"
 	"fmt"
-	"math/rand"
 
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (
@@ -218,36 +216,35 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.Write(payload)
 }
 
-func serializeBatch(wb Buffer,
+func serializeBatchWithEncryption(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,
 	uncompressedPayload Buffer,
-	compressionProvider compression.Provider) {
+	compressionProvider compression.Provider,
+	cryptoKeyReader crypto.CryptoKeyReader,
+	dataKeyCrypto crypto.DataKeyCrypto,
+	encryptionKeys []string,
+	msgCrypto crypto.MessageCrypto,
+) error {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
-	// compress the payload
 
-	// maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
-	// compressedPayload := make([]byte, maxSize)
+	// compress the payload
 	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
 
-	// encrypt the payload if needed
-	// TODO: use cryto rand instead
-	nonce := make([]byte, 12)
-	_, err := rand.Read(nonce)
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	var dataKeyCrypto crypto.DataKeyCrypto = crypto.NewDefaultDataKeyCrypto()
-	encryptionProvider, err := crypto.NewDefaultMessageCrypto("testing", true, log.DefaultNopLogger())
-	if err != nil {
-		fmt.Println(err)
-	}
-
-	encryptedPayload, err := encryptionProvider.Encrypt([]string{"test-key"}, dataKeyCrypto, msgMetadata, compressedPayload)
-	if err != nil {
-		fmt.Println(err)
+	// encrypt payload
+	if dataKeyCrypto != nil {
+		encryptedPayload, err := msgCrypto.EncryptWithDataKeyCrypto(encryptionKeys, dataKeyCrypto, msgMetadata, compressedPayload)
+		if err != nil {
+			return err
+		}
+		compressedPayload = encryptedPayload
+	} else {
+		encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, cryptoKeyReader, msgMetadata, compressedPayload)
+		if err != nil {
+			return err
+		}
+		compressedPayload = encryptedPayload
 	}
 
 	cmdSize := uint32(proto.Size(cmdSend))
@@ -260,7 +257,7 @@ func serializeBatch(wb Buffer,
 	// Write cmd
 	wb.WriteUint32(cmdSize)
 	wb.ResizeIfNeeded(cmdSize)
-	_, err = cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
 	}
@@ -281,14 +278,62 @@ func serializeBatch(wb Buffer,
 	}
 	wb.WrittenBytes(msgMetadataSize)
 
-	wb.Write(encryptedPayload)
+	wb.Write(compressedPayload)
+
+	// Write checksum at created checksum-placeholder
+	frameEndIdx := wb.WriterIndex()
+	checksum := Crc32cCheckSum(wb.Get(metadataStartIdx, frameEndIdx-metadataStartIdx))
+
+	// Set Sizes and checksum in the fixed-size header
+	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
+	wb.PutUint32(checksum, checksumIdx)
+	return nil
+}
+
+func serializeBatch(wb Buffer,
+	cmdSend *pb.BaseCommand,
+	msgMetadata *pb.MessageMetadata,
+	uncompressedPayload Buffer,
+	compressionProvider compression.Provider) {
+	// Wire format
+	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
+	cmdSize := uint32(proto.Size(cmdSend))
+	msgMetadataSize := uint32(proto.Size(msgMetadata))
+
+	frameSizeIdx := wb.WriterIndex()
+	wb.WriteUint32(0) // Skip frame size until we now the size
+	frameStartIdx := wb.WriterIndex()
+
+	// Write cmd
+	wb.WriteUint32(cmdSize)
+	wb.ResizeIfNeeded(cmdSize)
+	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	if err != nil {
+		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
+	}
+	wb.WrittenBytes(cmdSize)
+
+	// Create checksum placeholder
+	wb.WriteUint16(magicCrc32c)
+	checksumIdx := wb.WriterIndex()
+	wb.WriteUint32(0) // skip 4 bytes of checksum
+
+	// Write metadata
+	metadataStartIdx := wb.WriterIndex()
+	wb.WriteUint32(msgMetadataSize)
+	wb.ResizeIfNeeded(msgMetadataSize)
+	_, err = msgMetadata.MarshalToSizedBuffer(wb.WritableSlice()[:msgMetadataSize])
+	if err != nil {
+		panic(fmt.Sprintf("Protobuf error when serializing msgMetadata: %v", err))
+	}
+	wb.WrittenBytes(msgMetadataSize)
 
 	// Make sure the buffer has enough space to hold the compressed data
 	// and perform the compression in-place
-	// maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
-	// wb.ResizeIfNeeded(maxSize)
-	// b := compressionProvider.Compress(wb.WritableSlice()[:0], uncompressedPayload.ReadableSlice())
-	// wb.WrittenBytes(uint32(len(b)))
+	maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
+	wb.ResizeIfNeeded(maxSize)
+	b := compressionProvider.Compress(wb.WritableSlice()[:0], uncompressedPayload.ReadableSlice())
+	wb.WrittenBytes(uint32(len(b)))
 
 	// Write checksum at created checksum-placeholder
 	frameEndIdx := wb.WriterIndex()

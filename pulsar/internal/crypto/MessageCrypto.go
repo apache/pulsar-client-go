@@ -17,10 +17,20 @@ type MessageCrypto interface {
 	/*
 		Encrypt the payload using the data key and update message metadata with the keyname and encrypted data key
 	*/
-	Encrypt(encKeys []string, keyCrypto interface{}, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error)
+	Encrypt(encKeys []string, cryptoKeyReader CryptoKeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error)
+
+	/*
+		EncryptWithDataKeyCrypto similar to above but client needs to handle encryption of data key
+	*/
+	EncryptWithDataKeyCrypto(encKeys []string, dataKeyCrypto DataKeyCrypto, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error)
 
 	/*
 		Decrypt the payload using the data key. Keys used to ecnrypt the data key can be retrived from msgMetadata
 	*/
-	Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, keyCrypto interface{}) ([]byte, error)
+	Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, cryptoKeyReader CryptoKeyReader) ([]byte, error)
+
+	/*
+		DecryptWithDataKeyCrypto similar to above method but client needs to hanndle decryption of data key
+	*/
+	DecryptWithDataKeyCrypto(msgMetadata *pb.MessageMetadata, payload []byte, cryptoKeyReader CryptoKeyReader) ([]byte, error)
 }

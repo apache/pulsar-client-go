@@ -23,6 +23,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -35,7 +36,7 @@ type BuffersPool interface {
 type BatcherBuilderProvider func(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, options ...func(*batchContainer),
 ) (BatchBuilder, error)
 
 // BatchBuilder is a interface of batch builders
@@ -93,13 +94,21 @@ type batchContainer struct {
 	buffersPool         BuffersPool
 
 	log log.Logger
+
+	encryptionKeys []string
+
+	messageCrypto crypto.MessageCrypto
+
+	cryptoKeyReader crypto.CryptoKeyReader
+
+	dataKeyCrypto crypto.DataKeyCrypto
 }
 
 // newBatchContainer init a batchContainer
 func newBatchContainer(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, options ...func(*batchContainer),
 ) batchContainer {
 
 	bc := batchContainer{
@@ -128,6 +137,10 @@ func newBatchContainer(
 		bc.msgMetadata.Compression = &compressionType
 	}
 
+	for _, opt := range options {
+		opt(&bc)
+	}
+
 	return bc
 }
 
@@ -135,15 +148,43 @@ func newBatchContainer(
 func NewBatchBuilder(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, options ...func(*batchContainer),
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
 		maxMessages, maxBatchSize, producerName, producerID, compressionType,
-		level, bufferPool, logger,
+		level, bufferPool, logger, options...,
 	)
 
 	return &bc, nil
+}
+
+// UseEncryptionKeys encryption keys to use
+func UseEncryptionKeys(keys []string) func(*batchContainer) {
+	return func(bc *batchContainer) {
+		bc.encryptionKeys = keys
+	}
+}
+
+// UseMessageCrypto MessageCrypto to use
+func UseMessageCrypto(msgCrypto crypto.MessageCrypto) func(*batchContainer) {
+	return func(bc *batchContainer) {
+		bc.messageCrypto = msgCrypto
+	}
+}
+
+// UseCryptoKeyReader CryptoKeyReader to use
+func UseCryptoKeyReader(cryptoKeyReader crypto.CryptoKeyReader) func(*batchContainer) {
+	return func(bc *batchContainer) {
+		bc.cryptoKeyReader = cryptoKeyReader
+	}
+}
+
+// UseDataKeyCrypto DataKeyCrypto to use
+func UseDataKeyCrypto(dataKeyCrypto crypto.DataKeyCrypto) func(*batchContainer) {
+	return func(bc *batchContainer) {
+		bc.dataKeyCrypto = dataKeyCrypto
+	}
 }
 
 // IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
@@ -229,10 +270,24 @@ func (bc *batchContainer) Flush() (
 	if buffer == nil {
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
-	serializeBatch(
-		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
-	)
 
+	// encryption is enabled
+	if bc.encryptionKeys != nil {
+		serializeBatchWithEncryption(buffer,
+			bc.cmdSend,
+			bc.msgMetadata,
+			bc.buffer,
+			bc.compressionProvider,
+			bc.cryptoKeyReader,
+			bc.dataKeyCrypto,
+			bc.encryptionKeys,
+			bc.messageCrypto,
+		)
+	} else {
+		serializeBatch(
+			buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
+		)
+	}
 	callbacks = bc.callbacks
 	sequenceID = bc.cmdSend.Send.GetSequenceId()
 	bc.reset()

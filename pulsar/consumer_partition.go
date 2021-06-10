@@ -490,7 +490,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			fmt.Println(err)
 		}
 
-		decryptedPayload, err := encryptionProvider.Decrypt(msgMeta, headersAndPayload.ReadableSlice(), dataKeyCrypto)
+		decryptedPayload, err := encryptionProvider.DecryptWithDataKeyCrypto(msgMeta, headersAndPayload.ReadableSlice(), dataKeyCrypto)
 		if err != nil {
 			fmt.Println(err)
 		}

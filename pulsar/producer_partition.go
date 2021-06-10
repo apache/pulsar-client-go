@@ -196,30 +196,31 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
-	if p.options.DisableBatching {
-		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
-		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
-			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
-			compression.Level(p.options.CompressionLevel),
-			p,
-			p.log)
-		if err != nil {
-			return err
-		}
-	} else if p.batchBuilder == nil {
-		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
-		if err != nil {
-			provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
-		}
 
-		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
-			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
-			compression.Level(p.options.CompressionLevel),
-			p,
-			p.log)
+	var provider internal.BatcherBuilderProvider
+	if p.options.DisableBatching {
+		provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
+
+	} else if p.batchBuilder == nil {
+		p, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
 		if err != nil {
-			return err
+			p, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
 		}
+		provider = p
+	}
+
+	p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+		p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
+		compression.Level(p.options.CompressionLevel),
+		p,
+		p.log,
+		internal.UseEncryptionKeys(p.options.EncryptionKeys),
+		internal.UseCryptoKeyReader(p.options.CryptoKeyReader),
+		internal.UseDataKeyCrypto(p.options.DataKeyCrypto),
+		internal.UseMessageCrypto(p.options.MessageKeyCrypto),
+	)
+	if err != nil {
+		return err
 	}
 
 	if p.sequenceIDGenerator == nil {
