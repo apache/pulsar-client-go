@@ -32,5 +32,5 @@ type MessageCrypto interface {
 	/*
 		DecryptWithDataKeyCrypto similar to above method but client needs to hanndle decryption of data key
 	*/
-	DecryptWithDataKeyCrypto(msgMetadata *pb.MessageMetadata, payload []byte, cryptoKeyReader CryptoKeyReader) ([]byte, error)
+	DecryptWithDataKeyCrypto(msgMetadata *pb.MessageMetadata, payload []byte, dataKeyCrypto DataKeyCrypto) ([]byte, error)
 }
