@@ -324,7 +324,7 @@ func TestBatchMessageReceiveWithCompressionAndEcnryption(t *testing.T) {
 	ctx := context.Background()
 
 	// Enable batching on producer side
-	batchSize, numOfMessages := 20, 100
+	batchSize, numOfMessages := 2, 100
 
 	producerMsgCrypto, err := crypto.NewDefaultMessageCrypto("testing-producer", true, plog.DefaultNopLogger())
 	assert.Nil(t, err)

@@ -77,6 +77,7 @@ type partitionProducer struct {
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
 	metrics          *internal.TopicMetrics
+	dataKeyTicker    *time.Ticker
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
@@ -112,6 +113,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		lastSequenceID:   -1,
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
+		dataKeyTicker:    time.NewTicker(4 * time.Hour), // update data key every four hours
 	}
 	p.setProducerState(producerInit)
 
@@ -144,7 +146,30 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	go p.runEventsLoop()
 
+	go p.sheduleDataKeyUpdate()
+
 	return p, nil
+}
+
+func (p *partitionProducer) sheduleDataKeyUpdate() {
+	if p.options.EncryptionKeys != nil {
+		if p.options.MessageKeyCrypto != nil {
+			var keyReader interface{}
+			if p.options.DataKeyCrypto != nil {
+				keyReader = p.options.DataKeyCrypto
+			} else if p.options.CryptoKeyReader != nil {
+				keyReader = p.options.CryptoKeyReader
+			}
+
+			if keyReader != nil {
+				p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, keyReader)
+				for t := range p.dataKeyTicker.C {
+					p.log.Infof("Refreshing data key :%v", t)
+					p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, keyReader)
+				}
+			}
+		}
+	}
 }
 
 func (p *partitionProducer) grabCnx() error {
@@ -739,6 +764,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.setProducerState(producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
+	p.dataKeyTicker.Stop()
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
