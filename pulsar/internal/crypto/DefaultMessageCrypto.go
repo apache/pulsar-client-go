@@ -90,7 +90,7 @@ func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyCrypto inte
 			return nil
 		}
 
-		// else load the private key and encrypt the datakey using it
+		// else load the public key and encrypt the datakey using it
 		cryptoKeyReader.getPublicKey(keyName, nil)
 		// TODO Complete the remaining functionality
 		// It will be done in next phase
