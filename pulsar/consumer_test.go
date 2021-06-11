@@ -177,6 +177,64 @@ func TestProducerConsumerWithEncryption(t *testing.T) {
 	}
 }
 
+func TestConsumerCompressionWithEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	// create producer
+	producerMsgCrypto, err := crypto.NewDefaultMessageCrypto("testing-producer", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:            topicName,
+		CompressionType:  LZ4,
+		EncryptionKeys:   []string{"enc-compress-app.key"},
+		DataKeyCrypto:    crypto.NewDefaultDataKeyCrypto(),
+		MessageKeyCrypto: producerMsgCrypto,
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// create consumer
+	consumerMessageCrypto, err := crypto.NewDefaultMessageCrypto("testing", false, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		DataKeyCrypto:    crypto.NewDefaultDataKeyCrypto(),
+		MessageCrypto:    consumerMessageCrypto,
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	const N = 100
+
+	for i := 0; i < N; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+}
+
 func TestConsumerConnectError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://invalid-hostname:6650",
@@ -228,6 +286,74 @@ func TestBatchMessageReceive(t *testing.T) {
 		Topic:            topicName,
 		SubscriptionName: subName,
 	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	count := 0
+	for i := 0; i < numOfMessages; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		msg := &ProducerMessage{
+			Payload: []byte(messageContent),
+		}
+		_, err := producer.Send(ctx, msg)
+		assert.Nil(t, err)
+	}
+
+	for i := 0; i < numOfMessages; i++ {
+		msg, err := consumer.Receive(ctx)
+		fmt.Printf("received : %v\n", string(msg.Payload()))
+		assert.Nil(t, err)
+		consumer.Ack(msg)
+		count++
+	}
+
+	assert.Equal(t, count, numOfMessages)
+}
+
+func TestBatchMessageReceiveWithCompressionAndEcnryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "persistent://public/default/receive-batch-comp-enc"
+	subName := "subscription-name"
+	prefix := "msg-batch-"
+	ctx := context.Background()
+
+	// Enable batching on producer side
+	batchSize, numOfMessages := 20, 100
+
+	producerMsgCrypto, err := crypto.NewDefaultMessageCrypto("testing-producer", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topicName,
+		BatchingMaxMessages: uint(batchSize),
+		DisableBatching:     false,
+		CompressionType:     LZ4,
+		MessageKeyCrypto:    producerMsgCrypto,
+		DataKeyCrypto:       crypto.NewDefaultDataKeyCrypto(),
+		EncryptionKeys:      []string{"batch-encryption-app.key"},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, topicName, producer.Topic())
+	defer producer.Close()
+
+	// create consumer
+	consumerMessageCrypto, err := crypto.NewDefaultMessageCrypto("testing", false, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+		DataKeyCrypto:    crypto.NewDefaultDataKeyCrypto(),
+		MessageCrypto:    consumerMessageCrypto,
+	})
+
 	assert.Nil(t, err)
 	defer consumer.Close()
 
