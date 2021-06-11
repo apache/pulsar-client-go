@@ -26,6 +26,10 @@ type DefaultMessageCrypto struct {
 	logCtx string
 
 	logger log.Logger
+
+	cipherLock sync.Mutex
+
+	encryptLock sync.Mutex
 }
 
 func NewDefaultMessageCrypto(logCtx string, keyGenNeeded bool, logger log.Logger) (*DefaultMessageCrypto, error) {
@@ -64,8 +68,9 @@ func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyCrypto i
 	return nil
 }
 
-// TODO synchronise this method
 func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyCrypto interface{}) error {
+	d.cipherLock.Lock()
+	defer d.cipherLock.Unlock()
 	if keyName != "" && keyCrypto != nil {
 
 		// Use CryptoKeyReader to get public key & encrypt data key using it
@@ -101,6 +106,8 @@ func (d *DefaultMessageCrypto) RemoveKeyCipher(keyName string) bool {
 }
 
 func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyCrypto interface{}, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+	d.encryptLock.Lock()
+	defer d.encryptLock.Unlock()
 	if len(encKeys) == 0 {
 		return payload, nil
 	}
