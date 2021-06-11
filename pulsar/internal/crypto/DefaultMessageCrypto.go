@@ -93,6 +93,7 @@ func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyCrypto inte
 		// else load the private key and encrypt the datakey using it
 		cryptoKeyReader.getPublicKey(keyName, nil)
 		// TODO Complete the remaining functionality
+		// It will be done in next phase
 	}
 	return nil
 }
@@ -114,6 +115,11 @@ func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyCrypto interface{}, 
 
 	// update message metadata with encrypted data key
 	encryptionKeys := msgMetadata.GetEncryptionKeys()
+	encryptionKeysMap := map[string]*pb.EncryptionKeys{}
+
+	for _, encKey := range encryptionKeys {
+		encryptionKeysMap[*encKey.Key] = encKey
+	}
 
 	for _, keyName := range encKeys {
 		// if key is not already loaded, load it
@@ -143,7 +149,11 @@ func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyCrypto interface{}, 
 					newEncryptionKey.Metadata = keyMetadata
 				}
 
-				encryptionKeys = append(encryptionKeys, newEncryptionKey)
+				if k, ok := encryptionKeysMap[*newEncryptionKey.Key]; ok {
+					*k = *newEncryptionKey // replace existing enc key
+				} else {
+					encryptionKeys = append(encryptionKeys, newEncryptionKey) // add new enc key
+				}
 
 			} else {
 				d.logger.Error("Failed to get EncryptionKeyInfo for key %s", keyName)
@@ -306,13 +316,14 @@ func (d *DefaultMessageCrypto) decryptDataKey(keyName string, encDatakey []byte,
 		}
 	} else {
 		// TODO complete data key decrypt using private key
+		// will be done in next phase
 		keyReader.getPrivateKey(keyName, keyMeta)
 	}
 	return true
 }
 
 func generateDataKey() ([]byte, error) {
-	key := make([]byte, 32)  // generate key of length 256 bytes
+	key := make([]byte, 32)  // generate key of length 256 bits
 	_, err := rand.Read(key) // cryptographically secure random number
 	return key, err
 }
