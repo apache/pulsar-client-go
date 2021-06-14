@@ -47,6 +47,8 @@ func GetAuthProvider(config *common.Config) (*Provider, error) {
 	case TLSPluginName:
 		provider, err = NewAuthenticationTLSFromAuthParams(config.AuthParams, defaultTransport)
 	case TokenPluginName:
+		fallthrough
+	case TokePluginShortName:
 		provider, err = NewAuthenticationTokenFromAuthParams(config.AuthParams, defaultTransport)
 	default:
 		switch {
