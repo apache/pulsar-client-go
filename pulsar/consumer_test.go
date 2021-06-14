@@ -27,8 +27,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"

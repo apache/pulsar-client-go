@@ -21,7 +21,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 )
 
 // Pair of a Consumer and Message
