@@ -28,6 +28,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	"github.com/stretchr/testify/assert"
 )
@@ -381,7 +383,25 @@ func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 
 	// fetch from namespace that does not exist
 	name := generateRandomName()
-	topics, err := ci.namespaceTopics(fmt.Sprintf("%s/%s", name, name))
+	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("%s/%s", name, name), internal.Persistent)
+	assert.Nil(t, err)
+	assert.Equal(t, 0, len(topics))
+}
+
+func TestNamespaceTopicsNamespaceDoesNotExitWebURL(t *testing.T) {
+	c, err := NewClient(ClientOptions{
+		URL: webServiceURL,
+	})
+	if err != nil {
+		t.Errorf("failed to create client error: %+v", err)
+		return
+	}
+	defer c.Close()
+	ci := c.(*client)
+
+	// fetch from namespace that does not exist
+	name := generateRandomName()
+	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("%s/%s", name, name), internal.Persistent)
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(topics))
 }
@@ -421,7 +441,7 @@ func TestNamespaceTopics(t *testing.T) {
 	defer c.Close()
 	ci := c.(*client)
 
-	topics, err := ci.namespaceTopics(namespace)
+	topics, err := ci.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +462,70 @@ func TestNamespaceTopics(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	topics, err = ci.namespaceTopics(namespace)
+	topics, err = ci.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 2, len(topics))
+}
+
+func TestNamespaceTopicsWebURL(t *testing.T) {
+	name := generateRandomName()
+	namespace := fmt.Sprintf("public/%s", name)
+	namespaceURL := fmt.Sprintf("admin/v2/namespaces/%s", namespace)
+	err := httpPut(namespaceURL, anonymousNamespacePolicy())
+	if err != nil {
+		t.Fatal()
+	}
+	defer func() {
+		_ = httpDelete(fmt.Sprintf("admin/v2/namespaces/%s", namespace))
+	}()
+
+	// create topics
+	topic1 := fmt.Sprintf("%s/topic-1", namespace)
+	if err := httpPut("admin/v2/persistent/"+topic1, nil); err != nil {
+		t.Fatal(err)
+	}
+	topic2 := fmt.Sprintf("%s/topic-2", namespace)
+	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = httpDelete("admin/v2/persistent/"+topic1, "admin/v2/persistent/"+topic2)
+	}()
+
+	c, err := NewClient(ClientOptions{
+		URL: webServiceURL,
+	})
+	if err != nil {
+		t.Errorf("failed to create client error: %+v", err)
+		return
+	}
+	defer c.Close()
+	ci := c.(*client)
+
+	topics, err := ci.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 2, len(topics))
+
+	// add a non-persistent topic
+	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	topics, err = ci.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
 	if err != nil {
 		t.Fatal(err)
 	}

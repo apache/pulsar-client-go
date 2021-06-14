@@ -22,13 +22,10 @@ import (
 	"net/url"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
-
 	"github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -203,22 +200,4 @@ func (c *client) Close() {
 	c.handlers.Close()
 	c.cnxPool.Close()
 	c.lookupService.Close()
-}
-
-func (c *client) namespaceTopics(namespace string) ([]string, error) {
-	id := c.rpcClient.NewRequestID()
-	req := &pb.CommandGetTopicsOfNamespace{
-		RequestId: proto.Uint64(id),
-		Namespace: proto.String(namespace),
-		Mode:      pb.CommandGetTopicsOfNamespace_PERSISTENT.Enum(),
-	}
-	res, err := c.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_GET_TOPICS_OF_NAMESPACE, req)
-	if err != nil {
-		return nil, err
-	}
-	if res.Response.Error != nil {
-		return []string{}, newError(LookupError, res.Response.GetError().String())
-	}
-
-	return res.Response.GetTopicsOfNamespaceResponse.GetTopics(), nil
 }
