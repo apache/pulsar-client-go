@@ -402,7 +402,7 @@ func TestNamespaceTopicsNamespaceDoesNotExitWebURL(t *testing.T) {
 	// fetch from namespace that does not exist
 	name := generateRandomName()
 	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("%s/%s", name, name), internal.Persistent)
-	assert.Nil(t, err)
+	assert.NotNil(t, err)
 	assert.Equal(t, 0, len(topics))
 }
 

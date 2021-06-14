@@ -336,7 +336,7 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 
 	topics := []string{}
 
-	err := h.httpClient.Get(path, topics)
+	err := h.httpClient.Get(path, &topics)
 	if err != nil {
 		return nil, err
 	}
