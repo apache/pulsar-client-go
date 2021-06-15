@@ -19,13 +19,20 @@ package auth
 
 import (
 	"crypto/tls"
+	"encoding/json"
 	"net/http"
 	"strings"
 )
 
 const (
-	TLSPluginName = "org.apache.pulsar.client.impl.auth.AuthenticationTls"
+	TLSPluginName      = "org.apache.pulsar.client.impl.auth.AuthenticationTls"
+	TLSPluginShortName = "tls"
 )
+
+type TLS struct {
+	TLSCertFile string `json:"tlsCertFile"`
+	TLSKeyFile  string `json:"tlsKeyFile"`
+}
 
 type TLSAuthProvider struct {
 	certificatePath string
@@ -51,16 +58,25 @@ func NewAuthenticationTLSFromAuthParams(encodedAuthParams string,
 	transport http.RoundTripper) (*TLSAuthProvider, error) {
 	var certificatePath string
 	var privateKeyPath string
-	parts := strings.Split(encodedAuthParams, ",")
-	for _, part := range parts {
-		kv := strings.Split(part, ":")
-		switch kv[0] {
-		case "tlsCertFile":
-			certificatePath = kv[1]
-		case "tlsKeyFile":
-			privateKeyPath = kv[1]
+
+	var tlsJSON TLS
+	err := json.Unmarshal([]byte(encodedAuthParams), &tlsJSON)
+	if err != nil {
+		parts := strings.Split(encodedAuthParams, ",")
+		for _, part := range parts {
+			kv := strings.Split(part, ":")
+			switch kv[0] {
+			case "tlsCertFile":
+				certificatePath = kv[1]
+			case "tlsKeyFile":
+				privateKeyPath = kv[1]
+			}
 		}
+	} else {
+		certificatePath = tlsJSON.TLSCertFile
+		privateKeyPath = tlsJSON.TLSKeyFile
 	}
+
 	return NewAuthenticationTLS(certificatePath, privateKeyPath, transport)
 }
 
