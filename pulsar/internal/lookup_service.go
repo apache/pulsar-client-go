@@ -190,11 +190,23 @@ func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*Partitioned
 	}
 	ls.log.Debugf("Got topic{%s} partitioned metadata response: %+v", topic, res)
 
-	if res.Response.PartitionMetadataResponse.Error != nil {
-		return nil, errors.New(res.Response.PartitionMetadataResponse.GetError().String())
+	var partitionedTopicMetadata PartitionedTopicMetadata
+
+	if res.Response.Error != nil {
+		return nil, errors.New(res.Response.GetError().String())
 	}
 
-	return &PartitionedTopicMetadata{Partitions: int(res.Response.PartitionMetadataResponse.GetPartitions())}, nil
+	if res.Response.PartitionMetadataResponse != nil {
+		if res.Response.PartitionMetadataResponse.Error != nil {
+			return nil, errors.New(res.Response.PartitionMetadataResponse.GetError().String())
+		}
+
+		partitionedTopicMetadata.Partitions = int(res.Response.PartitionMetadataResponse.GetPartitions())
+	} else {
+		return nil, fmt.Errorf("no partitioned metadata for topic{%s} in lookup response", topic)
+	}
+
+	return &partitionedTopicMetadata, nil
 }
 
 func (ls *lookupService) Close() {}
