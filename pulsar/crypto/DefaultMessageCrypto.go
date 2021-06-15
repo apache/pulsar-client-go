@@ -32,6 +32,7 @@ type DefaultMessageCrypto struct {
 	encryptLock sync.Mutex
 }
 
+// NewDefaultMessageCrypto get the instance of message crypto
 func NewDefaultMessageCrypto(logCtx string, keyGenNeeded bool, logger log.Logger) (*DefaultMessageCrypto, error) {
 
 	d := &DefaultMessageCrypto{
@@ -52,6 +53,7 @@ func NewDefaultMessageCrypto(logCtx string, keyGenNeeded bool, logger log.Logger
 	return d, nil
 }
 
+// AddPublicKeyCipher encrypt data key using keyCrypto and cache
 func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyCrypto interface{}) error {
 	key, err := generateDataKey()
 	if err != nil {
@@ -98,6 +100,7 @@ func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyCrypto inte
 	return nil
 }
 
+// RemoveKeyCipher remove encrypted data key from cache
 func (d *DefaultMessageCrypto) RemoveKeyCipher(keyName string) bool {
 	if keyName == "" {
 		return false
@@ -199,18 +202,25 @@ func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyCrypto interface{}, 
 	return gcm.Seal(nil, nonce, payload, nil), nil
 }
 
+// Encrypt encrypt payload using encryption keys and add encrypted data key to message metadata. Here data key is encrypted
+// using public key
 func (d *DefaultMessageCrypto) Encrypt(encKeys []string, cryptoKeyReader CryptoKeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
 	return d.encrypt(encKeys, cryptoKeyReader, msgMetadata, payload)
 }
 
+// EncryptWithDataKeyCrypto encrypt payload using enc keys add add encrypted data key to message metadata
 func (d *DefaultMessageCrypto) EncryptWithDataKeyCrypto(encKeys []string, dataKeyCrypto DataKeyCrypto, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
 	return d.encrypt(encKeys, dataKeyCrypto, msgMetadata, payload)
 }
 
+// Decrypt decrypt the payload using decrypted data key. Here data key is read from from the message
+// metadata and  decrypted using private key.
 func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, cryptoKeyReader CryptoKeyReader) ([]byte, error) {
 	return d.decrypt(msgMetadata, payload, cryptoKeyReader)
 }
 
+// DecryptWithDataKeyCrypto decrypt the payload using decrypted data key. Here data key is read from
+// the message metadata and decrypted.
 func (d *DefaultMessageCrypto) DecryptWithDataKeyCrypto(msgMetadata *pb.MessageMetadata, payload []byte, dataKeyCrypto DataKeyCrypto) ([]byte, error) {
 	return d.decrypt(msgMetadata, payload, dataKeyCrypto)
 }

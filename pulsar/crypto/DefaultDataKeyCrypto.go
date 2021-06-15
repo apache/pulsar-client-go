@@ -11,6 +11,7 @@ type DefaultDataKeyCrypto struct {
 	Key   []byte
 }
 
+// NewDefaultDataKeyCrypto default datakey crypto
 func NewDefaultDataKeyCrypto() DataKeyCrypto {
 	return &DefaultDataKeyCrypto{
 		Nonce: []byte{203, 42, 246, 196, 4, 32, 73, 203, 242, 64, 233, 39},
@@ -18,6 +19,7 @@ func NewDefaultDataKeyCrypto() DataKeyCrypto {
 	}
 }
 
+// EncryptDataKey encrypt the data key
 func (t *DefaultDataKeyCrypto) EncryptDataKey(dataKey []byte) ([]byte, error) {
 
 	gcm, err := t.getGCM()
@@ -29,6 +31,7 @@ func (t *DefaultDataKeyCrypto) EncryptDataKey(dataKey []byte) ([]byte, error) {
 	return encryptedKey, nil
 }
 
+// DecryptDataKey decrypt the data key
 func (t *DefaultDataKeyCrypto) DecryptDataKey(dataKey []byte) ([]byte, error) {
 	gcm, err := t.getGCM()
 	if err != nil {
