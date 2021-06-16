@@ -17,10 +17,14 @@
 
 package internal
 
-import "strings"
+import (
+	"testing"
 
-func IsV2Namespace(namespace string) bool {
-	parts := strings.Split(namespace, "/")
-	// Legacy namespace name that includes cluster name
-	return len(parts) == 2
+	"github.com/stretchr/testify/assert"
+)
+
+func TestIsV2Namespace(t *testing.T) {
+	assert.True(t, IsV2Namespace("tenant/default"))
+	assert.False(t, IsV2Namespace("tenant/cluster/default"))
+	assert.False(t, IsV2Namespace("default"))
 }

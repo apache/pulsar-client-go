@@ -328,7 +328,7 @@ func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*Partitio
 func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopicsOfNamespaceMode) ([]string, error) {
 
 	format := HTTPTopicUnderNamespaceV2
-	if !IsV2NameSpaceName(namespace) {
+	if !IsV2Namespace(namespace) {
 		format = HTTPTopicUnderNamespaceV1
 	}
 
