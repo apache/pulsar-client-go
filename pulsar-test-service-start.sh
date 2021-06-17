@@ -58,17 +58,24 @@ $PULSAR_ADMIN clusters create \
         --broker-url pulsar://localhost:6650/ \
         --broker-url-secure pulsar+ssl://localhost:6651/
 
+echo "-- Create cluster success --"
+
 # Create "public" tenant
 $PULSAR_ADMIN tenants create public -r "anonymous" -c "standalone"
+
+echo "-- Create public tenant success --"
 
 # Create "public/default" with no auth required
 $PULSAR_ADMIN namespaces create public/default
 $PULSAR_ADMIN namespaces grant-permission public/default \
                         --actions produce,consume \
                         --role "anonymous"
+echo "-- Create public/default namespace success --"
 
 # Create "private" tenant
 $PULSAR_ADMIN tenants create private
+
+echo "-- Create private tenant success --"
 
 # Create "private/auth" with required authentication
 $PULSAR_ADMIN namespaces create private/auth
