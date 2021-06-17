@@ -20,14 +20,16 @@ package utils
 import "github.com/pkg/errors"
 
 type BacklogQuota struct {
-	Limit  int64           `json:"limit"`
-	Policy RetentionPolicy `json:"policy"`
+	LimitTime int64           `json:"limitTime"`
+	LimitSize int64           `json:"limitSize"`
+	Policy    RetentionPolicy `json:"policy"`
 }
 
-func NewBacklogQuota(limit int64, policy RetentionPolicy) BacklogQuota {
+func NewBacklogQuota(limitSize int64, limitTime int64, policy RetentionPolicy) BacklogQuota {
 	return BacklogQuota{
-		Limit:  limit,
-		Policy: policy,
+		LimitSize: limitSize,
+		LimitTime: limitTime,
+		Policy:    policy,
 	}
 }
 
