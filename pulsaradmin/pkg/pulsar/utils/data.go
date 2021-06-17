@@ -171,6 +171,7 @@ type NamespacesData struct {
 	ClusterIds                     string   `json:"clusterIds"`
 	RetentionTimeStr               string   `json:"retentionTimeStr"`
 	LimitStr                       string   `json:"limitStr"`
+	LimitTime                      int64    `json:"limitTime"`
 	PolicyStr                      string   `json:"policyStr"`
 	AntiAffinityGroup              string   `json:"antiAffinityGroup"`
 	Tenant                         string   `json:"tenant"`
