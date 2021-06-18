@@ -370,3 +370,14 @@ type PersistenceData struct {
 	BookkeeperAckQuorum            int64   `json:"bookkeeperAckQuorum"`
 	ManagedLedgerMaxMarkDeleteRate float64 `json:"managedLedgerMaxMarkDeleteRate"`
 }
+
+type DelayedDeliveryCmdData struct {
+	Enable                 bool   `json:"enable"`
+	Disable                bool   `json:"disable"`
+	DelayedDeliveryTimeStr string `json:"delayedDeliveryTimeStr"`
+}
+
+type DelayedDeliveryData struct {
+	TickTime float64 `json:"tickTime"`
+	Active   bool    `json:"active"`
+}
