@@ -4,8 +4,8 @@ type ProducerCryptoFailureAction int
 type ConsumerCryptoFailureAction int
 
 const (
-	// Fail this is the default option to fail send if crypto operation fails.
-	Fail ProducerCryptoFailureAction = iota
+	// FAIL_SEND this is the default option to fail send if crypto operation fails.
+	FAIL_SEND ProducerCryptoFailureAction = iota
 
 	// SEND ingnore crypto failure and proceed with sending unencrypted message.
 	SEND

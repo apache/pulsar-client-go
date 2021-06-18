@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -326,6 +327,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				messageCrypto:               c.options.MessageCrypto,
 				consumerCryptoFailureAcrion: c.options.ConsumerCryptoFailureAction,
 			}
+
+			if opts.consumerCryptoFailureAcrion == 0 {
+				opts.consumerCryptoFailureAcrion = crypto.FAIL
+			}
+
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
 				err:       err,

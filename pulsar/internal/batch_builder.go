@@ -100,6 +100,8 @@ type batchContainer struct {
 	messageCrypto crypto.MessageCrypto
 
 	cryptoKeyReader crypto.CryptoKeyReader
+
+	producerCryptoFailureAction crypto.ProducerCryptoFailureAction
 }
 
 // newBatchContainer init a batchContainer
@@ -175,6 +177,12 @@ func UseMessageCrypto(msgCrypto crypto.MessageCrypto) func(*batchContainer) {
 func UseCryptoKeyReader(cryptoKeyReader crypto.CryptoKeyReader) func(*batchContainer) {
 	return func(bc *batchContainer) {
 		bc.cryptoKeyReader = cryptoKeyReader
+	}
+}
+
+func UseCryptoFailureAction(cryptoFailureAction crypto.ProducerCryptoFailureAction) func(*batchContainer) {
+	return func(bc *batchContainer) {
+		bc.producerCryptoFailureAction = cryptoFailureAction
 	}
 }
 
@@ -272,6 +280,7 @@ func (bc *batchContainer) Flush() (
 			bc.cryptoKeyReader,
 			bc.encryptionKeys,
 			bc.messageCrypto,
+			bc.producerCryptoFailureAction,
 		)
 	} else {
 		serializeBatch(

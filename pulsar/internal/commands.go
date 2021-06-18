@@ -224,6 +224,7 @@ func serializeBatchWithEncryption(wb Buffer,
 	cryptoKeyReader crypto.CryptoKeyReader,
 	encryptionKeys []string,
 	msgCrypto crypto.MessageCrypto,
+	cryptoFailureAction crypto.ProducerCryptoFailureAction,
 ) error {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
@@ -233,9 +234,13 @@ func serializeBatchWithEncryption(wb Buffer,
 
 	// encrypt payload
 	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, cryptoKeyReader, msgMetadata, compressedPayload)
-	if err != nil {
+
+	if err != nil && cryptoFailureAction == crypto.FAIL_SEND {
+		// error in encrypting payload anf cryptoFailureAction != SEND
+		// in this case do not send the message
 		return err
 	}
+
 	compressedPayload = encryptedPayload
 
 	cmdSize := uint32(proto.Size(cmdSend))

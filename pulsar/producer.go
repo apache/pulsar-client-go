@@ -174,6 +174,9 @@ type ProducerOptions struct {
 
 	// CryptoKeyReader read RSA/ECDSA public/private key pairs
 	CryptoKeyReader crypto.CryptoKeyReader
+
+	// ProducerCryptoFailureAction action to be taken on failure of message encryption
+	ProducerCryptoFailureAction crypto.ProducerCryptoFailureAction
 }
 
 // Producer is used to publish messages on a topic

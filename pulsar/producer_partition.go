@@ -23,6 +23,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 
 	"github.com/gogo/protobuf/proto"
@@ -98,6 +99,10 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	logger := client.log.SubLogger(log.Fields{"topic": topic})
+
+	if options.ProducerCryptoFailureAction == 0 {
+		options.ProducerCryptoFailureAction = crypto.FAIL_SEND
+	}
 
 	p := &partitionProducer{
 		client:           client,
