@@ -152,6 +152,15 @@ type Topics interface {
 
 	// RemovePersistence Remove the persistence policies for a topic
 	RemovePersistence(utils.TopicName) error
+
+	// GetDelayedDelivery Get the delayed delivery policy for a topic
+	GetDelayedDelivery(utils.TopicName) (*utils.DelayedDeliveryData, error)
+
+	// SetDelayedDelivery Set the delayed delivery policy on a topic
+	SetDelayedDelivery(utils.TopicName, utils.DelayedDeliveryData) error
+
+	// RemoveDelayedDelivery Remove the delayed delivery policy on a topic
+	RemoveDelayedDelivery(utils.TopicName) error
 }
 
 type topics struct {
@@ -465,5 +474,22 @@ func (t *topics) SetPersistence(topic utils.TopicName, persistenceData utils.Per
 
 func (t *topics) RemovePersistence(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "persistence")
+	return t.pulsar.Client.Delete(endpoint)
+}
+
+func (t *topics) GetDelayedDelivery(topic utils.TopicName) (*utils.DelayedDeliveryData, error) {
+	var delayedDeliveryData utils.DelayedDeliveryData
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
+	err := t.pulsar.Client.Get(endpoint, &delayedDeliveryData)
+	return &delayedDeliveryData, err
+}
+
+func (t *topics) SetDelayedDelivery(topic utils.TopicName, delayedDeliveryData utils.DelayedDeliveryData) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
+	return t.pulsar.Client.Post(endpoint, &delayedDeliveryData)
+}
+
+func (t *topics) RemoveDelayedDelivery(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
 	return t.pulsar.Client.Delete(endpoint)
 }
