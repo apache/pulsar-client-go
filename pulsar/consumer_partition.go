@@ -79,27 +79,28 @@ const (
 )
 
 type partitionConsumerOpts struct {
-	topic                      string
-	consumerName               string
-	subscription               string
-	subscriptionType           SubscriptionType
-	subscriptionInitPos        SubscriptionInitialPosition
-	partitionIdx               int
-	receiverQueueSize          int
-	nackRedeliveryDelay        time.Duration
-	metadata                   map[string]string
-	replicateSubscriptionState bool
-	startMessageID             trackingMessageID
-	startMessageIDInclusive    bool
-	subscriptionMode           subscriptionMode
-	readCompacted              bool
-	disableForceTopicCreation  bool
-	interceptors               ConsumerInterceptors
-	maxReconnectToBroker       *uint
-	keySharedPolicy            *KeySharedPolicy
-	schema                     Schema
-	cryptoKeyReader            crypto.CryptoKeyReader
-	messageCrypto              crypto.MessageCrypto
+	topic                       string
+	consumerName                string
+	subscription                string
+	subscriptionType            SubscriptionType
+	subscriptionInitPos         SubscriptionInitialPosition
+	partitionIdx                int
+	receiverQueueSize           int
+	nackRedeliveryDelay         time.Duration
+	metadata                    map[string]string
+	replicateSubscriptionState  bool
+	startMessageID              trackingMessageID
+	startMessageIDInclusive     bool
+	subscriptionMode            subscriptionMode
+	readCompacted               bool
+	disableForceTopicCreation   bool
+	interceptors                ConsumerInterceptors
+	maxReconnectToBroker        *uint
+	keySharedPolicy             *KeySharedPolicy
+	schema                      Schema
+	cryptoKeyReader             crypto.CryptoKeyReader
+	messageCrypto               crypto.MessageCrypto
+	consumerCryptoFailureAcrion crypto.ConsumerCryptoFailureAction
 }
 
 type partitionConsumer struct {
@@ -484,24 +485,54 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	var uncompressedHeadersAndPayload internal.Buffer
 
 	// decrypt the data if needed
-	if msgMeta.EncryptionParam != nil {
-		if pc.options.messageCrypto != nil && pc.options.cryptoKeyReader != nil {
-			d, err := pc.options.messageCrypto.Decrypt(msgMeta, headersAndPayload.ReadableSlice(), pc.options.cryptoKeyReader)
-			if err != nil {
-				return err
-			}
-			headersAndPayload = internal.NewBufferWrapper(d)
-		} else {
-			return fmt.Errorf("unable to decrypt payload. required parameters are missing")
+	decryptedPayload := pc.decryptPayLoadIfNeeded(pbMsgID, msgMeta, headersAndPayload.ReadableSlice())
+
+	if decryptedPayload == nil {
+		// Message was discarded or CryptoKeyReader interface is not implemented
+		return nil
+	}
+	headersAndPayload = internal.NewBufferWrapper(decryptedPayload)
+
+	isMessageUndecryptable := len(msgMeta.EncryptionKeys) > 0 && pc.options.cryptoKeyReader == nil && pc.options.consumerCryptoFailureAcrion == crypto.CONSUME
+
+	// message was not decrypted, skip decompressing it
+	if isMessageUndecryptable {
+		uncompressedHeadersAndPayload = headersAndPayload
+	} else {
+		uncompressedHeadersAndPayload, err = pc.Decompress(msgMeta, headersAndPayload)
+		if err != nil {
+			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
+			return err
 		}
 	}
 
-	uncompressedHeadersAndPayload, err = pc.Decompress(msgMeta, headersAndPayload)
-	if err != nil {
-		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
-		return err
+	if uncompressedHeadersAndPayload == nil {
+		// message was discarded on decompression error
+		return nil
 	}
+	messages := make([]*message, 0)
 
+	// Message is in decrytable and config is set to consume
+	if isMessageUndecryptable {
+		// It is the responsibility of the application to parse the message
+		messages = append(messages, &message{
+			publishTime:         timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+			eventTime:           timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+			key:                 msgMeta.GetPartitionKey(),
+			producerName:        msgMeta.GetProducerName(),
+			properties:          internal.ConvertToStringMap(msgMeta.GetProperties()),
+			topic:               pc.topic,
+			msgID:               newMessageID(int64(*pbMsgID.LedgerId), int64(*pbMsgID.EntryId), *pbMsgID.BatchIndex, *pbMsgID.Partition),
+			payLoad:             uncompressedHeadersAndPayload.ReadableSlice(),
+			schema:              pc.options.schema,
+			replicationClusters: msgMeta.GetReplicateTo(),
+			replicatedFrom:      msgMeta.GetReplicatedFrom(),
+			redeliveryCount:     response.GetRedeliveryCount(),
+			ecnryptionContext:   createEncryptionContext(msgMeta),
+		})
+		pc.queueCh <- messages
+		return nil
+	}
 	// // Reset the reader on the uncompressed buffer
 	reader.ResetBuffer(uncompressedHeadersAndPayload)
 
@@ -509,7 +540,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	if msgMeta.NumMessagesInBatch != nil {
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
-	messages := make([]*message, 0)
+
 	var ackTracker *ackTracker
 	// are there multiple messages in this batch?
 	if numMsgs > 1 {
@@ -587,6 +618,97 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	// send messages to the dispatcher
 	pc.queueCh <- messages
 	return nil
+}
+
+func createEncryptionContext(msgMeta *pb.MessageMetadata) EncryptionContext {
+	encCtx := EncryptionContext{
+		Algorithm:        msgMeta.GetEncryptionAlgo(),
+		Param:            msgMeta.GetEncryptionParam(),
+		UncompressedSize: int(msgMeta.GetUncompressedSize()),
+		BatchSize:        int(msgMeta.GetNumMessagesInBatch()),
+	}
+
+	kMap := map[string]EncryptionKey{}
+	for _, k := range msgMeta.GetEncryptionKeys() {
+		metaMap := map[string]string{}
+		for _, m := range k.GetMetadata() {
+			metaMap[*m.Key] = *m.Value
+		}
+
+		kMap[*k.Key] = EncryptionKey{
+			KeyValue: k.GetValue(),
+			Metadata: metaMap,
+		}
+	}
+
+	encCtx.Keys = kMap
+	return encCtx
+}
+
+func (pc *partitionConsumer) decryptPayLoadIfNeeded(msgId *pb.MessageIdData, msgMeta *pb.MessageMetadata, payload []byte) []byte {
+	// If KeyReader interface is not implemented, throw an error based on the configuration
+	switch pc.options.consumerCryptoFailureAcrion {
+	case crypto.CONSUME:
+		pc.log.Warnf("[{}][{}][{}] CryptoKeyReader interface is not implemented. Consuming encrypted message.",
+			pc.topic,
+			pc.options.subscription,
+			pc.options.consumerName,
+		)
+		return payload
+	case crypto.DISCARD:
+		pc.log.Warnf("[{}][{}][{}] Skipping decryption since CryptoKeyReader interface is not implemented and config is set to discard",
+			pc.topic,
+			pc.options.subscription,
+			pc.options.consumerName,
+		)
+		pc.discardCorruptedMessage(msgId, pb.CommandAck_DecryptionError)
+		return nil
+	case crypto.FAIL:
+		pc.log.Errorf(
+			"[{}][{}][{}][{}] Message delivery failed since CryptoKeyReader interface is not implemented to consume encrypted message",
+			pc.topic,
+			pc.options.subscription,
+			pc.options.consumerName,
+			msgId,
+		)
+		return nil
+	}
+
+	decryptedPayload, err := pc.options.messageCrypto.Decrypt(msgMeta, payload, pc.options.cryptoKeyReader)
+
+	if err != nil {
+		switch pc.options.consumerCryptoFailureAcrion {
+		case crypto.FAIL:
+			pc.log.Warnf(
+				"[{}][{}][{}][{}] Message delivery failed since unable to decrypt incoming message",
+				pc.topic,
+				pc.options.subscription,
+				pc.options.consumerName,
+				msgId,
+			)
+			return nil
+
+		case crypto.DISCARD:
+			pc.log.Warnf("[{}][{}][{}][{}] Discarding message since decryption failed and config is set to discard",
+				pc.topic,
+				pc.options.subscription,
+				pc.options.consumerName,
+				msgId,
+			)
+			pc.discardCorruptedMessage(msgId, pb.CommandAck_DecryptionError)
+			return nil
+		case crypto.CONSUME:
+			// Note, batch message will fail to consume even if config is set to consume
+			pc.log.Warnf("[{}][{}][{}][{}] Decryption failed. Consuming encrypted message since config is set to consume.",
+				pc.topic,
+				pc.options.subscription,
+				pc.options.consumerName,
+				msgId)
+			return payload
+		}
+	}
+
+	return decryptedPayload
 }
 
 func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) bool {

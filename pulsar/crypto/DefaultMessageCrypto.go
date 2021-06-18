@@ -118,7 +118,9 @@ func (d *DefaultMessageCrypto) RemoveKeyCipher(keyName string) bool {
 	return true
 }
 
-func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyReader CryptoKeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+// Encrypt encrypt payload using encryption keys and add encrypted data key to message metadata. Here data key is encrypted
+// using public key
+func (d *DefaultMessageCrypto) Encrypt(encKeys []string, keyReader CryptoKeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
 	d.encryptLock.Lock()
 	defer d.encryptLock.Unlock()
 	if len(encKeys) == 0 {
@@ -211,19 +213,9 @@ func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyReader CryptoKeyRead
 	return gcm.Seal(nil, nonce, payload, nil), nil
 }
 
-// Encrypt encrypt payload using encryption keys and add encrypted data key to message metadata. Here data key is encrypted
-// using public key
-func (d *DefaultMessageCrypto) Encrypt(encKeys []string, cryptoKeyReader CryptoKeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
-	return d.encrypt(encKeys, cryptoKeyReader, msgMetadata, payload)
-}
-
 // Decrypt decrypt the payload using decrypted data key. Here data key is read from from the message
 // metadata and  decrypted using private key.
-func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, cryptoKeyReader CryptoKeyReader) ([]byte, error) {
-	return d.decrypt(msgMetadata, payload, cryptoKeyReader)
-}
-
-func (d *DefaultMessageCrypto) decrypt(msgMetadata *pb.MessageMetadata, payload []byte, keyReader CryptoKeyReader) ([]byte, error) {
+func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, keyReader CryptoKeyReader) ([]byte, error) {
 	// if data key is present, attempt to derypt using the existing key
 	if d.dataKey != nil {
 		decryptedData, err := d.getKeyAndDecryptData(msgMetadata, payload)

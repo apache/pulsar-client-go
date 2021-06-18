@@ -113,6 +113,10 @@ type Message interface {
 
 	//Get the de-serialized value of the message, according the configured
 	GetSchemaValue(v interface{}) error
+
+	// GetEncryptionContext get the ecryption context of message
+	// It will be used by the application to parse undecrypted message
+	GetEncryptionContext() EncryptionContext
 }
 
 // MessageID identifier for a particular message

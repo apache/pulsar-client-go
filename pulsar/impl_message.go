@@ -201,6 +201,22 @@ func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 	return time.Unix(seconds, nanos)
 }
 
+// EncryptionContext
+type EncryptionContext struct {
+	Keys             map[string]EncryptionKey
+	Param            []byte
+	Algorithm        string
+	CompressionType  CompressionType
+	UncompressedSize int
+	BatchSize        int
+}
+
+// EncryptionKey
+type EncryptionKey struct {
+	KeyValue []byte
+	Metadata map[string]string
+}
+
 type message struct {
 	publishTime         time.Time
 	eventTime           time.Time
@@ -215,6 +231,7 @@ type message struct {
 	replicatedFrom      string
 	redeliveryCount     uint32
 	schema              Schema
+	ecnryptionContext   EncryptionContext
 }
 
 func (msg *message) Topic() string {
@@ -267,6 +284,10 @@ func (msg *message) GetSchemaValue(v interface{}) error {
 
 func (msg *message) ProducerName() string {
 	return msg.producerName
+}
+
+func (msg *message) GetEncryptionContext() EncryptionContext {
+	return msg.ecnryptionContext
 }
 
 func newAckTracker(size int) *ackTracker {

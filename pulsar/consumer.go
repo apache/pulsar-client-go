@@ -163,6 +163,9 @@ type ConsumerOptions struct {
 
 	// MessageCrypto to use for decrypting payload
 	MessageCrypto crypto.MessageCrypto
+
+	// ConsumerCryptoFailureAction action to be taken on failure of message decryption
+	ConsumerCryptoFailureAction crypto.ConsumerCryptoFailureAction
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
