@@ -99,7 +99,6 @@ type partitionConsumerOpts struct {
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
 	cryptoKeyReader            crypto.CryptoKeyReader
-	dataKeyCrypto              crypto.DataKeyCrypto
 	messageCrypto              crypto.MessageCrypto
 }
 
@@ -486,20 +485,12 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 	// decrypt the data if needed
 	if msgMeta.EncryptionParam != nil {
-		if pc.options.messageCrypto != nil && (pc.options.cryptoKeyReader != nil || pc.options.dataKeyCrypto != nil) {
-			if pc.options.dataKeyCrypto != nil {
-				d, err := pc.options.messageCrypto.DecryptWithDataKeyCrypto(msgMeta, headersAndPayload.ReadableSlice(), pc.options.dataKeyCrypto)
-				if err != nil {
-					return err
-				}
-				headersAndPayload = internal.NewBufferWrapper(d)
-			} else {
-				d, err := pc.options.messageCrypto.Decrypt(msgMeta, headersAndPayload.ReadableSlice(), pc.options.cryptoKeyReader)
-				if err != nil {
-					return err
-				}
-				headersAndPayload = internal.NewBufferWrapper(d)
+		if pc.options.messageCrypto != nil && pc.options.cryptoKeyReader != nil {
+			d, err := pc.options.messageCrypto.Decrypt(msgMeta, headersAndPayload.ReadableSlice(), pc.options.cryptoKeyReader)
+			if err != nil {
+				return err
 			}
+			headersAndPayload = internal.NewBufferWrapper(d)
 		} else {
 			return fmt.Errorf("unable to decrypt payload. required parameters are missing")
 		}

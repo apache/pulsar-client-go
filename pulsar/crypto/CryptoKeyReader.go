@@ -3,9 +3,9 @@ package crypto
 // CryptoKeyReader implement this interface to read and provide public & private keys
 // key pair can be RSA, ECDSA
 type CryptoKeyReader interface {
-	// get public key that is be used by the producer to encrypt data key
-	getPublicKey(keyName string, metadata map[string]string) EncryptionKeyInfo
+	// GetPublicKey get public key that is be used by the producer to encrypt data key
+	GetPublicKey(keyName string, metadata map[string]string) (*EncryptionKeyInfo, error)
 
-	// get private key that is used by the consumer to decrypt data key
-	getPrivateKey(keyName string, metadata map[string]string) EncryptionKeyInfo
+	// GetPrivateKey get private key that is used by the consumer to decrypt data key
+	GetPrivateKey(keyName string, metadata map[string]string) (*EncryptionKeyInfo, error)
 }

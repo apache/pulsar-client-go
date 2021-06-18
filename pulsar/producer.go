@@ -174,9 +174,6 @@ type ProducerOptions struct {
 
 	// CryptoKeyReader read RSA/ECDSA public/private key pairs
 	CryptoKeyReader crypto.CryptoKeyReader
-
-	// DataKeyCrypto encrypt and decrypt session key
-	DataKeyCrypto crypto.DataKeyCrypto
 }
 
 // Producer is used to publish messages on a topic

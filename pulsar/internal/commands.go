@@ -222,7 +222,6 @@ func serializeBatchWithEncryption(wb Buffer,
 	uncompressedPayload Buffer,
 	compressionProvider compression.Provider,
 	cryptoKeyReader crypto.CryptoKeyReader,
-	dataKeyCrypto crypto.DataKeyCrypto,
 	encryptionKeys []string,
 	msgCrypto crypto.MessageCrypto,
 ) error {
@@ -233,19 +232,11 @@ func serializeBatchWithEncryption(wb Buffer,
 	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
 
 	// encrypt payload
-	if dataKeyCrypto != nil {
-		encryptedPayload, err := msgCrypto.EncryptWithDataKeyCrypto(encryptionKeys, dataKeyCrypto, msgMetadata, compressedPayload)
-		if err != nil {
-			return err
-		}
-		compressedPayload = encryptedPayload
-	} else {
-		encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, cryptoKeyReader, msgMetadata, compressedPayload)
-		if err != nil {
-			return err
-		}
-		compressedPayload = encryptedPayload
+	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, cryptoKeyReader, msgMetadata, compressedPayload)
+	if err != nil {
+		return err
 	}
+	compressedPayload = encryptedPayload
 
 	cmdSize := uint32(proto.Size(cmdSend))
 	msgMetadataSize := uint32(proto.Size(msgMetadata))
@@ -257,7 +248,7 @@ func serializeBatchWithEncryption(wb Buffer,
 	// Write cmd
 	wb.WriteUint32(cmdSize)
 	wb.ResizeIfNeeded(cmdSize)
-	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	_, err = cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
 	}

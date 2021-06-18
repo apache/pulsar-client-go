@@ -161,9 +161,6 @@ type ConsumerOptions struct {
 	// CryptoKeyReader to use for reader RSA/ECDSA private key
 	CryptoKeyReader crypto.CryptoKeyReader
 
-	// DataKeyCrypto to use for decrypting data key
-	DataKeyCrypto crypto.DataKeyCrypto
-
 	// MessageCrypto to use for decrypting payload
 	MessageCrypto crypto.MessageCrypto
 }

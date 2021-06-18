@@ -1,10 +1,15 @@
 package crypto
 
 import (
+	gocrypto "crypto"
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/md5"
 	"crypto/rand"
+	"crypto/rsa"
+	"crypto/sha1"
+	"crypto/x509"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"sync"
@@ -54,7 +59,7 @@ func NewDefaultMessageCrypto(logCtx string, keyGenNeeded bool, logger log.Logger
 }
 
 // AddPublicKeyCipher encrypt data key using keyCrypto and cache
-func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyCrypto interface{}) error {
+func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyReader CryptoKeyReader) error {
 	key, err := generateDataKey()
 	if err != nil {
 		return err
@@ -62,7 +67,7 @@ func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyCrypto i
 
 	d.dataKey = key
 	for _, keyName := range keyNames {
-		err := d.addPublicKeyCipher(keyName, keyCrypto)
+		err := d.addPublicKeyCipher(keyName, keyReader)
 		if err != nil {
 			return err
 		}
@@ -70,33 +75,37 @@ func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyCrypto i
 	return nil
 }
 
-func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyCrypto interface{}) error {
+func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader CryptoKeyReader) error {
 	d.cipherLock.Lock()
 	defer d.cipherLock.Unlock()
-	if keyName != "" && keyCrypto != nil {
-
-		// Use CryptoKeyReader to get public key & encrypt data key using it
-		cryptoKeyReader, ok := keyCrypto.(CryptoKeyReader)
-		if !ok {
-			// Use DataKeyCrypto to encrypt data key
-			datakeyCrypto, ok := keyCrypto.(DataKeyCrypto)
-			if !ok {
-				return fmt.Errorf("invalid cryptokeyreader")
-			}
-			key, err := datakeyCrypto.EncryptDataKey(d.dataKey)
-			if err != nil {
-				return err
-			}
-
-			d.encryptedDataKeyMap.Store(keyName, NewEncryptionKeyInfo(key, nil))
-			return nil
-		}
-
-		// else load the public key and encrypt the datakey using it
-		cryptoKeyReader.getPublicKey(keyName, nil)
-		// TODO Complete the remaining functionality
-		// It will be done in next phase
+	if keyName == "" || keyReader == nil {
+		return fmt.Errorf("keyname or keyreader is null")
 	}
+
+	// read the public key and its info using keyReader
+	keyInfo, err := keyReader.GetPublicKey(keyName, nil)
+	if err != nil {
+		return err
+	}
+
+	parsedKey, err := d.loadPublicKey(keyInfo.GetKey())
+	if err != nil {
+		return err
+	}
+
+	// try to cast to RSA key
+	rsaPubKey, ok := parsedKey.(*rsa.PublicKey)
+	if !ok {
+		return fmt.Errorf("unable to parse RSA public key")
+	}
+
+	encryptedDataKey, err := rsa.EncryptOAEP(sha1.New(), rand.Reader, rsaPubKey, d.dataKey, nil)
+	if err != nil {
+		return err
+	}
+
+	d.encryptedDataKeyMap.Store(keyName, NewEncryptionKeyInfo(encryptedDataKey, keyInfo.GetMetadata()))
+
 	return nil
 }
 
@@ -109,7 +118,7 @@ func (d *DefaultMessageCrypto) RemoveKeyCipher(keyName string) bool {
 	return true
 }
 
-func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyCrypto interface{}, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyReader CryptoKeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
 	d.encryptLock.Lock()
 	defer d.encryptLock.Unlock()
 	if len(encKeys) == 0 {
@@ -127,7 +136,7 @@ func (d *DefaultMessageCrypto) encrypt(encKeys []string, keyCrypto interface{}, 
 	for _, keyName := range encKeys {
 		// if key is not already loaded, load it
 		if _, ok := d.encryptedDataKeyMap.Load(keyName); !ok {
-			d.addPublicKeyCipher(keyName, keyCrypto)
+			d.addPublicKeyCipher(keyName, keyReader)
 		}
 
 		// add key to the message metadata
@@ -208,24 +217,13 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string, cryptoKeyReader CryptoK
 	return d.encrypt(encKeys, cryptoKeyReader, msgMetadata, payload)
 }
 
-// EncryptWithDataKeyCrypto encrypt payload using enc keys add add encrypted data key to message metadata
-func (d *DefaultMessageCrypto) EncryptWithDataKeyCrypto(encKeys []string, dataKeyCrypto DataKeyCrypto, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
-	return d.encrypt(encKeys, dataKeyCrypto, msgMetadata, payload)
-}
-
 // Decrypt decrypt the payload using decrypted data key. Here data key is read from from the message
 // metadata and  decrypted using private key.
 func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, cryptoKeyReader CryptoKeyReader) ([]byte, error) {
 	return d.decrypt(msgMetadata, payload, cryptoKeyReader)
 }
 
-// DecryptWithDataKeyCrypto decrypt the payload using decrypted data key. Here data key is read from
-// the message metadata and decrypted.
-func (d *DefaultMessageCrypto) DecryptWithDataKeyCrypto(msgMetadata *pb.MessageMetadata, payload []byte, dataKeyCrypto DataKeyCrypto) ([]byte, error) {
-	return d.decrypt(msgMetadata, payload, dataKeyCrypto)
-}
-
-func (d *DefaultMessageCrypto) decrypt(msgMetadata *pb.MessageMetadata, payload []byte, keyReader interface{}) ([]byte, error) {
+func (d *DefaultMessageCrypto) decrypt(msgMetadata *pb.MessageMetadata, payload []byte, keyReader CryptoKeyReader) ([]byte, error) {
 	// if data key is present, attempt to derypt using the existing key
 	if d.dataKey != nil {
 		decryptedData, err := d.getKeyAndDecryptData(msgMetadata, payload)
@@ -303,33 +301,71 @@ func (d *DefaultMessageCrypto) getKeyAndDecryptData(msgMetadata *pb.MessageMetad
 	return nil, nil
 }
 
-func (d *DefaultMessageCrypto) decryptDataKey(keyName string, encDatakey []byte, encKeymeta []*pb.KeyValue, keyCrypto interface{}) bool {
+func (d *DefaultMessageCrypto) decryptDataKey(keyName string, encDatakey []byte, encKeymeta []*pb.KeyValue, keyReader CryptoKeyReader) bool {
 	keyMeta := make(map[string]string)
 	for _, k := range encKeymeta {
 		keyMeta[k.GetKey()] = k.GetValue()
 	}
 
-	keyReader, keyReaderOk := keyCrypto.(CryptoKeyReader)
-	if !keyReaderOk {
-		datakeyCrypto, datakeyCryptoOk := keyCrypto.(DataKeyCrypto)
-		if datakeyCryptoOk {
-			decryptedDatakey, err := datakeyCrypto.DecryptDataKey(encDatakey)
-			if err != nil {
-				d.logger.Error(err)
-				return false
-			}
-			d.dataKey = decryptedDatakey
-			d.loadingCache.Store(fmt.Sprintf("%x", md5.Sum(encDatakey)), d.dataKey)
-		} else {
-			d.logger.Error("Invalid keycrypto parameter")
-			return false
-		}
-	} else {
-		// TODO complete data key decrypt using private key
-		// will be done in next phase
-		keyReader.getPrivateKey(keyName, keyMeta)
+	keyInfo, err := keyReader.GetPrivateKey(keyName, keyMeta)
+	if err != nil {
+		d.logger.Error("Failed to decryot data key")
+		return false
 	}
+
+	parsedKey, err := d.loadPrivateKey(keyInfo.GetKey())
+	if err != nil {
+		d.logger.Error("unable to parse RSA private key")
+		return false
+	}
+
+	rsaPriKey, ok := parsedKey.(*rsa.PrivateKey)
+	if !ok {
+		d.logger.Error("unable to parse RSA private key")
+		return false
+	}
+
+	decryptedDataKey, err := rsa.DecryptOAEP(sha1.New(), rand.Reader, rsaPriKey, encDatakey, nil)
+	if err != nil {
+		d.logger.Error(err)
+		return false
+	}
+	d.dataKey = decryptedDataKey
+	d.loadingCache.Store(fmt.Sprintf("%x", md5.Sum(encDatakey)), d.dataKey)
+
 	return true
+}
+
+func (d *DefaultMessageCrypto) loadPrivateKey(key []byte) (gocrypto.PrivateKey, error) {
+	var privateKey gocrypto.PrivateKey
+	priPem, _ := pem.Decode(key)
+	if priPem == nil {
+		return privateKey, fmt.Errorf("failed to decode public key")
+	}
+	genericPrivateKey, err := x509.ParsePKCS1PrivateKey(priPem.Bytes)
+	if err != nil {
+		return privateKey, err
+	}
+	privateKey = genericPrivateKey
+	return privateKey, nil
+}
+
+// read the public key into RSA key
+func (d *DefaultMessageCrypto) loadPublicKey(key []byte) (gocrypto.PublicKey, error) {
+	var publickKey gocrypto.PublicKey
+
+	pubPem, _ := pem.Decode(key)
+	if pubPem == nil {
+		return publickKey, fmt.Errorf("failed to decode public key")
+	}
+
+	genericPublicKey, err := x509.ParsePKIXPublicKey(pubPem.Bytes)
+	if err != nil {
+		return publickKey, err
+	}
+	publickKey = genericPublicKey
+
+	return publickKey, nil
 }
 
 func generateDataKey() ([]byte, error) {

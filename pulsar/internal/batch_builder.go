@@ -100,8 +100,6 @@ type batchContainer struct {
 	messageCrypto crypto.MessageCrypto
 
 	cryptoKeyReader crypto.CryptoKeyReader
-
-	dataKeyCrypto crypto.DataKeyCrypto
 }
 
 // newBatchContainer init a batchContainer
@@ -177,13 +175,6 @@ func UseMessageCrypto(msgCrypto crypto.MessageCrypto) func(*batchContainer) {
 func UseCryptoKeyReader(cryptoKeyReader crypto.CryptoKeyReader) func(*batchContainer) {
 	return func(bc *batchContainer) {
 		bc.cryptoKeyReader = cryptoKeyReader
-	}
-}
-
-// UseDataKeyCrypto DataKeyCrypto to use
-func UseDataKeyCrypto(dataKeyCrypto crypto.DataKeyCrypto) func(*batchContainer) {
-	return func(bc *batchContainer) {
-		bc.dataKeyCrypto = dataKeyCrypto
 	}
 }
 
@@ -279,7 +270,6 @@ func (bc *batchContainer) Flush() (
 			bc.buffer,
 			bc.compressionProvider,
 			bc.cryptoKeyReader,
-			bc.dataKeyCrypto,
 			bc.encryptionKeys,
 			bc.messageCrypto,
 		)

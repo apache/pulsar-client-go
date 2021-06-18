@@ -27,9 +27,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
 
+	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -1029,4 +1031,42 @@ func TestProducerWithInterceptors(t *testing.T) {
 
 	assert.Equal(t, 10, metric.sendn)
 	assert.Equal(t, 10, metric.ackn)
+}
+
+func TestProducerWithEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
+	topic := "test-topic-crypto-01"
+	ctx := context.Background()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:            topic,
+		DisableBatching:  false,
+		MessageKeyCrypto: msgCrypto,
+		CryptoKeyReader:  crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
+		Schema:           NewStringSchema(nil),
+		EncryptionKeys:   []string{"my-app.key"},
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Value: fmt.Sprintf("hello-%d", i),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
 }

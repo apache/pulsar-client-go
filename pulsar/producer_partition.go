@@ -153,21 +153,14 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 func (p *partitionProducer) sheduleDataKeyUpdate() {
 	if p.options.EncryptionKeys != nil {
-		if p.options.MessageKeyCrypto != nil {
-			var keyReader interface{}
-			if p.options.DataKeyCrypto != nil {
-				keyReader = p.options.DataKeyCrypto
-			} else if p.options.CryptoKeyReader != nil {
-				keyReader = p.options.CryptoKeyReader
+		if p.options.MessageKeyCrypto != nil && p.options.CryptoKeyReader != nil {
+
+			p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.CryptoKeyReader)
+			for t := range p.dataKeyTicker.C {
+				p.log.Infof("Refreshing data key :%v", t)
+				p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.CryptoKeyReader)
 			}
 
-			if keyReader != nil {
-				p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, keyReader)
-				for t := range p.dataKeyTicker.C {
-					p.log.Infof("Refreshing data key :%v", t)
-					p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, keyReader)
-				}
-			}
 		}
 	}
 }
@@ -241,7 +234,6 @@ func (p *partitionProducer) grabCnx() error {
 		p.log,
 		internal.UseEncryptionKeys(p.options.EncryptionKeys),
 		internal.UseCryptoKeyReader(p.options.CryptoKeyReader),
-		internal.UseDataKeyCrypto(p.options.DataKeyCrypto),
 		internal.UseMessageCrypto(p.options.MessageKeyCrypto),
 	)
 	if err != nil {
