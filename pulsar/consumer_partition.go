@@ -647,31 +647,33 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) EncryptionContext {
 
 func (pc *partitionConsumer) decryptPayLoadIfNeeded(msgId *pb.MessageIdData, msgMeta *pb.MessageMetadata, payload []byte) []byte {
 	// If KeyReader interface is not implemented, throw an error based on the configuration
-	switch pc.options.consumerCryptoFailureAcrion {
-	case crypto.CONSUME:
-		pc.log.Warnf("[{}][{}][{}] CryptoKeyReader interface is not implemented. Consuming encrypted message.",
-			pc.topic,
-			pc.options.subscription,
-			pc.options.consumerName,
-		)
-		return payload
-	case crypto.DISCARD:
-		pc.log.Warnf("[{}][{}][{}] Skipping decryption since CryptoKeyReader interface is not implemented and config is set to discard",
-			pc.topic,
-			pc.options.subscription,
-			pc.options.consumerName,
-		)
-		pc.discardCorruptedMessage(msgId, pb.CommandAck_DecryptionError)
-		return nil
-	case crypto.FAIL_CONSUME:
-		pc.log.Errorf(
-			"[{}][{}][{}][{}] Message delivery failed since CryptoKeyReader interface is not implemented to consume encrypted message",
-			pc.topic,
-			pc.options.subscription,
-			pc.options.consumerName,
-			msgId,
-		)
-		return nil
+	if pc.options.cryptoKeyReader == nil {
+		switch pc.options.consumerCryptoFailureAcrion {
+		case crypto.CONSUME:
+			pc.log.Warnf("[{}][{}][{}] CryptoKeyReader interface is not implemented. Consuming encrypted message.",
+				pc.topic,
+				pc.options.subscription,
+				pc.options.consumerName,
+			)
+			return payload
+		case crypto.DISCARD:
+			pc.log.Warnf("[{}][{}][{}] Skipping decryption since CryptoKeyReader interface is not implemented and config is set to discard",
+				pc.topic,
+				pc.options.subscription,
+				pc.options.consumerName,
+			)
+			pc.discardCorruptedMessage(msgId, pb.CommandAck_DecryptionError)
+			return nil
+		case crypto.FAIL_CONSUME:
+			pc.log.Errorf(
+				"[{}][{}][{}][{}] Message delivery failed since CryptoKeyReader interface is not implemented to consume encrypted message",
+				pc.topic,
+				pc.options.subscription,
+				pc.options.consumerName,
+				msgId,
+			)
+			return nil
+		}
 	}
 
 	decryptedPayload, err := pc.options.messageCrypto.Decrypt(msgMeta, payload, pc.options.cryptoKeyReader)

@@ -232,13 +232,11 @@ func serializeBatchWithEncryption(wb Buffer,
 	// compress the payload
 	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
 
-	// encrypt payload
-	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, cryptoKeyReader, msgMetadata, compressedPayload)
+	encryptedPayload := encryptPayload(msgMetadata, msgCrypto, cryptoKeyReader, encryptionKeys, compressedPayload, cryptoFailureAction)
 
-	if err != nil && cryptoFailureAction == crypto.FAIL_SEND {
-		// error in encrypting payload and cryptoFailureAction != SEND
-		// in this case do not send the message
-		return err
+	// there was a error in encrypting the payload and crypto failute action is set to crypto.FAIL_SEND
+	if encryptedPayload == nil {
+		return fmt.Errorf("error in encrypting the payload and message is not sent")
 	}
 
 	compressedPayload = encryptedPayload
@@ -253,7 +251,7 @@ func serializeBatchWithEncryption(wb Buffer,
 	// Write cmd
 	wb.WriteUint32(cmdSize)
 	wb.ResizeIfNeeded(cmdSize)
-	_, err = cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
 	}
@@ -284,6 +282,40 @@ func serializeBatchWithEncryption(wb Buffer,
 	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
 	return nil
+}
+
+func encryptPayload(msgMetadata *pb.MessageMetadata,
+	msgCrypto crypto.MessageCrypto,
+	cryptoKeyReader crypto.CryptoKeyReader,
+	encryptionKeys []string,
+	compressedPayload []byte,
+	cryptoFailureAction crypto.ProducerCryptoFailureAction,
+) []byte {
+
+	// encryption is enabled but KeyReader interface is not implemented
+	if cryptoKeyReader == nil {
+		// crypto failure action is set to send
+		// so send unencrypted message
+		if cryptoFailureAction == crypto.SEND {
+			return compressedPayload
+		}
+		return nil
+	}
+
+	// encrypt payload
+	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, cryptoKeyReader, msgMetadata, compressedPayload)
+
+	if err != nil {
+		// error occured in encrypting the message
+		// crypto failure action is set to send
+		// so send unencrypted message
+		if cryptoFailureAction == crypto.SEND {
+			return compressedPayload
+		}
+		return nil
+	}
+
+	return encryptedPayload
 }
 
 func serializeBatch(wb Buffer,

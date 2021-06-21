@@ -272,7 +272,7 @@ func (bc *batchContainer) Flush() (
 
 	// encryption is enabled
 	if bc.encryptionKeys != nil {
-		serializeBatchWithEncryption(buffer,
+		err := serializeBatchWithEncryption(buffer,
 			bc.cmdSend,
 			bc.msgMetadata,
 			bc.buffer,
@@ -282,6 +282,9 @@ func (bc *batchContainer) Flush() (
 			bc.messageCrypto,
 			bc.producerCryptoFailureAction,
 		)
+		if err != nil {
+			bc.log.Errorf("failed to send messages due to encryption error : %v", err)
+		}
 	} else {
 		serializeBatch(
 			buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
