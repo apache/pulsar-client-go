@@ -27,8 +27,8 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute

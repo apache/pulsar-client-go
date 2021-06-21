@@ -26,7 +26,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
 )
 

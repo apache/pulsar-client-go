@@ -1,7 +1,7 @@
 package crypto
 
 import (
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
 )
 
 // MessageCrypto implement this interface to encrypt and decrypt messages
