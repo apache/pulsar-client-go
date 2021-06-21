@@ -236,7 +236,7 @@ func serializeBatchWithEncryption(wb Buffer,
 	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, cryptoKeyReader, msgMetadata, compressedPayload)
 
 	if err != nil && cryptoFailureAction == crypto.FAIL_SEND {
-		// error in encrypting payload anf cryptoFailureAction != SEND
+		// error in encrypting payload and cryptoFailureAction != SEND
 		// in this case do not send the message
 		return err
 	}

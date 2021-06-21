@@ -512,7 +512,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	}
 	messages := make([]*message, 0)
 
-	// Message is in decrytable and config is set to consume
+	// Message is undecrytable and config is set to consume, deliver undecrypted message
 	if isMessageUndecryptable {
 		// It is the responsibility of the application to parse the message
 		messages = append(messages, &message{
