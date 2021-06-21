@@ -663,7 +663,7 @@ func (pc *partitionConsumer) decryptPayLoadIfNeeded(msgId *pb.MessageIdData, msg
 		)
 		pc.discardCorruptedMessage(msgId, pb.CommandAck_DecryptionError)
 		return nil
-	case crypto.FAIL:
+	case crypto.FAIL_CONSUME:
 		pc.log.Errorf(
 			"[{}][{}][{}][{}] Message delivery failed since CryptoKeyReader interface is not implemented to consume encrypted message",
 			pc.topic,
@@ -678,7 +678,7 @@ func (pc *partitionConsumer) decryptPayLoadIfNeeded(msgId *pb.MessageIdData, msg
 
 	if err != nil {
 		switch pc.options.consumerCryptoFailureAcrion {
-		case crypto.FAIL:
+		case crypto.FAIL_CONSUME:
 			pc.log.Warnf(
 				"[{}][{}][{}][{}] Message delivery failed since unable to decrypt incoming message",
 				pc.topic,

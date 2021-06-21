@@ -1041,8 +1041,7 @@ func TestProducerWithEncryption(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	// topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
-	topic := "test-topic-crypto-01"
+	topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
 	ctx := context.Background()
 
 	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())

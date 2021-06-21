@@ -329,7 +329,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			}
 
 			if opts.consumerCryptoFailureAcrion == 0 {
-				opts.consumerCryptoFailureAcrion = crypto.FAIL
+				opts.consumerCryptoFailureAcrion = crypto.FAIL_CONSUME
 			}
 
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)

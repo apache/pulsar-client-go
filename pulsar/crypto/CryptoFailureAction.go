@@ -13,7 +13,7 @@ const (
 
 const (
 	// FAIL this is the default option to fail consume messages until crypto succeeds.
-	FAIL ConsumerCryptoFailureAction = iota
+	FAIL_CONSUME ConsumerCryptoFailureAction = iota
 
 	// DISCARD  message is silently acknowledged and not delivered to the application
 	DISCARD
