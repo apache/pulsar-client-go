@@ -244,8 +244,8 @@ func (ls *lookupService) Close() {}
 
 const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
 const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
-const HTTPAdminServiceV1Format string = "/admin/%s/partitions?checkAllowAutoCreation=true"
-const HTTPAdminServiceV2Format string = "/admin/v2/%s/partitions?checkAllowAutoCreation=true"
+const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
+const HTTPAdminServiceV2Format string = "/admin/v2/%s/partitions"
 const HTTPTopicUnderNamespaceV1 string = "/admin/namespaces/%s/destinations?mode=%s"
 const HTTPTopicUnderNamespaceV2 string = "/admin/v2/namespaces/%s/topics?mode=%s"
 
@@ -291,7 +291,7 @@ func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
 	}
 
 	lookupData := &httpLookupData{}
-	err = h.httpClient.Get(basePath+GetTopicRestPath(topicName), lookupData)
+	err = h.httpClient.Get(basePath+GetTopicRestPath(topicName), lookupData, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -329,7 +329,7 @@ func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*Partitio
 
 	tMetadata := &PartitionedTopicMetadata{}
 
-	err = h.httpClient.Get(path, tMetadata)
+	err = h.httpClient.Get(path, tMetadata, map[string]string{"checkAllowAutoCreation": "true"})
 	if err != nil {
 		return nil, err
 	}
@@ -350,7 +350,7 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 
 	topics := []string{}
 
-	err := h.httpClient.Get(path, &topics)
+	err := h.httpClient.Get(path, &topics, nil)
 	if err != nil {
 		return nil, err
 	}
