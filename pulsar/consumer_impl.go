@@ -25,7 +25,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
@@ -323,13 +322,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				maxReconnectToBroker:        c.options.MaxReconnectToBroker,
 				keySharedPolicy:             c.options.KeySharedPolicy,
 				schema:                      c.options.Schema,
-				cryptoKeyReader:             c.options.CryptoKeyReader,
+				KeyReader:                   c.options.KeyReader,
 				messageCrypto:               c.options.MessageCrypto,
 				consumerCryptoFailureAcrion: c.options.ConsumerCryptoFailureAction,
-			}
-
-			if opts.consumerCryptoFailureAcrion == 0 {
-				opts.consumerCryptoFailureAcrion = crypto.FAIL_CONSUME
 			}
 
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)

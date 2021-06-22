@@ -1,3 +1,20 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 package crypto
 
 import (
@@ -59,7 +76,7 @@ func NewDefaultMessageCrypto(logCtx string, keyGenNeeded bool, logger log.Logger
 }
 
 // AddPublicKeyCipher encrypt data key using keyCrypto and cache
-func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyReader CryptoKeyReader) error {
+func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyReader KeyReader) error {
 	key, err := generateDataKey()
 	if err != nil {
 		return err
@@ -75,7 +92,7 @@ func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyReader C
 	return nil
 }
 
-func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader CryptoKeyReader) error {
+func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader KeyReader) error {
 	d.cipherLock.Lock()
 	defer d.cipherLock.Unlock()
 	if keyName == "" || keyReader == nil {
@@ -118,9 +135,13 @@ func (d *DefaultMessageCrypto) RemoveKeyCipher(keyName string) bool {
 	return true
 }
 
-// Encrypt encrypt payload using encryption keys and add encrypted data key to message metadata. Here data key is encrypted
+// Encrypt encrypt payload using encryption keys and add encrypted data key
+// to message metadata. Here data key is encrypted
 // using public key
-func (d *DefaultMessageCrypto) Encrypt(encKeys []string, keyReader CryptoKeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
+	keyReader KeyReader,
+	msgMetadata *pb.MessageMetadata,
+	payload []byte) ([]byte, error) {
 	d.encryptLock.Lock()
 	defer d.encryptLock.Unlock()
 	if len(encKeys) == 0 {
@@ -174,7 +195,9 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string, keyReader CryptoKeyRead
 			}
 		} else {
 			// we should never reach here
-			d.logger.Errorf("%s Failed to find encrypted Data key for key %s", d.logCtx, keyName)
+			msg := fmt.Sprintf("%s Failed to find encrypted Data key for key %s", d.logCtx, keyName)
+			d.logger.Errorf(msg)
+			return nil, fmt.Errorf(msg)
 		}
 
 	}
@@ -213,9 +236,12 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string, keyReader CryptoKeyRead
 	return gcm.Seal(nil, nonce, payload, nil), nil
 }
 
-// Decrypt decrypt the payload using decrypted data key. Here data key is read from from the message
+// Decrypt decrypt the payload using decrypted data key.
+// Here data key is read from from the message
 // metadata and  decrypted using private key.
-func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, keyReader CryptoKeyReader) ([]byte, error) {
+func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata,
+	payload []byte,
+	keyReader KeyReader) ([]byte, error) {
 	// if data key is present, attempt to derypt using the existing key
 	if d.dataKey != nil {
 		decryptedData, err := d.getKeyAndDecryptData(msgMetadata, payload)
@@ -246,7 +272,9 @@ func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata, payload 
 	return d.getKeyAndDecryptData(msgMetadata, payload)
 }
 
-func (d *DefaultMessageCrypto) decryptData(dataKeySecret []byte, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+func (d *DefaultMessageCrypto) decryptData(dataKeySecret []byte,
+	msgMetadata *pb.MessageMetadata,
+	payload []byte) ([]byte, error) {
 	// get nonce from message metadata
 	nonce := msgMetadata.GetEncryptionParam()
 
@@ -293,7 +321,10 @@ func (d *DefaultMessageCrypto) getKeyAndDecryptData(msgMetadata *pb.MessageMetad
 	return nil, nil
 }
 
-func (d *DefaultMessageCrypto) decryptDataKey(keyName string, encDatakey []byte, encKeymeta []*pb.KeyValue, keyReader CryptoKeyReader) bool {
+func (d *DefaultMessageCrypto) decryptDataKey(keyName string,
+	encDatakey []byte,
+	encKeymeta []*pb.KeyValue,
+	keyReader KeyReader) bool {
 	keyMeta := make(map[string]string)
 	for _, k := range encKeymeta {
 		keyMeta[k.GetKey()] = k.GetValue()

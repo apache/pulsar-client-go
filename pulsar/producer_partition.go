@@ -23,7 +23,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 
 	"github.com/gogo/protobuf/proto"
@@ -100,10 +99,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	logger := client.log.SubLogger(log.Fields{"topic": topic})
 
-	if options.ProducerCryptoFailureAction == 0 {
-		options.ProducerCryptoFailureAction = crypto.FAIL_SEND
-	}
-
 	p := &partitionProducer{
 		client:           client,
 		topic:            topic,
@@ -158,12 +153,12 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 func (p *partitionProducer) sheduleDataKeyUpdate() {
 	if p.options.EncryptionKeys != nil {
-		if p.options.MessageKeyCrypto != nil && p.options.CryptoKeyReader != nil {
+		if p.options.MessageKeyCrypto != nil && p.options.KeyReader != nil {
 
-			p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.CryptoKeyReader)
+			p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.KeyReader)
 			for t := range p.dataKeyTicker.C {
 				p.log.Infof("Refreshing data key :%v", t)
-				p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.CryptoKeyReader)
+				p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.KeyReader)
 			}
 
 		}
@@ -238,8 +233,9 @@ func (p *partitionProducer) grabCnx() error {
 		p,
 		p.log,
 		internal.UseEncryptionKeys(p.options.EncryptionKeys),
-		internal.UseCryptoKeyReader(p.options.CryptoKeyReader),
+		internal.UseKeyReader(p.options.KeyReader),
 		internal.UseMessageCrypto(p.options.MessageKeyCrypto),
+		internal.UseCryptoFailureAction(p.options.ProducerCryptoFailureAction),
 	)
 	if err != nil {
 		return err

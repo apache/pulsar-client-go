@@ -1052,7 +1052,7 @@ func TestProducerWithEncryption(t *testing.T) {
 		Topic:            topic,
 		DisableBatching:  false,
 		MessageKeyCrypto: msgCrypto,
-		CryptoKeyReader:  crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
+		KeyReader:        crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
 		Schema:           NewStringSchema(nil),
 		EncryptionKeys:   []string{"my-app.key"},
 	})
@@ -1068,4 +1068,36 @@ func TestProducerWithEncryption(t *testing.T) {
 			log.Fatal(err)
 		}
 	}
+}
+
+func TestProducuerWithEncryptionFailSendUnecrypted(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
+	ctx := context.Background()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                       topic,
+		DisableBatching:             false,
+		MessageKeyCrypto:            msgCrypto,
+		KeyReader:                   crypto.NewDefaultKeyReader("invalid-pub-key.pem", "pri-key.pem"),
+		Schema:                      NewStringSchema(nil),
+		EncryptionKeys:              []string{"my-app.key"},
+		ProducerCryptoFailureAction: crypto.Send,
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	_, err = producer.Send(ctx, &ProducerMessage{Value: "hello"})
+	assert.Nil(t, err)
 }

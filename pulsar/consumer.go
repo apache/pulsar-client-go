@@ -158,8 +158,8 @@ type ConsumerOptions struct {
 	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
-	// CryptoKeyReader to use for reader RSA/ECDSA private key
-	CryptoKeyReader crypto.CryptoKeyReader
+	// KeyReader to use for reader RSA/ECDSA private key
+	KeyReader crypto.KeyReader
 
 	// MessageCrypto to use for decrypting payload
 	MessageCrypto crypto.MessageCrypto

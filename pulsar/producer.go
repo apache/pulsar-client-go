@@ -172,8 +172,8 @@ type ProducerOptions struct {
 	// MessageKeyCrypto used to encrypt and decrypt the data and session keys
 	MessageKeyCrypto crypto.MessageCrypto
 
-	// CryptoKeyReader read RSA/ECDSA public/private key pairs
-	CryptoKeyReader crypto.CryptoKeyReader
+	// KeyReader read RSA/ECDSA public/private key pairs
+	KeyReader crypto.KeyReader
 
 	// ProducerCryptoFailureAction action to be taken on failure of message encryption
 	ProducerCryptoFailureAction crypto.ProducerCryptoFailureAction

@@ -102,43 +102,6 @@ func TestProducerConsumer(t *testing.T) {
 	}
 }
 
-func TestCosumerProduceUsingJava(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
-	assert.Nil(t, err)
-
-	consumerMessageCrypto, err := crypto.NewDefaultMessageCrypto("testing", false, plog.DefaultNopLogger())
-	assert.Nil(t, err)
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            "test-topic-crypto-02",
-		SubscriptionName: "my-sub-enc",
-		Type:             Exclusive,
-		CryptoKeyReader:  crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
-		MessageCrypto:    consumerMessageCrypto,
-		Schema:           NewStringSchema(nil),
-	})
-
-	assert.Nil(t, err)
-
-	var receivedMsg *string
-	for i := 0; i < 10; i++ {
-		msg, err := consumer.Receive(context.Background())
-		if err != nil {
-			log.Fatal(err)
-		}
-		err = msg.GetSchemaValue(&receivedMsg)
-		assert.Nil(t, err)
-
-		fmt.Printf("Received : %v\n", *receivedMsg)
-
-		expectMsg := fmt.Sprintf("hello-%d", i)
-		assert.Equal(t, []byte(expectMsg), msg.Payload())
-		// ack message
-		consumer.Ack(msg)
-	}
-}
-
 func TestProducerConsumerWithEncryption(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -158,7 +121,7 @@ func TestProducerConsumerWithEncryption(t *testing.T) {
 		Topic:            topic,
 		SubscriptionName: "my-sub-enc",
 		Type:             Exclusive,
-		CryptoKeyReader:  crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
+		KeyReader:        crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
 		MessageCrypto:    consumerMessageCrypto,
 	})
 
@@ -174,7 +137,7 @@ func TestProducerConsumerWithEncryption(t *testing.T) {
 		DisableBatching:  false,
 		EncryptionKeys:   []string{"my-app.key"},
 		MessageKeyCrypto: producerMsgCrypto,
-		CryptoKeyReader:  crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
+		KeyReader:        crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -199,7 +162,7 @@ func TestProducerConsumerWithEncryption(t *testing.T) {
 			log.Fatal(err)
 		}
 
-		fmt.Printf("Received : %v\n", string(msg.Payload()))
+		fmt.Printf("Received : [mid : %v], [payload : %v]\n", msg.ID(), string(msg.Payload()))
 
 		expectMsg := fmt.Sprintf("hello-%d", i)
 		expectProperties := map[string]string{
@@ -209,6 +172,77 @@ func TestProducerConsumerWithEncryption(t *testing.T) {
 		assert.Equal(t, "pulsar", msg.Key())
 		assert.Equal(t, expectProperties, msg.Properties())
 
+		// ack message
+		consumer.Ack(msg)
+	}
+}
+
+func TestProducerConsumerWithEncryptionRecieveOnDecryptFail(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-enc-%v", time.Now().Nanosecond())
+	ctx := context.Background()
+
+	// create consumer
+	consumerMessageCrypto, err := crypto.NewDefaultMessageCrypto("testing", false, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub-enc",
+		Type:                        Exclusive,
+		KeyReader:                   crypto.NewDefaultKeyReader("pub-key.pem", "invalid-pri-key.pem"),
+		MessageCrypto:               consumerMessageCrypto,
+		ConsumerCryptoFailureAction: crypto.Consume,
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producerMsgCrypto, err := crypto.NewDefaultMessageCrypto("testing-producer", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:            topic,
+		DisableBatching:  true,
+		EncryptionKeys:   []string{"my-app.key"},
+		MessageKeyCrypto: producerMsgCrypto,
+		KeyReader:        crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		p := []byte(fmt.Sprintf("hello-%d", i))
+		mid, err := producer.Send(ctx, &ProducerMessage{
+			Payload: p,
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
+		})
+		if err != nil {
+			log.Fatal(err)
+		} else {
+			fmt.Printf("sent : [mid:%v], [payload : %v]\n", mid, p)
+		}
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+		fmt.Printf("Received : [mid : %v], [payload : %v]\n", msg.ID(), msg.Payload())
+		assert.NotEmpty(t, msg.GetEncryptionContext())
 		// ack message
 		consumer.Ack(msg)
 	}
@@ -233,7 +267,7 @@ func TestConsumerCompressionWithEncryption(t *testing.T) {
 		Topic:            topicName,
 		CompressionType:  LZ4,
 		EncryptionKeys:   []string{"enc-compress-app.key"},
-		CryptoKeyReader:  crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
+		KeyReader:        crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
 		MessageKeyCrypto: producerMsgCrypto,
 	})
 
@@ -247,7 +281,7 @@ func TestConsumerCompressionWithEncryption(t *testing.T) {
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: "sub-1",
-		CryptoKeyReader:  crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
+		KeyReader:        crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
 		MessageCrypto:    consumerMessageCrypto,
 	})
 
@@ -373,7 +407,7 @@ func TestBatchMessageReceiveWithCompressionAndEcnryption(t *testing.T) {
 		DisableBatching:     false,
 		CompressionType:     LZ4,
 		MessageKeyCrypto:    producerMsgCrypto,
-		CryptoKeyReader:     crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
+		KeyReader:           crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
 		EncryptionKeys:      []string{"batch-encryption-app.key"},
 	})
 	assert.Nil(t, err)
@@ -387,7 +421,7 @@ func TestBatchMessageReceiveWithCompressionAndEcnryption(t *testing.T) {
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: subName,
-		CryptoKeyReader:  crypto.NewDefaultCryptoKeyReader("pub-key.pem", "pri-key.pem"),
+		KeyReader:        crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
 		MessageCrypto:    consumerMessageCrypto,
 	})
 

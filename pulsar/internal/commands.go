@@ -221,22 +221,27 @@ func serializeBatchWithEncryption(wb Buffer,
 	msgMetadata *pb.MessageMetadata,
 	uncompressedPayload Buffer,
 	compressionProvider compression.Provider,
-	cryptoKeyReader crypto.CryptoKeyReader,
+	KeyReader crypto.KeyReader,
 	encryptionKeys []string,
 	msgCrypto crypto.MessageCrypto,
 	cryptoFailureAction crypto.ProducerCryptoFailureAction,
-) error {
+) {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
 
 	// compress the payload
 	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
 
-	encryptedPayload := encryptPayload(msgMetadata, msgCrypto, cryptoKeyReader, encryptionKeys, compressedPayload, cryptoFailureAction)
+	encryptedPayload := encryptPayload(msgMetadata,
+		msgCrypto,
+		KeyReader,
+		encryptionKeys,
+		compressedPayload,
+		cryptoFailureAction)
 
-	// there was a error in encrypting the payload and crypto failute action is set to crypto.FAIL_SEND
+	// there was a error in encrypting the payload and crypto failute action is set to crypto.FailSend
 	if encryptedPayload == nil {
-		return fmt.Errorf("error in encrypting the payload and message is not sent")
+		panic(fmt.Errorf("error in encrypting the payload and message is not sent"))
 	}
 
 	compressedPayload = encryptedPayload
@@ -281,35 +286,34 @@ func serializeBatchWithEncryption(wb Buffer,
 	// Set Sizes and checksum in the fixed-size header
 	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
-	return nil
 }
 
 func encryptPayload(msgMetadata *pb.MessageMetadata,
 	msgCrypto crypto.MessageCrypto,
-	cryptoKeyReader crypto.CryptoKeyReader,
+	KeyReader crypto.KeyReader,
 	encryptionKeys []string,
 	compressedPayload []byte,
 	cryptoFailureAction crypto.ProducerCryptoFailureAction,
 ) []byte {
 
 	// encryption is enabled but KeyReader interface is not implemented
-	if cryptoKeyReader == nil {
+	if KeyReader == nil {
 		// crypto failure action is set to send
 		// so send unencrypted message
-		if cryptoFailureAction == crypto.SEND {
+		if cryptoFailureAction == crypto.Send {
 			return compressedPayload
 		}
 		return nil
 	}
 
 	// encrypt payload
-	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, cryptoKeyReader, msgMetadata, compressedPayload)
+	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, KeyReader, msgMetadata, compressedPayload)
 
 	if err != nil {
-		// error occured in encrypting the message
+		// error occurred in encrypting the message
 		// crypto failure action is set to send
 		// so send unencrypted message
-		if cryptoFailureAction == crypto.SEND {
+		if cryptoFailureAction == crypto.Send {
 			return compressedPayload
 		}
 		return nil

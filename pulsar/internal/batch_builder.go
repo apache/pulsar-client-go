@@ -99,7 +99,7 @@ type batchContainer struct {
 
 	messageCrypto crypto.MessageCrypto
 
-	cryptoKeyReader crypto.CryptoKeyReader
+	KeyReader crypto.KeyReader
 
 	producerCryptoFailureAction crypto.ProducerCryptoFailureAction
 }
@@ -173,10 +173,10 @@ func UseMessageCrypto(msgCrypto crypto.MessageCrypto) func(*batchContainer) {
 	}
 }
 
-// UseCryptoKeyReader CryptoKeyReader to use
-func UseCryptoKeyReader(cryptoKeyReader crypto.CryptoKeyReader) func(*batchContainer) {
+// UseKeyReader KeyReader to use
+func UseKeyReader(KeyReader crypto.KeyReader) func(*batchContainer) {
 	return func(bc *batchContainer) {
-		bc.cryptoKeyReader = cryptoKeyReader
+		bc.KeyReader = KeyReader
 	}
 }
 
@@ -272,19 +272,16 @@ func (bc *batchContainer) Flush() (
 
 	// encryption is enabled
 	if bc.encryptionKeys != nil {
-		err := serializeBatchWithEncryption(buffer,
+		serializeBatchWithEncryption(buffer,
 			bc.cmdSend,
 			bc.msgMetadata,
 			bc.buffer,
 			bc.compressionProvider,
-			bc.cryptoKeyReader,
+			bc.KeyReader,
 			bc.encryptionKeys,
 			bc.messageCrypto,
 			bc.producerCryptoFailureAction,
 		)
-		if err != nil {
-			bc.log.Errorf("failed to send messages due to encryption error : %v", err)
-		}
 	} else {
 		serializeBatch(
 			buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
