@@ -894,6 +894,7 @@ func (pc *partitionConsumer) reconnectToBroker() bool {
 		}
 	}
 
+	pc.log.Warn("Reached maximum number of reconnection attempts")
 	return false
 }
 
