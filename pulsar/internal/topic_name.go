@@ -20,6 +20,7 @@ package internal
 import (
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 )
@@ -29,6 +30,7 @@ type TopicName struct {
 	Domain    string
 	Tenant    string
 	Namespace string
+	Topic     string
 	Name      string
 	Partition int
 }
@@ -86,9 +88,11 @@ func ParseTopicName(topic string) (*TopicName, error) {
 	if len(parts) == 3 {
 		// New topic name without cluster name
 		tn.Namespace = parts[0] + "/" + parts[1]
+		tn.Topic = parts[2]
 	} else if len(parts) == 4 {
 		// Legacy topic name that includes cluster name
 		tn.Namespace = fmt.Sprintf("%s/%s/%s", parts[0], parts[1], parts[2])
+		tn.Topic = parts[3]
 	} else {
 		return nil, errors.New("Invalid topic name: " + topic)
 	}
@@ -119,4 +123,15 @@ func getPartitionIndex(topic string) (int, error) {
 		return strconv.Atoi(topic[idx:])
 	}
 	return -1, nil
+}
+
+func IsV2TopicName(tn *TopicName) bool {
+	parts := strings.Split(tn.Namespace, "/")
+	// Legacy topic name that includes cluster name
+	// tn.Namespace = fmt.Sprintf("%s/%s/%s", parts[0], parts[1], parts[2])
+	return len(parts) != 3
+}
+
+func GetTopicRestPath(tn *TopicName) string {
+	return fmt.Sprintf("%s/%s/%s", tn.Domain, tn.Namespace, url.QueryEscape(tn.Topic))
 }

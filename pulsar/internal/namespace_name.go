@@ -15,48 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package auth
+package internal
 
-import (
-	"crypto/tls"
-	"net/http"
-)
+import "strings"
 
-type disabled struct{}
-
-// NewAuthDisabled return a interface of Provider
-func NewAuthDisabled() Provider {
-	return &disabled{}
-}
-
-func (disabled) Init() error {
-	return nil
-}
-
-func (disabled) GetData() ([]byte, error) {
-	return nil, nil
-}
-
-func (disabled) Name() string {
-	return ""
-}
-
-func (disabled) GetTLSCertificate() (*tls.Certificate, error) {
-	return nil, nil
-}
-
-func (disabled) Close() error {
-	return nil
-}
-
-func (d disabled) RoundTrip(req *http.Request) (*http.Response, error) {
-	return nil, nil
-}
-
-func (d disabled) Transport() http.RoundTripper {
-	return nil
-}
-
-func (d disabled) WithTransport(tripper http.RoundTripper) error {
-	return nil
+func IsV2Namespace(namespace string) bool {
+	parts := strings.Split(namespace, "/")
+	// Legacy namespace name that includes cluster name
+	return len(parts) == 2
 }

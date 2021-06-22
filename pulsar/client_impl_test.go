@@ -28,6 +28,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	"github.com/stretchr/testify/assert"
 )
@@ -381,8 +383,26 @@ func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 
 	// fetch from namespace that does not exist
 	name := generateRandomName()
-	topics, err := ci.namespaceTopics(fmt.Sprintf("%s/%s", name, name))
+	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("%s/%s", name, name), internal.Persistent)
 	assert.Nil(t, err)
+	assert.Equal(t, 0, len(topics))
+}
+
+func TestNamespaceTopicsNamespaceDoesNotExitWebURL(t *testing.T) {
+	c, err := NewClient(ClientOptions{
+		URL: webServiceURL,
+	})
+	if err != nil {
+		t.Errorf("failed to create client error: %+v", err)
+		return
+	}
+	defer c.Close()
+	ci := c.(*client)
+
+	// fetch from namespace that does not exist
+	name := generateRandomName()
+	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("%s/%s", name, name), internal.Persistent)
+	assert.NotNil(t, err)
 	assert.Equal(t, 0, len(topics))
 }
 
@@ -421,7 +441,7 @@ func TestNamespaceTopics(t *testing.T) {
 	defer c.Close()
 	ci := c.(*client)
 
-	topics, err := ci.namespaceTopics(namespace)
+	topics, err := ci.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -442,7 +462,70 @@ func TestNamespaceTopics(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	topics, err = ci.namespaceTopics(namespace)
+	topics, err = ci.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 2, len(topics))
+}
+
+func TestNamespaceTopicsWebURL(t *testing.T) {
+	name := generateRandomName()
+	namespace := fmt.Sprintf("public/%s", name)
+	namespaceURL := fmt.Sprintf("admin/v2/namespaces/%s", namespace)
+	err := httpPut(namespaceURL, anonymousNamespacePolicy())
+	if err != nil {
+		t.Fatal()
+	}
+	defer func() {
+		_ = httpDelete(fmt.Sprintf("admin/v2/namespaces/%s", namespace))
+	}()
+
+	// create topics
+	topic1 := fmt.Sprintf("%s/topic-1", namespace)
+	if err := httpPut("admin/v2/persistent/"+topic1, nil); err != nil {
+		t.Fatal(err)
+	}
+	topic2 := fmt.Sprintf("%s/topic-2", namespace)
+	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = httpDelete("admin/v2/persistent/"+topic1, "admin/v2/persistent/"+topic2)
+	}()
+
+	c, err := NewClient(ClientOptions{
+		URL: webServiceURL,
+	})
+	if err != nil {
+		t.Errorf("failed to create client error: %+v", err)
+		return
+	}
+	defer c.Close()
+	ci := c.(*client)
+
+	topics, err := ci.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, 2, len(topics))
+
+	// add a non-persistent topic
+	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	topics, err = ci.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -513,4 +596,422 @@ func TestRetryWithMultipleHosts(t *testing.T) {
 	err = consumer.Unsubscribe()
 	assert.Nil(t, err)
 
+}
+
+func TestHTTPSConnectionCAError(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:              webServiceURLTLS,
+		OperationTimeout: 5 * time.Second,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	// The client should fail because it wouldn't trust the
+	// broker certificate
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSInsecureConnection(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                        webServiceURLTLS,
+		TLSAllowInsecureConnection: true,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSConnection(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSConnectionHostNameVerification(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSConnectionHostNameVerificationError(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   "https://127.0.0.1:8443",
+		OperationTimeout:      5 * time.Second,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPTopicPartitions(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: webServiceURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// Create topic with 5 partitions
+	err = httpPut("admin/v2/persistent/public/default/TestHTTPTopicPartitions/partitions", 5)
+	assert.Nil(t, err)
+
+	partitionedTopic := "persistent://public/default/TestHTTPTopicPartitions"
+
+	partitions, err := client.TopicPartitions(partitionedTopic)
+	assert.Nil(t, err)
+	assert.Equal(t, len(partitions), 5)
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, partitions[i],
+			fmt.Sprintf("%s-partition-%d", partitionedTopic, i))
+	}
+
+	// Non-Partitioned topic
+	topic := "persistent://public/default/TestHTTPTopicPartitions-nopartitions"
+
+	partitions, err = client.TopicPartitions(topic)
+	assert.Nil(t, err)
+	assert.Equal(t, len(partitions), 1)
+	assert.Equal(t, partitions[0], topic)
+}
+
+func TestRetryWithMultipleHttpHosts(t *testing.T) {
+	// Multi hosts included an unreached port and the actual port for verify retry logic
+	client, err := NewClient(ClientOptions{
+		URL: "http://localhost:8081,localhost:8080",
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/retry-multiple-hosts-" + generateRandomName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	var msgIDs [][]byte
+
+	for i := 0; i < 10; i++ {
+		if msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			assert.Nil(t, err)
+		} else {
+			assert.NotNil(t, msgID)
+			msgIDs = append(msgIDs, msgID.Serialize())
+		}
+	}
+
+	assert.Equal(t, 10, len(msgIDs))
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "retry-multi-hosts-sub",
+		Type:                        Shared,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		assert.Nil(t, err)
+		assert.Contains(t, msgIDs, msg.ID().Serialize())
+		consumer.Ack(msg)
+	}
+
+	err = consumer.Unsubscribe()
+	assert.Nil(t, err)
+
+}
+
+func TestHTTPSAuthError(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSAuth(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
+	})
+	assert.NoError(t, err)
+	t.Logf("TestHTTPSAuth client %v", client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+	t.Logf("TestHTTPSAuth err %v", err)
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSAuthWithCertSupplier(t *testing.T) {
+	supplier := func() (*tls.Certificate, error) {
+		cert, err := tls.LoadX509KeyPair(tlsClientCertPath, tlsClientKeyPath)
+		return &cert, err
+	}
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        NewAuthenticationFromTLSCertSupplier(supplier),
+	})
+	assert.NoError(t, err)
+	t.Logf("TestHTTPSAuthWithCertSupplier client %v", client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+	t.Logf("TestHTTPSAuthWithCertSupplier err %v", err)
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPTokenAuth(t *testing.T) {
+	token, err := ioutil.ReadFile(tokenFilePath)
+	assert.NoError(t, err)
+
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: NewAuthenticationToken(string(token)),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPTokenAuthWithSupplier(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: webServiceURL,
+		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
+			token, err := ioutil.ReadFile(tokenFilePath)
+			if err != nil {
+				return "", err
+			}
+
+			return string(token), nil
+		}),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPTokenAuthFromFile(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:            serviceURL,
+		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSTokenAuthFromFile(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+		Authentication:        NewAuthenticationTokenFromFile(tokenFilePath),
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPOAuth2Auth(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]string{
+		auth.ConfigParamType:      auth.ConfigParamTypeClientCredentials,
+		auth.ConfigParamIssuerURL: server.URL,
+		auth.ConfigParamClientID:  "client-id",
+		auth.ConfigParamAudience:  "audience",
+		auth.ConfigParamKeyFile:   kf,
+	}
+
+	oauth := NewAuthenticationOAuth2(params)
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: oauth,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSOAuth2Auth(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]string{
+		auth.ConfigParamType:      auth.ConfigParamTypeClientCredentials,
+		auth.ConfigParamIssuerURL: server.URL,
+		auth.ConfigParamClientID:  "client-id",
+		auth.ConfigParamAudience:  "audience",
+		auth.ConfigParamKeyFile:   kf,
+	}
+
+	oauth := NewAuthenticationOAuth2(params)
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+		Authentication:        oauth,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPOAuth2AuthFailed(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	params := map[string]string{
+		auth.ConfigParamType:      auth.ConfigParamTypeClientCredentials,
+		auth.ConfigParamIssuerURL: "error-url",
+		auth.ConfigParamClientID:  "client-id",
+		auth.ConfigParamAudience:  "audience",
+	}
+
+	oauth := NewAuthenticationOAuth2(params)
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: oauth,
+	})
+	assert.NoError(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	assert.Error(t, err)
+	assert.Nil(t, producer)
+
+	client.Close()
 }

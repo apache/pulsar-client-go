@@ -15,48 +15,16 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package auth
+package internal
 
 import (
-	"crypto/tls"
-	"net/http"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
-type disabled struct{}
-
-// NewAuthDisabled return a interface of Provider
-func NewAuthDisabled() Provider {
-	return &disabled{}
-}
-
-func (disabled) Init() error {
-	return nil
-}
-
-func (disabled) GetData() ([]byte, error) {
-	return nil, nil
-}
-
-func (disabled) Name() string {
-	return ""
-}
-
-func (disabled) GetTLSCertificate() (*tls.Certificate, error) {
-	return nil, nil
-}
-
-func (disabled) Close() error {
-	return nil
-}
-
-func (d disabled) RoundTrip(req *http.Request) (*http.Response, error) {
-	return nil, nil
-}
-
-func (d disabled) Transport() http.RoundTripper {
-	return nil
-}
-
-func (d disabled) WithTransport(tripper http.RoundTripper) error {
-	return nil
+func TestIsV2Namespace(t *testing.T) {
+	assert.True(t, IsV2Namespace("tenant/default"))
+	assert.False(t, IsV2Namespace("tenant/cluster/default"))
+	assert.False(t, IsV2Namespace("default"))
 }

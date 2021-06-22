@@ -15,48 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package auth
+// +build !go1.12
 
-import (
-	"crypto/tls"
-	"net/http"
-)
+package internal
 
-type disabled struct{}
+import "net/http"
 
-// NewAuthDisabled return a interface of Provider
-func NewAuthDisabled() Provider {
-	return &disabled{}
-}
+func CloseIdleConnections(c *http.Client) {
+	type closeIdler interface {
+		CloseIdleConnections()
+	}
 
-func (disabled) Init() error {
-	return nil
-}
-
-func (disabled) GetData() ([]byte, error) {
-	return nil, nil
-}
-
-func (disabled) Name() string {
-	return ""
-}
-
-func (disabled) GetTLSCertificate() (*tls.Certificate, error) {
-	return nil, nil
-}
-
-func (disabled) Close() error {
-	return nil
-}
-
-func (d disabled) RoundTrip(req *http.Request) (*http.Response, error) {
-	return nil, nil
-}
-
-func (d disabled) Transport() http.RoundTripper {
-	return nil
-}
-
-func (d disabled) WithTransport(tripper http.RoundTripper) error {
-	return nil
+	if tr, ok := c.Transport.(closeIdler); ok {
+		tr.CloseIdleConnections()
+	}
 }
