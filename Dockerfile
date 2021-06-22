@@ -27,15 +27,9 @@ COPY --from=pulsar /pulsar /pulsar
 
 ### Add test scripts
 COPY integration-tests/certs /pulsar/certs
+COPY integration-tests/tokens /pulsar/tokens
 COPY integration-tests/standalone.conf /pulsar/conf
 COPY integration-tests/client.conf /pulsar/conf
 COPY pulsar-test-service-start.sh /pulsar/bin
 COPY pulsar-test-service-stop.sh /pulsar/bin
 COPY run-ci.sh /pulsar/bin
-
-RUN mkdir /pulsar/tokens
-RUN /pulsar/bin/pulsar tokens create-secret-key --output /pulsar/tokens/secret.key
-RUN /pulsar/bin/pulsar tokens create \
-                --subject token-principal \
-                --secret-key file:///pulsar/tokens/secret.key \
-                > /pulsar/tokens/token.txt
