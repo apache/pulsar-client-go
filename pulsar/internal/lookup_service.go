@@ -325,8 +325,6 @@ func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*Partitio
 
 	path := fmt.Sprintf(format, GetTopicRestPath(topicName))
 
-	h.log.Infof("Fetch topic{%s} partitioned metadata %s", topic, path)
-
 	tMetadata := &PartitionedTopicMetadata{}
 
 	err = h.httpClient.Get(path, tMetadata, map[string]string{"checkAllowAutoCreation": "true"})
