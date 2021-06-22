@@ -291,7 +291,7 @@ func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
 	}
 
 	lookupData := &httpLookupData{}
-	err = h.httpClient.Get(basePath+GetTopicRestPath(topicName), lookupData)
+	err = h.httpClient.Get(basePath+GetTopicRestPath(topicName), lookupData, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -327,7 +327,7 @@ func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*Partitio
 
 	tMetadata := &PartitionedTopicMetadata{}
 
-	err = h.httpClient.Get(path, tMetadata)
+	err = h.httpClient.Get(path, tMetadata, map[string]string{"checkAllowAutoCreation": "true"})
 	if err != nil {
 		return nil, err
 	}
@@ -348,7 +348,7 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 
 	topics := []string{}
 
-	err := h.httpClient.Get(path, &topics)
+	err := h.httpClient.Get(path, &topics, nil)
 	if err != nil {
 		return nil, err
 	}
