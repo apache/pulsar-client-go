@@ -27,6 +27,7 @@ IMAGE_NAME=pulsar-client-go-test:latest
 
 GO_VERSION=${1:-1.12}
 docker rmi --force ${IMAGE_NAME} || true
+docker rmi --force apachepulsar/pulsar:latest || true
 docker build -t ${IMAGE_NAME} --build-arg GO_VERSION="golang:${GO_VERSION}" .
 
 docker run -i -v ${PWD}:/pulsar-client-go ${IMAGE_NAME} \
