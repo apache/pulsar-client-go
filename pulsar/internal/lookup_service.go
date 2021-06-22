@@ -244,8 +244,8 @@ func (ls *lookupService) Close() {}
 
 const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
 const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
-const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
-const HTTPAdminServiceV2Format string = "/admin/v2/%s/partitions"
+const HTTPAdminServiceV1Format string = "/admin/%s/partitions?checkAllowAutoCreation=true"
+const HTTPAdminServiceV2Format string = "/admin/v2/%s/partitions?checkAllowAutoCreation=true"
 const HTTPTopicUnderNamespaceV1 string = "/admin/namespaces/%s/destinations?mode=%s"
 const HTTPTopicUnderNamespaceV2 string = "/admin/v2/namespaces/%s/topics?mode=%s"
 
