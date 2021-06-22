@@ -347,7 +347,7 @@ func TestTopicPartitions(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	// Create topic
+	// Create topic with 5 partitions
 	err = httpPut("admin/v2/persistent/public/default/TestGetTopicPartitions/partitions", 5)
 	assert.Nil(t, err)
 
@@ -624,14 +624,8 @@ func TestHTTPSInsecureConnection(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	topicName := newTopicName()
-
-	// Create topic
-	err = httpPut(fmt.Sprintf("admin/v2/persistent/public/default/%s", topicName), nil)
-	assert.Nil(t, err)
-
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
+		Topic: newTopicName(),
 	})
 
 	assert.NoError(t, err)
@@ -647,14 +641,8 @@ func TestHTTPSConnection(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	topicName := newTopicName()
-
-	// Create topic
-	err = httpPut(fmt.Sprintf("admin/v2/persistent/public/default/%s", topicName), nil)
-	assert.Nil(t, err)
-
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
+		Topic: newTopicName(),
 	})
 
 	assert.NoError(t, err)
@@ -671,14 +659,8 @@ func TestHTTPSConnectionHostNameVerification(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	topicName := newTopicName()
-
-	// Create topic with 5 partitions
-	err = httpPut(fmt.Sprintf("admin/v2/persistent/public/default/%s", topicName), nil)
-	assert.Nil(t, err)
-
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
+		Topic: newTopicName(),
 	})
 
 	assert.NoError(t, err)
@@ -729,9 +711,6 @@ func TestHTTPTopicPartitions(t *testing.T) {
 	}
 
 	// Non-Partitioned topic
-	err = httpPut("admin/v2/persistent/public/default/TestHTTPTopicPartitions-nopartitions", nil)
-	assert.Nil(t, err)
-
 	topic := "persistent://public/default/TestHTTPTopicPartitions-nopartitions"
 
 	partitions, err = client.TopicPartitions(topic)
@@ -749,12 +728,8 @@ func TestRetryWithMultipleHttpHosts(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "retry-multiple-hosts-" + generateRandomName()
+	topic := "persistent://public/default/retry-multiple-hosts-" + generateRandomName()
 
-	err = httpPut("admin/v2/persistent/public/default/"+topic, nil)
-	assert.Nil(t, err)
-
-	topic = "persistent://public/default/" + topic
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 	})
