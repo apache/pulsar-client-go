@@ -19,10 +19,12 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 
 	"github.com/gogo/protobuf/proto"
@@ -127,7 +129,28 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		p.producerName = options.Name
 	}
 
-	err := p.grabCnx()
+	// add default message crypto if not provided
+	if len(options.EncryptionKeys) > 0 && options.MessageKeyCrypto == nil {
+		logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
+		messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
+		if err != nil {
+			logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abondoned")
+			return nil, err
+		}
+		p.options.MessageKeyCrypto = messageCrypto
+	}
+
+	// generate and shedule data key generation
+	err := p.updateDataKey()
+	// error generating the data key, do not create producer
+	if err != nil {
+		logger.WithError(err).Error("Unable to generate data key. Producer creation is abondoned")
+		return nil, err
+	}
+
+	go p.sheduleDataKeyUpdate()
+
+	err = p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
 		return nil, err
@@ -146,23 +169,27 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	go p.runEventsLoop()
 
-	go p.sheduleDataKeyUpdate()
-
 	return p, nil
 }
 
 func (p *partitionProducer) sheduleDataKeyUpdate() {
-	if p.options.EncryptionKeys != nil {
-		if p.options.MessageKeyCrypto != nil && p.options.KeyReader != nil {
-
-			p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.KeyReader)
-			for t := range p.dataKeyTicker.C {
-				p.log.Infof("Refreshing data key :%v", t)
-				p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.KeyReader)
-			}
-
+	for t := range p.dataKeyTicker.C {
+		p.log.Infof("Refreshing data key :%v", t)
+		err := p.updateDataKey()
+		if err != nil {
+			p.log.Errorf("Error refreshing data key : %v", err)
 		}
 	}
+}
+
+func (p *partitionProducer) updateDataKey() error {
+	if len(p.options.EncryptionKeys) > 0 {
+		if p.options.KeyReader != nil && p.options.MessageKeyCrypto != nil {
+			return p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.KeyReader)
+		}
+		return fmt.Errorf("failed to update data key. KeyReader or MessageCrypto interface is not implemented")
+	}
+	return nil
 }
 
 func (p *partitionProducer) grabCnx() error {

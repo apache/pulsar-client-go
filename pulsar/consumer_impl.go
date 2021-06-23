@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
@@ -304,6 +305,17 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			} else {
 				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
+
+			// use default message crypto if not already created
+			if c.options.KeyReader != nil && c.options.MessageCrypto == nil {
+				logCtx := fmt.Sprintf("[%v] [%v]", pt, c.options.SubscriptionName)
+				messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, false, c.log)
+				if err != nil {
+					c.log.Error(err)
+				}
+				c.options.MessageCrypto = messageCrypto
+			}
+
 			opts := &partitionConsumerOpts{
 				topic:                       pt,
 				consumerName:                c.consumerName,
