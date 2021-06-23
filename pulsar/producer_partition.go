@@ -134,7 +134,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
 		messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
 		if err != nil {
-			logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abondoned")
+			logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
 			return nil, err
 		}
 		p.options.MessageKeyCrypto = messageCrypto
@@ -144,7 +144,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	err := p.updateDataKey()
 	// error generating the data key, do not create producer
 	if err != nil {
-		logger.WithError(err).Error("Unable to generate data key. Producer creation is abondoned")
+		logger.WithError(err).Error("Unable to generate data key. Producer creation is abandoned")
 		return nil, err
 	}
 

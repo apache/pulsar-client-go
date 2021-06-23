@@ -635,6 +635,10 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) EncryptionContext {
 		BatchSize:        int(msgMeta.GetNumMessagesInBatch()),
 	}
 
+	if msgMeta.Compression != nil {
+		encCtx.CompressionType = CompressionType(*msgMeta.Compression)
+	}
+
 	kMap := map[string]EncryptionKey{}
 	for _, k := range msgMeta.GetEncryptionKeys() {
 		metaMap := map[string]string{}
