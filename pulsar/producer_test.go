@@ -930,6 +930,53 @@ func TestSendTimeout(t *testing.T) {
 	makeHTTPCall(t, http.MethodDelete, quotaURL, "")
 }
 
+func TestSendTimeoutWithUnlimitedRetry(t *testing.T) {
+	quotaURL := adminURL + "/admin/v2/namespaces/public/default/backlogQuota"
+	quotaFmt := `{"limit": "%d", "policy": "producer_request_hold"}`
+	makeHTTPCall(t, http.MethodPost, quotaURL, fmt.Sprintf(quotaFmt, 10*1024))
+
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "send_timeout_sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close() // subscribe but do nothing
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:       topicName,
+		SendTimeout: 2 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	for i := 0; i < 10; i++ {
+		id, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		})
+		assert.Nil(t, err)
+		assert.NotNil(t, id)
+	}
+
+	// waiting for the backlog check
+	time.Sleep((5 + 1) * time.Second)
+
+	id, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	log.Printf("Error in send : %v", err)
+	assert.NotNil(t, err)
+	assert.Nil(t, id)
+
+	makeHTTPCall(t, http.MethodDelete, quotaURL, "")
+}
+
 type noopProduceInterceptor struct{}
 
 func (noopProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {}

@@ -70,6 +70,7 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	eventsChan      chan interface{}
 	connectClosedCh chan connectionClosed
+	doneCh          chan struct{}
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
@@ -106,6 +107,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, maxPendingMessages),
 		connectClosedCh:  make(chan connectionClosed, 10),
+		doneCh:           make(chan struct{}),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -292,6 +294,18 @@ func (p *partitionProducer) reconnectToBroker() {
 }
 
 func (p *partitionProducer) runEventsLoop() {
+	go func() {
+		for {
+			select {
+			case <-p.doneCh:
+				return
+			case <-p.connectClosedCh:
+				p.log.Debug("runEventsLoop will reconnect")
+				p.reconnectToBroker()
+			}
+		}
+	}()
+
 	for {
 		select {
 		case i := <-p.eventsChan:
@@ -304,8 +318,6 @@ func (p *partitionProducer) runEventsLoop() {
 				p.internalClose(v)
 				return
 			}
-		case <-p.connectClosedCh:
-			p.reconnectToBroker()
 		case <-p.batchFlushTicker.C:
 			if p.batchBuilder.IsMultiBatches() {
 				p.internalFlushCurrentBatches()
@@ -500,6 +512,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 			pi.Lock()
 			if nextWaiting := diff(pi.sentAt); nextWaiting > 0 {
 				// current and subsequent items not timeout yet, stop iterating
+				p.pendingQueue.Put(item)
 				t.Reset(nextWaiting)
 				pi.Unlock()
 				break
@@ -735,6 +748,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.WithError(err).Warn("Failed to close batch builder")
 	}
 
+	close(p.doneCh)
 	p.setProducerState(producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
