@@ -30,11 +30,11 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
 	"github.com/gogo/protobuf/proto"
 	"github.com/google/uuid"
+	"github.com/pierrec/lz4"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -2704,16 +2704,13 @@ func TestConsumerEncryptionWithoutKeyReader(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, decryptedPayload)
 
-	// try to uncompress
-	pc := &partitionConsumer{
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
-	}
-
-	uncompressedPayload, err := pc.Decompress(&messageMetaData, internal.NewBufferWrapper(decryptedPayload))
+	// try to uncompress payload
+	uncompressedPayload := make([]byte, uncompressedSize)
+	s, err := lz4.UncompressBlock(decryptedPayload, uncompressedPayload)
 	assert.Nil(t, err)
-	assert.NotNil(t, uncompressedPayload)
+	assert.Equal(t, uncompressedSize, uint32(s))
 
-	buffer := internal.NewBufferWrapper(uncompressedPayload.ReadableSlice())
+	buffer := internal.NewBufferWrapper(uncompressedPayload)
 
 	if batchSize > 0 {
 		size := buffer.ReadUint32()

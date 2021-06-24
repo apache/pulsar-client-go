@@ -1033,7 +1033,7 @@ func TestProducerWithInterceptors(t *testing.T) {
 	assert.Equal(t, 10, metric.ackn)
 }
 
-func TestProducerWithEncryption(t *testing.T) {
+func TestProducerWithRSAEncryption(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -1052,7 +1052,7 @@ func TestProducerWithEncryption(t *testing.T) {
 		Topic:            topic,
 		DisableBatching:  false,
 		MessageKeyCrypto: msgCrypto,
-		KeyReader:        crypto.NewDefaultKeyReader("pub-key.pem", "pri-key.pem"),
+		KeyReader:        crypto.NewDefaultKeyReader("pub-key-rsa.pem", "pri-key-rsa.pem"),
 		Schema:           NewStringSchema(nil),
 		EncryptionKeys:   []string{"my-app.key"},
 	})
@@ -1070,7 +1070,7 @@ func TestProducerWithEncryption(t *testing.T) {
 	}
 }
 
-func TestProducuerWithEncryptionFailSendUnecrypted(t *testing.T) {
+func TestProducuerCreationFailOnInvalidKey(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -1079,25 +1079,20 @@ func TestProducuerWithEncryptionFailSendUnecrypted(t *testing.T) {
 	defer client.Close()
 
 	topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
-	ctx := context.Background()
 
 	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
 	assert.Nil(t, err)
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                       topic,
-		DisableBatching:             false,
-		MessageKeyCrypto:            msgCrypto,
-		KeyReader:                   crypto.NewDefaultKeyReader("invalid-pub-key.pem", "pri-key.pem"),
-		Schema:                      NewStringSchema(nil),
-		EncryptionKeys:              []string{"my-app.key"},
-		ProducerCryptoFailureAction: crypto.Send,
+		Topic:            topic,
+		DisableBatching:  false,
+		MessageKeyCrypto: msgCrypto,
+		KeyReader:        crypto.NewDefaultKeyReader("invalid-pub-key-rsa.pem", "pri-key-rsa.pem"),
+		Schema:           NewStringSchema(nil),
+		EncryptionKeys:   []string{"my-app.key"},
 	})
 
-	assert.Nil(t, err)
-	defer producer.Close()
-
-	_, err = producer.Send(ctx, &ProducerMessage{Value: "hello"})
-	assert.Nil(t, err)
+	assert.NotNil(t, err)
+	assert.Nil(t, producer)
 }

@@ -54,6 +54,20 @@ type DefaultMessageCrypto struct {
 	encryptLock sync.Mutex
 }
 
+const (
+	errGeneratingNonce          = "failed to generate new nonce"
+	errEmptyKeyNameOrKeyReader  = "keyname or keyreader is null"
+	errParseRSAPubKey           = "unable to parse RSA public key"
+	errParseRSAPriKey           = "unable to parse RSA private key"
+	errEncryptionKeyInfo        = "Failed to get EncryptionKeyInfo for key %v"
+	errEncryptedDataKeyNotFound = "%v Failed to find encrypted Data key for key %v"
+	errAESCipherCreation        = "failed to create AES cipher"
+	errGCMCreation              = "failed to create gcm"
+	errDataKeyDecryption        = "unable to decrypt data key"
+	errDecodePriKey             = "failed to decode private key"
+	errDecodePubKey             = "failed to decode public key"
+)
+
 // NewDefaultMessageCrypto get the instance of message crypto
 func NewDefaultMessageCrypto(logCtx string, keyGenNeeded bool, logger log.Logger) (*DefaultMessageCrypto, error) {
 
@@ -96,7 +110,7 @@ func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader KeyR
 	d.cipherLock.Lock()
 	defer d.cipherLock.Unlock()
 	if keyName == "" || keyReader == nil {
-		return fmt.Errorf("keyname or keyreader is null")
+		return fmt.Errorf(errEmptyKeyNameOrKeyReader)
 	}
 
 	// read the public key and its info using keyReader
@@ -113,7 +127,7 @@ func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader KeyR
 	// try to cast to RSA key
 	rsaPubKey, ok := parsedKey.(*rsa.PublicKey)
 	if !ok {
-		return fmt.Errorf("unable to parse RSA public key")
+		return fmt.Errorf(errParseRSAPubKey)
 	}
 
 	encryptedDataKey, err := rsa.EncryptOAEP(sha1.New(), rand.Reader, rsaPubKey, d.dataKey, nil)
@@ -159,7 +173,9 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 	for _, keyName := range encKeys {
 		// if key is not already loaded, load it
 		if _, ok := d.encryptedDataKeyMap.Load(keyName); !ok {
-			d.addPublicKeyCipher(keyName, keyReader)
+			if err := d.addPublicKeyCipher(keyName, keyReader); err != nil {
+				d.logger.Error(err)
+			}
 		}
 
 		// add key to the message metadata
@@ -191,11 +207,11 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 				}
 
 			} else {
-				d.logger.Error("Failed to get EncryptionKeyInfo for key %s", keyName)
+				d.logger.Error(errEncryptionKeyInfo, keyName)
 			}
 		} else {
 			// we should never reach here
-			msg := fmt.Sprintf("%s Failed to find encrypted Data key for key %s", d.logCtx, keyName)
+			msg := fmt.Sprintf(errEncryptedDataKeyNotFound, d.logCtx, keyName)
 			d.logger.Errorf(msg)
 			return nil, fmt.Errorf(msg)
 		}
@@ -209,7 +225,7 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 	c, err := aes.NewCipher(d.dataKey)
 
 	if err != nil {
-		d.logger.Error("Failed to create AES cipher")
+		d.logger.Error(errAESCipherCreation)
 		return nil, err
 	}
 
@@ -217,7 +233,7 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 	gcm, err := cipher.NewGCM(c)
 
 	if err != nil {
-		d.logger.Error("Failed to create gcm")
+		d.logger.Error(errGCMCreation)
 		return nil, err
 	}
 
@@ -226,7 +242,8 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 	_, err = rand.Read(nonce)
 
 	if err != nil {
-		d.logger.Error("Failed to generate new nonce ")
+		d.logger.Error(errGeneratingNonce)
+		return nil, fmt.Errorf(errGeneratingNonce)
 	}
 
 	// Update message metadata with encryption param
@@ -266,7 +283,7 @@ func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata,
 	}
 
 	if len(encryptionKeys) == 0 {
-		return nil, errors.New("unable to decrypt data key")
+		return nil, errors.New(errDataKeyDecryption)
 	}
 
 	return d.getKeyAndDecryptData(msgMetadata, payload)
@@ -332,19 +349,19 @@ func (d *DefaultMessageCrypto) decryptDataKey(keyName string,
 
 	keyInfo, err := keyReader.GetPrivateKey(keyName, keyMeta)
 	if err != nil {
-		d.logger.Error("Failed to decryot data key")
+		d.logger.Error(err)
 		return false
 	}
 
 	parsedKey, err := d.loadPrivateKey(keyInfo.GetKey())
 	if err != nil {
-		d.logger.Error("unable to parse RSA private key")
+		d.logger.Error(err)
 		return false
 	}
 
 	rsaPriKey, ok := parsedKey.(*rsa.PrivateKey)
 	if !ok {
-		d.logger.Error("unable to parse RSA private key")
+		d.logger.Error(errParseRSAPriKey)
 		return false
 	}
 
@@ -363,7 +380,7 @@ func (d *DefaultMessageCrypto) loadPrivateKey(key []byte) (gocrypto.PrivateKey, 
 	var privateKey gocrypto.PrivateKey
 	priPem, _ := pem.Decode(key)
 	if priPem == nil {
-		return privateKey, fmt.Errorf("failed to decode public key")
+		return privateKey, fmt.Errorf(errDecodePriKey)
 	}
 	genericPrivateKey, err := x509.ParsePKCS1PrivateKey(priPem.Bytes)
 	if err != nil {
@@ -379,7 +396,7 @@ func (d *DefaultMessageCrypto) loadPublicKey(key []byte) (gocrypto.PublicKey, er
 
 	pubPem, _ := pem.Decode(key)
 	if pubPem == nil {
-		return publickKey, fmt.Errorf("failed to decode public key")
+		return publickKey, fmt.Errorf(errDecodePubKey)
 	}
 
 	genericPublicKey, err := x509.ParsePKIXPublicKey(pubPem.Bytes)

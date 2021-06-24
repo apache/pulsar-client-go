@@ -41,6 +41,6 @@ const (
 	// If message contain batch messages, client will not be able to retrieve
 	// individual messages in the batch.
 	// delivered encrypted message contains EncryptionContext which contains encryption
-	// and compression information in it using which application can decrypt consumed message payload.
+	// and compression information in it using which application can decrypt the payload.
 	Consume
 )
