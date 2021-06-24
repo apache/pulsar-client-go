@@ -411,6 +411,11 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if !sendAsBatch {
 		p.internalFlushCurrentBatch()
 	}
+
+	if msg.DisableReplication {
+		msg.ReplicationClusters = []string{"__local__"}
+	}
+
 	added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
 		msg.ReplicationClusters, deliverAt)
 	if !added {
