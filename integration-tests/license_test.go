@@ -65,9 +65,9 @@ var otherCheck = regexp.MustCompile(`#
 `)
 
 var skip = map[string]bool{
-	"../pulsar/pulsar_proto/PulsarApi.pb.go": true,
-	"../.github/workflows/bot.yaml":          true,
-	"../integration-tests/pb/hello.pb.go":    true,
+	"../pulsar/internal/pulsar_proto/PulsarApi.pb.go": true,
+	"../.github/workflows/bot.yaml":                   true,
+	"../integration-tests/pb/hello.pb.go":             true,
 }
 
 func TestLicense(t *testing.T) {

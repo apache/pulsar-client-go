@@ -28,8 +28,8 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
 
 	"go.uber.org/atomic"
 )
@@ -669,66 +669,35 @@ func (pc *partitionConsumer) decryptPayLoadIfNeeded(msgID *pb.MessageIdData,
 	if pc.options.KeyReader == nil {
 		switch pc.options.consumerCryptoFailureAcrion {
 		case crypto.Consume:
-			pc.log.Warnf("[%v][%v][%v] KeyReader interface is not implemented. Consuming encrypted message.",
-				pc.topic,
-				pc.options.subscription,
-				pc.options.consumerName,
-			)
+			pc.log.Warnf("KeyReader interface is not implemented. Consuming encrypted message.")
 			return payload, errKeyReaderNotImplemted
 		case crypto.Discard:
-			pc.log.Warnf(`[%v][%v][%v] Skipping decryption since KeyReader 
-			interface is not implemented and config is set to discard`,
-				pc.topic,
-				pc.options.subscription,
-				pc.options.consumerName,
-			)
+			pc.log.Warnf("Skipping decryption since KeyReader interface is not implemented and config is set to discard")
 			pc.discardCorruptedMessage(msgID, pb.CommandAck_DecryptionError)
 			return nil, errKeyReaderNotImplemted
 		case crypto.FailConsume:
-			pc.log.Errorf(
-				`[%v][%v][%v][%v] Message delivery failed since KeyReader interface 
-				is not implemented to consume encrypted message`,
-				pc.topic,
-				pc.options.subscription,
-				pc.options.consumerName,
-				msgID,
-			)
+			pc.log.Errorf(`[%v] Message delivery failed since KeyReader 
+			interface is not implemented to consume encrypted message`, msgID)
 			return nil, errKeyReaderNotImplemted
 		}
 	}
 
-	decryptedPayload, err := pc.options.messageCrypto.Decrypt(msgMeta, payload, pc.options.KeyReader)
+	decryptedPayload, err := pc.options.messageCrypto.Decrypt(crypto.NewMessageMetadataSupplier(msgMeta),
+		payload, pc.options.KeyReader)
 	if err != nil {
 		errMsg := fmt.Errorf(errDecryptingPayload, err.Error())
 		switch pc.options.consumerCryptoFailureAcrion {
 		case crypto.FailConsume:
-			pc.log.Warnf(
-				"[%v][%v][%v][%v] Message delivery failed since unable to decrypt incoming message",
-				pc.topic,
-				pc.options.subscription,
-				pc.options.consumerName,
-				msgID,
-			)
+			pc.log.Warnf("[%v] Message delivery failed since unable to decrypt incoming message", msgID)
 			return nil, errMsg
 
 		case crypto.Discard:
-			pc.log.Warnf(`[%v][%v][%v][%v] Discarding message since 
-			decryption failed and config is set to discard`,
-				pc.topic,
-				pc.options.subscription,
-				pc.options.consumerName,
-				msgID,
-			)
+			pc.log.Warnf(`[%v] Discarding message since decryption failed and config is set to discard`, msgID)
 			pc.discardCorruptedMessage(msgID, pb.CommandAck_DecryptionError)
 			return nil, errMsg
 		case crypto.Consume:
 			// Note, batch message will fail to consume even if config is set to consume
-			pc.log.Warnf(`[%v][%v][%v][%v] Decryption failed. 
-			Consuming encrypted message since config is set to consume.`,
-				pc.topic,
-				pc.options.subscription,
-				pc.options.consumerName,
-				msgID)
+			pc.log.Warnf(`[%v] Decryption failed. Consuming encrypted message since config is set to consume.`, msgID)
 			return payload, errMsg
 		}
 	}

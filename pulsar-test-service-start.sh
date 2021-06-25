@@ -51,29 +51,29 @@ until curl http://localhost:8080/metrics > /dev/null 2>&1 ; do sleep 1; done
 echo "-- Pulsar service is ready -- Configure permissions"
 
 # Create "standalone" cluster
-$PULSAR_ADMIN clusters create \
-        standalone \
-        --url http://localhost:8080/ \
-        --url-secure https://localhost:8443/ \
-        --broker-url pulsar://localhost:6650/ \
-        --broker-url-secure pulsar+ssl://localhost:6651/
+# $PULSAR_ADMIN clusters create \
+#         standalone \
+#         --url http://localhost:8080/ \
+#         --url-secure https://localhost:8443/ \
+#         --broker-url pulsar://localhost:6650/ \
+#         --broker-url-secure pulsar+ssl://localhost:6651/
 
-# Create "public" tenant
-$PULSAR_ADMIN tenants create public -r "anonymous" -c "standalone"
+# # Create "public" tenant
+# $PULSAR_ADMIN tenants create public -r "anonymous" -c "standalone"
 
-# Create "public/default" with no auth required
-$PULSAR_ADMIN namespaces create public/default
-$PULSAR_ADMIN namespaces grant-permission public/default \
-                        --actions produce,consume \
-                        --role "anonymous"
+# # Create "public/default" with no auth required
+# $PULSAR_ADMIN namespaces create public/default
+# $PULSAR_ADMIN namespaces grant-permission public/default \
+#                         --actions produce,consume \
+#                         --role "anonymous"
 
-# Create "private" tenant
-$PULSAR_ADMIN tenants create private
+# # Create "private" tenant
+# $PULSAR_ADMIN tenants create private
 
-# Create "private/auth" with required authentication
-$PULSAR_ADMIN namespaces create private/auth
-$PULSAR_ADMIN namespaces grant-permission private/auth \
-                        --actions produce,consume \
-                        --role "token-principal"
+# # Create "private/auth" with required authentication
+# $PULSAR_ADMIN namespaces create private/auth
+# $PULSAR_ADMIN namespaces grant-permission private/auth \
+#                         --actions produce,consume \
+#                         --role "token-principal"
 
 echo "-- Ready to start tests"

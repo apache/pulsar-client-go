@@ -19,33 +19,33 @@ package crypto
 
 import "io/ioutil"
 
-// DefaultKeyReader default implementation of KeyReader
-type DefaultKeyReader struct {
+// FileKeyReader default implementation of KeyReader
+type FileKeyReader struct {
 	publicKeyPath  string
 	privateKeyPath string
 }
 
-func NewDefaultKeyReader(publicKeyPath, privateKeyPath string) *DefaultKeyReader {
-	return &DefaultKeyReader{
+func NewFileKeyReader(publicKeyPath, privateKeyPath string) *FileKeyReader {
+	return &FileKeyReader{
 		publicKeyPath:  publicKeyPath,
 		privateKeyPath: privateKeyPath,
 	}
 }
 
 // GetPublicKey read public key from the given path
-func (d *DefaultKeyReader) GetPublicKey(keyName string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
-	return readKey(d.publicKeyPath, keyMeta)
+func (d *FileKeyReader) GetPublicKey(keyName string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
+	return readKey(keyName, d.publicKeyPath, keyMeta)
 }
 
 // GetPrivateKey read private key from the given path
-func (d *DefaultKeyReader) GetPrivateKey(keyName string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
-	return readKey(d.privateKeyPath, keyMeta)
+func (d *FileKeyReader) GetPrivateKey(keyName string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
+	return readKey(keyName, d.privateKeyPath, keyMeta)
 }
 
-func readKey(path string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
+func readKey(keyName, path string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
 	key, err := ioutil.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}
-	return NewEncryptionKeyInfo(key, keyMeta), nil
+	return NewEncryptionKeyInfo(keyName, key, keyMeta), nil
 }

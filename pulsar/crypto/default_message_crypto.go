@@ -32,7 +32,6 @@ import (
 	"sync"
 
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
 )
 
 // DefaultMessageCrypto implmentation of the interface MessageCryto
@@ -119,7 +118,7 @@ func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader KeyR
 		return err
 	}
 
-	parsedKey, err := d.loadPublicKey(keyInfo.GetKey())
+	parsedKey, err := d.loadPublicKey(keyInfo.GetValue())
 	if err != nil {
 		return err
 	}
@@ -135,7 +134,7 @@ func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader KeyR
 		return err
 	}
 
-	d.encryptedDataKeyMap.Store(keyName, NewEncryptionKeyInfo(encryptedDataKey, keyInfo.GetMetadata()))
+	d.encryptedDataKeyMap.Store(keyName, NewEncryptionKeyInfo(keyName, encryptedDataKey, keyInfo.GetMetadata()))
 
 	return nil
 }
@@ -154,20 +153,13 @@ func (d *DefaultMessageCrypto) RemoveKeyCipher(keyName string) bool {
 // using public key
 func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 	keyReader KeyReader,
-	msgMetadata *pb.MessageMetadata,
+	msgMetadata MessageMetadataSupplier,
 	payload []byte) ([]byte, error) {
 	d.encryptLock.Lock()
 	defer d.encryptLock.Unlock()
+
 	if len(encKeys) == 0 {
 		return payload, nil
-	}
-
-	// update message metadata with encrypted data key
-	encryptionKeys := msgMetadata.GetEncryptionKeys()
-	encryptionKeysMap := map[string]*pb.EncryptionKeys{}
-
-	for _, encKey := range encryptionKeys {
-		encryptionKeysMap[*encKey.Key] = encKey
 	}
 
 	for _, keyName := range encKeys {
@@ -183,29 +175,7 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 			keyInfo, keyInfoOk := k.(*EncryptionKeyInfo)
 
 			if keyInfoOk {
-
-				newEncryptionKey := &pb.EncryptionKeys{
-					Key:   &keyName,
-					Value: keyInfo.GetKey(),
-				}
-
-				if keyInfo.metadata != nil && len(keyInfo.metadata) > 0 {
-					keyMetadata := newEncryptionKey.GetMetadata()
-					for k, v := range keyInfo.GetMetadata() {
-						keyMetadata = append(keyMetadata, &pb.KeyValue{
-							Key:   &k,
-							Value: &v,
-						})
-					}
-					newEncryptionKey.Metadata = keyMetadata
-				}
-
-				if k, ok := encryptionKeysMap[*newEncryptionKey.Key]; ok {
-					*k = *newEncryptionKey // replace existing enc key
-				} else {
-					encryptionKeys = append(encryptionKeys, newEncryptionKey) // add new enc key
-				}
-
+				msgMetadata.UpsertEncryptionkey(*keyInfo)
 			} else {
 				d.logger.Error(errEncryptionKeyInfo, keyName)
 			}
@@ -217,9 +187,6 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 		}
 
 	}
-
-	// update message metadata with EncryptionKeys
-	msgMetadata.EncryptionKeys = encryptionKeys
 
 	// generate a new AES cipher with data key
 	c, err := aes.NewCipher(d.dataKey)
@@ -247,7 +214,7 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 	}
 
 	// Update message metadata with encryption param
-	msgMetadata.EncryptionParam = nonce
+	msgMetadata.SetEncryptionParam(nonce)
 
 	// encrypt payload using seal function
 	return gcm.Seal(nil, nonce, payload, nil), nil
@@ -256,7 +223,7 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 // Decrypt decrypt the payload using decrypted data key.
 // Here data key is read from from the message
 // metadata and  decrypted using private key.
-func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata,
+func (d *DefaultMessageCrypto) Decrypt(msgMetadata MessageMetadataSupplier,
 	payload []byte,
 	keyReader KeyReader) ([]byte, error) {
 	// if data key is present, attempt to derypt using the existing key
@@ -273,16 +240,16 @@ func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata,
 
 	// data key is null or decryption failed. Attempt to regenerate data key
 	encKeys := msgMetadata.GetEncryptionKeys()
-	// decrypt data keys
-	encryptionKeys := []pb.EncryptionKeys{}
+	var ecKeyInfo *EncryptionKeyInfo
 
 	for _, key := range encKeys {
 		if d.decryptDataKey(key.GetKey(), key.GetValue(), key.GetMetadata(), keyReader) {
-			encryptionKeys = append(encryptionKeys, *key)
+			ecKeyInfo = &key
 		}
 	}
 
-	if len(encryptionKeys) == 0 {
+	if ecKeyInfo == nil || d.dataKey == nil {
+		// unable to decrypt data key
 		return nil, errors.New(errDataKeyDecryption)
 	}
 
@@ -290,7 +257,7 @@ func (d *DefaultMessageCrypto) Decrypt(msgMetadata *pb.MessageMetadata,
 }
 
 func (d *DefaultMessageCrypto) decryptData(dataKeySecret []byte,
-	msgMetadata *pb.MessageMetadata,
+	msgMetadata MessageMetadataSupplier,
 	payload []byte) ([]byte, error) {
 	// get nonce from message metadata
 	nonce := msgMetadata.GetEncryptionParam()
@@ -316,7 +283,8 @@ func (d *DefaultMessageCrypto) decryptData(dataKeySecret []byte,
 	return decryptedData, err
 }
 
-func (d *DefaultMessageCrypto) getKeyAndDecryptData(msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error) {
+func (d *DefaultMessageCrypto) getKeyAndDecryptData(msgMetadata MessageMetadataSupplier,
+	payload []byte) ([]byte, error) {
 	// go through all keys to retrieve data key from cache
 	for _, k := range msgMetadata.GetEncryptionKeys() {
 		msgDataKey := k.GetValue()
@@ -340,12 +308,8 @@ func (d *DefaultMessageCrypto) getKeyAndDecryptData(msgMetadata *pb.MessageMetad
 
 func (d *DefaultMessageCrypto) decryptDataKey(keyName string,
 	encDatakey []byte,
-	encKeymeta []*pb.KeyValue,
+	keyMeta map[string]string,
 	keyReader KeyReader) bool {
-	keyMeta := make(map[string]string)
-	for _, k := range encKeymeta {
-		keyMeta[k.GetKey()] = k.GetValue()
-	}
 
 	keyInfo, err := keyReader.GetPrivateKey(keyName, keyMeta)
 	if err != nil {
@@ -353,7 +317,7 @@ func (d *DefaultMessageCrypto) decryptDataKey(keyName string,
 		return false
 	}
 
-	parsedKey, err := d.loadPrivateKey(keyInfo.GetKey())
+	parsedKey, err := d.loadPrivateKey(keyInfo.GetValue())
 	if err != nil {
 		d.logger.Error(err)
 		return false

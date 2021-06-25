@@ -20,25 +20,37 @@ package crypto
 // EncryptionKeyInfo
 type EncryptionKeyInfo struct {
 	metadata map[string]string
-	key      []byte
+	value    []byte
+	key      string
 }
 
 // NewEncryptionKeyInfo
-func NewEncryptionKeyInfo(key []byte, metadata map[string]string) *EncryptionKeyInfo {
+func NewEncryptionKeyInfo(key string, value []byte, metadata map[string]string) *EncryptionKeyInfo {
 	return &EncryptionKeyInfo{
 		metadata: metadata,
 		key:      key,
+		value:    value,
 	}
 }
 
 // GetKey get key
-func (eci *EncryptionKeyInfo) GetKey() []byte {
+func (eci *EncryptionKeyInfo) GetKey() string {
 	return eci.key
 }
 
 // SetKey set key
-func (eci *EncryptionKeyInfo) SetKey(key []byte) {
+func (eci *EncryptionKeyInfo) SetKey(key string) {
 	eci.key = key
+}
+
+// SetValue set value
+func (eci *EncryptionKeyInfo) SetValue(value []byte) {
+	eci.value = value
+}
+
+// GetValue get value
+func (eci *EncryptionKeyInfo) GetValue() []byte {
+	return eci.value
 }
 
 // GetMetadata get key metadata

@@ -17,10 +17,6 @@
 
 package crypto
 
-import (
-	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
-)
-
 // MessageCrypto implement this interface to encrypt and decrypt messages
 type MessageCrypto interface {
 	// AddPublicKeyCipher
@@ -33,11 +29,11 @@ type MessageCrypto interface {
 		Encrypt the payload using the data key and update
 		message metadata with the keyname and encrypted data key
 	*/
-	Encrypt(encKeys []string, KeyReader KeyReader, msgMetadata *pb.MessageMetadata, payload []byte) ([]byte, error)
+	Encrypt(encKeys []string, KeyReader KeyReader, msgMetadata MessageMetadataSupplier, payload []byte) ([]byte, error)
 
 	/*
 		Decrypt the payload using the data key.
 		Keys used to ecnrypt the data key can be retrieved from msgMetadata
 	*/
-	Decrypt(msgMetadata *pb.MessageMetadata, payload []byte, KeyReader KeyReader) ([]byte, error)
+	Decrypt(msgMetadata MessageMetadataSupplier, payload []byte, KeyReader KeyReader) ([]byte, error)
 }

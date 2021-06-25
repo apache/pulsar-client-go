@@ -27,8 +27,8 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
@@ -312,6 +312,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, false, c.log)
 				if err != nil {
 					c.log.Error(err)
+					// should fail consumer creation
+					panic("error creation of default MessageCrypto while creating consumer.")
 				}
 				c.options.MessageCrypto = messageCrypto
 			}

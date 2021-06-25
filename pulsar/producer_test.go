@@ -1052,7 +1052,7 @@ func TestProducerWithRSAEncryption(t *testing.T) {
 		Topic:            topic,
 		DisableBatching:  false,
 		MessageKeyCrypto: msgCrypto,
-		KeyReader:        crypto.NewDefaultKeyReader("pub-key-rsa.pem", "pri-key-rsa.pem"),
+		KeyReader:        crypto.NewFileKeyReader("pub-key-rsa.pem", "pri-key-rsa.pem"),
 		Schema:           NewStringSchema(nil),
 		EncryptionKeys:   []string{"my-app.key"},
 	})
@@ -1088,7 +1088,7 @@ func TestProducuerCreationFailOnInvalidKey(t *testing.T) {
 		Topic:            topic,
 		DisableBatching:  false,
 		MessageKeyCrypto: msgCrypto,
-		KeyReader:        crypto.NewDefaultKeyReader("invalid-pub-key-rsa.pem", "pri-key-rsa.pem"),
+		KeyReader:        crypto.NewFileKeyReader("invalid-pub-key-rsa.pem", "pri-key-rsa.pem"),
 		Schema:           NewStringSchema(nil),
 		EncryptionKeys:   []string{"my-app.key"},
 	})

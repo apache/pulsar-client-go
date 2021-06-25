@@ -25,7 +25,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	pb "github.com/apache/pulsar-client-go/pulsar/pulsar_proto"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 const (
@@ -307,7 +307,10 @@ func encryptPayload(msgMetadata *pb.MessageMetadata,
 	}
 
 	// encrypt payload
-	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys, KeyReader, msgMetadata, compressedPayload)
+	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys,
+		KeyReader,
+		crypto.NewMessageMetadataSupplier(msgMetadata),
+		compressedPayload)
 
 	if err != nil {
 		// error occurred in encrypting the message
