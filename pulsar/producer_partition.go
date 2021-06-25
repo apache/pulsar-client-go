@@ -48,6 +48,7 @@ var (
 	errFailAddToBatch  = newError(AddToBatchFailed, "message add to batch failed")
 	errSendTimeout     = newError(TimeoutError, "message send timeout")
 	errSendQueueIsFull = newError(ProducerQueueIsFull, "producer send queue is full")
+	errContextExpired  = newError(TimeoutError, "message send context expired")
 	errMessageTooLarge = newError(MessageTooBig, "message size exceeds MaxMessageSize")
 
 	buffersPool sync.Pool
@@ -658,7 +659,10 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 			return
 		}
 	} else {
-		p.publishSemaphore.Acquire()
+		if !p.publishSemaphore.Acquire(ctx) {
+			callback(nil, msg, errContextExpired)
+			return
+		}
 	}
 
 	p.metrics.MessagesPending.Inc()
