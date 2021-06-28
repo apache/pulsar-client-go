@@ -7,7 +7,7 @@ import (
 )
 
 func TestGetPublicKey(t *testing.T) {
-	keyReader := NewFileKeyReader("../crypto/pub-key-rsa.pem", "")
+	keyReader := NewFileKeyReader("../crypto/pub_key_rsa.pem", "")
 	keyInfo, err := keyReader.GetPublicKey("test-key", map[string]string{"key": "value"})
 
 	assert.Nil(t, err)
@@ -19,7 +19,7 @@ func TestGetPublicKey(t *testing.T) {
 }
 
 func TestGetPrivateKey(t *testing.T) {
-	keyReader := NewFileKeyReader("", "../crypto/pri-key-rsa.pem")
+	keyReader := NewFileKeyReader("", "../crypto/pri_key_rsa.pem")
 	keyInfo, err := keyReader.GetPrivateKey("test-key", map[string]string{"key": "value"})
 
 	assert.Nil(t, err)
@@ -31,7 +31,7 @@ func TestGetPrivateKey(t *testing.T) {
 }
 
 func TestInvalidKeyPath(t *testing.T) {
-	keyReader := NewFileKeyReader("../crypto/invalid-pub-key-rsa.pem", "../crypto/invalid-pri-key-rsa.pem")
+	keyReader := NewFileKeyReader("../crypto/no_pub_key_rsa.pem", "../crypto/no_pri_key_rsa.pem")
 
 	// try to read public key
 	keyInfo, err := keyReader.GetPublicKey("test-pub-key", nil)
