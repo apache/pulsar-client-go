@@ -24,13 +24,13 @@ import (
 // MessageMetadataSupplier wrapper implementation around message metadata
 type MessageMetadataSupplier interface {
 	// GetEncryptionKeys read all the encryption keys from the MessageMetadata
-	GetEncryptionKeys() []EncryptionKeyInfo
+	EncryptionKeys() []EncryptionKeyInfo
 
 	// UpsertEncryptionkey add new or update existing EncryptionKeys in to the MessageMetadata
 	UpsertEncryptionkey(EncryptionKeyInfo)
 
 	// GetEncryptionParam read the ecryption parameter from the MessageMetadata
-	GetEncryptionParam() []byte
+	EncryptionParam() []byte
 
 	// SetEncryptionParam set encryption parameter in to the MessageMetadata
 	SetEncryptionParam([]byte)
@@ -46,7 +46,7 @@ func NewMessageMetadataSupplier(messageMetadata *pb.MessageMetadata) MessageMeta
 	}
 }
 
-func (m *MessageMetadata) GetEncryptionKeys() []EncryptionKeyInfo {
+func (m *MessageMetadata) EncryptionKeys() []EncryptionKeyInfo {
 	if m.messageMetadata != nil {
 		encInfo := []EncryptionKeyInfo{}
 		for _, k := range m.messageMetadata.EncryptionKeys {
@@ -62,9 +62,9 @@ func (m *MessageMetadata) UpsertEncryptionkey(keyInfo EncryptionKeyInfo) {
 	if m.messageMetadata != nil {
 		idx := m.encryptionKeyPresent(keyInfo)
 		newKey := &pb.EncryptionKeys{
-			Key:      &keyInfo.key,
-			Value:    keyInfo.GetValue(),
-			Metadata: getKeyMeta(keyInfo.GetMetadata()),
+			Key:      &keyInfo.name,
+			Value:    keyInfo.Key(),
+			Metadata: getKeyMeta(keyInfo.Metadata()),
 		}
 
 		if idx >= 0 {
@@ -75,7 +75,7 @@ func (m *MessageMetadata) UpsertEncryptionkey(keyInfo EncryptionKeyInfo) {
 	}
 }
 
-func (m *MessageMetadata) GetEncryptionParam() []byte {
+func (m *MessageMetadata) EncryptionParam() []byte {
 	if m.messageMetadata != nil {
 		return m.messageMetadata.EncryptionParam
 	}
@@ -91,7 +91,7 @@ func (m *MessageMetadata) SetEncryptionParam(param []byte) {
 func (m *MessageMetadata) encryptionKeyPresent(keyInfo EncryptionKeyInfo) int {
 	if len(m.messageMetadata.EncryptionKeys) > 0 {
 		for idx, k := range m.messageMetadata.EncryptionKeys {
-			if k.GetKey() == keyInfo.key {
+			if k.GetKey() == keyInfo.Name() {
 				return idx
 			}
 		}

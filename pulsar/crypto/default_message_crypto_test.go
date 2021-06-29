@@ -16,14 +16,14 @@ func TestAddPublicKeyCipher(t *testing.T) {
 	// valid keyreader
 	err = msgCrypto.AddPublicKeyCipher(
 		[]string{"my-app.key"},
-		NewFileKeyReader("../crypto/pub_key_rsa.pem", ""),
+		NewFileKeyReader("../crypto/testdata/pub_key_rsa.pem", ""),
 	)
 	assert.Nil(t, err)
 
 	// invalid keyreader
 	err = msgCrypto.AddPublicKeyCipher(
 		[]string{"my-app0.key"},
-		NewFileKeyReader("../crypto/no_pub_key_rsa.pem", ""),
+		NewFileKeyReader("../crypto/testdata/no_pub_key_rsa.pem", ""),
 	)
 	assert.NotNil(t, err)
 
@@ -37,14 +37,14 @@ func TestAddPublicKeyCipher(t *testing.T) {
 	// keyreader with wrong econding of public key
 	err = msgCrypto.AddPublicKeyCipher(
 		[]string{"my-app2.key"},
-		NewFileKeyReader("../crypto/wrong_encode_pub_key_rsa.pem", ""),
+		NewFileKeyReader("../crypto/testdata/wrong_encode_pub_key_rsa.pem", ""),
 	)
 	assert.NotNil(t, err)
 
 	// keyreader with truncated pub key
 	err = msgCrypto.AddPublicKeyCipher(
 		[]string{"my-app2.key"},
-		NewFileKeyReader("../crypto/truncated_pub_key_rsa.pem", ""),
+		NewFileKeyReader("../crypto/testdata/truncated_pub_key_rsa.pem", ""),
 	)
 	assert.NotNil(t, err)
 }
@@ -62,7 +62,7 @@ func TestEncrypt(t *testing.T) {
 	// valid keyreader
 	encryptedData, err := msgCrypto.Encrypt(
 		[]string{"my-app.key"},
-		NewFileKeyReader("../crypto/pub_key_rsa.pem", ""),
+		NewFileKeyReader("../crypto/testdata/pub_key_rsa.pem", ""),
 		msgMetadataSupplier,
 		[]byte(msg),
 	)
@@ -72,13 +72,13 @@ func TestEncrypt(t *testing.T) {
 
 	// encrypted data key and encryption param must set in
 	// in the message metadata after encryption
-	assert.NotNil(t, msgMetadataSupplier.GetEncryptionParam())
-	assert.NotEmpty(t, msgMetadataSupplier.GetEncryptionKeys())
+	assert.NotNil(t, msgMetadataSupplier.EncryptionParam())
+	assert.NotEmpty(t, msgMetadataSupplier.EncryptionKeys())
 
 	// invalid keyreader
 	encryptedData, err = msgCrypto.Encrypt(
 		[]string{"my-app2.key"},
-		NewFileKeyReader("../crypto/no_pub_key_rsa.pem", ""),
+		NewFileKeyReader("../crypto/testdata/no_pub_key_rsa.pem", ""),
 		msgMetadataSupplier,
 		[]byte(msg),
 	)
@@ -100,7 +100,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	// valid keyreader
 	encryptedData, err := msgCrypto.Encrypt(
 		[]string{"my-app.key"},
-		NewFileKeyReader("../crypto/pub_key_rsa.pem", ""),
+		NewFileKeyReader("../crypto/testdata/pub_key_rsa.pem", ""),
 		msgMetadataSupplier,
 		[]byte(msg),
 	)
@@ -110,8 +110,8 @@ func TestEncryptDecrypt(t *testing.T) {
 
 	// encrypted data key and encryption param must set in
 	// in the message metadata after encryption
-	assert.NotNil(t, msgMetadataSupplier.GetEncryptionParam())
-	assert.NotEmpty(t, msgMetadataSupplier.GetEncryptionKeys())
+	assert.NotNil(t, msgMetadataSupplier.EncryptionParam())
+	assert.NotEmpty(t, msgMetadataSupplier.EncryptionKeys())
 
 	// try to decrypt
 	msgCryptoDecrypt, err := NewDefaultMessageCrypto("my-app", true, log.DefaultNopLogger())
@@ -122,7 +122,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	decryptedData, err := msgCryptoDecrypt.Decrypt(
 		msgMetadataSupplier,
 		encryptedData,
-		NewFileKeyReader("", "../crypto/no_pri_key_rsa.pem"),
+		NewFileKeyReader("", "../crypto/testdata/no_pri_key_rsa.pem"),
 	)
 	assert.NotNil(t, err)
 	assert.Nil(t, decryptedData)
@@ -131,7 +131,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	decryptedData, err = msgCryptoDecrypt.Decrypt(
 		msgMetadataSupplier,
 		encryptedData,
-		NewFileKeyReader("", "../crypto/wrong_encoded_pri_key_rsa.pem"),
+		NewFileKeyReader("", "../crypto/testdata/wrong_encoded_pri_key_rsa.pem"),
 	)
 	assert.NotNil(t, err)
 	assert.Nil(t, decryptedData)
@@ -140,7 +140,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	decryptedData, err = msgCryptoDecrypt.Decrypt(
 		msgMetadataSupplier,
 		encryptedData,
-		NewFileKeyReader("", "../crypto/pri_key_rsa.pem"),
+		NewFileKeyReader("", "../crypto/testdata/pri_key_rsa.pem"),
 	)
 
 	assert.Nil(t, err)

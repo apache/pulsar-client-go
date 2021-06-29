@@ -32,13 +32,13 @@ func NewFileKeyReader(publicKeyPath, privateKeyPath string) *FileKeyReader {
 	}
 }
 
-// GetPublicKey read public key from the given path
-func (d *FileKeyReader) GetPublicKey(keyName string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
+// PublicKey read public key from the given path
+func (d *FileKeyReader) PublicKey(keyName string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
 	return readKey(keyName, d.publicKeyPath, keyMeta)
 }
 
-// GetPrivateKey read private key from the given path
-func (d *FileKeyReader) GetPrivateKey(keyName string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
+// PrivateKey read private key from the given path
+func (d *FileKeyReader) PrivateKey(keyName string, keyMeta map[string]string) (*EncryptionKeyInfo, error) {
 	return readKey(keyName, d.privateKeyPath, keyMeta)
 }
 

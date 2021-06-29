@@ -9,60 +9,60 @@ import (
 
 func TestGetEncyptionKeys(t *testing.T) {
 	msgMetadata := &pb.MessageMetadata{}
-	key1 := "key-1"
+	name1 := "key-1"
 	value1 := []byte{1, 2, 3, 4}
 
-	key2 := "key-2"
+	name2 := "key-2"
 	value2 := []byte{4, 3, 2, 1}
 
-	key3 := "key-3"
+	name3 := "key-3"
 	value3 := []byte{6, 7, 8, 9}
 
 	msgMetadata.EncryptionKeys = append(msgMetadata.EncryptionKeys, &pb.EncryptionKeys{
-		Key:   &key1,
+		Key:   &name1,
 		Value: value1,
 		Metadata: []*pb.KeyValue{
-			{Key: &key1, Value: &key1},
+			{Key: &name1, Value: &name1},
 		},
 	},
 		&pb.EncryptionKeys{
-			Key:   &key2,
+			Key:   &name2,
 			Value: value2,
 			Metadata: []*pb.KeyValue{
-				{Key: &key1, Value: &key1},
-				{Key: &key2, Value: &key2},
+				{Key: &name1, Value: &name1},
+				{Key: &name2, Value: &name2},
 			},
 		},
 		&pb.EncryptionKeys{
-			Key:   &key3,
+			Key:   &name3,
 			Value: value3,
 		},
 	)
 
 	expected := []EncryptionKeyInfo{
 		{
-			key:   key1,
-			value: value1,
+			name: name1,
+			key:  value1,
 			metadata: map[string]string{
 				"key-1": "key-1",
 			},
 		},
 		{
-			key:   key2,
-			value: value2,
+			name: name2,
+			key:  value2,
 			metadata: map[string]string{
 				"key-1": "key-1",
 				"key-2": "key-2",
 			},
 		},
 		{
-			key:   key3,
-			value: value3,
+			name: name3,
+			key:  value3,
 		},
 	}
 
 	msgMetadataSupplier := NewMessageMetadataSupplier(msgMetadata)
-	actual := msgMetadataSupplier.GetEncryptionKeys()
+	actual := msgMetadataSupplier.EncryptionKeys()
 
 	assert.EqualValues(t, expected, actual)
 }
@@ -83,7 +83,7 @@ func TestUpsertEncryptionKey(t *testing.T) {
 	// try to add same key again
 	msgMetadataSupplier.UpsertEncryptionkey(*keyInfo)
 
-	actual := msgMetadataSupplier.GetEncryptionKeys()
+	actual := msgMetadataSupplier.EncryptionKeys()
 
 	assert.EqualValues(t, expected, actual)
 }
@@ -96,5 +96,5 @@ func TestEncryptionParam(t *testing.T) {
 	msgMetadataSupplier := NewMessageMetadataSupplier(msgMetadata)
 	msgMetadataSupplier.SetEncryptionParam(expected)
 
-	assert.EqualValues(t, expected, msgMetadataSupplier.GetEncryptionParam())
+	assert.EqualValues(t, expected, msgMetadataSupplier.EncryptionParam())
 }

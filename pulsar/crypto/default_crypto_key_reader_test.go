@@ -7,39 +7,39 @@ import (
 )
 
 func TestGetPublicKey(t *testing.T) {
-	keyReader := NewFileKeyReader("../crypto/pub_key_rsa.pem", "")
-	keyInfo, err := keyReader.GetPublicKey("test-key", map[string]string{"key": "value"})
+	keyReader := NewFileKeyReader("../crypto/testdata/pub_key_rsa.pem", "")
+	keyInfo, err := keyReader.PublicKey("test-key", map[string]string{"key": "value"})
 
 	assert.Nil(t, err)
 	assert.NotNil(t, keyInfo)
-	assert.NotEmpty(t, keyInfo.GetMetadata())
-	assert.NotEmpty(t, keyInfo.GetKey())
-	assert.NotEmpty(t, keyInfo.GetValue())
+	assert.NotEmpty(t, keyInfo.Metadata())
+	assert.NotEmpty(t, keyInfo.Name())
+	assert.NotEmpty(t, keyInfo.Key())
 	assert.Equal(t, "value", keyInfo.metadata["key"])
 }
 
 func TestGetPrivateKey(t *testing.T) {
-	keyReader := NewFileKeyReader("", "../crypto/pri_key_rsa.pem")
-	keyInfo, err := keyReader.GetPrivateKey("test-key", map[string]string{"key": "value"})
+	keyReader := NewFileKeyReader("", "../crypto/testdata/pri_key_rsa.pem")
+	keyInfo, err := keyReader.PrivateKey("test-key", map[string]string{"key": "value"})
 
 	assert.Nil(t, err)
 	assert.NotNil(t, keyInfo)
-	assert.NotEmpty(t, keyInfo.GetMetadata())
-	assert.NotEmpty(t, keyInfo.GetKey())
-	assert.NotEmpty(t, keyInfo.GetValue())
+	assert.NotEmpty(t, keyInfo.Metadata())
+	assert.NotEmpty(t, keyInfo.Name())
+	assert.NotEmpty(t, keyInfo.Key())
 	assert.Equal(t, "value", keyInfo.metadata["key"])
 }
 
 func TestInvalidKeyPath(t *testing.T) {
-	keyReader := NewFileKeyReader("../crypto/no_pub_key_rsa.pem", "../crypto/no_pri_key_rsa.pem")
+	keyReader := NewFileKeyReader("../crypto/testdata/no_pub_key_rsa.pem", "../crypto/testdata/no_pri_key_rsa.pem")
 
 	// try to read public key
-	keyInfo, err := keyReader.GetPublicKey("test-pub-key", nil)
+	keyInfo, err := keyReader.PublicKey("test-pub-key", nil)
 	assert.Nil(t, keyInfo)
 	assert.NotNil(t, err)
 
 	// try to read private key
-	keyInfo, err = keyReader.GetPrivateKey("test-pri-key", nil)
+	keyInfo, err = keyReader.PrivateKey("test-pri-key", nil)
 	assert.Nil(t, keyInfo)
 	assert.NotNil(t, err)
 }
