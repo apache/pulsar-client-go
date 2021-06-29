@@ -138,7 +138,7 @@ type partitionConsumer struct {
 
 	log log.Logger
 
-	providersMutex       sync.Mutex
+	providersMutex       sync.RWMutex
 	compressionProviders map[pb.CompressionType]compression.Provider
 	metrics              *internal.TopicMetrics
 }
@@ -855,7 +855,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	for _, provider := range pc.compressionProviders {
 		provider.Close()
 	}
-	pc.providersMutex.UnLock()
+	pc.providersMutex.Unlock()
 
 	pc.setConsumerState(consumerClosed)
 	pc.conn.DeleteConsumeHandler(pc.consumerID)
@@ -1065,19 +1065,20 @@ func getPreviousMessage(mid trackingMessageID) trackingMessageID {
 }
 
 func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload internal.Buffer) (internal.Buffer, error) {
-	pc.providersMutex.Lock()
+	pc.providersMutex.RLock()
 	provider, ok := pc.compressionProviders[msgMeta.GetCompression()]
+	pc.providersMutex.RUnlock()
 	if !ok {
 		var err error
 		if provider, err = pc.initializeCompressionProvider(msgMeta.GetCompression()); err != nil {
 			pc.log.WithError(err).Error("Failed to decompress message.")
-			pc.providersMutex.UnLock()
 			return nil, err
 		}
 
+		pc.providersMutex.Lock()
 		pc.compressionProviders[msgMeta.GetCompression()] = provider
+		pc.providersMutex.Unlock()
 	}
-	pc.providersMutex.UnLock()
 
 	uncompressed, err := provider.Decompress(nil, payload.ReadableSlice(), int(msgMeta.GetUncompressedSize()))
 	if err != nil {
