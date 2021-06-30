@@ -134,10 +134,9 @@ func (r *connectionReader) readAtLeast(size uint32) error {
 		// has the connection been closed?
 		if r.cnx.closed() {
 			return errConnectionClosed
-		} else {
-			r.cnx.Close()
-			return err
 		}
+		r.cnx.Close()
+		return err
 	}
 
 	r.buffer.WrittenBytes(uint32(n))

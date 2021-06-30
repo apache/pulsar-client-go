@@ -556,6 +556,10 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	}
 }
 
+func (c *connection) Write(data Buffer) {
+	c.writeRequestsCh <- data
+}
+
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
 	c.incomingRequestsWG.Add(1)
@@ -781,22 +785,6 @@ func (c *connection) UnregisterListener(id uint64) {
 
 	delete(c.listeners, id)
 }
-
-// TriggerClose the connection close by forcing the socket to close and
-// broadcasting the notification on the close channel
-/*func (c *connection) TriggerClose() {
-	c.closeOnce.Do(func() {
-		c.setState(connectionClosing)
-
-		cnx := c.cnx
-		if cnx != nil {
-			cnx.Close()
-		}
-
-		close(c.closeCh)
-	})
-}*/
-
 
 // Close closes the connection by
 // closing underlying socket connection and closeCh.
