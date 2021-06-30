@@ -48,6 +48,9 @@ type ProducerMessage struct {
 	// ReplicationClusters override the replication clusters for this message.
 	ReplicationClusters []string
 
+	// Disable the replication for this message
+	DisableReplication bool
+
 	// SequenceID set the sequence id to assign to the current message
 	SequenceID *int64
 
