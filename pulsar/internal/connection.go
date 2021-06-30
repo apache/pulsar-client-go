@@ -89,6 +89,7 @@ type connectionState int32
 const (
 	connectionInit = iota
 	connectionReady
+	connectionClosing
 	connectionClosed
 )
 
@@ -98,6 +99,8 @@ func (s connectionState) String() string {
 		return "Initializing"
 	case connectionReady:
 		return "Ready"
+	case connectionClosing:
+		return "Closing"
 	case connectionClosed:
 		return "Closed"
 	default:
@@ -142,6 +145,7 @@ type connection struct {
 
 	requestIDGenerator uint64
 
+	incomingRequestsWG sync.WaitGroup
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan interface{}
@@ -333,10 +337,15 @@ func (c *connection) waitUntilReady() error {
 }
 
 func (c *connection) failLeftRequestsWhenClose() {
+	// wait for outstanding incoming requests to complete before draining
+	// and closing the channel
+	c.incomingRequestsWG.Wait()
+
 	reqLen := len(c.incomingRequestsCh)
 	for i := 0; i < reqLen; i++ {
 		c.internalSendRequest(<-c.incomingRequestsCh)
 	}
+
 	close(c.incomingRequestsCh)
 }
 
@@ -549,8 +558,13 @@ func (c *connection) Write(data Buffer) {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
-	if c.getState() == connectionClosed {
+	c.incomingRequestsWG.Add(1)
+	defer c.incomingRequestsWG.Done()
+
+	state := c.getState()
+	if state == connectionClosed || state == connectionClosing {
 		callback(req, ErrConnectionClosed)
+
 	} else {
 		select {
 		case <-c.closeCh:
@@ -566,7 +580,11 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 }
 
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
-	if c.getState() == connectionClosed {
+	c.incomingRequestsWG.Add(1)
+	defer c.incomingRequestsWG.Done()
+
+	state := c.getState()
+	if state == connectionClosed || state == connectionClosing {
 		return ErrConnectionClosed
 	}
 
@@ -760,6 +778,8 @@ func (c *connection) UnregisterListener(id uint64) {
 // broadcasting the notification on the close channel
 func (c *connection) TriggerClose() {
 	c.closeOnce.Do(func() {
+		c.setState(connectionClosing)
+
 		cnx := c.cnx
 		if cnx != nil {
 			cnx.Close()
@@ -780,9 +800,10 @@ func (c *connection) Close() {
 	}
 
 	c.log.Info("Connection closed")
+	c.TriggerClose()
 	// do not use changeState() since they share the same lock
 	c.setState(connectionClosed)
-	c.TriggerClose()
+
 	c.pingTicker.Stop()
 	c.pingCheckTicker.Stop()
 
