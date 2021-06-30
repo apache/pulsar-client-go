@@ -584,17 +584,17 @@ func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
 }
 
 func (c *connection) internalSendRequest(req *request) {
-	c.pendingLock.Lock()
-	if req.id != nil {
-		c.pendingReqs[*req.id] = req
-	}
-	c.pendingLock.Unlock()
 	if c.getState() == connectionClosed {
 		c.log.Warnf("internalSendRequest failed for connectionClosed")
 		if req.callback != nil {
 			req.callback(req.cmd, ErrConnectionClosed)
 		}
 	} else {
+		c.pendingLock.Lock()
+		if req.id != nil {
+			c.pendingReqs[*req.id] = req
+		}
+		c.pendingLock.Unlock()
 		c.writeCommand(req.cmd)
 	}
 }
