@@ -61,13 +61,6 @@ func (r *connectionReader) readFromConnection() {
 	}
 }
 
-func (r *connectionReader) errOrClosedErr(e error) error {
-	if r.cnx.closed() {
-		return fmt.Errorf("connection closed")
-	}
-	return e
-}
-
 func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndPayload Buffer, err error) {
 	// First, we need to read the frame size
 	if r.buffer.ReadableBytes() < 4 {
