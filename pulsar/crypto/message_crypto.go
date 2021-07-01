@@ -25,15 +25,11 @@ type MessageCrypto interface {
 	// RemoveKeyCipher remove the key indentified by the keyname from the list
 	RemoveKeyCipher(keyName string) bool
 
-	/*
-		Encrypt the payload using the data key and update
-		message metadata with the keyname and encrypted data key
-	*/
+	// Encrypt the payload using the data key and update
+	// message metadata with the keyname and encrypted data key
 	Encrypt(encKeys []string, KeyReader KeyReader, msgMetadata MessageMetadataSupplier, payload []byte) ([]byte, error)
 
-	/*
-		Decrypt the payload using the data key.
-		Keys used to ecnrypt the data key can be retrieved from msgMetadata
-	*/
+	// Decrypt the payload using the data key.
+	// Keys used to ecnrypt the data key can be retrieved from msgMetadata
 	Decrypt(msgMetadata MessageMetadataSupplier, payload []byte, KeyReader KeyReader) ([]byte, error)
 }
