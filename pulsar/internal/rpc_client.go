@@ -19,7 +19,6 @@ package internal
 
 import (
 	"errors"
-	"net"
 	"net/url"
 	"sync/atomic"
 	"time"
@@ -88,37 +87,30 @@ func NewRPCClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, 
 
 func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
-	host, err := c.serviceNameResolver.ResolveHost()
-	if err != nil {
-		c.log.Errorf("request host resolve failed with error: {%v}", err)
-		return nil, err
-	}
-	rpcResult, err := c.Request(host, host, requestID, cmdType, message)
-	if _, ok := err.(net.Error); ok || (err != nil && err.Error() == "connection error") {
-		// We can retry this kind of requests over a connection error because they're
-		// not specific to a particular broker.
-		backoff := Backoff{100 * time.Millisecond}
-		startTime := time.Now()
-		var retryTime time.Duration
-
-		for time.Since(startTime) < c.requestTimeout {
-			retryTime = backoff.Next()
-			c.log.Debugf("Retrying request in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
-			time.Sleep(retryTime)
-			host, err = c.serviceNameResolver.ResolveHost()
-			if err != nil {
-				c.log.Errorf("Retrying request host resolve failed with error: {%v}", err)
-				continue
-			}
-			rpcResult, err = c.Request(host, host, requestID, cmdType, message)
-			if _, ok := err.(net.Error); ok || (err != nil && err.Error() == "connection error") {
-				continue
-			} else {
-				// We either succeeded or encountered a non connection error
-				break
-			}
+	var err error
+	var host *url.URL
+	var rpcResult *RPCResult
+	startTime := time.Now()
+	backoff := Backoff{100 * time.Millisecond}
+	// we can retry these requests because this kind of request is
+	// not specific to any particular broker
+	for time.Since(startTime) < c.requestTimeout {
+		host, err = c.serviceNameResolver.ResolveHost()
+		if err != nil {
+			c.log.WithError(err).Errorf("rpc client failed to resolve host")
+			return nil, err
 		}
+		rpcResult, err = c.Request(host, host, requestID, cmdType, message)
+		// success we got a response
+		if err == nil {
+			break
+		}
+
+		retryTime := backoff.Next()
+		c.log.Debugf("Retrying request in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
+		time.Sleep(retryTime)
 	}
+
 	return rpcResult, err
 }
 
