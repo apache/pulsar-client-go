@@ -225,11 +225,11 @@ func (c *connection) start() {
 				c.run()
 			} else {
 				c.metrics.ConnectionsHandshakeErrors.Inc()
-				c.changeState(connectionClosed)
+				c.Close()
 			}
 		} else {
 			c.metrics.ConnectionsEstablishmentErrors.Inc()
-			c.changeState(connectionClosed)
+			c.Close()
 		}
 	}()
 }
