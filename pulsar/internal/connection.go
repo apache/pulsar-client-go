@@ -52,6 +52,10 @@ type TLSOptions struct {
 	ValidateHostname        bool
 }
 
+var (
+	errConnectionClosed = errors.New("connection closed")
+)
+
 // ConnectionListener is a user of a connection (eg. a producer or
 // a consumer) that can register itself to get notified
 // when the connection is closed.
@@ -221,11 +225,11 @@ func (c *connection) start() {
 				c.run()
 			} else {
 				c.metrics.ConnectionsHandshakeErrors.Inc()
-				c.changeState(connectionClosed)
+				c.Close()
 			}
 		} else {
 			c.metrics.ConnectionsEstablishmentErrors.Inc()
-			c.changeState(connectionClosed)
+			c.Close()
 		}
 	}()
 }
@@ -325,7 +329,7 @@ func (c *connection) waitUntilReady() error {
 	defer c.Unlock()
 
 	for c.getState() != connectionReady {
-		c.log.Debugf("Wait until connection is ready. State: %s", c.getState().String())
+		c.log.Debugf("Wait until connection is ready state=%s", c.getState().String())
 		if c.getState() == connectionClosed {
 			return errors.New("connection error")
 		}
@@ -362,7 +366,7 @@ func (c *connection) run() {
 		// including the final cleanup, to avoid the issue https://github.com/apache/pulsar-client-go/issues/239
 		c.pendingLock.Lock()
 		for id, req := range c.pendingReqs {
-			req.callback(nil, errors.New("connection closed"))
+			req.callback(nil, errConnectionClosed)
 			delete(c.pendingReqs, id)
 		}
 		c.pendingLock.Unlock()
@@ -392,7 +396,6 @@ func (c *connection) run() {
 
 		case cmd := <-c.incomingCmdCh:
 			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
-
 		case data := <-c.writeRequestsCh:
 			if data == nil {
 				return
@@ -415,7 +418,7 @@ func (c *connection) runPingCheck() {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
 				c.log.Warn("Detected stale connection to broker")
-				c.TriggerClose()
+				c.Close()
 				return
 			}
 		}
@@ -457,7 +460,7 @@ func (c *connection) internalWriteData(data Buffer) {
 	c.log.Debug("Write data: ", data.ReadableBytes())
 	if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
 		c.log.WithError(err).Warn("Failed to write on connection")
-		c.TriggerClose()
+		c.Close()
 	}
 }
 
@@ -548,7 +551,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	default:
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
-		c.TriggerClose()
+		c.Close()
 	}
 }
 
@@ -602,7 +605,7 @@ func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
 }
 
 func (c *connection) internalSendRequest(req *request) {
-	if c.getState() == connectionClosed {
+	if c.closed() {
 		c.log.Warnf("internalSendRequest failed for connectionClosed")
 		if req.callback != nil {
 			req.callback(req.cmd, ErrConnectionClosed)
@@ -659,7 +662,9 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	if ok {
 		producer.ReceivedSendReceipt(response)
 	} else {
-		c.log.WithField("producerID", producerID).Warn("Got unexpected send receipt for message: ", response.MessageId)
+		c.log.
+			WithField("producerID", producerID).
+			Warn("Got unexpected send receipt for messageID=%+v", response.MessageId)
 	}
 }
 
@@ -713,7 +718,7 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	authData, err := c.auth.GetData()
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to load auth credentials")
-		c.TriggerClose()
+		c.Close()
 		return
 	}
 
@@ -761,6 +766,12 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 }
 
 func (c *connection) RegisterListener(id uint64, listener ConnectionListener) {
+	// do not add if connection is closed
+	if c.closed() {
+		c.log.Warnf("Connection closed unable register listener id=%+v", id)
+		return
+	}
+
 	c.listenersLock.Lock()
 	defer c.listenersLock.Unlock()
 
@@ -774,62 +785,55 @@ func (c *connection) UnregisterListener(id uint64) {
 	delete(c.listeners, id)
 }
 
-// TriggerClose the connection close by forcing the socket to close and
-// broadcasting the notification on the close channel
-func (c *connection) TriggerClose() {
+// Close closes the connection by
+// closing underlying socket connection and closeCh.
+// This also triggers callbacks to the ConnectionClosed listeners.
+func (c *connection) Close() {
 	c.closeOnce.Do(func() {
-		c.setState(connectionClosing)
-
+		c.Lock()
 		cnx := c.cnx
+		// do not use changeState() since they share the same lock
+		c.setState(connectionClosed)
+		c.cond.Broadcast()
+		c.Unlock()
+
 		if cnx != nil {
-			cnx.Close()
+			_ = cnx.Close()
 		}
 
 		close(c.closeCh)
+
+		c.pingTicker.Stop()
+		c.pingCheckTicker.Stop()
+
+		listeners := make(map[uint64]ConnectionListener)
+		c.listenersLock.Lock()
+		for id, listener := range c.listeners {
+			listeners[id] = listener
+			delete(c.listeners, id)
+		}
+		c.listenersLock.Unlock()
+
+		consumerHandlers := make(map[uint64]ConsumerHandler)
+		c.consumerHandlersLock.Lock()
+		for id, handler := range c.consumerHandlers {
+			consumerHandlers[id] = handler
+			delete(c.consumerHandlers, id)
+		}
+		c.consumerHandlersLock.Unlock()
+
+		// notify producers connection closed
+		for _, listener := range listeners {
+			listener.ConnectionClosed()
+		}
+
+		// notify consumers connection closed
+		for _, handler := range consumerHandlers {
+			handler.ConnectionClosed()
+		}
+
+		c.metrics.ConnectionsClosed.Inc()
 	})
-}
-
-func (c *connection) Close() {
-	c.Lock()
-	defer c.Unlock()
-
-	c.cond.Broadcast()
-
-	if c.getState() == connectionClosed {
-		return
-	}
-
-	c.log.Info("Connection closed")
-	c.TriggerClose()
-	// do not use changeState() since they share the same lock
-	c.setState(connectionClosed)
-
-	c.pingTicker.Stop()
-	c.pingCheckTicker.Stop()
-
-	listeners := make(map[uint64]ConnectionListener)
-	c.listenersLock.RLock()
-	for id, listener := range c.listeners {
-		listeners[id] = listener
-	}
-	c.listenersLock.RUnlock()
-
-	for _, listener := range listeners {
-		listener.ConnectionClosed()
-	}
-
-	consumerHandlers := make(map[uint64]ConsumerHandler)
-	c.consumerHandlersLock.RLock()
-	for id, handler := range c.consumerHandlers {
-		consumerHandlers[id] = handler
-	}
-	c.consumerHandlersLock.RUnlock()
-
-	for _, handler := range consumerHandlers {
-		handler.ConnectionClosed()
-	}
-
-	c.metrics.ConnectionsClosed.Inc()
 }
 
 func (c *connection) changeState(state connectionState) {
@@ -845,6 +849,10 @@ func (c *connection) getState() connectionState {
 
 func (c *connection) setState(state connectionState) {
 	c.state.Store(int32(state))
+}
+
+func (c *connection) closed() bool {
+	return connectionClosed == c.getState()
 }
 
 func (c *connection) newRequestID() uint64 {
@@ -886,6 +894,12 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 }
 
 func (c *connection) AddConsumeHandler(id uint64, handler ConsumerHandler) {
+	// do not add if connection is closed
+	if c.closed() {
+		c.log.Warnf("Closed connection unable add consumer with id=%+v", id)
+		return
+	}
+
 	c.consumerHandlersLock.Lock()
 	defer c.consumerHandlersLock.Unlock()
 	c.consumerHandlers[id] = handler
