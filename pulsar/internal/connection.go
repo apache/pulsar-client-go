@@ -53,7 +53,7 @@ type TLSOptions struct {
 }
 
 var (
-	errConnectionClosed = fmt.Errorf("connection closed")
+	errConnectionClosed = errors.New("connection closed")
 )
 
 // ConnectionListener is a user of a connection (eg. a producer or
@@ -331,7 +331,7 @@ func (c *connection) waitUntilReady() error {
 	for c.getState() != connectionReady {
 		c.log.Debugf("Wait until connection is ready state=%s", c.getState().String())
 		if c.getState() == connectionClosed {
-			return errConnectionClosed
+			return errors.New("connection error")
 		}
 		// wait for a new connection state change
 		c.cond.Wait()
@@ -396,7 +396,6 @@ func (c *connection) run() {
 
 		case cmd := <-c.incomingCmdCh:
 			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
-			//time.Sleep(time.Duration(100) * time.Millisecond)
 		case data := <-c.writeRequestsCh:
 			if data == nil {
 				return
