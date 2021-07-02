@@ -18,59 +18,13 @@
 package internal
 
 import (
-	"context"
-	"sync"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestSemaphore(t *testing.T) {
-	s := NewSemaphore(3)
-
-	const n = 10
-
-	wg := sync.WaitGroup{}
-	wg.Add(n)
-
-	for i := 0; i < n; i++ {
-		go func() {
-			assert.True(t, s.Acquire(context.Background()))
-			time.Sleep(100 * time.Millisecond)
-			s.Release()
-			wg.Done()
-		}()
-	}
-
-	wg.Wait()
-}
-
-func TestSemaphore_TryAcquire(t *testing.T) {
-	s := NewSemaphore(1)
-
-	assert.True(t, s.Acquire(context.Background()))
-
-	assert.False(t, s.TryAcquire())
-
-	s.Release()
-
-	assert.True(t, s.TryAcquire())
-	assert.False(t, s.TryAcquire())
-	s.Release()
-}
-
-func TestSemaphore_ContextExpire(t *testing.T) {
-	s := NewSemaphore(1)
-
-	assert.True(t, s.Acquire(context.Background()))
-
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	assert.False(t, s.Acquire(ctx))
-
-	assert.False(t, s.TryAcquire())
-	s.Release()
-
-	assert.True(t, s.TryAcquire())
+func TestIsV2Namespace(t *testing.T) {
+	assert.True(t, IsV2Namespace("tenant/default"))
+	assert.False(t, IsV2Namespace("tenant/cluster/default"))
+	assert.False(t, IsV2Namespace("default"))
 }

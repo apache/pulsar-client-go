@@ -391,6 +391,22 @@ func (id *myMessageID) Serialize() []byte {
 	return id.data
 }
 
+func (id *myMessageID) LedgerID() int64 {
+	return id.LedgerID()
+}
+
+func (id *myMessageID) EntryID() int64 {
+	return id.EntryID()
+}
+
+func (id *myMessageID) BatchIdx() int32 {
+	return id.BatchIdx()
+}
+
+func (id *myMessageID) PartitionIdx() int32 {
+	return id.PartitionIdx()
+}
+
 func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

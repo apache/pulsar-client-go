@@ -531,7 +531,7 @@ type MockHTTPClient struct {
 
 func (c *MockHTTPClient) Close() {}
 
-func (c *MockHTTPClient) Get(endpoint string, obj interface{}) error {
+func (c *MockHTTPClient) Get(endpoint string, obj interface{}, params map[string]string) error {
 	if strings.Contains(endpoint, HTTPLookupServiceBasePathV1) || strings.Contains(endpoint,
 		HTTPLookupServiceBasePathV2) {
 		return mockHTTPGetLookupResult(obj)

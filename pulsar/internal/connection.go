@@ -89,6 +89,7 @@ type connectionState int32
 const (
 	connectionInit = iota
 	connectionReady
+	connectionClosing
 	connectionClosed
 )
 
@@ -98,6 +99,8 @@ func (s connectionState) String() string {
 		return "Initializing"
 	case connectionReady:
 		return "Ready"
+	case connectionClosing:
+		return "Closing"
 	case connectionClosed:
 		return "Closed"
 	default:
@@ -142,6 +145,7 @@ type connection struct {
 
 	requestIDGenerator uint64
 
+	incomingRequestsWG sync.WaitGroup
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan interface{}
@@ -149,7 +153,9 @@ type connection struct {
 
 	pendingLock sync.Mutex
 	pendingReqs map[uint64]*request
-	listeners   map[uint64]ConnectionListener
+
+	listenersLock sync.RWMutex
+	listeners     map[uint64]ConnectionListener
 
 	consumerHandlersLock sync.RWMutex
 	consumerHandlers     map[uint64]ConsumerHandler
@@ -331,10 +337,15 @@ func (c *connection) waitUntilReady() error {
 }
 
 func (c *connection) failLeftRequestsWhenClose() {
+	// wait for outstanding incoming requests to complete before draining
+	// and closing the channel
+	c.incomingRequestsWG.Wait()
+
 	reqLen := len(c.incomingRequestsCh)
 	for i := 0; i < reqLen; i++ {
 		c.internalSendRequest(<-c.incomingRequestsCh)
 	}
+
 	close(c.incomingRequestsCh)
 }
 
@@ -343,7 +354,8 @@ func (c *connection) run() {
 	go c.reader.readFromConnection()
 	go c.runPingCheck()
 
-	c.log.Debugf("Connection run start channel %+v, requestLength %d", c, len(c.incomingRequestsCh))
+	c.log.Debugf("Connection run starting with request capacity=%d queued=%d",
+		cap(c.incomingRequestsCh), len(c.incomingRequestsCh))
 
 	defer func() {
 		// all the accesses to the pendingReqs should be happened in this run loop thread,
@@ -546,8 +558,13 @@ func (c *connection) Write(data Buffer) {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
-	if c.getState() == connectionClosed {
+	c.incomingRequestsWG.Add(1)
+	defer c.incomingRequestsWG.Done()
+
+	state := c.getState()
+	if state == connectionClosed || state == connectionClosing {
 		callback(req, ErrConnectionClosed)
+
 	} else {
 		select {
 		case <-c.closeCh:
@@ -563,7 +580,11 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 }
 
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
-	if c.getState() == connectionClosed {
+	c.incomingRequestsWG.Add(1)
+	defer c.incomingRequestsWG.Done()
+
+	state := c.getState()
+	if state == connectionClosed || state == connectionClosing {
 		return ErrConnectionClosed
 	}
 
@@ -581,17 +602,17 @@ func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
 }
 
 func (c *connection) internalSendRequest(req *request) {
-	c.pendingLock.Lock()
-	if req.id != nil {
-		c.pendingReqs[*req.id] = req
-	}
-	c.pendingLock.Unlock()
 	if c.getState() == connectionClosed {
 		c.log.Warnf("internalSendRequest failed for connectionClosed")
 		if req.callback != nil {
 			req.callback(req.cmd, ErrConnectionClosed)
 		}
 	} else {
+		c.pendingLock.Lock()
+		if req.id != nil {
+			c.pendingReqs[*req.id] = req
+		}
+		c.pendingLock.Unlock()
 		c.writeCommand(req.cmd)
 	}
 }
@@ -631,9 +652,9 @@ func (c *connection) handleResponseError(serverError *pb.CommandError) {
 func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	producerID := response.GetProducerId()
 
-	c.Lock()
+	c.listenersLock.RLock()
 	producer, ok := c.listeners[producerID]
-	c.Unlock()
+	c.listenersLock.RUnlock()
 
 	if ok {
 		producer.ReceivedSendReceipt(response)
@@ -712,9 +733,6 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	consumerID := closeConsumer.GetConsumerId()
 	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
 
-	c.Lock()
-	defer c.Unlock()
-
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ConnectionClosed()
 		c.DeleteConsumeHandler(consumerID)
@@ -727,34 +745,41 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
 
-	c.Lock()
-	defer c.Unlock()
-	if producer, ok := c.listeners[producerID]; ok {
-		producer.ConnectionClosed()
+	c.listenersLock.Lock()
+	producer, ok := c.listeners[producerID]
+	if ok {
 		delete(c.listeners, producerID)
+	}
+	c.listenersLock.Unlock()
+
+	// did we find a producer?
+	if ok {
+		producer.ConnectionClosed()
 	} else {
 		c.log.WithField("producerID", producerID).Warn("Producer with ID not found while closing producer")
 	}
 }
 
 func (c *connection) RegisterListener(id uint64, listener ConnectionListener) {
-	c.Lock()
-	defer c.Unlock()
+	c.listenersLock.Lock()
+	defer c.listenersLock.Unlock()
 
 	c.listeners[id] = listener
 }
 
 func (c *connection) UnregisterListener(id uint64) {
-	c.Lock()
-	defer c.Unlock()
+	c.listenersLock.Lock()
+	defer c.listenersLock.Unlock()
 
 	delete(c.listeners, id)
 }
 
-// Triggers the connection close by forcing the socket to close and
+// TriggerClose the connection close by forcing the socket to close and
 // broadcasting the notification on the close channel
 func (c *connection) TriggerClose() {
 	c.closeOnce.Do(func() {
+		c.setState(connectionClosing)
+
 		cnx := c.cnx
 		if cnx != nil {
 			cnx.Close()
@@ -775,13 +800,21 @@ func (c *connection) Close() {
 	}
 
 	c.log.Info("Connection closed")
+	c.TriggerClose()
 	// do not use changeState() since they share the same lock
 	c.setState(connectionClosed)
-	c.TriggerClose()
+
 	c.pingTicker.Stop()
 	c.pingCheckTicker.Stop()
 
-	for _, listener := range c.listeners {
+	listeners := make(map[uint64]ConnectionListener)
+	c.listenersLock.RLock()
+	for id, listener := range c.listeners {
+		listeners[id] = listener
+	}
+	c.listenersLock.RUnlock()
+
+	for _, listener := range listeners {
 		listener.ConnectionClosed()
 	}
 

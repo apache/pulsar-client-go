@@ -28,6 +28,7 @@ IMAGE_NAME=pulsar-client-go-test:latest
 if [[ -f /.dockerenv ]]; then
     # When running tests inside docker
     PULSAR_ADMIN=/pulsar/bin/pulsar-admin
+    cat /pulsar/conf/standalone.conf
     /pulsar/bin/pulsar-daemon start standalone --no-functions-worker --no-stream-storage
 else
     docker build -t ${IMAGE_NAME} .
