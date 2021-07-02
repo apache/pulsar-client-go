@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -304,25 +305,42 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			} else {
 				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
-			opts := &partitionConsumerOpts{
-				topic:                      pt,
-				consumerName:               c.consumerName,
-				subscription:               c.options.SubscriptionName,
-				subscriptionType:           c.options.Type,
-				subscriptionInitPos:        c.options.SubscriptionInitialPosition,
-				partitionIdx:               idx,
-				receiverQueueSize:          receiverQueueSize,
-				nackRedeliveryDelay:        nackRedeliveryDelay,
-				metadata:                   metadata,
-				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             trackingMessageID{},
-				subscriptionMode:           durable,
-				readCompacted:              c.options.ReadCompacted,
-				interceptors:               c.options.Interceptors,
-				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
-				keySharedPolicy:            c.options.KeySharedPolicy,
-				schema:                     c.options.Schema,
+
+			// use default message crypto if not already created
+			if c.options.KeyReader != nil && c.options.MessageCrypto == nil {
+				logCtx := fmt.Sprintf("[%v] [%v]", pt, c.options.SubscriptionName)
+				messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, false, c.log)
+				if err != nil {
+					c.log.Error(err)
+					// should fail consumer creation
+					panic("error creation of default MessageCrypto while creating consumer.")
+				}
+				c.options.MessageCrypto = messageCrypto
 			}
+
+			opts := &partitionConsumerOpts{
+				topic:                       pt,
+				consumerName:                c.consumerName,
+				subscription:                c.options.SubscriptionName,
+				subscriptionType:            c.options.Type,
+				subscriptionInitPos:         c.options.SubscriptionInitialPosition,
+				partitionIdx:                idx,
+				receiverQueueSize:           receiverQueueSize,
+				nackRedeliveryDelay:         nackRedeliveryDelay,
+				metadata:                    metadata,
+				replicateSubscriptionState:  c.options.ReplicateSubscriptionState,
+				startMessageID:              trackingMessageID{},
+				subscriptionMode:            durable,
+				readCompacted:               c.options.ReadCompacted,
+				interceptors:                c.options.Interceptors,
+				maxReconnectToBroker:        c.options.MaxReconnectToBroker,
+				keySharedPolicy:             c.options.KeySharedPolicy,
+				schema:                      c.options.Schema,
+				KeyReader:                   c.options.KeyReader,
+				messageCrypto:               c.options.MessageCrypto,
+				consumerCryptoFailureAcrion: c.options.ConsumerCryptoFailureAction,
+			}
+
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
 				err:       err,

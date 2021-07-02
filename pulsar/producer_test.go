@@ -27,9 +27,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
 
+	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -98,9 +100,8 @@ func TestSimpleProducer(t *testing.T) {
 
 	for i := 0; i < 10; i++ {
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
-			Payload: []byte("hello"),
+			Payload: []byte(fmt.Sprintf("Hello : %v\n", i)),
 		})
-
 		assert.NoError(t, err)
 		assert.NotNil(t, ID)
 	}
@@ -1096,4 +1097,68 @@ func TestProducerWithInterceptors(t *testing.T) {
 
 	assert.Equal(t, 10, metric.sendn)
 	assert.Equal(t, 10, metric.ackn)
+}
+
+func TestProducerWithRSAEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
+	ctx := context.Background()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:            topic,
+		DisableBatching:  false,
+		MessageKeyCrypto: msgCrypto,
+		KeyReader:        crypto.NewFileKeyReader("pub-key-rsa.pem", "pri-key-rsa.pem"),
+		Schema:           NewStringSchema(nil),
+		EncryptionKeys:   []string{"my-app.key"},
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Value: fmt.Sprintf("hello-%d", i),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func TestProducuerCreationFailOnInvalidKey(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:            topic,
+		DisableBatching:  false,
+		MessageKeyCrypto: msgCrypto,
+		KeyReader:        crypto.NewFileKeyReader("invalid-pub-key-rsa.pem", "pri-key-rsa.pem"),
+		Schema:           NewStringSchema(nil),
+		EncryptionKeys:   []string{"my-app.key"},
+	})
+
+	assert.NotNil(t, err)
+	assert.Nil(t, producer)
 }

@@ -20,6 +20,8 @@ package pulsar
 import (
 	"context"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 )
 
 // Pair of a Consumer and Message
@@ -155,6 +157,15 @@ type ConsumerOptions struct {
 
 	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
+
+	// KeyReader to use for reader RSA/ECDSA private key
+	KeyReader crypto.KeyReader
+
+	// MessageCrypto to use for decrypting payload
+	MessageCrypto crypto.MessageCrypto
+
+	// ConsumerCryptoFailureAction action to be taken on failure of message decryption
+	ConsumerCryptoFailureAction crypto.ConsumerCryptoFailureAction
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
