@@ -23,6 +23,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
@@ -267,6 +268,116 @@ func serializeBatch(wb Buffer,
 	// Set Sizes and checksum in the fixed-size header
 	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
+}
+
+// copy of the method serializeBatch(....) with an extension to encrypt payload
+func serializeBatchWithEncryption(wb Buffer,
+	cmdSend *pb.BaseCommand,
+	msgMetadata *pb.MessageMetadata,
+	uncompressedPayload Buffer,
+	compressionProvider compression.Provider,
+	KeyReader crypto.KeyReader,
+	encryptionKeys []string,
+	msgCrypto crypto.MessageCrypto,
+	cryptoFailureAction int,
+) {
+	// Wire format
+	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
+
+	// compress the payload
+	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
+
+	encryptedPayload := encryptPayload(msgMetadata,
+		msgCrypto,
+		KeyReader,
+		encryptionKeys,
+		compressedPayload,
+		cryptoFailureAction)
+
+	// there was a error in encrypting the payload and crypto failure action is set to crypto.ProducerCryptoFailureActionFail
+	if encryptedPayload == nil {
+		panic(fmt.Errorf("error in encrypting the payload and message is not sent"))
+	}
+
+	compressedPayload = encryptedPayload
+
+	cmdSize := uint32(proto.Size(cmdSend))
+	msgMetadataSize := uint32(proto.Size(msgMetadata))
+
+	frameSizeIdx := wb.WriterIndex()
+	wb.WriteUint32(0) // Skip frame size until we now the size
+	frameStartIdx := wb.WriterIndex()
+
+	// Write cmd
+	wb.WriteUint32(cmdSize)
+	wb.ResizeIfNeeded(cmdSize)
+	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	if err != nil {
+		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
+	}
+	wb.WrittenBytes(cmdSize)
+
+	// Create checksum placeholder
+	wb.WriteUint16(magicCrc32c)
+	checksumIdx := wb.WriterIndex()
+	wb.WriteUint32(0) // skip 4 bytes of checksum
+
+	// Write metadata
+	metadataStartIdx := wb.WriterIndex()
+	wb.WriteUint32(msgMetadataSize)
+	wb.ResizeIfNeeded(msgMetadataSize)
+	_, err = msgMetadata.MarshalToSizedBuffer(wb.WritableSlice()[:msgMetadataSize])
+	if err != nil {
+		panic(fmt.Sprintf("Protobuf error when serializing msgMetadata: %v", err))
+	}
+	wb.WrittenBytes(msgMetadataSize)
+
+	wb.Write(compressedPayload)
+
+	// Write checksum at created checksum-placeholder
+	frameEndIdx := wb.WriterIndex()
+	checksum := Crc32cCheckSum(wb.Get(metadataStartIdx, frameEndIdx-metadataStartIdx))
+
+	// Set Sizes and checksum in the fixed-size header
+	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
+	wb.PutUint32(checksum, checksumIdx)
+}
+
+func encryptPayload(msgMetadata *pb.MessageMetadata,
+	msgCrypto crypto.MessageCrypto,
+	KeyReader crypto.KeyReader,
+	encryptionKeys []string,
+	compressedPayload []byte,
+	cryptoFailureAction int,
+) []byte {
+
+	// encryption is enabled but KeyReader interface is not implemented
+	if KeyReader == nil {
+		// crypto failure action is set to send
+		// so send unencrypted message
+		if cryptoFailureAction == crypto.ProducerCryptoFailureActionSend {
+			return compressedPayload
+		}
+		return nil
+	}
+
+	// encrypt payload
+	encryptedPayload, err := msgCrypto.Encrypt(encryptionKeys,
+		KeyReader,
+		crypto.NewMessageMetadataSupplier(msgMetadata),
+		compressedPayload)
+
+	if err != nil {
+		// error occurred in encrypting the message
+		// crypto failure action is set to send
+		// so send unencrypted message
+		if cryptoFailureAction == crypto.ProducerCryptoFailureActionSend {
+			return compressedPayload
+		}
+		return nil
+	}
+
+	return encryptedPayload
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte

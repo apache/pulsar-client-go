@@ -30,6 +30,8 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -994,6 +996,70 @@ func TestSendContextExpired(t *testing.T) {
 	wg.Wait()
 
 	makeHTTPCall(t, http.MethodDelete, quotaURL, "")
+}
+
+func TestProducerWithRSAEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:            topic,
+		DisableBatching:  false,
+		MessageKeyCrypto: msgCrypto,
+		KeyReader:        crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem", "crypto/testdata/pri_key_rsa.pem"),
+		Schema:           NewStringSchema(nil),
+		EncryptionKeys:   []string{"my-app.key"},
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Value: fmt.Sprintf("hello-%d", i),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func TestProducuerCreationFailOnInvalidKey(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:            topic,
+		DisableBatching:  false,
+		MessageKeyCrypto: msgCrypto,
+		KeyReader:        crypto.NewFileKeyReader("crypto/testdata/invalid_pub_key_rsa.pem", "crypto/testdata/pri_key_rsa.pem"),
+		Schema:           NewStringSchema(nil),
+		EncryptionKeys:   []string{"my-app.key"},
+	})
+
+	assert.NotNil(t, err)
+	assert.Nil(t, producer)
 }
 
 type noopProduceInterceptor struct{}
