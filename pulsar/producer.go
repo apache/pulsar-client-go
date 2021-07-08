@@ -169,8 +169,8 @@ type ProducerOptions struct {
 	// EncryptionKeys list of encryption key names to encrypt session key
 	EncryptionKeys []string
 
-	// MessageKeyCrypto used to encrypt and decrypt the data and session keys
-	MessageKeyCrypto crypto.MessageCrypto
+	// MessageCrypto used to encrypt and decrypt the data and session keys
+	MessageCrypto crypto.MessageCrypto
 
 	// KeyReader read RSA public/private key pairs
 	KeyReader crypto.KeyReader

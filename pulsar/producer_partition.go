@@ -137,14 +137,14 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	// add default message crypto if not provided
-	if len(options.EncryptionKeys) > 0 && options.MessageKeyCrypto == nil {
+	if len(options.EncryptionKeys) > 0 && options.MessageCrypto == nil {
 		logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
 		messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
 		if err != nil {
 			logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
 			return nil, err
 		}
-		p.options.MessageKeyCrypto = messageCrypto
+		p.options.MessageCrypto = messageCrypto
 	}
 
 	// generate and schedule data key generation
@@ -191,8 +191,8 @@ func (p *partitionProducer) sheduleDataKeyUpdate() {
 
 func (p *partitionProducer) updateDataKey() error {
 	if len(p.options.EncryptionKeys) > 0 {
-		if p.options.KeyReader != nil && p.options.MessageKeyCrypto != nil {
-			return p.options.MessageKeyCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.KeyReader)
+		if p.options.KeyReader != nil && p.options.MessageCrypto != nil {
+			return p.options.MessageCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.KeyReader)
 		}
 		return fmt.Errorf("failed to update data key. KeyReader or MessageCrypto interface is not implemented")
 	}
@@ -268,7 +268,7 @@ func (p *partitionProducer) grabCnx() error {
 		p.log,
 		internal.UseEncryptionKeys(p.options.EncryptionKeys),
 		internal.UseKeyReader(p.options.KeyReader),
-		internal.UseMessageCrypto(p.options.MessageKeyCrypto),
+		internal.UseMessageCrypto(p.options.MessageCrypto),
 		internal.UseCryptoFailureAction(p.options.ProducerCryptoFailureAction),
 	)
 

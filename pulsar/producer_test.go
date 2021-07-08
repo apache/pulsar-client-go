@@ -1014,12 +1014,12 @@ func TestProducerWithRSAEncryption(t *testing.T) {
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:            topic,
-		DisableBatching:  false,
-		MessageKeyCrypto: msgCrypto,
-		KeyReader:        crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem", "crypto/testdata/pri_key_rsa.pem"),
-		Schema:           NewStringSchema(nil),
-		EncryptionKeys:   []string{"my-app.key"},
+		Topic:           topic,
+		DisableBatching: false,
+		MessageCrypto:   msgCrypto,
+		KeyReader:       crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem", "crypto/testdata/pri_key_rsa.pem"),
+		Schema:          NewStringSchema(nil),
+		EncryptionKeys:  []string{"my-app.key"},
 	})
 
 	assert.Nil(t, err)
@@ -1050,12 +1050,12 @@ func TestProducuerCreationFailOnInvalidKey(t *testing.T) {
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:            topic,
-		DisableBatching:  false,
-		MessageKeyCrypto: msgCrypto,
-		KeyReader:        crypto.NewFileKeyReader("crypto/testdata/invalid_pub_key_rsa.pem", "crypto/testdata/pri_key_rsa.pem"),
-		Schema:           NewStringSchema(nil),
-		EncryptionKeys:   []string{"my-app.key"},
+		Topic:           topic,
+		DisableBatching: false,
+		MessageCrypto:   msgCrypto,
+		KeyReader:       crypto.NewFileKeyReader("crypto/testdata/invalid_pub_key_rsa.pem", "crypto/testdata/pri_key_rsa.pem"),
+		Schema:          NewStringSchema(nil),
+		EncryptionKeys:  []string{"my-app.key"},
 	})
 
 	assert.NotNil(t, err)
