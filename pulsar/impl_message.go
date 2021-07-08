@@ -203,7 +203,7 @@ func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 }
 
 // EncryptionContext it will be used by the client to handle decrypting of messages
-// It has enough information reuired to decrypt the encrypted message.
+// It has enough information required to decrypt the encrypted message.
 type EncryptionContext struct {
 	Keys             map[string]crypto.EncryptionKeyInfo
 	Param            []byte

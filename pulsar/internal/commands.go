@@ -294,7 +294,8 @@ func serializeBatchWithEncryption(wb Buffer,
 		compressedPayload,
 		cryptoFailureAction)
 
-	// there was a error in encrypting the payload and crypto failure action is set to crypto.ProducerCryptoFailureActionFail
+	// there was a error in encrypting the payload and
+	// crypto failure action is set to crypto.ProducerCryptoFailureActionFail
 	if encryptedPayload == nil {
 		panic(fmt.Errorf("error in encrypting the payload and message is not sent"))
 	}

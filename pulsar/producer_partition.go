@@ -121,7 +121,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 		// ref: https://pulsar.apache.org/docs/en/security-encryption/#key-rotation
 		// update data key every four hours
-		// currently only supporting roation of data key per every 4hrs ( similar to java client)
+		// currently only supporting rotation of data key per every 4hrs ( similar to java client)
 		dataKeyTicker: time.NewTicker(4 * time.Hour),
 	}
 	p.setProducerState(producerInit)
