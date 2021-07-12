@@ -374,7 +374,7 @@ func (c *connection) run() {
 		}
 		c.pendingLock.Unlock()
 		c.Close()
-	} ()
+	}()
 
 	// All reads come from the reader goroutine
 	go c.reader.readFromConnection()
@@ -812,9 +812,6 @@ func (c *connection) Close() {
 		}
 
 		close(c.closeCh)
-
-		//c.pingTicker.Stop()
-		//c.pingCheckTicker.Stop()
 
 		listeners := make(map[uint64]ConnectionListener)
 		c.listenersLock.Lock()

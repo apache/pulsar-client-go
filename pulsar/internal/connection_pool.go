@@ -38,7 +38,7 @@ type ConnectionPool interface {
 }
 
 type connectionPool struct {
-	mu 					  sync.Mutex
+	sync.Mutex
 	connections           map[string]*connection
 	connectionTimeout     time.Duration
 	tlsOptions            *TLSOptions
@@ -72,7 +72,7 @@ func NewConnectionPool(
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
 	key := p.getMapKey(logicalAddr)
 
-	p.mu.Lock()
+	p.Lock()
 	conn, ok := p.connections[key]
 	if ok {
 		p.log.Debugf("Found connection in pool key=%s logical_addr=%+v physical_addr=%+v",
@@ -98,11 +98,11 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 			metrics:           p.metrics,
 		})
 		p.connections[key] = conn
-		p.mu.Unlock()
+		p.Unlock()
 		conn.start()
 	} else {
 		// we already have a connection
-		p.mu.Unlock()
+		p.Unlock()
 	}
 
 	err := conn.waitUntilReady()
@@ -110,12 +110,12 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 }
 
 func (p *connectionPool) Close() {
-	p.mu.Lock()
+	p.Lock()
 	for k, c := range p.connections {
 		delete(p.connections, k)
 		c.Close()
 	}
-	p.mu.Unlock()
+	p.Unlock()
 }
 
 func (p *connectionPool) getMapKey(addr *url.URL) string {
