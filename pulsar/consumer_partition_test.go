@@ -30,12 +30,18 @@ import (
 
 func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
+
+	tn, err := internal.ParseTopicName("topic")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics(tn),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
@@ -61,12 +67,18 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 
 func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
+
+	tn, err := internal.ParseTopicName("topic")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics(tn),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
@@ -92,12 +104,18 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 
 func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
+
+	tn, err := internal.ParseTopicName("topic")
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics(tn),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)

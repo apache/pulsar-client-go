@@ -348,8 +348,7 @@ func (c *regexConsumer) topics() ([]string, error) {
 		return nil, err
 	}
 
-	filtered := filterTopics(topics, c.pattern)
-	return filtered, nil
+	return filterTopics(topics, c.pattern)
 }
 
 type consumerError struct {
@@ -383,11 +382,14 @@ func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan Consum
 	return consumerErrorCh
 }
 
-func filterTopics(topics []string, regex *regexp.Regexp) []string {
+func filterTopics(topics []string, regex *regexp.Regexp) ([]string, error) {
 	matches := make(map[string]bool)
 	matching := make([]string, 0)
 	for _, t := range topics {
-		tn, _ := internal.ParseTopicName(t)
+		tn, err := internal.ParseTopicName(t)
+		if err != nil {
+			return matching, err
+		}
 		topic := internal.TopicNameWithoutPartitionPart(tn)
 		if _, ok := matches[topic]; ok {
 			continue
@@ -398,7 +400,7 @@ func filterTopics(topics []string, regex *regexp.Regexp) []string {
 		}
 	}
 
-	return matching
+	return matching, nil
 }
 
 // topicDiff returns all topics in topics1 that are not in topics2
