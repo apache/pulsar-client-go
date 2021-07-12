@@ -128,6 +128,7 @@ type incomingCmd struct {
 type connection struct {
 	sync.Mutex
 	cond              *sync.Cond
+	started           int32
 	state             ua.Int32
 	connectionTimeout time.Duration
 	closeOnce         sync.Once
@@ -142,8 +143,6 @@ type connection struct {
 
 	lastDataReceivedLock sync.Mutex
 	lastDataReceivedTime time.Time
-	pingTicker           *time.Ticker
-	pingCheckTicker      *time.Ticker
 
 	log log.Logger
 
@@ -191,8 +190,6 @@ func newConnection(opts connectionOptions) *connection {
 		log:                  opts.logger.SubLogger(log.Fields{"remote_addr": opts.physicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
-		pingTicker:           time.NewTicker(keepAliveInterval),
-		pingCheckTicker:      time.NewTicker(keepAliveInterval),
 		tlsOptions:           opts.tls,
 		auth:                 opts.auth,
 
@@ -217,6 +214,11 @@ func newConnection(opts connectionOptions) *connection {
 }
 
 func (c *connection) start() {
+	if !atomic.CompareAndSwapInt32(&c.started, 0, 1) {
+		c.log.Warnf("connection has already started")
+		return
+	}
+
 	// Each connection gets its own goroutine that will
 	go func() {
 		if c.connect() {
@@ -354,16 +356,17 @@ func (c *connection) failLeftRequestsWhenClose() {
 }
 
 func (c *connection) run() {
-	// All reads come from the reader goroutine
-	go c.reader.readFromConnection()
-	go c.runPingCheck()
-
-	c.log.Debugf("Connection run starting with request capacity=%d queued=%d",
-		cap(c.incomingRequestsCh), len(c.incomingRequestsCh))
+	pingSendTicker := time.NewTicker(keepAliveInterval)
+	pingCheckTicker := time.NewTicker(keepAliveInterval)
 
 	defer func() {
+		// stop tickers
+		pingSendTicker.Stop()
+		pingCheckTicker.Stop()
+
 		// all the accesses to the pendingReqs should be happened in this run loop thread,
-		// including the final cleanup, to avoid the issue https://github.com/apache/pulsar-client-go/issues/239
+		// including the final cleanup, to avoid the issue
+		// https://github.com/apache/pulsar-client-go/issues/239
 		c.pendingLock.Lock()
 		for id, req := range c.pendingReqs {
 			req.callback(nil, errConnectionClosed)
@@ -371,7 +374,14 @@ func (c *connection) run() {
 		}
 		c.pendingLock.Unlock()
 		c.Close()
-	}()
+	} ()
+
+	// All reads come from the reader goroutine
+	go c.reader.readFromConnection()
+	go c.runPingCheck(pingCheckTicker)
+
+	c.log.Debugf("Connection run starting with request capacity=%d queued=%d",
+		cap(c.incomingRequestsCh), len(c.incomingRequestsCh))
 
 	go func() {
 		for {
@@ -402,18 +412,18 @@ func (c *connection) run() {
 			}
 			c.internalWriteData(data)
 
-		case <-c.pingTicker.C:
+		case <-pingSendTicker.C:
 			c.sendPing()
 		}
 	}
 }
 
-func (c *connection) runPingCheck() {
+func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 	for {
 		select {
 		case <-c.closeCh:
 			return
-		case <-c.pingCheckTicker.C:
+		case <-pingCheckTicker.C:
 			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
@@ -803,8 +813,8 @@ func (c *connection) Close() {
 
 		close(c.closeCh)
 
-		c.pingTicker.Stop()
-		c.pingCheckTicker.Stop()
+		//c.pingTicker.Stop()
+		//c.pingCheckTicker.Stop()
 
 		listeners := make(map[uint64]ConnectionListener)
 		c.listenersLock.Lock()
