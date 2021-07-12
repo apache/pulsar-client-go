@@ -93,6 +93,10 @@ func (c *multiTopicConsumer) Unsubscribe() error {
 	return errs
 }
 
+func (c *multiTopicConsumer) Closed() <-chan struct{} {
+	return c.closeCh
+}
+
 func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {

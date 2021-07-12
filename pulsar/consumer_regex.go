@@ -136,6 +136,10 @@ func (c *regexConsumer) Unsubscribe() error {
 	return errs
 }
 
+func (c *regexConsumer) Closed() <-chan struct{} {
+	return c.closeCh
+}
+
 func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {
