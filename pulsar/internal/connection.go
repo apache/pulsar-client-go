@@ -536,7 +536,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponseError(cmd.GetError())
 
 	case pb.BaseCommand_SEND_ERROR:
-		c.handleResponseError(cmd.GetError())
+		c.handleSendError(cmd.GetError())
 
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
@@ -743,6 +743,27 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	}
 
 	c.writeCommand(baseCommand(pb.BaseCommand_AUTH_RESPONSE, cmdAuthResponse))
+}
+
+func (c *connection) handleSendError(sendError *pb.CommandError) {
+	c.log.Warnf("Received send error from server: [%v] : [%s]", sendError.GetError(), sendError.GetMessage())
+
+	requestID := sendError.GetRequestId()
+
+	c.pendingLock.Lock()
+	request, ok := c.pendingReqs[requestID]
+	if !ok {
+		c.log.Warnf("Received unexpected error response for request %d of type %s",
+			requestID, sendError.GetError())
+		c.pendingLock.Unlock()
+		return
+	}
+
+	delete(c.pendingReqs, requestID)
+	c.pendingLock.Unlock()
+
+	errMsg := fmt.Sprintf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
+	request.callback(nil, errors.New(errMsg))
 }
 
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
