@@ -750,20 +750,28 @@ func (c *connection) handleSendError(sendError *pb.CommandError) {
 
 	requestID := sendError.GetRequestId()
 
-	c.pendingLock.Lock()
-	request, ok := c.pendingReqs[requestID]
-	if !ok {
-		c.log.Warnf("Received unexpected error response for request %d of type %s",
-			requestID, sendError.GetError())
+	switch *sendError.Error {
+	case pb.ServerError_NotAllowedError:
+		c.pendingLock.Lock()
+		request, ok := c.pendingReqs[requestID]
+		if !ok {
+			c.log.Warnf("Received unexpected error response for request %d of type %s",
+				requestID, sendError.GetError())
+			c.pendingLock.Unlock()
+			return
+		}
+
+		delete(c.pendingReqs, requestID)
 		c.pendingLock.Unlock()
-		return
+
+		errMsg := fmt.Sprintf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
+		request.callback(nil, errors.New(errMsg))
+		break
+	default:
+		// By default, for transient error, let the reconnection logic
+		// to take place and re-establish the produce again
+		c.Close()
 	}
-
-	delete(c.pendingReqs, requestID)
-	c.pendingLock.Unlock()
-
-	errMsg := fmt.Sprintf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
-	request.callback(nil, errors.New(errMsg))
 }
 
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
