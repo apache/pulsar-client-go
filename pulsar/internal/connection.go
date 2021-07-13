@@ -536,7 +536,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponseError(cmd.GetError())
 
 	case pb.BaseCommand_SEND_ERROR:
-		c.handleSendError(cmd.GetError())
+		c.handleSendError(cmd.GetSendError(), cmd.GetError())
 
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
@@ -745,10 +745,11 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	c.writeCommand(baseCommand(pb.BaseCommand_AUTH_RESPONSE, cmdAuthResponse))
 }
 
-func (c *connection) handleSendError(sendError *pb.CommandError) {
+func (c *connection) handleSendError(sendError *pb.CommandSendError, cmdError *pb.CommandError) {
 	c.log.Warnf("Received send error from server: [%v] : [%s]", sendError.GetError(), sendError.GetMessage())
 
-	requestID := sendError.GetRequestId()
+	requestID := cmdError.GetRequestId()
+	producerID := sendError.GetProducerId()
 
 	switch *sendError.Error {
 	case pb.ServerError_NotAllowedError:
@@ -756,7 +757,7 @@ func (c *connection) handleSendError(sendError *pb.CommandError) {
 		request, ok := c.pendingReqs[requestID]
 		if !ok {
 			c.log.Warnf("Received unexpected error response for request %d of type %s",
-				requestID, sendError.GetError())
+				requestID, cmdError.GetError())
 			c.pendingLock.Unlock()
 			return
 		}
@@ -764,8 +765,21 @@ func (c *connection) handleSendError(sendError *pb.CommandError) {
 		delete(c.pendingReqs, requestID)
 		c.pendingLock.Unlock()
 
-		errMsg := fmt.Sprintf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
+		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
 		request.callback(nil, errors.New(errMsg))
+		break
+	case pb.ServerError_TopicTerminatedError:
+		c.listenersLock.RLock()
+		producer, ok := c.listeners[producerID]
+		c.listenersLock.RUnlock()
+
+		if ok {
+			producer.ConnectionClosed()
+		} else {
+			c.log.
+				WithField("producerID", producerID).
+				Warn("[HandleSendError] connection closed")
+		}
 		break
 	default:
 		// By default, for transient error, let the reconnection logic
