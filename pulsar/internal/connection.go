@@ -751,7 +751,6 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError, cmdError *p
 	requestID := cmdError.GetRequestId()
 	producerID := sendError.GetProducerId()
 
-SendError:
 	switch *sendError.Error {
 	case pb.ServerError_NotAllowedError:
 		c.pendingLock.Lock()
@@ -768,24 +767,21 @@ SendError:
 
 		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
 		request.callback(nil, errors.New(errMsg))
-		break SendError
 	case pb.ServerError_TopicTerminatedError:
+		// TODO: no-op
+	default:
+		// By default, for transient error, let the reconnection logic
+		// to take place and re-establish the produce again
 		c.listenersLock.RLock()
 		producer, ok := c.listeners[producerID]
 		c.listenersLock.RUnlock()
-
 		if ok {
 			producer.ConnectionClosed()
 		} else {
 			c.log.
 				WithField("producerID", producerID).
-				Warn("[HandleSendError] connection closed")
+				Warn("[handleSendError] reconnection to broker.")
 		}
-		break SendError
-	default:
-		// By default, for transient error, let the reconnection logic
-		// to take place and re-establish the produce again
-		c.Close()
 	}
 }
 
