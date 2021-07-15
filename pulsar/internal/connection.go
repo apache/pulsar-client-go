@@ -632,8 +632,6 @@ func (c *connection) internalSendRequest(req *request) {
 }
 
 func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
-	c.pendingLock.Lock()
-
 	request, ok := c.deletePendingRequest(requestID)
 	if !ok {
 		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
