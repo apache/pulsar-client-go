@@ -535,6 +535,9 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	case pb.BaseCommand_ERROR:
 		c.handleResponseError(cmd.GetError())
 
+	case pb.BaseCommand_SEND_ERROR:
+		c.handleSendError(cmd.GetError())
+
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
 
@@ -546,8 +549,6 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	case pb.BaseCommand_SEND_RECEIPT:
 		c.handleSendReceipt(cmd.GetSendReceipt())
-
-	case pb.BaseCommand_SEND_ERROR:
 
 	case pb.BaseCommand_MESSAGE:
 		c.handleMessage(cmd.GetMessage(), headersAndPayload)
@@ -631,32 +632,24 @@ func (c *connection) internalSendRequest(req *request) {
 }
 
 func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
-	c.pendingLock.Lock()
-	request, ok := c.pendingReqs[requestID]
+	request, ok := c.deletePendingRequest(requestID)
 	if !ok {
 		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
-		c.pendingLock.Unlock()
 		return
 	}
 
-	delete(c.pendingReqs, requestID)
-	c.pendingLock.Unlock()
 	request.callback(response, nil)
 }
 
 func (c *connection) handleResponseError(serverError *pb.CommandError) {
 	requestID := serverError.GetRequestId()
-	c.pendingLock.Lock()
-	request, ok := c.pendingReqs[requestID]
+
+	request, ok := c.deletePendingRequest(requestID)
 	if !ok {
 		c.log.Warnf("Received unexpected error response for request %d of type %s",
 			requestID, serverError.GetError())
-		c.pendingLock.Unlock()
 		return
 	}
-
-	delete(c.pendingReqs, requestID)
-	c.pendingLock.Unlock()
 
 	errMsg := fmt.Sprintf("server error: %s: %s", serverError.GetError(), serverError.GetMessage())
 	request.callback(nil, errors.New(errMsg))
@@ -692,6 +685,16 @@ func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) 
 	} else {
 		c.log.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)
 	}
+}
+
+func (c *connection) deletePendingRequest(requestID uint64) (*request, bool) {
+	c.pendingLock.Lock()
+	defer c.pendingLock.Unlock()
+	request, ok := c.pendingReqs[requestID]
+	if ok {
+		delete(c.pendingReqs, requestID)
+	}
+	return request, ok
 }
 
 func (c *connection) lastDataReceived() time.Time {
@@ -742,6 +745,31 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	}
 
 	c.writeCommand(baseCommand(pb.BaseCommand_AUTH_RESPONSE, cmdAuthResponse))
+}
+
+func (c *connection) handleSendError(cmdError *pb.CommandError) {
+	c.log.Warnf("Received send error from server: [%v] : [%s]", cmdError.GetError(), cmdError.GetMessage())
+
+	requestID := cmdError.GetRequestId()
+
+	switch *cmdError.Error {
+	case pb.ServerError_NotAllowedError:
+		request, ok := c.deletePendingRequest(requestID)
+		if !ok {
+			c.log.Warnf("Received unexpected error response for request %d of type %s",
+				requestID, cmdError.GetError())
+			return
+		}
+
+		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
+		request.callback(nil, errors.New(errMsg))
+	case pb.ServerError_TopicTerminatedError:
+		// TODO: no-op
+	default:
+		// By default, for transient error, let the reconnection logic
+		// to take place and re-establish the produce again
+		c.Close()
+	}
 }
 
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
