@@ -161,6 +161,15 @@ type Topics interface {
 
 	// RemoveDelayedDelivery Remove the delayed delivery policy on a topic
 	RemoveDelayedDelivery(utils.TopicName) error
+
+	// GetDispatchRate Get message dispatch rate for a topic
+	GetDispatchRate(utils.TopicName) (*utils.DispatchRateData, error)
+
+	// SetDispatchRate Set message dispatch rate for a topic
+	SetDispatchRate(utils.TopicName, utils.DispatchRateData) error
+
+	// RemoveDispatchRate Remove message dispatch rate for a topic
+	RemoveDispatchRate(utils.TopicName) error
 }
 
 type topics struct {
@@ -491,5 +500,22 @@ func (t *topics) SetDelayedDelivery(topic utils.TopicName, delayedDeliveryData u
 
 func (t *topics) RemoveDelayedDelivery(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
+	return t.pulsar.Client.Delete(endpoint)
+}
+
+func (t *topics) GetDispatchRate(topic utils.TopicName) (*utils.DispatchRateData, error) {
+	var dispatchRateData utils.DispatchRateData
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
+	err := t.pulsar.Client.Get(endpoint, &dispatchRateData)
+	return &dispatchRateData, err
+}
+
+func (t *topics) SetDispatchRate(topic utils.TopicName, dispatchRateData utils.DispatchRateData) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
+	return t.pulsar.Client.Post(endpoint, &dispatchRateData)
+}
+
+func (t *topics) RemoveDispatchRate(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
 	return t.pulsar.Client.Delete(endpoint)
 }
