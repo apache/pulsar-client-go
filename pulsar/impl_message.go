@@ -27,7 +27,6 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
@@ -202,17 +201,6 @@ func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 	return time.Unix(seconds, nanos)
 }
 
-// EncryptionContext it will be used by the client to handle decrypting of messages
-// It has enough information required to decrypt the encrypted message.
-type EncryptionContext struct {
-	Keys             map[string]crypto.EncryptionKeyInfo
-	Param            []byte
-	Algorithm        string
-	CompressionType  CompressionType
-	UncompressedSize int
-	BatchSize        int
-}
-
 type message struct {
 	publishTime         time.Time
 	eventTime           time.Time
@@ -227,7 +215,6 @@ type message struct {
 	replicatedFrom      string
 	redeliveryCount     uint32
 	schema              Schema
-	encryptionContext   EncryptionContext
 }
 
 func (msg *message) Topic() string {
@@ -280,10 +267,6 @@ func (msg *message) GetSchemaValue(v interface{}) error {
 
 func (msg *message) ProducerName() string {
 	return msg.producerName
-}
-
-func (msg *message) GetEncryptionContext() EncryptionContext {
-	return msg.encryptionContext
 }
 
 func newAckTracker(size int) *ackTracker {
