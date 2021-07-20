@@ -381,3 +381,10 @@ type DelayedDeliveryData struct {
 	TickTime float64 `json:"tickTime"`
 	Active   bool    `json:"active"`
 }
+
+type DispatchRateData struct {
+	DispatchThrottlingRateInMsg  int64 `json:"dispatchThrottlingRateInMsg"`
+	DispatchThrottlingRateInByte int64 `json:"dispatchThrottlingRateInByte"`
+	RatePeriodInSecond           int64 `json:"ratePeriodInSecond"`
+	RelativeToPublishRate        bool  `json:"relativeToPublishRate"`
+}
