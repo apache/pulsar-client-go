@@ -20,8 +20,6 @@ package pulsar
 import (
 	"context"
 	"time"
-
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
 )
 
 type HashingScheme int
@@ -166,18 +164,8 @@ type ProducerOptions struct {
 	// Default is 1 minute
 	PartitionsAutoDiscoveryInterval time.Duration
 
-	// EncryptionKeys list of encryption key names to encrypt session key
-	EncryptionKeys []string
-
-	// MessageCrypto used to encrypt and decrypt the data and session keys
-	MessageCrypto crypto.MessageCrypto
-
-	// KeyReader read RSA public/private key pairs
-	KeyReader crypto.KeyReader
-
-	// ProducerCryptoFailureAction action to be taken on failure of message encryption
-	// default is ProducerCryptoFailureActionFail
-	ProducerCryptoFailureAction int
+	// Encryption necessary fields to perform encryption of message
+	Encryption *ProducerEncryptionInfo
 }
 
 // Producer is used to publish messages on a topic

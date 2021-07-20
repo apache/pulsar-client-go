@@ -26,6 +26,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -80,9 +81,6 @@ type partitionProducer struct {
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
 	metrics          *internal.TopicMetrics
-
-	// ticker to refresh data key
-	dataKeyTicker *time.Ticker
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
@@ -118,11 +116,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		lastSequenceID:   -1,
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
-
-		// ref: https://pulsar.apache.org/docs/en/security-encryption/#key-rotation
-		// update data key every four hours
-		// currently only supporting rotation of data key per every 4hrs ( similar to java client)
-		dataKeyTicker: time.NewTicker(4 * time.Hour),
 	}
 	p.setProducerState(producerInit)
 
@@ -136,28 +129,24 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		p.producerName = options.Name
 	}
 
+	encryption := options.Encryption
 	// add default message crypto if not provided
-	if len(options.EncryptionKeys) > 0 && options.MessageCrypto == nil {
+	if encryption != nil && len(encryption.Keys) > 0 && encryption.MessageCrypto == nil {
 		logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
 		messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
 		if err != nil {
 			logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
 			return nil, err
 		}
-		p.options.MessageCrypto = messageCrypto
+		p.options.Encryption.MessageCrypto = messageCrypto
 	}
 
-	// generate and schedule data key generation
-	err := p.updateDataKey()
-	// error generating the data key, do not create producer
-	if err != nil {
-		logger.WithError(err).Error("Unable to generate data key. Producer creation is abandoned")
+	if err := p.generateDataKey(); err != nil {
+		logger.WithError(err).Error("Failed to create data key")
 		return nil, err
 	}
 
-	go p.sheduleDataKeyUpdate()
-
-	err = p.grabCnx()
+	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
 		return nil, err
@@ -174,29 +163,10 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	if p.options.SendTimeout > 0 {
 		go p.failTimeoutMessages()
 	}
+
 	go p.runEventsLoop()
 
 	return p, nil
-}
-
-func (p *partitionProducer) sheduleDataKeyUpdate() {
-	for t := range p.dataKeyTicker.C {
-		p.log.Infof("Refreshing data key :%v", t)
-		err := p.updateDataKey()
-		if err != nil {
-			p.log.Errorf("Error refreshing data key : %v", err)
-		}
-	}
-}
-
-func (p *partitionProducer) updateDataKey() error {
-	if len(p.options.EncryptionKeys) > 0 {
-		if p.options.KeyReader != nil && p.options.MessageCrypto != nil {
-			return p.options.MessageCrypto.AddPublicKeyCipher(p.options.EncryptionKeys, p.options.KeyReader)
-		}
-		return fmt.Errorf("failed to update data key. KeyReader or MessageCrypto interface is not implemented")
-	}
-	return nil
 }
 
 func (p *partitionProducer) grabCnx() error {
@@ -249,31 +219,42 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
 
-	var provider internal.BatcherBuilderProvider
-	if p.options.DisableBatching {
-		provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
-
-	} else if p.batchBuilder == nil {
-		p, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
-		if err != nil {
-			p, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
-		}
-		provider = p
+	var encryptor internalcrypto.Encryptor
+	if p.options.Encryption != nil {
+		encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
+			p.options.Encryption.Keyreader,
+			p.options.Encryption.MessageCrypto,
+			p.options.Encryption.ProducerCryptoFailureAction, p.log)
+	} else {
+		encryptor = internalcrypto.NewNoopEncryptor()
 	}
 
-	p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
-		p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
-		compression.Level(p.options.CompressionLevel),
-		p,
-		p.log,
-		internal.UseEncryptionKeys(p.options.EncryptionKeys),
-		internal.UseKeyReader(p.options.KeyReader),
-		internal.UseMessageCrypto(p.options.MessageCrypto),
-		internal.UseCryptoFailureAction(p.options.ProducerCryptoFailureAction),
-	)
+	if p.options.DisableBatching {
+		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
+			compression.Level(p.options.CompressionLevel),
+			p,
+			p.log,
+			encryptor)
+		if err != nil {
+			return err
+		}
+	} else if p.batchBuilder == nil {
+		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
+		if err != nil {
+			provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
+		}
 
-	if err != nil {
-		return err
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
+			compression.Level(p.options.CompressionLevel),
+			p,
+			p.log,
+			encryptor)
+		if err != nil {
+			return err
+		}
 	}
 
 	if p.sequenceIDGenerator == nil {
@@ -816,7 +797,17 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.setProducerState(producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
-	p.dataKeyTicker.Stop()
+}
+
+func (p *partitionProducer) generateDataKey() error {
+	if p.options.Encryption != nil {
+		if p.options.Encryption.Keyreader != nil {
+			return p.options.Encryption.MessageCrypto.AddPublicKeyCipher(p.options.Encryption.Keys,
+				p.options.Encryption.Keyreader)
+		}
+		return fmt.Errorf("failed to generate data key. KeyReader interface is not implemented")
+	}
+	return nil
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
