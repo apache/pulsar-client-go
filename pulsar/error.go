@@ -99,6 +99,8 @@ const (
 	AddToBatchFailed
 	// SeekFailed seek failed
 	SeekFailed
+	// ProducerClosed means producer already been closed
+	ProducerClosed
 )
 
 // Error implement error interface, composed of two parts: msg and result.
@@ -201,6 +203,8 @@ func getResultStr(r Result) string {
 		return "AddToBatchFailed"
 	case SeekFailed:
 		return "SeekFailed"
+	case ProducerClosed:
+		return "ProducerClosed"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
 	}
