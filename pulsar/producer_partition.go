@@ -355,6 +355,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if p.options.Schema != nil {
 		schemaPayload, err = p.options.Schema.Encode(msg.Value)
 		if err != nil {
+			p.log.WithError(err).Errorf("Schema encode message failed %s",msg.Value)
 			return
 		}
 	}
