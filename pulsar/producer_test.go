@@ -1097,3 +1097,33 @@ func TestProducerWithInterceptors(t *testing.T) {
 	assert.Equal(t, 10, metric.sendn)
 	assert.Equal(t, 10, metric.ackn)
 }
+
+func TestProducerSendAfterClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("hello"),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, ID)
+
+	producer.Close()
+	ID, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("hello"),
+	})
+	assert.Nil(t, ID)
+	assert.Error(t, err)
+}
