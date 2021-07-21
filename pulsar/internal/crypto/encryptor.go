@@ -22,26 +22,6 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
-type cryptoInfo struct {
-	// KeyReader read RSA public/private key pairs
-	Keyreader crypto.KeyReader
-
-	// MessageCrypto used to encrypt and decrypt the data and session keys
-	MessageCrypto crypto.MessageCrypto
-}
-
-// ProducerEncryptionInfo encryption related fields required by the producer
-type ProducerEncryptionInfo struct {
-	cryptoInfo
-
-	// Keys list of encryption key names to encrypt session key
-	Keys []string
-
-	// ProducerCryptoFailureAction action to be taken on failure of message encryption
-	// default is ProducerCryptoFailureActionFail
-	ProducerCryptoFailureAction int
-}
-
 // Encryptor support encryption
 type Encryptor interface {
 	Encrypt([]byte, crypto.MessageMetadataSupplier) ([]byte, error)
