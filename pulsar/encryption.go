@@ -38,3 +38,10 @@ type ProducerEncryptionInfo struct {
 	// default is ProducerCryptoFailureActionFail
 	ProducerCryptoFailureAction int
 }
+
+// ConsumerEncryptionInfo encryption related fields required by the consumer to decrypt the message
+type ConsumerEncryptionInfo struct {
+	CryptoInfo
+	// ConsumerCryptoFailureAction action to be taken on failure of message decryption
+	ConsumerCryptoFailureAction int
+}

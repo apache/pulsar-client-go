@@ -119,3 +119,7 @@ func (msg *mockConsumerMessage) GetSchemaValue(v interface{}) error {
 func (msg *mockConsumerMessage) ProducerName() string {
 	return ""
 }
+
+func (msg *mockConsumerMessage) GetEncryptionContext() pulsar.EncryptionContext {
+	return pulsar.EncryptionContext{}
+}

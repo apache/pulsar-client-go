@@ -25,8 +25,10 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	cryptointernal "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
@@ -97,6 +99,7 @@ type partitionConsumerOpts struct {
 	maxReconnectToBroker       *uint
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
+	decryptor                  cryptointernal.Decryptor
 }
 
 type partitionConsumer struct {
@@ -479,7 +482,49 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		return err
 	}
 
-	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, headersAndPayload)
+	decryptedPayload, err := pc.options.decryptor.Decrypt(headersAndPayload.ReadableSlice(), pbMsgID, msgMeta)
+	messages := make([]*message, 0)
+
+	// error decrypting the payload
+	if err != nil {
+		pc.log.Error(err)
+		switch pc.options.decryptor.CryptoFailureAction() {
+		case crypto.ConsumerCryptoFailureActionFail:
+			pc.log.Errorf("consuming message failed due to decryption err :%v", err)
+			return err
+		case crypto.ConsumerCryptoFailureActionDiscard:
+			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecryptionError)
+			return fmt.Errorf("discarding message on decryption error :%v", err)
+		case crypto.ConsumerCryptoFailureActionConsume:
+			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
+			messages = append(messages, &message{
+				publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+				key:          msgMeta.GetPartitionKey(),
+				producerName: msgMeta.GetProducerName(),
+				properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
+				topic:        pc.topic,
+				msgID: newMessageID(
+					int64(pbMsgID.GetLedgerId()),
+					int64(pbMsgID.GetEntryId()),
+					pbMsgID.GetBatchIndex(),
+					pc.partitionIdx,
+				),
+				payLoad:             headersAndPayload.ReadableSlice(),
+				schema:              pc.options.schema,
+				replicationClusters: msgMeta.GetReplicateTo(),
+				replicatedFrom:      msgMeta.GetReplicatedFrom(),
+				redeliveryCount:     response.GetRedeliveryCount(),
+				encryptionContext:   createEncryptionContext(msgMeta),
+			},
+			)
+			pc.queueCh <- messages
+			return nil
+		}
+	}
+
+	// decryption is success, decompress the payload
+	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, internal.NewBufferWrapper(decryptedPayload))
 	if err != nil {
 		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
 		return err
@@ -492,7 +537,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	if msgMeta.NumMessagesInBatch != nil {
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
-	messages := make([]*message, 0)
+
 	var ackTracker *ackTracker
 	// are there multiple messages in this batch?
 	if numMsgs > 1 {
@@ -587,6 +632,35 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) b
 
 	// Non inclusive
 	return pc.startMessageID.greaterEqual(msgID.messageID)
+}
+
+func createEncryptionContext(msgMeta *pb.MessageMetadata) EncryptionContext {
+	encCtx := EncryptionContext{
+		Algorithm:        msgMeta.GetEncryptionAlgo(),
+		Param:            msgMeta.GetEncryptionParam(),
+		UncompressedSize: int(msgMeta.GetUncompressedSize()),
+		BatchSize:        int(msgMeta.GetNumMessagesInBatch()),
+	}
+
+	if msgMeta.Compression != nil {
+		encCtx.CompressionType = CompressionType(*msgMeta.Compression)
+	}
+
+	kMap := map[string]EncryptionKey{}
+	for _, k := range msgMeta.GetEncryptionKeys() {
+		metaMap := map[string]string{}
+		for _, m := range k.GetMetadata() {
+			metaMap[*m.Key] = *m.Value
+		}
+
+		kMap[*k.Key] = EncryptionKey{
+			KeyValue: k.GetValue(),
+			Metadata: metaMap,
+		}
+	}
+
+	encCtx.Keys = kMap
+	return encCtx
 }
 
 func (pc *partitionConsumer) ConnectionClosed() {
