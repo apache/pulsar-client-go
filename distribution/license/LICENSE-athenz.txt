@@ -200,39 +200,3 @@
    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
    See the License for the specific language governing permissions and
    limitations under the License.
-
-----------------------------------------------------------------------------------------------------
-
-This projects includes binary packages with the following licenses:
-
-The Apache Software License, Version 2.0
-  * github.com/spf13/cobra v0.0.3 -- distribution/license/LICENSE-cobra.txt
-  * github.com/AthenZ/athenz v1.10.15 -- distribution/license/LICENSE-athenz.txt
-  * github.com/inconshreveable/mousetrap v1.0.0  -- distribution/license/LICENSE-mousetrap.txt
-  * github.com/linkedin/goavro/v2 v2.9.8  -- distribution/license/LICENSE-go-avro.txt
-  * github.com/opentracing/opentracing-go v1.2.0  -- distribution/license/LICENSE-opentracing.txt
-  * github.com/prometheus/client_golang v1.7.1  -- distribution/license/LICENSE-prometheus.txt
-
-MIT License
-  * github.com/stretchr/testify v1.3.0 -- distribution/license/LICENSE-testify.txt
-  * github.com/kr/pretty v0.2.0 -- distribution/license/LICENSE-pretty.txt
-  * github.com/sirupsen/logrus v1.4.1 -- distribution/license/LICENSE-logrus.txt
-
-GNU GENERAL PUBLIC LICENSE Version 3
-  * github.com/beefsack/go-rate v0.0.0-20180408011153-efa7637bb9b6 -- distribution/license/LICENSE-go-rate.txt
-
-BSD License
-  * github.com/DataDog/zstd v1.4.6-0.20210211175136-c6db21d202f4 -- distribution/license/LICENSE-zstd.txt
-  * github.com/klauspost/compress v1.9.2 -- distribution/license/LICENSE-compress.txt
-  * github.com/google/uuid v1.1.2 -- distribution/license/LICENSE-uuid.txt
-  * github.com/pkg/errors v0.8.1 -- distribution/license/LICENSE-errors.txt
-  * github.com/google/go-cmp v0.3.0 -- distribution/license/LICENSE-go-cmp.txt
-  * github.com/pierrec/lz4 v2.0.5+incompatible -- distribution/license/LICENSE-lz4.txt
-  * github.com/golang/protobuf v1.3.1 -- distribution/license/LICENSE-protobuf.txt
-  * github.com/spf13/pflag v1.0.3 -- distribution/license/LICENSE-pflag.txt
-  * github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b -- distribution/license/LICENSE-perks.txt
-  * github.com/spaolacci/murmur3 v1.1.0 -- distribution/license/LICENSE-murmur3.txt
-  * golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d -- distribution/license/LICENSE-oauth2.txt
-
-ISC License
-  * github.com/davecgh/go-spew v1.1.1 -- distribution/license/LICENSE-go-spew.txt

@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -85,14 +86,14 @@ func (h *keyBasedBatches) Val(key string) *batchContainer {
 func NewKeyBasedBatchBuilder(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error) {
 
 	bb := &keyBasedBatchContainer{
 		batches: newKeyBasedBatches(),
 		batchContainer: newBatchContainer(
 			maxMessages, maxBatchSize, producerName, producerID,
-			compressionType, level, bufferPool, logger,
+			compressionType, level, bufferPool, logger, encryptor,
 		),
 		compressionType: compressionType,
 		level:           level,
@@ -144,7 +145,7 @@ func (bc *keyBasedBatchContainer) Add(
 		// create batchContainer for new key
 		t := newBatchContainer(
 			bc.maxMessages, bc.maxBatchSize, bc.producerName, bc.producerID,
-			bc.compressionType, bc.level, bc.buffersPool, bc.log,
+			bc.compressionType, bc.level, bc.buffersPool, bc.log, bc.encryptor,
 		)
 		batchPart = &t
 		bc.batches.Add(msgKey, &t)

@@ -23,6 +23,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -35,7 +36,7 @@ type BuffersPool interface {
 type BatcherBuilderProvider func(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error)
 
 // BatchBuilder is a interface of batch builders
@@ -93,13 +94,15 @@ type batchContainer struct {
 	buffersPool         BuffersPool
 
 	log log.Logger
+
+	encryptor crypto.Encryptor
 }
 
 // newBatchContainer init a batchContainer
 func newBatchContainer(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) batchContainer {
 
 	bc := batchContainer{
@@ -122,6 +125,7 @@ func newBatchContainer(
 		compressionProvider: getCompressionProvider(compressionType, level),
 		buffersPool:         bufferPool,
 		log:                 logger,
+		encryptor:           encryptor,
 	}
 
 	if compressionType != pb.CompressionType_NONE {
@@ -135,12 +139,12 @@ func newBatchContainer(
 func NewBatchBuilder(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
 		maxMessages, maxBatchSize, producerName, producerID, compressionType,
-		level, bufferPool, logger,
+		level, bufferPool, logger, encryptor,
 	)
 
 	return &bc, nil
@@ -229,8 +233,9 @@ func (bc *batchContainer) Flush() (
 	if buffer == nil {
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
+
 	serializeBatch(
-		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
+		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider, bc.encryptor,
 	)
 
 	callbacks = bc.callbacks

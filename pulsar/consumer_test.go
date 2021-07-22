@@ -20,6 +20,7 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net/http"
 	"strconv"
@@ -27,8 +28,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	plog "github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/gogo/protobuf/proto"
 	"github.com/google/uuid"
+	"github.com/pierrec/lz4"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -92,7 +98,6 @@ func TestProducerConsumer(t *testing.T) {
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
 		assert.Equal(t, "pulsar", msg.Key())
 		assert.Equal(t, expectProperties, msg.Properties())
-
 		// ack message
 		consumer.Ack(msg)
 	}
@@ -2002,4 +2007,770 @@ func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
 		receivedConsumer1, receivedConsumer2,
 	)
 	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
+}
+
+func TestProducerConsumerRSAEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-enc-%v", time.Now().Nanosecond())
+
+	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic: topic,
+		Encryption: &ConsumerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
+		},
+		SubscriptionName: "crypto-subscription",
+		Schema:           NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+
+	normalConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "normal-subscription",
+		Schema:           NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+
+	cryptoProducer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+		Schema: NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+
+	msgFormat := "my-message-%v"
+
+	totalMessages := 10
+
+	ctx := context.Background()
+
+	for i := 0; i < totalMessages; i++ {
+		_, err := cryptoProducer.Send(ctx, &ProducerMessage{
+			Value: fmt.Sprintf(msgFormat, i),
+		})
+
+		assert.Nil(t, err)
+	}
+
+	// try to consume with normal consumer
+	normalConsumerCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	msg, err := normalConsumer.Receive(normalConsumerCtx)
+	// msg should be null as the consumer will not be able to decrypt
+	assert.NotNil(t, err)
+	assert.Nil(t, msg)
+
+	// try to consume the message by crypto consumer
+	// consumer should be able to read all the messages
+	var actualMessage *string
+	for i := 0; i < totalMessages; i++ {
+		msg, err := cryptoConsumer.Receive(ctx)
+		assert.Nil(t, err)
+		expectedMsg := fmt.Sprintf(msgFormat, i)
+		err = msg.GetSchemaValue(&actualMessage)
+		assert.Nil(t, err)
+		assert.Equal(t, expectedMsg, *actualMessage)
+		cryptoConsumer.Ack(msg)
+	}
+}
+
+func TestProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-enc-%v", time.Now().Nanosecond())
+
+	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic: topic,
+		Encryption: &ConsumerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+		},
+		SubscriptionName: "crypto-subscription",
+		Schema:           NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+
+	normalConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "normal-subscription",
+		Schema:           NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+
+	cryptoProducer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+		Schema:          NewStringSchema(nil),
+		CompressionType: LZ4,
+	})
+
+	assert.Nil(t, err)
+
+	msgFormat := "my-message-%v"
+
+	totalMessages := 10
+
+	ctx := context.Background()
+
+	for i := 0; i < totalMessages; i++ {
+		_, err := cryptoProducer.Send(ctx, &ProducerMessage{
+			Value: fmt.Sprintf(msgFormat, i),
+		})
+
+		assert.Nil(t, err)
+	}
+
+	// try to consume with normal consumer
+	normalConsumerCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	msg, err := normalConsumer.Receive(normalConsumerCtx)
+	// msg should be null as the consumer will not be able to decrypt
+	assert.NotNil(t, err)
+	assert.Nil(t, msg)
+
+	// try to consume the message by crypto consumer
+	// consumer should be able to read all the messages
+	var actualMessage *string
+	for i := 0; i < totalMessages; i++ {
+		msg, err := cryptoConsumer.Receive(ctx)
+		assert.Nil(t, err)
+		expectedMsg := fmt.Sprintf(msgFormat, i)
+		err = msg.GetSchemaValue(&actualMessage)
+		assert.Nil(t, err)
+		assert.Equal(t, expectedMsg, *actualMessage)
+		cryptoConsumer.Ack(msg)
+	}
+}
+
+func TestBatchProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-enc-%v", time.Now().Nanosecond())
+
+	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic: topic,
+		Encryption: &ConsumerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+		},
+		SubscriptionName: "crypto-subscription",
+		Schema:           NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+
+	normalConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "normal-subscription",
+		Schema:           NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+	batchSize := 2
+	cryptoProducer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+		Schema:              NewStringSchema(nil),
+		CompressionType:     LZ4,
+		DisableBatching:     false,
+		BatchingMaxMessages: uint(batchSize),
+	})
+
+	assert.Nil(t, err)
+
+	msgFormat := "my-message-%v"
+
+	totalMessages := 10
+
+	ctx := context.Background()
+
+	for i := 0; i < totalMessages; i++ {
+		_, err := cryptoProducer.Send(ctx, &ProducerMessage{
+			Value: fmt.Sprintf(msgFormat, i),
+		})
+
+		assert.Nil(t, err)
+	}
+
+	// try to consume with normal consumer
+	normalConsumerCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	msg, err := normalConsumer.Receive(normalConsumerCtx)
+	// msg should be null as the consumer will not be able to decrypt
+	assert.NotNil(t, err)
+	assert.Nil(t, msg)
+
+	// try to consume the message by crypto consumer
+	// consumer should be able to read all the messages
+	var actualMessage *string
+	for i := 0; i < totalMessages; i++ {
+		msg, err := cryptoConsumer.Receive(ctx)
+		assert.Nil(t, err)
+		expectedMsg := fmt.Sprintf(msgFormat, i)
+		err = msg.GetSchemaValue(&actualMessage)
+		assert.Nil(t, err)
+		assert.Equal(t, expectedMsg, *actualMessage)
+		cryptoConsumer.Ack(msg)
+	}
+}
+
+func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
+	// create new client instance for each producer and consumer
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	clientCryptoConsumer, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer clientCryptoConsumer.Close()
+
+	clientCryptoConsumerInvalidKeyReader, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer clientCryptoConsumerInvalidKeyReader.Close()
+
+	clientcryptoConsumerNoKeyReader, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer clientcryptoConsumerNoKeyReader.Close()
+
+	topic := fmt.Sprintf("my-topic-enc-%v", time.Now().Nanosecond())
+
+	cryptoProducer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+		CompressionType: LZ4,
+		Schema:          NewStringSchema(nil),
+	})
+	assert.Nil(t, err)
+
+	sharedSubscription := "crypto-shared-subscription"
+
+	cryptoConsumer, err := clientCryptoConsumer.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: sharedSubscription,
+		Encryption: &ConsumerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+		},
+		Schema:              NewStringSchema(nil),
+		Type:                Shared,
+		NackRedeliveryDelay: 1 * time.Second,
+	})
+	assert.Nil(t, err)
+
+	cryptoConsumerInvalidKeyReader, err := clientCryptoConsumerInvalidKeyReader.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: sharedSubscription,
+		Encryption: &ConsumerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa_invalid.pem"),
+		},
+		Schema:              NewStringSchema(nil),
+		Type:                Shared,
+		NackRedeliveryDelay: 1 * time.Second,
+	})
+	assert.Nil(t, err)
+
+	cryptoConsumerNoKeyReader, err := clientcryptoConsumerNoKeyReader.Subscribe(ConsumerOptions{
+		Topic:               topic,
+		SubscriptionName:    sharedSubscription,
+		Schema:              NewStringSchema(nil),
+		Type:                Shared,
+		NackRedeliveryDelay: 1 * time.Second,
+	})
+	assert.Nil(t, err)
+
+	totalMessages := 5
+	message := "my-message-%v"
+	// since messages can be in random order
+	// map can be used to check if all the messages are received
+	messageMap := map[string]struct{}{}
+
+	// producer messages
+	for i := 0; i < totalMessages; i++ {
+		mid, err := cryptoProducer.Send(context.Background(), &ProducerMessage{
+			Value: fmt.Sprintf(message, i),
+		})
+		assert.Nil(t, err)
+		fmt.Printf("Sent : %v\n", mid)
+	}
+
+	// Consuming from consumer 2 and 3
+	// no message should be returned since they can't decrypt the message
+	ctxWithTimeOut1, c1 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer c1()
+
+	ctxWithTimeOut2, c2 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer c2()
+
+	// try to consume messages
+	msg, err := cryptoConsumerInvalidKeyReader.Receive(ctxWithTimeOut1)
+	assert.NotNil(t, err)
+	assert.Nil(t, msg)
+
+	msg, err = cryptoConsumerNoKeyReader.Receive(ctxWithTimeOut2)
+	assert.NotNil(t, err)
+	assert.Nil(t, msg)
+
+	cryptoConsumerInvalidKeyReader.Close()
+	cryptoConsumerNoKeyReader.Close()
+
+	// try to consume by consumer1
+	// all the messages would by received by it
+	var receivedMsg *string
+	for i := 0; i < totalMessages; i++ {
+		m, err := cryptoConsumer.Receive(context.Background())
+		assert.Nil(t, err)
+		err = m.GetSchemaValue(&receivedMsg)
+		assert.Nil(t, err)
+		messageMap[*receivedMsg] = struct{}{}
+		cryptoConsumer.Ack(m)
+		fmt.Printf("Received : %v\n", m.ID())
+	}
+
+	// check if all messages were received
+	for i := 0; i < totalMessages; i++ {
+		key := fmt.Sprintf(message, i)
+		_, ok := messageMap[key]
+		assert.True(t, ok)
+	}
+}
+
+func TestRSAEncryptionFailure(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	client.Close()
+
+	topic := fmt.Sprintf("my-topic-enc-%v", time.Now().Nanosecond())
+
+	// 1. invalid key name
+	// create producer with invalid key
+	// producer creation should fail if not able to read key
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa_invalid.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+	})
+	assert.NotNil(t, err)
+	assert.Nil(t, producer)
+
+	// 2. Producer with valid key name
+	producer, err = client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+		Schema:          NewStringSchema(nil),
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, producer)
+
+	subscriptionName := "enc-failure-subcription"
+	totalMessages := 10
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: subscriptionName,
+	})
+	assert.Nil(t, err)
+
+	messageFormat := "my-message-%v"
+	for i := 0; i < totalMessages; i++ {
+		_, err := producer.Send(context.Background(), &ProducerMessage{
+			Value: fmt.Sprintf(messageFormat, i),
+		})
+		assert.Nil(t, err)
+	}
+
+	// 3. KeyReader is not set by the consumer
+	// Receive should fail since KeyReader is not setup
+	// because default behaviour of consumer is fail receiving message if error in decryption
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	msg, err := consumer.Receive(ctx)
+	assert.NotNil(t, err)
+	assert.Nil(t, msg, "Receive should have failed with no keyreader")
+
+	// 4. Set consumer config to consume even if decryption fails
+	consumer.Close()
+	consumer, err = client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: subscriptionName,
+		Encryption: &ConsumerEncryptionInfo{
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionConsume,
+		},
+		Schema: NewStringSchema(nil),
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, consumer)
+
+	ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel2()
+
+	for i := 0; i < totalMessages-1; i++ {
+		expectedMessage := fmt.Sprintf(messageFormat, i)
+		msg, err = consumer.Receive(ctx2)
+		assert.Nil(t, err)
+		assert.NotNil(t, msg)
+
+		receivedMsg := string(msg.Payload())
+		assert.NotEqual(t, expectedMessage, receivedMsg, fmt.Sprintf(`Received encrypted message [%v]
+	should not match the expected message  [%v]`, expectedMessage, receivedMsg))
+		// verify the message contains Encryption context
+		assert.NotEmpty(t, msg.GetEncryptionContext(),
+			"Encrypted message which is failed to decrypt must contain EncryptionContext")
+		consumer.Ack(msg)
+	}
+
+	// 5. discard action on decryption failure
+	consumer.Close()
+	consumer, err = client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: subscriptionName,
+		Encryption: &ConsumerEncryptionInfo{
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionDiscard,
+		},
+		Schema: NewStringSchema(nil),
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, consumer)
+
+	ctx3, cancel3 := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel3()
+
+	msg, err = consumer.Receive(ctx3)
+	assert.NotNil(t, err)
+	assert.Nil(t, msg, "Message received even aftet ConsumerCryptoFailureAction.Discard is set.")
+}
+
+func TestConsumerCompressionWithRSAEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		CompressionType: LZ4,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"enc-compress-app.key"},
+		},
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Encryption: &ConsumerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+		},
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	const N = 100
+
+	for i := 0; i < N; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+}
+
+func TestBatchMessageReceiveWithCompressionAndRSAEcnryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "persistent://public/default/receive-batch-comp-enc"
+	subName := "subscription-name"
+	prefix := "msg-batch-"
+	ctx := context.Background()
+
+	// Enable batching on producer side
+	batchSize, numOfMessages := 2, 100
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topicName,
+		BatchingMaxMessages: uint(batchSize),
+		DisableBatching:     false,
+		CompressionType:     LZ4,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"batch-encryption-app.key"},
+		},
+	})
+	assert.Nil(t, err)
+	assert.Equal(t, topicName, producer.Topic())
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+		Encryption: &ConsumerEncryptionInfo{
+			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+		},
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	count := 0
+	for i := 0; i < numOfMessages; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		msg := &ProducerMessage{
+			Payload: []byte(messageContent),
+		}
+		_, err := producer.Send(ctx, msg)
+		assert.Nil(t, err)
+	}
+
+	for i := 0; i < numOfMessages; i++ {
+		msg, err := consumer.Receive(ctx)
+		fmt.Printf("received : %v\n", string(msg.Payload()))
+		assert.Nil(t, err)
+		consumer.Ack(msg)
+		count++
+	}
+
+	assert.Equal(t, count, numOfMessages)
+}
+
+type EncKeyReader struct {
+	publicKeyPath  string
+	privateKeyPath string
+	metaMap        map[string]string
+}
+
+func NewEncKeyReader(publicKeyPath, privateKeyPath string) *EncKeyReader {
+	metaMap := map[string]string{
+		"version": "1.0",
+	}
+
+	return &EncKeyReader{
+		publicKeyPath:  publicKeyPath,
+		privateKeyPath: privateKeyPath,
+		metaMap:        metaMap,
+	}
+}
+
+// GetPublicKey read public key from the given path
+func (d *EncKeyReader) PublicKey(keyName string, keyMeta map[string]string) (*crypto.EncryptionKeyInfo, error) {
+	return readKey(keyName, d.publicKeyPath, d.metaMap)
+}
+
+// GetPrivateKey read private key from the given path
+func (d *EncKeyReader) PrivateKey(keyName string, keyMeta map[string]string) (*crypto.EncryptionKeyInfo, error) {
+	return readKey(keyName, d.privateKeyPath, d.metaMap)
+}
+
+func readKey(keyName, path string, keyMeta map[string]string) (*crypto.EncryptionKeyInfo, error) {
+	key, err := ioutil.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return crypto.NewEncryptionKeyInfo(keyName, key, keyMeta), nil
+}
+
+func TestConsumerEncryptionWithoutKeyReader(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	encryptionKeyName := "client-rsa.pem"
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			Keyreader: NewEncKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{encryptionKeyName},
+		},
+		CompressionType: LZ4,
+		Schema:          NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, producer)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-subscription-name",
+		Encryption: &ConsumerEncryptionInfo{
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionConsume,
+		},
+		Schema: NewStringSchema(nil),
+	})
+	assert.Nil(t, err)
+
+	message := "my-message"
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Value: message,
+	})
+	assert.Nil(t, err)
+
+	// consume encrypted message
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+
+	// try to decrypt message
+	encCtx := msg.GetEncryptionContext()
+	assert.NotEmpty(t, encCtx)
+
+	keys := encCtx.Keys
+	assert.Equal(t, 1, len(keys))
+
+	encryptionKey, ok := keys[encryptionKeyName]
+	assert.True(t, ok)
+
+	encDataKey := encryptionKey.KeyValue
+	assert.NotNil(t, encDataKey)
+
+	metadata := encryptionKey.Metadata
+	assert.NotNil(t, metadata)
+
+	version := metadata["version"]
+	assert.Equal(t, "1.0", version)
+
+	compressionType := encCtx.CompressionType
+	uncompressedSize := uint32(encCtx.UncompressedSize)
+	encParam := encCtx.Param
+	encAlgo := encCtx.Algorithm
+	batchSize := encCtx.BatchSize
+
+	// try to decrypt using default MessageCrypto
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", false, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	producerName := "test"
+	sequenceID := uint64(123)
+	publishTime := uint64(12333453454)
+
+	messageMetaData := pb.MessageMetadata{
+		EncryptionParam:  encParam,
+		ProducerName:     &producerName,
+		SequenceId:       &sequenceID,
+		PublishTime:      &publishTime,
+		UncompressedSize: &uncompressedSize,
+		EncryptionAlgo:   &encAlgo,
+	}
+
+	if compressionType == LZ4 {
+		messageMetaData.Compression = pb.CompressionType_LZ4.Enum()
+	}
+
+	messageMetaData.EncryptionKeys = []*pb.EncryptionKeys{{
+		Key:   &encryptionKeyName,
+		Value: encDataKey,
+	}}
+
+	decryptedPayload, err := msgCrypto.Decrypt(crypto.NewMessageMetadataSupplier(&messageMetaData),
+		msg.Payload(),
+		NewEncKeyReader("crypto/testdata/pub_key_rsa.pem",
+			"crypto/testdata/pri_key_rsa.pem"))
+	assert.Nil(t, err)
+	assert.NotNil(t, decryptedPayload)
+
+	// try to uncompress payload
+	uncompressedPayload := make([]byte, uncompressedSize)
+	s, err := lz4.UncompressBlock(decryptedPayload, uncompressedPayload)
+	assert.Nil(t, err)
+	assert.Equal(t, uncompressedSize, uint32(s))
+
+	buffer := internal.NewBufferWrapper(uncompressedPayload)
+
+	if batchSize > 0 {
+		size := buffer.ReadUint32()
+		var meta pb.SingleMessageMetadata
+		if err := proto.Unmarshal(buffer.Read(size), &meta); err != nil {
+			fmt.Println(err)
+		}
+		d := buffer.Read(uint32(meta.GetPayloadSize()))
+		assert.Equal(t, message, string(d))
+	}
 }

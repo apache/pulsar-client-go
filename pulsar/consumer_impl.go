@@ -25,7 +25,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	cryptointernal "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -295,6 +297,20 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
+		if c.options.Encryption == nil {
+			c.options.Encryption = &ConsumerEncryptionInfo{}
+		}
+		// KeyReader is provided but MessageCrypto is not provided, use default message crypto
+		var messageCrypto crypto.MessageCrypto
+		if c.options.Encryption.Keyreader != nil && c.options.Encryption.MessageCrypto == nil {
+			logCtx := fmt.Sprintf("[%v] [%v]", partitionTopic, c.options.SubscriptionName)
+			messageCrypto, err = crypto.NewDefaultMessageCrypto(logCtx, false, c.log)
+			if err != nil {
+				return err
+			}
+			c.options.Encryption.MessageCrypto = messageCrypto
+		}
+
 		go func(idx int, pt string) {
 			defer wg.Done()
 
@@ -304,6 +320,14 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			} else {
 				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
+
+			decryptor := cryptointernal.NewConsumerDecryptor(
+				c.options.Encryption.Keyreader,
+				c.options.Encryption.MessageCrypto,
+				c.log,
+				c.options.Encryption.ConsumerCryptoFailureAction,
+			)
+
 			opts := &partitionConsumerOpts{
 				topic:                      pt,
 				consumerName:               c.consumerName,
@@ -322,6 +346,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
+				decryptor:                  decryptor,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{

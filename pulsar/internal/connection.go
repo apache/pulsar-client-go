@@ -128,6 +128,7 @@ type incomingCmd struct {
 type connection struct {
 	sync.Mutex
 	cond              *sync.Cond
+	started           int32
 	state             ua.Int32
 	connectionTimeout time.Duration
 	closeOnce         sync.Once
@@ -142,8 +143,6 @@ type connection struct {
 
 	lastDataReceivedLock sync.Mutex
 	lastDataReceivedTime time.Time
-	pingTicker           *time.Ticker
-	pingCheckTicker      *time.Ticker
 
 	log log.Logger
 
@@ -191,8 +190,6 @@ func newConnection(opts connectionOptions) *connection {
 		log:                  opts.logger.SubLogger(log.Fields{"remote_addr": opts.physicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
 		lastDataReceivedTime: time.Now(),
-		pingTicker:           time.NewTicker(keepAliveInterval),
-		pingCheckTicker:      time.NewTicker(keepAliveInterval),
 		tlsOptions:           opts.tls,
 		auth:                 opts.auth,
 
@@ -217,6 +214,11 @@ func newConnection(opts connectionOptions) *connection {
 }
 
 func (c *connection) start() {
+	if !atomic.CompareAndSwapInt32(&c.started, 0, 1) {
+		c.log.Warnf("connection has already started")
+		return
+	}
+
 	// Each connection gets its own goroutine that will
 	go func() {
 		if c.connect() {
@@ -354,16 +356,17 @@ func (c *connection) failLeftRequestsWhenClose() {
 }
 
 func (c *connection) run() {
-	// All reads come from the reader goroutine
-	go c.reader.readFromConnection()
-	go c.runPingCheck()
-
-	c.log.Debugf("Connection run starting with request capacity=%d queued=%d",
-		cap(c.incomingRequestsCh), len(c.incomingRequestsCh))
+	pingSendTicker := time.NewTicker(keepAliveInterval)
+	pingCheckTicker := time.NewTicker(keepAliveInterval)
 
 	defer func() {
+		// stop tickers
+		pingSendTicker.Stop()
+		pingCheckTicker.Stop()
+
 		// all the accesses to the pendingReqs should be happened in this run loop thread,
-		// including the final cleanup, to avoid the issue https://github.com/apache/pulsar-client-go/issues/239
+		// including the final cleanup, to avoid the issue
+		// https://github.com/apache/pulsar-client-go/issues/239
 		c.pendingLock.Lock()
 		for id, req := range c.pendingReqs {
 			req.callback(nil, errConnectionClosed)
@@ -372,6 +375,13 @@ func (c *connection) run() {
 		c.pendingLock.Unlock()
 		c.Close()
 	}()
+
+	// All reads come from the reader goroutine
+	go c.reader.readFromConnection()
+	go c.runPingCheck(pingCheckTicker)
+
+	c.log.Debugf("Connection run starting with request capacity=%d queued=%d",
+		cap(c.incomingRequestsCh), len(c.incomingRequestsCh))
 
 	go func() {
 		for {
@@ -402,18 +412,18 @@ func (c *connection) run() {
 			}
 			c.internalWriteData(data)
 
-		case <-c.pingTicker.C:
+		case <-pingSendTicker.C:
 			c.sendPing()
 		}
 	}
 }
 
-func (c *connection) runPingCheck() {
+func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 	for {
 		select {
 		case <-c.closeCh:
 			return
-		case <-c.pingCheckTicker.C:
+		case <-pingCheckTicker.C:
 			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
@@ -525,6 +535,9 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	case pb.BaseCommand_ERROR:
 		c.handleResponseError(cmd.GetError())
 
+	case pb.BaseCommand_SEND_ERROR:
+		c.handleSendError(cmd.GetError())
+
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
 
@@ -536,8 +549,6 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	case pb.BaseCommand_SEND_RECEIPT:
 		c.handleSendReceipt(cmd.GetSendReceipt())
-
-	case pb.BaseCommand_SEND_ERROR:
 
 	case pb.BaseCommand_MESSAGE:
 		c.handleMessage(cmd.GetMessage(), headersAndPayload)
@@ -621,32 +632,24 @@ func (c *connection) internalSendRequest(req *request) {
 }
 
 func (c *connection) handleResponse(requestID uint64, response *pb.BaseCommand) {
-	c.pendingLock.Lock()
-	request, ok := c.pendingReqs[requestID]
+	request, ok := c.deletePendingRequest(requestID)
 	if !ok {
 		c.log.Warnf("Received unexpected response for request %d of type %s", requestID, response.Type)
-		c.pendingLock.Unlock()
 		return
 	}
 
-	delete(c.pendingReqs, requestID)
-	c.pendingLock.Unlock()
 	request.callback(response, nil)
 }
 
 func (c *connection) handleResponseError(serverError *pb.CommandError) {
 	requestID := serverError.GetRequestId()
-	c.pendingLock.Lock()
-	request, ok := c.pendingReqs[requestID]
+
+	request, ok := c.deletePendingRequest(requestID)
 	if !ok {
 		c.log.Warnf("Received unexpected error response for request %d of type %s",
 			requestID, serverError.GetError())
-		c.pendingLock.Unlock()
 		return
 	}
-
-	delete(c.pendingReqs, requestID)
-	c.pendingLock.Unlock()
 
 	errMsg := fmt.Sprintf("server error: %s: %s", serverError.GetError(), serverError.GetMessage())
 	request.callback(nil, errors.New(errMsg))
@@ -682,6 +685,16 @@ func (c *connection) handleMessage(response *pb.CommandMessage, payload Buffer) 
 	} else {
 		c.log.WithField("consumerID", consumerID).Warn("Got unexpected message: ", response.MessageId)
 	}
+}
+
+func (c *connection) deletePendingRequest(requestID uint64) (*request, bool) {
+	c.pendingLock.Lock()
+	defer c.pendingLock.Unlock()
+	request, ok := c.pendingReqs[requestID]
+	if ok {
+		delete(c.pendingReqs, requestID)
+	}
+	return request, ok
 }
 
 func (c *connection) lastDataReceived() time.Time {
@@ -732,6 +745,31 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	}
 
 	c.writeCommand(baseCommand(pb.BaseCommand_AUTH_RESPONSE, cmdAuthResponse))
+}
+
+func (c *connection) handleSendError(cmdError *pb.CommandError) {
+	c.log.Warnf("Received send error from server: [%v] : [%s]", cmdError.GetError(), cmdError.GetMessage())
+
+	requestID := cmdError.GetRequestId()
+
+	switch *cmdError.Error {
+	case pb.ServerError_NotAllowedError:
+		request, ok := c.deletePendingRequest(requestID)
+		if !ok {
+			c.log.Warnf("Received unexpected error response for request %d of type %s",
+				requestID, cmdError.GetError())
+			return
+		}
+
+		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
+		request.callback(nil, errors.New(errMsg))
+	case pb.ServerError_TopicTerminatedError:
+		// TODO: no-op
+	default:
+		// By default, for transient error, let the reconnection logic
+		// to take place and re-establish the produce again
+		c.Close()
+	}
 }
 
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
@@ -802,9 +840,6 @@ func (c *connection) Close() {
 		}
 
 		close(c.closeCh)
-
-		c.pingTicker.Stop()
-		c.pingCheckTicker.Stop()
 
 		listeners := make(map[uint64]ConnectionListener)
 		c.listenersLock.Lock()

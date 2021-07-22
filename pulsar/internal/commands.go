@@ -24,6 +24,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
@@ -176,6 +177,8 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.Pong = msg.(*pb.CommandPong)
 	case pb.BaseCommand_SEND:
 		cmd.Send = msg.(*pb.CommandSend)
+	case pb.BaseCommand_SEND_ERROR:
+		cmd.SendError = msg.(*pb.CommandSendError)
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		cmd.CloseProducer = msg.(*pb.CommandCloseProducer)
 	case pb.BaseCommand_CLOSE_CONSUMER:
@@ -219,9 +222,21 @@ func serializeBatch(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,
 	uncompressedPayload Buffer,
-	compressionProvider compression.Provider) {
+	compressionProvider compression.Provider,
+	encryptor crypto.Encryptor) {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
+
+	// compress the payload
+	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
+
+	// encrypt the compressed payload
+	encryptedPayload, err := encryptor.Encrypt(compressedPayload, crypto.NewMessageMetadataSupplier(msgMetadata))
+	if err != nil {
+		// error occurred while encrypting the payload, ProducerCryptoFailureAction is set to Fail
+		panic(fmt.Sprintf("Encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err))
+	}
+
 	cmdSize := uint32(proto.Size(cmdSend))
 	msgMetadataSize := uint32(proto.Size(msgMetadata))
 
@@ -232,7 +247,7 @@ func serializeBatch(wb Buffer,
 	// Write cmd
 	wb.WriteUint32(cmdSize)
 	wb.ResizeIfNeeded(cmdSize)
-	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	_, err = cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
 	}
@@ -253,12 +268,8 @@ func serializeBatch(wb Buffer,
 	}
 	wb.WrittenBytes(msgMetadataSize)
 
-	// Make sure the buffer has enough space to hold the compressed data
-	// and perform the compression in-place
-	maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
-	wb.ResizeIfNeeded(maxSize)
-	b := compressionProvider.Compress(wb.WritableSlice()[:0], uncompressedPayload.ReadableSlice())
-	wb.WrittenBytes(uint32(len(b)))
+	// add payload to the buffer
+	wb.Write(encryptedPayload)
 
 	// Write checksum at created checksum-placeholder
 	frameEndIdx := wb.WriterIndex()

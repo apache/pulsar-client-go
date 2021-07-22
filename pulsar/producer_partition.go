@@ -19,11 +19,14 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -126,6 +129,23 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		p.producerName = options.Name
 	}
 
+	encryption := options.Encryption
+	// add default message crypto if not provided
+	if encryption != nil && len(encryption.Keys) > 0 && encryption.MessageCrypto == nil {
+		logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
+		messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
+		if err != nil {
+			logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
+			return nil, err
+		}
+		p.options.Encryption.MessageCrypto = messageCrypto
+	}
+
+	if err := p.generateDataKey(); err != nil {
+		logger.WithError(err).Error("Failed to create data key")
+		return nil, err
+	}
+
 	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
@@ -143,6 +163,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	if p.options.SendTimeout > 0 {
 		go p.failTimeoutMessages()
 	}
+
 	go p.runEventsLoop()
 
 	return p, nil
@@ -197,13 +218,25 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
+
+	var encryptor internalcrypto.Encryptor
+	if p.options.Encryption != nil {
+		encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
+			p.options.Encryption.Keyreader,
+			p.options.Encryption.MessageCrypto,
+			p.options.Encryption.ProducerCryptoFailureAction, p.log)
+	} else {
+		encryptor = internalcrypto.NewNoopEncryptor()
+	}
+
 	if p.options.DisableBatching {
 		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
 		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
-			p.log)
+			p.log,
+			encryptor)
 		if err != nil {
 			return err
 		}
@@ -217,7 +250,8 @@ func (p *partitionProducer) grabCnx() error {
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
-			p.log)
+			p.log,
+			encryptor)
 		if err != nil {
 			return err
 		}
@@ -515,20 +549,36 @@ func (p *partitionProducer) failTimeoutMessages() {
 
 		// iterate at most viewSize items
 		for i := 0; i < viewSize; i++ {
-			item := p.pendingQueue.Poll()
+			tickerNeedWaiting := time.Duration(0)
+			item := p.pendingQueue.CompareAndPoll(
+				func(m interface{}) bool {
+					if m == nil {
+						return false
+					}
+
+					pi := m.(*pendingItem)
+					pi.Lock()
+					defer pi.Unlock()
+					if nextWaiting := diff(pi.sentAt); nextWaiting > 0 {
+						// current and subsequent items not timeout yet, stop iterating
+						tickerNeedWaiting = nextWaiting
+						return false
+					}
+					return true
+				})
+
 			if item == nil {
 				t.Reset(p.options.SendTimeout)
 				break
 			}
 
-			pi := item.(*pendingItem)
-			pi.Lock()
-			if nextWaiting := diff(pi.sentAt); nextWaiting > 0 {
-				// current and subsequent items not timeout yet, stop iterating
-				t.Reset(nextWaiting)
-				pi.Unlock()
+			if tickerNeedWaiting > 0 {
+				t.Reset(tickerNeedWaiting)
 				break
 			}
+
+			pi := item.(*pendingItem)
+			pi.Lock()
 
 			for _, i := range pi.sendRequests {
 				sr := i.(*sendRequest)
@@ -763,6 +813,17 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.setProducerState(producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
+}
+
+func (p *partitionProducer) generateDataKey() error {
+	if p.options.Encryption != nil {
+		if p.options.Encryption.Keyreader != nil {
+			return p.options.Encryption.MessageCrypto.AddPublicKeyCipher(p.options.Encryption.Keys,
+				p.options.Encryption.Keyreader)
+		}
+		return fmt.Errorf("failed to generate data key. KeyReader interface is not implemented")
+	}
+	return nil
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
