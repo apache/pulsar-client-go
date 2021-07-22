@@ -37,7 +37,11 @@ type ProducerEncryptionInfo struct {
 
 // ConsumerEncryptionInfo encryption related fields required by the consumer to decrypt the message
 type ConsumerEncryptionInfo struct {
-	CryptoInfo
+	// KeyReader read RSA public/private key pairs
+	Keyreader crypto.KeyReader
+
+	// MessageCrypto used to encrypt and decrypt the data and session keys
+	MessageCrypto crypto.MessageCrypto
 	// ConsumerCryptoFailureAction action to be taken on failure of message decryption
 	ConsumerCryptoFailureAction int
 }
