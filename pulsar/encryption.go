@@ -19,17 +19,13 @@ package pulsar
 
 import "github.com/apache/pulsar-client-go/pulsar/crypto"
 
-type CryptoInfo struct {
+// ProducerEncryptionInfo encryption related fields required by the producer
+type ProducerEncryptionInfo struct {
 	// KeyReader read RSA public/private key pairs
 	Keyreader crypto.KeyReader
 
 	// MessageCrypto used to encrypt and decrypt the data and session keys
 	MessageCrypto crypto.MessageCrypto
-}
-
-// ProducerEncryptionInfo encryption related fields required by the producer
-type ProducerEncryptionInfo struct {
-	CryptoInfo
 
 	// Keys list of encryption key names to encrypt session key
 	Keys []string
