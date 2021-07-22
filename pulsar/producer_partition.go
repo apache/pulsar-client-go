@@ -53,6 +53,7 @@ var (
 	errSendQueueIsFull = newError(ProducerQueueIsFull, "producer send queue is full")
 	errContextExpired  = newError(TimeoutError, "message send context expired")
 	errMessageTooLarge = newError(MessageTooBig, "message size exceeds MaxMessageSize")
+	errProducerClosed  = newError(ProducerClosed, "producer already been closed")
 
 	buffersPool sync.Pool
 )
@@ -389,6 +390,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if p.options.Schema != nil {
 		schemaPayload, err = p.options.Schema.Encode(msg.Value)
 		if err != nil {
+			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 			return
 		}
 	}
@@ -692,6 +694,12 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
+	if p.getProducerState() != producerReady {
+		// Producer is closing
+		callback(nil, msg, errProducerClosed)
+		return
+	}
+
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
