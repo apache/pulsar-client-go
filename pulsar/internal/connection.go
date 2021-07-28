@@ -752,7 +752,7 @@ func (c *connection) handleSendError(cmdError *pb.CommandError) {
 
 	requestID := cmdError.GetRequestId()
 
-	switch *cmdError.Error {
+	switch cmdError.GetError() {
 	case pb.ServerError_NotAllowedError:
 		request, ok := c.deletePendingRequest(requestID)
 		if !ok {
