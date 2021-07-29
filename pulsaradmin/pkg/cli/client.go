@@ -393,6 +393,7 @@ func responseError(resp *http.Response) error {
 		return e
 	}
 
+	e.Reason = string(body)
 	err = json.Unmarshal(body, &e)
 	if err != nil {
 		e.Reason = string(body)
