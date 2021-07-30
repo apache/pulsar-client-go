@@ -177,7 +177,14 @@ func (p *producer) internalCreatePartitionsProducers() error {
 
 	if oldProducers != nil {
 		oldNumPartitions = len(oldProducers)
-		if oldNumPartitions == newNumPartitions {
+		if newNumPartitions < oldNumPartitions {
+			p.log.WithFields(log.Fields{
+				"old_partitions": oldNumPartitions,
+				"new_partitions": newNumPartitions,
+			}).Error("Number of partitions shrank, ignored.")
+			// since it's not client's fault, we just ignore it temporarily
+			return nil
+		} else if newNumPartitions == oldNumPartitions {
 			p.log.Debug("Number of partitions in topic has not changed")
 			return nil
 		}
