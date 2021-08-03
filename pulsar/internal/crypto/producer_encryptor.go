@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -47,19 +48,12 @@ func NewProducerEncryptor(keys []string,
 }
 
 // Encrypt producer encryptor
-func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata crypto.MessageMetadataSupplier) ([]byte, error) {
-	// encryption is enabled but KeyReader interface is not implemented
-	if e.keyReader == nil {
-		// crypto failure action is set to send
-		// send unencrypted message
-		if e.producerCryptoFailureAction == crypto.ProducerCryptoFailureActionSend {
-			return payload, nil
-		}
-		return nil, fmt.Errorf("KeyReader interface is not implemented and ProducerCryptoFailureAction is set to fail")
-	}
-
+func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata *pb.MessageMetadata) ([]byte, error) {
 	// encrypt payload
-	encryptedPayload, err := e.messageCrypto.Encrypt(e.keys, e.keyReader, msgMetadata, payload)
+	encryptedPayload, err := e.messageCrypto.Encrypt(e.keys,
+		e.keyReader,
+		crypto.NewMessageMetadataSupplier(msgMetadata),
+		payload)
 
 	// error encryping the payload
 	if err != nil {

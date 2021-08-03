@@ -131,14 +131,20 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	encryption := options.Encryption
 	// add default message crypto if not provided
-	if encryption != nil && len(encryption.Keys) > 0 && encryption.MessageCrypto == nil {
-		logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
-		messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
-		if err != nil {
-			logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
-			return nil, err
+	if encryption != nil && len(encryption.Keys) > 0 {
+		if encryption.KeyReader == nil {
+			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
 		}
-		p.options.Encryption.MessageCrypto = messageCrypto
+
+		if encryption.MessageCrypto == nil {
+			logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
+			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
+			if err != nil {
+				logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
+				return nil, err
+			}
+			p.options.Encryption.MessageCrypto = messageCrypto
+		}
 	}
 
 	if err := p.generateDataKey(); err != nil {
@@ -222,7 +228,7 @@ func (p *partitionProducer) grabCnx() error {
 	var encryptor internalcrypto.Encryptor
 	if p.options.Encryption != nil {
 		encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
-			p.options.Encryption.Keyreader,
+			p.options.Encryption.KeyReader,
 			p.options.Encryption.MessageCrypto,
 			p.options.Encryption.ProducerCryptoFailureAction, p.log)
 	} else {
@@ -817,9 +823,9 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 
 func (p *partitionProducer) generateDataKey() error {
 	if p.options.Encryption != nil {
-		if p.options.Encryption.Keyreader != nil {
+		if p.options.Encryption.KeyReader != nil {
 			return p.options.Encryption.MessageCrypto.AddPublicKeyCipher(p.options.Encryption.Keys,
-				p.options.Encryption.Keyreader)
+				p.options.Encryption.KeyReader)
 		}
 		return fmt.Errorf("failed to generate data key. KeyReader interface is not implemented")
 	}

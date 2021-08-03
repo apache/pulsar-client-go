@@ -17,7 +17,9 @@
 
 package crypto
 
-import "github.com/apache/pulsar-client-go/pulsar/crypto"
+import (
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
 
 type noopEncryptor struct{}
 
@@ -26,6 +28,6 @@ func NewNoopEncryptor() Encryptor {
 }
 
 // Encrypt Noop ecryptor
-func (e *noopEncryptor) Encrypt(data []byte, msgMetadata crypto.MessageMetadataSupplier) ([]byte, error) {
+func (e *noopEncryptor) Encrypt(data []byte, msgMetadata *pb.MessageMetadata) ([]byte, error) {
 	return data, nil
 }

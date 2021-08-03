@@ -231,7 +231,7 @@ func serializeBatch(wb Buffer,
 	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
 
 	// encrypt the compressed payload
-	encryptedPayload, err := encryptor.Encrypt(compressedPayload, crypto.NewMessageMetadataSupplier(msgMetadata))
+	encryptedPayload, err := encryptor.Encrypt(compressedPayload, msgMetadata)
 	if err != nil {
 		// error occurred while encrypting the payload, ProducerCryptoFailureAction is set to Fail
 		panic(fmt.Sprintf("Encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err))
