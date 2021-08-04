@@ -35,7 +35,10 @@ type Client struct {
 }
 
 func (c *Client) newRequest(method, path string) (*request, error) {
-	base, _ := url.Parse(c.ServiceURL)
+	base, err := url.Parse(c.ServiceURL)
+	if err != nil {
+		return nil, err
+	}
 	u, err := url.Parse(path)
 	if err != nil {
 		return nil, err
