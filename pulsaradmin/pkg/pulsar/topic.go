@@ -170,6 +170,15 @@ type Topics interface {
 
 	// RemoveDispatchRate Remove message dispatch rate for a topic
 	RemoveDispatchRate(utils.TopicName) error
+
+	// GetDeduplicationStatus Get the deduplication policy for a topic
+	GetDeduplicationStatus(utils.TopicName) (bool, error)
+
+	// SetDeduplicationStatus Set the deduplication policy for a topic
+	SetDeduplicationStatus(utils.TopicName, bool) error
+
+	// RemoveDeduplicationStatus Remove the deduplication policy for a topic
+	RemoveDeduplicationStatus(utils.TopicName) error
 }
 
 type topics struct {
@@ -517,5 +526,21 @@ func (t *topics) SetDispatchRate(topic utils.TopicName, dispatchRateData utils.D
 
 func (t *topics) RemoveDispatchRate(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
+	return t.pulsar.Client.Delete(endpoint)
+}
+
+func (t *topics) GetDeduplicationStatus(topic utils.TopicName) (bool, error) {
+	var enabled bool
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
+	err := t.pulsar.Client.Get(endpoint, &enabled)
+	return enabled, err
+}
+
+func (t *topics) SetDeduplicationStatus(topic utils.TopicName, enabled bool) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
+	return t.pulsar.Client.Post(endpoint, enabled)
+}
+func (t *topics) RemoveDeduplicationStatus(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
 	return t.pulsar.Client.Delete(endpoint)
 }
