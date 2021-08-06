@@ -1162,5 +1162,4 @@ func TestExactlyOnceWithProducerNameSpecified(t *testing.T) {
 
 	assert.NotNil(t, err)
 	assert.Nil(t, producer3)
-	defer producer3.Close()
 }
