@@ -23,7 +23,6 @@ import (
 	"math/rand"
 	"net/url"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	log "github.com/sirupsen/logrus"
@@ -45,6 +44,10 @@ type pulsarServiceNameResolver struct {
 	AddressList  []*url.URL
 
 	mutex sync.Mutex
+}
+
+func init() {
+	rand.Seed(time.Now().UnixNano())
 }
 
 func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
@@ -69,7 +72,7 @@ func (r *pulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 	idx := (r.CurrentIndex + 1) % int32(len(r.AddressList))
-	atomic.StoreInt32(&r.CurrentIndex, idx)
+	r.CurrentIndex = idx
 	return r.AddressList[idx], nil
 }
 
@@ -103,10 +106,9 @@ func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 	r.AddressList = addresses
 	r.ServiceURL = u
 	r.ServiceURI = uri
-	rand.Seed(time.Now().Unix()) // initialize global pseudo random generator
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
-	atomic.StoreInt32(&r.CurrentIndex, int32(rand.Intn(len(addresses))))
+	r.CurrentIndex = int32(rand.Intn(len(addresses)))
 	return nil
 }
 
