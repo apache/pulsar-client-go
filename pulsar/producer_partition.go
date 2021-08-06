@@ -79,6 +79,9 @@ type partitionProducer struct {
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
 	metrics          *internal.TopicMetrics
+
+	epoch                    uint64
+	userProvidedProducerName bool
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
@@ -101,19 +104,21 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	logger := client.log.SubLogger(log.Fields{"topic": topic})
 
 	p := &partitionProducer{
-		client:           client,
-		topic:            topic,
-		log:              logger,
-		options:          options,
-		producerID:       client.rpcClient.NewProducerID(),
-		eventsChan:       make(chan interface{}, maxPendingMessages),
-		connectClosedCh:  make(chan connectionClosed, 10),
-		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
-		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
-		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
-		lastSequenceID:   -1,
-		partitionIdx:     int32(partitionIdx),
-		metrics:          metrics,
+		client:                   client,
+		topic:                    topic,
+		log:                      logger,
+		options:                  options,
+		producerID:               client.rpcClient.NewProducerID(),
+		eventsChan:               make(chan interface{}, maxPendingMessages),
+		connectClosedCh:          make(chan connectionClosed, 10),
+		batchFlushTicker:         time.NewTicker(batchingMaxPublishDelay),
+		publishSemaphore:         internal.NewSemaphore(int32(maxPendingMessages)),
+		pendingQueue:             internal.NewBlockingQueue(maxPendingMessages),
+		lastSequenceID:           -1,
+		partitionIdx:             int32(partitionIdx),
+		metrics:                  metrics,
+		epoch:                    0,
+		userProvidedProducerName: false,
 	}
 	p.setProducerState(producerInit)
 
@@ -125,6 +130,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	if options.Name != "" {
 		p.producerName = options.Name
+		p.userProvidedProducerName = true
 	}
 
 	err := p.grabCnx()
@@ -136,6 +142,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	p.log = p.log.SubLogger(log.Fields{
 		"producer_name": p.producerName,
 		"producerID":    p.producerID,
+		"epoch":         atomic.LoadUint64(&p.epoch),
 	})
 
 	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
@@ -177,11 +184,13 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	cmdProducer := &pb.CommandProducer{
-		RequestId:  proto.Uint64(id),
-		Topic:      proto.String(p.topic),
-		Encrypted:  nil,
-		ProducerId: proto.Uint64(p.producerID),
-		Schema:     pbSchema,
+		RequestId:                proto.Uint64(id),
+		Topic:                    proto.String(p.topic),
+		Encrypted:                nil,
+		ProducerId:               proto.Uint64(p.producerID),
+		Schema:                   pbSchema,
+		Epoch:                    proto.Uint64(atomic.LoadUint64(&p.epoch)),
+		UserProvidedProducerName: proto.Bool(p.userProvidedProducerName),
 	}
 
 	if p.producerName != "" {
@@ -298,7 +307,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		d := backoff.Next()
 		p.log.Info("Reconnecting to broker in ", d)
 		time.Sleep(d)
-
+		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
