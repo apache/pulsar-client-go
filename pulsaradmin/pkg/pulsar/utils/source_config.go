@@ -18,28 +18,28 @@
 package utils
 
 type SourceConfig struct {
-	Tenant    string `json:"tenant" yaml:"tenant"`
-	Namespace string `json:"namespace" yaml:"namespace"`
-	Name      string `json:"name" yaml:"name"`
-	ClassName string `json:"className" yaml:"className"`
+	Tenant    string `json:"tenant,omitempty" yaml:"tenant"`
+	Namespace string `json:"namespace,omitempty" yaml:"namespace"`
+	Name      string `json:"name,omitempty" yaml:"name"`
+	ClassName string `json:"className,omitempty" yaml:"className"`
 
-	TopicName      string `json:"topicName" yaml:"topicName"`
-	SerdeClassName string `json:"serdeClassName" yaml:"serdeClassName"`
-	SchemaType     string `json:"schemaType" yaml:"schemaType"`
+	TopicName      string `json:"topicName,omitempty" yaml:"topicName"`
+	SerdeClassName string `json:"serdeClassName,omitempty" yaml:"serdeClassName"`
+	SchemaType     string `json:"schemaType,omitempty" yaml:"schemaType"`
 
-	Configs map[string]interface{} `json:"configs" yaml:"configs"`
+	Configs map[string]interface{} `json:"configs,omitempty" yaml:"configs"`
 
 	// This is a map of secretName(aka how the secret is going to be
 	// accessed in the function via context) to an object that
 	// encapsulates how the secret is fetched by the underlying
 	// secrets provider. The type of an value here can be found by the
 	// SecretProviderConfigurator.getSecretObjectType() method.
-	Secrets map[string]interface{} `json:"secrets" yaml:"secrets"`
+	Secrets map[string]interface{} `json:"secrets,omitempty" yaml:"secrets"`
 
-	Parallelism          int        `json:"parallelism" yaml:"parallelism"`
-	ProcessingGuarantees string     `json:"processingGuarantees" yaml:"processingGuarantees"`
-	Resources            *Resources `json:"resources" yaml:"resources"`
-	Archive              string     `json:"archive" yaml:"archive"`
+	Parallelism          int        `json:"parallelism,omitempty" yaml:"parallelism"`
+	ProcessingGuarantees string     `json:"processingGuarantees,omitempty" yaml:"processingGuarantees"`
+	Resources            *Resources `json:"resources,omitempty" yaml:"resources"`
+	Archive              string     `json:"archive,omitempty" yaml:"archive"`
 	// Any flags that you want to pass to the runtime.
-	RuntimeFlags string `json:"runtimeFlags" yaml:"runtimeFlags"`
+	RuntimeFlags string `json:"runtimeFlags,omitempty" yaml:"runtimeFlags"`
 }

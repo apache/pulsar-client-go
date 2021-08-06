@@ -426,7 +426,7 @@ func (s *sinks) StartSinkWithID(tenant, namespace, sink string, instanceID int) 
 
 func (s *sinks) GetBuiltInSinks() ([]*utils.ConnectorDefinition, error) {
 	var connectorDefinition []*utils.ConnectorDefinition
-	endpoint := s.pulsar.endpoint(s.basePath, "builtinSinks")
+	endpoint := s.pulsar.endpoint(s.basePath, "builtinsinks")
 	err := s.pulsar.Client.Get(endpoint, &connectorDefinition)
 	return connectorDefinition, err
 }
