@@ -139,7 +139,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	p.log = p.log.SubLogger(log.Fields{
 		"producer_name": p.producerName,
 		"producerID":    p.producerID,
-		"epoch":         atomic.LoadUint64(&p.epoch),
 	})
 
 	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
@@ -307,7 +306,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		p.log.Info("Reconnecting to broker in ", d)
 		time.Sleep(d)
 		atomic.AddUint64(&p.epoch, 1)
-		p.log.WithField("epoch", atomic.LoadUint64(&p.epoch))
+		p.log.WithField("epoch", atomic.LoadUint64(&p.epoch)).Debug("Reconnecting to broker with epoch ", atomic.LoadUint64(&p.epoch))
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
