@@ -702,19 +702,6 @@ func (c *connection) failPendingRequests(err error) bool {
 	return true
 }
 
-func (c *connection) failPendingRequest(requestID uint64, err error) bool {
-	c.pendingLock.Lock()
-	defer c.pendingLock.Unlock()
-	req, ok := c.pendingReqs[requestID]
-	if ok {
-		req.callback(nil, err)
-		delete(c.pendingReqs, requestID)
-		return true
-	} else {
-		return false
-	}
-}
-
 func (c *connection) lastDataReceived() time.Time {
 	c.lastDataReceivedLock.Lock()
 	defer c.lastDataReceivedLock.Unlock()
@@ -782,8 +769,14 @@ func (c *connection) handleSendError(cmdError *pb.CommandError) {
 		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
 		request.callback(nil, errors.New(errMsg))
 	case pb.ServerError_TopicTerminatedError:
+		request, ok := c.deletePendingRequest(requestID)
+		if !ok {
+			c.log.Warnf("Received unexpected error response for request %d of type %s",
+				requestID, cmdError.GetError())
+			return
+		}
 		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
-		c.failPendingRequest(requestID, errors.New(errMsg))
+		request.callback(nil, errors.New(errMsg))
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again
