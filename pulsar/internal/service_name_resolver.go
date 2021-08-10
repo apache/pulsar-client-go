@@ -60,6 +60,9 @@ func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
 }
 
 func (r *pulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	if r.AddressList == nil {
 		return nil, errors.New("no service url is provided yet")
 	}
@@ -69,8 +72,6 @@ func (r *pulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
 	if len(r.AddressList) == 1 {
 		return r.AddressList[0], nil
 	}
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
 	idx := (r.CurrentIndex + 1) % int32(len(r.AddressList))
 	r.CurrentIndex = idx
 	return r.AddressList[idx], nil
@@ -103,11 +104,13 @@ func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 		}
 		addresses = append(addresses, u)
 	}
+
+	r.mutex.Lock()
+	defer r.mutex.Unlock()
+
 	r.AddressList = addresses
 	r.ServiceURL = u
 	r.ServiceURI = uri
-	r.mutex.Lock()
-	defer r.mutex.Unlock()
 	r.CurrentIndex = int32(rand.Intn(len(addresses)))
 	return nil
 }
