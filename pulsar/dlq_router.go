@@ -100,13 +100,17 @@ func (r *dlqRouter) run() {
 				Properties:          msg.Properties(),
 				EventTime:           msg.EventTime(),
 				ReplicationClusters: msg.replicationClusters,
-			}, func(MessageID, *ProducerMessage, error) {
-				r.log.WithField("msgID", msgID).Debug("Sent message to DLQ")
-
-				// The Producer ack might be coming from the connection go-routine that
-				// is also used by the consumer. In that case we would get a dead-lock
-				// if we'd try to ack.
-				go cm.Consumer.AckID(msgID)
+			}, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+				if err == nil {
+					r.log.WithField("msgID", msgID).Debug("Succeed to send message to DLQ")
+					// The Producer ack might be coming from the connection go-routine that
+					// is also used by the consumer. In that case we would get a dead-lock
+					// if we'd try to ack.
+					go cm.Consumer.AckID(msgID)
+				} else {
+					r.log.WithError(err).WithField("msgID", msgID).Debug("Failed to send message to DLQ")
+					go cm.Consumer.Nack(cm)
+				}
 			})
 
 		case <-r.closeCh:
