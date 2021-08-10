@@ -237,7 +237,10 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	p.cnx = res.Cnx
 	p.cnx.RegisterListener(p.producerID, p)
-	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
+	p.log.WithFields(log.Fields{
+		"cnx":   res.Cnx.ID(),
+		"epoch": atomic.LoadUint64(&p.epoch),
+	}).Debug("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(pendingItems)
@@ -306,8 +309,6 @@ func (p *partitionProducer) reconnectToBroker() {
 		p.log.Info("Reconnecting to broker in ", d)
 		time.Sleep(d)
 		atomic.AddUint64(&p.epoch, 1)
-		p.log.WithField("epoch", atomic.LoadUint64(&p.epoch)).Debug(
-			"Reconnecting to broker with epoch ", atomic.LoadUint64(&p.epoch))
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
