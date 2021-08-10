@@ -87,7 +87,8 @@ func (r *retryRouter) run() {
 			producer := r.getProducer()
 
 			msgID := rm.consumerMsg.ID()
-			producer.SendAsync(context.Background(), &rm.producerMsg, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+			producer.SendAsync(context.Background(), &rm.producerMsg, func(messageID MessageID,
+				producerMessage *ProducerMessage, err error) {
 				if err != nil {
 					r.log.WithField("msgID", msgID).Errorf("Sent message to RLQ,error=%v", err)
 					rm.consumerMsg.Consumer.Nack(rm.consumerMsg)
