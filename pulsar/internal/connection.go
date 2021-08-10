@@ -428,7 +428,7 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
 				c.log.Warn("Detected stale connection to broker")
-				c.Close()
+				c.cnx.Close()
 				return
 			}
 		}
@@ -470,7 +470,7 @@ func (c *connection) internalWriteData(data Buffer) {
 	c.log.Debug("Write data: ", data.ReadableBytes())
 	if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
 		c.log.WithError(err).Warn("Failed to write on connection")
-		c.Close()
+		c.cnx.Close()
 	}
 }
 
@@ -562,7 +562,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	default:
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
-		c.Close()
+		c.cnx.Close()
 	}
 }
 
@@ -731,7 +731,7 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	authData, err := c.auth.GetData()
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to load auth credentials")
-		c.Close()
+		c.cnx.Close()
 		return
 	}
 
@@ -768,7 +768,7 @@ func (c *connection) handleSendError(cmdError *pb.CommandError) {
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again
-		c.Close()
+		c.cnx.Close()
 	}
 }
 
