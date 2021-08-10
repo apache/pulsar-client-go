@@ -87,10 +87,14 @@ func (r *retryRouter) run() {
 			producer := r.getProducer()
 
 			msgID := rm.consumerMsg.ID()
-			producer.SendAsync(context.Background(), &rm.producerMsg, func(MessageID, *ProducerMessage, error) {
-				// TODO: if router produce failed, should Nack this message
-				r.log.WithField("msgID", msgID).Debug("Sent message to RLQ")
-				rm.consumerMsg.Consumer.AckID(msgID)
+			producer.SendAsync(context.Background(), &rm.producerMsg, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+				if err != nil {
+					r.log.WithField("msgID", msgID).Errorf("Sent message to RLQ,error=%v", err)
+					rm.consumerMsg.Consumer.Nack(rm.consumerMsg)
+				} else {
+					r.log.WithField("msgID", msgID).Debug("Sent message to RLQ")
+					rm.consumerMsg.Consumer.AckID(msgID)
+				}
 			})
 
 		case <-r.closeCh:
