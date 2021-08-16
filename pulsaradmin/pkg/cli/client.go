@@ -388,24 +388,23 @@ func safeRespClose(resp *http.Response) {
 
 // responseError is used to parse a response into a client error
 func responseError(resp *http.Response) error {
-	var e Error
+	e := Error{
+		Code:   resp.StatusCode,
+		Reason: resp.Status,
+	}
+
 	body, err := ioutil.ReadAll(resp.Body)
 	if err != nil {
 		e.Reason = err.Error()
-		e.Code = resp.StatusCode
 		return e
 	}
 
-	e.Reason = string(body)
 	err = json.Unmarshal(body, &e)
 	if err != nil {
-		e.Reason = string(body)
-	}
-
-	e.Code = resp.StatusCode
-
-	if e.Reason == "" {
-		e.Reason = unknownErrorReason
+		if len(body) != 0 {
+			e.Reason = string(body)
+		}
+		return e
 	}
 
 	return e

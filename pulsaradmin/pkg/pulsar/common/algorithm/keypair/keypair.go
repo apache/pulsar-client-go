@@ -21,15 +21,16 @@ import (
 	"crypto/ecdsa"
 	"crypto/rsa"
 	"crypto/x509"
+	"fmt"
 
 	"github.com/pkg/errors"
 )
 
-type KeyType int
+type KeyType string
 
 const (
-	RSA KeyType = iota
-	ECDSA
+	RSA   KeyType = "RSA"
+	ECDSA KeyType = "ECDSA"
 )
 
 // KeyPair saves the ecdsa private key or the rsa private key and provides
@@ -69,7 +70,8 @@ func DecodePrivateKey(keyType KeyType, privateKey []byte) (*KeyPair, error) {
 		}
 		return New(ECDSA, key), nil
 	}
-	return nil, errors.New("unknown error")
+
+	return nil, fmt.Errorf("cannot decode the private key of %s", keyType)
 }
 
 // EncodedPublicKey gets the encoded public key
@@ -85,7 +87,8 @@ func (k *KeyPair) EncodedPublicKey() ([]byte, error) {
 		key, _ := k.GetEcdsaPrivateKey()
 		return x509.MarshalPKIXPublicKey(&key.PublicKey)
 	}
-	return nil, errors.New("unknown error")
+
+	return nil, fmt.Errorf("cannot decode the public key of %s", k.keyType)
 }
 
 // DecodeRSAPublicKey parses the rsa public key.
