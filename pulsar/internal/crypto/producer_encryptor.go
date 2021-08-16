@@ -61,7 +61,9 @@ func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata *pb.MessageMetad
 		// crypto ProducerCryptoFailureAction is set to send
 		// send unencrypted message
 		if e.producerCryptoFailureAction == crypto.ProducerCryptoFailureActionSend {
-			e.logger.WithError(err).Warnf("Encryption failed for payload sending unencrypted message ProducerCryptoFailureAction is set to send")
+			e.logger.
+				WithError(err).
+				Warnf("Encryption failed for payload sending unencrypted message ProducerCryptoFailureAction is set to send")
 			return payload, nil
 		}
 
