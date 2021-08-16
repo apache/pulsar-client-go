@@ -19,8 +19,6 @@ package cli
 
 import "fmt"
 
-const unknownErrorReason = "Unknown error"
-
 // Error is a admin error type
 type Error struct {
 	Reason string `json:"reason"`
