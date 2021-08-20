@@ -171,6 +171,15 @@ type Topics interface {
 	// RemoveDispatchRate Remove message dispatch rate for a topic
 	RemoveDispatchRate(utils.TopicName) error
 
+	// GetPublishRate Get message publish rate for a topic
+	GetPublishRate(utils.TopicName) (*utils.PublishRateData, error)
+
+	// SetPublishRate Set message publish rate for a topic
+	SetPublishRate(utils.TopicName, utils.PublishRateData) error
+
+	// RemovePublishRate Remove message publish rate for a topic
+	RemovePublishRate(utils.TopicName) error
+
 	// GetDeduplicationStatus Get the deduplication policy for a topic
 	GetDeduplicationStatus(utils.TopicName) (bool, error)
 
@@ -529,6 +538,22 @@ func (t *topics) RemoveDispatchRate(topic utils.TopicName) error {
 	return t.pulsar.Client.Delete(endpoint)
 }
 
+func (t *topics) GetPublishRate(topic utils.TopicName) (*utils.PublishRateData, error) {
+	var publishRateData utils.PublishRateData
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "publishRate")
+	err := t.pulsar.Client.Get(endpoint, &publishRateData)
+	return &publishRateData, err
+}
+
+func (t *topics) SetPublishRate(topic utils.TopicName, publishRateData utils.PublishRateData) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "publishRate")
+	return t.pulsar.Client.Post(endpoint, &publishRateData)
+}
+
+func (t *topics) RemovePublishRate(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "publishRate")
+	return t.pulsar.Client.Delete(endpoint)
+}
 func (t *topics) GetDeduplicationStatus(topic utils.TopicName) (bool, error) {
 	var enabled bool
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
