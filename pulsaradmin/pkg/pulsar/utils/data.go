@@ -388,3 +388,8 @@ type DispatchRateData struct {
 	RatePeriodInSecond           int64 `json:"ratePeriodInSecond"`
 	RelativeToPublishRate        bool  `json:"relativeToPublishRate"`
 }
+
+type PublishRateData struct {
+	PublishThrottlingRateInMsg  int64 `json:"publishThrottlingRateInMsg"`
+	PublishThrottlingRateInByte int64 `json:"publishThrottlingRateInByte"`
+}

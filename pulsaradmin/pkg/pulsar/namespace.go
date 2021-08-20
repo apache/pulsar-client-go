@@ -253,6 +253,12 @@ type Namespaces interface {
 	// GetDispatchRate returns Message-dispatch-rate (topics under this namespace can dispatch
 	// this many messages per second)
 	GetDispatchRate(namespace utils.NameSpaceName) (utils.DispatchRate, error)
+
+	// SetPublishRate sets the maximum rate or number of messages that producers can publish to topics in this namespace
+	SetPublishRate(namespace utils.NameSpaceName, pubRate utils.PublishRate) error
+
+	// GetPublishRate gets the maximum rate or number of messages that producer can publish to topics in the namespace
+	GetPublishRate(namespace utils.NameSpaceName) (utils.PublishRate, error)
 }
 
 type namespaces struct {
@@ -454,7 +460,6 @@ func (n *namespaces) SetSchemaAutoUpdateCompatibilityStrategy(namespace utils.Na
 
 func (n *namespaces) GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName) (
 	utils.SchemaCompatibilityStrategy, error) {
-
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "schemaAutoUpdateCompatibilityStrategy")
 	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
@@ -823,4 +828,16 @@ func (n *namespaces) GetDispatchRate(namespace utils.NameSpaceName) (utils.Dispa
 	var rate utils.DispatchRate
 	err := n.pulsar.Client.Get(endpoint, &rate)
 	return rate, err
+}
+
+func (n *namespaces) SetPublishRate(namespace utils.NameSpaceName, pubRate utils.PublishRate) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "publishRate")
+	return n.pulsar.Client.Post(endpoint, pubRate)
+}
+
+func (n *namespaces) GetPublishRate(namespace utils.NameSpaceName) (utils.PublishRate, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "publishRate")
+	var pubRate utils.PublishRate
+	err := n.pulsar.Client.Get(endpoint, &pubRate)
+	return pubRate, err
 }

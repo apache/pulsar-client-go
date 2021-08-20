@@ -48,6 +48,7 @@ type Policies struct {
 	TopicDispatchRate           map[string]DispatchRate           `json:"topicDispatchRate"`
 	SubscriptionDispatchRate    map[string]DispatchRate           `json:"subscriptionDispatchRate"`
 	ReplicatorDispatchRate      map[string]DispatchRate           `json:"replicatorDispatchRate"`
+	PublishMaxMessageRate       map[string]PublishRate            `json:"publishMaxMessageRate"`
 	ClusterSubscribeRate        map[string]SubscribeRate          `json:"clusterSubscribeRate"`
 	TopicAutoCreationConfig     TopicAutoCreationConfig           `json:"autoTopicCreationOverride"`
 	SchemaCompatibilityStrategy SchemaCompatibilityStrategy       `json:"schema_auto_update_compatibility_strategy"`
@@ -63,6 +64,7 @@ func NewDefaultPolicies() *Policies {
 		TopicDispatchRate:           make(map[string]DispatchRate),
 		SubscriptionDispatchRate:    make(map[string]DispatchRate),
 		ReplicatorDispatchRate:      make(map[string]DispatchRate),
+		PublishMaxMessageRate:       make(map[string]PublishRate),
 		ClusterSubscribeRate:        make(map[string]SubscribeRate),
 		LatencyStatsSampleRate:      make(map[string]int),
 		MessageTTLInSeconds:         0,
