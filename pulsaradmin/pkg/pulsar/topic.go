@@ -188,6 +188,15 @@ type Topics interface {
 
 	// RemoveDeduplicationStatus Remove the deduplication policy for a topic
 	RemoveDeduplicationStatus(utils.TopicName) error
+
+	// GetRetention returns the retention configuration for a topic
+	GetRetention(utils.TopicName, bool) (*utils.RetentionPolicies, error)
+
+	// RemoveRetention removes the retention configuration on a topic
+	RemoveRetention(utils.TopicName) error
+
+	// SetRetention sets the retention policy for a topic
+	SetRetention(utils.TopicName, utils.RetentionPolicies) error
 }
 
 type topics struct {
@@ -197,6 +206,9 @@ type topics struct {
 	nonPersistentPath string
 	lookupPath        string
 }
+
+// Check whether the topics struct implements the Topics interface.
+var _ Topics = &topics{}
 
 // Topics is used to access the topics endpoints
 func (c *pulsarClient) Topics() Topics {
@@ -568,4 +580,23 @@ func (t *topics) SetDeduplicationStatus(topic utils.TopicName, enabled bool) err
 func (t *topics) RemoveDeduplicationStatus(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
 	return t.pulsar.Client.Delete(endpoint)
+}
+
+func (t *topics) GetRetention(topic utils.TopicName, applied bool) (*utils.RetentionPolicies, error) {
+	var policy utils.RetentionPolicies
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
+	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &policy, map[string]string{
+		"applied": strconv.FormatBool(applied),
+	}, true)
+	return &policy, err
+}
+
+func (t *topics) RemoveRetention(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
+	return t.pulsar.Client.Delete(endpoint)
+}
+
+func (t *topics) SetRetention(topic utils.TopicName, data utils.RetentionPolicies) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
+	return t.pulsar.Client.Post(endpoint, data)
 }
