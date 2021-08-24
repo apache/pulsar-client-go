@@ -1127,3 +1127,39 @@ func TestProducerSendAfterClose(t *testing.T) {
 	assert.Nil(t, ID)
 	assert.Error(t, err)
 }
+
+func TestExactlyOnceWithProducerNameSpecified(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+		Name:  "p-name-1",
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	producer2, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+		Name:  "p-name-2",
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer2)
+	defer producer2.Close()
+
+	producer3, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+		Name:  "p-name-2",
+	})
+
+	assert.NotNil(t, err)
+	assert.Nil(t, producer3)
+}

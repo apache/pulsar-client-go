@@ -79,6 +79,8 @@ type partitionProducer struct {
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
 	metrics          *internal.TopicMetrics
+
+	epoch uint64
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
@@ -114,6 +116,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		lastSequenceID:   -1,
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
+		epoch:            0,
 	}
 	p.setProducerState(producerInit)
 
@@ -176,12 +179,16 @@ func (p *partitionProducer) grabCnx() error {
 		p.log.Debug("The partition consumer schema is nil")
 	}
 
+	userProvidedProducerName := p.producerName != ""
+
 	cmdProducer := &pb.CommandProducer{
-		RequestId:  proto.Uint64(id),
-		Topic:      proto.String(p.topic),
-		Encrypted:  nil,
-		ProducerId: proto.Uint64(p.producerID),
-		Schema:     pbSchema,
+		RequestId:                proto.Uint64(id),
+		Topic:                    proto.String(p.topic),
+		Encrypted:                nil,
+		ProducerId:               proto.Uint64(p.producerID),
+		Schema:                   pbSchema,
+		Epoch:                    proto.Uint64(atomic.LoadUint64(&p.epoch)),
+		UserProvidedProducerName: proto.Bool(userProvidedProducerName),
 	}
 
 	if p.producerName != "" {
@@ -230,7 +237,10 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	p.cnx = res.Cnx
 	p.cnx.RegisterListener(p.producerID, p)
-	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
+	p.log.WithFields(log.Fields{
+		"cnx":   res.Cnx.ID(),
+		"epoch": atomic.LoadUint64(&p.epoch),
+	}).Debug("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(pendingItems)
@@ -298,7 +308,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		d := backoff.Next()
 		p.log.Info("Reconnecting to broker in ", d)
 		time.Sleep(d)
-
+		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
