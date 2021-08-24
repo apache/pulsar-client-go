@@ -54,6 +54,8 @@ type consumer struct {
 	closeOnce     sync.Once
 	closeCh       chan struct{}
 	errorCh       chan error
+	// close will be assigned only after full initialization cycle will be ready
+	close         func()
 	stopDiscovery func()
 
 	log     log.Logger
@@ -211,6 +213,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		duration = defaultAutoDiscoveryDuration
 	}
 	consumer.stopDiscovery = consumer.runBackgroundPartitionDiscovery(duration)
+	consumer.close = consumer.closeInternal
 
 	return consumer, nil
 }
@@ -502,6 +505,12 @@ func (c *consumer) NackID(msgID MessageID) {
 }
 
 func (c *consumer) Close() {
+	if c.close != nil {
+		c.close()
+	}
+}
+
+func (c *consumer) closeInternal() {
 	c.closeOnce.Do(func() {
 		c.stopDiscovery()
 
