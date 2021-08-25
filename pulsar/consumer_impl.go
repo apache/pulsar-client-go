@@ -28,6 +28,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/pkg/errors"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
@@ -265,6 +266,13 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		if oldNumPartitions == newNumPartitions {
 			c.log.Debug("Number of partitions in topic has not changed")
 			return nil
+		}
+
+		if oldNumPartitions > newNumPartitions {
+			c.log.WithField("old_partitions", oldNumPartitions).
+				WithField("new_partitions", newNumPartitions).
+				Error("Does not support scaling down operations on topic partitions")
+			return errors.New("Does not support scaling down operations on topic partitions")
 		}
 
 		c.log.WithField("old_partitions", oldNumPartitions).

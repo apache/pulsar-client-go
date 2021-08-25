@@ -26,6 +26,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -181,6 +182,13 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		if oldNumPartitions == newNumPartitions {
 			p.log.Debug("Number of partitions in topic has not changed")
 			return nil
+		}
+
+		if oldNumPartitions > newNumPartitions {
+			p.log.WithField("old_partitions", oldNumPartitions).
+				WithField("new_partitions", newNumPartitions).
+				Error("Does not support scaling down operations on topic partitions")
+			return errors.New("Does not support scaling down operations on topic partitions")
 		}
 
 		p.log.WithField("old_partitions", oldNumPartitions).
