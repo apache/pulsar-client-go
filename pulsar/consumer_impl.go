@@ -28,6 +28,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/pkg/errors"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
@@ -266,6 +267,13 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			return nil
 		}
 
+		if oldNumPartitions > newNumPartitions {
+			c.log.WithField("old_partitions", oldNumPartitions).
+				WithField("new_partitions", newNumPartitions).
+				Error("Does not support scaling down operations on topic partitions")
+			return errors.New("Does not support scaling down operations on topic partitions")
+		}
+
 		c.log.WithField("old_partitions", oldNumPartitions).
 			WithField("new_partitions", newNumPartitions).
 			Info("Changed number of partitions in topic")
@@ -273,9 +281,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.consumers = make([]*partitionConsumer, newNumPartitions)
 
-	// Copy over the existing consumer instances
-	for i := 0; i < oldNumPartitions; i++ {
-		c.consumers[i] = oldConsumers[i]
+	if oldConsumers != nil {
+		// Copy over the existing consumer instances
+		for i := 0; i < oldNumPartitions; i++ {
+			c.consumers[i] = oldConsumers[i]
+		}
 	}
 
 	type ConsumerError struct {

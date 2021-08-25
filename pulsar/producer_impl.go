@@ -26,6 +26,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/pkg/errors"
 )
 
 const (
@@ -182,16 +183,26 @@ func (p *producer) internalCreatePartitionsProducers() error {
 			return nil
 		}
 
+		if oldNumPartitions > newNumPartitions {
+			p.log.WithField("old_partitions", oldNumPartitions).
+				WithField("new_partitions", newNumPartitions).
+				Error("Does not support scaling down operations on topic partitions")
+			return errors.New("Does not support scaling down operations on topic partitions")
+		}
+
 		p.log.WithField("old_partitions", oldNumPartitions).
 			WithField("new_partitions", newNumPartitions).
 			Info("Changed number of partitions in topic")
+
 	}
 
 	p.producers = make([]Producer, newNumPartitions)
 
-	// Copy over the existing consumer instances
-	for i := 0; i < oldNumPartitions; i++ {
-		p.producers[i] = oldProducers[i]
+	if oldProducers != nil {
+		// Copy over the existing consumer instances
+		for i := 0; i < oldNumPartitions; i++ {
+			p.producers[i] = oldProducers[i]
+		}
 	}
 
 	type ProducerError struct {
