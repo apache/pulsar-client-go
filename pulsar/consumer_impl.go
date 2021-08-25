@@ -259,7 +259,6 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	c.Lock()
 	defer c.Unlock()
 	oldConsumers := c.consumers
-	c.consumers = make([]*partitionConsumer, newNumPartitions)
 
 	if oldConsumers != nil {
 		oldNumPartitions = len(oldConsumers)
@@ -278,7 +277,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		c.log.WithField("old_partitions", oldNumPartitions).
 			WithField("new_partitions", newNumPartitions).
 			Info("Changed number of partitions in topic")
+	}
 
+	c.consumers = make([]*partitionConsumer, newNumPartitions)
+
+	if oldConsumers != nil {
 		// Copy over the existing consumer instances
 		for i := 0; i < oldNumPartitions; i++ {
 			c.consumers[i] = oldConsumers[i]
