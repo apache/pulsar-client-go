@@ -175,6 +175,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 
 	oldProducers := p.producers
 
+	p.producers = make([]Producer, newNumPartitions)
 	if oldProducers != nil {
 		oldNumPartitions = len(oldProducers)
 		if oldNumPartitions == newNumPartitions {
@@ -185,12 +186,8 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		p.log.WithField("old_partitions", oldNumPartitions).
 			WithField("new_partitions", newNumPartitions).
 			Info("Changed number of partitions in topic")
-	}
 
-	p.producers = make([]Producer, newNumPartitions)
-
-	// Copy over the existing consumer instances
-	if oldProducers != nil {
+		// Copy over the existing consumer instances
 		for i := 0; i < oldNumPartitions; i++ {
 			p.producers[i] = oldProducers[i]
 		}
