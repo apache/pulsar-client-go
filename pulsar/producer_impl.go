@@ -190,8 +190,10 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	p.producers = make([]Producer, newNumPartitions)
 
 	// Copy over the existing consumer instances
-	for i := 0; i < oldNumPartitions; i++ {
-		p.producers[i] = oldProducers[i]
+	if oldProducers != nil {
+		for i := 0; i < oldNumPartitions; i++ {
+			p.producers[i] = oldProducers[i]
+		}
 	}
 
 	type ProducerError struct {
