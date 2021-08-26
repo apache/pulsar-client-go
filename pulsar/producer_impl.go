@@ -247,7 +247,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		return err
 	}
 
-	if newNumPartitions < oldNumPartitions  {
+	if newNumPartitions < oldNumPartitions {
 		p.metrics.ProducersPartitions.Set(float64(newNumPartitions))
 	} else {
 		p.metrics.ProducersPartitions.Add(float64(partitionsToAdd))
