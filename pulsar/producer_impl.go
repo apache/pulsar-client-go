@@ -247,7 +247,11 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		return err
 	}
 
-	p.metrics.ProducersPartitions.Add(float64(partitionsToAdd))
+	if newNumPartitions < oldNumPartitions  {
+		p.metrics.ProducersPartitions.Set(float64(newNumPartitions))
+	} else {
+		p.metrics.ProducersPartitions.Add(float64(partitionsToAdd))
+	}
 	atomic.StorePointer(&p.producersPtr, unsafe.Pointer(&p.producers))
 	atomic.StoreUint32(&p.numPartitions, uint32(len(p.producers)))
 	return nil
