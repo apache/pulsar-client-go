@@ -498,8 +498,19 @@ type pendingItem struct {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
-	batchData, sequenceID, callbacks := p.batchBuilder.Flush()
+	batchData, sequenceID, callbacks, err := p.batchBuilder.Flush()
 	if batchData == nil {
+		return
+	}
+
+	// error occurred in batch flush
+	// report it using callback
+	if err != nil {
+		for _, cb := range callbacks {
+			if sr, ok := cb.(*sendRequest); ok {
+				sr.callback(nil, sr.msg, err)
+			}
+		}
 		return
 	}
 
@@ -617,12 +628,22 @@ func (p *partitionProducer) failTimeoutMessages() {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatches() {
-	batchesData, sequenceIDs, callbacks := p.batchBuilder.FlushBatches()
+	batchesData, sequenceIDs, callbacks, errors := p.batchBuilder.FlushBatches()
 	if batchesData == nil {
 		return
 	}
 
 	for i := range batchesData {
+		// error occurred in processing batch
+		// report it using callback
+		if errors[i] != nil {
+			for _, cb := range callbacks[i] {
+				if sr, ok := cb.(*sendRequest); ok {
+					sr.callback(nil, sr.msg, errors[i])
+				}
+			}
+			continue
+		}
 		if batchesData[i] == nil {
 			continue
 		}

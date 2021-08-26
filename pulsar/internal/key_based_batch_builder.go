@@ -180,11 +180,11 @@ func (bc *keyBasedBatchContainer) reset() {
 // Flush all the messages buffered in multiple batches and wait until all
 // messages have been successfully persisted.
 func (bc *keyBasedBatchContainer) FlushBatches() (
-	batchesData []Buffer, sequenceIDs []uint64, callbacks [][]interface{},
+	batchesData []Buffer, sequenceIDs []uint64, callbacks [][]interface{}, errors []error,
 ) {
 	if bc.numMessages == 0 {
 		// No-Op for empty batch
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	bc.log.Debug("keyBasedBatchContainer flush: messages: ", bc.numMessages)
@@ -195,6 +195,7 @@ func (bc *keyBasedBatchContainer) FlushBatches() (
 	batchesData = make([]Buffer, batchesLen)
 	sequenceIDs = make([]uint64, batchesLen)
 	callbacks = make([][]interface{}, batchesLen)
+	errors = make([]error, batchesLen)
 
 	bc.batches.l.RLock()
 	defer bc.batches.l.RUnlock()
@@ -204,21 +205,23 @@ func (bc *keyBasedBatchContainer) FlushBatches() (
 	sort.Strings(sortedKeys)
 	for _, k := range sortedKeys {
 		container := bc.batches.containers[k]
-		b, s, c := container.Flush()
+		b, s, c, err := container.Flush()
 		if b != nil {
 			batchesData[idx] = b
 			sequenceIDs[idx] = s
 			callbacks[idx] = c
+		} else if err != nil {
+			errors[idx] = err
 		}
 		idx++
 	}
 
 	bc.reset()
-	return batchesData, sequenceIDs, callbacks
+	return batchesData, sequenceIDs, callbacks, errors
 }
 
 func (bc *keyBasedBatchContainer) Flush() (
-	batchData Buffer, sequenceID uint64, callbacks []interface{},
+	batchData Buffer, sequenceID uint64, callbacks []interface{}, err error,
 ) {
 	panic("multi batches container not support Flush(), please use FlushBatches() instead")
 }
