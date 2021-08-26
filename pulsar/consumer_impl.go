@@ -28,7 +28,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	"github.com/pkg/errors"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
@@ -258,20 +257,14 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.Lock()
 	defer c.Unlock()
+
 	oldConsumers := c.consumers
+	oldNumPartitions = len(oldConsumers)
 
 	if oldConsumers != nil {
-		oldNumPartitions = len(oldConsumers)
 		if oldNumPartitions == newNumPartitions {
 			c.log.Debug("Number of partitions in topic has not changed")
 			return nil
-		}
-
-		if oldNumPartitions > newNumPartitions {
-			c.log.WithField("old_partitions", oldNumPartitions).
-				WithField("new_partitions", newNumPartitions).
-				Error("Does not support scaling down operations on topic partitions")
-			return errors.New("Does not support scaling down operations on topic partitions")
 		}
 
 		c.log.WithField("old_partitions", oldNumPartitions).
@@ -281,7 +274,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.consumers = make([]*partitionConsumer, newNumPartitions)
 
-	if oldConsumers != nil {
+	// When for some reason (eg: forced deletion of sub partition) causes oldNumPartitions> newNumPartitions,
+	// we need to rebuild the cache of new consumers, otherwise the array will be out of bounds.
+	if oldConsumers != nil && oldNumPartitions < newNumPartitions {
 		// Copy over the existing consumer instances
 		for i := 0; i < oldNumPartitions; i++ {
 			c.consumers[i] = oldConsumers[i]
@@ -297,12 +292,19 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	receiverQueueSize := c.options.ReceiverQueueSize
 	metadata := c.options.Properties
 
+	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
+
+	if partitionsToAdd < 0 {
+		partitionsToAdd = newNumPartitions
+		startPartition = 0
+	}
+
 	var wg sync.WaitGroup
 	ch := make(chan ConsumerError, partitionsToAdd)
 	wg.Add(partitionsToAdd)
 
-	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
+	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
 		go func(idx int, pt string) {
@@ -366,7 +368,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		return err
 	}
 
-	c.metrics.ConsumersPartitions.Add(float64(partitionsToAdd))
+	if newNumPartitions < oldNumPartitions {
+		c.metrics.ConsumersPartitions.Set(float64(newNumPartitions))
+	} else {
+		c.metrics.ConsumersPartitions.Add(float64(partitionsToAdd))
+	}
 	return nil
 }
 
