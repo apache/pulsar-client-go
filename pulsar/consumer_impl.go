@@ -292,121 +292,68 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	receiverQueueSize := c.options.ReceiverQueueSize
 	metadata := c.options.Properties
 
-	var wg sync.WaitGroup
+	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
+
 	if partitionsToAdd < 0 {
 		partitionsToAdd = newNumPartitions
+		startPartition = 0
+	}
 
-		ch := make(chan ConsumerError, partitionsToAdd)
-		wg.Add(partitionsToAdd)
+	var wg sync.WaitGroup
+	ch := make(chan ConsumerError, partitionsToAdd)
+	wg.Add(partitionsToAdd)
 
-		for partitionIdx := 0; partitionIdx < newNumPartitions; partitionIdx++ {
-			partitionTopic := partitions[partitionIdx]
+	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
+		partitionTopic := partitions[partitionIdx]
 
-			go func(idx int, pt string) {
-				defer wg.Done()
+		go func(idx int, pt string) {
+			defer wg.Done()
 
-				var nackRedeliveryDelay time.Duration
-				if c.options.NackRedeliveryDelay == 0 {
-					nackRedeliveryDelay = defaultNackRedeliveryDelay
-				} else {
-					nackRedeliveryDelay = c.options.NackRedeliveryDelay
-				}
-				opts := &partitionConsumerOpts{
-					topic:                      pt,
-					consumerName:               c.consumerName,
-					subscription:               c.options.SubscriptionName,
-					subscriptionType:           c.options.Type,
-					subscriptionInitPos:        c.options.SubscriptionInitialPosition,
-					partitionIdx:               idx,
-					receiverQueueSize:          receiverQueueSize,
-					nackRedeliveryDelay:        nackRedeliveryDelay,
-					metadata:                   metadata,
-					replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-					startMessageID:             trackingMessageID{},
-					subscriptionMode:           durable,
-					readCompacted:              c.options.ReadCompacted,
-					interceptors:               c.options.Interceptors,
-					maxReconnectToBroker:       c.options.MaxReconnectToBroker,
-					keySharedPolicy:            c.options.KeySharedPolicy,
-					schema:                     c.options.Schema,
-				}
-				cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
-				ch <- ConsumerError{
-					err:       err,
-					partition: idx,
-					consumer:  cons,
-				}
-			}(partitionIdx, partitionTopic)
-		}
-
-		go func() {
-			wg.Wait()
-			close(ch)
-		}()
-
-		for ce := range ch {
-			if ce.err != nil {
-				err = ce.err
+			var nackRedeliveryDelay time.Duration
+			if c.options.NackRedeliveryDelay == 0 {
+				nackRedeliveryDelay = defaultNackRedeliveryDelay
 			} else {
-				c.consumers[ce.partition] = ce.consumer
+				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
-		}
-	} else {
-
-		ch := make(chan ConsumerError, partitionsToAdd)
-		wg.Add(partitionsToAdd)
-
-		for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
-			partitionTopic := partitions[partitionIdx]
-
-			go func(idx int, pt string) {
-				defer wg.Done()
-
-				var nackRedeliveryDelay time.Duration
-				if c.options.NackRedeliveryDelay == 0 {
-					nackRedeliveryDelay = defaultNackRedeliveryDelay
-				} else {
-					nackRedeliveryDelay = c.options.NackRedeliveryDelay
-				}
-				opts := &partitionConsumerOpts{
-					topic:                      pt,
-					consumerName:               c.consumerName,
-					subscription:               c.options.SubscriptionName,
-					subscriptionType:           c.options.Type,
-					subscriptionInitPos:        c.options.SubscriptionInitialPosition,
-					partitionIdx:               idx,
-					receiverQueueSize:          receiverQueueSize,
-					nackRedeliveryDelay:        nackRedeliveryDelay,
-					metadata:                   metadata,
-					replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-					startMessageID:             trackingMessageID{},
-					subscriptionMode:           durable,
-					readCompacted:              c.options.ReadCompacted,
-					interceptors:               c.options.Interceptors,
-					maxReconnectToBroker:       c.options.MaxReconnectToBroker,
-					keySharedPolicy:            c.options.KeySharedPolicy,
-					schema:                     c.options.Schema,
-				}
-				cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
-				ch <- ConsumerError{
-					err:       err,
-					partition: idx,
-					consumer:  cons,
-				}
-			}(partitionIdx, partitionTopic)
-		}
-		go func() {
-			wg.Wait()
-			close(ch)
-		}()
-
-		for ce := range ch {
-			if ce.err != nil {
-				err = ce.err
-			} else {
-				c.consumers[ce.partition] = ce.consumer
+			opts := &partitionConsumerOpts{
+				topic:                      pt,
+				consumerName:               c.consumerName,
+				subscription:               c.options.SubscriptionName,
+				subscriptionType:           c.options.Type,
+				subscriptionInitPos:        c.options.SubscriptionInitialPosition,
+				partitionIdx:               idx,
+				receiverQueueSize:          receiverQueueSize,
+				nackRedeliveryDelay:        nackRedeliveryDelay,
+				metadata:                   metadata,
+				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
+				startMessageID:             trackingMessageID{},
+				subscriptionMode:           durable,
+				readCompacted:              c.options.ReadCompacted,
+				interceptors:               c.options.Interceptors,
+				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
+				keySharedPolicy:            c.options.KeySharedPolicy,
+				schema:                     c.options.Schema,
 			}
+			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
+			ch <- ConsumerError{
+				err:       err,
+				partition: idx,
+				consumer:  cons,
+			}
+		}(partitionIdx, partitionTopic)
+	}
+
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	for ce := range ch {
+		if ce.err != nil {
+			err = ce.err
+		} else {
+			c.consumers[ce.partition] = ce.consumer
 		}
 	}
 

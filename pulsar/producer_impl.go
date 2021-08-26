@@ -205,60 +205,34 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		err       error
 	}
 
+	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
 	if partitionsToAdd < 0 {
 		partitionsToAdd = newNumPartitions
+		startPartition = 0
+	}
+	c := make(chan ProducerError, partitionsToAdd)
 
-		c := make(chan ProducerError, partitionsToAdd)
+	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
+		partition := partitions[partitionIdx]
 
-		for partitionIdx := 0; partitionIdx < newNumPartitions; partitionIdx++ {
-			partition := partitions[partitionIdx]
-
-			go func(partitionIdx int, partition string) {
-				prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx, p.metrics)
-				c <- ProducerError{
-					partition: partitionIdx,
-					prod:      prod,
-					err:       e,
-				}
-			}(partitionIdx, partition)
-		}
-
-		for i := 0; i < partitionsToAdd; i++ {
-			pe, ok := <-c
-			if ok {
-				if pe.err != nil {
-					err = pe.err
-				} else {
-					p.producers[pe.partition] = pe.prod
-				}
+		go func(partitionIdx int, partition string) {
+			prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx, p.metrics)
+			c <- ProducerError{
+				partition: partitionIdx,
+				prod:      prod,
+				err:       e,
 			}
-		}
-	} else {
+		}(partitionIdx, partition)
+	}
 
-		c := make(chan ProducerError, partitionsToAdd)
-
-		for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
-			partition := partitions[partitionIdx]
-
-			go func(partitionIdx int, partition string) {
-				prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx, p.metrics)
-				c <- ProducerError{
-					partition: partitionIdx,
-					prod:      prod,
-					err:       e,
-				}
-			}(partitionIdx, partition)
-		}
-
-		for i := 0; i < partitionsToAdd; i++ {
-			pe, ok := <-c
-			if ok {
-				if pe.err != nil {
-					err = pe.err
-				} else {
-					p.producers[pe.partition] = pe.prod
-				}
+	for i := 0; i < partitionsToAdd; i++ {
+		pe, ok := <-c
+		if ok {
+			if pe.err != nil {
+				err = pe.err
+			} else {
+				p.producers[pe.partition] = pe.prod
 			}
 		}
 	}
