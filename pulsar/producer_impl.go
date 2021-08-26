@@ -26,7 +26,6 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	"github.com/pkg/errors"
 )
 
 const (
@@ -175,19 +174,12 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	defer p.Unlock()
 
 	oldProducers := p.producers
+	oldNumPartitions = len(oldProducers)
 
 	if oldProducers != nil {
-		oldNumPartitions = len(oldProducers)
 		if oldNumPartitions == newNumPartitions {
 			p.log.Debug("Number of partitions in topic has not changed")
 			return nil
-		}
-
-		if oldNumPartitions > newNumPartitions {
-			p.log.WithField("old_partitions", oldNumPartitions).
-				WithField("new_partitions", newNumPartitions).
-				Error("Does not support scaling down operations on topic partitions")
-			return errors.New("Does not support scaling down operations on topic partitions")
 		}
 
 		p.log.WithField("old_partitions", oldNumPartitions).
@@ -198,7 +190,9 @@ func (p *producer) internalCreatePartitionsProducers() error {
 
 	p.producers = make([]Producer, newNumPartitions)
 
-	if oldProducers != nil {
+	// When for some reason (eg: forced deletion of sub partition) causes oldNumPartitions> newNumPartitions,
+	// we need to rebuild the cache of new producers, otherwise the array will be out of bounds.
+	if oldProducers != nil && oldNumPartitions < newNumPartitions {
 		// Copy over the existing consumer instances
 		for i := 0; i < oldNumPartitions; i++ {
 			p.producers[i] = oldProducers[i]
@@ -212,28 +206,59 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	}
 
 	partitionsToAdd := newNumPartitions - oldNumPartitions
-	c := make(chan ProducerError, partitionsToAdd)
+	if partitionsToAdd < 0 {
+		partitionsToAdd = newNumPartitions
 
-	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
-		partition := partitions[partitionIdx]
+		c := make(chan ProducerError, partitionsToAdd)
 
-		go func(partitionIdx int, partition string) {
-			prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx, p.metrics)
-			c <- ProducerError{
-				partition: partitionIdx,
-				prod:      prod,
-				err:       e,
+		for partitionIdx := 0; partitionIdx < newNumPartitions; partitionIdx++ {
+			partition := partitions[partitionIdx]
+
+			go func(partitionIdx int, partition string) {
+				prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx, p.metrics)
+				c <- ProducerError{
+					partition: partitionIdx,
+					prod:      prod,
+					err:       e,
+				}
+			}(partitionIdx, partition)
+		}
+
+		for i := 0; i < partitionsToAdd; i++ {
+			pe, ok := <-c
+			if ok {
+				if pe.err != nil {
+					err = pe.err
+				} else {
+					p.producers[pe.partition] = pe.prod
+				}
 			}
-		}(partitionIdx, partition)
-	}
+		}
+	} else {
 
-	for i := 0; i < partitionsToAdd; i++ {
-		pe, ok := <-c
-		if ok {
-			if pe.err != nil {
-				err = pe.err
-			} else {
-				p.producers[pe.partition] = pe.prod
+		c := make(chan ProducerError, partitionsToAdd)
+
+		for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
+			partition := partitions[partitionIdx]
+
+			go func(partitionIdx int, partition string) {
+				prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx, p.metrics)
+				c <- ProducerError{
+					partition: partitionIdx,
+					prod:      prod,
+					err:       e,
+				}
+			}(partitionIdx, partition)
+		}
+
+		for i := 0; i < partitionsToAdd; i++ {
+			pe, ok := <-c
+			if ok {
+				if pe.err != nil {
+					err = pe.err
+				} else {
+					p.producers[pe.partition] = pe.prod
+				}
 			}
 		}
 	}

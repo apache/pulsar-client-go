@@ -28,7 +28,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	"github.com/pkg/errors"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
@@ -258,20 +257,14 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.Lock()
 	defer c.Unlock()
+
 	oldConsumers := c.consumers
+	oldNumPartitions = len(oldConsumers)
 
 	if oldConsumers != nil {
-		oldNumPartitions = len(oldConsumers)
 		if oldNumPartitions == newNumPartitions {
 			c.log.Debug("Number of partitions in topic has not changed")
 			return nil
-		}
-
-		if oldNumPartitions > newNumPartitions {
-			c.log.WithField("old_partitions", oldNumPartitions).
-				WithField("new_partitions", newNumPartitions).
-				Error("Does not support scaling down operations on topic partitions")
-			return errors.New("Does not support scaling down operations on topic partitions")
 		}
 
 		c.log.WithField("old_partitions", oldNumPartitions).
@@ -281,7 +274,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.consumers = make([]*partitionConsumer, newNumPartitions)
 
-	if oldConsumers != nil {
+	// When for some reason (eg: forced deletion of sub partition) causes oldNumPartitions> newNumPartitions,
+	// we need to rebuild the cache of new consumers, otherwise the array will be out of bounds.
+	if oldConsumers != nil && oldNumPartitions < newNumPartitions {
 		// Copy over the existing consumer instances
 		for i := 0; i < oldNumPartitions; i++ {
 			c.consumers[i] = oldConsumers[i]
@@ -297,61 +292,121 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	receiverQueueSize := c.options.ReceiverQueueSize
 	metadata := c.options.Properties
 
-	partitionsToAdd := newNumPartitions - oldNumPartitions
 	var wg sync.WaitGroup
-	ch := make(chan ConsumerError, partitionsToAdd)
-	wg.Add(partitionsToAdd)
+	partitionsToAdd := newNumPartitions - oldNumPartitions
+	if partitionsToAdd < 0 {
+		partitionsToAdd = newNumPartitions
 
-	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
-		partitionTopic := partitions[partitionIdx]
+		ch := make(chan ConsumerError, partitionsToAdd)
+		wg.Add(partitionsToAdd)
 
-		go func(idx int, pt string) {
-			defer wg.Done()
+		for partitionIdx := 0; partitionIdx < newNumPartitions; partitionIdx++ {
+			partitionTopic := partitions[partitionIdx]
 
-			var nackRedeliveryDelay time.Duration
-			if c.options.NackRedeliveryDelay == 0 {
-				nackRedeliveryDelay = defaultNackRedeliveryDelay
+			go func(idx int, pt string) {
+				defer wg.Done()
+
+				var nackRedeliveryDelay time.Duration
+				if c.options.NackRedeliveryDelay == 0 {
+					nackRedeliveryDelay = defaultNackRedeliveryDelay
+				} else {
+					nackRedeliveryDelay = c.options.NackRedeliveryDelay
+				}
+				opts := &partitionConsumerOpts{
+					topic:                      pt,
+					consumerName:               c.consumerName,
+					subscription:               c.options.SubscriptionName,
+					subscriptionType:           c.options.Type,
+					subscriptionInitPos:        c.options.SubscriptionInitialPosition,
+					partitionIdx:               idx,
+					receiverQueueSize:          receiverQueueSize,
+					nackRedeliveryDelay:        nackRedeliveryDelay,
+					metadata:                   metadata,
+					replicateSubscriptionState: c.options.ReplicateSubscriptionState,
+					startMessageID:             trackingMessageID{},
+					subscriptionMode:           durable,
+					readCompacted:              c.options.ReadCompacted,
+					interceptors:               c.options.Interceptors,
+					maxReconnectToBroker:       c.options.MaxReconnectToBroker,
+					keySharedPolicy:            c.options.KeySharedPolicy,
+					schema:                     c.options.Schema,
+				}
+				cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
+				ch <- ConsumerError{
+					err:       err,
+					partition: idx,
+					consumer:  cons,
+				}
+			}(partitionIdx, partitionTopic)
+		}
+
+		go func() {
+			wg.Wait()
+			close(ch)
+		}()
+
+		for ce := range ch {
+			if ce.err != nil {
+				err = ce.err
 			} else {
-				nackRedeliveryDelay = c.options.NackRedeliveryDelay
+				c.consumers[ce.partition] = ce.consumer
 			}
-			opts := &partitionConsumerOpts{
-				topic:                      pt,
-				consumerName:               c.consumerName,
-				subscription:               c.options.SubscriptionName,
-				subscriptionType:           c.options.Type,
-				subscriptionInitPos:        c.options.SubscriptionInitialPosition,
-				partitionIdx:               idx,
-				receiverQueueSize:          receiverQueueSize,
-				nackRedeliveryDelay:        nackRedeliveryDelay,
-				metadata:                   metadata,
-				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             trackingMessageID{},
-				subscriptionMode:           durable,
-				readCompacted:              c.options.ReadCompacted,
-				interceptors:               c.options.Interceptors,
-				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
-				keySharedPolicy:            c.options.KeySharedPolicy,
-				schema:                     c.options.Schema,
-			}
-			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
-			ch <- ConsumerError{
-				err:       err,
-				partition: idx,
-				consumer:  cons,
-			}
-		}(partitionIdx, partitionTopic)
-	}
+		}
+	} else {
 
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
+		ch := make(chan ConsumerError, partitionsToAdd)
+		wg.Add(partitionsToAdd)
 
-	for ce := range ch {
-		if ce.err != nil {
-			err = ce.err
-		} else {
-			c.consumers[ce.partition] = ce.consumer
+		for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
+			partitionTopic := partitions[partitionIdx]
+
+			go func(idx int, pt string) {
+				defer wg.Done()
+
+				var nackRedeliveryDelay time.Duration
+				if c.options.NackRedeliveryDelay == 0 {
+					nackRedeliveryDelay = defaultNackRedeliveryDelay
+				} else {
+					nackRedeliveryDelay = c.options.NackRedeliveryDelay
+				}
+				opts := &partitionConsumerOpts{
+					topic:                      pt,
+					consumerName:               c.consumerName,
+					subscription:               c.options.SubscriptionName,
+					subscriptionType:           c.options.Type,
+					subscriptionInitPos:        c.options.SubscriptionInitialPosition,
+					partitionIdx:               idx,
+					receiverQueueSize:          receiverQueueSize,
+					nackRedeliveryDelay:        nackRedeliveryDelay,
+					metadata:                   metadata,
+					replicateSubscriptionState: c.options.ReplicateSubscriptionState,
+					startMessageID:             trackingMessageID{},
+					subscriptionMode:           durable,
+					readCompacted:              c.options.ReadCompacted,
+					interceptors:               c.options.Interceptors,
+					maxReconnectToBroker:       c.options.MaxReconnectToBroker,
+					keySharedPolicy:            c.options.KeySharedPolicy,
+					schema:                     c.options.Schema,
+				}
+				cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
+				ch <- ConsumerError{
+					err:       err,
+					partition: idx,
+					consumer:  cons,
+				}
+			}(partitionIdx, partitionTopic)
+		}
+		go func() {
+			wg.Wait()
+			close(ch)
+		}()
+
+		for ce := range ch {
+			if ce.err != nil {
+				err = ce.err
+			} else {
+				c.consumers[ce.partition] = ce.consumer
+			}
 		}
 	}
 
