@@ -76,6 +76,10 @@ func (c *mockConsumer) NackID(msgID pulsar.MessageID) {}
 
 func (c *mockConsumer) Close() {}
 
+func (c *mockConsumer) Closed() <-chan struct{} {
+	return make(chan struct{})
+}
+
 func (c *mockConsumer) Seek(msgID pulsar.MessageID) error {
 	return nil
 }

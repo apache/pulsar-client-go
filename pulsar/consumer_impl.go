@@ -54,8 +54,7 @@ type consumer struct {
 	closeOnce     sync.Once
 	closeCh       chan struct{}
 	errorCh       chan error
-	// close will be assigned only after full initialization cycle will be ready
-	close         func()
+	close         func() // close will be assigned only after full initialization cycle will be ready
 	stopDiscovery func()
 
 	log     log.Logger
