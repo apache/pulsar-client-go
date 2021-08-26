@@ -1038,7 +1038,35 @@ func TestProducerWithRSAEncryption(t *testing.T) {
 	}
 }
 
-func TestProducuerCreationFailOnInvalidKey(t *testing.T) {
+func TestProducuerCreationFailOnNilKeyReader(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+		Encryption: &ProducerEncryptionInfo{
+			MessageCrypto: msgCrypto,
+			Keys:          []string{"my-app.key"},
+		},
+		Schema: NewStringSchema(nil),
+	})
+
+	assert.NotNil(t, err)
+	assert.Nil(t, producer)
+}
+
+func TestProducuerSendFailOnInvalidKey(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -1064,8 +1092,15 @@ func TestProducuerCreationFailOnInvalidKey(t *testing.T) {
 		Schema: NewStringSchema(nil),
 	})
 
+	assert.Nil(t, err)
+	assert.NotNil(t, producer)
+
+	mid, err := producer.Send(context.Background(), &ProducerMessage{
+		Value: "test",
+	})
+
 	assert.NotNil(t, err)
-	assert.Nil(t, producer)
+	assert.Nil(t, mid)
 }
 
 type noopProduceInterceptor struct{}

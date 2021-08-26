@@ -147,11 +147,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		}
 	}
 
-	if err := p.generateDataKey(); err != nil {
-		logger.WithError(err).Error("Failed to create data key")
-		return nil, err
-	}
-
 	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
@@ -840,17 +835,6 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.setProducerState(producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
-}
-
-func (p *partitionProducer) generateDataKey() error {
-	if p.options.Encryption != nil {
-		if p.options.Encryption.KeyReader != nil {
-			return p.options.Encryption.MessageCrypto.AddPublicKeyCipher(p.options.Encryption.Keys,
-				p.options.Encryption.KeyReader)
-		}
-		return fmt.Errorf("failed to generate data key. KeyReader interface is not implemented")
-	}
-	return nil
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
