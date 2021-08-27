@@ -57,7 +57,7 @@ type consumer struct {
 	stopDiscovery func()
 
 	log     log.Logger
-	metrics *internal.TopicMetrics
+	metrics *internal.LeveledMetrics
 }
 
 func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
@@ -197,7 +197,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		rlq:                       rlq,
 		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
-		metrics:                   client.metrics.GetTopicMetrics(topic),
+		metrics:                   client.metrics.GetLeveledMetrics(topic),
 	}
 
 	err := consumer.internalTopicSubscribeToPartitions()

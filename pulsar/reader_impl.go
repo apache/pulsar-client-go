@@ -37,7 +37,7 @@ type reader struct {
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
 	log                 log.Logger
-	metrics             *internal.TopicMetrics
+	metrics             *internal.LeveledMetrics
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -93,7 +93,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
 		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics:   client.metrics.GetTopicMetrics(options.Topic),
+		metrics:   client.metrics.GetLeveledMetrics(options.Topic),
 	}
 
 	// Provide dummy dlq router with not dlq policy

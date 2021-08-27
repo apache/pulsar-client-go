@@ -107,11 +107,15 @@ func newClient(options ClientOptions) (Client, error) {
 		maxConnectionsPerHost = 1
 	}
 
+	if options.MetricsCardinality == 0 {
+		options.MetricsCardinality = MetricsCardinalityNamespace
+	}
+
 	var metrics *internal.Metrics
 	if options.CustomMetricsLabels != nil {
-		metrics = internal.NewMetricsProvider(options.CustomMetricsLabels)
+		metrics = internal.NewMetricsProvider(int(options.MetricsCardinality), options.CustomMetricsLabels)
 	} else {
-		metrics = internal.NewMetricsProvider(map[string]string{})
+		metrics = internal.NewMetricsProvider(int(options.MetricsCardinality), map[string]string{})
 	}
 
 	c := &client{

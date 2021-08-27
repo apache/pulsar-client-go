@@ -14,8 +14,9 @@ require (
 	github.com/google/uuid v1.1.2
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/klauspost/compress v1.10.8
-	github.com/kr/pretty v0.2.0 // indirect
 	github.com/linkedin/goavro/v2 v2.9.8
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pkg/errors v0.9.1
@@ -27,7 +28,6 @@ require (
 	github.com/stretchr/testify v1.5.1
 	go.uber.org/atomic v1.7.0
 	golang.org/x/oauth2 v0.0.0-20200107190931-bf48bf16ab8d
-	gopkg.in/yaml.v3 v3.0.0-20210107192922-496545a6307b // indirect
 )
 
 replace github.com/apache/pulsar-client-go/oauth2 => ./oauth2
