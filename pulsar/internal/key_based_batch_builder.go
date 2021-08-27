@@ -210,7 +210,6 @@ func (bc *keyBasedBatchContainer) FlushBatches() (
 			batchesData[idx] = b
 			sequenceIDs[idx] = s
 			callbacks[idx] = c
-		} else if err != nil {
 			errors[idx] = err
 		}
 		idx++
