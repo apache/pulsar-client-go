@@ -1052,6 +1052,7 @@ func TestProducuerCreationFailOnNilKeyReader(t *testing.T) {
 	assert.Nil(t, err)
 
 	// create producer
+	// Producer creation should fail as keyreader is nil
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
 		DisableBatching: false,
@@ -1095,6 +1096,7 @@ func TestProducuerSendFailOnInvalidKey(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, producer)
 
+	// producer should send return an error as keyreader is configured with wrong pub.key and fail while encrypting message
 	mid, err := producer.Send(context.Background(), &ProducerMessage{
 		Value: "test",
 	})
