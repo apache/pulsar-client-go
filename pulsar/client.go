@@ -117,7 +117,8 @@ type ClientOptions struct {
 	// FIXME: use `logger` as internal field name instead of `log` as it's more idiomatic
 	Logger log.Logger
 
-	// Specify metric cardinality to the tenant, namespace or topic levels. Default: MetricsCardinalityNamespace
+	// Specify metric cardinality to the tenant, namespace or topic levels, or remove it completely.
+	// Default: MetricsCardinalityNamespace
 	MetricsCardinality MetricsCardinality
 
 	// Add custom labels to all the metrics reported by this client instance
