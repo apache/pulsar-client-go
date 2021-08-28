@@ -241,7 +241,8 @@ func TestTlsLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -287,7 +288,8 @@ func TestLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -333,7 +335,8 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -367,7 +370,8 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(false),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -396,7 +400,8 @@ func TestLookupWithLookupFailure(t *testing.T) {
 				Authoritative: proto.Bool(true),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
