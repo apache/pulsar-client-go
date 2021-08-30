@@ -197,6 +197,15 @@ type Topics interface {
 
 	// SetRetention sets the retention policy for a topic
 	SetRetention(utils.TopicName, utils.RetentionPolicies) error
+
+	// Get the compaction threshold for a topic
+	GetCompactionThreshold(topic utils.TopicName, applied bool) (int64, error)
+
+	// Set the compaction threshold for a topic
+	SetCompactionThreshold(topic utils.TopicName, threshold int64) error
+
+	// Remove compaction threshold for a topic
+	RemoveCompactionThreshold(utils.TopicName) error
 }
 
 type topics struct {
@@ -599,4 +608,25 @@ func (t *topics) RemoveRetention(topic utils.TopicName) error {
 func (t *topics) SetRetention(topic utils.TopicName, data utils.RetentionPolicies) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
 	return t.pulsar.Client.Post(endpoint, data)
+}
+
+func (t *topics) GetCompactionThreshold(topic utils.TopicName, applied bool) (int64, error) {
+	var threshold int64
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
+	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &threshold, map[string]string{
+		"applied": strconv.FormatBool(applied),
+	}, true)
+	return threshold, err
+}
+
+func (t *topics) SetCompactionThreshold(topic utils.TopicName, threshold int64) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
+	err := t.pulsar.Client.Post(endpoint, threshold)
+	return err
+}
+
+func (t *topics) RemoveCompactionThreshold(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
+	err := t.pulsar.Client.Delete(endpoint)
+	return err
 }
