@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"net/url"
 	"strconv"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common"
@@ -206,6 +207,15 @@ type Topics interface {
 
 	// Remove compaction threshold for a topic
 	RemoveCompactionThreshold(utils.TopicName) error
+
+	// GetBacklogQuotaMap returns backlog quota map for a topic
+	GetBacklogQuotaMap(topic utils.TopicName, applied bool) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
+
+	// SetBacklogQuota sets a backlog quota for a topic
+	SetBacklogQuota(utils.TopicName, utils.BacklogQuota, utils.BacklogQuotaType) error
+
+	// RemoveBacklogQuota removes a backlog quota policy from a topic
+	RemoveBacklogQuota(utils.TopicName, utils.BacklogQuotaType) error
 }
 
 type topics struct {
@@ -629,4 +639,37 @@ func (t *topics) RemoveCompactionThreshold(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
 	err := t.pulsar.Client.Delete(endpoint)
 	return err
+}
+
+func (t *topics) GetBacklogQuotaMap(topic utils.TopicName, applied bool) (map[utils.BacklogQuotaType]utils.BacklogQuota,
+	error) {
+	var backlogQuotaMap map[utils.BacklogQuotaType]utils.BacklogQuota
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "backlogQuotaMap")
+
+	queryParams := map[string]string{"applied": strconv.FormatBool(applied)}
+	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &backlogQuotaMap, queryParams, true)
+
+	return backlogQuotaMap, err
+}
+
+func (t *topics) SetBacklogQuota(topic utils.TopicName, backlogQuota utils.BacklogQuota,
+	backlogQuotaType utils.BacklogQuotaType) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "backlogQuota")
+
+	u, err := url.Parse(endpoint)
+	if err != nil {
+		return err
+	}
+	q := u.Query()
+	q.Add("backlogQuotaType", string(backlogQuotaType))
+	u.RawQuery = q.Encode()
+
+	return t.pulsar.Client.Post(u.String(), &backlogQuota)
+}
+
+func (t *topics) RemoveBacklogQuota(topic utils.TopicName, backlogQuotaType utils.BacklogQuotaType) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "backlogQuota")
+	return t.pulsar.Client.DeleteWithQueryParams(endpoint, map[string]string{
+		"backlogQuotaType": string(backlogQuotaType),
+	})
 }

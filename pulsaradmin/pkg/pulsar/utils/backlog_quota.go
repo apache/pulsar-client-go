@@ -35,10 +35,6 @@ func NewBacklogQuota(limitSize int64, limitTime int64, policy RetentionPolicy) B
 
 type RetentionPolicy string
 
-type BacklogQuotaType string
-
-const DestinationStorage BacklogQuotaType = "destination_storage"
-
 const (
 	ProducerRequestHold     RetentionPolicy = "producer_request_hold"
 	ProducerException       RetentionPolicy = "producer_exception"
@@ -47,6 +43,8 @@ const (
 
 func ParseRetentionPolicy(str string) (RetentionPolicy, error) {
 	switch str {
+	case ProducerRequestHold.String():
+		return ProducerRequestHold, nil
 	case ProducerException.String():
 		return ProducerException, nil
 	case ConsumerBacklogEviction.String():
@@ -58,4 +56,26 @@ func ParseRetentionPolicy(str string) (RetentionPolicy, error) {
 
 func (s RetentionPolicy) String() string {
 	return string(s)
+}
+
+type BacklogQuotaType string
+
+const (
+	DestinationStorage BacklogQuotaType = "destination_storage"
+	MessageAge         BacklogQuotaType = "message_age"
+)
+
+func ParseBacklogQuotaType(str string) (BacklogQuotaType, error) {
+	switch str {
+	case DestinationStorage.String():
+		return DestinationStorage, nil
+	case MessageAge.String():
+		return MessageAge, nil
+	default:
+		return "", errors.Errorf("Invalid backlog quota type: %s", str)
+	}
+}
+
+func (b BacklogQuotaType) String() string {
+	return string(b)
 }
