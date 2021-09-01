@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"encoding/hex"
 	"fmt"
 	"math"
 	"sync"
@@ -141,6 +142,57 @@ type partitionConsumer struct {
 	providersMutex       sync.RWMutex
 	compressionProviders map[pb.CompressionType]compression.Provider
 	metrics              *internal.TopicMetrics
+	schemaInfoCache      *schemaInfoCache
+}
+
+type schemaInfoCache struct {
+	lock   sync.RWMutex
+	cache  map[string]Schema
+	client *client
+	topic  string
+}
+
+func newSchemaInfoCache(client *client, topic string) *schemaInfoCache {
+	return &schemaInfoCache{
+		cache:  make(map[string]Schema),
+		client: client,
+		topic:  topic,
+	}
+}
+
+func (s *schemaInfoCache) Get(schemaVersion []byte) (schema Schema, err error) {
+	key := hex.EncodeToString(schemaVersion)
+	s.lock.RLock()
+	schema = s.cache[key]
+	s.lock.RUnlock()
+	if schema != nil {
+		return
+	}
+
+	pbSchema, err := s.client.lookupService.GetSchema(s.topic, schemaVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	var properties = make(map[string]string)
+	if pbSchema.Properties != nil {
+		for _, entry := range pbSchema.Properties {
+			properties[*entry.Key] = properties[*entry.Value]
+		}
+	}
+	schema, err = NewSchema(SchemaType(*pbSchema.Type), pbSchema.SchemaData, properties)
+	if err != nil {
+		return nil, err
+	}
+	s.add(key, schema)
+	return schema, nil
+
+}
+func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.cache[schemaVersionHash] = schema
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
@@ -167,6 +219,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		dlq:                  dlq,
 		metrics:              metrics,
+		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
 	}
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
@@ -541,6 +594,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
+				schemaVersion:       msgMeta.GetSchemaVersion(),
+				schemaInfoCache:     pc.schemaInfoCache,
 			}
 		} else {
 			msg = &message{
@@ -556,6 +611,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
+				schemaVersion:       msgMeta.GetSchemaVersion(),
+				schemaInfoCache:     pc.schemaInfoCache,
 			}
 		}
 
@@ -913,7 +970,7 @@ func (pc *partitionConsumer) grabConn() error {
 	keySharedMeta := toProtoKeySharedMeta(pc.options.keySharedPolicy)
 	requestID := pc.client.rpcClient.NewRequestID()
 
-	pbSchema := new(pb.Schema)
+	var pbSchema *pb.Schema
 
 	if pc.options.schema != nil && pc.options.schema.GetSchemaInfo() != nil {
 		tmpSchemaType := pb.Schema_Type(int32(pc.options.schema.GetSchemaInfo().Type))
@@ -925,7 +982,6 @@ func (pc *partitionConsumer) grabConn() error {
 		}
 		pc.log.Debugf("The partition consumer schema name is: %s", pbSchema.Name)
 	} else {
-		pbSchema = nil
 		pc.log.Debug("The partition consumer schema is nil")
 	}
 

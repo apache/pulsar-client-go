@@ -163,6 +163,8 @@ type ProducerOptions struct {
 	// PartitionsAutoDiscoveryInterval is the time interval for the background process to discover new partitions
 	// Default is 1 minute
 	PartitionsAutoDiscoveryInterval time.Duration
+
+	DisableMultiSchema bool
 }
 
 // Producer is used to publish messages on a topic

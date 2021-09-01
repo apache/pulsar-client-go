@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -79,10 +80,36 @@ type partitionProducer struct {
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
 	metrics          *internal.TopicMetrics
-
-	epoch uint64
+	epoch            uint64
+	schemaCache      *schemaCache
 }
 
+type schemaCache struct {
+	lock    sync.RWMutex
+	schemas map[string][]byte
+}
+
+func newSchemaCache() *schemaCache {
+	return &schemaCache{
+		schemas: make(map[string][]byte),
+	}
+}
+
+func (s *schemaCache) Put(schema *SchemaInfo, schemaVersion []byte) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	key := schema.hash()
+	s.schemas[key] = schemaVersion
+}
+
+func (s *schemaCache) Get(schema *SchemaInfo) (schemaVersion []byte) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	key := schema.hash()
+	return s.schemas[key]
+}
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
 	metrics *internal.TopicMetrics) (
 	*partitionProducer, error) {
@@ -117,6 +144,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
 		epoch:            0,
+		schemaCache:      newSchemaCache(),
 	}
 	p.setProducerState(producerInit)
 
@@ -164,7 +192,7 @@ func (p *partitionProducer) grabCnx() error {
 
 	// set schema info for producer
 
-	pbSchema := new(pb.Schema)
+	var pbSchema *pb.Schema
 	if p.schemaInfo != nil {
 		tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
 		pbSchema = &pb.Schema{
@@ -173,10 +201,9 @@ func (p *partitionProducer) grabCnx() error {
 			SchemaData: []byte(p.schemaInfo.Schema),
 			Properties: internal.ConvertFromStringMap(p.schemaInfo.Properties),
 		}
-		p.log.Debugf("The partition consumer schema name is: %s", pbSchema.Name)
+		p.log.Debugf("The partition producer schema name is: %s", pbSchema.Name)
 	} else {
-		pbSchema = nil
-		p.log.Debug("The partition consumer schema is nil")
+		p.log.Debug("The partition producer schema is nil")
 	}
 
 	userProvidedProducerName := p.producerName != ""
@@ -235,6 +262,12 @@ func (p *partitionProducer) grabCnx() error {
 		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
 		p.sequenceIDGenerator = &nextSequenceID
 	}
+
+	schemaVersion := res.Response.ProducerSuccess.GetSchemaVersion()
+	if len(schemaVersion) != 0 {
+		p.schemaCache.Put(p.schemaInfo, schemaVersion)
+	}
+
 	p.cnx = res.Cnx
 	p.cnx.RegisterListener(p.producerID, p)
 	p.log.WithFields(log.Fields{
@@ -285,6 +318,36 @@ func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine
 	p.log.WithField("cnx", p.cnx.ID()).Warn("Connection was closed")
 	p.connectClosedCh <- connectionClosed{}
+}
+
+func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVersion []byte, err error) {
+
+	tmpSchemaType := pb.Schema_Type(int32(schemaInfo.Type))
+	pbSchema := &pb.Schema{
+		Name:       proto.String(schemaInfo.Name),
+		Type:       &tmpSchemaType,
+		SchemaData: []byte(schemaInfo.Schema),
+		Properties: internal.ConvertFromStringMap(schemaInfo.Properties),
+	}
+	id := p.client.rpcClient.NewRequestID()
+	req := &pb.CommandGetOrCreateSchema{
+		RequestId: proto.Uint64(id),
+		Topic:     proto.String(p.topic),
+		Schema:    pbSchema,
+	}
+	res, err := p.client.rpcClient.RequestOnCnx(p.cnx, id, pb.BaseCommand_GET_OR_CREATE_SCHEMA, req)
+	if err != nil {
+		return
+	}
+	if res.Response.Error != nil {
+		err = errors.New(res.Response.GetError().String())
+		return
+	}
+	if res.Response.GetOrCreateSchemaResponse.ErrorCode != nil {
+		err = errors.New(*res.Response.GetOrCreateSchemaResponse.ErrorMessage)
+		return
+	}
+	return res.Response.GetOrCreateSchemaResponse.SchemaVersion, nil
 }
 
 func (p *partitionProducer) reconnectToBroker() {
@@ -361,18 +424,47 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	msg := request.msg
 
 	payload := msg.Payload
+
 	var schemaPayload []byte
 	var err error
-	if p.options.Schema != nil {
-		schemaPayload, err = p.options.Schema.Encode(msg.Value)
+	if msg.Value != nil && msg.Payload != nil {
+		p.log.Error("Can not set Value and Payload both")
+		return
+	}
+
+	if p.options.DisableMultiSchema {
+		if msg.Schema != p.options.Schema {
+			p.log.WithError(err).Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
+			return
+		}
+	}
+	var schema Schema
+	var schemaVersion []byte
+	if msg.Schema != nil {
+		schema = msg.Schema
+	} else if p.options.Schema != nil {
+		schema = p.options.Schema
+	}
+	if msg.Value != nil {
+		schemaPayload, err = schema.Encode(msg.Value)
 		if err != nil {
 			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 			return
 		}
 	}
-
 	if payload == nil {
 		payload = schemaPayload
+	}
+	if schema != nil {
+		schemaVersion = p.schemaCache.Get(schema.GetSchemaInfo())
+		if schemaVersion == nil {
+			schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
+			if err != nil {
+				p.log.WithError(err).Error("get schema version fail")
+				return
+			}
+			p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
+		}
 	}
 
 	// if msg is too large
@@ -428,9 +520,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if msg.DisableReplication {
 		msg.ReplicationClusters = []string{"__local__"}
 	}
-
+	multiSchemaEnabled := !p.options.DisableMultiSchema
 	added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-		msg.ReplicationClusters, deliverAt)
+		msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
 	if !added {
 		// The current batch is full.. flush it and retry
 		if p.batchBuilder.IsMultiBatches() {
@@ -441,7 +533,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 		// after flushing try again to add the current payload
 		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-			msg.ReplicationClusters, deliverAt); !ok {
+			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled); !ok {
 			p.publishSemaphore.Release()
 			request.callback(nil, request.msg, errFailAddToBatch)
 			p.log.WithField("size", len(payload)).

@@ -527,6 +527,9 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	case pb.BaseCommand_GET_SCHEMA_RESPONSE:
 		c.handleResponse(cmd.GetSchemaResponse.GetRequestId(), cmd)
 
+	case pb.BaseCommand_GET_OR_CREATE_SCHEMA_RESPONSE:
+		c.handleResponse(cmd.GetOrCreateSchemaResponse.GetRequestId(), cmd)
+
 	case pb.BaseCommand_ERROR:
 		c.handleResponseError(cmd.GetError())
 

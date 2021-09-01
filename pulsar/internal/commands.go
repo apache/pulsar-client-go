@@ -196,6 +196,10 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.GetLastMessageId = msg.(*pb.CommandGetLastMessageId)
 	case pb.BaseCommand_AUTH_RESPONSE:
 		cmd.AuthResponse = msg.(*pb.CommandAuthResponse)
+	case pb.BaseCommand_GET_OR_CREATE_SCHEMA:
+		cmd.GetOrCreateSchema = msg.(*pb.CommandGetOrCreateSchema)
+	case pb.BaseCommand_GET_SCHEMA:
+		cmd.GetSchema = msg.(*pb.CommandGetSchema)
 	default:
 		panic(fmt.Sprintf("Missing command type: %v", cmdType))
 	}

@@ -65,6 +65,10 @@ type ProducerMessage struct {
 	//     through a `SubscriptionType=Shared` subscription. With other subscription
 	//     types, the messages will still be delivered immediately.
 	DeliverAt time.Time
+
+	//Schema assign to the current message
+	//Note: messages may have a different schema from producer schema, use it instead of producer schema when assigned
+	Schema Schema
 }
 
 // Message abstraction used in Pulsar
@@ -116,6 +120,9 @@ type Message interface {
 
 	//Get the de-serialized value of the message, according the configured
 	GetSchemaValue(v interface{}) error
+
+	//SchemaVersion get the schema version of the message, if any
+	SchemaVersion() []byte
 }
 
 // MessageID identifier for a particular message

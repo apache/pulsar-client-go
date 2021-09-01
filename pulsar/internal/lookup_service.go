@@ -61,6 +61,9 @@ type LookupService interface {
 	// GetTopicsOfNamespace returns all the topics name for a given namespace.
 	GetTopicsOfNamespace(namespace string, mode GetTopicsOfNamespaceMode) ([]string, error)
 
+	// GetSchema returns schema for a given version.
+	GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error)
+
 	// Closable Allow Lookup Service's internal client to be able to closed
 	Closable
 }
@@ -85,6 +88,23 @@ func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResol
 		metrics:             metrics,
 		listenerName:        listenerName,
 	}
+}
+
+func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error) {
+	id := ls.rpcClient.NewRequestID()
+	req := &pb.CommandGetSchema{
+		RequestId:     proto.Uint64(id),
+		Topic:         proto.String(topic),
+		SchemaVersion: schemaVersion,
+	}
+	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_GET_SCHEMA, req)
+	if err != nil {
+		return nil, err
+	}
+	if res.Response.Error != nil {
+		return nil, errors.New(res.Response.GetError().String())
+	}
+	return res.Response.GetSchemaResponse.Schema, nil
 }
 
 func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (logicalAddress *url.URL,
@@ -358,6 +378,9 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 	return topics, nil
 }
 
+func (h *httpLookupService) GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error) {
+	return nil, errors.New("not support")
+}
 func (h *httpLookupService) Close() {
 	h.httpClient.Close()
 }

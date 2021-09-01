@@ -124,6 +124,7 @@ func (bc *keyBasedBatchContainer) Add(
 	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
 	payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time,
+	schemaVersion []byte, multiSchemaEnabled bool,
 ) bool {
 	if replicateTo != nil && bc.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
@@ -151,10 +152,14 @@ func (bc *keyBasedBatchContainer) Add(
 	}
 
 	// add message to batch container
-	batchPart.Add(
+	add := batchPart.Add(
 		metadata, sequenceIDGenerator, payload, callback, replicateTo,
 		deliverAt,
+		schemaVersion, multiSchemaEnabled,
 	)
+	if !add {
+		return false
+	}
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
 
 	bc.numMessages++
