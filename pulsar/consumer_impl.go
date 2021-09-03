@@ -272,9 +272,9 @@ func (c *consumer) ReconsumeLaterLevel(message Message, reconsumeOptions Reconsu
 
 	c.consumers[index].internalReconsumeAsync(prod, message, prodMsg, desType,
 		func(id MessageID, producerMessage *ProducerMessage, e error) {
-		err = e
-		wg.Done()
-	})
+			err = e
+			wg.Done()
+		})
 	wg.Wait()
 	return err
 }

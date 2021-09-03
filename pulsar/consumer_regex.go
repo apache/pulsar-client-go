@@ -154,7 +154,7 @@ func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error
 }
 
 func (c *regexConsumer) ReconsumeLaterLevel(message Message, options ReconsumeOptions) error {
-	return errors.New("Regex topic consumer not support reconsume! ")
+	return errors.New("the regex topic consumer not support reconsume")
 }
 
 func (c *regexConsumer) ReconsumeLaterLevelAsync(message Message, options ReconsumeOptions,
