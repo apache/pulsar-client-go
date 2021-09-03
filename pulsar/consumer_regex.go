@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -150,6 +151,14 @@ func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error
 			return nil, ctx.Err()
 		}
 	}
+}
+
+func (c *regexConsumer) ReconsumeLaterLevel(message Message, options ReconsumeOptions) error {
+	return errors.New("Regex topic consumer not support reconsume! ")
+}
+
+func (c *regexConsumer) ReconsumeLaterLevelAsync(message Message, options ReconsumeOptions, callback func(MessageID, *ProducerMessage, error)) {
+	c.log.Error("Regex topic consumer not support reconsume! ")
 }
 
 // Chan

@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -126,6 +127,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			options.Topic = ""
 		} else if options.Topic == "" && len(options.Topics) > 0 {
 			options.Topics = append(options.Topics, options.DLQ.RetryLetterTopic)
+		}
+
+		if options.DelayLevelUtil == nil {
+			options.DelayLevelUtil = NewDelayLevelUtil(DefaultMessageDelayLevel)
 		}
 	}
 
@@ -244,6 +249,55 @@ func (c *consumer) runBackgroundPartitionDiscovery(period time.Duration) (cancel
 		close(stopDiscoveryCh)
 		wg.Wait()
 	}
+}
+
+func (c *consumer) ReconsumeLaterLevel(message Message, reconsumeOptions ReconsumeOptions) error {
+	if !c.options.RetryEnable {
+		return errors.New("This Consumer config retry disabled. ")
+	}
+	topicName, err := internal.ParseTopicName(message.Topic())
+	if err != nil {
+		return err
+	}
+	index := 0
+	if topicName.Partition >= 0 {
+		index = topicName.Partition
+	}
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	prod, prodMsg, desType, err := c.consumers[index].internalBeforeReconsume(message, reconsumeOptions)
+	if err != nil {
+		return err
+	}
+
+	c.consumers[index].internalReconsumeAsync(prod, message, prodMsg, desType, func(id MessageID, producerMessage *ProducerMessage, e error) {
+		err = e
+		wg.Done()
+	})
+	wg.Wait()
+	return err
+}
+
+func (c *consumer) ReconsumeLaterLevelAsync(message Message, reconsumeOptions ReconsumeOptions, callback func(MessageID, *ProducerMessage, error)) {
+	if !c.options.RetryEnable {
+		c.log.Error("This Consumer config retry disabled. ")
+		return
+	}
+	topicName, err := internal.ParseTopicName(message.Topic())
+	if err != nil {
+		c.log.Error(err)
+		return
+	}
+	index := 0
+	if topicName.Partition >= 0 {
+		index = topicName.Partition
+	}
+	prod, prodMsg, desType, err := c.consumers[index].internalBeforeReconsume(message, reconsumeOptions)
+	if err != nil {
+		c.log.Error(err)
+		return
+	}
+	c.consumers[index].internalReconsumeAsync(prod, message, prodMsg, desType, callback)
 }
 
 func (c *consumer) internalTopicSubscribeToPartitions() error {

@@ -18,8 +18,11 @@
 package pulsar
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"sync"
 	"time"
 
@@ -97,6 +100,7 @@ type partitionConsumerOpts struct {
 	maxReconnectToBroker       *uint
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
+	delayLevelUtil             DelayLevelUtil
 }
 
 type partitionConsumer struct {
@@ -269,6 +273,112 @@ func (pc *partitionConsumer) getLastMessageID() (trackingMessageID, error) {
 func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) {
 	defer close(req.doneCh)
 	req.msgID, req.err = pc.requestGetLastMessageID()
+}
+
+func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptions ReconsumeOptions) (Producer, *ProducerMessage, string, error) {
+	if pc.getConsumerState() != consumerReady {
+		return nil, nil, "", errors.New("Consumer already closed. ")
+	}
+	if reconsumeOptions == nil {
+		reconsumeOptions = NewReconsumeOptions()
+	}
+	if pc.options.delayLevelUtil == nil {
+		pc.options.delayLevelUtil = NewDelayLevelUtil(DefaultMessageDelayLevel)
+	}
+	propertiesMap := make(map[string]string)
+	if msg.Properties() != nil {
+		for k, v := range msg.Properties() {
+			propertiesMap[k] = v
+		}
+	}
+	reconsumeTimes := uint32(1)
+	delayLevels := -1
+	delayTime := reconsumeOptions.DelayTime()
+	if reconsumeOptions.DelayLevel() == -2 {
+		if v, ok := propertiesMap["DELAY"]; ok {
+			delayLevels, _ = strconv.Atoi(v)
+			if delayLevels == -1 {
+				delayLevels = 1
+			} else {
+				delayLevels += 1
+			}
+		} else {
+			delayLevels = 1
+		}
+		delayTime = pc.options.delayLevelUtil.GetDelayTime(delayLevels)
+	}
+	if reconsumeOptions.DelayLevel() >= 0 {
+		delayLevels = reconsumeOptions.DelayLevel()
+		delayTime = pc.options.delayLevelUtil.GetDelayTime(delayLevels)
+	}
+	if delayLevels > pc.options.delayLevelUtil.GetMaxDelayLevel() {
+		delayLevels = pc.options.delayLevelUtil.GetMaxDelayLevel()
+	}
+
+	if v, ok := propertiesMap["RECONSUMETIMES"]; ok {
+		reconsumeTimesUint64, err := strconv.ParseUint(v, 10, 64)
+		if err != nil {
+			return nil, nil, "", err
+		}
+		reconsumeTimes = uint32(reconsumeTimesUint64) + 1
+		propertiesMap["RECONSUMETIMES"] = strconv.FormatUint(uint64(reconsumeTimes), 10)
+	} else {
+		propertiesMap["RECONSUMETIMES"] = "1"
+	}
+	propertiesMap["DELAY_TIME"] = fmt.Sprint(delayTime * (reconsumeOptions.DelayTimeUnit().Nanoseconds() / 1e6))
+	propertiesMap["DELAY"] = fmt.Sprint(int64(delayLevels) * (reconsumeOptions.DelayTimeUnit().Nanoseconds() / 1e6))
+
+	if reconsumeTimes == 1 {
+		propertiesMap["REAL_TOPIC"] = msg.Topic()
+		propertiesMap["RETRY_TOPIC"] = pc.dlq.policy.RetryLetterTopic
+		propertiesMap["ORIGIN_MESSAGE_ID"] = fmt.Sprint(msg.ID())
+		propertiesMap["producer_name"] = msg.ProducerName()
+	}
+
+	producerMsg := &ProducerMessage {
+		Payload:             msg.Payload(),
+		Properties:          propertiesMap,
+		ReplicationClusters: msg.(*message).replicationClusters,
+	}
+	if delayTime > 0 {
+		producerMsg.DeliverAfter = time.Duration(delayTime) * reconsumeOptions.DelayTimeUnit()
+	}
+	if msg.Key() != "" {
+		producerMsg.Key = msg.Key()
+	}
+	prod := pc.dlq.producer
+	desType := "retry"
+	if reconsumeTimes > pc.dlq.policy.MaxDeliveries {
+		propertiesMap["REAL_TOPIC"] = pc.dlq.policy.DeadLetterTopic
+		prod = pc.dlq.getProducer() // Get dead topic producer
+		desType = "dead"
+	}
+	// Default use the retry letter topic producer
+	if prod == nil {
+		return nil, nil, "", errors.New("Can't get retry or dead topic producer. ")
+	}
+	return prod, producerMsg, desType, nil
+}
+
+func (pc *partitionConsumer) internalReconsumeAsync(prod Producer, originalMsg Message,
+	producerMsg *ProducerMessage, desType string, callback func(MessageID, *ProducerMessage, error)) {
+	prod.SendAsync(context.Background(),
+		producerMsg,
+		func(msgId MessageID, producerMsg *ProducerMessage, e error) {
+			if e == nil {
+				pc.log.WithField("msgID", originalMsg.(*message).ID()).Debug("Sent message to " +
+					desType + " Topic")
+				pc.AckID(originalMsg.(*message).ID().(trackingMessageID))
+				pc.nackTracker.Del(originalMsg.(*message).ID().(trackingMessageID))
+			} else {
+				msgIds := make([]messageID, 1)
+				msgIds[0] = originalMsg.ID().(trackingMessageID).messageID
+				pc.eventsCh <- &redeliveryRequest{msgIds}
+			}
+			if callback != nil {
+				callback(msgId, producerMsg, e)
+			}
+		})
 }
 
 func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error) {

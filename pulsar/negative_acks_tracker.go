@@ -76,6 +76,22 @@ func (t *negativeAcksTracker) Add(msgID messageID) {
 	t.negativeAcks[batchMsgID] = targetTime
 }
 
+func (t *negativeAcksTracker) Del(msgID trackingMessageID) {
+	batchMsgID := messageID{
+		ledgerID: msgID.ledgerID,
+		entryID:  msgID.entryID,
+		batchIdx: 0,
+	}
+	t.Lock()
+	defer t.Unlock()
+
+	_, present := t.negativeAcks[batchMsgID]
+	if !present {
+		return
+	}
+	delete(t.negativeAcks, batchMsgID)
+}
+
 func (t *negativeAcksTracker) track() {
 	for {
 		select {

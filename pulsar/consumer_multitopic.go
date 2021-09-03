@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -153,6 +154,45 @@ func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 		return
 	}
 	consumer.ReconsumeLater(msg, delay)
+}
+
+func (c *multiTopicConsumer) ReconsumeLaterLevel(message Message, reconsumeOptions ReconsumeOptions) error {
+	if !c.options.RetryEnable {
+		return errors.New("[ReconsumeLater]This Consumer config retry disabled. ")
+	}
+	topicName, err := internal.ParseTopicName(message.Topic())
+	if err != nil {
+		return err
+	}
+	topicNameWithoutPartition := internal.TopicNameWithoutPartitionPart(topicName)
+	for topic, consumer := range c.consumers {
+		consumerTopicName, _ := internal.ParseTopicName(topic)
+		if consumerTopicName.Name == topicNameWithoutPartition {
+			return consumer.ReconsumeLaterLevel(message, reconsumeOptions)
+		}
+	}
+	return errors.New("[ReconsumeLater]Topic not in multi topic consumer list. ")
+}
+
+func (c *multiTopicConsumer) ReconsumeLaterLevelAsync(message Message, reconsumeOptions ReconsumeOptions, callback func(MessageID, *ProducerMessage, error)) {
+	if !c.options.RetryEnable {
+		c.log.Warn(errors.New("[ReconsumeLaterAsync]This Consumer config retry disabled. "))
+		return
+	}
+	topicName, err := internal.ParseTopicName(message.Topic())
+	if err != nil {
+		c.log.Warn("[ReconsumeLaterAsync]Message Parse TopicName Failed with Error :", err)
+		return
+	}
+	topicNameWithoutPartition := internal.TopicNameWithoutPartitionPart(topicName)
+	for topic, consumer := range c.consumers {
+		consumerTopicName, _ := internal.ParseTopicName(topic)
+		if consumerTopicName.Name == topicNameWithoutPartition {
+			consumer.ReconsumeLaterLevelAsync(message, reconsumeOptions, callback)
+			return
+		}
+	}
+	c.log.Warn("[ReconsumeLaterAsync]Topic not in multi topic consumer list. ")
 }
 
 func (c *multiTopicConsumer) Nack(msg Message) {

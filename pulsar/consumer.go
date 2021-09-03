@@ -117,6 +117,9 @@ type ConsumerOptions struct {
 	// Default is false
 	RetryEnable bool
 
+	// Configuration for Retry delay level policy
+	DelayLevelUtil DelayLevelUtil
+
 	// Sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
 	MessageChannel chan ConsumerMessage
@@ -180,6 +183,14 @@ type Consumer interface {
 
 	// ReconsumeLater mark a message for redelivery after custom delay
 	ReconsumeLater(msg Message, delay time.Duration)
+
+	// Reconsume a message
+	ReconsumeLaterLevel(message Message, options ReconsumeOptions) error
+
+	// Reconsume a message Async
+	ReconsumeLaterLevelAsync(message Message,
+		options ReconsumeOptions,
+		callback func(MessageID, *ProducerMessage, error))
 
 	// Acknowledge the failure to process a single message.
 	//
