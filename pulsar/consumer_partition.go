@@ -275,9 +275,10 @@ func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) 
 	req.msgID, req.err = pc.requestGetLastMessageID()
 }
 
-func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptions ReconsumeOptions) (Producer, *ProducerMessage, string, error) {
+func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptions ReconsumeOptions) (Producer,
+	*ProducerMessage, string, error) {
 	if pc.getConsumerState() != consumerReady {
-		return nil, nil, "", errors.New("Consumer already closed. ")
+		return nil, nil, "", errors.New("the Consumer already closed")
 	}
 	if reconsumeOptions == nil {
 		reconsumeOptions = NewReconsumeOptions()
@@ -300,7 +301,7 @@ func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptio
 			if delayLevels == -1 {
 				delayLevels = 1
 			} else {
-				delayLevels += 1
+				delayLevels++
 			}
 		} else {
 			delayLevels = 1
@@ -335,7 +336,7 @@ func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptio
 		propertiesMap["producer_name"] = msg.ProducerName()
 	}
 
-	producerMsg := &ProducerMessage {
+	producerMsg := &ProducerMessage{
 		Payload:             msg.Payload(),
 		Properties:          propertiesMap,
 		ReplicationClusters: msg.(*message).replicationClusters,
@@ -355,7 +356,7 @@ func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptio
 	}
 	// Default use the retry letter topic producer
 	if prod == nil {
-		return nil, nil, "", errors.New("Can't get retry or dead topic producer. ")
+		return nil, nil, "", errors.New("can't get retry or dead topic producer")
 	}
 	return prod, producerMsg, desType, nil
 }

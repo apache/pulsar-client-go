@@ -70,6 +70,15 @@ func (c *mockConsumer) AckID(msgID pulsar.MessageID) {}
 
 func (c *mockConsumer) ReconsumeLater(msg pulsar.Message, delay time.Duration) {}
 
+func (c *mockConsumer) ReconsumeLaterLevel(message pulsar.Message, options pulsar.ReconsumeOptions) error {
+	return nil
+}
+
+func (c *mockConsumer) ReconsumeLaterLevelAsync(message pulsar.Message,
+	options pulsar.ReconsumeOptions,
+	callback func(pulsar.MessageID, *pulsar.ProducerMessage, error)) {
+}
+
 func (c *mockConsumer) Nack(msg pulsar.Message) {}
 
 func (c *mockConsumer) NackID(msgID pulsar.MessageID) {}

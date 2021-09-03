@@ -18,8 +18,9 @@
 package pulsar
 
 import (
-	"github.com/stretchr/testify/assert"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func TestDelayLevelUtil_GetDelayTime(t *testing.T) {

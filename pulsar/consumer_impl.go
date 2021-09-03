@@ -253,7 +253,7 @@ func (c *consumer) runBackgroundPartitionDiscovery(period time.Duration) (cancel
 
 func (c *consumer) ReconsumeLaterLevel(message Message, reconsumeOptions ReconsumeOptions) error {
 	if !c.options.RetryEnable {
-		return errors.New("This Consumer config retry disabled. ")
+		return errors.New("the Consumer config retry disabled")
 	}
 	topicName, err := internal.ParseTopicName(message.Topic())
 	if err != nil {
@@ -270,7 +270,8 @@ func (c *consumer) ReconsumeLaterLevel(message Message, reconsumeOptions Reconsu
 		return err
 	}
 
-	c.consumers[index].internalReconsumeAsync(prod, message, prodMsg, desType, func(id MessageID, producerMessage *ProducerMessage, e error) {
+	c.consumers[index].internalReconsumeAsync(prod, message, prodMsg, desType,
+		func(id MessageID, producerMessage *ProducerMessage, e error) {
 		err = e
 		wg.Done()
 	})
@@ -278,7 +279,8 @@ func (c *consumer) ReconsumeLaterLevel(message Message, reconsumeOptions Reconsu
 	return err
 }
 
-func (c *consumer) ReconsumeLaterLevelAsync(message Message, reconsumeOptions ReconsumeOptions, callback func(MessageID, *ProducerMessage, error)) {
+func (c *consumer) ReconsumeLaterLevelAsync(message Message, reconsumeOptions ReconsumeOptions,
+	callback func(MessageID, *ProducerMessage, error)) {
 	if !c.options.RetryEnable {
 		c.log.Error("This Consumer config retry disabled. ")
 		return

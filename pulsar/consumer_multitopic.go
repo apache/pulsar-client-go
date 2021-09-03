@@ -174,7 +174,8 @@ func (c *multiTopicConsumer) ReconsumeLaterLevel(message Message, reconsumeOptio
 	return errors.New("[ReconsumeLater]Topic not in multi topic consumer list. ")
 }
 
-func (c *multiTopicConsumer) ReconsumeLaterLevelAsync(message Message, reconsumeOptions ReconsumeOptions, callback func(MessageID, *ProducerMessage, error)) {
+func (c *multiTopicConsumer) ReconsumeLaterLevelAsync(message Message, reconsumeOptions ReconsumeOptions,
+	callback func(MessageID, *ProducerMessage, error)) {
 	if !c.options.RetryEnable {
 		c.log.Warn(errors.New("[ReconsumeLaterAsync]This Consumer config retry disabled. "))
 		return
