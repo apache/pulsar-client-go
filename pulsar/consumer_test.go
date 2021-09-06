@@ -2079,6 +2079,7 @@ func TestProducerConsumerRSAEncryption(t *testing.T) {
 	var actualMessage *string
 	for i := 0; i < totalMessages; i++ {
 		msg, err := cryptoConsumer.Receive(ctx)
+		fmt.Println(msg)
 		assert.Nil(t, err)
 		expectedMsg := fmt.Sprintf(msgFormat, i)
 		err = msg.GetSchemaValue(&actualMessage)
@@ -2392,7 +2393,7 @@ func TestRSAEncryptionFailure(t *testing.T) {
 
 	// 1. invalid key name
 	// create producer with invalid key
-	// producer creation should fail if not able to read key
+	// producer creation succeeds but message sending should fail with an error
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
@@ -2400,9 +2401,20 @@ func TestRSAEncryptionFailure(t *testing.T) {
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"client-rsa.pem"},
 		},
+		Schema:          NewStringSchema(nil),
+		DisableBatching: true,
 	})
+	assert.Nil(t, err)
+	assert.NotNil(t, producer)
+
+	// sending of message should fail with an error, since invalid rsa keys are configured
+	mid, err := producer.Send(context.Background(), &ProducerMessage{
+		Value: "some-message",
+	})
+
+	assert.Nil(t, mid)
 	assert.NotNil(t, err)
-	assert.Nil(t, producer)
+	producer.Close()
 
 	// 2. Producer with valid key name
 	producer, err = client.CreateProducer(ProducerOptions{

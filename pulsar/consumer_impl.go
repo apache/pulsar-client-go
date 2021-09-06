@@ -333,18 +333,12 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
 
-			var decryptor cryptointernal.Decryptor
-
-			if c.options.Encryption.KeyReader != nil {
-				decryptor = cryptointernal.NewConsumerDecryptor(
-					c.options.Encryption.KeyReader,
-					c.options.Encryption.MessageCrypto,
-					c.log,
-					c.options.Encryption.ConsumerCryptoFailureAction,
-				)
-			} else {
-				decryptor = cryptointernal.NewNoopDecryptor()
-			}
+			decryptor := cryptointernal.NewConsumerDecryptor(
+				c.options.Encryption.KeyReader,
+				c.options.Encryption.MessageCrypto,
+				c.log,
+				c.options.Encryption.ConsumerCryptoFailureAction,
+			)
 
 			opts := &partitionConsumerOpts{
 				topic:                      pt,
