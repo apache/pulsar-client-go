@@ -21,6 +21,10 @@ import (
 	"fmt"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
+<<<<<<< HEAD
+=======
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+>>>>>>> master
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -47,6 +51,7 @@ func NewProducerEncryptor(keys []string,
 }
 
 // Encrypt producer encryptor
+<<<<<<< HEAD
 func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata crypto.MessageMetadataSupplier) ([]byte, error) {
 	// encryption is enabled but KeyReader interface is not implemented
 	if e.keyReader == nil {
@@ -60,6 +65,14 @@ func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata crypto.MessageMe
 
 	// encrypt payload
 	encryptedPayload, err := e.messageCrypto.Encrypt(e.keys, e.keyReader, msgMetadata, payload)
+=======
+func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata *pb.MessageMetadata) ([]byte, error) {
+	// encrypt payload
+	encryptedPayload, err := e.messageCrypto.Encrypt(e.keys,
+		e.keyReader,
+		crypto.NewMessageMetadataSupplier(msgMetadata),
+		payload)
+>>>>>>> master
 
 	// error encryping the payload
 	if err != nil {
@@ -67,8 +80,14 @@ func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata crypto.MessageMe
 		// crypto ProducerCryptoFailureAction is set to send
 		// send unencrypted message
 		if e.producerCryptoFailureAction == crypto.ProducerCryptoFailureActionSend {
+<<<<<<< HEAD
 			e.logger.Errorf("Encryption of payload failed : %v", err)
 			e.logger.Warn("ProducerCryptoFailureAction is set to send, sending unecrypted message")
+=======
+			e.logger.
+				WithError(err).
+				Warnf("Encryption failed for payload sending unencrypted message ProducerCryptoFailureAction is set to send")
+>>>>>>> master
 			return payload, nil
 		}
 

@@ -367,12 +367,7 @@ func (c *connection) run() {
 		// all the accesses to the pendingReqs should be happened in this run loop thread,
 		// including the final cleanup, to avoid the issue
 		// https://github.com/apache/pulsar-client-go/issues/239
-		c.pendingLock.Lock()
-		for id, req := range c.pendingReqs {
-			req.callback(nil, errConnectionClosed)
-			delete(c.pendingReqs, id)
-		}
-		c.pendingLock.Unlock()
+		c.failPendingRequests(errConnectionClosed)
 		c.Close()
 	}()
 
@@ -697,6 +692,16 @@ func (c *connection) deletePendingRequest(requestID uint64) (*request, bool) {
 	return request, ok
 }
 
+func (c *connection) failPendingRequests(err error) bool {
+	c.pendingLock.Lock()
+	defer c.pendingLock.Unlock()
+	for id, req := range c.pendingReqs {
+		req.callback(nil, err)
+		delete(c.pendingReqs, id)
+	}
+	return true
+}
+
 func (c *connection) lastDataReceived() time.Time {
 	c.lastDataReceivedLock.Lock()
 	defer c.lastDataReceivedLock.Unlock()
@@ -752,7 +757,7 @@ func (c *connection) handleSendError(cmdError *pb.CommandError) {
 
 	requestID := cmdError.GetRequestId()
 
-	switch *cmdError.Error {
+	switch cmdError.GetError() {
 	case pb.ServerError_NotAllowedError:
 		request, ok := c.deletePendingRequest(requestID)
 		if !ok {
@@ -764,7 +769,14 @@ func (c *connection) handleSendError(cmdError *pb.CommandError) {
 		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
 		request.callback(nil, errors.New(errMsg))
 	case pb.ServerError_TopicTerminatedError:
-		// TODO: no-op
+		request, ok := c.deletePendingRequest(requestID)
+		if !ok {
+			c.log.Warnf("Received unexpected error response for request %d of type %s",
+				requestID, cmdError.GetError())
+			return
+		}
+		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
+		request.callback(nil, errors.New(errMsg))
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again

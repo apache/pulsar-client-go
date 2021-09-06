@@ -2021,7 +2021,7 @@ func TestProducerConsumerRSAEncryption(t *testing.T) {
 	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
 		Topic: topic,
 		Encryption: &ConsumerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
 		},
@@ -2042,7 +2042,7 @@ func TestProducerConsumerRSAEncryption(t *testing.T) {
 	cryptoProducer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"client-rsa.pem"},
 		},
@@ -2100,7 +2100,7 @@ func TestProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
 	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
 		Topic: topic,
 		Encryption: &ConsumerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
 		SubscriptionName: "crypto-subscription",
@@ -2120,7 +2120,7 @@ func TestProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
 	cryptoProducer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"client-rsa.pem"},
 		},
@@ -2179,7 +2179,7 @@ func TestBatchProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
 	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
 		Topic: topic,
 		Encryption: &ConsumerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
 		SubscriptionName: "crypto-subscription",
@@ -2199,7 +2199,7 @@ func TestBatchProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
 	cryptoProducer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"client-rsa.pem"},
 		},
@@ -2279,7 +2279,7 @@ func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 	cryptoProducer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"client-rsa.pem"},
 		},
@@ -2294,7 +2294,7 @@ func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 		Topic:            topic,
 		SubscriptionName: sharedSubscription,
 		Encryption: &ConsumerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
 		Schema:              NewStringSchema(nil),
@@ -2307,7 +2307,7 @@ func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 		Topic:            topic,
 		SubscriptionName: sharedSubscription,
 		Encryption: &ConsumerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa_invalid.pem"),
 		},
 		Schema:              NewStringSchema(nil),
@@ -2396,7 +2396,7 @@ func TestRSAEncryptionFailure(t *testing.T) {
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa_invalid.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa_invalid.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"client-rsa.pem"},
 		},
@@ -2408,7 +2408,7 @@ func TestRSAEncryptionFailure(t *testing.T) {
 	producer, err = client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"client-rsa.pem"},
 		},
@@ -2512,7 +2512,7 @@ func TestConsumerCompressionWithRSAEncryption(t *testing.T) {
 		Topic:           topicName,
 		CompressionType: LZ4,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"enc-compress-app.key"},
 		},
@@ -2525,7 +2525,7 @@ func TestConsumerCompressionWithRSAEncryption(t *testing.T) {
 		Topic:            topicName,
 		SubscriptionName: "sub-1",
 		Encryption: &ConsumerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
 	})
@@ -2574,7 +2574,7 @@ func TestBatchMessageReceiveWithCompressionAndRSAEcnryption(t *testing.T) {
 		DisableBatching:     false,
 		CompressionType:     LZ4,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{"batch-encryption-app.key"},
 		},
@@ -2587,7 +2587,7 @@ func TestBatchMessageReceiveWithCompressionAndRSAEcnryption(t *testing.T) {
 		Topic:            topicName,
 		SubscriptionName: subName,
 		Encryption: &ConsumerEncryptionInfo{
-			Keyreader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
 	})
@@ -2665,7 +2665,7 @@ func TestConsumerEncryptionWithoutKeyReader(t *testing.T) {
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
-			Keyreader: NewEncKeyReader("crypto/testdata/pub_key_rsa.pem",
+			KeyReader: NewEncKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			Keys: []string{encryptionKeyName},
 		},

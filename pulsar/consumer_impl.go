@@ -259,10 +259,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.Lock()
 	defer c.Unlock()
+
 	oldConsumers := c.consumers
+	oldNumPartitions = len(oldConsumers)
 
 	if oldConsumers != nil {
-		oldNumPartitions = len(oldConsumers)
 		if oldNumPartitions == newNumPartitions {
 			c.log.Debug("Number of partitions in topic has not changed")
 			return nil
@@ -275,9 +276,13 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.consumers = make([]*partitionConsumer, newNumPartitions)
 
-	// Copy over the existing consumer instances
-	for i := 0; i < oldNumPartitions; i++ {
-		c.consumers[i] = oldConsumers[i]
+	// When for some reason (eg: forced deletion of sub partition) causes oldNumPartitions> newNumPartitions,
+	// we need to rebuild the cache of new consumers, otherwise the array will be out of bounds.
+	if oldConsumers != nil && oldNumPartitions < newNumPartitions {
+		// Copy over the existing consumer instances
+		for i := 0; i < oldNumPartitions; i++ {
+			c.consumers[i] = oldConsumers[i]
+		}
 	}
 
 	type ConsumerError struct {
@@ -289,12 +294,19 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	receiverQueueSize := c.options.ReceiverQueueSize
 	metadata := c.options.Properties
 
+	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
+
+	if partitionsToAdd < 0 {
+		partitionsToAdd = newNumPartitions
+		startPartition = 0
+	}
+
 	var wg sync.WaitGroup
 	ch := make(chan ConsumerError, partitionsToAdd)
 	wg.Add(partitionsToAdd)
 
-	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
+	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
 		if c.options.Encryption == nil {
@@ -302,7 +314,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		}
 		// KeyReader is provided but MessageCrypto is not provided, use default message crypto
 		var messageCrypto crypto.MessageCrypto
-		if c.options.Encryption.Keyreader != nil && c.options.Encryption.MessageCrypto == nil {
+		if c.options.Encryption.KeyReader != nil && c.options.Encryption.MessageCrypto == nil {
 			logCtx := fmt.Sprintf("[%v] [%v]", partitionTopic, c.options.SubscriptionName)
 			messageCrypto, err = crypto.NewDefaultMessageCrypto(logCtx, false, c.log)
 			if err != nil {
@@ -322,7 +334,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			}
 
 			decryptor := cryptointernal.NewConsumerDecryptor(
-				c.options.Encryption.Keyreader,
+				c.options.Encryption.KeyReader,
 				c.options.Encryption.MessageCrypto,
 				c.log,
 				c.options.Encryption.ConsumerCryptoFailureAction,
@@ -381,7 +393,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		return err
 	}
 
-	c.metrics.ConsumersPartitions.Add(float64(partitionsToAdd))
+	if newNumPartitions < oldNumPartitions {
+		c.metrics.ConsumersPartitions.Set(float64(newNumPartitions))
+	} else {
+		c.metrics.ConsumersPartitions.Add(float64(partitionsToAdd))
+	}
 	return nil
 }
 

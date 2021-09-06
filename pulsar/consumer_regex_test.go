@@ -177,10 +177,11 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 		t.Fatal(err)
 	}
 	rc.discover()
-	time.Sleep(2000 * time.Millisecond)
-
-	consumers = cloneConsumers(rc)
-	assert.Equal(t, 1, len(consumers))
+	retryAssert(t, 5, 2000, func() {
+		consumers = cloneConsumers(rc)
+	}, func(x assert.TestingT) bool {
+		return assert.Equal(x, 1, len(consumers))
+	})
 }
 
 func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string) {
@@ -216,10 +217,11 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 	defer deleteTopic(myTopic)
 
 	rc.discover()
-	time.Sleep(2000 * time.Millisecond)
-
-	consumers = cloneConsumers(rc)
-	assert.Equal(t, 0, len(consumers))
+	retryAssert(t, 5, 2000, func() {
+		consumers = cloneConsumers(rc)
+	}, func(x assert.TestingT) bool {
+		return assert.Equal(x, 0, len(consumers))
+	})
 
 	// create a topic not in the regex
 	fooTopic := namespace + "/foo-topic"
@@ -229,10 +231,11 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 	}
 
 	rc.discover()
-	time.Sleep(2000 * time.Millisecond)
-
-	consumers = cloneConsumers(rc)
-	assert.Equal(t, 1, len(consumers))
+	retryAssert(t, 5, 2000, func() {
+		consumers = cloneConsumers(rc)
+	}, func(x assert.TestingT) bool {
+		return assert.Equal(x, 1, len(consumers))
+	})
 }
 
 func TestRegexConsumer(t *testing.T) {

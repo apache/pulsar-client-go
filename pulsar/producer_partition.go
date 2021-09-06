@@ -53,6 +53,7 @@ var (
 	errSendQueueIsFull = newError(ProducerQueueIsFull, "producer send queue is full")
 	errContextExpired  = newError(TimeoutError, "message send context expired")
 	errMessageTooLarge = newError(MessageTooBig, "message size exceeds MaxMessageSize")
+	errProducerClosed  = newError(ProducerClosed, "producer already been closed")
 
 	buffersPool sync.Pool
 )
@@ -81,6 +82,8 @@ type partitionProducer struct {
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
 	metrics          *internal.TopicMetrics
+
+	epoch uint64
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
@@ -116,6 +119,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		lastSequenceID:   -1,
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
+		epoch:            0,
 	}
 	p.setProducerState(producerInit)
 
@@ -131,19 +135,20 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	encryption := options.Encryption
 	// add default message crypto if not provided
-	if encryption != nil && len(encryption.Keys) > 0 && encryption.MessageCrypto == nil {
-		logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
-		messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
-		if err != nil {
-			logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
-			return nil, err
+	if encryption != nil && len(encryption.Keys) > 0 {
+		if encryption.KeyReader == nil {
+			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
 		}
-		p.options.Encryption.MessageCrypto = messageCrypto
-	}
 
-	if err := p.generateDataKey(); err != nil {
-		logger.WithError(err).Error("Failed to create data key")
-		return nil, err
+		if encryption.MessageCrypto == nil {
+			logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
+			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
+			if err != nil {
+				logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
+				return nil, err
+			}
+			p.options.Encryption.MessageCrypto = messageCrypto
+		}
 	}
 
 	err := p.grabCnx()
@@ -196,12 +201,16 @@ func (p *partitionProducer) grabCnx() error {
 		p.log.Debug("The partition consumer schema is nil")
 	}
 
+	userProvidedProducerName := p.producerName != ""
+
 	cmdProducer := &pb.CommandProducer{
-		RequestId:  proto.Uint64(id),
-		Topic:      proto.String(p.topic),
-		Encrypted:  nil,
-		ProducerId: proto.Uint64(p.producerID),
-		Schema:     pbSchema,
+		RequestId:                proto.Uint64(id),
+		Topic:                    proto.String(p.topic),
+		Encrypted:                nil,
+		ProducerId:               proto.Uint64(p.producerID),
+		Schema:                   pbSchema,
+		Epoch:                    proto.Uint64(atomic.LoadUint64(&p.epoch)),
+		UserProvidedProducerName: proto.Bool(userProvidedProducerName),
 	}
 
 	if p.producerName != "" {
@@ -222,7 +231,7 @@ func (p *partitionProducer) grabCnx() error {
 	var encryptor internalcrypto.Encryptor
 	if p.options.Encryption != nil {
 		encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
-			p.options.Encryption.Keyreader,
+			p.options.Encryption.KeyReader,
 			p.options.Encryption.MessageCrypto,
 			p.options.Encryption.ProducerCryptoFailureAction, p.log)
 	} else {
@@ -263,7 +272,10 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	p.cnx = res.Cnx
 	p.cnx.RegisterListener(p.producerID, p)
-	p.log.WithField("cnx", res.Cnx.ID()).Debug("Connected producer")
+	p.log.WithFields(log.Fields{
+		"cnx":   res.Cnx.ID(),
+		"epoch": atomic.LoadUint64(&p.epoch),
+	}).Debug("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(pendingItems)
@@ -331,7 +343,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		d := backoff.Next()
 		p.log.Info("Reconnecting to broker in ", d)
 		time.Sleep(d)
-
+		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
@@ -389,6 +401,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if p.options.Schema != nil {
 		schemaPayload, err = p.options.Schema.Encode(msg.Value)
 		if err != nil {
+			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 			return
 		}
 	}
@@ -492,8 +505,19 @@ type pendingItem struct {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
-	batchData, sequenceID, callbacks := p.batchBuilder.Flush()
+	batchData, sequenceID, callbacks, err := p.batchBuilder.Flush()
 	if batchData == nil {
+		return
+	}
+
+	// error occurred in batch flush
+	// report it using callback
+	if err != nil {
+		for _, cb := range callbacks {
+			if sr, ok := cb.(*sendRequest); ok {
+				sr.callback(nil, sr.msg, err)
+			}
+		}
 		return
 	}
 
@@ -611,12 +635,22 @@ func (p *partitionProducer) failTimeoutMessages() {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatches() {
-	batchesData, sequenceIDs, callbacks := p.batchBuilder.FlushBatches()
+	batchesData, sequenceIDs, callbacks, errors := p.batchBuilder.FlushBatches()
 	if batchesData == nil {
 		return
 	}
 
 	for i := range batchesData {
+		// error occurred in processing batch
+		// report it using callback
+		if errors[i] != nil {
+			for _, cb := range callbacks[i] {
+				if sr, ok := cb.(*sendRequest); ok {
+					sr.callback(nil, sr.msg, errors[i])
+				}
+			}
+			continue
+		}
 		if batchesData[i] == nil {
 			continue
 		}
@@ -692,6 +726,12 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
+	if p.getProducerState() != producerReady {
+		// Producer is closing
+		callback(nil, msg, errProducerClosed)
+		return
+	}
+
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,

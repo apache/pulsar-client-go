@@ -52,12 +52,12 @@ type BatchBuilder interface {
 	) bool
 
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{})
+	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}, err error)
 
 	// Flush all the messages buffered in multiple batches and wait until all
 	// messages have been successfully persisted.
 	FlushBatches() (
-		batchData []Buffer, sequenceID []uint64, callbacks [][]interface{},
+		batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}, errors []error,
 	)
 
 	// Return the batch container batch message in multiple batches.
@@ -215,11 +215,11 @@ func (bc *batchContainer) reset() {
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
 func (bc *batchContainer) Flush() (
-	batchData Buffer, sequenceID uint64, callbacks []interface{},
+	batchData Buffer, sequenceID uint64, callbacks []interface{}, err error,
 ) {
 	if bc.numMessages == 0 {
 		// No-Op for empty batch
-		return nil, 0, nil
+		return nil, 0, nil, nil
 	}
 	bc.log.Debug("BatchBuilder flush: messages: ", bc.numMessages)
 
@@ -234,19 +234,20 @@ func (bc *batchContainer) Flush() (
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
 
-	serializeBatch(
+	if err = serializeBatch(
 		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider, bc.encryptor,
-	)
+	); err == nil { // no error in serializing Batch
+		sequenceID = bc.cmdSend.Send.GetSequenceId()
+	}
 
 	callbacks = bc.callbacks
-	sequenceID = bc.cmdSend.Send.GetSequenceId()
 	bc.reset()
-	return buffer, sequenceID, callbacks
+	return buffer, sequenceID, callbacks, err
 }
 
 // FlushBatches only for multiple batches container
 func (bc *batchContainer) FlushBatches() (
-	batchData []Buffer, sequenceID []uint64, callbacks [][]interface{},
+	batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}, errors []error,
 ) {
 	panic("single batch container not support FlushBatches(), please use Flush() instead")
 }
