@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 
 	"github.com/stretchr/testify/assert"
@@ -34,8 +35,10 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
-		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		options: &partitionConsumerOpts{
+			decryptor: crypto.NewNoopDecryptor(),
+		},
+		metrics: internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
@@ -65,8 +68,10 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
-		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		options: &partitionConsumerOpts{
+			decryptor: crypto.NewNoopDecryptor(),
+		},
+		metrics: internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
@@ -96,8 +101,10 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
-		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		options: &partitionConsumerOpts{
+			decryptor: crypto.NewNoopDecryptor(),
+		},
+		metrics: internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
