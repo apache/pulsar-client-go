@@ -18,23 +18,10 @@
 package crypto
 
 import (
-<<<<<<< HEAD
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
-=======
->>>>>>> master
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 // Encryptor support encryption
 type Encryptor interface {
-<<<<<<< HEAD
-	Encrypt([]byte, crypto.MessageMetadataSupplier) ([]byte, error)
-}
-
-// NewMessageMetadataSupplier returns wrapper for message metadata
-func NewMessageMetadataSupplier(msgMetadata *pb.MessageMetadata) crypto.MessageMetadataSupplier {
-	return crypto.NewMessageMetadataSupplier(msgMetadata)
-=======
 	Encrypt([]byte, *pb.MessageMetadata) ([]byte, error)
->>>>>>> master
 }

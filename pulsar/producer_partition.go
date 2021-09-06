@@ -855,17 +855,6 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.batchFlushTicker.Stop()
 }
 
-func (p *partitionProducer) generateDataKey() error {
-	if p.options.Encryption != nil {
-		if p.options.Encryption.Keyreader != nil {
-			return p.options.Encryption.MessageCrypto.AddPublicKeyCipher(p.options.Encryption.Keys,
-				p.options.Encryption.Keyreader)
-		}
-		return fmt.Errorf("failed to generate data key. KeyReader interface is not implemented")
-	}
-	return nil
-}
-
 func (p *partitionProducer) LastSequenceID() int64 {
 	return atomic.LoadInt64(&p.lastSequenceID)
 }
