@@ -634,6 +634,10 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) b
 	return pc.startMessageID.greaterEqual(msgID.messageID)
 }
 
+// create EncryptionContext from message metadata
+// this will be used to decrypt the message payload outside of this client
+// it is the responsibility of end user to decrypt the payload
+// It will be used only when  crypto failure action is set to consume i.e crypto.ConsumerCryptoFailureActionConsume
 func createEncryptionContext(msgMeta *pb.MessageMetadata) EncryptionContext {
 	encCtx := EncryptionContext{
 		Algorithm:        msgMeta.GetEncryptionAlgo(),

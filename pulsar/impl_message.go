@@ -202,6 +202,7 @@ func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 }
 
 // EncryptionContext
+// It will be used to decrypt message outside of this client
 type EncryptionContext struct {
 	Keys             map[string]EncryptionKey
 	Param            []byte
@@ -212,6 +213,7 @@ type EncryptionContext struct {
 }
 
 // EncryptionKey
+// Encryption key used to encrypt the message payload
 type EncryptionKey struct {
 	KeyValue []byte
 	Metadata map[string]string
