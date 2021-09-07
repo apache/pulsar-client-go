@@ -76,6 +76,9 @@ type ReaderOptions struct {
 	// ReadCompacted can only be enabled when reading from a persistent topic. Attempting to enable it on non-persistent
 	// topics will lead to the reader create call throwing a PulsarClientException.
 	ReadCompacted bool
+
+	// Decryption decryption related fields to decrypt the encrypted message
+	Decryption *MessageDecryptionInfo
 }
 
 // Reader can be used to scan through all the messages currently available in a topic.

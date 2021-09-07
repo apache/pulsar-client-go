@@ -35,8 +35,8 @@ type ProducerEncryptionInfo struct {
 	ProducerCryptoFailureAction int
 }
 
-// ConsumerEncryptionInfo encryption related fields required by the consumer to decrypt the message
-type ConsumerEncryptionInfo struct {
+// MessageDecryptionInfo encryption related fields required by the consumer to decrypt the message
+type MessageDecryptionInfo struct {
 	// KeyReader read RSA public/private key pairs
 	KeyReader crypto.KeyReader
 

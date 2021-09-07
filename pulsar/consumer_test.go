@@ -2020,7 +2020,7 @@ func TestProducerConsumerRSAEncryption(t *testing.T) {
 
 	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
 		Topic: topic,
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
@@ -2100,7 +2100,7 @@ func TestProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
 
 	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
 		Topic: topic,
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
@@ -2179,7 +2179,7 @@ func TestBatchProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
 
 	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
 		Topic: topic,
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
@@ -2294,7 +2294,7 @@ func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 	cryptoConsumer, err := clientCryptoConsumer.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: sharedSubscription,
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
@@ -2307,7 +2307,7 @@ func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 	cryptoConsumerInvalidKeyReader, err := clientCryptoConsumerInvalidKeyReader.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: sharedSubscription,
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa_invalid.pem"),
 		},
@@ -2462,7 +2462,7 @@ func TestRSAEncryptionFailure(t *testing.T) {
 	consumer, err = client.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: subscriptionName,
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionConsume,
 		},
 		Schema: NewStringSchema(nil),
@@ -2493,7 +2493,7 @@ func TestRSAEncryptionFailure(t *testing.T) {
 	consumer, err = client.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: subscriptionName,
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionDiscard,
 		},
 		Schema: NewStringSchema(nil),
@@ -2536,7 +2536,7 @@ func TestConsumerCompressionWithRSAEncryption(t *testing.T) {
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: "sub-1",
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
@@ -2598,7 +2598,7 @@ func TestBatchMessageReceiveWithCompressionAndRSAEcnryption(t *testing.T) {
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: subName,
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
 				"crypto/testdata/pri_key_rsa.pem"),
 		},
@@ -2691,7 +2691,7 @@ func TestConsumerEncryptionWithoutKeyReader(t *testing.T) {
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: "my-subscription-name",
-		Encryption: &ConsumerEncryptionInfo{
+		Decryption: &MessageDecryptionInfo{
 			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionConsume,
 		},
 		Schema: NewStringSchema(nil),

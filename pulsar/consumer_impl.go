@@ -309,18 +309,18 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
-		if c.options.Encryption == nil {
-			c.options.Encryption = &ConsumerEncryptionInfo{}
+		if c.options.Decryption == nil {
+			c.options.Decryption = &MessageDecryptionInfo{}
 		}
 		// KeyReader is provided but MessageCrypto is not provided, use default message crypto
 		var messageCrypto crypto.MessageCrypto
-		if c.options.Encryption.KeyReader != nil && c.options.Encryption.MessageCrypto == nil {
+		if c.options.Decryption.KeyReader != nil && c.options.Decryption.MessageCrypto == nil {
 			logCtx := fmt.Sprintf("[%v] [%v]", partitionTopic, c.options.SubscriptionName)
 			messageCrypto, err = crypto.NewDefaultMessageCrypto(logCtx, false, c.log)
 			if err != nil {
 				return err
 			}
-			c.options.Encryption.MessageCrypto = messageCrypto
+			c.options.Decryption.MessageCrypto = messageCrypto
 		}
 
 		go func(idx int, pt string) {
@@ -334,10 +334,10 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			}
 
 			decryptor := cryptointernal.NewConsumerDecryptor(
-				c.options.Encryption.KeyReader,
-				c.options.Encryption.MessageCrypto,
+				c.options.Decryption.KeyReader,
+				c.options.Decryption.MessageCrypto,
 				c.log,
-				c.options.Encryption.ConsumerCryptoFailureAction,
+				c.options.Decryption.ConsumerCryptoFailureAction,
 			)
 
 			opts := &partitionConsumerOpts{
