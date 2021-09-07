@@ -18,6 +18,8 @@
 package crypto
 
 import (
+	"fmt"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
@@ -32,6 +34,9 @@ func NewNoopDecryptor() Decryptor {
 func (d *noopDecryptor) Decrypt(payload []byte,
 	msgID *pb.MessageIdData,
 	msgMetadata *pb.MessageMetadata) ([]byte, error) {
+	if len(msgMetadata.GetEncryptionKeys()) > 0 {
+		return payload, fmt.Errorf("incoming message payload is encrypted, consumer is not configured to decrypt")
+	}
 	return payload, nil
 }
 

@@ -23,9 +23,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	cryptointernal "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -90,6 +88,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		metadata:                   options.Properties,
 		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
 		replicateSubscriptionState: false,
+		decryption:                 options.Decryption,
 	}
 
 	reader := &reader{
@@ -97,27 +96,6 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
 		metrics:   client.metrics.GetTopicMetrics(options.Topic),
 	}
-
-	if options.Decryption == nil {
-		options.Decryption = &MessageDecryptionInfo{}
-	}
-
-	if options.Decryption.KeyReader != nil && options.Decryption.MessageCrypto == nil {
-		logCtx := fmt.Sprintf("[%v] [%v]", options.Topic, subscriptionName)
-		messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, false, reader.log)
-		if err != nil {
-			return nil, err
-		}
-		options.Decryption.MessageCrypto = messageCrypto
-	}
-
-	decryptor := cryptointernal.NewConsumerDecryptor(
-		options.Decryption.KeyReader,
-		options.Decryption.MessageCrypto,
-		reader.log,
-		options.Decryption.ConsumerCryptoFailureAction,
-	)
-	consumerOptions.decryptor = decryptor
 
 	// Provide dummy dlq router with not dlq policy
 	dlq, err := newDlqRouter(client, nil, client.log)

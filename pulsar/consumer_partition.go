@@ -99,7 +99,7 @@ type partitionConsumerOpts struct {
 	maxReconnectToBroker       *uint
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
-	decryptor                  cryptointernal.Decryptor
+	decryption                 *MessageDecryptionInfo
 }
 
 type partitionConsumer struct {
@@ -144,6 +144,7 @@ type partitionConsumer struct {
 	providersMutex       sync.RWMutex
 	compressionProviders map[pb.CompressionType]compression.Provider
 	metrics              *internal.TopicMetrics
+	decryptor            cryptointernal.Decryptor
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
@@ -178,6 +179,28 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		"subscription": options.subscription,
 		"consumerID":   pc.consumerID,
 	})
+
+	var decryptor cryptointernal.Decryptor
+	if options.decryption == nil {
+		decryptor = cryptointernal.NewNoopDecryptor() // default to noopDecryptor
+	} else {
+		if options.decryption.MessageCrypto == nil {
+			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt", false, pc.log)
+			if err != nil {
+				return nil, err
+			}
+			options.decryption.MessageCrypto = messageCrypto
+		}
+		decryptor = cryptointernal.NewConsumerDecryptor(
+			options.decryption.KeyReader,
+			options.decryption.MessageCrypto,
+			pc.log,
+			options.decryption.ConsumerCryptoFailureAction,
+		)
+	}
+
+	pc.decryptor = decryptor
+
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, pc.log)
 
 	err := pc.grabConn()
@@ -482,13 +505,13 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		return err
 	}
 
-	decryptedPayload, err := pc.options.decryptor.Decrypt(headersAndPayload.ReadableSlice(), pbMsgID, msgMeta)
+	decryptedPayload, err := pc.decryptor.Decrypt(headersAndPayload.ReadableSlice(), pbMsgID, msgMeta)
 	messages := make([]*message, 0)
 
 	// error decrypting the payload
 	if err != nil {
 		pc.log.Error(err)
-		switch pc.options.decryptor.CryptoFailureAction() {
+		switch pc.decryptor.CryptoFailureAction() {
 		case crypto.ConsumerCryptoFailureActionFail:
 			pc.log.Errorf("consuming message failed due to decryption err :%v", err)
 			return err

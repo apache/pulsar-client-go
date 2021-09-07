@@ -35,10 +35,9 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
-		options: &partitionConsumerOpts{
-			decryptor: crypto.NewNoopDecryptor(),
-		},
-		metrics: internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		options:              &partitionConsumerOpts{},
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
@@ -68,10 +67,9 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
-		options: &partitionConsumerOpts{
-			decryptor: crypto.NewNoopDecryptor(),
-		},
-		metrics: internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		options:              &partitionConsumerOpts{},
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
@@ -101,10 +99,9 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
-		options: &partitionConsumerOpts{
-			decryptor: crypto.NewNoopDecryptor(),
-		},
-		metrics: internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		options:              &partitionConsumerOpts{},
+		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)

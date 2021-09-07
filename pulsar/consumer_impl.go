@@ -25,9 +25,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-	cryptointernal "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -309,20 +307,6 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
-		if c.options.Decryption == nil {
-			c.options.Decryption = &MessageDecryptionInfo{}
-		}
-		// KeyReader is provided but MessageCrypto is not provided, use default message crypto
-		var messageCrypto crypto.MessageCrypto
-		if c.options.Decryption.KeyReader != nil && c.options.Decryption.MessageCrypto == nil {
-			logCtx := fmt.Sprintf("[%v] [%v]", partitionTopic, c.options.SubscriptionName)
-			messageCrypto, err = crypto.NewDefaultMessageCrypto(logCtx, false, c.log)
-			if err != nil {
-				return err
-			}
-			c.options.Decryption.MessageCrypto = messageCrypto
-		}
-
 		go func(idx int, pt string) {
 			defer wg.Done()
 
@@ -332,14 +316,6 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			} else {
 				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
-
-			decryptor := cryptointernal.NewConsumerDecryptor(
-				c.options.Decryption.KeyReader,
-				c.options.Decryption.MessageCrypto,
-				c.log,
-				c.options.Decryption.ConsumerCryptoFailureAction,
-			)
-
 			opts := &partitionConsumerOpts{
 				topic:                      pt,
 				consumerName:               c.consumerName,
@@ -358,7 +334,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
-				decryptor:                  decryptor,
+				decryption:                 c.options.Decryption,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
