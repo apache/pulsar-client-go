@@ -739,7 +739,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
 	}
-	p.options.Interceptors.BeforeSend(p, msg)
+	p.options.Interceptors.BeforeSend(ctx, p, msg)
 
 	if p.options.DisableBlockIfQueueFull {
 		if !p.publishSemaphore.TryAcquire() {
@@ -818,7 +818,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 				sr.callback(msgID, sr.msg, nil)
 			}
 
-			p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
+			p.options.Interceptors.OnSendAcknowledgement(sr.ctx, p, sr.msg, msgID)
 		}
 	}
 
