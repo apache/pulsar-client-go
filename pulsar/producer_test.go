@@ -1110,7 +1110,7 @@ type noopProduceInterceptor struct{}
 func (noopProduceInterceptor) BeforeSend(ctx context.Context, producer Producer, message *ProducerMessage) {
 }
 
-func (noopProduceInterceptor) OnSendAcknowledgement(ctx context.Context, producer Producer, message *ProducerMessage, msgID MessageID) {
+func (noopProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
 }
 
 // copyPropertyIntercepotr copy all keys in message properties map and add a suffix
@@ -1123,7 +1123,7 @@ func (x *metricProduceInterceptor) BeforeSend(ctx context.Context, producer Prod
 	x.sendn++
 }
 
-func (x *metricProduceInterceptor) OnSendAcknowledgement(ctx context.Context, producer Producer, message *ProducerMessage, msgID MessageID) {
+func (x *metricProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
 	x.ackn++
 }
 

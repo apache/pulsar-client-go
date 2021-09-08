@@ -818,7 +818,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 				sr.callback(msgID, sr.msg, nil)
 			}
 
-			p.options.Interceptors.OnSendAcknowledgement(sr.ctx, p, sr.msg, msgID)
+			p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
 		}
 	}
 

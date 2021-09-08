@@ -25,7 +25,7 @@ type ProducerInterceptor interface {
 
 	// OnSendAcknowledgement This method is called when the message sent to the broker has been acknowledged,
 	// or when sending the message fails.
-	OnSendAcknowledgement(ctx context.Context, producer Producer, message *ProducerMessage, msgID MessageID)
+	OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID)
 }
 
 type ProducerInterceptors []ProducerInterceptor
@@ -36,9 +36,9 @@ func (x ProducerInterceptors) BeforeSend(ctx context.Context, producer Producer,
 	}
 }
 
-func (x ProducerInterceptors) OnSendAcknowledgement(ctx context.Context, producer Producer, message *ProducerMessage, msgID MessageID) {
+func (x ProducerInterceptors) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
 	for i := range x {
-		x[i].OnSendAcknowledgement(ctx, producer, message, msgID)
+		x[i].OnSendAcknowledgement(producer, message, msgID)
 	}
 }
 
