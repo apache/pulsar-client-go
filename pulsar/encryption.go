@@ -42,6 +42,7 @@ type MessageDecryptionInfo struct {
 
 	// MessageCrypto used to encrypt and decrypt the data and session keys
 	MessageCrypto crypto.MessageCrypto
+
 	// ConsumerCryptoFailureAction action to be taken on failure of message decryption
 	ConsumerCryptoFailureAction int
 }

@@ -181,7 +181,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	})
 
 	var decryptor cryptointernal.Decryptor
-	if options.decryption == nil {
+	if pc.options.decryption == nil {
 		decryptor = cryptointernal.NewNoopDecryptor() // default to noopDecryptor
 	} else {
 		if options.decryption.MessageCrypto == nil {
@@ -195,7 +195,6 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 			options.decryption.KeyReader,
 			options.decryption.MessageCrypto,
 			pc.log,
-			options.decryption.ConsumerCryptoFailureAction,
 		)
 	}
 
@@ -506,12 +505,15 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	}
 
 	decryptedPayload, err := pc.decryptor.Decrypt(headersAndPayload.ReadableSlice(), pbMsgID, msgMeta)
-	messages := make([]*message, 0)
-
 	// error decrypting the payload
 	if err != nil {
-		pc.log.Error(err)
-		switch pc.decryptor.CryptoFailureAction() {
+		// default crypto failure action
+		crypToFailureAction := crypto.ConsumerCryptoFailureActionFail
+		if pc.options.decryption != nil {
+			crypToFailureAction = pc.options.decryption.ConsumerCryptoFailureAction
+		}
+
+		switch crypToFailureAction {
 		case crypto.ConsumerCryptoFailureActionFail:
 			pc.log.Errorf("consuming message failed due to decryption err :%v", err)
 			return err
@@ -520,27 +522,28 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return fmt.Errorf("discarding message on decryption error :%v", err)
 		case crypto.ConsumerCryptoFailureActionConsume:
 			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
-			messages = append(messages, &message{
-				publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-				eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-				key:          msgMeta.GetPartitionKey(),
-				producerName: msgMeta.GetProducerName(),
-				properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
-				topic:        pc.topic,
-				msgID: newMessageID(
-					int64(pbMsgID.GetLedgerId()),
-					int64(pbMsgID.GetEntryId()),
-					pbMsgID.GetBatchIndex(),
-					pc.partitionIdx,
-				),
-				payLoad:             headersAndPayload.ReadableSlice(),
-				schema:              pc.options.schema,
-				replicationClusters: msgMeta.GetReplicateTo(),
-				replicatedFrom:      msgMeta.GetReplicatedFrom(),
-				redeliveryCount:     response.GetRedeliveryCount(),
-				encryptionContext:   createEncryptionContext(msgMeta),
-			},
-			)
+			messages := []*message{
+				{
+					publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+					eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+					key:          msgMeta.GetPartitionKey(),
+					producerName: msgMeta.GetProducerName(),
+					properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
+					topic:        pc.topic,
+					msgID: newMessageID(
+						int64(pbMsgID.GetLedgerId()),
+						int64(pbMsgID.GetEntryId()),
+						pbMsgID.GetBatchIndex(),
+						pc.partitionIdx,
+					),
+					payLoad:             headersAndPayload.ReadableSlice(),
+					schema:              pc.options.schema,
+					replicationClusters: msgMeta.GetReplicateTo(),
+					replicatedFrom:      msgMeta.GetReplicatedFrom(),
+					redeliveryCount:     response.GetRedeliveryCount(),
+					encryptionContext:   createEncryptionContext(msgMeta),
+				},
+			}
 			pc.queueCh <- messages
 			return nil
 		}
@@ -561,6 +564,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
 
+	messages := make([]*message, 0)
 	var ackTracker *ackTracker
 	// are there multiple messages in this batch?
 	if numMsgs > 1 {
@@ -661,7 +665,7 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) b
 // this will be used to decrypt the message payload outside of this client
 // it is the responsibility of end user to decrypt the payload
 // It will be used only when  crypto failure action is set to consume i.e crypto.ConsumerCryptoFailureActionConsume
-func createEncryptionContext(msgMeta *pb.MessageMetadata) EncryptionContext {
+func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 	encCtx := EncryptionContext{
 		Algorithm:        msgMeta.GetEncryptionAlgo(),
 		Param:            msgMeta.GetEncryptionParam(),
@@ -687,7 +691,7 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) EncryptionContext {
 	}
 
 	encCtx.Keys = kMap
-	return encCtx
+	return &encCtx
 }
 
 func (pc *partitionConsumer) ConnectionClosed() {

@@ -233,7 +233,7 @@ type message struct {
 	replicatedFrom      string
 	redeliveryCount     uint32
 	schema              Schema
-	encryptionContext   EncryptionContext
+	encryptionContext   *EncryptionContext
 }
 
 func (msg *message) Topic() string {
@@ -288,7 +288,7 @@ func (msg *message) ProducerName() string {
 	return msg.producerName
 }
 
-func (msg *message) GetEncryptionContext() EncryptionContext {
+func (msg *message) GetEncryptionContext() *EncryptionContext {
 	return msg.encryptionContext
 }
 

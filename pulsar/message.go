@@ -119,7 +119,7 @@ type Message interface {
 
 	// GetEncryptionContext get the ecryption context of message
 	// It will be used by the application to parse undecrypted message
-	GetEncryptionContext() EncryptionContext
+	GetEncryptionContext() *EncryptionContext
 }
 
 // MessageID identifier for a particular message

@@ -26,21 +26,18 @@ import (
 )
 
 type consumerDecryptor struct {
-	keyReader                   crypto.KeyReader
-	messageCrypto               crypto.MessageCrypto
-	logger                      log.Logger
-	consumerCryptoFailureAction int
+	keyReader     crypto.KeyReader
+	messageCrypto crypto.MessageCrypto
+	logger        log.Logger
 }
 
 func NewConsumerDecryptor(keyReader crypto.KeyReader,
 	messageCrypto crypto.MessageCrypto,
-	logger log.Logger,
-	consumerCryptoFailureAction int) Decryptor {
+	logger log.Logger) Decryptor {
 	return &consumerDecryptor{
-		keyReader:                   keyReader,
-		messageCrypto:               messageCrypto,
-		logger:                      logger,
-		consumerCryptoFailureAction: consumerCryptoFailureAction,
+		keyReader:     keyReader,
+		messageCrypto: messageCrypto,
+		logger:        logger,
 	}
 }
 
@@ -60,8 +57,4 @@ func (d *consumerDecryptor) Decrypt(payload []byte,
 	return d.messageCrypto.Decrypt(crypto.NewMessageMetadataSupplier(msgMetadata),
 		payload,
 		d.keyReader)
-}
-
-func (d *consumerDecryptor) CryptoFailureAction() int {
-	return d.consumerCryptoFailureAction
 }
