@@ -149,8 +149,10 @@ func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 	fqdnTopic := internal.TopicNameWithoutPartitionPart(names[0])
 	consumer, ok := c.consumers[fqdnTopic]
 	if !ok {
-		c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
-		return
+		if consumer, ok = c.consumers[names[0].Name]; !ok {
+			c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
+			return
+		}
 	}
 	consumer.ReconsumeLater(msg, delay)
 }
