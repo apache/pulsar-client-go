@@ -21,6 +21,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	log "github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -31,30 +32,36 @@ type redeliveryConsumer interface {
 type negativeAcksTracker struct {
 	sync.Mutex
 
-	doneCh       chan interface{}
-	doneOnce     sync.Once
-	negativeAcks map[messageID]time.Time
-	rc           redeliveryConsumer
-	tick         *time.Ticker
-	delay        time.Duration
-	log          log.Logger
+	doneOnce sync.Once
+	rc       redeliveryConsumer
+	log      log.Logger
+	msgIds   []messageID
+	tw       *internal.TimeWheel
 }
 
+const (
+	defaultCheckBatchKey = "check_batch_key"
+
+	batchSize          = 1024
+	checkBatchinterval = time.Second * 5
+)
+
 func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration, logger log.Logger) *negativeAcksTracker {
+	tw, _ := internal.NewTimeWheel(time.Second*1, 1024)
 	t := &negativeAcksTracker{
-		doneCh:       make(chan interface{}),
-		negativeAcks: make(map[messageID]time.Time),
-		rc:           rc,
-		tick:         time.NewTicker(delay / 3),
-		delay:        delay,
-		log:          logger,
+		rc:     rc,
+		log:    logger,
+		msgIds: make([]messageID, 0),
+		tw:     tw,
 	}
 
-	go t.track()
+	t.tw.Start()
+	t.tw.Add(checkBatchinterval, defaultCheckBatchKey, t.checkBatch)
+
 	return t
 }
 
-func (t *negativeAcksTracker) Add(msgID messageID) {
+func (t *negativeAcksTracker) Add(msgID messageID, negativeAckDelay time.Duration) {
 	// Always clear up the batch index since we want to track the nack
 	// for the entire batch
 	batchMsgID := messageID{
@@ -63,57 +70,41 @@ func (t *negativeAcksTracker) Add(msgID messageID) {
 		batchIdx: 0,
 	}
 
-	t.Lock()
-	defer t.Unlock()
-
-	_, present := t.negativeAcks[batchMsgID]
-	if present {
-		// The batch is already being tracked
-		return
-	}
-
-	targetTime := time.Now().Add(t.delay)
-	t.negativeAcks[batchMsgID] = targetTime
+	t.tw.Add(negativeAckDelay, batchMsgID, func() {
+		t.Lock()
+		t.msgIds = append(t.msgIds, batchMsgID)
+		if len(t.msgIds) >= batchSize {
+			t.rc.Redeliver(t.msgIds)
+			t.msgIds = make([]messageID, 0)
+		}
+		t.Unlock()
+	})
 }
 
-func (t *negativeAcksTracker) track() {
-	for {
-		select {
-		case <-t.doneCh:
-			t.log.Debug("Closing nack tracker")
-			return
-
-		case <-t.tick.C:
-			{
-				now := time.Now()
-				msgIds := make([]messageID, 0)
-
-				t.Lock()
-
-				for msgID, targetTime := range t.negativeAcks {
-					t.log.Debugf("MsgId: %v -- targetTime: %v -- now: %v", msgID, targetTime, now)
-					if targetTime.Before(now) {
-						t.log.Debugf("Adding MsgId: %v", msgID)
-						msgIds = append(msgIds, msgID)
-						delete(t.negativeAcks, msgID)
-					}
-				}
-
-				t.Unlock()
-
-				if len(msgIds) > 0 {
-					t.rc.Redeliver(msgIds)
-				}
-			}
-
-		}
+func (t *negativeAcksTracker) Remove(msgID messageID) {
+	batchMsgID := messageID{
+		ledgerID: msgID.ledgerID,
+		entryID:  msgID.entryID,
+		batchIdx: 0,
 	}
+
+	t.tw.Remove(batchMsgID)
+}
+
+func (t *negativeAcksTracker) checkBatch() {
+	t.Lock()
+	if len(t.msgIds) > 0 {
+		t.rc.Redeliver(t.msgIds)
+		t.msgIds = make([]messageID, 0)
+	}
+	t.Unlock()
+
+	t.tw.Add(checkBatchinterval, defaultCheckBatchKey, t.checkBatch)
 }
 
 func (t *negativeAcksTracker) Close() {
 	// allow Close() to be invoked multiple times by consumer_partition to avoid panic
 	t.doneOnce.Do(func() {
-		t.tick.Stop()
-		t.doneCh <- nil
+		t.tw.Stop()
 	})
 }

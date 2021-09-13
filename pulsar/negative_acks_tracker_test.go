@@ -81,13 +81,13 @@ func TestNacksTracker(t *testing.T) {
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
-	})
+	}, testNackDelay)
 
 	nacks.Add(messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
-	})
+	}, testNackDelay)
 
 	msgIds := make([]messageID, 0)
 	for id := range nmc.Wait() {
@@ -114,25 +114,25 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
-	})
+	}, testNackDelay)
 
 	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 2,
-	})
+	}, testNackDelay)
 
 	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 3,
-	})
+	}, testNackDelay)
 
 	nacks.Add(messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
-	})
+	}, testNackDelay)
 
 	msgIds := make([]messageID, 0)
 	for id := range nmc.Wait() {

@@ -30,11 +30,15 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-const defaultNackRedeliveryDelay = 1 * time.Minute
+const (
+	defaultNackRedeliveryDelay = 1 * time.Minute
+	defaultAckTimeOut          = 1 * time.Second
+)
 
 type acker interface {
 	AckID(id trackingMessageID)
 	NackID(id trackingMessageID)
+	NackIDDelay(id trackingMessageID, delay time.Duration)
 }
 
 type consumer struct {
@@ -136,6 +140,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable, client.log)
 	if err != nil {
 		return nil, err
+	}
+
+	if options.AckTimeOut != 0 && options.AckTimeOut < defaultAckTimeOut {
+		return nil, newError(AckTimeoutLess, "Ack timeout should be greater than 1000 ms")
 	}
 
 	// normalize as FQDN topics
@@ -325,6 +333,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				partitionIdx:               idx,
 				receiverQueueSize:          receiverQueueSize,
 				nackRedeliveryDelay:        nackRedeliveryDelay,
+				ackTimeout:                 c.options.AckTimeOut,
 				metadata:                   metadata,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
 				startMessageID:             trackingMessageID{},
@@ -414,6 +423,9 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 			if !ok {
 				return nil, newError(ConsumerClosed, "consumer closed")
 			}
+			if c.options.AckTimeOut != 0 {
+				c.NackDelay(cm.Message, c.options.AckTimeOut)
+			}
 			return cm.Message, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -499,6 +511,10 @@ func (c *consumer) Nack(msg Message) {
 	c.NackID(msg.ID())
 }
 
+func (c *consumer) NackDelay(msg Message, delay time.Duration) {
+	c.NackIDDelay(msg.ID(), delay)
+}
+
 func (c *consumer) NackID(msgID MessageID) {
 	mid, ok := c.messageID(msgID)
 	if !ok {
@@ -511,6 +527,20 @@ func (c *consumer) NackID(msgID MessageID) {
 	}
 
 	c.consumers[mid.partitionIdx].NackID(mid)
+}
+
+func (c *consumer) NackIDDelay(msgID MessageID, delay time.Duration) {
+	mid, ok := c.messageID(msgID)
+	if !ok {
+		return
+	}
+
+	if mid.consumer != nil {
+		mid.NackDelay(delay)
+		return
+	}
+
+	c.consumers[mid.partitionIdx].NackIDDelay(mid, delay)
 }
 
 func (c *consumer) Close() {
