@@ -150,5 +150,4 @@ func (tw *TimeWheel) remove(key interface{}) {
 		delete(tw.bucketIndexes, key)
 		delete(tw.buckets[index], key)
 	}
-	return
 }
