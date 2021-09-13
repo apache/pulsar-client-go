@@ -46,7 +46,7 @@ const (
 	checkBatchinterval = time.Second * 5
 )
 
-func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration, logger log.Logger) *negativeAcksTracker {
+func newNegativeAcksTracker(rc redeliveryConsumer, logger log.Logger) *negativeAcksTracker {
 	tw, _ := internal.NewTimeWheel(time.Second*1, 1024)
 	t := &negativeAcksTracker{
 		rc:     rc,

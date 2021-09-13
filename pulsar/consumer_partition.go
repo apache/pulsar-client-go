@@ -176,7 +176,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		"subscription": options.subscription,
 		"consumerID":   pc.consumerID,
 	})
-	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, pc.log)
+	pc.nackTracker = newNegativeAcksTracker(pc, pc.log)
 
 	err := pc.grabConn()
 	if err != nil {
