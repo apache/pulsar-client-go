@@ -315,7 +315,6 @@ func (pc *partitionConsumer) NackIDDelay(msgID trackingMessageID, dalay time.Dur
 }
 
 func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
-	fmt.Println("msgIds:", msgIds)
 	pc.eventsCh <- &redeliveryRequest{msgIds}
 
 	iMsgIds := make([]MessageID, len(msgIds))
