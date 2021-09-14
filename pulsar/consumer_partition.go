@@ -86,7 +86,6 @@ type partitionConsumerOpts struct {
 	partitionIdx               int
 	receiverQueueSize          int
 	nackRedeliveryDelay        time.Duration
-	ackTimeout                 time.Duration
 	metadata                   map[string]string
 	replicateSubscriptionState bool
 	startMessageID             trackingMessageID
@@ -295,9 +294,6 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
 		req := &ackRequest{
 			msgID: msgID,
 		}
-		if pc.options.ackTimeout != 0 {
-			pc.nackTracker.Remove(msgID.messageID)
-		}
 		pc.eventsCh <- req
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
@@ -306,11 +302,6 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
 
 func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
 	pc.nackTracker.Add(msgID.messageID, pc.options.nackRedeliveryDelay)
-	pc.metrics.NacksCounter.Inc()
-}
-
-func (pc *partitionConsumer) NackIDDelay(msgID trackingMessageID, dalay time.Duration) {
-	pc.nackTracker.Add(msgID.messageID, dalay)
 	pc.metrics.NacksCounter.Inc()
 }
 

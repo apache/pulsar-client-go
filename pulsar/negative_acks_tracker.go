@@ -40,10 +40,10 @@ type negativeAcksTracker struct {
 }
 
 const (
-	defaultCheckBatchKey = "check_batch_key"
+	defaultCheckNegativeAcksBatchKey = "negative_acks_check_batch_key"
 
-	batchSize          = 1024
-	checkBatchinterval = time.Second * 5
+	negativeAcksbatchSize          = 1024
+	checkNegativeAcksBatchinterval = time.Second * 5
 )
 
 func newNegativeAcksTracker(rc redeliveryConsumer, logger log.Logger) *negativeAcksTracker {
@@ -56,7 +56,7 @@ func newNegativeAcksTracker(rc redeliveryConsumer, logger log.Logger) *negativeA
 	}
 
 	t.tw.Start()
-	t.tw.Add(checkBatchinterval, defaultCheckBatchKey, t.checkBatch)
+	t.tw.Add(checkNegativeAcksBatchinterval, defaultCheckNegativeAcksBatchKey, t.checkBatch)
 
 	return t
 }
@@ -73,7 +73,7 @@ func (t *negativeAcksTracker) Add(msgID messageID, negativeAckDelay time.Duratio
 	t.tw.Add(negativeAckDelay, batchMsgID, func() {
 		t.Lock()
 		t.msgIds = append(t.msgIds, batchMsgID)
-		if len(t.msgIds) >= batchSize {
+		if len(t.msgIds) >= negativeAcksbatchSize {
 			t.rc.Redeliver(t.msgIds)
 			t.msgIds = make([]messageID, 0)
 		}
@@ -99,7 +99,7 @@ func (t *negativeAcksTracker) checkBatch() {
 	}
 	t.Unlock()
 
-	t.tw.Add(checkBatchinterval, defaultCheckBatchKey, t.checkBatch)
+	t.tw.Add(checkNegativeAcksBatchinterval, defaultCheckNegativeAcksBatchKey, t.checkBatch)
 }
 
 func (t *negativeAcksTracker) Close() {

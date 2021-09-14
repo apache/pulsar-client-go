@@ -132,10 +132,6 @@ type ConsumerOptions struct {
 	// processed. Default is 1min. (See `Consumer.Nack()`)
 	NackRedeliveryDelay time.Duration
 
-	// The AckTimeOut after which to redeliver the messages that timeout to be
-	// processed. Default is close
-	AckTimeOut time.Duration
-
 	// Set the consumer name.
 	Name string
 

@@ -102,9 +102,6 @@ func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err 
 			if !ok {
 				return nil, newError(ConsumerClosed, "consumer closed")
 			}
-			if c.options.AckTimeOut != 0 {
-				c.NackDelay(cm.Message, c.options.AckTimeOut)
-			}
 			return cm.Message, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -162,10 +159,6 @@ func (c *multiTopicConsumer) Nack(msg Message) {
 	c.NackID(msg.ID())
 }
 
-func (c *multiTopicConsumer) NackDelay(msg Message, delay time.Duration) {
-	c.NackIDDelay(msg.ID(), delay)
-}
-
 func (c *multiTopicConsumer) NackID(msgID MessageID) {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
@@ -179,20 +172,6 @@ func (c *multiTopicConsumer) NackID(msgID MessageID) {
 	}
 
 	mid.Nack()
-}
-
-func (c *multiTopicConsumer) NackIDDelay(msgID MessageID, delay time.Duration) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
-		return
-	}
-
-	if mid.consumer == nil {
-		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
-		return
-	}
-
-	mid.NackDelay(delay)
 }
 
 func (c *multiTopicConsumer) Close() {
