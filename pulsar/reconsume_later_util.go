@@ -25,12 +25,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const DefaultMessageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"
+const defaultMessageDelayLevel = "1s 5s 10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"
 
-type DelayLevelUtil interface {
-	GetMaxDelayLevel() int
-	GetDelayTime(level int) int64
-	ParseDelayLevel() bool
+type RetryDelayLevelPolicies interface {
+	getMaxDelayLevel() int
+	getDelayTime(level int) int64
+	parseDelayLevel() bool
 }
 
 type delayLevelUtil struct {
@@ -39,20 +39,20 @@ type delayLevelUtil struct {
 	delayLevelTable map[int]int64
 }
 
-func NewDelayLevelUtil(levelStr string) DelayLevelUtil {
+func NewDelayLevelUtil(levelStr string) RetryDelayLevelPolicies {
 	delayLevelUtil := &delayLevelUtil{
 		levelString:     levelStr,
 		delayLevelTable: make(map[int]int64),
 	}
-	delayLevelUtil.ParseDelayLevel()
+	delayLevelUtil.parseDelayLevel()
 	return delayLevelUtil
 }
 
-func (d *delayLevelUtil) GetMaxDelayLevel() int {
+func (d *delayLevelUtil) getMaxDelayLevel() int {
 	return d.maxDelayLevel
 }
 
-func (d *delayLevelUtil) GetDelayTime(level int) int64 {
+func (d *delayLevelUtil) getDelayTime(level int) int64 {
 	if d.delayLevelTable == nil {
 		return 0
 	} else if level < 1 {
@@ -64,7 +64,7 @@ func (d *delayLevelUtil) GetDelayTime(level int) int64 {
 	}
 }
 
-func (d *delayLevelUtil) ParseDelayLevel() bool {
+func (d *delayLevelUtil) parseDelayLevel() bool {
 	d.delayLevelTable = make(map[int]int64)
 	timeUnitTable := make(map[string]int64)
 	timeUnitTable["s"] = 1000

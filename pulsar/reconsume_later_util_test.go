@@ -26,7 +26,7 @@ import (
 func TestDelayLevelUtil_GetDelayTime(t *testing.T) {
 	a := "1s 5s   10s 30s 1m 2m 3m 4m 5m 6m 7m 8m 9m 10m 20m 30m 1h 2h"
 	d := NewDelayLevelUtil(a)
-	assert.Equal(t, int64(0), d.GetDelayTime(0))
-	assert.Equal(t, int64(7200000), d.GetDelayTime(d.GetMaxDelayLevel()))
-	assert.Equal(t, int64(7200000), d.GetDelayTime(100))
+	assert.Equal(t, int64(0), d.getDelayTime(0))
+	assert.Equal(t, int64(7200000), d.getDelayTime(d.getMaxDelayLevel()))
+	assert.Equal(t, int64(7200000), d.getDelayTime(100))
 }

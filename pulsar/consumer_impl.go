@@ -130,7 +130,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 
 		if options.DelayLevelUtil == nil {
-			options.DelayLevelUtil = NewDelayLevelUtil(DefaultMessageDelayLevel)
+			options.DelayLevelUtil = NewDelayLevelUtil(defaultMessageDelayLevel)
 		}
 	}
 

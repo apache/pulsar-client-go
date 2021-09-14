@@ -159,7 +159,7 @@ func (c *regexConsumer) ReconsumeLaterLevel(message Message, options ReconsumeOp
 
 func (c *regexConsumer) ReconsumeLaterLevelAsync(message Message, options ReconsumeOptions,
 	callback func(MessageID, *ProducerMessage, error)) {
-	c.log.Error("Regex topic consumer not support reconsume! ")
+	c.log.Error("the regex topic consumer not support reconsume async! ")
 }
 
 // Chan

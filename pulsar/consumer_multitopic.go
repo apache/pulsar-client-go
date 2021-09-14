@@ -158,7 +158,7 @@ func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 
 func (c *multiTopicConsumer) ReconsumeLaterLevel(message Message, reconsumeOptions ReconsumeOptions) error {
 	if !c.options.RetryEnable {
-		return errors.New("[ReconsumeLater]This Consumer config retry disabled. ")
+		return errors.New("retries disabled for consumer unable to reconsume later. ")
 	}
 	topicName, err := internal.ParseTopicName(message.Topic())
 	if err != nil {
@@ -171,18 +171,18 @@ func (c *multiTopicConsumer) ReconsumeLaterLevel(message Message, reconsumeOptio
 			return consumer.ReconsumeLaterLevel(message, reconsumeOptions)
 		}
 	}
-	return errors.New("[ReconsumeLater]Topic not in multi topic consumer list. ")
+	return errors.New("reconsume later does not support use in multi topics. ")
 }
 
 func (c *multiTopicConsumer) ReconsumeLaterLevelAsync(message Message, reconsumeOptions ReconsumeOptions,
 	callback func(MessageID, *ProducerMessage, error)) {
 	if !c.options.RetryEnable {
-		c.log.Warn(errors.New("[ReconsumeLaterAsync]This Consumer config retry disabled. "))
+		c.log.Warn(errors.New("retries disabled for consumer unable to reconsume later async. "))
 		return
 	}
 	topicName, err := internal.ParseTopicName(message.Topic())
 	if err != nil {
-		c.log.Warn("[ReconsumeLaterAsync]Message Parse TopicName Failed with Error :", err)
+		c.log.Warn("parse TopicName failed with error [%s]", err.Error())
 		return
 	}
 	topicNameWithoutPartition := internal.TopicNameWithoutPartitionPart(topicName)
@@ -193,7 +193,7 @@ func (c *multiTopicConsumer) ReconsumeLaterLevelAsync(message Message, reconsume
 			return
 		}
 	}
-	c.log.Warn("[ReconsumeLaterAsync]Topic not in multi topic consumer list. ")
+	c.log.Warn("reconsume later async does not support use in multi topics. ")
 }
 
 func (c *multiTopicConsumer) Nack(msg Message) {

@@ -118,7 +118,7 @@ type ConsumerOptions struct {
 	RetryEnable bool
 
 	// Configuration for Retry delay level policy
-	DelayLevelUtil DelayLevelUtil
+	DelayLevelUtil RetryDelayLevelPolicies
 
 	// Sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption

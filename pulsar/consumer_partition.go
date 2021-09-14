@@ -50,6 +50,16 @@ const (
 	consumerClosed
 )
 
+const (
+	ReconsumeTimes  = "RECONSUME_TIMES"
+	DelayTime       = "DELAY_TIME"
+	Delay           = "DELAY"
+	RealTopic       = "REAL_TOPIC"
+	RetryTopic      = "RETRY_TOPIC"
+	OriginMessageID = "ORIGIN_MESSAGE_ID"
+	ProducerName    = "PRODUCER_NAME"
+)
+
 func (s consumerState) String() string {
 	switch s {
 	case consumerInit:
@@ -100,7 +110,7 @@ type partitionConsumerOpts struct {
 	maxReconnectToBroker       *uint
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
-	delayLevelUtil             DelayLevelUtil
+	delayLevelUtil             RetryDelayLevelPolicies
 }
 
 type partitionConsumer struct {
@@ -284,7 +294,7 @@ func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptio
 		reconsumeOptions = NewReconsumeOptions()
 	}
 	if pc.options.delayLevelUtil == nil {
-		pc.options.delayLevelUtil = NewDelayLevelUtil(DefaultMessageDelayLevel)
+		pc.options.delayLevelUtil = NewDelayLevelUtil(defaultMessageDelayLevel)
 	}
 	propertiesMap := make(map[string]string)
 	if msg.Properties() != nil {
@@ -296,7 +306,7 @@ func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptio
 	delayLevels := -1
 	delayTime := reconsumeOptions.DelayTime()
 	if reconsumeOptions.DelayLevel() == -2 {
-		if v, ok := propertiesMap["DELAY"]; ok {
+		if v, ok := propertiesMap[Delay]; ok {
 			delayLevels, _ = strconv.Atoi(v)
 			if delayLevels == -1 {
 				delayLevels = 1
@@ -306,34 +316,34 @@ func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptio
 		} else {
 			delayLevels = 1
 		}
-		delayTime = pc.options.delayLevelUtil.GetDelayTime(delayLevels)
+		delayTime = pc.options.delayLevelUtil.getDelayTime(delayLevels)
 	}
 	if reconsumeOptions.DelayLevel() >= 0 {
 		delayLevels = reconsumeOptions.DelayLevel()
-		delayTime = pc.options.delayLevelUtil.GetDelayTime(delayLevels)
+		delayTime = pc.options.delayLevelUtil.getDelayTime(delayLevels)
 	}
-	if delayLevels > pc.options.delayLevelUtil.GetMaxDelayLevel() {
-		delayLevels = pc.options.delayLevelUtil.GetMaxDelayLevel()
+	if delayLevels > pc.options.delayLevelUtil.getMaxDelayLevel() {
+		delayLevels = pc.options.delayLevelUtil.getMaxDelayLevel()
 	}
 
-	if v, ok := propertiesMap["RECONSUMETIMES"]; ok {
+	if v, ok := propertiesMap[ReconsumeTimes]; ok {
 		reconsumeTimesUint64, err := strconv.ParseUint(v, 10, 64)
 		if err != nil {
 			return nil, nil, "", err
 		}
 		reconsumeTimes = uint32(reconsumeTimesUint64) + 1
-		propertiesMap["RECONSUMETIMES"] = strconv.FormatUint(uint64(reconsumeTimes), 10)
+		propertiesMap[ReconsumeTimes] = strconv.FormatUint(uint64(reconsumeTimes), 10)
 	} else {
-		propertiesMap["RECONSUMETIMES"] = "1"
+		propertiesMap[ReconsumeTimes] = "1"
 	}
-	propertiesMap["DELAY_TIME"] = fmt.Sprint(delayTime * (reconsumeOptions.DelayTimeUnit().Nanoseconds() / 1e6))
-	propertiesMap["DELAY"] = fmt.Sprint(int64(delayLevels) * (reconsumeOptions.DelayTimeUnit().Nanoseconds() / 1e6))
+	propertiesMap[DelayTime] = fmt.Sprint(delayTime * (reconsumeOptions.DelayTimeUnit().Nanoseconds() / 1e6))
+	propertiesMap[Delay] = fmt.Sprint(int64(delayLevels) * (reconsumeOptions.DelayTimeUnit().Nanoseconds() / 1e6))
 
 	if reconsumeTimes == 1 {
-		propertiesMap["REAL_TOPIC"] = msg.Topic()
-		propertiesMap["RETRY_TOPIC"] = pc.dlq.policy.RetryLetterTopic
-		propertiesMap["ORIGIN_MESSAGE_ID"] = fmt.Sprint(msg.ID())
-		propertiesMap["producer_name"] = msg.ProducerName()
+		propertiesMap[RealTopic] = msg.Topic()
+		propertiesMap[RetryTopic] = pc.dlq.policy.RetryLetterTopic
+		propertiesMap[OriginMessageID] = fmt.Sprint(msg.ID())
+		propertiesMap[ProducerName] = msg.ProducerName()
 	}
 
 	producerMsg := &ProducerMessage{
@@ -350,7 +360,7 @@ func (pc *partitionConsumer) internalBeforeReconsume(msg Message, reconsumeOptio
 	prod := pc.dlq.producer
 	desType := "retry"
 	if reconsumeTimes > pc.dlq.policy.MaxDeliveries {
-		propertiesMap["REAL_TOPIC"] = pc.dlq.policy.DeadLetterTopic
+		propertiesMap[RealTopic] = pc.dlq.policy.DeadLetterTopic
 		prod = pc.dlq.getProducer() // Get dead topic producer
 		desType = "dead"
 	}
