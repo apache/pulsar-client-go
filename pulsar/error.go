@@ -101,8 +101,6 @@ const (
 	SeekFailed
 	// ProducerClosed means producer already been closed
 	ProducerClosed
-	// AckTimeoutLess means Ack timeout should be greater than 1000 ms
-	AckTimeoutLess
 )
 
 // Error implement error interface, composed of two parts: msg and result.
@@ -207,8 +205,6 @@ func getResultStr(r Result) string {
 		return "SeekFailed"
 	case ProducerClosed:
 		return "ProducerClosed"
-	case AckTimeoutLess:
-		return "AckTimeoutLess"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
 	}
