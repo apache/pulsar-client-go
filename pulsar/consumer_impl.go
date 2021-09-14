@@ -32,7 +32,6 @@ import (
 
 const (
 	defaultNackRedeliveryDelay = 1 * time.Minute
-	defaultAckTimeOut          = 1 * time.Second
 )
 
 type acker interface {
