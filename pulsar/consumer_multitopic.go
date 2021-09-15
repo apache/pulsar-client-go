@@ -146,10 +146,13 @@ func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 		return
 	}
 
-	fqdnTopic := internal.TopicNameWithoutPartitionPart(names[0])
+	tn := names[0]
+	fqdnTopic := internal.TopicNameWithoutPartitionPart(tn)
 	consumer, ok := c.consumers[fqdnTopic]
 	if !ok {
-		if consumer, ok = c.consumers[names[0].Name]; !ok {
+		// check to see if the topic with the partition part is in the consumers
+		// this can happen when the consumer is configured to consume from a specific partition
+		if consumer, ok = c.consumers[tn.Name]; !ok {
 			c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
 			return
 		}
