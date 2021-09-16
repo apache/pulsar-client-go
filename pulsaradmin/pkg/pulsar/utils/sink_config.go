@@ -44,6 +44,8 @@ type SinkConfig struct {
 	InputSpecs            map[string]ConsumerConfig `json:"inputSpecs,omitempty" yaml:"inputSpecs"`
 	Configs               map[string]interface{}    `json:"configs,omitempty" yaml:"configs"`
 
+	CustomRuntimeOptions string `json:"customRuntimeOptions,omitempty" yaml:"customRuntimeOptions"`
+
 	// This is a map of secretName(aka how the secret is going to be
 	// accessed in the function via context) to an object that
 	// encapsulates how the secret is fetched by the underlying
