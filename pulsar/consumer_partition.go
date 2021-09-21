@@ -516,6 +516,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		switch crypToFailureAction {
 		case crypto.ConsumerCryptoFailureActionFail:
 			pc.log.Errorf("consuming message failed due to decryption err :%v", err)
+			pc.NackID(newTrackingMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), 0, 0, nil))
 			return err
 		case crypto.ConsumerCryptoFailureActionDiscard:
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecryptionError)

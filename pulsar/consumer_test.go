@@ -2786,3 +2786,64 @@ func TestConsumerEncryptionWithoutKeyReader(t *testing.T) {
 		assert.Equal(t, message, string(d))
 	}
 }
+
+func TestEncryptDecryptRedeliveryOnFailure(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+
+	topic := newTopicName()
+	subcription := "test-subscription-redelivery"
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: subcription,
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: NewEncKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_invalid_rsa.pem"),
+		},
+	})
+	assert.Nil(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: NewEncKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"new-enc-key"},
+		},
+	})
+	assert.Nil(t, err)
+
+	producer.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("new-test-message"),
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1000*time.Millisecond)
+	defer cancel()
+
+	// message receive should fail due to decryption error
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, msg)
+	assert.NotNil(t, err)
+
+	consumer.Close()
+
+	// create consumer with same subscription and proper rsa key pairs
+	consumer, err = client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: subcription,
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: NewEncKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+		},
+	})
+	assert.Nil(t, err)
+
+	// previous message should be redelivered
+	msg, err = consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+	consumer.Ack(msg)
+}
