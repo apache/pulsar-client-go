@@ -663,6 +663,7 @@ func (f *functions) Upload(sourceFile, path string) error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	endpoint := f.pulsar.endpoint(f.basePath, "upload")
 	var b bytes.Buffer
 	w := multipart.NewWriter(&b)
