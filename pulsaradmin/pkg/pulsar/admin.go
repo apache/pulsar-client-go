@@ -51,6 +51,7 @@ type Client interface {
 	ResourceQuotas() ResourceQuotas
 	FunctionsWorker() FunctionsWorker
 	Token() Token
+	Packages() Packages
 }
 
 type pulsarClient struct {
