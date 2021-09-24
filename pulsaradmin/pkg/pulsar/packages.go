@@ -51,7 +51,6 @@ type Packages interface {
 	//        contact information of a package
 	// @param properties
 	// 		  external infromations of a package
-
 	Upload(packageURL, filePath, description, contact string, properties map[string]string) error
 
 	// List all the packages with the given type in a namespace
