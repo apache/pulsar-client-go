@@ -30,6 +30,8 @@ import (
 )
 
 type multiTopicConsumer struct {
+	client *client
+
 	options ConsumerOptions
 
 	consumerName string
@@ -48,6 +50,7 @@ type multiTopicConsumer struct {
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
 	mtc := &multiTopicConsumer{
+		client:       client,
 		options:      options,
 		messageCh:    messageCh,
 		consumers:    make(map[string]Consumer, len(topics)),
@@ -186,6 +189,7 @@ func (c *multiTopicConsumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()
 	})
