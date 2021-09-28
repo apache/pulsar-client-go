@@ -758,7 +758,7 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 	producerID := sendError.GetProducerId()
 
 	c.listenersLock.RLock()
-	producerCallback := c.listeners[producerID]
+	producerListener := c.listeners[producerID]
 	c.listenersLock.RUnlock()
 
 	switch sendError.GetError() {
@@ -782,7 +782,7 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again
-		producerCallback.ConnectionClosed()
+		producerListener.ConnectionClosed()
 	}
 }
 
