@@ -383,9 +383,9 @@ func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 	defer c.Close()
 	ci := c.(*client)
 
-	// fetch from namespace that does not exist
-	name := generateRandomName()
-	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("%s/%s", name, name), internal.Persistent)
+	//// fetch from namespace that does not exist
+	//name := generateRandomName()
+	topics, err := ci.lookupService.GetTopicsOfNamespace("public/default", internal.Persistent)
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(topics))
 }
