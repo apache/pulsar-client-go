@@ -372,8 +372,9 @@ func TestTopicPartitions(t *testing.T) {
 
 func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 	c, err := NewClient(ClientOptions{
-		URL:            serviceURL,
-		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
+		URL:                   serviceURL,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
 	})
 	if err != nil {
 		t.Errorf("failed to create client error: %+v", err)
