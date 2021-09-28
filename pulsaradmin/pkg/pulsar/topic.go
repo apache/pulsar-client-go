@@ -216,6 +216,15 @@ type Topics interface {
 
 	// RemoveBacklogQuota removes a backlog quota policy from a topic
 	RemoveBacklogQuota(utils.TopicName, utils.BacklogQuotaType) error
+
+	// GetInactiveTopicPolicies gets the inactive topic policies on a topic
+	GetInactiveTopicPolicies(topic utils.TopicName, applied bool) (utils.InactiveTopicPolicies, error)
+
+	// RemoveInactiveTopicPolicies removes inactive topic policies from a topic
+	RemoveInactiveTopicPolicies(utils.TopicName) error
+
+	// SetInactiveTopicPolicies sets the inactive topic policies on a topic
+	SetInactiveTopicPolicies(topic utils.TopicName, data utils.InactiveTopicPolicies) error
 }
 
 type topics struct {
@@ -672,4 +681,23 @@ func (t *topics) RemoveBacklogQuota(topic utils.TopicName, backlogQuotaType util
 	return t.pulsar.Client.DeleteWithQueryParams(endpoint, map[string]string{
 		"backlogQuotaType": string(backlogQuotaType),
 	})
+}
+
+func (t *topics) GetInactiveTopicPolicies(topic utils.TopicName, applied bool) (utils.InactiveTopicPolicies, error) {
+	var out utils.InactiveTopicPolicies
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "inactiveTopicPolicies")
+	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &out, map[string]string{
+		"applied": strconv.FormatBool(applied),
+	}, true)
+	return out, err
+}
+
+func (t *topics) RemoveInactiveTopicPolicies(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "inactiveTopicPolicies")
+	return t.pulsar.Client.Delete(endpoint)
+}
+
+func (t *topics) SetInactiveTopicPolicies(topic utils.TopicName, data utils.InactiveTopicPolicies) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "inactiveTopicPolicies")
+	return t.pulsar.Client.Post(endpoint, data)
 }
