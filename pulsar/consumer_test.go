@@ -2787,6 +2787,7 @@ func TestConsumerEncryptionWithoutKeyReader(t *testing.T) {
 	}
 }
 
+// TestEncryptDecryptRedeliveryOnFailure test redelivery failed messages
 func TestEncryptDecryptRedeliveryOnFailure(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
