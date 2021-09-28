@@ -28,6 +28,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/pkg/errors"
+
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 )
 
@@ -116,8 +118,11 @@ func (p packages) Download(packageURL, destinationFile string) error {
 }
 
 func (p packages) Upload(packageURL, filePath, description, contact string, properties map[string]string) error {
-	if strings.TrimSpace(filePath) == "" && strings.TrimSpace(packageURL) == "" {
-		return fmt.Errorf("packageURL or file path is empty")
+	if strings.TrimSpace(filePath) == "" {
+		return errors.New("file path is empty")
+	}
+	if strings.TrimSpace(packageURL) == "" {
+		return errors.New("package URL is empty")
 	}
 	packageName, err := utils.GetPackageName(packageURL)
 	if err != nil {
