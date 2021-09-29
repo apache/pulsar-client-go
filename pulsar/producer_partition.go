@@ -352,13 +352,12 @@ func (p *partitionProducer) reconnectToBroker() {
 			// Successfully reconnected
 			p.log.WithField("cnx", p.cnx.ID()).Info("Reconnected producer to broker")
 			return
-		} else {
-			errMsg := err.Error()
-			if strings.Contains(errMsg, errTopicNotFount) {
-				// when topic is deleted, we should give up reconnection.
-				p.log.Warn("Topic Not Found.")
-				break
-			}
+		}
+		errMsg := err.Error()
+		if strings.Contains(errMsg, errTopicNotFount) {
+			// when topic is deleted, we should give up reconnection.
+			p.log.Warn("Topic Not Found.")
+			break
 		}
 
 		if maxRetry > 0 {
