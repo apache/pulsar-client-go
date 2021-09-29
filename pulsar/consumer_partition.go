@@ -20,6 +20,7 @@ package pulsar
 import (
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
@@ -892,6 +893,13 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
 			return
+		} else {
+			errMsg := err.Error()
+			if strings.Contains(errMsg, errTopicNotFount) {
+				// when topic is deleted, we should give up reconnection.
+				pc.log.Warn("Topic Not Found.")
+				break
+			}
 		}
 
 		if maxRetry > 0 {
