@@ -757,10 +757,6 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 
 	producerID := sendError.GetProducerId()
 
-	c.listenersLock.RLock()
-	producerListener := c.listeners[producerID]
-	c.listenersLock.RUnlock()
-
 	switch sendError.GetError() {
 	case pb.ServerError_NotAllowedError:
 		_, ok := c.deletePendingProducers(producerID)
@@ -782,7 +778,7 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again
-		producerListener.ConnectionClosed()
+		c.Close()
 	}
 }
 
