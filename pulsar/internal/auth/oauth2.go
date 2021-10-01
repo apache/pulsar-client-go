@@ -21,6 +21,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net/http"
+	"strings"
 
 	xoauth2 "golang.org/x/oauth2"
 
@@ -35,6 +36,7 @@ const (
 	ConfigParamTypeClientCredentials = "client_credentials"
 	ConfigParamIssuerURL             = "issuerUrl"
 	ConfigParamAudience              = "audience"
+	ConfigParamScope                 = "scope"
 	ConfigParamKeyFile               = "privateKey"
 	ConfigParamClientID              = "clientId"
 )
@@ -62,7 +64,7 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 	case ConfigParamTypeClientCredentials:
 		flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
 			KeyFile:          params[ConfigParamKeyFile],
-			AdditionalScopes: nil,
+			AdditionalScopes: strings.Split(params[ConfigParamScope], ""),
 		})
 		if err != nil {
 			return nil, err
