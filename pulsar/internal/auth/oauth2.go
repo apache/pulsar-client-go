@@ -36,7 +36,7 @@ const (
 	ConfigParamTypeClientCredentials = "client_credentials"
 	ConfigParamIssuerURL             = "issuerUrl"
 	ConfigParamAudience              = "audience"
-	ConfigParamScopes                = "scopes"
+	ConfigParamScope                 = "scope"
 	ConfigParamKeyFile               = "privateKey"
 	ConfigParamClientID              = "clientId"
 )
@@ -64,7 +64,7 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 	case ConfigParamTypeClientCredentials:
 		flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
 			KeyFile:          params[ConfigParamKeyFile],
-			AdditionalScopes: strings.Split(params[ConfigParamScopes], " "),
+			AdditionalScopes: strings.Split(params[ConfigParamScope], " "),
 		})
 		if err != nil {
 			return nil, err
