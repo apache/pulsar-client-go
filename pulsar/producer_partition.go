@@ -748,7 +748,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
 	}
-	// call interceptor with context parameter 
+	// call interceptor with context parameter
 	p.options.Interceptors.BeforeSend(ctx, p, msg)
 
 	if p.options.DisableBlockIfQueueFull {
