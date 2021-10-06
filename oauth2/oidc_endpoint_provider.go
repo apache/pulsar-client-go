@@ -36,9 +36,15 @@ type OIDCWellKnownEndpoints struct {
 // GetOIDCWellKnownEndpointsFromIssuerURL gets the well known endpoints for the
 // passed in issuer url
 func GetOIDCWellKnownEndpointsFromIssuerURL(issuerURL string) (*OIDCWellKnownEndpoints, error) {
+	if issuerURL == "" {
+		return nil, errors.New("required: issuer url")
+	}
 	u, err := url.Parse(issuerURL)
 	if err != nil {
 		return nil, errors.Wrap(err, "could not parse issuer url to build well known endpoints")
+	}
+	if !u.IsAbs() {
+		return nil, errors.New("invalid: issuer url")
 	}
 	u.Path = path.Join(u.Path, ".well-known/openid-configuration")
 
