@@ -42,7 +42,11 @@ func runFilterTopicsMatchingAllTopics(t *testing.T) {
 		"persistent://public/default/my-topic-1",
 	}
 
-	matching := filterTopics(topics, regex)
+	matching, err := filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	assert.Equal(t, topics, matching)
 
 	// test partitions
@@ -51,7 +55,10 @@ func runFilterTopicsMatchingAllTopics(t *testing.T) {
 		"persistent://public/default/my-topic-partition-1",
 		"persistent://public/default/my-topic-partition-3",
 	}
-	matching = filterTopics(topics, regex)
+	matching, err = filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 1, len(matching))
 	assert.Equal(t, "persistent://public/default/my-topic", matching[0])
 }
@@ -61,14 +68,20 @@ func runFilterTopicsMatchingFoo(t *testing.T) {
 	topics := []string{
 		"persistent://public/foo/foo",
 	}
-	matching := filterTopics(topics, regex)
+	matching, err := filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, topics, matching)
 
 	topics = []string{
 		"persistent://public/foo/foo",
 		"persistent://public/foo/fo-my-topic",
 	}
-	matching = filterTopics(topics, regex)
+	matching, err = filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 1, len(matching))
 	assert.Equal(t, topics[0], matching[0])
 
@@ -77,7 +90,10 @@ func runFilterTopicsMatchingFoo(t *testing.T) {
 		"persistent://public/foo/foobar",
 		"persistent://public/foo/foo-my-topic",
 	}
-	matching = filterTopics(topics, regex)
+	matching, err = filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 3, len(matching))
 	assert.Equal(t, topics, matching)
 
@@ -86,7 +102,10 @@ func runFilterTopicsMatchingFoo(t *testing.T) {
 		"persistent://public/foo/foobar-partition-0",
 		"persistent://public/foo/foobar-partition-1",
 	}
-	matching = filterTopics(topics, regex)
+	matching, err = filterTopics(topics, regex)
+	if err != nil {
+		t.Fatal(err)
+	}
 	assert.Equal(t, 1, len(matching))
 	assert.Equal(t, "persistent://public/foo/foobar", matching[0])
 }
@@ -147,7 +166,11 @@ func TestRegexConsumerDiscover(t *testing.T) {
 }
 
 func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string) {
-	tn, _ := internal.ParseTopicName(fmt.Sprintf("persistent://%s/.*", namespace))
+	tn, err := internal.ParseTopicName(fmt.Sprintf("persistent://%s/.*", namespace))
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	pattern := regexp.MustCompile(fmt.Sprintf("%s/.*", namespace))
 	opts := ConsumerOptions{
 		SubscriptionName:    "regex-sub",
@@ -185,7 +208,10 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 }
 
 func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string) {
-	tn, _ := internal.ParseTopicName(fmt.Sprintf("persistent://%s/foo-*", namespace))
+	tn, err := internal.ParseTopicName(fmt.Sprintf("persistent://%s/foo-*", namespace))
+	if err != nil {
+		t.Fatal(err)
+	}
 	pattern := regexp.MustCompile(fmt.Sprintf("%s/foo-*", namespace))
 	opts := ConsumerOptions{
 		SubscriptionName:    "regex-sub",

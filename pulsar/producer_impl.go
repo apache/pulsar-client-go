@@ -92,12 +92,17 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		options.PartitionsAutoDiscoveryInterval = defaultPartitionsAutoDiscoveryInterval
 	}
 
+	topicName, err := internal.ParseTopicName(options.Topic)
+	if err != nil {
+		return nil, err
+	}
+
 	p := &producer{
 		options: options,
 		topic:   options.Topic,
 		client:  client,
 		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics: client.metrics.GetTopicMetrics(options.Topic),
+		metrics: client.metrics.GetTopicMetrics(topicName),
 	}
 
 	if options.Interceptors == nil {
@@ -124,8 +129,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		}
 	}
 
-	err := p.internalCreatePartitionsProducers()
-	if err != nil {
+	if err := p.internalCreatePartitionsProducers(); err != nil {
 		return nil, err
 	}
 

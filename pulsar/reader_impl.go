@@ -45,6 +45,11 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(InvalidConfiguration, "Topic is required")
 	}
 
+	tn, err := internal.ParseTopicName(options.Topic)
+	if err != nil {
+		return nil, err
+	}
+
 	if options.StartMessageID == nil {
 		return nil, newError(InvalidConfiguration, "StartMessageID is required")
 	}
@@ -93,7 +98,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	reader := &reader{
 		messageCh: make(chan ConsumerMessage),
 		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics:   client.metrics.GetTopicMetrics(options.Topic),
+		metrics:   client.metrics.GetTopicMetrics(tn),
 	}
 
 	// Provide dummy dlq router with not dlq policy

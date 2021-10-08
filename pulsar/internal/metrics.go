@@ -465,8 +465,7 @@ func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 	return metrics
 }
 
-func (mp *Metrics) GetTopicMetrics(t string) *TopicMetrics {
-	tn, _ := ParseTopicName(t)
+func (mp *Metrics) GetTopicMetrics(tn *TopicName) *TopicMetrics {
 	topic := TopicNameWithoutPartitionPart(tn)
 	labels := map[string]string{
 		"pulsar_tenant":    tn.Tenant,
