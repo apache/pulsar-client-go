@@ -241,6 +241,7 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 func TestRegexConsumer(t *testing.T) {
 	t.Run("MatchOneTopic", runWithClientNamespace(runRegexConsumerMatchOneTopic))
 	t.Run("AddTopic", runWithClientNamespace(runRegexConsumerAddMatchingTopic))
+	t.Run("RemoveTopic", runWithClientNamespace(runRegexConsumerRemoveMatchingTopic))
 }
 
 func runRegexConsumerMatchOneTopic(t *testing.T, c Client, namespace string) {
@@ -344,6 +345,82 @@ func runRegexConsumerAddMatchingTopic(t *testing.T, c Client, namespace string) 
 				"message does not start with foo: %s", string(m.Payload()))
 		}
 	}
+}
+
+func runRegexConsumerRemoveMatchingTopic(t *testing.T, c Client, namespace string) {
+	tn, _ := internal.ParseTopicName(fmt.Sprintf("persistent://%s/.*", namespace))
+	pattern := regexp.MustCompile(fmt.Sprintf("%s/.*", namespace))
+
+	opts := ConsumerOptions{
+		SubscriptionName:    "regex-sub",
+		AutoDiscoveryPeriod: 5 * time.Minute,
+	}
+
+	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
+	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
+	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	rc := consumer.(*regexConsumer)
+
+	// trigger discovery
+	rc.discover()
+
+	consumers := cloneConsumers(rc)
+	assert.Equal(t, 0, len(consumers))
+
+	// generate three random topics test they exist and assert three consumers
+	tPrefix := generateRandomName()
+	topics := make([]string, 3)
+	for i := 0; i < 3; i++ {
+		topics[i] = fmt.Sprintf("%s/%s-%d", namespace, tPrefix, i)
+		if err := createTopic(topics[i]); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ptopics, err := getNamespaceTopics(namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, tp := range topics {
+		assert.Contains(t, ptopics, tp)
+	}
+
+	rc.discover()
+	time.Sleep(2000 * time.Millisecond)
+
+	consumers = cloneConsumers(rc)
+	assert.Equal(t, 3, len(consumers))
+
+	// delete 0th random topic
+	if err := deleteTopic(topics[0]); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(1000 * time.Millisecond)
+	rc.discover()
+	time.Sleep(1000 * time.Millisecond)
+
+	// assert that the topic has not been recreated
+	ptopics, err = getNamespaceTopics(namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.NotContains(t, ptopics, topics[0])
+	// assert the other topics are still there
+	for _, tp := range topics[1:] {
+		assert.Contains(t, ptopics, tp)
+	}
+
+	// assert only two consumers now
+	consumers = cloneConsumers(rc)
+	for _, c := range consumers {
+		assert.NotEmpty(t, c.Subscription())
+	}
+	assert.Equal(t, 2, len(consumers))
 }
 
 func genMessages(p Producer, num int, msgFn func(idx int) string) error {

@@ -184,7 +184,6 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (*consumer, error) {
-
 	consumer := &consumer{
 		topic:                     topic,
 		client:                    client,
@@ -334,6 +333,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
+				disableForceTopicCreation:  c.disableForceTopicCreation,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
