@@ -147,6 +147,7 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 				ClientCredentials: &clientCredentials,
 				TokenEndpoint:     oidcEndpoints.TokenEndpoint,
 				Token:             nil,
+				Scopes:            []string{"profile"},
 			}
 			_, err := refresher.Refresh(og)
 			Expect(err).ToNot(HaveOccurred())
@@ -155,6 +156,7 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 				ClientID:      clientCredentials.ClientID,
 				ClientSecret:  clientCredentials.ClientSecret,
 				Audience:      og.Audience,
+				Scopes:        og.Scopes,
 			}))
 		})
 
@@ -169,6 +171,7 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 				ClientCredentials: &clientCredentials,
 				TokenEndpoint:     oidcEndpoints.TokenEndpoint,
 				Token:             nil,
+				Scopes:            []string{"profile"},
 			}
 			ng, err := refresher.Refresh(og)
 			Expect(err).ToNot(HaveOccurred())
@@ -178,6 +181,7 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 			Expect(ng.TokenEndpoint).To(Equal(oidcEndpoints.TokenEndpoint))
 			expected := convertToOAuth2Token(mockTokenExchanger.ReturnsTokens, mockClock)
 			Expect(*ng.Token).To(Equal(expected))
+			Expect(ng.Scopes).To(Equal([]string{"profile"}))
 		})
 	})
 })

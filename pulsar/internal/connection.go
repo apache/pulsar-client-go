@@ -842,10 +842,8 @@ func (c *connection) Close() {
 	c.closeOnce.Do(func() {
 		c.Lock()
 		cnx := c.cnx
-		// do not use changeState() since they share the same lock
-		c.setState(connectionClosed)
-		c.cond.Broadcast()
 		c.Unlock()
+		c.changeState(connectionClosed)
 
 		if cnx != nil {
 			_ = cnx.Close()
@@ -884,10 +882,8 @@ func (c *connection) Close() {
 }
 
 func (c *connection) changeState(state connectionState) {
-	c.Lock()
 	c.setState(state)
 	c.cond.Broadcast()
-	c.Unlock()
 }
 
 func (c *connection) getState() connectionState {
