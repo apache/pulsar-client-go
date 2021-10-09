@@ -155,6 +155,9 @@ type ConsumerOptions struct {
 
 	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
+
+	// Decryption decryption related fields to decrypt the encrypted message
+	Decryption *MessageDecryptionInfo
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

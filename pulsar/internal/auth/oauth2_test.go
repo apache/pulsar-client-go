@@ -98,6 +98,7 @@ func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 			ConfigParamClientID:  "client-id",
 			ConfigParamAudience:  "audience",
 			ConfigParamKeyFile:   kf,
+			ConfigParamScope:     "profile",
 		},
 		{
 			ConfigParamType:      ConfigParamTypeClientCredentials,
@@ -105,6 +106,7 @@ func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 			ConfigParamClientID:  "client-id",
 			ConfigParamAudience:  "audience",
 			ConfigParamKeyFile:   fmt.Sprintf("file://%s", kf),
+			ConfigParamScope:     "profile",
 		},
 		{
 			ConfigParamType:      ConfigParamTypeClientCredentials,
@@ -118,6 +120,7 @@ func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
   "client_email":"oauth@test.org",
   "issuer_url":"%s"
 }`, server.URL),
+			ConfigParamScope: "profile",
 		},
 	}
 

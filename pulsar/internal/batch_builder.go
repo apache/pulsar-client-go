@@ -23,6 +23,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -35,7 +36,7 @@ type BuffersPool interface {
 type BatcherBuilderProvider func(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error)
 
 // BatchBuilder is a interface of batch builders
@@ -51,12 +52,12 @@ type BatchBuilder interface {
 	) bool
 
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{})
+	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}, err error)
 
 	// Flush all the messages buffered in multiple batches and wait until all
 	// messages have been successfully persisted.
 	FlushBatches() (
-		batchData []Buffer, sequenceID []uint64, callbacks [][]interface{},
+		batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}, errors []error,
 	)
 
 	// Return the batch container batch message in multiple batches.
@@ -93,13 +94,15 @@ type batchContainer struct {
 	buffersPool         BuffersPool
 
 	log log.Logger
+
+	encryptor crypto.Encryptor
 }
 
 // newBatchContainer init a batchContainer
 func newBatchContainer(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) batchContainer {
 
 	bc := batchContainer{
@@ -122,6 +125,7 @@ func newBatchContainer(
 		compressionProvider: getCompressionProvider(compressionType, level),
 		buffersPool:         bufferPool,
 		log:                 logger,
+		encryptor:           encryptor,
 	}
 
 	if compressionType != pb.CompressionType_NONE {
@@ -135,12 +139,12 @@ func newBatchContainer(
 func NewBatchBuilder(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
 		maxMessages, maxBatchSize, producerName, producerID, compressionType,
-		level, bufferPool, logger,
+		level, bufferPool, logger, encryptor,
 	)
 
 	return &bc, nil
@@ -211,11 +215,11 @@ func (bc *batchContainer) reset() {
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
 func (bc *batchContainer) Flush() (
-	batchData Buffer, sequenceID uint64, callbacks []interface{},
+	batchData Buffer, sequenceID uint64, callbacks []interface{}, err error,
 ) {
 	if bc.numMessages == 0 {
 		// No-Op for empty batch
-		return nil, 0, nil
+		return nil, 0, nil, nil
 	}
 	bc.log.Debug("BatchBuilder flush: messages: ", bc.numMessages)
 
@@ -229,19 +233,21 @@ func (bc *batchContainer) Flush() (
 	if buffer == nil {
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
-	serializeBatch(
-		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
-	)
+
+	if err = serializeBatch(
+		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider, bc.encryptor,
+	); err == nil { // no error in serializing Batch
+		sequenceID = bc.cmdSend.Send.GetSequenceId()
+	}
 
 	callbacks = bc.callbacks
-	sequenceID = bc.cmdSend.Send.GetSequenceId()
 	bc.reset()
-	return buffer, sequenceID, callbacks
+	return buffer, sequenceID, callbacks, err
 }
 
 // FlushBatches only for multiple batches container
 func (bc *batchContainer) FlushBatches() (
-	batchData []Buffer, sequenceID []uint64, callbacks [][]interface{},
+	batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}, errors []error,
 ) {
 	panic("single batch container not support FlushBatches(), please use Flush() instead")
 }

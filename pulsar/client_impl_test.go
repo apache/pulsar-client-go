@@ -383,7 +383,7 @@ func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 
 	// fetch from namespace that does not exist
 	name := generateRandomName()
-	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("%s/%s", name, name), internal.Persistent)
+	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("public/%s", name), internal.Persistent)
 	assert.Nil(t, err)
 	assert.Equal(t, 0, len(topics))
 }
@@ -401,7 +401,7 @@ func TestNamespaceTopicsNamespaceDoesNotExitWebURL(t *testing.T) {
 
 	// fetch from namespace that does not exist
 	name := generateRandomName()
-	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("%s/%s", name, name), internal.Persistent)
+	topics, err := ci.lookupService.GetTopicsOfNamespace(fmt.Sprintf("public/%s", name), internal.Persistent)
 	assert.NotNil(t, err)
 	assert.Equal(t, 0, len(topics))
 }

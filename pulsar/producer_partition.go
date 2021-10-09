@@ -19,11 +19,15 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
 	"github.com/gogo/protobuf/proto"
 
@@ -54,6 +58,8 @@ var (
 
 	buffersPool sync.Pool
 )
+
+var errTopicNotFount = "TopicNotFound"
 
 type partitionProducer struct {
 	state  ua.Int32
@@ -130,6 +136,24 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		p.producerName = options.Name
 	}
 
+	encryption := options.Encryption
+	// add default message crypto if not provided
+	if encryption != nil && len(encryption.Keys) > 0 {
+		if encryption.KeyReader == nil {
+			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
+		}
+
+		if encryption.MessageCrypto == nil {
+			logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
+			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
+			if err != nil {
+				logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
+				return nil, err
+			}
+			p.options.Encryption.MessageCrypto = messageCrypto
+		}
+	}
+
 	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
@@ -147,6 +171,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	if p.options.SendTimeout > 0 {
 		go p.failTimeoutMessages()
 	}
+
 	go p.runEventsLoop()
 
 	return p, nil
@@ -205,13 +230,25 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
+
+	var encryptor internalcrypto.Encryptor
+	if p.options.Encryption != nil {
+		encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
+			p.options.Encryption.KeyReader,
+			p.options.Encryption.MessageCrypto,
+			p.options.Encryption.ProducerCryptoFailureAction, p.log)
+	} else {
+		encryptor = internalcrypto.NewNoopEncryptor()
+	}
+
 	if p.options.DisableBatching {
 		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
 		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
-			p.log)
+			p.log,
+			encryptor)
 		if err != nil {
 			return err
 		}
@@ -225,7 +262,8 @@ func (p *partitionProducer) grabCnx() error {
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
-			p.log)
+			p.log,
+			encryptor)
 		if err != nil {
 			return err
 		}
@@ -314,6 +352,12 @@ func (p *partitionProducer) reconnectToBroker() {
 			// Successfully reconnected
 			p.log.WithField("cnx", p.cnx.ID()).Info("Reconnected producer to broker")
 			return
+		}
+		errMsg := err.Error()
+		if strings.Contains(errMsg, errTopicNotFount) {
+			// when topic is deleted, we should give up reconnection.
+			p.log.Warn("Topic Not Found.")
+			break
 		}
 
 		if maxRetry > 0 {
@@ -470,8 +514,19 @@ type pendingItem struct {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
-	batchData, sequenceID, callbacks := p.batchBuilder.Flush()
+	batchData, sequenceID, callbacks, err := p.batchBuilder.Flush()
 	if batchData == nil {
+		return
+	}
+
+	// error occurred in batch flush
+	// report it using callback
+	if err != nil {
+		for _, cb := range callbacks {
+			if sr, ok := cb.(*sendRequest); ok {
+				sr.callback(nil, sr.msg, err)
+			}
+		}
 		return
 	}
 
@@ -589,12 +644,22 @@ func (p *partitionProducer) failTimeoutMessages() {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatches() {
-	batchesData, sequenceIDs, callbacks := p.batchBuilder.FlushBatches()
+	batchesData, sequenceIDs, callbacks, errors := p.batchBuilder.FlushBatches()
 	if batchesData == nil {
 		return
 	}
 
 	for i := range batchesData {
+		// error occurred in processing batch
+		// report it using callback
+		if errors[i] != nil {
+			for _, cb := range callbacks[i] {
+				if sr, ok := cb.(*sendRequest); ok {
+					sr.callback(nil, sr.msg, errors[i])
+				}
+			}
+			continue
+		}
 		if batchesData[i] == nil {
 			continue
 		}

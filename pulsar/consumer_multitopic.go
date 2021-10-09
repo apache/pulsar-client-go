@@ -30,6 +30,8 @@ import (
 )
 
 type multiTopicConsumer struct {
+	client *client
+
 	options ConsumerOptions
 
 	consumerName string
@@ -48,6 +50,7 @@ type multiTopicConsumer struct {
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
 	mtc := &multiTopicConsumer{
+		client:       client,
 		options:      options,
 		messageCh:    messageCh,
 		consumers:    make(map[string]Consumer, len(topics)),
@@ -146,11 +149,16 @@ func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 		return
 	}
 
-	fqdnTopic := internal.TopicNameWithoutPartitionPart(names[0])
+	tn := names[0]
+	fqdnTopic := internal.TopicNameWithoutPartitionPart(tn)
 	consumer, ok := c.consumers[fqdnTopic]
 	if !ok {
-		c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
-		return
+		// check to see if the topic with the partition part is in the consumers
+		// this can happen when the consumer is configured to consume from a specific partition
+		if consumer, ok = c.consumers[tn.Name]; !ok {
+			c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
+			return
+		}
 	}
 	consumer.ReconsumeLater(msg, delay)
 }
@@ -186,6 +194,7 @@ func (c *multiTopicConsumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()
 	})
