@@ -30,7 +30,9 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-const defaultNackRedeliveryDelay = 1 * time.Minute
+const (
+	defaultNackRedeliveryDelay = 1 * time.Minute
+)
 
 type acker interface {
 	AckID(id trackingMessageID)

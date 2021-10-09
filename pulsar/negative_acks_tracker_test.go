@@ -75,19 +75,19 @@ func (nmc *nackMockedConsumer) Wait() <-chan messageID {
 
 func TestNacksTracker(t *testing.T) {
 	nmc := newNackMockedConsumer()
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, log.DefaultNopLogger())
+	nacks := newNegativeAcksTracker(nmc, log.DefaultNopLogger())
 
 	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
-	})
+	}, testNackDelay)
 
 	nacks.Add(messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
-	})
+	}, testNackDelay)
 
 	msgIds := make([]messageID, 0)
 	for id := range nmc.Wait() {
@@ -108,31 +108,31 @@ func TestNacksTracker(t *testing.T) {
 
 func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := newNackMockedConsumer()
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, log.DefaultNopLogger())
+	nacks := newNegativeAcksTracker(nmc, log.DefaultNopLogger())
 
 	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
-	})
+	}, testNackDelay)
 
 	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 2,
-	})
+	}, testNackDelay)
 
 	nacks.Add(messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 3,
-	})
+	}, testNackDelay)
 
 	nacks.Add(messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
-	})
+	}, testNackDelay)
 
 	msgIds := make([]messageID, 0)
 	for id := range nmc.Wait() {
