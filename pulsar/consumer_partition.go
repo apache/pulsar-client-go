@@ -26,8 +26,10 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	cryptointernal "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
@@ -98,6 +100,7 @@ type partitionConsumerOpts struct {
 	maxReconnectToBroker       *uint
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
+	decryption                 *MessageDecryptionInfo
 }
 
 type partitionConsumer struct {
@@ -142,6 +145,7 @@ type partitionConsumer struct {
 	providersMutex       sync.RWMutex
 	compressionProviders map[pb.CompressionType]compression.Provider
 	metrics              *internal.TopicMetrics
+	decryptor            cryptointernal.Decryptor
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
@@ -176,6 +180,27 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		"subscription": options.subscription,
 		"consumerID":   pc.consumerID,
 	})
+
+	var decryptor cryptointernal.Decryptor
+	if pc.options.decryption == nil {
+		decryptor = cryptointernal.NewNoopDecryptor() // default to noopDecryptor
+	} else {
+		if options.decryption.MessageCrypto == nil {
+			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt", false, pc.log)
+			if err != nil {
+				return nil, err
+			}
+			options.decryption.MessageCrypto = messageCrypto
+		}
+		decryptor = cryptointernal.NewConsumerDecryptor(
+			options.decryption.KeyReader,
+			options.decryption.MessageCrypto,
+			pc.log,
+		)
+	}
+
+	pc.decryptor = decryptor
+
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, pc.log)
 
 	err := pc.grabConn()
@@ -480,7 +505,54 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		return err
 	}
 
-	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, headersAndPayload)
+	decryptedPayload, err := pc.decryptor.Decrypt(headersAndPayload.ReadableSlice(), pbMsgID, msgMeta)
+	// error decrypting the payload
+	if err != nil {
+		// default crypto failure action
+		crypToFailureAction := crypto.ConsumerCryptoFailureActionFail
+		if pc.options.decryption != nil {
+			crypToFailureAction = pc.options.decryption.ConsumerCryptoFailureAction
+		}
+
+		switch crypToFailureAction {
+		case crypto.ConsumerCryptoFailureActionFail:
+			pc.log.Errorf("consuming message failed due to decryption err :%v", err)
+			pc.NackID(newTrackingMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), 0, 0, nil))
+			return err
+		case crypto.ConsumerCryptoFailureActionDiscard:
+			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecryptionError)
+			return fmt.Errorf("discarding message on decryption error :%v", err)
+		case crypto.ConsumerCryptoFailureActionConsume:
+			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
+			messages := []*message{
+				{
+					publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+					eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+					key:          msgMeta.GetPartitionKey(),
+					producerName: msgMeta.GetProducerName(),
+					properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
+					topic:        pc.topic,
+					msgID: newMessageID(
+						int64(pbMsgID.GetLedgerId()),
+						int64(pbMsgID.GetEntryId()),
+						pbMsgID.GetBatchIndex(),
+						pc.partitionIdx,
+					),
+					payLoad:             headersAndPayload.ReadableSlice(),
+					schema:              pc.options.schema,
+					replicationClusters: msgMeta.GetReplicateTo(),
+					replicatedFrom:      msgMeta.GetReplicatedFrom(),
+					redeliveryCount:     response.GetRedeliveryCount(),
+					encryptionContext:   createEncryptionContext(msgMeta),
+				},
+			}
+			pc.queueCh <- messages
+			return nil
+		}
+	}
+
+	// decryption is success, decompress the payload
+	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, internal.NewBufferWrapper(decryptedPayload))
 	if err != nil {
 		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
 		return err
@@ -493,6 +565,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	if msgMeta.NumMessagesInBatch != nil {
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
+
 	messages := make([]*message, 0)
 	var ackTracker *ackTracker
 	// are there multiple messages in this batch?
@@ -588,6 +661,39 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) b
 
 	// Non inclusive
 	return pc.startMessageID.greaterEqual(msgID.messageID)
+}
+
+// create EncryptionContext from message metadata
+// this will be used to decrypt the message payload outside of this client
+// it is the responsibility of end user to decrypt the payload
+// It will be used only when  crypto failure action is set to consume i.e crypto.ConsumerCryptoFailureActionConsume
+func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
+	encCtx := EncryptionContext{
+		Algorithm:        msgMeta.GetEncryptionAlgo(),
+		Param:            msgMeta.GetEncryptionParam(),
+		UncompressedSize: int(msgMeta.GetUncompressedSize()),
+		BatchSize:        int(msgMeta.GetNumMessagesInBatch()),
+	}
+
+	if msgMeta.Compression != nil {
+		encCtx.CompressionType = CompressionType(*msgMeta.Compression)
+	}
+
+	kMap := map[string]EncryptionKey{}
+	for _, k := range msgMeta.GetEncryptionKeys() {
+		metaMap := map[string]string{}
+		for _, m := range k.GetMetadata() {
+			metaMap[*m.Key] = *m.Value
+		}
+
+		kMap[*k.Key] = EncryptionKey{
+			KeyValue: k.GetValue(),
+			Metadata: metaMap,
+		}
+	}
+
+	encCtx.Keys = kMap
+	return &encCtx
 }
 
 func (pc *partitionConsumer) ConnectionClosed() {
