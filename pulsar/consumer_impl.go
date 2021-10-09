@@ -151,7 +151,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 		topic = tns[0].Name
-		return topicSubscribe(client, options, topic, messageCh, dlq, rlq)
+		return newInternalConsumer(client, options, topic, messageCh, dlq, rlq, false)
 	}
 
 	if len(options.Topics) > 1 {
@@ -212,6 +212,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	}
 	consumer.stopDiscovery = consumer.runBackgroundPartitionDiscovery(duration)
 
+	consumer.metrics.ConsumersOpened.Inc()
 	return consumer, nil
 }
 
@@ -374,15 +375,6 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		c.metrics.ConsumersPartitions.Add(float64(partitionsToAdd))
 	}
 	return nil
-}
-
-func topicSubscribe(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlqRouter *dlqRouter, retryRouter *retryRouter) (Consumer, error) {
-	c, err := newInternalConsumer(client, options, topic, messageCh, dlqRouter, retryRouter, false)
-	if err == nil {
-		c.metrics.ConsumersOpened.Inc()
-	}
-	return c, err
 }
 
 func (c *consumer) Subscription() string {
