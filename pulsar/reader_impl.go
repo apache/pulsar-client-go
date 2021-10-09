@@ -33,6 +33,7 @@ const (
 
 type reader struct {
 	sync.Mutex
+	client              *client
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
@@ -91,6 +92,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	}
 
 	reader := &reader{
+		client:    client,
 		messageCh: make(chan ConsumerMessage),
 		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
 		metrics:   client.metrics.GetTopicMetrics(options.Topic),
@@ -174,6 +176,7 @@ func (r *reader) hasMoreMessages() bool {
 
 func (r *reader) Close() {
 	r.pc.Close()
+	r.client.handlers.Del(r)
 	r.metrics.ReadersClosed.Inc()
 }
 
