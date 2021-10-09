@@ -144,13 +144,13 @@ type partitionConsumer struct {
 
 	providersMutex       sync.RWMutex
 	compressionProviders map[pb.CompressionType]compression.Provider
-	metrics              *internal.TopicMetrics
+	metrics              *internal.LeveledMetrics
 	decryptor            cryptointernal.Decryptor
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
 	messageCh chan ConsumerMessage, dlq *dlqRouter,
-	metrics *internal.TopicMetrics) (*partitionConsumer, error) {
+	metrics *internal.LeveledMetrics) (*partitionConsumer, error) {
 	pc := &partitionConsumer{
 		parentConsumer:       parent,
 		client:               client,

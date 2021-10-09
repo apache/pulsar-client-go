@@ -36,7 +36,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
@@ -68,7 +68,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
@@ -100,7 +100,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 

@@ -84,13 +84,13 @@ type partitionProducer struct {
 	lastSequenceID   int64
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
-	metrics          *internal.TopicMetrics
+	metrics          *internal.LeveledMetrics
 
 	epoch uint64
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
-	metrics *internal.TopicMetrics) (
+	metrics *internal.LeveledMetrics) (
 	*partitionProducer, error) {
 	var batchingMaxPublishDelay time.Duration
 	if options.BatchingMaxPublishDelay != 0 {

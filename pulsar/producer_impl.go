@@ -57,7 +57,7 @@ type producer struct {
 	closeOnce     sync.Once
 	stopDiscovery func()
 	log           log.Logger
-	metrics       *internal.TopicMetrics
+	metrics       *internal.LeveledMetrics
 }
 
 func getHashingFunction(s HashingScheme) func(string) uint32 {
@@ -97,7 +97,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		topic:   options.Topic,
 		client:  client,
 		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics: client.metrics.GetTopicMetrics(options.Topic),
+		metrics: client.metrics.GetLeveledMetrics(options.Topic),
 	}
 
 	if options.Interceptors == nil {

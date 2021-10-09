@@ -21,9 +21,8 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var topicLabelNames = []string{"pulsar_tenant", "pulsar_namespace", "topic"}
-
 type Metrics struct {
+	metricsLevel      int
 	messagesPublished *prometheus.CounterVec
 	bytesPublished    *prometheus.CounterVec
 	messagesPending   *prometheus.GaugeVec
@@ -50,7 +49,7 @@ type Metrics struct {
 	readersOpened       *prometheus.CounterVec
 	readersClosed       *prometheus.CounterVec
 
-	// Metrics that are not labeled with topic, are immediately available
+	// Metrics that are not labeled with specificity are immediately available
 	ConnectionsOpened                     prometheus.Counter
 	ConnectionsClosed                     prometheus.Counter
 	ConnectionsEstablishmentErrors        prometheus.Counter
@@ -60,7 +59,7 @@ type Metrics struct {
 	RPCRequestCount                       prometheus.Counter
 }
 
-type TopicMetrics struct {
+type LeveledMetrics struct {
 	MessagesPublished        prometheus.Counter
 	BytesPublished           prometheus.Counter
 	MessagesPending          prometheus.Gauge
@@ -89,155 +88,171 @@ type TopicMetrics struct {
 	ReadersClosed       prometheus.Counter
 }
 
-func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
+func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]string) *Metrics {
 	constLabels := map[string]string{
 		"client": "go",
 	}
 	for k, v := range userDefinedLabels {
 		constLabels[k] = v
 	}
+	var metricsLevelLabels []string
+
+	// note: ints here mirror MetricsCardinality in client.go to avoid import cycle
+	switch metricsCardinality {
+	case 1: //MetricsCardinalityNone
+		metricsLevelLabels = []string{}
+	case 2: //MetricsCardinalityTenant
+		metricsLevelLabels = []string{"pulsar_tenant"}
+	case 3: //MetricsCardinalityNamespace
+		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace"}
+	case 4: //MetricsCardinalityTopic
+		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace", "topic"}
+	default: //Anything else is namespace
+		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace"}
+	}
 
 	metrics := &Metrics{
+		metricsLevel: metricsCardinality,
 		messagesPublished: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_messages_published",
 			Help:        "Counter of messages published by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		bytesPublished: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_bytes_published",
 			Help:        "Counter of messages published by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		messagesPending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_producer_pending_messages",
 			Help:        "Counter of messages pending to be published by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		bytesPending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_producer_pending_bytes",
 			Help:        "Counter of bytes pending to be published by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		publishErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_producer_errors",
 			Help:        "Counter of publish errors",
 			ConstLabels: constLabels,
-		}, append(topicLabelNames, "error")),
+		}, append(metricsLevelLabels, "error")),
 
 		publishLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "pulsar_client_producer_latency_seconds",
 			Help:        "Publish latency experienced by the client",
 			ConstLabels: constLabels,
 			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		publishRPCLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "pulsar_client_producer_rpc_latency_seconds",
 			Help:        "Publish RPC latency experienced internally by the client when sending data to receiving an ack",
 			ConstLabels: constLabels,
 			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		producersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_producers_opened",
 			Help:        "Counter of producers created by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		producersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_producers_closed",
 			Help:        "Counter of producers closed by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		producersPartitions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_producers_partitions_active",
 			Help:        "Counter of individual partitions the producers are currently active",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		consumersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumers_opened",
 			Help:        "Counter of consumers created by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		consumersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumers_closed",
 			Help:        "Counter of consumers closed by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		consumersPartitions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_consumers_partitions_active",
 			Help:        "Counter of individual partitions the consumers are currently active",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		messagesReceived: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_messages_received",
 			Help:        "Counter of messages received by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		bytesReceived: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_bytes_received",
 			Help:        "Counter of bytes received by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		prefetchedMessages: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_consumer_prefetched_messages",
 			Help:        "Number of messages currently sitting in the consumer pre-fetch queue",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		prefetchedBytes: prometheus.NewGaugeVec(prometheus.GaugeOpts{
 			Name:        "pulsar_client_consumer_prefetched_bytes",
 			Help:        "Total number of bytes currently sitting in the consumer pre-fetch queue",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		acksCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumer_acks",
 			Help:        "Counter of messages acked by client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		nacksCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumer_nacks",
 			Help:        "Counter of messages nacked by client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		dlqCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumer_dlq_messages",
 			Help:        "Counter of messages sent to Dead letter queue",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		processingTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
 			Name:        "pulsar_client_consumer_processing_time_seconds",
 			Help:        "Time it takes for application to process messages",
 			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		readersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_readers_opened",
 			Help:        "Counter of readers created by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		readersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_readers_closed",
 			Help:        "Counter of readers closed by the client",
 			ConstLabels: constLabels,
-		}, topicLabelNames),
+		}, metricsLevelLabels),
 
 		ConnectionsOpened: prometheus.NewCounter(prometheus.CounterOpts{
 			Name:        "pulsar_client_connections_opened",
@@ -465,16 +480,22 @@ func NewMetricsProvider(userDefinedLabels map[string]string) *Metrics {
 	return metrics
 }
 
-func (mp *Metrics) GetTopicMetrics(t string) *TopicMetrics {
+func (mp *Metrics) GetLeveledMetrics(t string) *LeveledMetrics {
+	labels := make(map[string]string, 3)
 	tn, _ := ParseTopicName(t)
 	topic := TopicNameWithoutPartitionPart(tn)
-	labels := map[string]string{
-		"pulsar_tenant":    tn.Tenant,
-		"pulsar_namespace": tn.Namespace,
-		"topic":            topic,
+	switch mp.metricsLevel {
+	case 4:
+		labels["topic"] = topic
+		fallthrough
+	case 3:
+		labels["pulsar_namespace"] = tn.Namespace
+		fallthrough
+	case 2:
+		labels["pulsar_tenant"] = tn.Tenant
 	}
 
-	tm := &TopicMetrics{
+	lm := &LeveledMetrics{
 		MessagesPublished:        mp.messagesPublished.With(labels),
 		BytesPublished:           mp.bytesPublished.With(labels),
 		MessagesPending:          mp.messagesPending.With(labels),
@@ -503,7 +524,7 @@ func (mp *Metrics) GetTopicMetrics(t string) *TopicMetrics {
 		ReadersClosed:       mp.readersClosed.With(labels),
 	}
 
-	return tm
+	return lm
 }
 
 func mergeMaps(a, b map[string]string) map[string]string {
