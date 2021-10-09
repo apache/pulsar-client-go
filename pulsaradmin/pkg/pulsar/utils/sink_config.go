@@ -33,10 +33,11 @@ type SinkConfig struct {
 	Name           string `json:"name,omitempty" yaml:"name"`
 	ClassName      string `json:"className,omitempty" yaml:"className"`
 
-	Archive                string `json:"archive,omitempty" yaml:"archive"`
-	ProcessingGuarantees   string `json:"processingGuarantees,omitempty" yaml:"processingGuarantees"`
-	SourceSubscriptionName string `json:"sourceSubscriptionName,omitempty" yaml:"sourceSubscriptionName"`
-	RuntimeFlags           string `json:"runtimeFlags,omitempty" yaml:"runtimeFlags"`
+	Archive                    string `json:"archive,omitempty" yaml:"archive"`
+	ProcessingGuarantees       string `json:"processingGuarantees,omitempty" yaml:"processingGuarantees"`
+	SourceSubscriptionName     string `json:"sourceSubscriptionName,omitempty" yaml:"sourceSubscriptionName"`
+	SourceSubscriptionPosition string `json:"sourceSubscriptionPosition,omitempty" yaml:"sourceSubscriptionPosition"`
+	RuntimeFlags               string `json:"runtimeFlags,omitempty" yaml:"runtimeFlags"`
 
 	Inputs                []string                  `json:"inputs,omitempty" yaml:"inputs"`
 	TopicToSerdeClassName map[string]string         `json:"topicToSerdeClassName,omitempty" yaml:"topicToSerdeClassName"`

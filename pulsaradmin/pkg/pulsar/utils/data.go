@@ -134,6 +134,7 @@ type SinkData struct {
 	Inputs                  string      `json:"inputs,omitempty"`
 	TopicsPattern           string      `json:"topicsPattern,omitempty"`
 	SubsName                string      `json:"subsName,omitempty"`
+	SubsPosition            string      `json:"subsPosition,omitempty"`
 	CustomSerdeInputString  string      `json:"customSerdeInputString,omitempty"`
 	CustomSchemaInputString string      `json:"customSchemaInputString,omitempty"`
 	ProcessingGuarantees    string      `json:"processingGuarantees,omitempty"`
