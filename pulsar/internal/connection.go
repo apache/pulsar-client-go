@@ -531,7 +531,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponseError(cmd.GetError())
 
 	case pb.BaseCommand_SEND_ERROR:
-		c.handleSendError(cmd.GetError())
+		c.handleSendError(cmd.GetSendError())
 
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
@@ -752,36 +752,45 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	c.writeCommand(baseCommand(pb.BaseCommand_AUTH_RESPONSE, cmdAuthResponse))
 }
 
-func (c *connection) handleSendError(cmdError *pb.CommandError) {
-	c.log.Warnf("Received send error from server: [%v] : [%s]", cmdError.GetError(), cmdError.GetMessage())
+func (c *connection) handleSendError(sendError *pb.CommandSendError) {
+	c.log.Warnf("Received send error from server: [%v] : [%s]", sendError.GetError(), sendError.GetMessage())
 
-	requestID := cmdError.GetRequestId()
+	producerID := sendError.GetProducerId()
 
-	switch cmdError.GetError() {
+	switch sendError.GetError() {
 	case pb.ServerError_NotAllowedError:
-		request, ok := c.deletePendingRequest(requestID)
+		_, ok := c.deletePendingProducers(producerID)
 		if !ok {
 			c.log.Warnf("Received unexpected error response for request %d of type %s",
-				requestID, cmdError.GetError())
+				producerID, sendError.GetError())
 			return
 		}
 
-		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
-		request.callback(nil, errors.New(errMsg))
+		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
 	case pb.ServerError_TopicTerminatedError:
-		request, ok := c.deletePendingRequest(requestID)
+		_, ok := c.deletePendingProducers(producerID)
 		if !ok {
-			c.log.Warnf("Received unexpected error response for request %d of type %s",
-				requestID, cmdError.GetError())
+			c.log.Warnf("Received unexpected error response for producer %d of type %s",
+				producerID, sendError.GetError())
 			return
 		}
-		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
-		request.callback(nil, errors.New(errMsg))
+		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again
 		c.Close()
 	}
+}
+
+func (c *connection) deletePendingProducers(producerID uint64) (ConnectionListener, bool) {
+	c.listenersLock.Lock()
+	producer, ok := c.listeners[producerID]
+	if ok {
+		delete(c.listeners, producerID)
+	}
+	c.listenersLock.Unlock()
+
+	return producer, ok
 }
 
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
@@ -800,13 +809,7 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
 
-	c.listenersLock.Lock()
-	producer, ok := c.listeners[producerID]
-	if ok {
-		delete(c.listeners, producerID)
-	}
-	c.listenersLock.Unlock()
-
+	producer, ok := c.deletePendingProducers(producerID)
 	// did we find a producer?
 	if ok {
 		producer.ConnectionClosed()
