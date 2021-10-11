@@ -21,7 +21,7 @@ const (
 	// ProducerCryptoFailureActionFail this is the default option to fail send if crypto operation fails.
 	ProducerCryptoFailureActionFail = iota
 
-	// ProducerCryptoFailureActionSend ingnore crypto failure and proceed with sending unencrypted message.
+	// ProducerCryptoFailureActionSend ignore crypto failure and proceed with sending unencrypted message.
 	ProducerCryptoFailureActionSend
 )
 
