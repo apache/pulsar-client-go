@@ -68,13 +68,13 @@ type partitionProducer struct {
 	log    log.Logger
 	cnx    internal.Connection
 
-	options             *ProducerOptions
-	producerName        string
+	options                  *ProducerOptions
+	producerName             string
 	userProvidedProducerName bool
-	producerID          uint64
-	batchBuilder        internal.BatchBuilder
-	sequenceIDGenerator *uint64
-	batchFlushTicker    *time.Ticker
+	producerID               uint64
+	batchBuilder             internal.BatchBuilder
+	sequenceIDGenerator      *uint64
+	batchFlushTicker         *time.Ticker
 
 	// Channel where app is posting messages to be published
 	eventsChan      chan interface{}
