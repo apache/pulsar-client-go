@@ -19,17 +19,21 @@ package crypto
 
 // MessageCrypto implement this interface to encrypt and decrypt messages
 type MessageCrypto interface {
-	// AddPublicKeyCipher
+
+	// AddPublicKeyCipher encrypt data using the public key(s) in the argument.
+	// If more than one key name is specified, data key is encrypted using each of those keys.
+	// If the public key is expired or changed, application is responsible to remove
+	// the old key and add the new key.
 	AddPublicKeyCipher(keyNames []string, keyReader KeyReader) error
 
-	// RemoveKeyCipher remove the key indentified by the keyname from the list
+	// RemoveKeyCipher remove the key from the list
 	RemoveKeyCipher(keyName string) bool
 
 	// Encrypt the payload using the data key and update
-	// message metadata with the keyname and encrypted data key
+	// message metadata with the key and encrypted data key
 	Encrypt(encKeys []string, KeyReader KeyReader, msgMetadata MessageMetadataSupplier, payload []byte) ([]byte, error)
 
 	// Decrypt the payload using the data key.
-	// Keys used to ecnrypt the data key can be retrieved from msgMetadata
+	// Keys used to encrypt the data key can be retrieved from msgMetadata
 	Decrypt(msgMetadata MessageMetadataSupplier, payload []byte, KeyReader KeyReader) ([]byte, error)
 }

@@ -24,7 +24,7 @@ type EncryptionKeyInfo struct {
 	name     string
 }
 
-// NewEncryptionKeyInfo
+// NewEncryptionKeyInfo create a new EncryptionKeyInfo
 func NewEncryptionKeyInfo(name string, key []byte, metadata map[string]string) *EncryptionKeyInfo {
 	return &EncryptionKeyInfo{
 		metadata: metadata,
@@ -33,17 +33,17 @@ func NewEncryptionKeyInfo(name string, key []byte, metadata map[string]string) *
 	}
 }
 
-// GetKey get key
+// Name get the name of the key
 func (eci *EncryptionKeyInfo) Name() string {
 	return eci.name
 }
 
-// GetValue get value
+// Key get the key data
 func (eci *EncryptionKeyInfo) Key() []byte {
 	return eci.key
 }
 
-// GetMetadata get key metadata
+// Metadata get key metadata
 func (eci *EncryptionKeyInfo) Metadata() map[string]string {
 	return eci.metadata
 }

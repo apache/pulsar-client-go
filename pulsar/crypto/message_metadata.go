@@ -23,13 +23,13 @@ import (
 
 // MessageMetadataSupplier wrapper implementation around message metadata
 type MessageMetadataSupplier interface {
-	// GetEncryptionKeys read all the encryption keys from the MessageMetadata
+	// EncryptionKeys read all the encryption keys from the MessageMetadata
 	EncryptionKeys() []EncryptionKeyInfo
 
-	// UpsertEncryptionkey add new or update existing EncryptionKeys in to the MessageMetadata
-	UpsertEncryptionkey(EncryptionKeyInfo)
+	// UpsertEncryptionKey add new or update existing EncryptionKeys in to the MessageMetadata
+	UpsertEncryptionKey(EncryptionKeyInfo)
 
-	// GetEncryptionParam read the ecryption parameter from the MessageMetadata
+	// EncryptionParam read the ecryption parameter from the MessageMetadata
 	EncryptionParam() []byte
 
 	// SetEncryptionParam set encryption parameter in to the MessageMetadata
@@ -58,7 +58,7 @@ func (m *MessageMetadata) EncryptionKeys() []EncryptionKeyInfo {
 	return nil
 }
 
-func (m *MessageMetadata) UpsertEncryptionkey(keyInfo EncryptionKeyInfo) {
+func (m *MessageMetadata) UpsertEncryptionKey(keyInfo EncryptionKeyInfo) {
 	if m.messageMetadata != nil {
 		idx := m.encryptionKeyPresent(keyInfo)
 		newKey := &pb.EncryptionKeys{
@@ -101,7 +101,7 @@ func (m *MessageMetadata) encryptionKeyPresent(keyInfo EncryptionKeyInfo) int {
 
 func getKeyMeta(metaMap map[string]string) []*pb.KeyValue {
 	if len(metaMap) > 0 {
-		meta := []*pb.KeyValue{}
+		var meta []*pb.KeyValue
 		for k, v := range metaMap {
 			meta = append(meta, &pb.KeyValue{Key: &k, Value: &v})
 		}
