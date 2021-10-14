@@ -207,31 +207,29 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
 		pc.nackTracker.Close()
-		return nil, err
-	}
-	pc.log.Info("Created consumer")
-	pc.setConsumerState(consumerReady)
+	} else {
+		pc.log.Info("Created consumer")
+		pc.setConsumerState(consumerReady)
 
-	if pc.options.startMessageIDInclusive && pc.startMessageID.equal(lastestMessageID.(messageID)) {
-		msgID, err := pc.requestGetLastMessageID()
-		if err != nil {
-			pc.nackTracker.Close()
-			return nil, err
-		}
-		if msgID.entryID != noMessageEntry {
-			pc.startMessageID = msgID
-
-			// use the WithoutClear version because the dispatcher is not started yet
-			err = pc.requestSeekWithoutClear(msgID.messageID)
+		if pc.options.startMessageIDInclusive && pc.startMessageID.equal(lastestMessageID.(messageID)) {
+			msgID, err := pc.requestGetLastMessageID()
 			if err != nil {
 				pc.nackTracker.Close()
 				return nil, err
 			}
+			if msgID.entryID != noMessageEntry {
+				pc.startMessageID = msgID
+
+				// use the WithoutClear version because the dispatcher is not started yet
+				err = pc.requestSeekWithoutClear(msgID.messageID)
+				if err != nil {
+					pc.nackTracker.Close()
+					return nil, err
+				}
+			}
 		}
+		go pc.dispatcher()
 	}
-
-	go pc.dispatcher()
-
 	go pc.runEventsLoop()
 
 	return pc, nil
@@ -1004,7 +1002,6 @@ func (pc *partitionConsumer) reconnectToBroker() {
 		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
 			pc.log.Warn("Topic Not Found.")
-			break
 		}
 
 		if maxRetry > 0 {
@@ -1018,7 +1015,7 @@ func (pc *partitionConsumer) grabConn() error {
 	if err != nil {
 		pc.log.WithError(err).Warn("Failed to lookup topic, it will be retried later!")
 		pc.connectClosedCh <- connectionClosed{}
-		return nil
+		return err
 	}
 	pc.log.Debugf("Lookup result: %+v", lr)
 
@@ -1082,7 +1079,7 @@ func (pc *partitionConsumer) grabConn() error {
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer, it will be retried later!")
 		pc.connectClosedCh <- connectionClosed{}
-		return nil
+		return err
 	}
 
 	if res.Response.ConsumerStatsResponse != nil {

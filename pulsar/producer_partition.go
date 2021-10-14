@@ -161,21 +161,19 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
-		return nil, err
+	} else {
+		p.log = p.log.SubLogger(log.Fields{
+			"producer_name": p.producerName,
+			"producerID":    p.producerID,
+		})
+
+		p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
+		p.setProducerState(producerReady)
+
+		if p.options.SendTimeout > 0 {
+			go p.failTimeoutMessages()
+		}
 	}
-
-	p.log = p.log.SubLogger(log.Fields{
-		"producer_name": p.producerName,
-		"producerID":    p.producerID,
-	})
-
-	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
-	p.setProducerState(producerReady)
-
-	if p.options.SendTimeout > 0 {
-		go p.failTimeoutMessages()
-	}
-
 	go p.runEventsLoop()
 
 	return p, nil
@@ -186,7 +184,7 @@ func (p *partitionProducer) grabCnx() error {
 	if err != nil {
 		p.log.WithError(err).Warn("Failed to lookup topic, it will be retried later!")
 		p.connectClosedCh <- connectionClosed{}
-		return nil
+		return err
 	}
 
 	p.log.Debug("Lookup result: ", lr)
@@ -230,7 +228,7 @@ func (p *partitionProducer) grabCnx() error {
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer, it will be retried later!")
 		p.connectClosedCh <- connectionClosed{}
-		return nil
+		return err
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
@@ -361,7 +359,6 @@ func (p *partitionProducer) reconnectToBroker() {
 		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic Not Found.")
-			break
 		}
 
 		if maxRetry > 0 {
