@@ -68,12 +68,13 @@ type partitionProducer struct {
 	log    log.Logger
 	cnx    internal.Connection
 
-	options             *ProducerOptions
-	producerName        string
-	producerID          uint64
-	batchBuilder        internal.BatchBuilder
-	sequenceIDGenerator *uint64
-	batchFlushTicker    *time.Ticker
+	options                  *ProducerOptions
+	producerName             string
+	userProvidedProducerName bool
+	producerID               uint64
+	batchBuilder             internal.BatchBuilder
+	sequenceIDGenerator      *uint64
+	batchFlushTicker         *time.Ticker
 
 	// Channel where app is posting messages to be published
 	eventsChan      chan interface{}
@@ -134,6 +135,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	if options.Name != "" {
 		p.producerName = options.Name
+		p.userProvidedProducerName = true
+	} else {
+		p.userProvidedProducerName = false
 	}
 
 	encryption := options.Encryption
@@ -204,8 +208,6 @@ func (p *partitionProducer) grabCnx() error {
 		p.log.Debug("The partition consumer schema is nil")
 	}
 
-	userProvidedProducerName := p.producerName != ""
-
 	cmdProducer := &pb.CommandProducer{
 		RequestId:                proto.Uint64(id),
 		Topic:                    proto.String(p.topic),
@@ -213,7 +215,7 @@ func (p *partitionProducer) grabCnx() error {
 		ProducerId:               proto.Uint64(p.producerID),
 		Schema:                   pbSchema,
 		Epoch:                    proto.Uint64(atomic.LoadUint64(&p.epoch)),
-		UserProvidedProducerName: proto.Bool(userProvidedProducerName),
+		UserProvidedProducerName: proto.Bool(p.userProvidedProducerName),
 	}
 
 	if p.producerName != "" {
