@@ -1016,8 +1016,9 @@ func (pc *partitionConsumer) reconnectToBroker() {
 func (pc *partitionConsumer) grabConn() error {
 	lr, err := pc.client.lookupService.Lookup(pc.topic)
 	if err != nil {
-		pc.log.WithError(err).Warn("Failed to lookup topic")
-		return err
+		pc.log.WithError(err).Warn("Failed to lookup topic, it will be retried later!")
+		pc.connectClosedCh <- connectionClosed{}
+		return nil
 	}
 	pc.log.Debugf("Lookup result: %+v", lr)
 
@@ -1079,8 +1080,9 @@ func (pc *partitionConsumer) grabConn() error {
 		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
 
 	if err != nil {
-		pc.log.WithError(err).Error("Failed to create consumer")
-		return err
+		pc.log.WithError(err).Error("Failed to create consumer, it will be retried later!")
+		pc.connectClosedCh <- connectionClosed{}
+		return nil
 	}
 
 	if res.Response.ConsumerStatsResponse != nil {

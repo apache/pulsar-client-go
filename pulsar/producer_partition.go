@@ -184,8 +184,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 func (p *partitionProducer) grabCnx() error {
 	lr, err := p.client.lookupService.Lookup(p.topic)
 	if err != nil {
-		p.log.WithError(err).Warn("Failed to lookup topic")
-		return err
+		p.log.WithError(err).Warn("Failed to lookup topic, it will be retried later!")
+		p.connectClosedCh <- connectionClosed{}
+		return nil
 	}
 
 	p.log.Debug("Lookup result: ", lr)
@@ -227,8 +228,9 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
-		p.log.WithError(err).Error("Failed to create producer")
-		return err
+		p.log.WithError(err).Error("Failed to create producer, it will be retried later!")
+		p.connectClosedCh <- connectionClosed{}
+		return nil
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
