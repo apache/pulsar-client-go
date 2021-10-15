@@ -206,7 +206,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	err := pc.grabConn()
 	if err != nil {
 		errMsg := err.Error()
-		if !strings.EqualFold(errMsg, pb.ServerError_ServiceNotReady.String()) && !strings.EqualFold(errMsg, pb.ServerError_TooManyRequests.String()) {
+		if !strings.EqualFold(errMsg, pb.ServerError_ServiceNotReady.String()) &&
+			!strings.EqualFold(errMsg, pb.ServerError_TooManyRequests.String()) {
 			// when topic is deleted, we should give up reconnection.
 			pc.log.WithError(err).Error("Failed to create consumer")
 			pc.nackTracker.Close()
