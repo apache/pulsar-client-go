@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -61,10 +60,6 @@ var (
 )
 
 var errTopicNotFount = "TopicNotFound"
-
-var errConnectError = "connection error"
-
-var errLookupError = "lookup error"
 
 type partitionProducer struct {
 	state  ua.Int32
@@ -166,7 +161,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	err := p.grabCnx()
 	if err != nil {
 		errMsg := err.Error()
-		if !strings.Contains(errMsg, errConnectError) && !strings.Contains(errMsg, errLookupError) {
+		if !strings.EqualFold(errMsg, pb.ServerError_ServiceNotReady.String()) && !strings.EqualFold(errMsg, pb.ServerError_TooManyRequests.String()) {
 			// when topic is deleted, we should give up reconnection.
 			logger.WithError(err).Error("Failed to create producer")
 			return nil, err
@@ -193,8 +188,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 func (p *partitionProducer) grabCnx() error {
 	lr, err := p.client.lookupService.Lookup(p.topic)
 	if err != nil {
-		p.log.WithError(err).Warn("Failed to lookup topic, it will be retried later!")
-		return errors.New(errLookupError)
+		p.log.WithError(err).Warn("Failed to lookup topic")
+		return err
 	}
 
 	p.log.Debug("Lookup result: ", lr)
