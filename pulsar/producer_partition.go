@@ -162,7 +162,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	if err != nil {
 		errMsg := err.Error()
 		if !strings.EqualFold(errMsg, pb.ServerError_ServiceNotReady.String()) &&
-			!strings.EqualFold(errMsg, pb.ServerError_TooManyRequests.String()) {
+			!strings.EqualFold(errMsg, pb.ServerError_TooManyRequests.String()) &&
+			!strings.EqualFold(errMsg, pb.ServerError_MetadataError.String()) {
 			// when topic is deleted, we should give up reconnection.
 			logger.WithError(err).Error("Failed to create producer")
 			return nil, err
