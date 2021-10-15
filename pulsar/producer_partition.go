@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -60,6 +61,10 @@ var (
 )
 
 var errTopicNotFount = "TopicNotFound"
+
+var errConnectError = "connection error"
+
+var errLookupError = "lookup error"
 
 type partitionProducer struct {
 	state  ua.Int32
@@ -160,7 +165,13 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	err := p.grabCnx()
 	if err != nil {
-		logger.WithError(err).Error("Failed to create producer")
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, errConnectError) && !strings.Contains(errMsg, errLookupError) {
+			// when topic is deleted, we should give up reconnection.
+			logger.WithError(err).Error("Failed to create producer")
+			return nil, err
+		}
+		logger.WithError(err).Error("Failed to create producer, it will be retried later!")
 	} else {
 		p.log = p.log.SubLogger(log.Fields{
 			"producer_name": p.producerName,
@@ -184,7 +195,7 @@ func (p *partitionProducer) grabCnx() error {
 	if err != nil {
 		p.log.WithError(err).Warn("Failed to lookup topic, it will be retried later!")
 		p.connectClosedCh <- connectionClosed{}
-		return err
+		return errors.New(errLookupError)
 	}
 
 	p.log.Debug("Lookup result: ", lr)
@@ -226,7 +237,7 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
-		p.log.WithError(err).Error("Failed to create producer, it will be retried later!")
+		p.log.WithError(err).Error("Failed to create producer, it may be retried later when connection error!")
 		p.connectClosedCh <- connectionClosed{}
 		return err
 	}

@@ -205,7 +205,13 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	err := pc.grabConn()
 	if err != nil {
-		pc.log.WithError(err).Error("Failed to create consumer")
+		errMsg := err.Error()
+		if !strings.Contains(errMsg, errConnectError) && !strings.Contains(errMsg, errLookupError) {
+			// when topic is deleted, we should give up reconnection.
+			pc.log.WithError(err).Error("Failed to create consumer")
+			return nil, err
+		}
+		pc.log.WithError(err).Error("Failed to create consumer, it will be retried later!")
 		pc.nackTracker.Close()
 	} else {
 		pc.log.Info("Created consumer")
@@ -1077,7 +1083,7 @@ func (pc *partitionConsumer) grabConn() error {
 		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
 
 	if err != nil {
-		pc.log.WithError(err).Error("Failed to create consumer, it will be retried later!")
+		pc.log.WithError(err).Error("Failed to create consumer, it may be retried later when connection error!")
 		pc.connectClosedCh <- connectionClosed{}
 		return err
 	}
