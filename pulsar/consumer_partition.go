@@ -1008,6 +1008,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
 			pc.log.Warn("Topic Not Found.")
+			break
 		}
 
 		if maxRetry > 0 {
@@ -1020,7 +1021,6 @@ func (pc *partitionConsumer) grabConn() error {
 	lr, err := pc.client.lookupService.Lookup(pc.topic)
 	if err != nil {
 		pc.log.WithError(err).Warn("Failed to lookup topic, it will be retried later!")
-		pc.connectClosedCh <- connectionClosed{}
 		return err
 	}
 	pc.log.Debugf("Lookup result: %+v", lr)
@@ -1084,7 +1084,6 @@ func (pc *partitionConsumer) grabConn() error {
 
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer, it may be retried later when connection error!")
-		pc.connectClosedCh <- connectionClosed{}
 		return err
 	}
 

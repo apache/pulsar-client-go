@@ -194,7 +194,6 @@ func (p *partitionProducer) grabCnx() error {
 	lr, err := p.client.lookupService.Lookup(p.topic)
 	if err != nil {
 		p.log.WithError(err).Warn("Failed to lookup topic, it will be retried later!")
-		p.connectClosedCh <- connectionClosed{}
 		return errors.New(errLookupError)
 	}
 
@@ -238,7 +237,6 @@ func (p *partitionProducer) grabCnx() error {
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer, it may be retried later when connection error!")
-		p.connectClosedCh <- connectionClosed{}
 		return err
 	}
 
@@ -370,6 +368,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic Not Found.")
+			break
 		}
 
 		if maxRetry > 0 {
