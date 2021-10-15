@@ -1084,7 +1084,7 @@ func (pc *partitionConsumer) grabConn() error {
 		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
 
 	if err != nil {
-		pc.log.WithError(err).Error("Failed to create consumer, it may be retried later when connection error!")
+		pc.log.WithError(err).Error("Failed to create consumer")
 		return err
 	}
 

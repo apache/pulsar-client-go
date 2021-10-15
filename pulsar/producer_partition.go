@@ -231,7 +231,7 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
-		p.log.WithError(err).Error("Failed to create producer, it may be retried later when connection error!")
+		p.log.WithError(err).Error("Failed to create producer")
 		return err
 	}
 
