@@ -347,12 +347,21 @@ func (c *connection) failLeftRequestsWhenClose() {
 	// and closing the channel
 	c.incomingRequestsWG.Wait()
 
-	reqLen := len(c.incomingRequestsCh)
-	for i := 0; i < reqLen; i++ {
-		c.internalSendRequest(<-c.incomingRequestsCh)
+	ch := c.incomingRequestsCh
+	go func() {
+		// send a nil message to drain instead of
+		// closing the channel and causing a potential panic
+		//
+		// if other requests come in after the nil message
+		// then the RPC client will time out
+		ch <- nil
+	}()
+	for req := range ch {
+		if nil == req {
+			break // we have drained the requests
+		}
+		c.internalSendRequest(req)
 	}
-
-	close(c.incomingRequestsCh)
 }
 
 func (c *connection) run() {
