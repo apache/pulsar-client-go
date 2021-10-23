@@ -174,6 +174,7 @@ type NamespacesData struct {
 	LimitStr                       string   `json:"limitStr"`
 	LimitTime                      int64    `json:"limitTime"`
 	PolicyStr                      string   `json:"policyStr"`
+	BacklogQuotaType               string   `json:"backlogQuotaType"`
 	AntiAffinityGroup              string   `json:"antiAffinityGroup"`
 	Tenant                         string   `json:"tenant"`
 	Cluster                        string   `json:"cluster"`
