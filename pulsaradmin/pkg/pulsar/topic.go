@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"fmt"
-	"net/url"
 	"strconv"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common"
@@ -443,7 +442,7 @@ func (t *topics) SetMessageTTL(topic utils.TopicName, messageTTL int) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
 	var params = make(map[string]string)
 	params["messageTTL"] = strconv.Itoa(messageTTL)
-	err := t.pulsar.Client.PostWithQueryParams(endpoint, params)
+	err := t.pulsar.Client.PostWithQueryParams(endpoint, nil, params)
 	return err
 }
 
@@ -664,16 +663,9 @@ func (t *topics) GetBacklogQuotaMap(topic utils.TopicName, applied bool) (map[ut
 func (t *topics) SetBacklogQuota(topic utils.TopicName, backlogQuota utils.BacklogQuota,
 	backlogQuotaType utils.BacklogQuotaType) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "backlogQuota")
-
-	u, err := url.Parse(endpoint)
-	if err != nil {
-		return err
-	}
-	q := u.Query()
-	q.Add("backlogQuotaType", string(backlogQuotaType))
-	u.RawQuery = q.Encode()
-
-	return t.pulsar.Client.Post(u.String(), &backlogQuota)
+	params := make(map[string]string)
+	params["backlogQuotaType"] = string(backlogQuotaType)
+	return t.pulsar.Client.PostWithQueryParams(endpoint, &backlogQuota, params)
 }
 
 func (t *topics) RemoveBacklogQuota(topic utils.TopicName, backlogQuotaType utils.BacklogQuotaType) error {

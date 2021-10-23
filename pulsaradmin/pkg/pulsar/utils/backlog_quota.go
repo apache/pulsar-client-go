@@ -67,6 +67,8 @@ const (
 
 func ParseBacklogQuotaType(str string) (BacklogQuotaType, error) {
 	switch str {
+	case "":
+		fallthrough
 	case DestinationStorage.String():
 		return DestinationStorage, nil
 	case MessageAge.String():

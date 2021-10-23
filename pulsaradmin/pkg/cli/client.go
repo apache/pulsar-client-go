@@ -280,10 +280,13 @@ func (c *Client) PostWithMultiPart(endpoint string, in interface{}, body io.Read
 	return nil
 }
 
-func (c *Client) PostWithQueryParams(endpoint string, params map[string]string) error {
+func (c *Client) PostWithQueryParams(endpoint string, in interface{}, params map[string]string) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err
+	}
+	if in != nil {
+		req.obj = in
 	}
 	if params != nil {
 		query := req.url.Query()

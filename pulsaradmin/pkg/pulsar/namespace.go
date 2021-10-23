@@ -71,7 +71,7 @@ type Namespaces interface {
 	GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
 
 	// SetBacklogQuota sets a backlog quota for all the topics on a namespace
-	SetBacklogQuota(namespace string, backlogQuota utils.BacklogQuota) error
+	SetBacklogQuota(namespace string, backlogQuota utils.BacklogQuota, backlogQuotaType utils.BacklogQuotaType) error
 
 	// RemoveBacklogQuota removes a backlog quota policy from a namespace
 	RemoveBacklogQuota(namespace string) error
@@ -407,13 +407,16 @@ func (n *namespaces) GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuot
 	return backlogQuotaMap, err
 }
 
-func (n *namespaces) SetBacklogQuota(namespace string, backlogQuota utils.BacklogQuota) error {
+func (n *namespaces) SetBacklogQuota(namespace string, backlogQuota utils.BacklogQuota,
+	backlogQuotaType utils.BacklogQuotaType) error {
 	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "backlogQuota")
-	return n.pulsar.Client.Post(endpoint, &backlogQuota)
+	params := make(map[string]string)
+	params["backlogQuotaType"] = string(backlogQuotaType)
+	return n.pulsar.Client.PostWithQueryParams(endpoint, &backlogQuota, params)
 }
 
 func (n *namespaces) RemoveBacklogQuota(namespace string) error {
