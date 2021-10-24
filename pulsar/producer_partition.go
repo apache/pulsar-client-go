@@ -402,7 +402,7 @@ func (p *partitionProducer) Name() string {
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
-	p.log.Debug("Received send request: ", *request)
+	p.log.Info("Received send request: ", *request)
 
 	msg := request.msg
 

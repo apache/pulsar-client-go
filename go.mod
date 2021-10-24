@@ -15,8 +15,6 @@ require (
 	github.com/inconshreveable/mousetrap v1.0.0 // indirect
 	github.com/klauspost/compress v1.10.8
 	github.com/linkedin/goavro/v2 v2.9.8
-	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
-	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pierrec/lz4 v2.0.5+incompatible
 	github.com/pkg/errors v0.9.1
@@ -31,3 +29,5 @@ require (
 )
 
 replace github.com/apache/pulsar-client-go/oauth2 => ./oauth2
+
+replace github.com/apache/pulsar-client-go => github.com/1046102779/pulsar-client-go v0.6.1-0.20211020191107-81f383018c50
