@@ -360,6 +360,7 @@ func (c *connection) failLeftRequestsWhenClose() {
 		if nil == req {
 			break // we have drained the requests
 		}
+		c.log.Info("failLeftRequestsWhenClose received internal send request")
 		c.internalSendRequest(req)
 	}
 }
@@ -398,6 +399,7 @@ func (c *connection) run() {
 				if req == nil {
 					return // TODO: this never gonna be happen
 				}
+				c.log.Info("Run: received internal send request")
 				c.internalSendRequest(req)
 			}
 		}
