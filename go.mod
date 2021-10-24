@@ -29,5 +29,3 @@ require (
 )
 
 replace github.com/apache/pulsar-client-go/oauth2 => ./oauth2
-
-replace github.com/apache/pulsar-client-go => github.com/1046102779/pulsar-client-go v0.6.1-0.20211020191107-81f383018c50
