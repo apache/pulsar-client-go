@@ -360,7 +360,6 @@ func (c *connection) failLeftRequestsWhenClose() {
 		if nil == req {
 			break // we have drained the requests
 		}
-		c.log.Info("failLeftRequestsWhenClose received internal send request")
 		c.internalSendRequest(req)
 	}
 }
@@ -399,7 +398,6 @@ func (c *connection) run() {
 				if req == nil {
 					return // TODO: this never gonna be happen
 				}
-				c.log.Info("Run: received internal send request")
 				c.internalSendRequest(req)
 			}
 		}
@@ -509,7 +507,7 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buff
 }
 
 func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
-	c.log.Info("Received command: %s -- payload: %v", cmd, headersAndPayload)
+	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.setLastDataReceived(time.Now())
 
 	switch *cmd.Type {
@@ -786,6 +784,9 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 			return
 		}
 		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
+	case pb.ServerError_UnknownError:
+		// TODO send msg that it is ok.
+		// FIXME: DELAY TIME IS TOO LONG
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again
