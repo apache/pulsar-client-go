@@ -60,6 +60,8 @@ var (
 )
 
 var errTopicNotFount = "TopicNotFound"
+var errMetadata = "MetadataError"
+
 
 type partitionProducer struct {
 	state  ua.Int32
@@ -67,6 +69,7 @@ type partitionProducer struct {
 	topic  string
 	log    log.Logger
 	cnx    internal.Connection
+	err    error
 
 	options                  *ProducerOptions
 	producerName             string
@@ -350,13 +353,14 @@ func (p *partitionProducer) reconnectToBroker() {
 		time.Sleep(d)
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
+		p.err = err
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p.cnx.ID()).Info("Reconnected producer to broker")
 			return
 		}
 		errMsg := err.Error()
-		if strings.Contains(errMsg, errTopicNotFount) {
+		if strings.Contains(errMsg, errTopicNotFount) || strings.Contains(errMsg,errMetadata){
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic Not Found.")
 			break
@@ -740,6 +744,10 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	if p.getProducerState() != producerReady {
 		// Producer is closing
 		callback(nil, msg, errProducerClosed)
+		return
+	}
+	if p.err != nil {
+		callback(nil,msg,p.err)
 		return
 	}
 
