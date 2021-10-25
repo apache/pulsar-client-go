@@ -776,6 +776,7 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 		}
 
 		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
+		break
 	case pb.ServerError_TopicTerminatedError:
 		_, ok := c.deletePendingProducers(producerID)
 		if !ok {
@@ -784,6 +785,7 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 			return
 		}
 		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
+		break
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again
