@@ -24,5 +24,4 @@ import (
 // Decryptor support decrypting of message
 type Decryptor interface {
 	Decrypt(payload []byte, msgID *pb.MessageIdData, msgMetadata *pb.MessageMetadata) ([]byte, error)
-	CryptoFailureAction() int
 }

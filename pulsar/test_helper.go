@@ -30,6 +30,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/stretchr/testify/assert"
 
 	pkgerrors "github.com/pkg/errors"
 )
@@ -164,4 +165,15 @@ func topicPath(topic string) string {
 		return tn.Namespace + "/" + tn.Name[idx:]
 	}
 	return tn.Name
+}
+
+func retryAssert(t assert.TestingT, times int, milliseconds int, update func(), assert func(assert.TestingT) bool) {
+	for i := 0; i < times; i++ {
+		time.Sleep(time.Duration(milliseconds) * time.Millisecond)
+		update()
+		if assert(nil) {
+			break
+		}
+	}
+	assert(t)
 }

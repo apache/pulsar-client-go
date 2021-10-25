@@ -138,7 +138,7 @@ func TestLookupSuccess(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -172,7 +172,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, serviceNameResolver, true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, true, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -207,7 +207,7 @@ func TestLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -241,7 +241,8 @@ func TestTlsLookupWithProxy(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(true),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -287,7 +288,8 @@ func TestLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -333,7 +335,8 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 				BrokerServiceUrlTls: proto.String("pulsar+ssl://broker-1:6651"),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), true, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -367,7 +370,8 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 				ProxyThroughServiceUrl: proto.Bool(false),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -396,7 +400,8 @@ func TestLookupWithLookupFailure(t *testing.T) {
 				Authoritative: proto.Bool(true),
 			},
 		},
-	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, NewPulsarServiceNameResolver(url), false, "", log.DefaultNopLogger(),
+		NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -483,7 +488,7 @@ func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
 				Response:   pb.CommandPartitionedTopicMetadataResponse_Success.Enum(),
 			},
 		},
-	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
 
 	metadata, err := ls.GetPartitionedTopicMetadata("my-topic")
 	assert.NoError(t, err)
@@ -515,7 +520,7 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -576,7 +581,7 @@ func TestHttpLookupSuccess(t *testing.T) {
 	serviceNameResolver := NewPulsarServiceNameResolver(url)
 	httpClient := NewMockHTTPClient(serviceNameResolver)
 	ls := NewHTTPLookupService(httpClient, url, serviceNameResolver, false,
-		log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+		log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -592,7 +597,7 @@ func TestHttpGetPartitionedTopicMetadataSuccess(t *testing.T) {
 	serviceNameResolver := NewPulsarServiceNameResolver(url)
 	httpClient := NewMockHTTPClient(serviceNameResolver)
 	ls := NewHTTPLookupService(httpClient, url, serviceNameResolver, false,
-		log.DefaultNopLogger(), NewMetricsProvider(map[string]string{}))
+		log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}))
 
 	tMetadata, err := ls.GetPartitionedTopicMetadata("my-topic")
 	assert.NoError(t, err)

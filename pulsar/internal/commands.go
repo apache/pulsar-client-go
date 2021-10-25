@@ -223,7 +223,7 @@ func serializeBatch(wb Buffer,
 	msgMetadata *pb.MessageMetadata,
 	uncompressedPayload Buffer,
 	compressionProvider compression.Provider,
-	encryptor crypto.Encryptor) {
+	encryptor crypto.Encryptor) error {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
 
@@ -231,10 +231,10 @@ func serializeBatch(wb Buffer,
 	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
 
 	// encrypt the compressed payload
-	encryptedPayload, err := encryptor.Encrypt(compressedPayload, crypto.NewMessageMetadataSupplier(msgMetadata))
+	encryptedPayload, err := encryptor.Encrypt(compressedPayload, msgMetadata)
 	if err != nil {
 		// error occurred while encrypting the payload, ProducerCryptoFailureAction is set to Fail
-		panic(fmt.Sprintf("Encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err))
+		return fmt.Errorf("encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err)
 	}
 
 	cmdSize := uint32(proto.Size(cmdSend))
@@ -278,6 +278,7 @@ func serializeBatch(wb Buffer,
 	// Set Sizes and checksum in the fixed-size header
 	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
+	return nil
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte

@@ -34,7 +34,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-// DefaultMessageCrypto implmentation of the interface MessageCryto
+// DefaultMessageCrypto implementation of the interface MessageCryto
 type DefaultMessageCrypto struct {
 	// data key which is used to encrypt/decrypt messages
 	dataKey []byte
@@ -134,7 +134,7 @@ func (d *DefaultMessageCrypto) RemoveKeyCipher(keyName string) bool {
 	return true
 }
 
-// Encrypt encrypt payload using encryption keys and add encrypted data key
+// Encrypt payload using encryption keys and add encrypted data key
 // to message metadata. Here data key is encrypted
 // using public key
 func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
@@ -161,7 +161,7 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 			keyInfo, keyInfoOk := k.(*EncryptionKeyInfo)
 
 			if keyInfoOk {
-				msgMetadata.UpsertEncryptionkey(*keyInfo)
+				msgMetadata.UpsertEncryptionKey(*keyInfo)
 			} else {
 				d.logger.Error("failed to get EncryptionKeyInfo for key %v", keyName)
 			}
@@ -206,8 +206,8 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 	return gcm.Seal(nil, nonce, payload, nil), nil
 }
 
-// Decrypt decrypt the payload using decrypted data key.
-// Here data key is read from from the message
+// Decrypt the payload using decrypted data key.
+// Here data key is read from the message
 // metadata and  decrypted using private key.
 func (d *DefaultMessageCrypto) Decrypt(msgMetadata MessageMetadataSupplier,
 	payload []byte,
@@ -285,7 +285,7 @@ func (d *DefaultMessageCrypto) getKeyAndDecryptData(msgMetadata MessageMetadataS
 				return decryptedData, nil
 			}
 		} else {
-			// First time, entry wont be present in cache
+			// First time, entry won't be present in cache
 			d.logger.Debugf("%s Failed to decrypt data or data key is not in cache. Will attempt to refresh", d.logCtx)
 		}
 	}

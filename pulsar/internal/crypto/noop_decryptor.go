@@ -17,33 +17,24 @@
 
 package crypto
 
-// EncryptionKeyInfo
-type EncryptionKeyInfo struct {
-	metadata map[string]string
-	key      []byte
-	name     string
+import (
+	"fmt"
+
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
+
+type noopDecryptor struct{}
+
+func NewNoopDecryptor() Decryptor {
+	return &noopDecryptor{}
 }
 
-// NewEncryptionKeyInfo create a new EncryptionKeyInfo
-func NewEncryptionKeyInfo(name string, key []byte, metadata map[string]string) *EncryptionKeyInfo {
-	return &EncryptionKeyInfo{
-		metadata: metadata,
-		name:     name,
-		key:      key,
+// Decrypt noop decryptor
+func (d *noopDecryptor) Decrypt(payload []byte,
+	msgID *pb.MessageIdData,
+	msgMetadata *pb.MessageMetadata) ([]byte, error) {
+	if len(msgMetadata.GetEncryptionKeys()) > 0 {
+		return payload, fmt.Errorf("incoming message payload is encrypted, consumer is not configured to decrypt")
 	}
-}
-
-// Name get the name of the key
-func (eci *EncryptionKeyInfo) Name() string {
-	return eci.name
-}
-
-// Key get the key data
-func (eci *EncryptionKeyInfo) Key() []byte {
-	return eci.key
-}
-
-// Metadata get key metadata
-func (eci *EncryptionKeyInfo) Metadata() map[string]string {
-	return eci.metadata
+	return payload, nil
 }

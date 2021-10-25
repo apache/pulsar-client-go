@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -653,4 +654,59 @@ func TestReaderWithMultiHosts(t *testing.T) {
 	}
 
 	assert.Equal(t, 10, i)
+}
+
+func TestProducerReaderRSAEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create reader
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
+		},
+	})
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			ProducerCryptoFailureAction: crypto.ProducerCryptoFailureActionFail,
+			Keys:                        []string{"client-rsa.pem"},
+		},
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := reader.Next(context.Background())
+		assert.NoError(t, err)
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+	}
 }

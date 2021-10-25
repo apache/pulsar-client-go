@@ -22,7 +22,7 @@ import "github.com/apache/pulsar-client-go/pulsar/crypto"
 // ProducerEncryptionInfo encryption related fields required by the producer
 type ProducerEncryptionInfo struct {
 	// KeyReader read RSA public/private key pairs
-	Keyreader crypto.KeyReader
+	KeyReader crypto.KeyReader
 
 	// MessageCrypto used to encrypt and decrypt the data and session keys
 	MessageCrypto crypto.MessageCrypto
@@ -35,13 +35,14 @@ type ProducerEncryptionInfo struct {
 	ProducerCryptoFailureAction int
 }
 
-// ConsumerEncryptionInfo encryption related fields required by the consumer to decrypt the message
-type ConsumerEncryptionInfo struct {
+// MessageDecryptionInfo encryption related fields required by the consumer to decrypt the message
+type MessageDecryptionInfo struct {
 	// KeyReader read RSA public/private key pairs
-	Keyreader crypto.KeyReader
+	KeyReader crypto.KeyReader
 
 	// MessageCrypto used to encrypt and decrypt the data and session keys
 	MessageCrypto crypto.MessageCrypto
+
 	// ConsumerCryptoFailureAction action to be taken on failure of message decryption
 	ConsumerCryptoFailureAction int
 }

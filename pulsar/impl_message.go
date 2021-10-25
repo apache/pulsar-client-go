@@ -202,6 +202,7 @@ func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 }
 
 // EncryptionContext
+// It will be used to decrypt message outside of this client
 type EncryptionContext struct {
 	Keys             map[string]EncryptionKey
 	Param            []byte
@@ -212,6 +213,7 @@ type EncryptionContext struct {
 }
 
 // EncryptionKey
+// Encryption key used to encrypt the message payload
 type EncryptionKey struct {
 	KeyValue []byte
 	Metadata map[string]string
@@ -231,7 +233,7 @@ type message struct {
 	replicatedFrom      string
 	redeliveryCount     uint32
 	schema              Schema
-	encryptionContext   EncryptionContext
+	encryptionContext   *EncryptionContext
 }
 
 func (msg *message) Topic() string {
@@ -286,7 +288,7 @@ func (msg *message) ProducerName() string {
 	return msg.producerName
 }
 
-func (msg *message) GetEncryptionContext() EncryptionContext {
+func (msg *message) GetEncryptionContext() *EncryptionContext {
 	return msg.encryptionContext
 }
 

@@ -117,6 +117,10 @@ type ClientOptions struct {
 	// FIXME: use `logger` as internal field name instead of `log` as it's more idiomatic
 	Logger log.Logger
 
+	// Specify metric cardinality to the tenant, namespace or topic levels, or remove it completely.
+	// Default: MetricsCardinalityNamespace
+	MetricsCardinality MetricsCardinality
+
 	// Add custom labels to all the metrics reported by this client instance
 	CustomMetricsLabels map[string]string
 }
@@ -150,3 +154,14 @@ type Client interface {
 	// Close Closes the Client and free associated resources
 	Close()
 }
+
+// MetricsCardinality represents the specificty of labels on a per-metric basis
+type MetricsCardinality int
+
+const (
+	_                           MetricsCardinality = iota
+	MetricsCardinalityNone                         // Do not add additional labels to metrics
+	MetricsCardinalityTenant                       // Label metrics by tenant
+	MetricsCardinalityNamespace                    // Label metrics by tenant and namespace
+	MetricsCardinalityTopic                        // Label metrics by topic
+)
