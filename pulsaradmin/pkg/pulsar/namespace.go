@@ -447,12 +447,10 @@ func (n *namespaces) SetSchemaValidationEnforced(namespace utils.NameSpaceName, 
 }
 
 func (n *namespaces) GetSchemaValidationEnforced(namespace utils.NameSpaceName) (bool, error) {
+	var result bool
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "schemaValidationEnforced")
-	r, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
-	if err != nil {
-		return false, err
-	}
-	return strconv.ParseBool(string(r))
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
 
 func (n *namespaces) SetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName,
@@ -486,12 +484,10 @@ func (n *namespaces) SetOffloadDeleteLag(namespace utils.NameSpaceName, timeMs i
 }
 
 func (n *namespaces) GetOffloadDeleteLag(namespace utils.NameSpaceName) (int64, error) {
+	var result int64
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadDeletionLagMs")
-	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
-	if err != nil {
-		return -1, err
-	}
-	return strconv.ParseInt(string(b), 10, 64)
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
 
 func (n *namespaces) SetMaxConsumersPerSubscription(namespace utils.NameSpaceName, max int) error {
@@ -500,12 +496,10 @@ func (n *namespaces) SetMaxConsumersPerSubscription(namespace utils.NameSpaceNam
 }
 
 func (n *namespaces) GetMaxConsumersPerSubscription(namespace utils.NameSpaceName) (int, error) {
+	var result int
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
-	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
-	if err != nil {
-		return -1, err
-	}
-	return strconv.Atoi(string(b))
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
 
 func (n *namespaces) SetOffloadThreshold(namespace utils.NameSpaceName, threshold int64) error {
@@ -514,12 +508,10 @@ func (n *namespaces) SetOffloadThreshold(namespace utils.NameSpaceName, threshol
 }
 
 func (n *namespaces) GetOffloadThreshold(namespace utils.NameSpaceName) (int64, error) {
+	var result int64
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadThreshold")
-	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
-	if err != nil {
-		return -1, err
-	}
-	return strconv.ParseInt(string(b), 10, 64)
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
 
 func (n *namespaces) SetMaxConsumersPerTopic(namespace utils.NameSpaceName, max int) error {
@@ -528,12 +520,10 @@ func (n *namespaces) SetMaxConsumersPerTopic(namespace utils.NameSpaceName, max 
 }
 
 func (n *namespaces) GetMaxConsumersPerTopic(namespace utils.NameSpaceName) (int, error) {
+	var result int
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
-	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
-	if err != nil {
-		return -1, err
-	}
-	return strconv.Atoi(string(b))
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
 
 func (n *namespaces) SetCompactionThreshold(namespace utils.NameSpaceName, threshold int64) error {
@@ -542,12 +532,10 @@ func (n *namespaces) SetCompactionThreshold(namespace utils.NameSpaceName, thres
 }
 
 func (n *namespaces) GetCompactionThreshold(namespace utils.NameSpaceName) (int64, error) {
+	var result int64
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "compactionThreshold")
-	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
-	if err != nil {
-		return -1, err
-	}
-	return strconv.ParseInt(string(b), 10, 64)
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
 
 func (n *namespaces) SetMaxProducersPerTopic(namespace utils.NameSpaceName, max int) error {
@@ -556,12 +544,10 @@ func (n *namespaces) SetMaxProducersPerTopic(namespace utils.NameSpaceName, max 
 }
 
 func (n *namespaces) GetMaxProducersPerTopic(namespace utils.NameSpaceName) (int, error) {
+	var result int
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
-	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
-	if err != nil {
-		return -1, err
-	}
-	return strconv.Atoi(string(b))
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
 
 func (n *namespaces) GetNamespaceReplicationClusters(namespace string) ([]string, error) {
