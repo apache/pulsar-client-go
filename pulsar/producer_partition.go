@@ -784,7 +784,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		return
 	}
 
-	if pi.sequenceID != response.GetSequenceId() {
+	if pi.sequenceID < response.GetSequenceId() {
 		// if we receive a receipt that is not the one expected, the state of the broker and the producer differs.
 		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
 		// the state discrepancy.
