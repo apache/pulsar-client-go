@@ -36,7 +36,7 @@ CGo based library.
 
 ## Requirements
 
-- Go 1.11+
+- Go 1.13+
 
 ## Status
 
@@ -72,8 +72,9 @@ defer producer.Close()
 
 if err != nil {
     fmt.Println("Failed to publish message", err)
+} else {
+    fmt.Println("Published message")
 }
-fmt.Println("Published message")
 ```
 
 Create a Consumer:
