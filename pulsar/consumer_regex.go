@@ -183,7 +183,18 @@ func (c *regexConsumer) AckID(msgID MessageID) {
 }
 
 func (c *regexConsumer) Nack(msg Message) {
-	c.NackID(msg.ID())
+	msgID := msg.ID()
+	mid, ok := toTrackingMessageID(msgID)
+	if !ok {
+		c.log.Warnf("invalid message id type %T", msgID)
+		return
+	}
+
+	if mid.consumer == nil {
+		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
+		return
+	}
+	mid.NackByMsg(msg)
 }
 
 func (c *regexConsumer) NackID(msgID MessageID) {

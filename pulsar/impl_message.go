@@ -79,6 +79,13 @@ func (id trackingMessageID) Nack() {
 	id.consumer.NackID(id)
 }
 
+func (id trackingMessageID) NackByMsg(msg Message) {
+	if id.consumer == nil {
+		return
+	}
+	id.consumer.NackMsg(msg)
+}
+
 func (id trackingMessageID) ack() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
 		return id.tracker.ack(int(id.batchIdx))

@@ -35,6 +35,7 @@ const defaultNackRedeliveryDelay = 1 * time.Minute
 type acker interface {
 	AckID(id trackingMessageID)
 	NackID(id trackingMessageID)
+	NackMsg(msg Message)
 }
 
 type consumer struct {
@@ -85,6 +86,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if options.Schema.GetSchemaInfo().Type == NONE {
 			options.Schema = NewBytesSchema(nil)
 		}
+	}
+
+	if options.NackBackoffPolicy == nil {
+		options.NackBackoffPolicy = new(defaultNackBackoffPolicy)
 	}
 
 	// did the user pass in a message channel?
@@ -326,6 +331,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				partitionIdx:               idx,
 				receiverQueueSize:          receiverQueueSize,
 				nackRedeliveryDelay:        nackRedeliveryDelay,
+				nackBackoffPolicy:          c.options.NackBackoffPolicy,
 				metadata:                   metadata,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
 				startMessageID:             trackingMessageID{},
@@ -489,7 +495,16 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 }
 
 func (c *consumer) Nack(msg Message) {
-	c.NackID(msg.ID())
+	mid, ok := c.messageID(msg.ID())
+	if !ok {
+		return
+	}
+
+	if mid.consumer != nil {
+		mid.Nack()
+		return
+	}
+	c.consumers[mid.partitionIdx].NackMsg(msg)
 }
 
 func (c *consumer) NackID(msgID MessageID) {

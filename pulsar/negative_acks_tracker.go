@@ -36,18 +36,33 @@ type negativeAcksTracker struct {
 	negativeAcks map[messageID]time.Time
 	rc           redeliveryConsumer
 	tick         *time.Ticker
+	nackBackoff  NackBackoffPolicy
 	delay        time.Duration
 	log          log.Logger
 }
 
-func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration, logger log.Logger) *negativeAcksTracker {
-	t := &negativeAcksTracker{
-		doneCh:       make(chan interface{}),
-		negativeAcks: make(map[messageID]time.Time),
-		rc:           rc,
-		tick:         time.NewTicker(delay / 3),
-		delay:        delay,
-		log:          logger,
+func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
+	nackBackoffDelay NackBackoffPolicy, logger log.Logger) *negativeAcksTracker {
+
+	t := new(negativeAcksTracker)
+	if nackBackoffDelay != nil {
+		t = &negativeAcksTracker{
+			doneCh:       make(chan interface{}),
+			negativeAcks: make(map[messageID]time.Time),
+			nackBackoff:  nackBackoffDelay,
+			rc:           rc,
+			log:          logger,
+		}
+	} else {
+		t = &negativeAcksTracker{
+			doneCh:       make(chan interface{}),
+			negativeAcks: make(map[messageID]time.Time),
+			rc:           rc,
+			tick:         time.NewTicker(delay / 3),
+			nackBackoff:  nil,
+			delay:        delay,
+			log:          logger,
+		}
 	}
 
 	go t.track()
@@ -73,6 +88,33 @@ func (t *negativeAcksTracker) Add(msgID messageID) {
 	}
 
 	targetTime := time.Now().Add(t.delay)
+	t.negativeAcks[batchMsgID] = targetTime
+}
+
+func (t *negativeAcksTracker) AddMessage(msg Message) {
+	nackBackoffDelay := t.nackBackoff.Next(msg.RedeliveryCount())
+	t.delay = time.Duration(nackBackoffDelay)
+	t.tick = time.NewTicker(t.delay / 3)
+	msgID := msg.ID()
+
+	// Always clear up the batch index since we want to track the nack
+	// for the entire batch
+	batchMsgID := messageID{
+		ledgerID: msgID.LedgerID(),
+		entryID:  msgID.EntryID(),
+		batchIdx: 0,
+	}
+
+	t.Lock()
+	defer t.Unlock()
+
+	_, present := t.negativeAcks[batchMsgID]
+	if present {
+		// The batch is already being tracked
+		return
+	}
+
+	targetTime := time.Now().Add(time.Duration(nackBackoffDelay))
 	t.negativeAcks[batchMsgID] = targetTime
 }
 
