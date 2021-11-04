@@ -31,15 +31,16 @@ type redeliveryConsumer interface {
 type negativeAcksTracker struct {
 	sync.Mutex
 
-	doneCh       chan interface{}
-	doneOnce     sync.Once
-	negativeAcks map[messageID]time.Time
-	rc           redeliveryConsumer
-	tick         *time.Ticker
-	nackBackoff  NackBackoffPolicy
-	trackFlag    bool
-	delay        time.Duration
-	log          log.Logger
+	doneCh             chan interface{}
+	doneOnce           sync.Once
+	negativeAcks       map[messageID]time.Time
+	rc                 redeliveryConsumer
+	tick               *time.Ticker
+	tickForNackBackoff *time.Ticker
+	nackBackoff        NackBackoffPolicy
+	trackFlag          bool
+	delay              time.Duration
+	log                log.Logger
 }
 
 func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
@@ -61,13 +62,14 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 		}
 	} else {
 		t = &negativeAcksTracker{
-			doneCh:       make(chan interface{}),
-			negativeAcks: make(map[messageID]time.Time),
-			rc:           rc,
-			tick:         time.NewTicker(delay / 3),
-			nackBackoff:  nil,
-			delay:        delay,
-			log:          logger,
+			doneCh:             make(chan interface{}),
+			negativeAcks:       make(map[messageID]time.Time),
+			rc:                 rc,
+			tick:               time.NewTicker(delay / 3),
+			tickForNackBackoff: nil,
+			nackBackoff:        nil,
+			delay:              delay,
+			log:                logger,
 		}
 
 		go t.track()
@@ -100,7 +102,8 @@ func (t *negativeAcksTracker) Add(msgID messageID) {
 func (t *negativeAcksTracker) AddMessage(msg Message) {
 	nackBackoffDelay := t.nackBackoff.Next(msg.RedeliveryCount())
 	t.delay = time.Duration(nackBackoffDelay)
-	t.tick = time.NewTicker(t.delay / 3)
+	t.tick = nil
+	t.tickForNackBackoff = time.NewTicker(t.delay / 3)
 
 	// Use trackFlag to avoid opening a new gorutine to execute `t.track()` every AddMessage.
 	// In fact, we only need to execute it once.
@@ -140,6 +143,29 @@ func (t *negativeAcksTracker) track() {
 			return
 
 		case <-t.tick.C:
+			{
+				now := time.Now()
+				msgIds := make([]messageID, 0)
+
+				t.Lock()
+
+				for msgID, targetTime := range t.negativeAcks {
+					t.log.Debugf("MsgId: %v -- targetTime: %v -- now: %v", msgID, targetTime, now)
+					if targetTime.Before(now) {
+						t.log.Debugf("Adding MsgId: %v", msgID)
+						msgIds = append(msgIds, msgID)
+						delete(t.negativeAcks, msgID)
+					}
+				}
+
+				t.Unlock()
+
+				if len(msgIds) > 0 {
+					t.rc.Redeliver(msgIds)
+				}
+			}
+
+		case <-t.tickForNackBackoff.C:
 			{
 				now := time.Now()
 				msgIds := make([]messageID, 0)
