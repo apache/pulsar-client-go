@@ -62,13 +62,13 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 		}
 	} else {
 		t = &negativeAcksTracker{
-			doneCh:             make(chan interface{}),
-			negativeAcks:       make(map[messageID]time.Time),
-			rc:                 rc,
-			tick:               time.NewTicker(delay / 3),
-			nackBackoff:        nil,
-			delay:              delay,
-			log:                logger,
+			doneCh:       make(chan interface{}),
+			negativeAcks: make(map[messageID]time.Time),
+			rc:           rc,
+			tick:         time.NewTicker(delay / 3),
+			nackBackoff:  nil,
+			delay:        delay,
+			log:          logger,
 		}
 
 		go t.track()
