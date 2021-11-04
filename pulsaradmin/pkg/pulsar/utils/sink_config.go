@@ -23,10 +23,10 @@ type SinkConfig struct {
 	TimeoutMs     *int64     `json:"timeoutMs,omitempty" yaml:"timeoutMs"`
 
 	// Whether the subscriptions the functions created/used should be deleted when the functions is deleted
-	CleanupSubscription bool `json:"cleanupSubscription,omitempty" yaml:"cleanupSubscription"`
+	CleanupSubscription bool `json:"cleanupSubscription" yaml:"cleanupSubscription"`
 
-	RetainOrdering bool   `json:"retainOrdering,omitempty" yaml:"retainOrdering"`
-	AutoAck        bool   `json:"autoAck,omitempty" yaml:"autoAck"`
+	RetainOrdering bool   `json:"retainOrdering" yaml:"retainOrdering"`
+	AutoAck        bool   `json:"autoAck" yaml:"autoAck"`
 	Parallelism    int    `json:"parallelism,omitempty" yaml:"parallelism"`
 	Tenant         string `json:"tenant,omitempty" yaml:"tenant"`
 	Namespace      string `json:"namespace,omitempty" yaml:"namespace"`
