@@ -35,8 +35,6 @@ type negativeAcksTracker struct {
 	doneOnce     sync.Once
 	negativeAcks map[messageID]time.Time
 	rc           redeliveryConsumer
-	tickLock     sync.Mutex
-	tick         *time.Ticker
 	nackBackoff  NackBackoffPolicy
 	trackFlag    bool
 	delay        time.Duration
@@ -70,11 +68,7 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 			log:          logger,
 		}
 
-		t.tickLock.Lock()
-		t.tick = time.NewTicker(t.delay / 3)
-		t.tickLock.Unlock()
-
-		go t.track()
+		go t.track(time.NewTicker(t.delay / 3))
 	}
 	return t
 }
@@ -104,14 +98,11 @@ func (t *negativeAcksTracker) Add(msgID messageID) {
 func (t *negativeAcksTracker) AddMessage(msg Message) {
 	nackBackoffDelay := t.nackBackoff.Next(msg.RedeliveryCount())
 	t.delay = time.Duration(nackBackoffDelay)
-	t.tickLock.Lock()
-	t.tick = time.NewTicker(t.delay / 3)
-	t.tickLock.Unlock()
 
 	// Use trackFlag to avoid opening a new gorutine to execute `t.track()` every AddMessage.
 	// In fact, we only need to execute it once.
 	if !t.trackFlag {
-		go t.track()
+		go t.track(time.NewTicker(t.delay / 3))
 		t.trackFlag = true
 	}
 
@@ -138,14 +129,14 @@ func (t *negativeAcksTracker) AddMessage(msg Message) {
 	t.negativeAcks[batchMsgID] = targetTime
 }
 
-func (t *negativeAcksTracker) track() {
+func (t *negativeAcksTracker) track(ticker *time.Ticker) {
 	for {
 		select {
 		case <-t.doneCh:
 			t.log.Debug("Closing nack tracker")
 			return
 
-		case <-t.tick.C:
+		case <-ticker.C:
 			{
 				now := time.Now()
 				msgIds := make([]messageID, 0)
@@ -174,7 +165,6 @@ func (t *negativeAcksTracker) track() {
 func (t *negativeAcksTracker) Close() {
 	// allow Close() to be invoked multiple times by consumer_partition to avoid panic
 	t.doneOnce.Do(func() {
-		t.tick.Stop()
 		t.doneCh <- nil
 	})
 }
