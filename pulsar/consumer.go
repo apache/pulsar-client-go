@@ -159,6 +159,10 @@ type ConsumerOptions struct {
 	// Decryption decryption related fields to decrypt the encrypted message
 	Decryption *MessageDecryptionInfo
 
+	// If enabled, the default implementation of NackBackoffPolicy will be used to calculate the delay time of
+	// nack backoff, Default: false.
+	EnableDefaultNackBackoffPolicy bool
+
 	// NackBackoffPolicy is a redelivery backoff mechanism which we can achieve redelivery with different
 	// delays according to the number of times the message is retried.
 	//
