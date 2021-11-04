@@ -88,7 +88,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 	}
 
-	if options.NackBackoffPolicy == nil && options.EnableDefaultNackBackoffPolicy == true {
+	if options.NackBackoffPolicy == nil && options.EnableDefaultNackBackoffPolicy {
 		options.NackBackoffPolicy = new(defaultNackBackoffPolicy)
 	}
 

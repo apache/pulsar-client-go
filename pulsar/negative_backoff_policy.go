@@ -31,6 +31,7 @@ type NackBackoffPolicy interface {
 	Next(redeliveryCount uint32) int64
 }
 
+// defaultNackBackoffPolicy is default impl for NackBackoffPolicy.
 type defaultNackBackoffPolicy struct {}
 
 func (nbp *defaultNackBackoffPolicy) Next(redeliveryCount uint32) int64 {
