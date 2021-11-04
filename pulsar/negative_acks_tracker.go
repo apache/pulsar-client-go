@@ -66,7 +66,6 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 			negativeAcks:       make(map[messageID]time.Time),
 			rc:                 rc,
 			tick:               time.NewTicker(delay / 3),
-			tickForNackBackoff: nil,
 			nackBackoff:        nil,
 			delay:              delay,
 			log:                logger,
@@ -102,7 +101,6 @@ func (t *negativeAcksTracker) Add(msgID messageID) {
 func (t *negativeAcksTracker) AddMessage(msg Message) {
 	nackBackoffDelay := t.nackBackoff.Next(msg.RedeliveryCount())
 	t.delay = time.Duration(nackBackoffDelay)
-	t.tick = nil
 	t.tickForNackBackoff = time.NewTicker(t.delay / 3)
 
 	// Use trackFlag to avoid opening a new gorutine to execute `t.track()` every AddMessage.
