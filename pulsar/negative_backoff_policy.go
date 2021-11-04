@@ -32,7 +32,7 @@ type NackBackoffPolicy interface {
 }
 
 // defaultNackBackoffPolicy is default impl for NackBackoffPolicy.
-type defaultNackBackoffPolicy struct {}
+type defaultNackBackoffPolicy struct{}
 
 func (nbp *defaultNackBackoffPolicy) Next(redeliveryCount uint32) int64 {
 	minNackTimeMs := int64(1000 * 10) // 10sec
