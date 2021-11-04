@@ -495,16 +495,21 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 }
 
 func (c *consumer) Nack(msg Message) {
-	mid, ok := c.messageID(msg.ID())
-	if !ok {
+	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
+		mid, ok := c.messageID(msg.ID())
+		if !ok {
+			return
+		}
+
+		if mid.consumer != nil {
+			mid.Nack()
+			return
+		}
+		c.consumers[mid.partitionIdx].NackMsg(msg)
 		return
 	}
 
-	if mid.consumer != nil {
-		mid.Nack()
-		return
-	}
-	c.consumers[mid.partitionIdx].NackMsg(msg)
+	c.NackID(msg.ID())
 }
 
 func (c *consumer) NackID(msgID MessageID) {
