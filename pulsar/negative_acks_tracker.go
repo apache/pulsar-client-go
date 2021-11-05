@@ -36,7 +36,7 @@ type negativeAcksTracker struct {
 	negativeAcks map[messageID]time.Time
 	rc           redeliveryConsumer
 	nackBackoff  NackBackoffPolicy
-	trackFlag    bool
+	tick         *time.Ticker
 	delay        time.Duration
 	log          log.Logger
 }
@@ -44,32 +44,24 @@ type negativeAcksTracker struct {
 func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 	nackBackoffPolicy NackBackoffPolicy, logger log.Logger) *negativeAcksTracker {
 
-	t := new(negativeAcksTracker)
-
-	// When using NackBackoffPolicy, the delay time needs to be calculated based on the RedeliveryCount field in
-	// the CommandMessage, so for the original default Nack() logic, we still keep the negativeAcksTracker created
-	// when we open a gorutine to execute the logic of `t.track()`. But for the NackBackoffPolicy method, we need
-	// to execute the logic of `t.track()` when AddMessage().
-	if nackBackoffPolicy != nil {
-		t = &negativeAcksTracker{
-			doneCh:       make(chan interface{}),
-			negativeAcks: make(map[messageID]time.Time),
-			nackBackoff:  nackBackoffPolicy,
-			rc:           rc,
-			log:          logger,
-		}
-	} else {
-		t = &negativeAcksTracker{
-			doneCh:       make(chan interface{}),
-			negativeAcks: make(map[messageID]time.Time),
-			rc:           rc,
-			nackBackoff:  nil,
-			delay:        delay,
-			log:          logger,
-		}
-
-		go t.track(time.NewTicker(t.delay / 3))
+	t := &negativeAcksTracker{
+		doneCh:       make(chan interface{}),
+		negativeAcks: make(map[messageID]time.Time),
+		rc:           rc,
+		nackBackoff:  nackBackoffPolicy,
+		log:          logger,
 	}
+
+	if nackBackoffPolicy != nil {
+		firstDelayForNackBackoff := nackBackoffPolicy.Next(1)
+		t.delay = time.Duration(firstDelayForNackBackoff)
+	} else {
+		t.delay = delay
+	}
+
+	t.tick = time.NewTicker(t.delay / 3)
+
+	go t.track()
 	return t
 }
 
@@ -97,14 +89,6 @@ func (t *negativeAcksTracker) Add(msgID messageID) {
 
 func (t *negativeAcksTracker) AddMessage(msg Message) {
 	nackBackoffDelay := t.nackBackoff.Next(msg.RedeliveryCount())
-	t.delay = time.Duration(nackBackoffDelay)
-
-	// Use trackFlag to avoid opening a new gorutine to execute `t.track()` every AddMessage.
-	// In fact, we only need to execute it once.
-	if !t.trackFlag {
-		go t.track(time.NewTicker(t.delay / 3))
-		t.trackFlag = true
-	}
 
 	msgID := msg.ID()
 
@@ -129,14 +113,14 @@ func (t *negativeAcksTracker) AddMessage(msg Message) {
 	t.negativeAcks[batchMsgID] = targetTime
 }
 
-func (t *negativeAcksTracker) track(ticker *time.Ticker) {
+func (t *negativeAcksTracker) track() {
 	for {
 		select {
 		case <-t.doneCh:
 			t.log.Debug("Closing nack tracker")
 			return
 
-		case <-ticker.C:
+		case <-t.tick.C:
 			{
 				now := time.Now()
 				msgIds := make([]messageID, 0)
@@ -165,6 +149,7 @@ func (t *negativeAcksTracker) track(ticker *time.Ticker) {
 func (t *negativeAcksTracker) Close() {
 	// allow Close() to be invoked multiple times by consumer_partition to avoid panic
 	t.doneOnce.Do(func() {
+		t.tick.Stop()
 		t.doneCh <- nil
 	})
 }
