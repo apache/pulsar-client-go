@@ -46,6 +46,7 @@ const (
 	producerReady
 	producerClosing
 	producerClosed
+	producerFailed
 )
 
 var (
@@ -144,6 +145,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	// add default message crypto if not provided
 	if encryption != nil && len(encryption.Keys) > 0 {
 		if encryption.KeyReader == nil {
+			p.setProducerState(producerFailed)
+			p.Close()
+			go p.runEventsLoop()
 			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
 		}
 
@@ -152,6 +156,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
 			if err != nil {
 				logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
+				p.setProducerState(producerFailed)
+				p.Close()
+				go p.runEventsLoop()
 				return nil, err
 			}
 			p.options.Encryption.MessageCrypto = messageCrypto
@@ -161,6 +168,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
+		p.setProducerState(producerFailed)
+		p.Close()
+		go p.runEventsLoop()
 		return nil, err
 	}
 
@@ -839,7 +849,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer req.waitGroup.Done()
-	if !p.casProducerState(producerReady, producerClosing) {
+	if !(p.casProducerState(producerReady, producerClosing) || p.casProducerState(producerFailed, producerClosing)) {
 		return
 	}
 
@@ -857,8 +867,10 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.Info("Closed producer")
 	}
 
-	if err = p.batchBuilder.Close(); err != nil {
-		p.log.WithError(err).Warn("Failed to close batch builder")
+	if p.batchBuilder != nil {
+		if err = p.batchBuilder.Close(); err != nil {
+			p.log.WithError(err).Warn("Failed to close batch builder")
+		}
 	}
 
 	p.setProducerState(producerClosed)
@@ -896,7 +908,8 @@ func (p *partitionProducer) casProducerState(oldState, newState producerState) b
 }
 
 func (p *partitionProducer) Close() {
-	if p.getProducerState() != producerReady {
+	producerState := p.getProducerState()
+	if producerState != producerReady && producerState != producerFailed {
 		// Producer is closing
 		return
 	}
