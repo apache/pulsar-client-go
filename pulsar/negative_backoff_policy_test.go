@@ -27,8 +27,8 @@ func TestDefaultNackBackoffPolicy_Next(t *testing.T) {
 	defaultNackBackoff := new(defaultNackBackoffPolicy)
 
 	res0 := defaultNackBackoff.Next(0)
-	assert.Equal(t, int64(1000*10), res0)
+	assert.Equal(t, int64(1000*30), res0)
 
 	res5 := defaultNackBackoff.Next(5)
-	assert.Equal(t, int64(320000), res5)
+	assert.Equal(t, int64(600000), res5)
 }
