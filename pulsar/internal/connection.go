@@ -327,8 +327,10 @@ func (c *connection) doHandshake() bool {
 }
 
 func (c *connection) waitUntilReady() error {
-	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
+	// The lock is held here to prevent changeState() from modifying state and broadcasting
+	// in the time between we check the state and the time that we call cond.Wait().
+	c.Lock()
+	defer c.Unlock()
 
 	for c.getState() != connectionReady {
 		c.log.Debugf("Wait until connection is ready state=%s", c.getState().String())
@@ -894,8 +896,10 @@ func (c *connection) Close() {
 }
 
 func (c *connection) changeState(state connectionState) {
-	c.cond.L.Lock()
-	defer c.cond.L.Unlock()
+	// The lock is held here because we need setState() and cond.Broadcast() to be
+	// an atomic operation from the point of view of waitUntilReady().
+	c.Lock()
+	defer c.Unlock()
 
 	c.setState(state)
 	c.cond.Broadcast()
