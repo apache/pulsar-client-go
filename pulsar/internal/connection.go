@@ -327,8 +327,9 @@ func (c *connection) doHandshake() bool {
 }
 
 func (c *connection) waitUntilReady() error {
-	// The lock is held here to prevent changeState() from modifying state and broadcasting
-	// in the time between we check the state and the time that we call cond.Wait().
+	// If we are going to call cond.Wait() at all, then we must call it _before_ we call cond.Broadcast().
+	// The lock is held here to prevent changeState() from calling cond.Broadcast() in the time between
+	// the state check and call to cond.Wait().
 	c.Lock()
 	defer c.Unlock()
 
