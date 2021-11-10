@@ -949,9 +949,7 @@ func (p *partitionProducer) closeFailedProducer() {
 	wg.Add(1)
 
 	cp := &closeProducer{&wg}
-	p.eventsChan <- cp
-
-	go p.runEventsLoop()
+	go p.internalClose(cp)
 
 	wg.Wait()
 }
