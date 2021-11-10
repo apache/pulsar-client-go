@@ -145,7 +145,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	// add default message crypto if not provided
 	if encryption != nil && len(encryption.Keys) > 0 {
 		if encryption.KeyReader == nil {
-			p.closFailedProducer()
+			p.closeFailedProducer()
 			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
 		}
 
@@ -154,7 +154,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
 			if err != nil {
 				logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
-				p.closFailedProducer()
+				p.closeFailedProducer()
 				return nil, err
 			}
 			p.options.Encryption.MessageCrypto = messageCrypto
@@ -164,7 +164,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
-		p.closFailedProducer()
+		p.closeFailedProducer()
 		return nil, err
 	}
 
@@ -942,7 +942,7 @@ func (i *pendingItem) Complete() {
 	buffersPool.Put(i.batchData)
 }
 
-func (p *partitionProducer) closFailedProducer() {
+func (p *partitionProducer) closeFailedProducer() {
 	p.setProducerState(producerFailed)
 
 	wg := sync.WaitGroup{}
