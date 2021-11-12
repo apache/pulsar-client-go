@@ -46,25 +46,25 @@ const (
 	// Default compression level
 	Default CompressionLevel = iota
 
-	// Faster compression, with lower compression ration
+	// Faster compression, with lower compression ratio
 	Faster
 
 	// Higher compression rate, but slower
 	Better
 )
 
-// TopicMetadata is a interface of topic metadata
+// TopicMetadata represents a topic metadata.
 type TopicMetadata interface {
-	// NumPartitions get the number of partitions for the specific topic
+	// NumPartitions returns the number of partitions for a particular topic.
 	NumPartitions() uint32
 }
 
 type ProducerOptions struct {
-	// Topic specify the topic this producer will be publishing on.
+	// Topic specifies the topic this producer will be publishing on.
 	// This argument is required when constructing the producer.
 	Topic string
 
-	// Name specify a name for the producer
+	// Name specifies a name for the producer.
 	// If not assigned, the system will generate a globally unique name which can be access with
 	// Producer.ProducerName().
 	// When specifying a name, it is up to the user to ensure that, for a given topic, the producer name is unique
@@ -72,24 +72,24 @@ type ProducerOptions struct {
 	// a topic.
 	Name string
 
-	// Properties attach a set of application defined properties to the producer
+	// Properties specifies a set of application defined properties for the producer.
 	// This properties will be visible in the topic stats
 	Properties map[string]string
 
-	// SendTimeout set the timeout for a message that not be acknowledged by server since sent.
+	// SendTimeout specifies the timeout for a message that has not been acknowledged by the server since sent.
 	// Send and SendAsync returns an error after timeout.
 	// Default is 30 seconds, negative such as -1 to disable.
 	SendTimeout time.Duration
 
-	// DisableBlockIfQueueFull control whether Send and SendAsync block if producer's message queue is full.
+	// DisableBlockIfQueueFull controls whether Send and SendAsync block if producer's message queue is full.
 	// Default is false, if set to true then Send and SendAsync return error when queue is full.
 	DisableBlockIfQueueFull bool
 
-	// MaxPendingMessages set the max size of the queue holding the messages pending to receive an
+	// MaxPendingMessages specifies the max size of the queue holding the messages pending to receive an
 	// acknowledgment from the broker.
 	MaxPendingMessages int
 
-	// HashingScheme change the `HashingScheme` used to chose the partition on where to publish a particular message.
+	// HashingScheme is used to define the partition on where to publish a particular message.
 	// Standard hashing functions available are:
 	//
 	//  - `JavaStringHash` : Java String.hashCode() equivalent
@@ -99,7 +99,7 @@ type ProducerOptions struct {
 	// Default is `JavaStringHash`.
 	HashingScheme
 
-	// CompressionType set the compression type for the producer.
+	// CompressionType specifies the compression type for the producer.
 	// By default, message payloads are not compressed. Supported compression types are:
 	//  - LZ4
 	//  - ZLIB
@@ -109,18 +109,18 @@ type ProducerOptions struct {
 	// release in order to be able to receive messages compressed with ZSTD.
 	CompressionType
 
-	// Define the desired compression level. Options:
+	// CompressionLevel defines the desired compression level. Options:
 	// - Default
 	// - Faster
 	// - Better
 	CompressionLevel
 
-	// MessageRouter set a custom message routing policy by passing an implementation of MessageRouter
+	// MessageRouter represents a custom message routing policy by passing an implementation of MessageRouter
 	// The router is a function that given a particular message and the topic metadata, returns the
 	// partition index where the message should be routed to
 	MessageRouter func(*ProducerMessage, TopicMetadata) int
 
-	// DisableBatching control whether automatic batching of messages is enabled for the producer. By default batching
+	// DisableBatching controls whether automatic batching of messages is enabled for the producer. By default batching
 	// is enabled.
 	// When batching is enabled, multiple calls to Producer.sendAsync can result in a single batch to be sent to the
 	// broker, leading to better throughput, especially when publishing small messages. If compression is enabled,
@@ -130,27 +130,28 @@ type ProducerOptions struct {
 	// Setting `DisableBatching: true` will make the producer to send messages individually
 	DisableBatching bool
 
-	// BatchingMaxPublishDelay set the time period within which the messages sent will be batched (default: 10ms)
+	// BatchingMaxPublishDelay specifies the time period within which the messages sent will be batched (default: 10ms)
 	// if batch messages are enabled. If set to a non zero value, messages will be queued until this time
 	// interval or until
 	BatchingMaxPublishDelay time.Duration
 
-	// BatchingMaxMessages set the maximum number of messages permitted in a batch. (default: 1000)
+	// BatchingMaxMessages specifies the maximum number of messages permitted in a batch. (default: 1000)
 	// If set to a value greater than 1, messages will be queued until this threshold is reached or
 	// BatchingMaxSize (see below) has been reached or the batch interval has elapsed.
 	BatchingMaxMessages uint
 
-	// BatchingMaxSize sets the maximum number of bytes permitted in a batch. (default 128 KB)
+	// BatchingMaxSize specifies the maximum number of bytes permitted in a batch. (default 128 KB)
 	// If set to a value greater than 1, messages will be queued until this threshold is reached or
 	// BatchingMaxMessages (see above) has been reached or the batch interval has elapsed.
 	BatchingMaxSize uint
 
-	// A chain of interceptors, These interceptors will be called at some points defined in ProducerInterceptor interface
+	// Interceptors is a chain of interceptors, These interceptors will be called at some points defined in ProducerInterceptor interface
 	Interceptors ProducerInterceptors
 
+	// Schema represents the schema implementation.
 	Schema Schema
 
-	// MaxReconnectToBroker set the maximum retry number of reconnectToBroker. (default: ultimate)
+	// MaxReconnectToBroker specifies the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
 	// BatcherBuilderType sets the batch builder type (default DefaultBatchBuilder)
@@ -164,7 +165,7 @@ type ProducerOptions struct {
 	// Default is 1 minute
 	PartitionsAutoDiscoveryInterval time.Duration
 
-	// Encryption necessary fields to perform encryption of message
+	// Encryption specifies the fields required to encrypt a message
 	Encryption *ProducerEncryptionInfo
 }
 
