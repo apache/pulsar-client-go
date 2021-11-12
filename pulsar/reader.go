@@ -68,10 +68,10 @@ type ReaderOptions struct {
 	// SubscriptionRolePrefix sets the subscription role prefix. The default prefix is "reader".
 	SubscriptionRolePrefix string
 
-	// ReadCompacted, if enabled, the reader will read messages from the compacted topic rather than reading the full message backlog
-	// of the topic. This means that, if the topic has been compacted, the reader will only see the latest value for
-	// each key in the topic, up until the point in the topic message backlog that has been compacted. Beyond that
-	// point, the messages will be sent as normal.
+	// ReadCompacted, if enabled, the reader will read messages from the compacted topic rather than reading the
+	// full message backlog of the topic. This means that, if the topic has been compacted, the reader will only
+	// see the latest value for each key in the topic, up until the point in the topic message backlog that has
+	// been compacted. Beyond that point, the messages will be sent as normal.
 	//
 	// ReadCompacted can only be enabled when reading from a persistent topic. Attempting to enable it on non-persistent
 	// topics will lead to the reader create call throwing a PulsarClientException.

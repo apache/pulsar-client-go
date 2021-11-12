@@ -53,16 +53,19 @@ const (
 type SubscriptionInitialPosition int
 
 const (
-	// SubscriptionPositionLatest is the latest position which means the start consuming position will be the last message
+	// SubscriptionPositionLatest is the latest position which means the start consuming position
+	// will be the last message
 	SubscriptionPositionLatest SubscriptionInitialPosition = iota
 
-	// SubscriptionPositionEarliest is the earliest position which means the start consuming position will be the first message
+	// SubscriptionPositionEarliest is the earliest position which means the start consuming position
+	// will be the first message
 	SubscriptionPositionEarliest
 )
 
 // DLQPolicy represents the configuration for the Dead Letter Queue consumer policy.
 type DLQPolicy struct {
-	// MaxDeliveries specifies the maximum number of times that a message will be delivered before being sent to the dead letter queue.
+	// MaxDeliveries specifies the maximum number of times that a message will be delivered before being
+	// sent to the dead letter queue.
 	MaxDeliveries uint32
 
 	// DeadLetterTopic specifies the name of the topic where the failing messages will be sent.
@@ -86,7 +89,8 @@ type ConsumerOptions struct {
 	// Either a topic, a list of topics or a topics pattern are required when subscribing
 	TopicsPattern string
 
-	// AutoDiscoveryPeriod specifies the interval in which to poll for new partitions or new topics if using a TopicsPattern.
+	// AutoDiscoveryPeriod specifies the interval in which to poll for new partitions or new topics
+	// if using a TopicsPattern.
 	AutoDiscoveryPeriod time.Duration
 
 	// SubscriptionName specifies the subscription name for this consumer
@@ -135,10 +139,10 @@ type ConsumerOptions struct {
 	// Name specifies the consumer name.
 	Name string
 
-	// ReadCompacted, if enabled, the consumer will read messages from the compacted topic rather than reading the full message backlog
-	// of the topic. This means that, if the topic has been compacted, the consumer will only see the latest value for
-	// each key in the topic, up until the point in the topic message backlog that has been compacted. Beyond that
-	// point, the messages will be sent as normal.
+	// ReadCompacted, if enabled, the consumer will read messages from the compacted topic rather than reading the
+	// full message backlog of the topic. This means that, if the topic has been compacted, the consumer will only
+	// see the latest value for each key in the topic, up until the point in the topic message backlog that has been
+	// compacted. Beyond that point, the messages will be sent as normal.
 	//
 	// ReadCompacted can only be enabled subscriptions to persistent topics, which have a single active consumer (i.e.
 	//  failure or exclusive subscriptions). Attempting to enable it on subscriptions to a non-persistent topics or on a
@@ -148,7 +152,8 @@ type ConsumerOptions struct {
 	// ReplicateSubscriptionState marks the subscription as replicated to keep it in sync across clusters
 	ReplicateSubscriptionState bool
 
-	// Interceptors is a chain of interceptors. These interceptors will be called at some points defined in ConsumerInterceptor interface.
+	// Interceptors is a chain of interceptors. These interceptors will be called at some points defined in
+	// ConsumerInterceptor interface.
 	Interceptors ConsumerInterceptors
 
 	// Schema represents the schema implementation.
@@ -160,7 +165,8 @@ type ConsumerOptions struct {
 	// Decryption represents the encryption related fields required by the consumer to decrypt a message.
 	Decryption *MessageDecryptionInfo
 
-	// EnableDefaultNackBackoffPolicy, if enabled, the default implementation of NackBackoffPolicy will be used to calculate the delay time of
+	// EnableDefaultNackBackoffPolicy, if enabled, the default implementation of NackBackoffPolicy will be used
+	// to calculate the delay time of
 	// nack backoff, Default: false.
 	EnableDefaultNackBackoffPolicy bool
 

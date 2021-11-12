@@ -145,7 +145,8 @@ type ProducerOptions struct {
 	// BatchingMaxMessages (see above) has been reached or the batch interval has elapsed.
 	BatchingMaxSize uint
 
-	// Interceptors is a chain of interceptors, These interceptors will be called at some points defined in ProducerInterceptor interface
+	// Interceptors is a chain of interceptors, These interceptors will be called at some points defined
+	// in ProducerInterceptor interface
 	Interceptors ProducerInterceptors
 
 	// Schema represents the schema implementation.
