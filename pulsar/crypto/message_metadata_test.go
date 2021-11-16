@@ -24,7 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGetEncyptionKeys(t *testing.T) {
+func TestGetEncryptionKeys(t *testing.T) {
 	msgMetadata := &pb.MessageMetadata{}
 	name1 := "key-1"
 	value1 := []byte{1, 2, 3, 4}
@@ -95,10 +95,10 @@ func TestUpsertEncryptionKey(t *testing.T) {
 
 	msgMetadataSupplier := NewMessageMetadataSupplier(msgMetadata)
 
-	msgMetadataSupplier.UpsertEncryptionkey(*keyInfo)
+	msgMetadataSupplier.UpsertEncryptionKey(*keyInfo)
 
 	// try to add same key again
-	msgMetadataSupplier.UpsertEncryptionkey(*keyInfo)
+	msgMetadataSupplier.UpsertEncryptionKey(*keyInfo)
 
 	actual := msgMetadataSupplier.EncryptionKeys()
 

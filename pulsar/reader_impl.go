@@ -33,11 +33,12 @@ const (
 
 type reader struct {
 	sync.Mutex
+	client              *client
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
 	log                 log.Logger
-	metrics             *internal.TopicMetrics
+	metrics             *internal.LeveledMetrics
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -88,12 +89,14 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		metadata:                   options.Properties,
 		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
 		replicateSubscriptionState: false,
+		decryption:                 options.Decryption,
 	}
 
 	reader := &reader{
+		client:    client,
 		messageCh: make(chan ConsumerMessage),
 		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics:   client.metrics.GetTopicMetrics(options.Topic),
+		metrics:   client.metrics.GetLeveledMetrics(options.Topic),
 	}
 
 	// Provide dummy dlq router with not dlq policy
@@ -174,6 +177,7 @@ func (r *reader) hasMoreMessages() bool {
 
 func (r *reader) Close() {
 	r.pc.Close()
+	r.client.handlers.Del(r)
 	r.metrics.ReadersClosed.Inc()
 }
 

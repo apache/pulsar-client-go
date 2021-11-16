@@ -12,6 +12,9 @@ In general, you need to perform the following steps:
 8. Update the release note.
 9. Announce the release.
 
+### Requirements
+- [GPG keys to sign release artifacts](https://github.com/apache/pulsar/wiki/Create-GPG-keys-to-sign-release-artifacts)
+
 ## Steps in detail
 
 1. Create a release branch.
@@ -65,9 +68,20 @@ $ gpg -b --armor apache-pulsar-client-go-0.X.0-src.tar.gz
 $ shasum -a 512 apache-pulsar-client-go-0.X.0-src.tar.gz > apache-pulsar-client-go-0.X.0-src.tar.gz.sha512 
 ```
 
+Checkout repo for uploading artifacts
 ```
-$ mkdir pulsar-client-go-0.X.0-candidate-1
+$ svn co https://dist.apache.org/repos/dist/dev/pulsar pulsar-dist-dev
+$ cd pulsar-dist-dev
+```
+
+Create a candidate directory at the root repo
+```
+$ svn mkdir pulsar-client-go-0.X.0-candidate-1
 $ cd pulsar-client-go-0.X.0-candidate-1
+```
+
+Copy the signed artifacts into the candiate directory and commit
+```
 $ cp ../apache-pulsar-client-go-0.X.0-* .
 $ svn add *
 $ svn ci -m 'Staging artifacts and signature for Pulsar Client Go release 0.X.0-candidate-1'
@@ -110,7 +124,7 @@ README.md to build and run the pulsar-client-go.
 The vote will be open for at least 72 hours. It is adopted by majority approval, with at least 3 PMC affirmative votes.
 
 Source file:
-https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go/apache-pulsar-client-go-0.X.0-src.tar.gz
+https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go-0.X.0-candidate-1/apache-pulsar-client-go-0.X.0-src.tar.gz
 
 The tag to be voted upon:
 v0.X.0
@@ -142,8 +156,9 @@ Remove the old releases (if any). We only need the latest release there, older r
 ```
 
 # Get the list of releases
-
-svn ls https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/
+```
+svn ls https://dist.apache.org/repos/dist/release/pulsar | grep client-go
+```
 
 # Delete each release (except for the last one)
 

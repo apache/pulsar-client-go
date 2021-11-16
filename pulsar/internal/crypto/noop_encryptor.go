@@ -17,33 +17,17 @@
 
 package crypto
 
-// EncryptionKeyInfo
-type EncryptionKeyInfo struct {
-	metadata map[string]string
-	key      []byte
-	name     string
+import (
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
+
+type noopEncryptor struct{}
+
+func NewNoopEncryptor() Encryptor {
+	return &noopEncryptor{}
 }
 
-// NewEncryptionKeyInfo create a new EncryptionKeyInfo
-func NewEncryptionKeyInfo(name string, key []byte, metadata map[string]string) *EncryptionKeyInfo {
-	return &EncryptionKeyInfo{
-		metadata: metadata,
-		name:     name,
-		key:      key,
-	}
-}
-
-// Name get the name of the key
-func (eci *EncryptionKeyInfo) Name() string {
-	return eci.name
-}
-
-// Key get the key data
-func (eci *EncryptionKeyInfo) Key() []byte {
-	return eci.key
-}
-
-// Metadata get key metadata
-func (eci *EncryptionKeyInfo) Metadata() map[string]string {
-	return eci.metadata
+// Encrypt Noop ecryptor
+func (e *noopEncryptor) Encrypt(data []byte, msgMetadata *pb.MessageMetadata) ([]byte, error) {
+	return data, nil
 }

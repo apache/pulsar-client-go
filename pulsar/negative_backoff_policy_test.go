@@ -15,35 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package crypto
+package pulsar
 
-// EncryptionKeyInfo
-type EncryptionKeyInfo struct {
-	metadata map[string]string
-	key      []byte
-	name     string
-}
+import (
+	"testing"
 
-// NewEncryptionKeyInfo create a new EncryptionKeyInfo
-func NewEncryptionKeyInfo(name string, key []byte, metadata map[string]string) *EncryptionKeyInfo {
-	return &EncryptionKeyInfo{
-		metadata: metadata,
-		name:     name,
-		key:      key,
-	}
-}
+	"github.com/stretchr/testify/assert"
+)
 
-// Name get the name of the key
-func (eci *EncryptionKeyInfo) Name() string {
-	return eci.name
-}
+func TestDefaultNackBackoffPolicy_Next(t *testing.T) {
+	defaultNackBackoff := new(defaultNackBackoffPolicy)
 
-// Key get the key data
-func (eci *EncryptionKeyInfo) Key() []byte {
-	return eci.key
-}
+	res0 := defaultNackBackoff.Next(0)
+	assert.Equal(t, int64(1000*30), res0)
 
-// Metadata get key metadata
-func (eci *EncryptionKeyInfo) Metadata() map[string]string {
-	return eci.metadata
+	res5 := defaultNackBackoff.Next(5)
+	assert.Equal(t, int64(600000), res5)
 }

@@ -79,6 +79,13 @@ func (id trackingMessageID) Nack() {
 	id.consumer.NackID(id)
 }
 
+func (id trackingMessageID) NackByMsg(msg Message) {
+	if id.consumer == nil {
+		return
+	}
+	id.consumer.NackMsg(msg)
+}
+
 func (id trackingMessageID) ack() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
 		return id.tracker.ack(int(id.batchIdx))
@@ -201,6 +208,24 @@ func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 	return time.Unix(seconds, nanos)
 }
 
+// EncryptionContext
+// It will be used to decrypt message outside of this client
+type EncryptionContext struct {
+	Keys             map[string]EncryptionKey
+	Param            []byte
+	Algorithm        string
+	CompressionType  CompressionType
+	UncompressedSize int
+	BatchSize        int
+}
+
+// EncryptionKey
+// Encryption key used to encrypt the message payload
+type EncryptionKey struct {
+	KeyValue []byte
+	Metadata map[string]string
+}
+
 type message struct {
 	publishTime         time.Time
 	eventTime           time.Time
@@ -215,6 +240,7 @@ type message struct {
 	replicatedFrom      string
 	redeliveryCount     uint32
 	schema              Schema
+	encryptionContext   *EncryptionContext
 }
 
 func (msg *message) Topic() string {
@@ -267,6 +293,10 @@ func (msg *message) GetSchemaValue(v interface{}) error {
 
 func (msg *message) ProducerName() string {
 	return msg.producerName
+}
+
+func (msg *message) GetEncryptionContext() *EncryptionContext {
+	return msg.encryptionContext
 }
 
 func newAckTracker(size int) *ackTracker {

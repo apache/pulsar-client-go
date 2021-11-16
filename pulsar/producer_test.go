@@ -30,6 +30,8 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -996,6 +998,113 @@ func TestSendContextExpired(t *testing.T) {
 	makeHTTPCall(t, http.MethodDelete, quotaURL, "")
 }
 
+func TestProducerWithRSAEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			MessageCrypto: msgCrypto,
+			Keys:          []string{"my-app.key"},
+		},
+		Schema: NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Value: fmt.Sprintf("hello-%d", i),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+}
+
+func TestProducuerCreationFailOnNilKeyReader(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	// Producer creation should fail as keyreader is nil
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+		Encryption: &ProducerEncryptionInfo{
+			MessageCrypto: msgCrypto,
+			Keys:          []string{"my-app.key"},
+		},
+		Schema: NewStringSchema(nil),
+	})
+
+	assert.NotNil(t, err)
+	assert.Nil(t, producer)
+}
+
+func TestProducuerSendFailOnInvalidKey(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	msgCrypto, err := crypto.NewDefaultMessageCrypto("testing", true, plog.DefaultNopLogger())
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/invalid_pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			MessageCrypto: msgCrypto,
+			Keys:          []string{"my-app.key"},
+		},
+		Schema: NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, producer)
+
+	// producer should send return an error as keyreader is configured with wrong pub.key and fail while encrypting message
+	mid, err := producer.Send(context.Background(), &ProducerMessage{
+		Value: "test",
+	})
+
+	assert.NotNil(t, err)
+	assert.Nil(t, mid)
+}
+
 type noopProduceInterceptor struct{}
 
 func (noopProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {}
@@ -1126,4 +1235,40 @@ func TestProducerSendAfterClose(t *testing.T) {
 	})
 	assert.Nil(t, ID)
 	assert.Error(t, err)
+}
+
+func TestExactlyOnceWithProducerNameSpecified(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+		Name:  "p-name-1",
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	producer2, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+		Name:  "p-name-2",
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer2)
+	defer producer2.Close()
+
+	producer3, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+		Name:  "p-name-2",
+	})
+
+	assert.NotNil(t, err)
+	assert.Nil(t, producer3)
 }

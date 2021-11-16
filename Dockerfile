@@ -21,7 +21,7 @@ ARG GO_VERSION=golang:1.12
 FROM apachepulsar/pulsar:latest as pulsar
 FROM $GO_VERSION as go
 
-RUN apt-get update && apt-get install -y openjdk-11-jre-headless
+RUN apt-get update && apt-get install -y openjdk-11-jre-headless ca-certificates
 
 COPY --from=pulsar /pulsar /pulsar
 

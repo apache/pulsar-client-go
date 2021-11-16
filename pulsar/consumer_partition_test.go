@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 
 	"github.com/stretchr/testify/assert"
@@ -35,7 +36,8 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
@@ -66,7 +68,8 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
@@ -97,7 +100,8 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: make(map[pb.CompressionType]compression.Provider),
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
