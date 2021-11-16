@@ -62,7 +62,6 @@ var (
 var errTopicNotFount = "TopicNotFound"
 var errMetadata = "MetadataError"
 
-
 type partitionProducer struct {
 	state  ua.Int32
 	client *client
@@ -353,6 +352,9 @@ func (p *partitionProducer) reconnectToBroker() {
 		time.Sleep(d)
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
+		// In reconnection logic, grabCnx maybe return err, but we did not return the error.
+		// So in partitionProducer struct, we define an err object to make it easier for users to
+		// determine what caused the grabCnx error.
 		p.err = err
 		if err == nil {
 			// Successfully reconnected
@@ -360,7 +362,7 @@ func (p *partitionProducer) reconnectToBroker() {
 			return
 		}
 		errMsg := err.Error()
-		if strings.Contains(errMsg, errTopicNotFount) || strings.Contains(errMsg,errMetadata){
+		if strings.Contains(errMsg, errTopicNotFount) || strings.Contains(errMsg, errMetadata) {
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic Not Found.")
 			break
@@ -747,7 +749,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		return
 	}
 	if p.err != nil {
-		callback(nil,msg,p.err)
+		callback(nil, msg, p.err)
 		return
 	}
 
