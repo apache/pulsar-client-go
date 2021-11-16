@@ -1001,7 +1001,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			return
 		}
 		errMsg := err.Error()
-		if strings.Contains(errMsg, errTopicNotFount)  || strings.Contains(errMsg,errMetadata){
+		if strings.Contains(errMsg, errTopicNotFount) || strings.Contains(errMsg, errMetadata) {
 			// when topic is deleted, we should give up reconnection.
 			pc.log.Warn("Topic Not Found.")
 			break
