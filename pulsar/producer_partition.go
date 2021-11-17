@@ -60,7 +60,6 @@ var (
 )
 
 var errTopicNotFount = "TopicNotFound"
-var errMetadata = "MetadataError"
 
 type partitionProducer struct {
 	state  ua.Int32
@@ -362,7 +361,7 @@ func (p *partitionProducer) reconnectToBroker() {
 			return
 		}
 		errMsg := err.Error()
-		if strings.Contains(errMsg, errTopicNotFount) || strings.Contains(errMsg, errMetadata) {
+		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic Not Found.")
 			break
