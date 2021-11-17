@@ -89,6 +89,7 @@ type partitionConsumerOpts struct {
 	partitionIdx               int
 	receiverQueueSize          int
 	nackRedeliveryDelay        time.Duration
+	nackBackoffPolicy          NackBackoffPolicy
 	metadata                   map[string]string
 	replicateSubscriptionState bool
 	startMessageID             trackingMessageID
@@ -201,7 +202,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	pc.decryptor = decryptor
 
-	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, pc.log)
+	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, options.nackBackoffPolicy, pc.log)
 
 	err := pc.grabConn()
 	if err != nil {
@@ -328,6 +329,11 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
 
 func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
 	pc.nackTracker.Add(msgID.messageID)
+	pc.metrics.NacksCounter.Inc()
+}
+
+func (pc *partitionConsumer) NackMsg(msg Message) {
+	pc.nackTracker.AddMessage(msg)
 	pc.metrics.NacksCounter.Inc()
 }
 
