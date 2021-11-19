@@ -113,9 +113,17 @@ func newClient(options ClientOptions) (Client, error) {
 
 	var metrics *internal.Metrics
 	if options.CustomMetricsLabels != nil {
-		metrics = internal.NewMetricsProvider(int(options.MetricsCardinality), options.CustomMetricsLabels)
+		metrics = internal.NewMetricsProvider(
+			int(options.MetricsCardinality),
+			options.CustomMetricsQualifiers.Namespace,
+			options.CustomMetricsQualifiers.Subsystem,
+			options.CustomMetricsLabels)
 	} else {
-		metrics = internal.NewMetricsProvider(int(options.MetricsCardinality), map[string]string{})
+		metrics = internal.NewMetricsProvider(
+			int(options.MetricsCardinality),
+			options.CustomMetricsQualifiers.Namespace,
+			options.CustomMetricsQualifiers.Subsystem,
+			map[string]string{})
 	}
 
 	c := &client{

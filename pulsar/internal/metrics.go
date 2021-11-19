@@ -88,7 +88,8 @@ type LeveledMetrics struct {
 	ReadersClosed       prometheus.Counter
 }
 
-func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]string) *Metrics {
+func NewMetricsProvider(metricsCardinality int, userDefinedMetricsNamespace, userDefinedMetricsSubsystem string,
+	userDefinedLabels map[string]string) *Metrics {
 	constLabels := map[string]string{
 		"client": "go",
 	}
@@ -114,36 +115,48 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 	metrics := &Metrics{
 		metricsLevel: metricsCardinality,
 		messagesPublished: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_messages_published",
 			Help:        "Counter of messages published by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		bytesPublished: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_bytes_published",
 			Help:        "Counter of messages published by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		messagesPending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_producer_pending_messages",
 			Help:        "Counter of messages pending to be published by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		bytesPending: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_producer_pending_bytes",
 			Help:        "Counter of bytes pending to be published by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		publishErrors: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_producer_errors",
 			Help:        "Counter of publish errors",
 			ConstLabels: constLabels,
 		}, append(metricsLevelLabels, "error")),
 
 		publishLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_producer_latency_seconds",
 			Help:        "Publish latency experienced by the client",
 			ConstLabels: constLabels,
@@ -151,6 +164,8 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 		}, metricsLevelLabels),
 
 		publishRPCLatency: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_producer_rpc_latency_seconds",
 			Help:        "Publish RPC latency experienced internally by the client when sending data to receiving an ack",
 			ConstLabels: constLabels,
@@ -158,84 +173,112 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 		}, metricsLevelLabels),
 
 		producersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_producers_opened",
 			Help:        "Counter of producers created by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		producersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_producers_closed",
 			Help:        "Counter of producers closed by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		producersPartitions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_producers_partitions_active",
 			Help:        "Counter of individual partitions the producers are currently active",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		consumersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumers_opened",
 			Help:        "Counter of consumers created by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		consumersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumers_closed",
 			Help:        "Counter of consumers closed by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		consumersPartitions: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumers_partitions_active",
 			Help:        "Counter of individual partitions the consumers are currently active",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		messagesReceived: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_messages_received",
 			Help:        "Counter of messages received by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		bytesReceived: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_bytes_received",
 			Help:        "Counter of bytes received by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		prefetchedMessages: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumer_prefetched_messages",
 			Help:        "Number of messages currently sitting in the consumer pre-fetch queue",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		prefetchedBytes: prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumer_prefetched_bytes",
 			Help:        "Total number of bytes currently sitting in the consumer pre-fetch queue",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		acksCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumer_acks",
 			Help:        "Counter of messages acked by client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		nacksCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumer_nacks",
 			Help:        "Counter of messages nacked by client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		dlqCounter: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumer_dlq_messages",
 			Help:        "Counter of messages sent to Dead letter queue",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		processingTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_consumer_processing_time_seconds",
 			Help:        "Time it takes for application to process messages",
 			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
@@ -243,54 +286,72 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 		}, metricsLevelLabels),
 
 		readersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_readers_opened",
 			Help:        "Counter of readers created by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		readersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_readers_closed",
 			Help:        "Counter of readers closed by the client",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
 		ConnectionsOpened: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_connections_opened",
 			Help:        "Counter of connections created by the client",
 			ConstLabels: constLabels,
 		}),
 
 		ConnectionsClosed: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_connections_closed",
 			Help:        "Counter of connections closed by the client",
 			ConstLabels: constLabels,
 		}),
 
 		ConnectionsEstablishmentErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_connections_establishment_errors",
 			Help:        "Counter of errors in connections establishment",
 			ConstLabels: constLabels,
 		}),
 
 		ConnectionsHandshakeErrors: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_connections_handshake_errors",
 			Help:        "Counter of errors in connections handshake (eg: authz)",
 			ConstLabels: constLabels,
 		}),
 
 		LookupRequestsCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_lookup_count",
 			Help:        "Counter of lookup requests made by the client",
 			ConstLabels: constLabels,
 		}),
 
 		PartitionedTopicMetadataRequestsCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_partitioned_topic_metadata_count",
 			Help:        "Counter of partitioned_topic_metadata requests made by the client",
 			ConstLabels: constLabels,
 		}),
 
 		RPCRequestCount: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace:   userDefinedMetricsNamespace,
+			Subsystem:   userDefinedMetricsSubsystem,
 			Name:        "pulsar_client_rpc_count",
 			Help:        "Counter of RPC requests made by the client",
 			ConstLabels: constLabels,

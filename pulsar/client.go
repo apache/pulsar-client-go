@@ -123,6 +123,10 @@ type ClientOptions struct {
 
 	// Add custom labels to all the metrics reported by this client instance
 	CustomMetricsLabels map[string]string
+
+	// These qualifiers are components of the fully-qualified name of each
+	// metric (created by joining these components with "_" and the metric name)
+	CustomMetricsQualifiers CustomMetricsQualifiers
 }
 
 // Client represents a pulsar client
@@ -165,3 +169,13 @@ const (
 	MetricsCardinalityNamespace                    // Label metrics by tenant and namespace
 	MetricsCardinalityTopic                        // Label metrics by topic
 )
+
+// CustomMetricsQualifiers represent name components that are added to each metric name on
+// registration.  The resulting fully-qualified metric names will be of the form:
+// "Namespace_Subsystem_Name"
+// Note that the fully-qualified name of the metric must be a
+// valid Prometheus metric name.
+type CustomMetricsQualifiers struct {
+	Namespace string
+	Subsystem string
+}
