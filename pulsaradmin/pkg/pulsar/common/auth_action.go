@@ -25,6 +25,9 @@ const (
 	produce       AuthAction = "produce"
 	consume       AuthAction = "consume"
 	functionsAuth AuthAction = "functions"
+	packages      AuthAction = "packages"
+	sinks         AuthAction = "sinks"
+	sources       AuthAction = "sources"
 )
 
 func ParseAuthAction(action string) (AuthAction, error) {
@@ -35,9 +38,15 @@ func ParseAuthAction(action string) (AuthAction, error) {
 		return consume, nil
 	case "functions":
 		return functionsAuth, nil
+	case "packages":
+		return packages, nil
+	case "sinks":
+		return sinks, nil
+	case "sources":
+		return sources, nil
 	default:
 		return "", errors.Errorf("The auth action only can be specified as 'produce', "+
-			"'consume', or 'functions'. Invalid auth action '%s'", action)
+			"'consume', 'sources', 'sinks', 'packages', or 'functions'. Invalid auth action '%s'", action)
 	}
 }
 
