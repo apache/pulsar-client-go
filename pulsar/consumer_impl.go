@@ -297,6 +297,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	receiverQueueSize := c.options.ReceiverQueueSize
 	metadata := c.options.Properties
+	subProperties := c.options.SubscriptionProperties
 
 	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
@@ -333,6 +334,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				nackRedeliveryDelay:        nackRedeliveryDelay,
 				nackBackoffPolicy:          c.options.NackBackoffPolicy,
 				metadata:                   metadata,
+				subProperties:              subProperties,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
 				startMessageID:             trackingMessageID{},
 				subscriptionMode:           durable,
