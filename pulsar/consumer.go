@@ -101,6 +101,12 @@ type ConsumerOptions struct {
 	// Those properties will be visible in the topic stats
 	Properties map[string]string
 
+	// SubscriptionProperties specify the subscription properties for this subscription.
+	//
+	// > Notice: SubscriptionProperties are immutable, and consumers under the same subscription will fail to create a
+	// > subscription if they use different properties.
+	SubscriptionProperties map[string]string
+
 	// Type specifies the subscription type to be used when subscribing to a topic.
 	// Default is `Exclusive`
 	Type SubscriptionType

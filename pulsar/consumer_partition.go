@@ -91,6 +91,7 @@ type partitionConsumerOpts struct {
 	nackRedeliveryDelay        time.Duration
 	nackBackoffPolicy          NackBackoffPolicy
 	metadata                   map[string]string
+	subProperties              map[string]string
 	replicateSubscriptionState bool
 	startMessageID             trackingMessageID
 	startMessageIDInclusive    bool
@@ -1058,6 +1059,7 @@ func (pc *partitionConsumer) grabConn() error {
 		PriorityLevel:              nil,
 		Durable:                    proto.Bool(pc.options.subscriptionMode == durable),
 		Metadata:                   internal.ConvertFromStringMap(pc.options.metadata),
+		SubscriptionProperties:     internal.ConvertFromStringMap(pc.options.subProperties),
 		ReadCompacted:              proto.Bool(pc.options.readCompacted),
 		Schema:                     pbSchema,
 		InitialPosition:            initialPosition.Enum(),
@@ -1073,6 +1075,10 @@ func (pc *partitionConsumer) grabConn() error {
 
 	if len(pc.options.metadata) > 0 {
 		cmdSubscribe.Metadata = toKeyValues(pc.options.metadata)
+	}
+
+	if len(pc.options.subProperties) > 0 {
+		cmdSubscribe.SubscriptionProperties = toKeyValues(pc.options.subProperties)
 	}
 
 	// force topic creation is enabled by default so
