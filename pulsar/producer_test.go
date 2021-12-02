@@ -858,18 +858,24 @@ func TestDelayAbsolute(t *testing.T) {
 }
 
 func TestMaxMessageSize(t *testing.T) {
+	serverMaxMessageSize := 1024 * 1024
+
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
 	})
 	assert.NoError(t, err)
 	defer client.Close()
+
+	// Need to set BatchingMaxSize > serverMaxMessageSize to avoid errMessageTooLarge
+	// being masked by an earlier errFailAddToBatch
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
+		Topic:           newTopicName(),
+		BatchingMaxSize: uint(2 * serverMaxMessageSize),
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 	defer producer.Close()
-	serverMaxMessageSize := 1024 * 1024
+
 	for bias := -1; bias <= 1; bias++ {
 		payload := make([]byte, serverMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
