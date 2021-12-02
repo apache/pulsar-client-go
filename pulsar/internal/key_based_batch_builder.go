@@ -115,9 +115,10 @@ func (bc *keyBasedBatchContainer) IsMultiBatches() bool {
 	return true
 }
 
+// hasSpace should return true if and only if the batch container can accommodate another message with the length of payload.
 func (bc *keyBasedBatchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
-	return bc.numMessages+1 < bc.maxMessages || (bc.buffer.ReadableBytes()+msgSize) < uint32(bc.maxBatchSize)
+	return bc.numMessages+1 < bc.maxMessages && (bc.buffer.ReadableBytes()+msgSize) < uint32(bc.maxBatchSize)
 }
 
 // Add will add single message to key-based batch with message key.
