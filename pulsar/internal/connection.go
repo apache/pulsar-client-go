@@ -858,13 +858,14 @@ func (c *connection) Close() {
 		c.Lock()
 		cnx := c.cnx
 		c.Unlock()
-		c.changeState(connectionClosed)
+		c.changeState(connectionClosing)
 
 		if cnx != nil {
 			_ = cnx.Close()
 		}
 
 		close(c.closeCh)
+                c.changeState(connectionClosed)
 
 		listeners := make(map[uint64]ConnectionListener)
 		c.listenersLock.Lock()
