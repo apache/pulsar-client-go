@@ -20,10 +20,8 @@ package auth
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"fmt"
 	"io/ioutil"
 	"net/http"
-	"os"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common"
 )
@@ -41,8 +39,10 @@ type Transport struct {
 
 func GetAuthProvider(config *common.Config) (*Provider, error) {
 	var provider Provider
-	defaultTransport := GetDefaultTransport(config)
-	var err error
+	defaultTransport, err := NewDefaultTransport(config)
+	if err != nil {
+		return nil, err
+	}
 	switch config.AuthPlugin {
 	case TLSPluginShortName:
 		fallthrough
@@ -68,7 +68,18 @@ func GetAuthProvider(config *common.Config) (*Provider, error) {
 	return &provider, err
 }
 
+// GetDefaultTransport gets a default transport.
+// Deprecated: Use NewDefaultTransport instead.
 func GetDefaultTransport(config *common.Config) http.RoundTripper {
+	transport, err := NewDefaultTransport(config)
+	if err != nil {
+		panic(err)
+	}
+
+	return transport
+}
+
+func NewDefaultTransport(config *common.Config) (http.RoundTripper, error) {
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: config.TLSAllowInsecureConnection,
@@ -76,13 +87,12 @@ func GetDefaultTransport(config *common.Config) http.RoundTripper {
 	if len(config.TLSTrustCertsFilePath) > 0 {
 		rootCA, err := ioutil.ReadFile(config.TLSTrustCertsFilePath)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "error loading certificate authority:", err)
-			os.Exit(1)
+			return nil, err
 		}
 		tlsConfig.RootCAs = x509.NewCertPool()
 		tlsConfig.RootCAs.AppendCertsFromPEM(rootCA)
 	}
 	transport.MaxIdleConnsPerHost = 10
 	transport.TLSClientConfig = tlsConfig
-	return transport
+	return transport, nil
 }

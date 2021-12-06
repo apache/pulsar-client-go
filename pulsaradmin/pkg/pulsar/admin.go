@@ -85,8 +85,24 @@ func New(config *common.Config) (Client, error) {
 	return c, err
 }
 
+// NewWithAuthProvider creates a client with auth provider.
+// Deprecated: Use NewPulsarClientWithAuthProvider instead.
 func NewWithAuthProvider(config *common.Config, authProvider auth.Provider) Client {
-	defaultTransport := auth.GetDefaultTransport(config)
+	client, err := NewPulsarClientWithAuthProvider(config, authProvider)
+	if err != nil {
+		panic(err)
+	}
+	return client
+}
+
+// NewPulsarClientWithAuthProvider create a client with auth provider.
+func NewPulsarClientWithAuthProvider(config *common.Config,
+	authProvider auth.Provider) (Client, error) {
+	defaultTransport, err := auth.NewDefaultTransport(config)
+	if err != nil {
+		return nil, err
+	}
+
 	authProvider.WithTransport(defaultTransport)
 
 	c := &pulsarClient{
@@ -100,7 +116,8 @@ func NewWithAuthProvider(config *common.Config, authProvider auth.Provider) Clie
 			},
 		},
 	}
-	return c
+
+	return c, nil
 }
 
 func (c *pulsarClient) endpoint(componentPath string, parts ...string) string {
