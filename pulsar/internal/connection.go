@@ -865,7 +865,7 @@ func (c *connection) Close() {
 		}
 
 		close(c.closeCh)
-                c.changeState(connectionClosed)
+		c.changeState(connectionClosed)
 
 		listeners := make(map[uint64]ConnectionListener)
 		c.listenersLock.Lock()
