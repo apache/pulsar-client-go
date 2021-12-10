@@ -191,6 +191,7 @@ func (bc *batchContainer) Add(
 		bc.msgMetadata.ProducerName = &bc.producerName
 		bc.msgMetadata.ReplicateTo = replicateTo
 		bc.msgMetadata.PartitionKey = metadata.PartitionKey
+		bc.msgMetadata.Properties = metadata.Properties
 
 		if deliverAt.UnixNano() > 0 {
 			bc.msgMetadata.DeliverAtTime = proto.Int64(int64(TimestampMillis(deliverAt)))
@@ -211,6 +212,7 @@ func (bc *batchContainer) reset() {
 	bc.callbacks = []interface{}{}
 	bc.msgMetadata.ReplicateTo = nil
 	bc.msgMetadata.DeliverAtTime = nil
+	bc.msgMetadata.Properties = nil
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
