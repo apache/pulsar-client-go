@@ -150,15 +150,15 @@ func NewBatchBuilder(
 	return &bc, nil
 }
 
-// IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
+// IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch
 func (bc *batchContainer) IsFull() bool {
-	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() > uint32(bc.maxBatchSize)
+	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize)
 }
 
 // hasSpace should return true if and only if the batch container can accommodate another message of length payload.
 func (bc *batchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
-	return bc.numMessages+1 < bc.maxMessages && (bc.buffer.ReadableBytes()+msgSize) <= uint32(bc.maxBatchSize)
+	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize)
 }
 
 // Add will add single message to batch.
