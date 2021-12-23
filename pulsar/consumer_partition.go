@@ -551,6 +551,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 					replicatedFrom:      msgMeta.GetReplicatedFrom(),
 					redeliveryCount:     response.GetRedeliveryCount(),
 					encryptionContext:   createEncryptionContext(msgMeta),
+					orderingKey:         string(msgMeta.OrderingKey),
 				},
 			}
 			pc.queueCh <- messages
@@ -622,6 +623,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
+				orderingKey:         string(smm.OrderingKey),
 			}
 		} else {
 			msg = &message{
