@@ -17,7 +17,7 @@
 # under the License.
 #
 
-ARG GO_VERSION=golang:1.12
+ARG GO_VERSION=golang:1.13
 FROM apachepulsar/pulsar:latest as pulsar
 FROM $GO_VERSION as go
 
