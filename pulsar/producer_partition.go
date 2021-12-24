@@ -380,6 +380,9 @@ func (p *partitionProducer) runEventsLoop() {
 			case <-p.connectClosedCh:
 				p.log.Info("runEventsLoop will reconnect in producer")
 				p.reconnectToBroker()
+			case closeProducerReq := <-p.closeProducerCh:
+				p.internalClose(&closeProducerReq)
+				return
 			}
 		}
 	}()
@@ -396,9 +399,6 @@ func (p *partitionProducer) runEventsLoop() {
 			} else {
 				p.internalFlushCurrentBatch()
 			}
-		case closeProducerReq := <-p.closeProducerCh:
-			p.internalClose(&closeProducerReq)
-			return
 		}
 	}
 }
