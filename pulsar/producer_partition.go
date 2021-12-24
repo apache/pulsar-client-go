@@ -77,8 +77,10 @@ type partitionProducer struct {
 	batchFlushTicker         *time.Ticker
 
 	// Channel where app is posting messages to be published
-	eventsChan      chan interface{}
 	connectClosedCh chan connectionClosed
+	sendRequestCh   chan sendRequest
+	flushRequestCh  chan flushRequest
+	closeProducerCh chan closeProducer
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
@@ -115,8 +117,10 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		log:              logger,
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
-		eventsChan:       make(chan interface{}, maxPendingMessages),
 		connectClosedCh:  make(chan connectionClosed, 10),
+		sendRequestCh:    make(chan sendRequest, maxPendingMessages),
+		flushRequestCh:   make(chan flushRequest, 10),
+		closeProducerCh:  make(chan closeProducer, 10),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -369,26 +373,32 @@ func (p *partitionProducer) reconnectToBroker() {
 }
 
 func (p *partitionProducer) runEventsLoop() {
+
+	go func() {
+		for {
+			select {
+			case <-p.connectClosedCh:
+				p.log.Info("runEventsLoop will reconnect in producer")
+				p.reconnectToBroker()
+			}
+		}
+	}()
+
 	for {
 		select {
-		case i := <-p.eventsChan:
-			switch v := i.(type) {
-			case *sendRequest:
-				p.internalSend(v)
-			case *flushRequest:
-				p.internalFlush(v)
-			case *closeProducer:
-				p.internalClose(v)
-				return
-			}
-		case <-p.connectClosedCh:
-			p.reconnectToBroker()
+		case flushReq := <-p.flushRequestCh:
+			p.internalFlush(&flushReq)
+		case sendReq := <-p.sendRequestCh:
+			p.internalSend(&sendReq)
 		case <-p.batchFlushTicker.C:
 			if p.batchBuilder.IsMultiBatches() {
 				p.internalFlushCurrentBatches()
 			} else {
 				p.internalFlushCurrentBatch()
 			}
+		case closeProducerReq := <-p.closeProducerCh:
+			p.internalClose(&closeProducerReq)
+			return
 		}
 	}
 }
@@ -743,7 +753,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		return
 	}
 
-	sr := &sendRequest{
+	sr := sendRequest{
 		ctx:              ctx,
 		msg:              msg,
 		callback:         callback,
@@ -769,7 +779,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	p.metrics.MessagesPending.Inc()
 	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
 
-	p.eventsChan <- sr
+	p.sendRequestCh <- sr
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -874,8 +884,8 @@ func (p *partitionProducer) Flush() error {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	cp := &flushRequest{&wg, nil}
-	p.eventsChan <- cp
+	cp := flushRequest{&wg, nil}
+	p.flushRequestCh <- cp
 
 	wg.Wait()
 	return cp.err
@@ -904,8 +914,8 @@ func (p *partitionProducer) Close() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	cp := &closeProducer{&wg}
-	p.eventsChan <- cp
+	cp := closeProducer{&wg}
+	p.closeProducerCh <- cp
 
 	wg.Wait()
 }
