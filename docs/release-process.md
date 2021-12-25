@@ -114,7 +114,7 @@ It fixes the following issues:
 https://github.com/apache/pulsar-client-go/milestone/1?closed=1
 
 Pulsar Client Go's KEYS file contains PGP keys we used to sign this release:
-https://dist.apache.org/repos/dist/release/pulsar/KEYS
+https://dist.apache.org/repos/dist/dev/pulsar/KEYS
 
 Please download these packages and review this release candidate:
 - Review release notes
@@ -124,7 +124,7 @@ README.md to build and run the pulsar-client-go.
 The vote will be open for at least 72 hours. It is adopted by majority approval, with at least 3 PMC affirmative votes.
 
 Source file:
-https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go-0.X.0-candidate-1/apache-pulsar-client-go-0.X.0-src.tar.gz
+https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go-0.X.0-candidate-1/
 
 The tag to be voted upon:
 v0.X.0
