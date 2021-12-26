@@ -144,8 +144,7 @@ type partitionConsumer struct {
 
 	log log.Logger
 
-	providersMutex       sync.RWMutex
-	compressionProviders map[pb.CompressionType]compression.Provider
+	compressionProviders sync.Map //map[pb.CompressionType]compression.Provider
 	metrics              *internal.LeveledMetrics
 	decryptor            cryptointernal.Decryptor
 }
@@ -171,7 +170,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		clearMessageQueuesCh: make(chan chan struct{}),
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		compressionProviders: sync.Map{},
 		dlq:                  dlq,
 		metrics:              metrics,
 	}
@@ -551,6 +550,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 					replicatedFrom:      msgMeta.GetReplicatedFrom(),
 					redeliveryCount:     response.GetRedeliveryCount(),
 					encryptionContext:   createEncryptionContext(msgMeta),
+					orderingKey:         string(msgMeta.OrderingKey),
 				},
 			}
 			pc.queueCh <- messages
@@ -622,6 +622,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
+				orderingKey:         string(smm.OrderingKey),
 			}
 		} else {
 			msg = &message{
@@ -965,11 +966,15 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		pc.log.Info("Closed consumer")
 	}
 
-	pc.providersMutex.Lock()
-	for _, provider := range pc.compressionProviders {
-		provider.Close()
-	}
-	pc.providersMutex.Unlock()
+	pc.compressionProviders.Range(func(_, v interface{}) bool {
+		if provider, ok := v.(compression.Provider); ok {
+			provider.Close()
+		} else {
+			err := fmt.Errorf("unexpected compression provider type: %T", v)
+			pc.log.WithError(err).Warn("Failed to close compression provider")
+		}
+		return true
+	})
 
 	pc.setConsumerState(consumerClosed)
 	pc._getConn().DeleteConsumeHandler(pc.consumerID)
@@ -1190,19 +1195,26 @@ func getPreviousMessage(mid trackingMessageID) trackingMessageID {
 }
 
 func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload internal.Buffer) (internal.Buffer, error) {
-	pc.providersMutex.RLock()
-	provider, ok := pc.compressionProviders[msgMeta.GetCompression()]
-	pc.providersMutex.RUnlock()
+	providerEntry, ok := pc.compressionProviders.Load(msgMeta.GetCompression())
 	if !ok {
-		var err error
-		if provider, err = pc.initializeCompressionProvider(msgMeta.GetCompression()); err != nil {
+		newProvider, err := pc.initializeCompressionProvider(msgMeta.GetCompression())
+		if err != nil {
 			pc.log.WithError(err).Error("Failed to decompress message.")
 			return nil, err
 		}
 
-		pc.providersMutex.Lock()
-		pc.compressionProviders[msgMeta.GetCompression()] = provider
-		pc.providersMutex.Unlock()
+		var loaded bool
+		providerEntry, loaded = pc.compressionProviders.LoadOrStore(msgMeta.GetCompression(), newProvider)
+		if loaded {
+			// another thread already loaded this provider, so close the one we just initialized
+			newProvider.Close()
+		}
+	}
+	provider, ok := providerEntry.(compression.Provider)
+	if !ok {
+		err := fmt.Errorf("unexpected compression provider type: %T", providerEntry)
+		pc.log.WithError(err).Error("Failed to decompress message.")
+		return nil, err
 	}
 
 	uncompressed, err := provider.Decompress(nil, payload.ReadableSlice(), int(msgMeta.GetUncompressedSize()))

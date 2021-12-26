@@ -18,11 +18,10 @@
 package pulsar
 
 import (
+	"sync"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 
 	"github.com/stretchr/testify/assert"
 
@@ -34,7 +33,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
 		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
 		decryptor:            crypto.NewNoopDecryptor(),
@@ -66,7 +65,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
 		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
 		decryptor:            crypto.NewNoopDecryptor(),
@@ -98,7 +97,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
 		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
 		decryptor:            crypto.NewNoopDecryptor(),
