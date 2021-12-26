@@ -79,8 +79,7 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	connectClosedCh chan connectionClosed
 	sendRequestCh   chan sendRequest
-	flushRequestCh  chan flushRequest
-	closeProducerCh chan closeProducer
+	eventsCh        chan interface{}
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
@@ -119,8 +118,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		producerID:       client.rpcClient.NewProducerID(),
 		connectClosedCh:  make(chan connectionClosed, 10),
 		sendRequestCh:    make(chan sendRequest, maxPendingMessages),
-		flushRequestCh:   make(chan flushRequest, 10),
-		closeProducerCh:  make(chan closeProducer, 10),
+		eventsCh:         make(chan interface{}, 10),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -385,13 +383,16 @@ func (p *partitionProducer) runEventsLoop() {
 
 	for {
 		select {
-		case flushReq := <-p.flushRequestCh:
-			p.internalFlush(&flushReq)
+		case i := <-p.eventsCh:
+			switch v := i.(type) {
+			case *flushRequest:
+				p.internalFlush(v)
+			case *closeProducer:
+				p.internalClose(v)
+				return
+			}
 		case sendReq := <-p.sendRequestCh:
 			p.internalSend(&sendReq)
-		case closeProducerReq := <-p.closeProducerCh:
-			p.internalClose(&closeProducerReq)
-			return
 		case <-p.batchFlushTicker.C:
 			if p.batchBuilder.IsMultiBatches() {
 				p.internalFlushCurrentBatches()
@@ -884,7 +885,7 @@ func (p *partitionProducer) Flush() error {
 	wg.Add(1)
 
 	cp := flushRequest{&wg, nil}
-	p.flushRequestCh <- cp
+	p.eventsCh <- cp
 
 	wg.Wait()
 	return cp.err
@@ -914,7 +915,7 @@ func (p *partitionProducer) Close() {
 	wg.Add(1)
 
 	cp := closeProducer{&wg}
-	p.closeProducerCh <- cp
+	p.eventsCh <- cp
 
 	wg.Wait()
 }
