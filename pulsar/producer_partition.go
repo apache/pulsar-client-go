@@ -78,8 +78,7 @@ type partitionProducer struct {
 
 	// Channel where app is posting messages to be published
 	connectClosedCh chan connectionClosed
-	sendRequestCh   chan sendRequest
-	eventsCh        chan interface{}
+	eventsChan      chan interface{}
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
@@ -117,8 +116,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		connectClosedCh:  make(chan connectionClosed, 10),
-		sendRequestCh:    make(chan sendRequest, maxPendingMessages),
-		eventsCh:         make(chan interface{}, 10),
+		eventsChan:       make(chan interface{}, maxPendingMessages+20),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -383,16 +381,16 @@ func (p *partitionProducer) runEventsLoop() {
 
 	for {
 		select {
-		case i := <-p.eventsCh:
+		case i := <-p.eventsChan:
 			switch v := i.(type) {
+			case *sendRequest:
+				p.internalSend(v)
 			case *flushRequest:
 				p.internalFlush(v)
 			case *closeProducer:
 				p.internalClose(v)
 				return
 			}
-		case sendReq := <-p.sendRequestCh:
-			p.internalSend(&sendReq)
 		case <-p.batchFlushTicker.C:
 			if p.batchBuilder.IsMultiBatches() {
 				p.internalFlushCurrentBatches()
@@ -753,7 +751,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		return
 	}
 
-	sr := sendRequest{
+	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
 		callback:         callback,
@@ -779,7 +777,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	p.metrics.MessagesPending.Inc()
 	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
 
-	p.sendRequestCh <- sr
+	p.eventsChan <- sr
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -884,8 +882,8 @@ func (p *partitionProducer) Flush() error {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	cp := flushRequest{&wg, nil}
-	p.eventsCh <- cp
+	cp := &flushRequest{&wg, nil}
+	p.eventsChan <- cp
 
 	wg.Wait()
 	return cp.err
@@ -914,8 +912,8 @@ func (p *partitionProducer) Close() {
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 
-	cp := closeProducer{&wg}
-	p.eventsCh <- cp
+	cp := &closeProducer{&wg}
+	p.eventsChan <- cp
 
 	wg.Wait()
 }
