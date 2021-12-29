@@ -387,7 +387,7 @@ func (c *connection) run() {
 	go c.reader.readFromConnection()
 	go c.runPingCheck(pingCheckTicker)
 
-	c.log.Debugf("Connection run starting with request capacity=%d queued=%d",
+	c.log.Infof("Connection run starting with request capacity=%d queued=%d",
 		cap(c.incomingRequestsCh), len(c.incomingRequestsCh))
 
 	go func() {
