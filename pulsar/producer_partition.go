@@ -782,7 +782,6 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
 	pi, ok := p.pendingQueue.Peek().(*pendingItem)
-	p.log.Infof("[ReceivedSendReceipt] pendingQueue size is: %d", len(p.pendingQueue.ReadableSlice()))
 	if !ok {
 		// if we receive a receipt although the pending queue is empty, the state of the broker and the producer differs.
 		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves

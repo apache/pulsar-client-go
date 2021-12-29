@@ -124,9 +124,7 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 
 	ch := make(chan result, 1)
 
-	c.log.Infof("Start sending request [%v]", cmdType)
 	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
-		c.log.Infof("[Request] the internal send request ch size: %d", len(ch))
 		ch <- result{&RPCResult{
 			Cnx:      cnx,
 			Response: response,

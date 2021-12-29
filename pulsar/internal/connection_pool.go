@@ -105,6 +105,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		p.Unlock()
 	}
 
+	p.log.Infof("Before into wait logic, the connection state is: %s", conn.getState().String())
 	err := conn.waitUntilReady()
 	return conn, err
 }

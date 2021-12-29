@@ -506,7 +506,6 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
-	c.log.Infof("process incomingCmdCh channel buffer[10] size: %v -- command: %s", len(c.incomingCmdCh), cmd)
 	c.incomingCmdCh <- &incomingCmd{cmd, headersAndPayload}
 }
 
