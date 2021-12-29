@@ -18,8 +18,9 @@
 package internal
 
 import (
-	log "github.com/sirupsen/logrus"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // BlockingQueue is a interface of block queue
