@@ -33,10 +33,13 @@ const (
 
 type reader struct {
 	sync.Mutex
+	topic               string
 	client              *client
-	pc                  *partitionConsumer
+	options             ReaderOptions
+	consumers           []*partitionConsumer
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
+	dlq                 *dlqRouter
 	log                 log.Logger
 	metrics             *internal.LeveledMetrics
 }
@@ -50,53 +53,8 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(InvalidConfiguration, "StartMessageID is required")
 	}
 
-	startMessageID, ok := toTrackingMessageID(options.StartMessageID)
-	if !ok {
-		// a custom type satisfying MessageID may not be a messageID or trackingMessageID
-		// so re-create messageID using its data
-		deserMsgID, err := deserializeMessageID(options.StartMessageID.Serialize())
-		if err != nil {
-			return nil, err
-		}
-		// de-serialized MessageID is a messageID
-		startMessageID = trackingMessageID{
-			messageID:    deserMsgID.(messageID),
-			receivedTime: time.Now(),
-		}
-	}
-
-	subscriptionName := options.SubscriptionRolePrefix
-	if subscriptionName == "" {
-		subscriptionName = "reader"
-	}
-	subscriptionName += "-" + generateRandomName()
-
-	receiverQueueSize := options.ReceiverQueueSize
-	if receiverQueueSize <= 0 {
-		receiverQueueSize = defaultReceiverQueueSize
-	}
-
-	consumerOptions := &partitionConsumerOpts{
-		topic:                      options.Topic,
-		consumerName:               options.Name,
-		subscription:               subscriptionName,
-		subscriptionType:           Exclusive,
-		receiverQueueSize:          receiverQueueSize,
-		startMessageID:             startMessageID,
-		startMessageIDInclusive:    options.StartMessageIDInclusive,
-		subscriptionMode:           nonDurable,
-		readCompacted:              options.ReadCompacted,
-		metadata:                   options.Properties,
-		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
-		replicateSubscriptionState: false,
-		decryption:                 options.Decryption,
-	}
-
-	reader := &reader{
-		client:    client,
-		messageCh: make(chan ConsumerMessage),
-		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics:   client.metrics.GetLeveledMetrics(options.Topic),
+	if options.ReceiverQueueSize <= 0 {
+		options.ReceiverQueueSize = defaultReceiverQueueSize
 	}
 
 	// Provide dummy dlq router with not dlq policy
@@ -105,19 +63,26 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, err
 	}
 
-	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq, reader.metrics)
-	if err != nil {
-		close(reader.messageCh)
+	reader := &reader{
+		topic:     options.Topic,
+		client:    client,
+		options:   options,
+		messageCh: make(chan ConsumerMessage),
+		dlq:       dlq,
+		metrics:   client.metrics.GetLeveledMetrics(options.Topic),
+		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
+	}
+
+	if err := reader.internalTopicReadToPartitions(); err != nil {
 		return nil, err
 	}
 
-	reader.pc = pc
 	reader.metrics.ReadersOpened.Inc()
 	return reader, nil
 }
 
 func (r *reader) Topic() string {
-	return r.pc.topic
+	return r.topic
 }
 
 func (r *reader) Next(ctx context.Context) (Message, error) {
@@ -132,8 +97,8 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 			// it will specify the subscription position anyway
 			msgID := cm.Message.ID()
 			if mid, ok := toTrackingMessageID(msgID); ok {
-				r.pc.lastDequeuedMsg = mid
-				r.pc.AckID(mid)
+				r.consumers[mid.partitionIdx].lastDequeuedMsg = mid
+				r.consumers[mid.partitionIdx].AckID(mid)
 				return cm.Message, nil
 			}
 			return nil, newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
@@ -148,35 +113,54 @@ func (r *reader) HasNext() bool {
 		return true
 	}
 
+retryLoop:
 	for {
-		lastMsgID, err := r.pc.getLastMessageID()
-		if err != nil {
-			r.log.WithError(err).Error("Failed to get last message id from broker")
-			continue
-		} else {
+	consumerLoop:
+		for _, consumer := range r.consumers {
+			lastMsgID, err := consumer.getLastMessageID()
+			if err != nil {
+				r.log.WithError(err).Error("Failed to get last message id from broker")
+				continue retryLoop
+			}
+			if r.lastMessageInBroker.greater(lastMsgID.messageID) {
+				continue consumerLoop
+			}
 			r.lastMessageInBroker = lastMsgID
-			break
 		}
+		break retryLoop
 	}
 
 	return r.hasMoreMessages()
 }
 
 func (r *reader) hasMoreMessages() bool {
-	if !r.pc.lastDequeuedMsg.Undefined() {
-		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg.messageID)
-	}
+	moreMessagesCheck := func(idx int) bool {
+		if !r.consumers[idx].lastDequeuedMsg.Undefined() {
+			return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.consumers[idx].lastDequeuedMsg.messageID)
+		}
 
-	if r.pc.options.startMessageIDInclusive {
-		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greaterEqual(r.pc.startMessageID.messageID)
-	}
+		if r.consumers[idx].options.startMessageIDInclusive {
+			return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greaterEqual(r.consumers[idx].startMessageID.messageID)
+		}
 
-	// Non-inclusive
-	return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.startMessageID.messageID)
+		// Non-inclusive
+		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.consumers[idx].startMessageID.messageID)
+	}
+	for idx := range r.consumers {
+		if moreMessagesCheck(idx) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *reader) Close() {
-	r.pc.Close()
+	for _, consumer := range r.consumers {
+		if consumer != nil {
+			consumer.Close()
+		}
+	}
+	r.dlq.close()
 	r.client.handlers.Del(r)
 	r.metrics.ReadersClosed.Inc()
 }
@@ -207,12 +191,15 @@ func (r *reader) Seek(msgID MessageID) error {
 		return nil
 	}
 
-	return r.pc.Seek(mid)
+	return r.consumers[mid.partitionIdx].Seek(mid)
 }
 
 func (r *reader) SeekByTime(time time.Time) error {
 	r.Lock()
 	defer r.Unlock()
 
-	return r.pc.SeekByTime(time)
+	if len(r.consumers) > 1 {
+		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
+	}
+	return r.consumers[0].SeekByTime(time)
 }
