@@ -506,7 +506,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
-	c.log.Infof("The incoming channel buffer size: %v -- command: %s", len(c.incomingCmdCh), cmd)
+	c.log.Infof("process incomingCmdCh channel buffer[10] size: %v -- command: %s", len(c.incomingCmdCh), cmd)
 	c.incomingCmdCh <- &incomingCmd{cmd, headersAndPayload}
 }
 
@@ -597,6 +597,7 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 			cmd:      req,
 			callback: callback,
 		}:
+			c.log.Infof("process incomingRequestsCh channel buffer[10] size: %d.", len(c.incomingRequestsCh))
 		}
 	}
 }

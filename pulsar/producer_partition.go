@@ -188,7 +188,7 @@ func (p *partitionProducer) grabCnx() error {
 		return err
 	}
 
-	p.log.Debug("Lookup result: ", lr)
+	p.log.Info("Lookup result: ", lr)
 	id := p.client.rpcClient.NewRequestID()
 
 	// set schema info for producer
@@ -280,7 +280,7 @@ func (p *partitionProducer) grabCnx() error {
 	p.log.WithFields(log.Fields{
 		"cnx":   res.Cnx.ID(),
 		"epoch": atomic.LoadUint64(&p.epoch),
-	}).Debug("Connected producer")
+	}).Info("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(pendingItems)
@@ -782,7 +782,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
 	pi, ok := p.pendingQueue.Peek().(*pendingItem)
-
+	p.log.Infof("[ReceivedSendReceipt] pendingQueue size is: %d", len(p.pendingQueue.ReadableSlice()))
 	if !ok {
 		// if we receive a receipt although the pending queue is empty, the state of the broker and the producer differs.
 		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
@@ -837,14 +837,14 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 				}
 
 				p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
-			} else {
-				p.log.Infof("Local sequenceID [%d] > broker response sequenceID [%d]",
-					pi.sequenceID, response.GetSequenceId())
 			}
 		}
 
 		// Mark this pending item as done
 		pi.Complete()
+	} else {
+		p.log.Infof("Local sequenceID [%d] > broker response sequenceID [%d]",
+			pi.sequenceID, response.GetSequenceId())
 	}
 }
 
