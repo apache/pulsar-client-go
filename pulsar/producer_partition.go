@@ -346,7 +346,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		}
 
 		d := backoff.Next()
-		p.log.Info("Reconnecting to broker in ", d)
+		p.log.WithField("cnx", p.cnx.ID()).Info("Reconnecting to broker in ", d)
 		time.Sleep(d)
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
