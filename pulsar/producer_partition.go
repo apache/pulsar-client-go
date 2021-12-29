@@ -837,6 +837,9 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 				}
 
 				p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
+			} else {
+				p.log.Infof("Local sequenceID [%d] > broker response sequenceID [%d]",
+					pi.sequenceID, response.GetSequenceId())
 			}
 		}
 
