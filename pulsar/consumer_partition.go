@@ -206,33 +206,40 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	err := pc.grabConn()
 	if err != nil {
-		pc.log.WithError(err).Error("Failed to create consumer")
-		pc.nackTracker.Close()
-		return nil, err
-	}
-	pc.log.Info("Created consumer")
-	pc.setConsumerState(consumerReady)
-
-	if pc.options.startMessageIDInclusive && pc.startMessageID.equal(lastestMessageID.(messageID)) {
-		msgID, err := pc.requestGetLastMessageID()
-		if err != nil {
+		errMsg := err.Error()
+		if !strings.EqualFold(errMsg, pb.ServerError_ServiceNotReady.String()) &&
+			!strings.EqualFold(errMsg, pb.ServerError_TooManyRequests.String()) &&
+			!strings.EqualFold(errMsg, pb.ServerError_MetadataError.String()) {
+			// when topic is deleted, we should give up reconnection.
+			pc.log.WithError(err).Error("Failed to create consumer")
 			pc.nackTracker.Close()
 			return nil, err
 		}
-		if msgID.entryID != noMessageEntry {
-			pc.startMessageID = msgID
+		pc.log.WithError(err).Error("Failed to create consumer, it will be retried later!")
+		pc.nackTracker.Close()
+	} else {
+		pc.log.Info("Created consumer")
+		pc.setConsumerState(consumerReady)
 
-			// use the WithoutClear version because the dispatcher is not started yet
-			err = pc.requestSeekWithoutClear(msgID.messageID)
+		if pc.options.startMessageIDInclusive && pc.startMessageID.equal(lastestMessageID.(messageID)) {
+			msgID, err := pc.requestGetLastMessageID()
 			if err != nil {
 				pc.nackTracker.Close()
 				return nil, err
 			}
+			if msgID.entryID != noMessageEntry {
+				pc.startMessageID = msgID
+
+				// use the WithoutClear version because the dispatcher is not started yet
+				err = pc.requestSeekWithoutClear(msgID.messageID)
+				if err != nil {
+					pc.nackTracker.Close()
+					return nil, err
+				}
+			}
 		}
+		go pc.dispatcher()
 	}
-
-	go pc.dispatcher()
-
 	go pc.runEventsLoop()
 
 	return pc, nil

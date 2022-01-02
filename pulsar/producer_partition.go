@@ -160,22 +160,28 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	err := p.grabCnx()
 	if err != nil {
-		logger.WithError(err).Error("Failed to create producer")
-		return nil, err
+		errMsg := err.Error()
+		if !strings.EqualFold(errMsg, pb.ServerError_ServiceNotReady.String()) &&
+			!strings.EqualFold(errMsg, pb.ServerError_TooManyRequests.String()) &&
+			!strings.EqualFold(errMsg, pb.ServerError_MetadataError.String()) {
+			// when topic is deleted, we should give up reconnection.
+			logger.WithError(err).Error("Failed to create producer")
+			return nil, err
+		}
+		logger.WithError(err).Error("Failed to create producer, it will be retried later!")
+	} else {
+		p.log = p.log.SubLogger(log.Fields{
+			"producer_name": p.producerName,
+			"producerID":    p.producerID,
+		})
+
+		p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
+		p.setProducerState(producerReady)
+
+		if p.options.SendTimeout > 0 {
+			go p.failTimeoutMessages()
+		}
 	}
-
-	p.log = p.log.SubLogger(log.Fields{
-		"producer_name": p.producerName,
-		"producerID":    p.producerID,
-	})
-
-	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
-	p.setProducerState(producerReady)
-
-	if p.options.SendTimeout > 0 {
-		go p.failTimeoutMessages()
-	}
-
 	go p.runEventsLoop()
 
 	return p, nil
