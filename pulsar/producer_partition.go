@@ -77,8 +77,9 @@ type partitionProducer struct {
 	batchFlushTicker         *time.Ticker
 
 	// Channel where app is posting messages to be published
-	connectClosedCh chan connectionClosed
 	eventsChan      chan interface{}
+	closeCh         chan struct{}
+	connectClosedCh chan connectionClosed
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
@@ -115,8 +116,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		log:              logger,
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
+		eventsChan:       make(chan interface{}, maxPendingMessages),
 		connectClosedCh:  make(chan connectionClosed, 10),
-		eventsChan:       make(chan interface{}, maxPendingMessages+20),
+		closeCh:          make(chan struct{}),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -369,13 +371,13 @@ func (p *partitionProducer) reconnectToBroker() {
 }
 
 func (p *partitionProducer) runEventsLoop() {
-
 	go func() {
-		for {
-			for range p.connectClosedCh {
-				p.log.Info("runEventsLoop will reconnect in producer")
-				p.reconnectToBroker()
-			}
+		select {
+		case <-p.closeCh:
+			return
+		case <-p.connectClosedCh:
+			p.log.Info("runEventsLoop will reconnect in producer")
+			p.reconnectToBroker()
 		}
 	}()
 
@@ -872,6 +874,8 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.setProducerState(producerClosed)
 	p.cnx.UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
+
+	close(p.closeCh)
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
