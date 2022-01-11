@@ -963,4 +963,3 @@ func (p *partitionProducer) _getConn() internal.Connection {
 	//            invariant is broken
 	return p.conn.Load().(internal.Connection)
 }
-
