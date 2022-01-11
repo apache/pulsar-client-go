@@ -632,3 +632,54 @@ func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 
 	return mid, true
 }
+
+func (c *consumer) lastDequeuedMsg(msgID trackingMessageID) error {
+	if msgID.PartitionIdx() >= 0 {
+		c.consumers[msgID.PartitionIdx()].lastDequeuedMsg = msgID
+		return nil
+	}
+	return newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
+}
+
+func (c *consumer) hasMessages() (bool, error) {
+	for _, pc := range c.consumers {
+		if ok, err := c.hashMoreMessages(pc); err != nil {
+			return false, err // error in reading last message id from broker
+		} else if ok { // return true only if messages are available
+			return ok, nil
+		}
+	}
+	return false, nil // reach here only if done checking for all partition consumers
+}
+
+func (c *consumer) hashMoreMessages(pc *partitionConsumer) (bool, error) {
+	lastMsgId, err := pc.getLastMessageID()
+	if err != nil {
+		return false, err
+	}
+
+	// same logic as in reader_impl
+	if !pc.lastDequeuedMsg.Undefined() {
+		return lastMsgId.isEntryIDValid() && lastMsgId.greater(pc.lastDequeuedMsg.messageID), nil
+	}
+
+	if pc.options.startMessageIDInclusive {
+		return lastMsgId.isEntryIDValid() && lastMsgId.greaterEqual(pc.startMessageID.messageID), nil
+	}
+
+	// Non-inclusive
+	return lastMsgId.isEntryIDValid() && lastMsgId.greater(pc.startMessageID.messageID), nil
+}
+
+func (c *consumer) messagesInQueue() int {
+	// messages in partition consumer queue
+	msgCount := 0
+	for _, pc := range c.consumers {
+		msgCount += pc.messagesInQueue()
+	}
+
+	// messages in consumer msg channel
+	msgCount += len(c.messageCh)
+
+	return msgCount
+}

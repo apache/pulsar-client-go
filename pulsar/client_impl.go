@@ -168,12 +168,25 @@ func (c *client) Subscribe(options ConsumerOptions) (Consumer, error) {
 }
 
 func (c *client) CreateReader(options ReaderOptions) (Reader, error) {
-	reader, err := newReader(c, options)
+	topics, err := c.TopicPartitions(options.Topic)
 	if err != nil {
 		return nil, err
 	}
-	c.handlers.Add(reader)
-	return reader, nil
+	if len(topics) <= 1 {
+		reader, err := newReader(c, options)
+		if err != nil {
+			return nil, err
+		}
+		c.handlers.Add(reader)
+		return reader, nil
+	} else {
+		multiTopicReader, err := newMultiTopicReader(c, options)
+		if err != nil {
+			return nil, err
+		}
+		c.handlers.Add(multiTopicReader)
+		return multiTopicReader, nil
+	}
 }
 
 func (c *client) TopicPartitions(topic string) ([]string, error) {

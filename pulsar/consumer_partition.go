@@ -1248,6 +1248,10 @@ func (pc *partitionConsumer) _getConn() internal.Connection {
 	return pc.conn.Load().(internal.Connection)
 }
 
+func (pc *partitionConsumer) messagesInQueue() int {
+	return len(pc.queueCh)
+}
+
 func convertToMessageIDData(msgID trackingMessageID) *pb.MessageIdData {
 	if msgID.Undefined() {
 		return nil

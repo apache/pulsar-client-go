@@ -212,3 +212,17 @@ func (c *multiTopicConsumer) SeekByTime(time time.Time) error {
 func (c *multiTopicConsumer) Name() string {
 	return c.consumerName
 }
+
+func (c *multiTopicConsumer) lastDequeuedMsg(msgID trackingMessageID) error {
+	return newError(OperationNotSupported, "setting lastDequeuedMsg is not supported for Multitopic consumer Topic consumer")
+}
+
+func (c *multiTopicConsumer) hasMessages() (bool, error) {
+	// implement this logic
+	return false, newError(OperationNotSupported, "hasMessages is not supported for Multi Topic consumer")
+}
+
+func (c *multiTopicConsumer) messagesInQueue() int {
+	// implement this logic
+	return 0
+}
