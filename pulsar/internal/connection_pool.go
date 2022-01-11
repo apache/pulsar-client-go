@@ -75,13 +75,15 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	p.Lock()
 	conn, ok := p.connections[key]
 	if ok {
-		p.log.Debugf("Found connection in pool key=%s logical_addr=%+v physical_addr=%+v",
+		p.log.Infof("Found connection in pool key=%s logical_addr=%+v physical_addr=%+v",
 			key, conn.logicalAddr, conn.physicalAddr)
 
-		// remove stale/failed connection
-		if conn.closed() {
+		// When the current connection is in a closed state or the broker actively notifies that the
+		// current connection is closed, we need to remove the connection object from the current
+		// connection pool and create a new connection.
+		if conn.closed() || conn.reconnectFlag {
 			delete(p.connections, key)
-			p.log.Debugf("Removed connection from pool key=%s logical_addr=%+v physical_addr=%+v",
+			p.log.Infof("Removed connection from pool key=%s logical_addr=%+v physical_addr=%+v",
 				key, conn.logicalAddr, conn.physicalAddr)
 			conn = nil // set to nil so we create a new one
 		}
