@@ -66,7 +66,6 @@ type partitionProducer struct {
 	client *client
 	topic  string
 	log    log.Logger
-	//cnx    internal.Connection
 
 	conn atomic.Value
 
