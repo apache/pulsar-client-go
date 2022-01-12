@@ -179,14 +179,15 @@ func (c *client) CreateReader(options ReaderOptions) (Reader, error) {
 		}
 		c.handlers.Add(reader)
 		return reader, nil
-	} else {
-		multiTopicReader, err := newMultiTopicReader(c, options)
-		if err != nil {
-			return nil, err
-		}
-		c.handlers.Add(multiTopicReader)
-		return multiTopicReader, nil
 	}
+
+	// create multi topic reader
+	multiTopicReader, err := newMultiTopicReader(c, options)
+	if err != nil {
+		return nil, err
+	}
+	c.handlers.Add(multiTopicReader)
+	return multiTopicReader, nil
 }
 
 func (c *client) TopicPartitions(topic string) ([]string, error) {

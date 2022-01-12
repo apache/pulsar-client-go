@@ -312,11 +312,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	wg.Add(partitionsToAdd)
 
 	// default start messageId
-	startMessageId := trackingMessageID{}
+	startMessageID := trackingMessageID{}
 
 	// if start message id is provided
 	if _, ok := c.options.startMessageID.(trackingMessageID); ok {
-		startMessageId = c.options.startMessageID.(trackingMessageID)
+		startMessageID = c.options.startMessageID.(trackingMessageID)
 	}
 
 	// default subscription mode is durable
@@ -352,7 +352,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				metadata:                   metadata,
 				subProperties:              subProperties,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             startMessageId,
+				startMessageID:             startMessageID,
 				subscriptionMode:           subscriptionMode,
 				readCompacted:              c.options.ReadCompacted,
 				interceptors:               c.options.Interceptors,
@@ -698,22 +698,22 @@ func (c *consumer) hasMessages() (bool, error) {
 }
 
 func (c *consumer) hashMoreMessages(pc *partitionConsumer) (bool, error) {
-	lastMsgId, err := pc.getLastMessageID()
+	lastMsgID, err := pc.getLastMessageID()
 	if err != nil {
 		return false, err
 	}
 
 	// same logic as in reader_impl
 	if !pc.lastDequeuedMsg.Undefined() {
-		return lastMsgId.isEntryIDValid() && lastMsgId.greater(pc.lastDequeuedMsg.messageID), nil
+		return lastMsgID.isEntryIDValid() && lastMsgID.greater(pc.lastDequeuedMsg.messageID), nil
 	}
 
 	if pc.options.startMessageIDInclusive {
-		return lastMsgId.isEntryIDValid() && lastMsgId.greaterEqual(pc.startMessageID.messageID), nil
+		return lastMsgID.isEntryIDValid() && lastMsgID.greaterEqual(pc.startMessageID.messageID), nil
 	}
 
 	// Non-inclusive
-	return lastMsgId.isEntryIDValid() && lastMsgId.greater(pc.startMessageID.messageID), nil
+	return lastMsgID.isEntryIDValid() && lastMsgID.greater(pc.startMessageID.messageID), nil
 }
 
 func (c *consumer) messagesInQueue() int {

@@ -18,10 +18,7 @@
 package pulsartracing
 
 import (
-	"context"
-	"fmt"
 	"testing"
-	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/opentracing/opentracing-go"
@@ -35,7 +32,7 @@ func TestConsumerBuildAndInjectChildSpan(t *testing.T) {
 	opentracing.SetGlobalTracer(tracer)
 
 	message := pulsar.ConsumerMessage{
-		Consumer: &mockConsumer{},
+		Consumer: pulsar.NewMockConsumer(),
 		Message: &mockConsumerMessage{
 			properties: map[string]string{},
 		},
@@ -44,59 +41,4 @@ func TestConsumerBuildAndInjectChildSpan(t *testing.T) {
 	span := buildAndInjectChildSpan(message)
 	assert.NotNil(t, span)
 	assert.True(t, len(message.Properties()) > 0)
-}
-
-type mockConsumer struct {
-}
-
-func (c *mockConsumer) Subscription() string {
-	return ""
-}
-
-func (c *mockConsumer) Unsubscribe() error {
-	return nil
-}
-
-func (c *mockConsumer) Receive(ctx context.Context) (message pulsar.Message, err error) {
-	return nil, nil
-}
-
-func (c *mockConsumer) Chan() <-chan pulsar.ConsumerMessage {
-	return nil
-}
-
-func (c *mockConsumer) Ack(msg pulsar.Message) {}
-
-func (c *mockConsumer) AckID(msgID pulsar.MessageID) {}
-
-func (c *mockConsumer) ReconsumeLater(msg pulsar.Message, delay time.Duration) {}
-
-func (c *mockConsumer) Nack(msg pulsar.Message) {}
-
-func (c *mockConsumer) NackID(msgID pulsar.MessageID) {}
-
-func (c *mockConsumer) Close() {}
-
-func (c *mockConsumer) Seek(msgID pulsar.MessageID) error {
-	return nil
-}
-
-func (c *mockConsumer) SeekByTime(time time.Time) error {
-	return nil
-}
-
-func (c *mockConsumer) Name() string {
-	return ""
-}
-
-func (c *mockConsumer) lastDequeuedMsg(msgID pulsar.MessageID) error {
-	return fmt.Errorf("setting lastDequeuedMsg is not supported for Multitopic consumer Topic consumer")
-}
-
-func (c *mockConsumer) hasMessages() (bool, error) {
-	return false, fmt.Errorf("hasMessages is not supported for Multi Topic consumer")
-}
-
-func (c *mockConsumer) messagesInQueue() int {
-	return 0
 }

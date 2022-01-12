@@ -372,7 +372,7 @@ func TestMultiTopicReaderWithLatestMsg(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	msgIdMap := make(map[int32]struct{})
+	msgIDMap := make(map[int32]struct{})
 	// send 10 messages
 	for i := 0; i < 10; i++ {
 		msgID, err := producer.Send(ctx, &ProducerMessage{
@@ -382,7 +382,7 @@ func TestMultiTopicReaderWithLatestMsg(t *testing.T) {
 		assert.NotNil(t, msgID)
 
 		// to track the partitions used for message
-		msgIdMap[msgID.PartitionIdx()] = struct{}{}
+		msgIDMap[msgID.PartitionIdx()] = struct{}{}
 	}
 
 	reader, err := client.CreateReader(ReaderOptions{
@@ -409,7 +409,7 @@ func TestMultiTopicReaderWithLatestMsg(t *testing.T) {
 	}
 
 	// should only read latest message from each partition
-	assert.Equal(t, len(msgIdMap), count)
+	assert.Equal(t, len(msgIDMap), count)
 }
 
 func TestMultiTopicProducerReaderRSAEncryption(t *testing.T) {
