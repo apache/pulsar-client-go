@@ -19,6 +19,7 @@ package pulsartracing
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -86,4 +87,16 @@ func (c *mockConsumer) SeekByTime(time time.Time) error {
 
 func (c *mockConsumer) Name() string {
 	return ""
+}
+
+func (c *mockConsumer) lastDequeuedMsg(msgID pulsar.MessageID) error {
+	return fmt.Errorf("setting lastDequeuedMsg is not supported for Multitopic consumer Topic consumer")
+}
+
+func (c *mockConsumer) hasMessages() (bool, error) {
+	return false, fmt.Errorf("hasMessages is not supported for Multi Topic consumer")
+}
+
+func (c *mockConsumer) messagesInQueue() int {
+	return 0
 }

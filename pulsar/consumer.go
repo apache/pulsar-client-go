@@ -182,6 +182,15 @@ type ConsumerOptions struct {
 	// > Notice: the NackBackoffPolicy will not work with `consumer.NackID(MessageID)`
 	// > because we are not able to get the redeliveryCount from the message ID.
 	NackBackoffPolicy NackBackoffPolicy
+
+	// startMessageID internally used by multitopic-reader
+	startMessageID MessageID
+
+	// startMessageIDInclusive internally used by multitopic-reader
+	startMessageIDInclusive bool
+
+	// subscriptionMode internally used by multitopic-reader
+	subscriptionMode subscriptionMode
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
@@ -248,4 +257,13 @@ type Consumer interface {
 
 	// Name returns the name of consumer.
 	Name() string
+
+	// lastDequeuedMsg used for setting last dequeued msg id by internal partition consumers
+	lastDequeuedMsg(MessageID) error
+
+	// hasMessages get if messages are available
+	hasMessages() (bool, error)
+
+	// messagesInQueue get the number of messages available in queue
+	messagesInQueue() int
 }

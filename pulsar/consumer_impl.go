@@ -311,6 +311,22 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	ch := make(chan ConsumerError, partitionsToAdd)
 	wg.Add(partitionsToAdd)
 
+	// default start messageId
+	startMessageId := trackingMessageID{}
+
+	// if start message id is provided
+	if _, ok := c.options.startMessageID.(trackingMessageID); ok {
+		startMessageId = c.options.startMessageID.(trackingMessageID)
+	}
+
+	// default subscription mode is durable
+	subscriptionMode := durable
+
+	// for reader subscription mode is nonDurabale
+	if c.options.subscriptionMode == nonDurable {
+		subscriptionMode = nonDurable
+	}
+
 	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
@@ -336,14 +352,15 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				metadata:                   metadata,
 				subProperties:              subProperties,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             trackingMessageID{},
-				subscriptionMode:           durable,
+				startMessageID:             startMessageId,
+				subscriptionMode:           subscriptionMode,
 				readCompacted:              c.options.ReadCompacted,
 				interceptors:               c.options.Interceptors,
 				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
 				decryption:                 c.options.Decryption,
+				startMessageIDInclusive:    c.options.startMessageIDInclusive,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
@@ -653,4 +670,61 @@ func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 	}
 
 	return mid, true
+}
+
+func (c *consumer) lastDequeuedMsg(msgID MessageID) error {
+	mid, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
+	}
+
+	if msgID.PartitionIdx() >= 0 {
+		c.consumers[mid.PartitionIdx()].lastDequeuedMsg = mid
+		return nil
+	}
+
+	return newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
+}
+
+func (c *consumer) hasMessages() (bool, error) {
+	for _, pc := range c.consumers {
+		if ok, err := c.hashMoreMessages(pc); err != nil {
+			return false, err // error in reading last message id from broker
+		} else if ok { // return true only if messages are available
+			return ok, nil
+		}
+	}
+	return false, nil // reach here only if done checking for all partition consumers
+}
+
+func (c *consumer) hashMoreMessages(pc *partitionConsumer) (bool, error) {
+	lastMsgId, err := pc.getLastMessageID()
+	if err != nil {
+		return false, err
+	}
+
+	// same logic as in reader_impl
+	if !pc.lastDequeuedMsg.Undefined() {
+		return lastMsgId.isEntryIDValid() && lastMsgId.greater(pc.lastDequeuedMsg.messageID), nil
+	}
+
+	if pc.options.startMessageIDInclusive {
+		return lastMsgId.isEntryIDValid() && lastMsgId.greaterEqual(pc.startMessageID.messageID), nil
+	}
+
+	// Non-inclusive
+	return lastMsgId.isEntryIDValid() && lastMsgId.greater(pc.startMessageID.messageID), nil
+}
+
+func (c *consumer) messagesInQueue() int {
+	// messages in partition consumer queue
+	msgCount := 0
+	for _, pc := range c.consumers {
+		msgCount += pc.messagesInQueue()
+	}
+
+	// messages in consumer msg channel
+	msgCount += len(c.messageCh)
+
+	return msgCount
 }
