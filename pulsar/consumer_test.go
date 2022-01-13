@@ -383,6 +383,74 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Equal(t, len(msgs), 10)
 }
 
+func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/testGetPartitions"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
+
+	makeHTTPCall(t, http.MethodPut, testURL, "64")
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	topics, err := client.TopicPartitions(topic)
+	assert.Nil(t, err)
+	assert.Equal(t, topic+"-partition-0", topics[0])
+	assert.Equal(t, topic+"-partition-1", topics[1])
+	assert.Equal(t, topic+"-partition-2", topics[2])
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  "my-sub",
+		Type:              Exclusive,
+		ReceiverQueueSize: 10,
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
+		},
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	msgs := make([]string, 0)
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		msgs = append(msgs, string(msg.Payload()))
+
+		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+			msg.ID(), string(msg.Payload()))
+
+		consumer.Ack(msg)
+	}
+
+	assert.Equal(t, len(msgs), 10)
+}
+
 func TestConsumerReceiveTimeout(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
