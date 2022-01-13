@@ -19,6 +19,7 @@ package internal
 
 import (
 	"encoding/binary"
+
 	log "github.com/sirupsen/logrus"
 )
 
