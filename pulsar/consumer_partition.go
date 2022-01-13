@@ -585,7 +585,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
-		if err != nil {
+		if err != nil || payload == nil {
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
 		}
