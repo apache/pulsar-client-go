@@ -463,11 +463,13 @@ func TestMultiTopicProducerReaderRSAEncryption(t *testing.T) {
 	}
 
 	// receive 10 messages
-	for i := 0; i < 10; i++ {
+	count := 0
+	for reader.HasNext() {
 		msg, err := reader.Next(context.Background())
 		assert.NoError(t, err)
-
-		expectMsg := fmt.Sprintf("hello-%d", i)
-		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.NotNil(t, msg)
+		count++
 	}
+
+	assert.Equal(t, 10, count)
 }
