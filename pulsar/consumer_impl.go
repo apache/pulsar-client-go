@@ -157,17 +157,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 		topic = tns[0].Name
-		// decryption is enabled, use default messagecrypto if not provided
-		if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
-			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
-				false,
-				client.log.SubLogger(log.Fields{"topic": topic}))
-			if err != nil {
-				return nil, err
-			}
-			options.Decryption.MessageCrypto = messageCrypto
+		err = addMessageCryptoIfMissing(client, &options, topic)
+		if err != nil {
+			return nil, err
 		}
-
 		return newInternalConsumer(client, options, topic, messageCh, dlq, rlq, false)
 	}
 
@@ -180,15 +173,9 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 		options.Topics = distinct(options.Topics)
 
-		// decryption is enabled, use default messagecrypto if not provided
-		if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
-			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
-				false,
-				client.log.SubLogger(log.Fields{"topics": options.Topics}))
-			if err != nil {
-				return nil, err
-			}
-			options.Decryption.MessageCrypto = messageCrypto
+		err = addMessageCryptoIfMissing(client, &options, options.Topics)
+		if err != nil {
+			return nil, err
 		}
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
@@ -205,15 +192,9 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		// decryption is enabled, use default messagecrypto if not provided
-		if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
-			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
-				false,
-				client.log.SubLogger(log.Fields{"topics": tn.Name}))
-			if err != nil {
-				return nil, err
-			}
-			options.Decryption.MessageCrypto = messageCrypto
+		err = addMessageCryptoIfMissing(client, &options, tn.Name)
+		if err != nil {
+			return nil, err
 		}
 
 		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq)
@@ -688,4 +669,18 @@ func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 	}
 
 	return mid, true
+}
+
+func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {
+	// decryption is enabled, use default messagecrypto if not provided
+	if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
+		messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
+			false,
+			client.log.SubLogger(log.Fields{"topic": topics}))
+		if err != nil {
+			return err
+		}
+		options.Decryption.MessageCrypto = messageCrypto
+	}
+	return nil
 }
