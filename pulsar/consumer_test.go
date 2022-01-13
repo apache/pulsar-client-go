@@ -340,11 +340,6 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
-		Encryption: &ProducerEncryptionInfo{
-			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
-				"crypto/testdata/pri_key_rsa.pem"),
-			Keys: []string{"enc-compress-app.key"},
-		},
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -360,10 +355,6 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 		SubscriptionName:  "my-sub",
 		Type:              Exclusive,
 		ReceiverQueueSize: 10,
-		Decryption: &MessageDecryptionInfo{
-			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
-				"crypto/testdata/pri_key_rsa.pem"),
-		},
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
