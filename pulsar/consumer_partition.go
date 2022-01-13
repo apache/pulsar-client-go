@@ -596,7 +596,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		msgID := newTrackingMessageID(
 			int64(pbMsgID.GetLedgerId()),
 			int64(pbMsgID.GetEntryId()),
-			int32(i),
+			pbMsgID.GetBatchIndex(),
 			pc.partitionIdx,
 			ackTracker)
 

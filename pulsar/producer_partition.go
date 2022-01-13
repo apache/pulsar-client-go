@@ -813,7 +813,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		pi.Lock()
 		defer pi.Unlock()
 		p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
-		for idx, i := range pi.sendRequests {
+		for _, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
 			if sr.msg != nil {
 				atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
@@ -831,7 +831,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 				msgID := newMessageID(
 					int64(response.MessageId.GetLedgerId()),
 					int64(response.MessageId.GetEntryId()),
-					int32(idx),
+					response.MessageId.GetBatchIndex(),
 					p.partitionIdx,
 				)
 
