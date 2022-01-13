@@ -186,13 +186,6 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	if pc.options.decryption == nil {
 		decryptor = cryptointernal.NewNoopDecryptor() // default to noopDecryptor
 	} else {
-		if options.decryption.MessageCrypto == nil {
-			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt", false, pc.log)
-			if err != nil {
-				return nil, err
-			}
-			options.decryption.MessageCrypto = messageCrypto
-		}
 		decryptor = cryptointernal.NewConsumerDecryptor(
 			options.decryption.KeyReader,
 			options.decryption.MessageCrypto,

@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -156,6 +157,17 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 		topic = tns[0].Name
+		// decryption is enabled, use default messagecrypto if not provided
+		if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
+			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
+				false,
+				client.log.SubLogger(log.Fields{"topic": topic}))
+			if err != nil {
+				return nil, err
+			}
+			options.Decryption.MessageCrypto = messageCrypto
+		}
+
 		return newInternalConsumer(client, options, topic, messageCh, dlq, rlq, false)
 	}
 
@@ -167,6 +179,17 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			options.Topics[i] = tns[i].Name
 		}
 		options.Topics = distinct(options.Topics)
+
+		// decryption is enabled, use default messagecrypto if not provided
+		if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
+			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
+				false,
+				client.log.SubLogger(log.Fields{"topics": options.Topics}))
+			if err != nil {
+				return nil, err
+			}
+			options.Decryption.MessageCrypto = messageCrypto
+		}
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
 	}
@@ -181,6 +204,18 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		// decryption is enabled, use default messagecrypto if not provided
+		if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
+			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
+				false,
+				client.log.SubLogger(log.Fields{"topics": tn.Name}))
+			if err != nil {
+				return nil, err
+			}
+			options.Decryption.MessageCrypto = messageCrypto
+		}
+
 		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq)
 	}
 

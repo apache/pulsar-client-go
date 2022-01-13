@@ -332,14 +332,19 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "persistent://public/default/testGetPartitions"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
+	topic := "persistent://public/default/testGetPartitions5"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions5/partitions"
 
 	makeHTTPCall(t, http.MethodPut, testURL, "64")
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"enc-compress-app.key"},
+		},
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -355,6 +360,10 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 		SubscriptionName:  "my-sub",
 		Type:              Exclusive,
 		ReceiverQueueSize: 10,
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+		},
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -393,7 +402,7 @@ func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
 	topic := "persistent://public/default/testGetPartitions"
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
 
-	makeHTTPCall(t, http.MethodPut, testURL, "64")
+	makeHTTPCall(t, http.MethodPut, testURL, "6")
 
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
