@@ -42,6 +42,8 @@ type reader struct {
 	dlq                 *dlqRouter
 	log                 log.Logger
 	metrics             *internal.LeveledMetrics
+	stopDiscovery       func()
+	closeOnce           sync.Once
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -76,6 +78,8 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	if err := reader.internalTopicReadToPartitions(); err != nil {
 		return nil, err
 	}
+
+	reader.stopDiscovery = reader.runBackgroundPartitionDiscovery(time.Second * 60)
 
 	reader.metrics.ReadersOpened.Inc()
 	return reader, nil
@@ -134,35 +138,43 @@ retryLoop:
 }
 
 func (r *reader) hasMoreMessages() bool {
-	moreMessagesCheck := func(idx int) bool {
-		if !r.consumers[idx].lastDequeuedMsg.Undefined() {
-			return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.consumers[idx].lastDequeuedMsg.messageID)
-		}
-
-		if r.consumers[idx].options.startMessageIDInclusive {
-			return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greaterEqual(r.consumers[idx].startMessageID.messageID)
-		}
-
-		// Non-inclusive
-		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.consumers[idx].startMessageID.messageID)
-	}
-	for idx := range r.consumers {
-		if moreMessagesCheck(idx) {
+	for _, c := range r.consumers {
+		if r.consumerHasMoreMessages(c) {
 			return true
 		}
 	}
 	return false
 }
 
-func (r *reader) Close() {
-	for _, consumer := range r.consumers {
-		if consumer != nil {
-			consumer.Close()
-		}
+func (r *reader) consumerHasMoreMessages(pc *partitionConsumer) bool {
+	if !pc.lastDequeuedMsg.Undefined() {
+		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(pc.lastDequeuedMsg.messageID)
 	}
-	r.dlq.close()
-	r.client.handlers.Del(r)
-	r.metrics.ReadersClosed.Inc()
+
+	if pc.options.startMessageIDInclusive {
+		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greaterEqual(pc.startMessageID.messageID)
+	}
+
+	// Non-inclusive
+	return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(pc.startMessageID.messageID)
+}
+
+func (r *reader) Close() {
+	r.closeOnce.Do(func() {
+		r.stopDiscovery()
+
+		r.Lock()
+		defer r.Unlock()
+
+		for _, consumer := range r.consumers {
+			if consumer != nil {
+				consumer.Close()
+			}
+		}
+		r.dlq.close()
+		r.client.handlers.Del(r)
+		r.metrics.ReadersClosed.Inc()
+	})
 }
 
 func (r *reader) messageID(msgID MessageID) (trackingMessageID, bool) {
@@ -202,4 +214,30 @@ func (r *reader) SeekByTime(time time.Time) error {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 	return r.consumers[0].SeekByTime(time)
+}
+
+func (r *reader) runBackgroundPartitionDiscovery(period time.Duration) (cancel func()) {
+	var wg sync.WaitGroup
+	stopDiscoveryCh := make(chan struct{})
+	ticker := time.NewTicker(period)
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stopDiscoveryCh:
+				return
+			case <-ticker.C:
+				r.log.Debug("Auto discovering new partitions")
+				r.internalTopicReadToPartitions()
+			}
+		}
+	}()
+
+	return func() {
+		ticker.Stop()
+		close(stopDiscoveryCh)
+		wg.Wait()
+	}
 }
