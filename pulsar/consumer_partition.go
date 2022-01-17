@@ -186,13 +186,6 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	if pc.options.decryption == nil {
 		decryptor = cryptointernal.NewNoopDecryptor() // default to noopDecryptor
 	} else {
-		if options.decryption.MessageCrypto == nil {
-			messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt", false, pc.log)
-			if err != nil {
-				return nil, err
-			}
-			options.decryption.MessageCrypto = messageCrypto
-		}
 		decryptor = cryptointernal.NewConsumerDecryptor(
 			options.decryption.KeyReader,
 			options.decryption.MessageCrypto,
@@ -585,7 +578,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
-		if err != nil {
+		if err != nil || payload == nil {
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
 		}
