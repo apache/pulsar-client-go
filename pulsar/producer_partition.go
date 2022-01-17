@@ -19,13 +19,11 @@ package pulsar
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
@@ -144,25 +142,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	} else {
 		p.userProvidedProducerName = false
 	}
-
-	encryption := options.Encryption
-	// add default message crypto if not provided
-	if encryption != nil && len(encryption.Keys) > 0 {
-		if encryption.KeyReader == nil {
-			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
-		}
-
-		if encryption.MessageCrypto == nil {
-			logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
-			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
-			if err != nil {
-				logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
-				return nil, err
-			}
-			p.options.Encryption.MessageCrypto = messageCrypto
-		}
-	}
-
 	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
