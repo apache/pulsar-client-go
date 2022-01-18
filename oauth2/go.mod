@@ -1,6 +1,6 @@
 module github.com/apache/pulsar-client-go/oauth2
 
-go 1.13
+go 1.15
 
 require (
 	github.com/99designs/keyring v1.1.6

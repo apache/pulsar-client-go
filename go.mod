@@ -1,6 +1,6 @@
 module github.com/apache/pulsar-client-go
 
-go 1.13
+go 1.15
 
 require (
 	github.com/AthenZ/athenz v1.10.39

@@ -36,7 +36,7 @@ CGo based library.
 
 ## Requirements
 
-- Go 1.13+
+- Go 1.15+
 
 ## Status
 
