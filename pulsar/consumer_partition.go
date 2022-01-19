@@ -21,13 +21,16 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	cryptointernal "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
@@ -87,7 +90,9 @@ type partitionConsumerOpts struct {
 	partitionIdx               int
 	receiverQueueSize          int
 	nackRedeliveryDelay        time.Duration
+	nackBackoffPolicy          NackBackoffPolicy
 	metadata                   map[string]string
+	subProperties              map[string]string
 	replicateSubscriptionState bool
 	startMessageID             trackingMessageID
 	startMessageIDInclusive    bool
@@ -98,6 +103,7 @@ type partitionConsumerOpts struct {
 	maxReconnectToBroker       *uint
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
+	decryption                 *MessageDecryptionInfo
 }
 
 type partitionConsumer struct {
@@ -138,10 +144,10 @@ type partitionConsumer struct {
 	dlq         *dlqRouter
 
 	log log.Logger
-
-	providersMutex       sync.RWMutex
-	compressionProviders map[pb.CompressionType]compression.Provider
-	metrics              *internal.TopicMetrics
+  providersMutex       sync.RWMutex
+	compressionProviders sync.Map //map[pb.CompressionType]compression.Provider
+	metrics              *internal.LeveledMetrics
+	decryptor            cryptointernal.Decryptor
 	schemaInfoCache      *schemaInfoCache
 }
 
@@ -197,7 +203,7 @@ func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
 	messageCh chan ConsumerMessage, dlq *dlqRouter,
-	metrics *internal.TopicMetrics) (*partitionConsumer, error) {
+	metrics *internal.LeveledMetrics) (*partitionConsumer, error) {
 	pc := &partitionConsumer{
 		parentConsumer:       parent,
 		client:               client,
@@ -216,7 +222,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id trackingMessageID)),
 		clearMessageQueuesCh: make(chan chan struct{}),
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		compressionProviders: sync.Map{},
 		dlq:                  dlq,
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
@@ -228,7 +234,21 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		"subscription": options.subscription,
 		"consumerID":   pc.consumerID,
 	})
-	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, pc.log)
+
+	var decryptor cryptointernal.Decryptor
+	if pc.options.decryption == nil {
+		decryptor = cryptointernal.NewNoopDecryptor() // default to noopDecryptor
+	} else {
+		decryptor = cryptointernal.NewConsumerDecryptor(
+			options.decryption.KeyReader,
+			options.decryption.MessageCrypto,
+			pc.log,
+		)
+	}
+
+	pc.decryptor = decryptor
+
+	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, options.nackBackoffPolicy, pc.log)
 
 	err := pc.grabConn()
 	if err != nil {
@@ -355,6 +375,11 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
 
 func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
 	pc.nackTracker.Add(msgID.messageID)
+	pc.metrics.NacksCounter.Inc()
+}
+
+func (pc *partitionConsumer) NackMsg(msg Message) {
+	pc.nackTracker.AddMessage(msg)
 	pc.metrics.NacksCounter.Inc()
 }
 
@@ -532,7 +557,55 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		return err
 	}
 
-	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, headersAndPayload)
+	decryptedPayload, err := pc.decryptor.Decrypt(headersAndPayload.ReadableSlice(), pbMsgID, msgMeta)
+	// error decrypting the payload
+	if err != nil {
+		// default crypto failure action
+		crypToFailureAction := crypto.ConsumerCryptoFailureActionFail
+		if pc.options.decryption != nil {
+			crypToFailureAction = pc.options.decryption.ConsumerCryptoFailureAction
+		}
+
+		switch crypToFailureAction {
+		case crypto.ConsumerCryptoFailureActionFail:
+			pc.log.Errorf("consuming message failed due to decryption err :%v", err)
+			pc.NackID(newTrackingMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), 0, 0, nil))
+			return err
+		case crypto.ConsumerCryptoFailureActionDiscard:
+			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecryptionError)
+			return fmt.Errorf("discarding message on decryption error :%v", err)
+		case crypto.ConsumerCryptoFailureActionConsume:
+			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
+			messages := []*message{
+				{
+					publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+					eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+					key:          msgMeta.GetPartitionKey(),
+					producerName: msgMeta.GetProducerName(),
+					properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
+					topic:        pc.topic,
+					msgID: newMessageID(
+						int64(pbMsgID.GetLedgerId()),
+						int64(pbMsgID.GetEntryId()),
+						pbMsgID.GetBatchIndex(),
+						pc.partitionIdx,
+					),
+					payLoad:             headersAndPayload.ReadableSlice(),
+					schema:              pc.options.schema,
+					replicationClusters: msgMeta.GetReplicateTo(),
+					replicatedFrom:      msgMeta.GetReplicatedFrom(),
+					redeliveryCount:     response.GetRedeliveryCount(),
+					encryptionContext:   createEncryptionContext(msgMeta),
+					orderingKey:         string(msgMeta.OrderingKey),
+				},
+			}
+			pc.queueCh <- messages
+			return nil
+		}
+	}
+
+	// decryption is success, decompress the payload
+	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, internal.NewBufferWrapper(decryptedPayload))
 	if err != nil {
 		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
 		return err
@@ -545,6 +618,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	if msgMeta.NumMessagesInBatch != nil {
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
+
 	messages := make([]*message, 0)
 	var ackTracker *ackTracker
 	// are there multiple messages in this batch?
@@ -557,7 +631,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
-		if err != nil {
+		if err != nil || payload == nil {
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
 		}
@@ -596,6 +670,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				redeliveryCount:     response.GetRedeliveryCount(),
 				schemaVersion:       msgMeta.GetSchemaVersion(),
 				schemaInfoCache:     pc.schemaInfoCache,
+				orderingKey:         string(smm.OrderingKey),
 			}
 		} else {
 			msg = &message{
@@ -644,6 +719,39 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) b
 
 	// Non inclusive
 	return pc.startMessageID.greaterEqual(msgID.messageID)
+}
+
+// create EncryptionContext from message metadata
+// this will be used to decrypt the message payload outside of this client
+// it is the responsibility of end user to decrypt the payload
+// It will be used only when  crypto failure action is set to consume i.e crypto.ConsumerCryptoFailureActionConsume
+func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
+	encCtx := EncryptionContext{
+		Algorithm:        msgMeta.GetEncryptionAlgo(),
+		Param:            msgMeta.GetEncryptionParam(),
+		UncompressedSize: int(msgMeta.GetUncompressedSize()),
+		BatchSize:        int(msgMeta.GetNumMessagesInBatch()),
+	}
+
+	if msgMeta.Compression != nil {
+		encCtx.CompressionType = CompressionType(*msgMeta.Compression)
+	}
+
+	kMap := map[string]EncryptionKey{}
+	for _, k := range msgMeta.GetEncryptionKeys() {
+		metaMap := map[string]string{}
+		for _, m := range k.GetMetadata() {
+			metaMap[*m.Key] = *m.Value
+		}
+
+		kMap[*k.Key] = EncryptionKey{
+			KeyValue: k.GetValue(),
+			Metadata: metaMap,
+		}
+	}
+
+	encCtx.Keys = kMap
+	return &encCtx
 }
 
 func (pc *partitionConsumer) ConnectionClosed() {
@@ -908,11 +1016,15 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		pc.log.Info("Closed consumer")
 	}
 
-	pc.providersMutex.Lock()
-	for _, provider := range pc.compressionProviders {
-		provider.Close()
-	}
-	pc.providersMutex.Unlock()
+	pc.compressionProviders.Range(func(_, v interface{}) bool {
+		if provider, ok := v.(compression.Provider); ok {
+			provider.Close()
+		} else {
+			err := fmt.Errorf("unexpected compression provider type: %T", v)
+			pc.log.WithError(err).Warn("Failed to close compression provider")
+		}
+		return true
+	})
 
 	pc.setConsumerState(consumerClosed)
 	pc._getConn().DeleteConsumeHandler(pc.consumerID)
@@ -949,6 +1061,12 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
 			return
+		}
+		errMsg := err.Error()
+		if strings.Contains(errMsg, errTopicNotFount) {
+			// when topic is deleted, we should give up reconnection.
+			pc.log.Warn("Topic Not Found.")
+			break
 		}
 
 		if maxRetry > 0 {
@@ -995,6 +1113,7 @@ func (pc *partitionConsumer) grabConn() error {
 		PriorityLevel:              nil,
 		Durable:                    proto.Bool(pc.options.subscriptionMode == durable),
 		Metadata:                   internal.ConvertFromStringMap(pc.options.metadata),
+		SubscriptionProperties:     internal.ConvertFromStringMap(pc.options.subProperties),
 		ReadCompacted:              proto.Bool(pc.options.readCompacted),
 		Schema:                     pbSchema,
 		InitialPosition:            initialPosition.Enum(),
@@ -1010,6 +1129,10 @@ func (pc *partitionConsumer) grabConn() error {
 
 	if len(pc.options.metadata) > 0 {
 		cmdSubscribe.Metadata = toKeyValues(pc.options.metadata)
+	}
+
+	if len(pc.options.subProperties) > 0 {
+		cmdSubscribe.SubscriptionProperties = toKeyValues(pc.options.subProperties)
 	}
 
 	// force topic creation is enabled by default so
@@ -1121,19 +1244,26 @@ func getPreviousMessage(mid trackingMessageID) trackingMessageID {
 }
 
 func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload internal.Buffer) (internal.Buffer, error) {
-	pc.providersMutex.RLock()
-	provider, ok := pc.compressionProviders[msgMeta.GetCompression()]
-	pc.providersMutex.RUnlock()
+	providerEntry, ok := pc.compressionProviders.Load(msgMeta.GetCompression())
 	if !ok {
-		var err error
-		if provider, err = pc.initializeCompressionProvider(msgMeta.GetCompression()); err != nil {
+		newProvider, err := pc.initializeCompressionProvider(msgMeta.GetCompression())
+		if err != nil {
 			pc.log.WithError(err).Error("Failed to decompress message.")
 			return nil, err
 		}
 
-		pc.providersMutex.Lock()
-		pc.compressionProviders[msgMeta.GetCompression()] = provider
-		pc.providersMutex.Unlock()
+		var loaded bool
+		providerEntry, loaded = pc.compressionProviders.LoadOrStore(msgMeta.GetCompression(), newProvider)
+		if loaded {
+			// another thread already loaded this provider, so close the one we just initialized
+			newProvider.Close()
+		}
+	}
+	provider, ok := providerEntry.(compression.Provider)
+	if !ok {
+		err := fmt.Errorf("unexpected compression provider type: %T", providerEntry)
+		pc.log.WithError(err).Error("Failed to decompress message.")
+		return nil, err
 	}
 
 	uncompressed, err := provider.Decompress(nil, payload.ReadableSlice(), int(msgMeta.GetUncompressedSize()))

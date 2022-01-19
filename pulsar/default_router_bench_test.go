@@ -29,17 +29,36 @@ var (
 )
 
 func BenchmarkDefaultRouter(b *testing.B) {
+	const numPartitions = uint32(200)
+	msg := &ProducerMessage{
+		Payload: []byte("message 1"),
+	}
+	router := newBenchDefaultRouter()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		targetPartition = router(msg, numPartitions)
+	}
+}
+
+func BenchmarkDefaultRouterParallel(b *testing.B) {
+	const numPartitions = uint32(200)
+	msg := &ProducerMessage{
+		Payload: []byte("message 1"),
+	}
+	router := newBenchDefaultRouter()
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			targetPartition = router(msg, numPartitions)
+		}
+	})
+}
+
+func newBenchDefaultRouter() func(*ProducerMessage, uint32) int {
 	const (
-		numPartitions       = uint32(200)
 		maxBatchingMessages = 2000
 		maxBatchingSize     = 524288
 		maxBatchingDelay    = 100 * time.Millisecond
 	)
-	msg := &ProducerMessage{
-		Payload: []byte("message 1"),
-	}
-	router := NewDefaultRouter(internal.JavaStringHash, maxBatchingMessages, maxBatchingSize, maxBatchingDelay, false)
-	for i := 0; i < b.N; i++ {
-		targetPartition = router(msg, numPartitions)
-	}
+	return NewDefaultRouter(internal.JavaStringHash, maxBatchingMessages, maxBatchingSize, maxBatchingDelay, false)
 }

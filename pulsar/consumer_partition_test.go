@@ -18,10 +18,10 @@
 package pulsar
 
 import (
+	"sync"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
 	"github.com/stretchr/testify/assert"
 
@@ -33,9 +33,10 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
@@ -64,9 +65,10 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
@@ -95,9 +97,10 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	pc := partitionConsumer{
 		queueCh:              make(chan []*message, 1),
 		eventsCh:             eventsCh,
-		compressionProviders: make(map[pb.CompressionType]compression.Provider),
+		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(map[string]string{}).GetTopicMetrics("topic"),
+		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)

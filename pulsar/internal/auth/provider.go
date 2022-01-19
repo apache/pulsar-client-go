@@ -23,11 +23,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-
-	"github.com/pkg/errors"
 )
 
-// Provider is a interface of authentication providers.
+// Provider is an interface of authentication providers.
 type Provider interface {
 	// Init the authentication provider.
 	Init() error
@@ -35,7 +33,7 @@ type Provider interface {
 	// Name func returns the identifier for this authentication method.
 	Name() string
 
-	// return a client certificate chain, or nil if the data are not available
+	// GetTLSCertificate returns a client certificate chain, or nil if the data are not available
 	GetTLSCertificate() (*tls.Certificate, error)
 
 	// GetData returns the authentication data identifying this client that will be sent to the broker.
@@ -61,7 +59,10 @@ type HTTPTransport struct {
 // Some authentication method need to auth between each client channel. So it need
 // the broker, who it will talk to.
 func NewProvider(name string, params string) (Provider, error) {
-	m := parseParams(params)
+	m, err := parseParams(params)
+	if err != nil {
+		return nil, err
+	}
 
 	switch name {
 	case "":
@@ -80,12 +81,15 @@ func NewProvider(name string, params string) (Provider, error) {
 		return NewAuthenticationOAuth2WithParams(m)
 
 	default:
-		return nil, errors.New(fmt.Sprintf("invalid auth provider '%s'", name))
+		return nil, fmt.Errorf("invalid auth provider '%s'", name)
 	}
 }
 
-func parseParams(params string) map[string]string {
+func parseParams(params string) (map[string]string, error) {
 	var mapString map[string]string
-	json.Unmarshal([]byte(params), &mapString)
-	return mapString
+	if err := json.Unmarshal([]byte(params), &mapString); err != nil {
+		return nil, err
+	}
+
+	return mapString, nil
 }
