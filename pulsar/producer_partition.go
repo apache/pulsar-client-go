@@ -735,8 +735,7 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
 		err = e
 		msgID = ID
-		if !isDone.Load() {
-			isDone.Store(true)
+		if isDone.CAS(false, true) {
 			close(doneCh)
 		}
 	}, true)
