@@ -733,9 +733,9 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	doneCh := make(chan struct{})
 
 	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
-		err = e
-		msgID = ID
 		if isDone.CAS(false, true) {
+			err = e
+			msgID = ID
 			close(doneCh)
 		}
 	}, true)
