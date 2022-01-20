@@ -143,8 +143,8 @@ type partitionConsumer struct {
 	nackTracker *negativeAcksTracker
 	dlq         *dlqRouter
 
-	log log.Logger
-  providersMutex       sync.RWMutex
+	log                  log.Logger
+	providersMutex       sync.RWMutex
 	compressionProviders sync.Map //map[pb.CompressionType]compression.Provider
 	metrics              *internal.LeveledMetrics
 	decryptor            cryptointernal.Decryptor
@@ -169,10 +169,10 @@ func newSchemaInfoCache(client *client, topic string) *schemaInfoCache {
 func (s *schemaInfoCache) Get(schemaVersion []byte) (schema Schema, err error) {
 	key := hex.EncodeToString(schemaVersion)
 	s.lock.RLock()
-	schema = s.cache[key]
+	schema, ok := s.cache[key]
 	s.lock.RUnlock()
-	if schema != nil {
-		return
+	if ok {
+		return schema, nil
 	}
 
 	pbSchema, err := s.client.lookupService.GetSchema(s.topic, schemaVersion)
@@ -180,20 +180,16 @@ func (s *schemaInfoCache) Get(schemaVersion []byte) (schema Schema, err error) {
 		return nil, err
 	}
 
-	var properties = make(map[string]string)
-	if pbSchema.Properties != nil {
-		for _, entry := range pbSchema.Properties {
-			properties[*entry.Key] = properties[*entry.Value]
-		}
-	}
+	var properties = internal.ConvertToStringMap(pbSchema.Properties)
+
 	schema, err = NewSchema(SchemaType(*pbSchema.Type), pbSchema.SchemaData, properties)
 	if err != nil {
 		return nil, err
 	}
 	s.add(key, schema)
 	return schema, nil
-
 }
+
 func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
 	s.lock.Lock()
 	defer s.lock.Unlock()

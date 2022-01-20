@@ -284,7 +284,7 @@ func (p *partitionProducer) grabCnx() error {
 		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
 		p.sequenceIDGenerator = &nextSequenceID
 	}
-  
+
 	schemaVersion := res.Response.ProducerSuccess.GetSchemaVersion()
 	if len(schemaVersion) != 0 {
 		p.schemaCache.Put(p.schemaInfo, schemaVersion)
@@ -357,7 +357,7 @@ func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVer
 		Topic:     proto.String(p.topic),
 		Schema:    pbSchema,
 	}
-  res, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_GET_OR_CREATE_SCHEMA, req)
+	res, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_GET_OR_CREATE_SCHEMA, req)
 	if err != nil {
 		return
 	}
@@ -469,7 +469,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if p.options.DisableMultiSchema {
-		if msg.Schema != p.options.Schema {
+		if msg.Schema != nil && p.options.Schema != nil && msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
 			p.log.WithError(err).Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
 			return
 		}
