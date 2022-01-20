@@ -33,7 +33,7 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
-	"go.uber.org/atomic"
+	uAtomic "go.uber.org/atomic"
 )
 
 var (
@@ -110,10 +110,10 @@ type partitionConsumer struct {
 
 	// this is needed for sending ConsumerMessage on the messageCh
 	parentConsumer Consumer
-	state          atomic.Int32
+	state          uAtomic.Int32
 	options        *partitionConsumerOpts
 
-	conn atomic.Value
+	conn uAtomic.Value
 
 	topic        string
 	name         string

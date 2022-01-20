@@ -36,7 +36,7 @@ CGo based library.
 
 ## Requirements
 
-- Go 1.13+
+- Go 1.15+
 
 ## Status
 
@@ -133,6 +133,16 @@ for reader.HasNext() {
 		msg.ID(), string(msg.Payload()))
 }
 ```
+
+## Build and Test
+
+Build the sources:
+
+    go build ./pulsar
+
+Run the unit tests:
+
+    ./docker-ci.sh
 
 ## Contributing
 
