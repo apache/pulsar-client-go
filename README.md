@@ -134,6 +134,16 @@ for reader.HasNext() {
 }
 ```
 
+## Build and Test
+
+Build the sources:
+
+    go build ./pulsar
+
+Run the unit tests:
+
+    ./docker-ci.sh
+
 ## Contributing
 
 Contributions are welcomed and greatly appreciated. See [CONTRIBUTING.md](CONTRIBUTING.md) for details on submitting patches and the contribution workflow.
