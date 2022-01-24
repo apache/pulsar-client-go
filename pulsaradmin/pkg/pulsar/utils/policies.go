@@ -54,6 +54,7 @@ type Policies struct {
 	SchemaCompatibilityStrategy SchemaCompatibilityStrategy       `json:"schema_auto_update_compatibility_strategy"`
 	AuthPolicies                common.AuthPolicies               `json:"auth_policies"`
 	SubscriptionAuthMode        SubscriptionAuthMode              `json:"subscription_auth_mode"`
+	IsAllowAutoUpdateSchema     *bool                             `json:"is_allow_auto_update_schema"`
 }
 
 func NewDefaultPolicies() *Policies {
