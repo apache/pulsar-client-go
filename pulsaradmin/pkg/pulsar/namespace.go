@@ -259,6 +259,12 @@ type Namespaces interface {
 
 	// GetPublishRate gets the maximum rate or number of messages that producer can publish to topics in the namespace
 	GetPublishRate(namespace utils.NameSpaceName) (utils.PublishRate, error)
+
+	// SetIsAllowAutoUpdateSchema sets whether to allow auto update schema on a namespace
+	SetIsAllowAutoUpdateSchema(namespace utils.NameSpaceName, isAllowAutoUpdateSchema bool) error
+
+	// GetIsAllowAutoUpdateSchema gets whether to allow auto update schema on a namespace
+	GetIsAllowAutoUpdateSchema(namespace utils.NameSpaceName) (bool, error)
 }
 
 type namespaces struct {
@@ -829,4 +835,16 @@ func (n *namespaces) GetPublishRate(namespace utils.NameSpaceName) (utils.Publis
 	var pubRate utils.PublishRate
 	err := n.pulsar.Client.Get(endpoint, &pubRate)
 	return pubRate, err
+}
+
+func (n *namespaces) SetIsAllowAutoUpdateSchema(namespace utils.NameSpaceName, isAllowAutoUpdateSchema bool) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "isAllowAutoUpdateSchema")
+	return n.pulsar.Client.Post(endpoint, &isAllowAutoUpdateSchema)
+}
+
+func (n *namespaces) GetIsAllowAutoUpdateSchema(namespace utils.NameSpaceName) (bool, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "isAllowAutoUpdateSchema")
+	var result bool
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
