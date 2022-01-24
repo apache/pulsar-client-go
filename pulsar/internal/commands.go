@@ -218,6 +218,20 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.Write(payload)
 }
 
+func addMessageToBatch(wb Buffer, mm *pb.MessageMetadata, payload []byte) {
+	metadataSize := uint32(mm.Size())
+	wb.WriteUint32(metadataSize)
+
+	wb.ResizeIfNeeded(metadataSize)
+	_, err := mm.MarshalToSizedBuffer(wb.WritableSlice()[:metadataSize])
+	if err != nil {
+		panic(fmt.Sprintf("Protobuf serialization error: %v", err))
+	}
+
+	wb.WrittenBytes(metadataSize)
+	wb.Write(payload)
+}
+
 func serializeBatch(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,

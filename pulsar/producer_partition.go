@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	uuidGen "github.com/google/uuid"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -411,8 +412,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		payload = schemaPayload
 	}
 
-	// if msg is too large
-	if len(payload) > int(p._getConn().GetMaxMessageSize()) {
+	// if msg is too large and chunked msg not enabled
+	if len(payload) > int(p._getConn().GetMaxMessageSize()) && !p.options.ChunkingEnabled {
 		p.publishSemaphore.Release()
 		request.callback(nil, request.msg, errMessageTooLarge)
 		p.log.WithError(errMessageTooLarge).
@@ -420,6 +421,16 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			WithField("properties", msg.Properties).
 			Errorf("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize()))
 		p.metrics.PublishErrorsMsgTooLarge.Inc()
+		return
+	}
+
+	// if msg is too large and chunked msg enabled, send chunked msg
+	if len(payload) > int(p._getConn().GetMaxMessageSize()) && p.options.ChunkingEnabled {
+		p.log.
+			WithField("size", len(payload)).
+			WithField("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize())).
+			Info("Size exceed limit, send with chunks")
+		p.internalSendWithTrunks(request, payload)
 		return
 	}
 
@@ -493,6 +504,95 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		} else {
 			p.internalFlushCurrentBatch()
 		}
+	}
+}
+
+func (p *partitionProducer) internalSendWithTrunks(request *sendRequest, payload []byte) {
+	chunkSize := int(p._getConn().GetMaxMessageSize())
+	totalChunks := (len(payload)+1)/chunkSize + 1
+	uuid := uuidGen.New().String()
+
+	for chunkId := 0; chunkId < chunkSize; chunkId++ {
+		left := chunkId * chunkSize
+		right := left + chunkSize
+		if right > len(payload)-1 {
+			right = len(payload) - 1
+		}
+		// [left, right)
+		p.internalSendSingleChunk(request, payload[left:right], uuid, totalChunks, len(payload), chunkId)
+	}
+}
+
+func (p *partitionProducer) internalSendSingleChunk(request *sendRequest, payload []byte,
+	uuid string, totalChunks int, totalSize int, chunkId int) {
+
+	msg := request.msg
+	deliverAt := msg.DeliverAt
+	if msg.DeliverAfter.Nanoseconds() > 0 {
+		deliverAt = time.Now().Add(msg.DeliverAfter)
+	}
+
+	mm := &pb.MessageMetadata{}
+
+	if msg.EventTime.UnixNano() != 0 {
+		mm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
+	}
+
+	if msg.Key != "" {
+		mm.PartitionKey = proto.String(msg.Key)
+	}
+
+	if len(msg.OrderingKey) != 0 {
+		mm.OrderingKey = []byte(msg.OrderingKey)
+	}
+
+	if msg.Properties != nil {
+		mm.Properties = internal.ConvertFromStringMap(msg.Properties)
+	}
+
+	if msg.SequenceID != nil {
+		sequenceID := uint64(*msg.SequenceID)
+		mm.SequenceId = proto.Uint64(sequenceID)
+	}
+
+	// Fields required for chunked data
+	mm.Uuid = proto.String(uuid)
+	mm.NumChunksFromMsg = proto.Int(totalChunks)
+	mm.TotalChunkMsgSize = proto.Int(totalSize)
+	mm.ChunkId = proto.Int(chunkId)
+
+	p.internalFlushCurrentBatch()
+
+	if msg.DisableReplication {
+		msg.ReplicationClusters = []string{"__local__"}
+	}
+
+	added := p.batchBuilder.AddMessageMetaData(mm, p.sequenceIDGenerator, payload, request,
+		msg.ReplicationClusters, deliverAt)
+	if !added {
+		// The current batch is full.. flush it and retry
+		if p.batchBuilder.IsMultiBatches() {
+			p.internalFlushCurrentBatches()
+		} else {
+			p.internalFlushCurrentBatch()
+		}
+
+		// after flushing try again to add the current payload
+		if ok := p.batchBuilder.AddMessageMetaData(mm, p.sequenceIDGenerator, payload, request,
+			msg.ReplicationClusters, deliverAt); !ok {
+			p.publishSemaphore.Release()
+			request.callback(nil, request.msg, errFailAddToBatch)
+			p.log.WithField("size", len(payload)).
+				WithField("properties", msg.Properties).
+				Error("unable to add message to batch")
+			return
+		}
+	}
+
+	if p.batchBuilder.IsMultiBatches() {
+		p.internalFlushCurrentBatches()
+	} else {
+		p.internalFlushCurrentBatch()
 	}
 }
 

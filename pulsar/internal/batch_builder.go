@@ -51,6 +51,14 @@ type BatchBuilder interface {
 		callback interface{}, replicateTo []string, deliverAt time.Time,
 	) bool
 
+	// AddMessageMetaData will add a message to batch,
+	// currently it will only be used when sending chunked msg.
+	AddMessageMetaData(
+		metadata *pb.MessageMetadata, sequenceIDGenerator *uint64,
+		payload []byte,
+		callback interface{}, replicateTo []string, deliverAt time.Time,
+	) bool
+
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
 	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}, err error)
 
@@ -201,6 +209,57 @@ func (bc *batchContainer) Add(
 		bc.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
 	}
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
+
+	bc.numMessages++
+	bc.callbacks = append(bc.callbacks, callback)
+	return true
+}
+
+func (bc *batchContainer) AddMessageMetaData(
+	metadata *pb.MessageMetadata, sequenceIDGenerator *uint64,
+	payload []byte,
+	callback interface{}, replicateTo []string, deliverAt time.Time,
+) bool {
+	if replicateTo != nil && bc.numMessages != 0 {
+		// If the current batch is not empty and we're trying to set the replication clusters,
+		// then we need to force the current batch to flush and send the message individually
+		return false
+	} else if bc.msgMetadata.ReplicateTo != nil {
+		// There's already a message with cluster replication list. need to flush before next
+		// message can be sent
+		return false
+	} else if !bc.hasSpace(payload) {
+		// The current batch is full. Producer has to call Flush() to
+		return false
+	}
+
+	if bc.numMessages == 0 {
+		var sequenceID uint64
+		if metadata.SequenceId != nil {
+			sequenceID = *metadata.SequenceId
+		} else {
+			sequenceID = GetAndAdd(sequenceIDGenerator, 1)
+		}
+		bc.msgMetadata.SequenceId = proto.Uint64(sequenceID)
+		bc.msgMetadata.PublishTime = proto.Uint64(TimestampMillis(time.Now()))
+		bc.msgMetadata.ProducerName = &bc.producerName
+		bc.msgMetadata.ReplicateTo = replicateTo
+		bc.msgMetadata.PartitionKey = metadata.PartitionKey
+		bc.msgMetadata.Properties = metadata.Properties
+
+		// Special field for chunks
+		bc.msgMetadata.Uuid = metadata.Uuid
+		bc.msgMetadata.NumChunksFromMsg = metadata.NumChunksFromMsg
+		bc.msgMetadata.TotalChunkMsgSize = metadata.TotalChunkMsgSize
+		bc.msgMetadata.ChunkId = metadata.ChunkId
+
+		if deliverAt.UnixNano() > 0 {
+			bc.msgMetadata.DeliverAtTime = proto.Int64(int64(TimestampMillis(deliverAt)))
+		}
+
+		bc.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
+	}
+	addMessageToBatch(bc.buffer, metadata, payload)
 
 	bc.numMessages++
 	bc.callbacks = append(bc.callbacks, callback)
