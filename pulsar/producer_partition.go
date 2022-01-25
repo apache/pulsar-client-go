@@ -527,12 +527,13 @@ func (p *partitionProducer) internalSendSingleChunk(request *sendRequest, payloa
 	uuid string, totalChunks int, totalSize int, chunkId int) {
 
 	msg := request.msg
+	mm := &pb.MessageMetadata{}
+
 	deliverAt := msg.DeliverAt
 	if msg.DeliverAfter.Nanoseconds() > 0 {
 		deliverAt = time.Now().Add(msg.DeliverAfter)
+		mm.DeliverAtTime = proto.Int64(int64(internal.TimestampMillis(deliverAt)))
 	}
-
-	mm := &pb.MessageMetadata{}
 
 	if msg.EventTime.UnixNano() != 0 {
 		mm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
@@ -561,39 +562,20 @@ func (p *partitionProducer) internalSendSingleChunk(request *sendRequest, payloa
 	mm.TotalChunkMsgSize = proto.Int(totalSize)
 	mm.ChunkId = proto.Int(chunkId)
 
-	p.internalFlushCurrentBatch()
+	// Directly construct a buffer and put it to the pending queue
+	newBuffer := p.GetBuffer()
+	internal.ConstructBufferFromMessage(newBuffer, mm, payload)
 
-	if msg.DisableReplication {
-		msg.ReplicationClusters = []string{"__local__"}
-	}
+	callbacks := make([]interface{}, 1)
+	callbacks[0] = request.callback
 
-	added := p.batchBuilder.AddMessageMetaData(mm, p.sequenceIDGenerator, payload, request,
-		msg.ReplicationClusters, deliverAt)
-	if !added {
-		// The current batch is full.. flush it and retry
-		if p.batchBuilder.IsMultiBatches() {
-			p.internalFlushCurrentBatches()
-		} else {
-			p.internalFlushCurrentBatch()
-		}
-
-		// after flushing try again to add the current payload
-		if ok := p.batchBuilder.AddMessageMetaData(mm, p.sequenceIDGenerator, payload, request,
-			msg.ReplicationClusters, deliverAt); !ok {
-			p.publishSemaphore.Release()
-			request.callback(nil, request.msg, errFailAddToBatch)
-			p.log.WithField("size", len(payload)).
-				WithField("properties", msg.Properties).
-				Error("unable to add message to batch")
-			return
-		}
-	}
-
-	if p.batchBuilder.IsMultiBatches() {
-		p.internalFlushCurrentBatches()
-	} else {
-		p.internalFlushCurrentBatch()
-	}
+	p.pendingQueue.Put(&pendingItem{
+		sentAt:       time.Now(),
+		batchData:    newBuffer,
+		sequenceID:   uint64(*msg.SequenceID),
+		sendRequests: callbacks,
+	})
+	p._getConn().WriteData(newBuffer)
 }
 
 type pendingItem struct {
