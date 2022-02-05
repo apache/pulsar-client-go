@@ -324,6 +324,7 @@ func (p *partitionProducer) reconnectToBroker() {
 	for maxRetry != 0 {
 		if p.getProducerState() != producerReady {
 			// Producer is already closing
+			p.log.Info("producer state not ready, exit reconnect")
 			return
 		}
 
@@ -337,6 +338,7 @@ func (p *partitionProducer) reconnectToBroker() {
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
 			return
 		}
+		p.log.WithError(err).Error("Failed to create producer at reconnect")
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
@@ -355,6 +357,7 @@ func (p *partitionProducer) runEventsLoop() {
 		for {
 			select {
 			case <-p.closeCh:
+				p.log.Info("close producer, exit reconnect")
 				return
 			case <-p.connectClosedCh:
 				p.log.Info("runEventsLoop will reconnect in producer")

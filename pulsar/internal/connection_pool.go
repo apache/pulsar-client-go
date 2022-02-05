@@ -75,15 +75,15 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	p.Lock()
 	conn, ok := p.connections[key]
 	if ok {
-		p.log.Infof("Found connection in pool key=%s logical_addr=%+v physical_addr=%+v",
+		p.log.Debugf("Found connection in pool key=%s logical_addr=%+v physical_addr=%+v",
 			key, conn.logicalAddr, conn.physicalAddr)
 
 		// remove stale/failed connection
 		if conn.closed() {
 			delete(p.connections, key)
 			conn.Close()
-			p.log.Infof("Removed connection from pool key=%s logical_addr=%+v physical_addr=%+v",
-				key, conn.logicalAddr, conn.physicalAddr)
+			p.log.Infof("Removed connection from pool key=%s logical_addr=%+v physical_addr=%+v, conn ID=%s",
+				key, conn.logicalAddr, conn.physicalAddr, conn.ID())
 			conn = nil // set to nil so we create a new one
 		}
 	}
