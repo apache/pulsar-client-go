@@ -142,7 +142,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	err := p.grabCnx()
 	if err != nil {
-		logger.WithError(err).Error("Failed to create producer")
+		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
 		return nil, err
 	}
 
@@ -209,7 +209,7 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
-		p.log.WithError(err).Error("Failed to create producer")
+		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		return err
 	}
 
