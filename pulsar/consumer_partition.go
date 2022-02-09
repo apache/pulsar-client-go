@@ -894,6 +894,7 @@ func (pc *partitionConsumer) runEventsLoop() {
 		for {
 			select {
 			case <-pc.closeCh:
+				pc.log.Info("close consumer, exit reconnect")
 				return
 			case <-pc.connectClosedCh:
 				pc.log.Debug("runEventsLoop will reconnect")
@@ -992,6 +993,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 	for maxRetry != 0 {
 		if pc.getConsumerState() != consumerReady {
 			// Consumer is already closing
+			pc.log.Info("consumer state not ready, exit reconnect")
 			return
 		}
 
@@ -1005,6 +1007,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			pc.log.Info("Reconnected consumer to broker")
 			return
 		}
+		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
