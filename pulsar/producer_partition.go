@@ -126,6 +126,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		metrics:          metrics,
 		epoch:            0,
 	}
+	if p.options.DisableBatching {
+		p.batchFlushTicker.Stop()
+	}
 	p.setProducerState(producerInit)
 
 	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
