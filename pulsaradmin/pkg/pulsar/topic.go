@@ -250,10 +250,13 @@ func (c *pulsarClient) Topics() Topics {
 
 func (t *topics) Create(topic utils.TopicName, partitions int) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitions")
+	data := &partitions
 	if partitions == 0 {
 		endpoint = t.pulsar.endpoint(t.basePath, topic.GetRestPath())
+		data = nil
 	}
-	return t.pulsar.Client.Put(endpoint, partitions)
+
+	return t.pulsar.Client.Put(endpoint, data)
 }
 
 func (t *topics) Delete(topic utils.TopicName, force bool, nonPartitioned bool) error {
