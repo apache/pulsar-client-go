@@ -1156,6 +1156,51 @@ func TestDLQMultiTopics(t *testing.T) {
 	assert.Nil(t, msg)
 }
 
+func TestDLQOnTopicWithSchema(t *testing.T) {
+	topicName := newTopicName()
+	ns := fmt.Sprintf("public/%s", generateRandomName())
+	err := createNamespace(ns, map[string]interface{}{
+		"schema_compatibility_strategy":             "FORWARD_TRANSITIVE",
+		"schema_auto_update_compatibility_strategy": "ForwardTransitive",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	topic := fmt.Sprintf("%v/%v", ns, topicName)
+
+	// create a topic
+	err = createTopic(topic)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := createClient()
+	defer client.Close()
+
+	jsonSchema := NewJSONSchema(exampleSchemaDef, nil)
+
+	producer1, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: jsonSchema,
+	})
+
+	assert.Nil(t, err)
+	assert.NotNil(t, producer1)
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Value: &testJSON{
+			ID:   100,
+			Name: "pulsar",
+		},
+	})
+	assert.Nil(t, err)
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Value: "some test value",
+	})
+	assert.Nil(t, err)
+}
+
 func TestRLQ(t *testing.T) {
 	topic := newTopicName()
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/partitions"
