@@ -145,6 +145,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	err := p.grabCnx()
 	if err != nil {
+		p.batchFlushTicker.Stop()
 		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
 		return nil, err
 	}
