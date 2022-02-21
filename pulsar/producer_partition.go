@@ -280,6 +280,9 @@ func (p *partitionProducer) grabCnx() error {
 				continue
 			}
 			pi := item.(*pendingItem)
+			if pi.sent || pi.completed {
+				continue
+			}
 			// when resending pending batches, we update the sendAt timestamp and put to the back of queue
 			// to avoid pending item been removed by failTimeoutMessages and cause race condition
 			pi.Lock()
@@ -511,6 +514,7 @@ type pendingItem struct {
 	sentAt       time.Time
 	sendRequests []interface{}
 	completed    bool
+	sent       bool
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
@@ -935,6 +939,7 @@ func (i *pendingItem) Complete() {
 		return
 	}
 	i.completed = true
+	i.sent = true
 	buffersPool.Put(i.batchData)
 }
 
