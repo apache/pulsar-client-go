@@ -410,18 +410,20 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	msg := request.msg
 
+	// read payload from message
 	payload := msg.Payload
-	var schemaPayload []byte
+
 	var err error
-	if p.options.Schema != nil {
+
+	// payload and schema are mutually exclusive
+	// try to get payload from schema value only if payload is not set
+	if payload == nil && p.options.Schema != nil {
+		var schemaPayload []byte
 		schemaPayload, err = p.options.Schema.Encode(msg.Value)
 		if err != nil {
 			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 			return
 		}
-	}
-
-	if payload == nil {
 		payload = schemaPayload
 	}
 
