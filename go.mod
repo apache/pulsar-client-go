@@ -12,7 +12,7 @@ require (
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.5.2
 	github.com/google/uuid v1.1.2
-	github.com/klauspost/compress v1.10.8
+	github.com/klauspost/compress v1.14.4
 	github.com/linkedin/goavro/v2 v2.9.8
 	github.com/opentracing/opentracing-go v1.2.0
 	github.com/pierrec/lz4 v2.0.5+incompatible
