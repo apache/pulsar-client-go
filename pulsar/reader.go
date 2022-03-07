@@ -79,6 +79,9 @@ type ReaderOptions struct {
 
 	// Decryption represents the encryption related fields required by the reader to decrypt a message.
 	Decryption *MessageDecryptionInfo
+
+	// Schema represents the schema implementation.
+	Schema Schema
 }
 
 // Reader can be used to scan through all the messages currently available in a topic.
