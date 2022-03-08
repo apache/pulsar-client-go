@@ -23,6 +23,16 @@
 
 All notable changes to this project will be documented in this file.
 
+[0.8.1] 2022-03-08
+
+## What's Changed
+* Upgrade beefsack/go-rate by @shubham1172 in https://github.com/apache/pulsar-client-go/pull/735
+* Upgrade prometheus client to 1.11.1 by @nicoloboschi in https://github.com/apache/pulsar-client-go/pull/738
+
+## New Contributors
+@shubham1172 made their first contribution in https://github.com/apache/pulsar-client-go/pull/735
+@nicoloboschi made their first contribution in https://github.com/apache/pulsar-client-go/pull/738
+
 [0.8.0] 2022-02-16
 
 ## What's Changed
