@@ -43,7 +43,7 @@ const (
 	PulsarVersion       = "0.1"
 	ClientVersionString = "Pulsar Go " + PulsarVersion
 
-	PulsarProtocolVersion = int32(pb.ProtocolVersion_v13)
+	PulsarProtocolVersion = int32(pb.ProtocolVersion_v18)
 )
 
 type TLSOptions struct {
@@ -292,7 +292,8 @@ func (c *connection) doHandshake() bool {
 		AuthMethodName:  proto.String(c.auth.Name()),
 		AuthData:        authData,
 		FeatureFlags: &pb.FeatureFlags{
-			SupportsAuthRefresh: proto.Bool(true),
+			SupportsAuthRefresh:         proto.Bool(true),
+			SupportsBrokerEntryMetadata: proto.Bool(true),
 		},
 	}
 

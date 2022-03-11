@@ -121,6 +121,10 @@ type Message interface {
 	// GetEncryptionContext returns the ecryption context of the message.
 	// It will be used by the application to parse the undecrypted message.
 	GetEncryptionContext() *EncryptionContext
+
+	Index() *uint64
+
+	BrokerPublishTime() *time.Time
 }
 
 // MessageID identifier for a particular message
