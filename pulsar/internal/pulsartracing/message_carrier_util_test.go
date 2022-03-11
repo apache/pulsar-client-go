@@ -123,3 +123,11 @@ func (msg *mockConsumerMessage) ProducerName() string {
 func (msg *mockConsumerMessage) GetEncryptionContext() *pulsar.EncryptionContext {
 	return &pulsar.EncryptionContext{}
 }
+
+func (msg *mockConsumerMessage) Index() *uint64 {
+	return nil
+}
+
+func (msg *mockConsumerMessage) BrokerPublishTime() *time.Time {
+	return nil
+}
