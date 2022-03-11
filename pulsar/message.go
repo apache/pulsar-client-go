@@ -122,8 +122,12 @@ type Message interface {
 	// It will be used by the application to parse the undecrypted message.
 	GetEncryptionContext() *EncryptionContext
 
+	// Index returns index from broker entry metadata,
+	// or empty if the feature is not enabled in the broker.
 	Index() *uint64
 
+	// BrokerPublishTime returns broker publish time from broker entry metadata,
+	// or empty if the feature is not enabled in the broker.
 	BrokerPublishTime() *time.Time
 }
 

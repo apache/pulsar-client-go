@@ -18,7 +18,6 @@
 package internal
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -82,7 +81,6 @@ func TestReadBrokerEntryMetadata(t *testing.T) {
 	assert.Equal(t, expectedBrokerTimestamp, *meta.BrokerTimestamp)
 	var expectedIndex uint64 = 5
 	assert.Equal(t, expectedIndex, *meta.Index)
-	fmt.Println(meta)
 }
 
 func TestReadMessageOldFormat(t *testing.T) {
