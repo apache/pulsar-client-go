@@ -102,6 +102,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
 		replicateSubscriptionState: false,
 		decryption:                 options.Decryption,
+		schema:                     options.Schema,
 	}
 
 	reader := &reader{
