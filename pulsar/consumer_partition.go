@@ -498,12 +498,17 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	pbMsgID := response.GetMessageId()
 
 	reader := internal.NewMessageReader(headersAndPayload)
+	brokerMetadata, err := reader.ReadBrokerMetadata()
+	if err != nil {
+		// todo optimize use more appropriate error codes
+		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
+		return err
+	}
 	msgMeta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_ChecksumMismatch)
 		return err
 	}
-
 	decryptedPayload, err := pc.decryptor.Decrypt(headersAndPayload.ReadableSlice(), pbMsgID, msgMeta)
 	// error decrypting the payload
 	if err != nil {
@@ -597,7 +602,18 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			pc.AckID(msgID)
 			continue
 		}
-
+		var messageIndex *uint64
+		var brokerPublishTime *time.Time
+		if brokerMetadata != nil {
+			if brokerMetadata.Index != nil {
+				aux := brokerMetadata.GetIndex() - uint64(numMsgs) + uint64(i) + 1
+				messageIndex = &aux
+			}
+			if brokerMetadata.BrokerTimestamp != nil {
+				aux := timeFromUnixTimestampMillis(*brokerMetadata.BrokerTimestamp)
+				brokerPublishTime = &aux
+			}
+		}
 		// set the consumer so we know how to ack the message id
 		msgID.consumer = pc
 		var msg *message
@@ -616,6 +632,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
 				orderingKey:         string(smm.OrderingKey),
+				index:               messageIndex,
+				brokerPublishTime:   brokerPublishTime,
 			}
 		} else {
 			msg = &message{
@@ -631,6 +649,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
+				index:               messageIndex,
+				brokerPublishTime:   brokerPublishTime,
 			}
 		}
 
