@@ -3017,3 +3017,59 @@ func TestEncryptDecryptRedeliveryOnFailure(t *testing.T) {
 	assert.NotNil(t, msg)
 	consumer.Ack(msg)
 }
+
+// Test for issue #664
+func TestIssue664(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/my-topic"
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+	if _, err = producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("hello-%d", 10)),
+	}); err != nil {
+		log.Fatal(err)
+	}
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+		//DLQ:              &DLQPolicy{MaxDeliveries: 10, DeadLetterTopic: "dlq-topic"},
+		//RetryEnable:      true,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	msg, err := consumer.Receive(context.Background())
+	if err != nil {
+		log.Fatal(err)
+	}
+	expectMsg := fmt.Sprintf("hello-%d", 10)
+	assert.Equal(t, []byte(expectMsg), msg.Payload())
+	consumer.ReconsumeLater(msg, time.Second)
+	//consumer.Ack(msg)
+
+	//for {
+	//	select {
+	//	case cm := <-consumer.Chan():
+	//		fmt.Println(string(cm.Payload()))
+	//		//cm.ReconsumeLater(cm.Message, time.Second)
+	//		cm.Ack(cm.Message)
+	//	}
+	//}
+
+}

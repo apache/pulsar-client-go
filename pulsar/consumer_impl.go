@@ -496,7 +496,10 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 			msgID:      msgID,
 		},
 	}
-	if uint32(reconsumeTimes) > c.dlq.policy.MaxDeliveries {
+	if c.dlq.policy == nil {
+		c.log.Warn("Receive retry message but the DLQPolicy is nil, please check")
+	}
+	if c.dlq.policy != nil && uint32(reconsumeTimes) > c.dlq.policy.MaxDeliveries {
 		c.dlq.Chan() <- consumerMsg
 	} else {
 		c.rlq.Chan() <- RetryMessage{
