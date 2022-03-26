@@ -27,6 +27,8 @@ type ProducerMessage struct {
 	Payload []byte
 
 	// Value and payload is mutually exclusive, `Value interface{}` for schema message.
+	// If you encode message externally (for ex: with a different avro encoder), leave
+	// Value nil and set the `Payload` to encoded `[]byte` value
 	Value interface{}
 
 	// Key sets the key of the message for routing policy
