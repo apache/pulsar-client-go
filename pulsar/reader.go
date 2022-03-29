@@ -68,7 +68,8 @@ type ReaderOptions struct {
 	// SubscriptionRolePrefix sets the subscription role prefix. The default prefix is "reader".
 	SubscriptionRolePrefix string
 
-	// SubscriptionName sets the subscription name. If subscriptionRolePrefix is set at the same time, this configuration will prevail
+	// SubscriptionName sets the subscription name.
+	// If subscriptionRolePrefix is set at the same time, this configuration will prevail
 	SubscriptionName string
 
 	// ReadCompacted, if enabled, the reader will read messages from the compacted topic rather than reading the
