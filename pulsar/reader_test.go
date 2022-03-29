@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -46,6 +47,27 @@ func TestReaderConfigErrors(t *testing.T) {
 	})
 	assert.Nil(t, consumer)
 	assert.NotNil(t, err)
+}
+
+func TestReaderConfigSubscribeName(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	consumer, err := client.CreateReader(ReaderOptions{
+		StartMessageID:   EarliestMessageID(),
+		Topic:            uuid.New().String(),
+		SubscriptionName: uuid.New().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	assert.NotNil(t, consumer)
 }
 
 func TestReader(t *testing.T) {
