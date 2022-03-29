@@ -20,11 +20,11 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"github.com/google/uuid"
 	"testing"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
