@@ -29,6 +29,11 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
+type cancelReader struct {
+	reader     Reader
+	cancelFunc context.CancelFunc
+}
+
 type TableViewImpl struct {
 	client  *client
 	options TableViewOptions
@@ -36,9 +41,8 @@ type TableViewImpl struct {
 	dataMu sync.Mutex
 	data   map[string]interface{}
 
-	readersMu        sync.Mutex
-	readers          map[string]Reader
-	readerCancelFunc map[string]context.CancelFunc
+	readersMu    sync.Mutex
+	cancelRaders map[string]cancelReader
 
 	listenersMu sync.Mutex
 	listeners   []func(string, interface{}) error
@@ -69,75 +73,79 @@ func newTableView(client *client, options TableViewOptions) (TableView, error) {
 	}
 
 	tv := TableViewImpl{
-		client:           client,
-		options:          options,
-		data:             make(map[string]interface{}),
-		readers:          make(map[string]Reader),
-		readerCancelFunc: make(map[string]context.CancelFunc),
-		logger:           logger,
-		closedCh:         make(chan struct{}),
+		client:       client,
+		options:      options,
+		data:         make(map[string]interface{}),
+		cancelRaders: make(map[string]cancelReader),
+		logger:       logger,
+		closedCh:     make(chan struct{}),
 	}
 
+	// Do an initial round of partition update check to make sure we can populate the partition readers
+	if err := tv.partitionUpdateCheck(); err != nil {
+		return nil, err
+	}
 	go tv.periodicPartitionUpdateCheck()
 
 	return &tv, nil
 }
 
-func (tv *TableViewImpl) periodicPartitionUpdateCheck() {
-	check := func() error {
-		partitionsArray, err := tv.client.TopicPartitions(tv.options.Topic)
-		if err != nil {
-			return fmt.Errorf("tv.client.TopicPartitions(%s) failed: %w", tv.options.Topic, err)
-		}
-
-		partitions := make(map[string]bool, len(partitionsArray))
-		for _, partition := range partitionsArray {
-			partitions[partition] = true
-		}
-
-		tv.readersMu.Lock()
-		defer tv.readersMu.Unlock()
-
-		for partition := range partitions {
-			if _, ok := tv.readers[partition]; !ok {
-				reader, err := newReader(tv.client, ReaderOptions{
-					Topic:          partition,
-					StartMessageID: EarliestMessageID(),
-					ReadCompacted:  true,
-					// TODO: Pooling?
-					Schema: tv.options.Schema,
-				})
-				if err != nil {
-					return fmt.Errorf("create new reader failed for %s: %w", partition, err)
-				}
-				for reader.HasNext() {
-					msg, err := reader.Next(context.Background())
-					if err != nil {
-						tv.logger.Errorf("read next message failed for %s: %w", partition, err)
-					}
-					tv.handleMessage(msg)
-				}
-				tv.readers[partition] = reader
-				ctx, cancelFunc := context.WithCancel(context.Background())
-				tv.readerCancelFunc[partition] = cancelFunc
-				go tv.watchReaderForNewMessages(ctx, reader)
-			}
-		}
-
-		for partition, reader := range tv.readers {
-			if _, ok := partitions[partition]; !ok {
-				tv.readerCancelFunc[partition]()
-				delete(tv.readerCancelFunc, partition)
-
-				reader.Close()
-				delete(tv.readers, partition)
-			}
-		}
-		return nil
+func (tv *TableViewImpl) partitionUpdateCheck() error {
+	partitionsArray, err := tv.client.TopicPartitions(tv.options.Topic)
+	if err != nil {
+		return fmt.Errorf("tv.client.TopicPartitions(%s) failed: %w", tv.options.Topic, err)
 	}
 
+	partitions := make(map[string]bool, len(partitionsArray))
+	for _, partition := range partitionsArray {
+		partitions[partition] = true
+	}
+
+	tv.readersMu.Lock()
+	defer tv.readersMu.Unlock()
+
+	for partition, cancelReader := range tv.cancelRaders {
+		if _, ok := partitions[partition]; !ok {
+			cancelReader.cancelFunc()
+			cancelReader.reader.Close()
+			delete(tv.cancelRaders, partition)
+		}
+	}
+
+	for partition := range partitions {
+		if _, ok := tv.cancelRaders[partition]; !ok {
+			reader, err := newReader(tv.client, ReaderOptions{
+				Topic:          partition,
+				StartMessageID: EarliestMessageID(),
+				ReadCompacted:  true,
+				// TODO: Pooling?
+				Schema: tv.options.Schema,
+			})
+			if err != nil {
+				return fmt.Errorf("create new reader failed for %s: %w", partition, err)
+			}
+			for reader.HasNext() {
+				msg, err := reader.Next(context.Background())
+				if err != nil {
+					tv.logger.Errorf("read next message failed for %s: %w", partition, err)
+				}
+				tv.handleMessage(msg)
+			}
+			ctx, cancelFunc := context.WithCancel(context.Background())
+			tv.cancelRaders[partition] = cancelReader{
+				reader:     reader,
+				cancelFunc: cancelFunc,
+			}
+			go tv.watchReaderForNewMessages(ctx, reader)
+		}
+	}
+
+	return nil
+}
+
+func (tv *TableViewImpl) periodicPartitionUpdateCheck() {
 	for {
-		if err := check(); err != nil {
+		if err := tv.partitionUpdateCheck(); err != nil {
 			tv.logger.Errorf("failed to check for changes in number of partitions: %w", err)
 		}
 		select {
@@ -222,8 +230,8 @@ func (tv *TableViewImpl) Close() {
 
 	if !tv.closed {
 		tv.closed = true
-		for _, reader := range tv.readers {
-			reader.Close()
+		for _, cancelReader := range tv.cancelRaders {
+			cancelReader.reader.Close()
 		}
 		close(tv.closedCh)
 	}
@@ -234,11 +242,9 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 	defer tv.dataMu.Unlock()
 
 	payload := reflect.Indirect(reflect.New(tv.options.SchemaValueType)).Interface()
-	tv.logger.Errorf("payload: %v %T", payload, payload)
 	if err := msg.GetSchemaValue(&payload); err != nil {
 		tv.logger.Errorf("msg.GetSchemaValue() failed with %w; msg is %v", msg, err)
 	}
-	tv.logger.Errorf("%T: %v", payload, payload)
 	tv.data[msg.Key()] = payload
 	for _, listener := range tv.listeners {
 		if err := listener(msg.Key(), payload); err != nil {
