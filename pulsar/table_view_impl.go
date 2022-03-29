@@ -186,6 +186,10 @@ func (tv *TableViewImpl) Get(key string) interface{} {
 func (tv *TableViewImpl) Entries() map[string]interface{} {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
+	data := make(map[string]interface{}, len(tv.data))
+	for k, v := range tv.data {
+		data[k] = v
+	}
 	return tv.data
 }
 
