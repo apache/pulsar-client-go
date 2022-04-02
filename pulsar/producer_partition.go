@@ -785,14 +785,17 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	}
 
 	if pi.sequenceID < response.GetSequenceId() {
-		// if we receive a receipt that is not the one expected, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
+		// Ignoring the ack since it's referring to a message that has already timed out.
+		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
+			response.GetSequenceId(), pi.sequenceID)
+		return
+	} else if pi.sequenceID > response.GetSequenceId() {
+		// Force connection closing so that messages can be re-transmitted in a new connection
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		p._getConn().Close()
 		return
-	} else if pi.sequenceID == response.GetSequenceId() {
+	} else {
 		// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 		p.pendingQueue.Poll()
 
