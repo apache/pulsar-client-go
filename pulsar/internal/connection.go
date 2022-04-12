@@ -522,10 +522,12 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponse(cmd.ProducerSuccess.GetRequestId(), cmd)
 
 	case pb.BaseCommand_PARTITIONED_METADATA_RESPONSE:
+		c.checkServerError(cmd.PartitionMetadataResponse.Error)
 		c.handleResponse(cmd.PartitionMetadataResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_LOOKUP_RESPONSE:
 		lookupResult := cmd.LookupTopicResponse
+		c.checkServerError(lookupResult.Error)
 		c.handleResponse(lookupResult.GetRequestId(), cmd)
 
 	case pb.BaseCommand_CONSUMER_STATS_RESPONSE:
@@ -570,6 +572,16 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	default:
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
+		c.Close()
+	}
+}
+
+func (c *connection) checkServerError(err *pb.ServerError) {
+	if err == nil {
+		return
+	}
+
+	if *err == pb.ServerError_ServiceNotReady {
 		c.Close()
 	}
 }
