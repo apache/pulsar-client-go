@@ -3048,8 +3048,6 @@ func TestIssue664(t *testing.T) {
 		Topic:            topic,
 		SubscriptionName: "my-sub",
 		Type:             Exclusive,
-		//DLQ:              &DLQPolicy{MaxDeliveries: 10, DeadLetterTopic: "dlq-topic"},
-		//RetryEnable:      true,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -3061,15 +3059,5 @@ func TestIssue664(t *testing.T) {
 	expectMsg := fmt.Sprintf("hello-%d", 10)
 	assert.Equal(t, []byte(expectMsg), msg.Payload())
 	consumer.ReconsumeLater(msg, time.Second)
-	//consumer.Ack(msg)
-
-	//for {
-	//	select {
-	//	case cm := <-consumer.Chan():
-	//		fmt.Println(string(cm.Payload()))
-	//		//cm.ReconsumeLater(cm.Message, time.Second)
-	//		cm.Ack(cm.Message)
-	//	}
-	//}
 
 }
