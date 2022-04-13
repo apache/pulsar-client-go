@@ -71,7 +71,7 @@ type ConnectionListener interface {
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	SendRequestNoWait(req *pb.BaseCommand) error
-	WriteData(data Buffer)
+	WriteData(data Buffer, onSuccess func())
 	RegisterListener(id uint64, listener ConnectionListener)
 	UnregisterListener(id uint64)
 	AddConsumeHandler(id uint64, handler ConsumerHandler)
@@ -125,6 +125,11 @@ type incomingCmd struct {
 	headersAndPayload Buffer
 }
 
+type writeRequest struct {
+	buffer Buffer
+	onSuccess func()
+}
+
 type connection struct {
 	sync.Mutex
 	cond              *sync.Cond
@@ -152,7 +157,7 @@ type connection struct {
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan interface{}
-	writeRequestsCh    chan Buffer
+	writeRequestsCh    chan writeRequest
 
 	pendingLock sync.Mutex
 	pendingReqs map[uint64]*request
@@ -202,7 +207,7 @@ func newConnection(opts connectionOptions) *connection {
 		// partition produces writing on a single connection. In general it's
 		// good to keep this above the number of partition producers assigned
 		// to a single connection.
-		writeRequestsCh:  make(chan Buffer, 256),
+		writeRequestsCh:  make(chan writeRequest, 256),
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
 		metrics:          opts.metrics,
@@ -415,10 +420,10 @@ func (c *connection) run() {
 		case cmd := <-c.incomingCmdCh:
 			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
 		case data := <-c.writeRequestsCh:
-			if data == nil {
+			if data.buffer == nil {
 				return
 			}
-			c.internalWriteData(data)
+			c.internalWriteData(data.buffer, data.onSuccess)
 
 		case <-pingSendTicker.C:
 			c.sendPing()
@@ -443,9 +448,9 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 	}
 }
 
-func (c *connection) WriteData(data Buffer) {
+func (c *connection) WriteData(data Buffer, onSuccess func()) {
 	select {
-	case c.writeRequestsCh <- data:
+	case c.writeRequestsCh <- writeRequest { buffer: data, onSuccess: onSuccess } :
 		// Channel is not full
 		return
 
@@ -455,7 +460,7 @@ func (c *connection) WriteData(data Buffer) {
 
 	for {
 		select {
-		case c.writeRequestsCh <- data:
+		case c.writeRequestsCh <- writeRequest { buffer: data, onSuccess: onSuccess }:
 			// Successfully wrote on the channel
 			return
 
@@ -474,11 +479,15 @@ func (c *connection) WriteData(data Buffer) {
 
 }
 
-func (c *connection) internalWriteData(data Buffer) {
+func (c *connection) internalWriteData(data Buffer, onSuccess func()) {
 	c.log.Debug("Write data: ", data.ReadableBytes())
 	if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
 		c.log.WithError(err).Warn("Failed to write on connection")
 		c.Close()
+	} else {
+		if onSuccess != nil {
+			onSuccess()
+		}
 	}
 }
 
@@ -503,7 +512,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	}
 
 	c.writeBuffer.WrittenBytes(cmdSize)
-	c.internalWriteData(c.writeBuffer)
+	c.internalWriteData(c.writeBuffer, nil)
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
@@ -587,7 +596,9 @@ func (c *connection) checkServerError(err *pb.ServerError) {
 }
 
 func (c *connection) Write(data Buffer) {
-	c.writeRequestsCh <- data
+	c.writeRequestsCh <- writeRequest {
+		buffer: data, onSuccess: nil,
+	}
 }
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,

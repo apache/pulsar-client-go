@@ -281,13 +281,19 @@ func (p *partitionProducer) grabCnx() error {
 				continue
 			}
 			pi := item.(*pendingItem)
+			if pi.sent || pi.completed {
+				pi.Complete()
+				continue
+			}
 			// when resending pending batches, we update the sendAt timestamp and put to the back of queue
 			// to avoid pending item been removed by failTimeoutMessages and cause race condition
 			pi.Lock()
 			pi.sentAt = time.Now()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			p._getConn().WriteData(pi.batchData)
+			p._getConn().WriteData(pi.batchData, func() {
+				pi.sent = true
+			})
 
 			if pi == lastViewItem {
 				break
@@ -514,6 +520,7 @@ type pendingItem struct {
 	sentAt       time.Time
 	sendRequests []interface{}
 	completed    bool
+	sent         bool
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
@@ -533,13 +540,16 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 		return
 	}
 
-	p.pendingQueue.Put(&pendingItem{
+	item := &pendingItem{
 		sentAt:       time.Now(),
 		batchData:    batchData,
 		sequenceID:   sequenceID,
 		sendRequests: callbacks,
+	}
+	p.pendingQueue.Put(item)
+	p._getConn().WriteData(batchData, func() {
+		item.sent = true
 	})
-	p._getConn().WriteData(batchData)
 }
 
 func (p *partitionProducer) failTimeoutMessages() {
@@ -666,13 +676,16 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 		if batchesData[i] == nil {
 			continue
 		}
-		p.pendingQueue.Put(&pendingItem{
+		item := &pendingItem{
 			sentAt:       time.Now(),
 			batchData:    batchesData[i],
 			sequenceID:   sequenceIDs[i],
 			sendRequests: callbacks[i],
+		}
+		p.pendingQueue.Put(item)
+		p._getConn().WriteData(batchesData[i], func() {
+			item.sent = true
 		})
-		p._getConn().WriteData(batchesData[i])
 	}
 
 }
@@ -938,6 +951,7 @@ func (i *pendingItem) Complete() {
 		return
 	}
 	i.completed = true
+	i.sent = true
 	buffersPool.Put(i.batchData)
 }
 
