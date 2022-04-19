@@ -126,6 +126,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		metrics:          metrics,
 		epoch:            0,
 	}
+	if p.options.DisableBatching {
+		p.batchFlushTicker.Stop()
+	}
 	p.setProducerState(producerInit)
 
 	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
@@ -142,6 +145,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	err := p.grabCnx()
 	if err != nil {
+		p.batchFlushTicker.Stop()
 		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
 		return nil, err
 	}
@@ -401,18 +405,20 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	msg := request.msg
 
+	// read payload from message
 	payload := msg.Payload
-	var schemaPayload []byte
+
 	var err error
-	if p.options.Schema != nil {
+
+	// payload and schema are mutually exclusive
+	// try to get payload from schema value only if payload is not set
+	if payload == nil && p.options.Schema != nil {
+		var schemaPayload []byte
 		schemaPayload, err = p.options.Schema.Encode(msg.Value)
 		if err != nil {
 			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 			return
 		}
-	}
-
-	if payload == nil {
 		payload = schemaPayload
 	}
 
@@ -776,22 +782,22 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	if !ok {
 		// if we receive a receipt although the pending queue is empty, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
-		p.log.Warnf("Received ack for %v although the pending queue is empty, closing connection", response.GetMessageId())
-		p._getConn().Close()
+		p.log.Warnf("Got ack %v for timed out msg", response.GetMessageId())
 		return
 	}
 
 	if pi.sequenceID < response.GetSequenceId() {
-		// if we receive a receipt that is not the one expected, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
+		// Ignoring the ack since it's referring to a message that has already timed out.
+		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
+			response.GetSequenceId(), pi.sequenceID)
+		return
+	} else if pi.sequenceID > response.GetSequenceId() {
+		// Force connection closing so that messages can be re-transmitted in a new connection
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		p._getConn().Close()
 		return
-	} else if pi.sequenceID == response.GetSequenceId() {
+	} else {
 		// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 		p.pendingQueue.Poll()
 

@@ -509,7 +509,9 @@ func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 
 func TestMessageRouter(t *testing.T) {
 	// Create topic with 5 partitions
-	err := httpPut("admin/v2/persistent/public/default/my-partitioned-topic/partitions", 5)
+	topicAdminURL := "admin/v2/persistent/public/default/my-partitioned-topic/partitions"
+	err := httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
 	if err != nil {
 		t.Fatal(err)
 	}

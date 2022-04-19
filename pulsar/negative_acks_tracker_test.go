@@ -237,6 +237,14 @@ func (msg *mockMessage1) GetEncryptionContext() *EncryptionContext {
 	return &EncryptionContext{}
 }
 
+func (msg *mockMessage1) Index() *uint64 {
+	return nil
+}
+
+func (msg *mockMessage1) BrokerPublishTime() *time.Time {
+	return nil
+}
+
 type mockMessage2 struct {
 	properties map[string]string
 }
@@ -299,4 +307,12 @@ func (msg *mockMessage2) ProducerName() string {
 
 func (msg *mockMessage2) GetEncryptionContext() *EncryptionContext {
 	return &EncryptionContext{}
+}
+
+func (msg *mockMessage2) Index() *uint64 {
+	return nil
+}
+
+func (msg *mockMessage2) BrokerPublishTime() *time.Time {
+	return nil
 }

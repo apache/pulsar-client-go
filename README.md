@@ -152,8 +152,8 @@ Contributions are welcomed and greatly appreciated. See [CONTRIBUTING.md](CONTRI
 
 ##### Mailing lists
 
-| Name                                                                          | Scope                           |                                                                 |                                                                     |                                                                              |
-|:------------------------------------------------------------------------------|:--------------------------------|:----------------------------------------------------------------|:--------------------------------------------------------------------|:-----------------------------------------------------------------------------|
+| Name                                                      | Scope                           |                                                       |                                                           |                                                                    |
+|:----------------------------------------------------------|:--------------------------------|:------------------------------------------------------|:----------------------------------------------------------|:-------------------------------------------------------------------|
 | [users@pulsar.apache.org](mailto:users@pulsar.apache.org) | User-related discussions        | [Subscribe](mailto:users-subscribe@pulsar.apache.org) | [Unsubscribe](mailto:users-unsubscribe@pulsar.apache.org) | [Archives](http://mail-archives.apache.org/mod_mbox/pulsar-users/) |
 | [dev@pulsar.apache.org](mailto:dev@pulsar.apache.org)     | Development-related discussions | [Subscribe](mailto:dev-subscribe@pulsar.apache.org)   | [Unsubscribe](mailto:dev-unsubscribe@pulsar.apache.org)   | [Archives](http://mail-archives.apache.org/mod_mbox/pulsar-dev/)   |
 

@@ -17,8 +17,8 @@
 # under the License.
 #
 
-ARG GO_VERSION=golang:1.13
-FROM apachepulsar/pulsar:latest as pulsar
+ARG GO_VERSION=golang:1.15
+FROM apachepulsar/pulsar:2.8.2 as pulsar
 FROM $GO_VERSION as go
 
 RUN apt-get update && apt-get install -y openjdk-11-jre-headless ca-certificates
