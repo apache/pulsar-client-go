@@ -241,8 +241,8 @@ type Consumer interface {
 	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the seek() on
 	// the individual partitions.
 	//
-	// @param timestamp
-	//            the message publish time where to reposition the subscription
+	// @param time
+	//            the message publish time when to reposition the subscription
 	//
 	SeekByTime(time time.Time) error
 
