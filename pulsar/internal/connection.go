@@ -72,9 +72,9 @@ type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	SendRequestNoWait(req *pb.BaseCommand) error
 	WriteData(data Buffer)
-	RegisterListener(id uint64, listener ConnectionListener)
+	RegisterListener(id uint64, listener ConnectionListener) error
 	UnregisterListener(id uint64)
-	AddConsumeHandler(id uint64, handler ConsumerHandler)
+	AddConsumeHandler(id uint64, handler ConsumerHandler) error
 	DeleteConsumeHandler(id uint64)
 	ID() string
 	GetMaxMessageSize() int32
@@ -847,17 +847,21 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	}
 }
 
-func (c *connection) RegisterListener(id uint64, listener ConnectionListener) {
+func (c *connection) RegisterListener(id uint64, listener ConnectionListener) error {
+	// Lock to avoid losing listener when executing c.Close in another goroutine
+	c.Lock()
+	defer c.Unlock()
 	// do not add if connection is closed
 	if c.closed() {
 		c.log.Warnf("Connection closed unable register listener id=%+v", id)
-		return
+		return errors.New("connection is closed")
 	}
 
 	c.listenersLock.Lock()
 	defer c.listenersLock.Unlock()
 
 	c.listeners[id] = listener
+	return nil
 }
 
 func (c *connection) UnregisterListener(id uint64) {
@@ -973,16 +977,19 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func (c *connection) AddConsumeHandler(id uint64, handler ConsumerHandler) {
+func (c *connection) AddConsumeHandler(id uint64, handler ConsumerHandler) error {
+	c.Lock()
+	defer c.Unlock()
 	// do not add if connection is closed
 	if c.closed() {
 		c.log.Warnf("Closed connection unable add consumer with id=%+v", id)
-		return
+		return errors.New("connection is closed")
 	}
 
 	c.consumerHandlersLock.Lock()
 	defer c.consumerHandlersLock.Unlock()
 	c.consumerHandlers[id] = handler
+	return nil
 }
 
 func (c *connection) DeleteConsumeHandler(id uint64) {

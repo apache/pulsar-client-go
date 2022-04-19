@@ -262,7 +262,12 @@ func (p *partitionProducer) grabCnx() error {
 		p.sequenceIDGenerator = &nextSequenceID
 	}
 	p._setConn(res.Cnx)
-	p._getConn().RegisterListener(p.producerID, p)
+	err = p._getConn().RegisterListener(p.producerID, p)
+	if err != nil {
+		p.log.WithError(err).Error("Failed to register listener")
+		return err
+	}
+
 	p.log.WithFields(log.Fields{
 		"cnx":   res.Cnx.ID(),
 		"epoch": atomic.LoadUint64(&p.epoch),
