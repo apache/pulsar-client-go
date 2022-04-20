@@ -420,7 +420,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		schemaPayload, err = p.options.Schema.Encode(msg.Value)
 		if err != nil {
 			p.publishSemaphore.Release()
-			request.callback(nil, request.msg, err)
+			request.callback(nil, request.msg, newError(SchemaFailure, err.Error()))
 			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 			return
 		}
