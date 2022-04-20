@@ -54,7 +54,7 @@ type TLSOptions struct {
 
 var (
 	errConnectionClosed       = errors.New("connection closed")
-	errUnableRegisterListener = errors.New("Unable register listener when con closed")
+	errUnableRegisterListener = errors.New("unable register listener when con closed")
 )
 
 // ConnectionListener is a user of a connection (eg. a producer or
