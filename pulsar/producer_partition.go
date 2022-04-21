@@ -262,11 +262,14 @@ func (p *partitionProducer) grabCnx() error {
 		p.sequenceIDGenerator = &nextSequenceID
 	}
 	p._setConn(res.Cnx)
-	p._getConn().RegisterListener(p.producerID, p)
+	err = p._getConn().RegisterListener(p.producerID, p)
+	if err != nil {
+		return err
+	}
 	p.log.WithFields(log.Fields{
 		"cnx":   res.Cnx.ID(),
 		"epoch": atomic.LoadUint64(&p.epoch),
-	}).Debug("Connected producer")
+	}).Info("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(pendingItems)
