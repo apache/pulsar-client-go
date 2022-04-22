@@ -369,6 +369,19 @@ func (c *regexConsumer) topics() ([]string, error) {
 	return filtered, nil
 }
 
+func (c *regexConsumer) lastDequeuedMsg(msgID MessageID) error {
+	return newError(OperationNotSupported, "setting lastDequeuedMsg is not supported for Regex Topic consumer")
+}
+
+func (c *regexConsumer) hasMessages() (bool, error) {
+	return false, newError(OperationNotSupported, "hasMessages is not supported for Regex Topic consumer")
+}
+
+func (c *regexConsumer) messagesInQueue() int {
+	c.log.Warn("messagesInQueue is not supported for Regex topic consumer")
+	return 0
+}
+
 type consumerError struct {
 	err      error
 	topic    string

@@ -327,6 +327,22 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	ch := make(chan ConsumerError, partitionsToAdd)
 	wg.Add(partitionsToAdd)
 
+	// default start messageId
+	startMessageID := trackingMessageID{}
+
+	// if start message id is provided
+	if _, ok := c.options.startMessageID.(trackingMessageID); ok {
+		startMessageID = c.options.startMessageID.(trackingMessageID)
+	}
+
+	// default subscription mode is durable
+	subscriptionMode := durable
+
+	// for reader subscription mode is nonDurabale
+	if c.options.subscriptionMode == nonDurable {
+		subscriptionMode = nonDurable
+	}
+
 	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
@@ -352,14 +368,15 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				metadata:                   metadata,
 				subProperties:              subProperties,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             trackingMessageID{},
-				subscriptionMode:           durable,
+				startMessageID:             startMessageID,
+				subscriptionMode:           subscriptionMode,
 				readCompacted:              c.options.ReadCompacted,
 				interceptors:               c.options.Interceptors,
 				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
 				decryption:                 c.options.Decryption,
+				startMessageIDInclusive:    c.options.startMessageIDInclusive,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
@@ -670,7 +687,6 @@ func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 
 	return mid, true
 }
-
 func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {
 	// decryption is enabled, use default messagecrypto if not provided
 	if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
@@ -683,4 +699,61 @@ func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics 
 		options.Decryption.MessageCrypto = messageCrypto
 	}
 	return nil
+}
+
+func (c *consumer) lastDequeuedMsg(msgID MessageID) error {
+	mid, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
+	}
+
+	if msgID.PartitionIdx() >= 0 {
+		c.consumers[mid.PartitionIdx()].lastDequeuedMsg = mid
+		return nil
+	}
+
+	return newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
+}
+
+func (c *consumer) hasMessages() (bool, error) {
+	for _, pc := range c.consumers {
+		if ok, err := c.hashMoreMessages(pc); err != nil {
+			return false, err // error in reading last message id from broker
+		} else if ok { // return true only if messages are available
+			return ok, nil
+		}
+	}
+	return false, nil // reach here only if done checking for all partition consumers
+}
+
+func (c *consumer) hashMoreMessages(pc *partitionConsumer) (bool, error) {
+	lastMsgID, err := pc.getLastMessageID()
+	if err != nil {
+		return false, err
+	}
+
+	// same logic as in reader_impl
+	if !pc.lastDequeuedMsg.Undefined() {
+		return lastMsgID.isEntryIDValid() && lastMsgID.greater(pc.lastDequeuedMsg.messageID), nil
+	}
+
+	if pc.options.startMessageIDInclusive {
+		return lastMsgID.isEntryIDValid() && lastMsgID.greaterEqual(pc.startMessageID.messageID), nil
+	}
+
+	// Non-inclusive
+	return lastMsgID.isEntryIDValid() && lastMsgID.greater(pc.startMessageID.messageID), nil
+}
+
+func (c *consumer) messagesInQueue() int {
+	// messages in partition consumer queue
+	msgCount := 0
+	for _, pc := range c.consumers {
+		msgCount += pc.messagesInQueue()
+	}
+
+	// messages in consumer msg channel
+	msgCount += len(c.messageCh)
+
+	return msgCount
 }
