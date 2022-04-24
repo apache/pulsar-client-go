@@ -423,6 +423,11 @@ func (c *consumer) Unsubscribe() error {
 }
 
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
+	start := time.Now()
+	defer func() {
+		now := time.Now().UnixNano()
+		c.metrics.RecvTime.Observe(float64(now-start.UnixNano()) / 1.0e9)
+	}()
 	for {
 		select {
 		case <-c.closeCh:

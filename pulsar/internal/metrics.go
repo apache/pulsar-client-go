@@ -39,6 +39,7 @@ type Metrics struct {
 	nacksCounter       *prometheus.CounterVec
 	dlqCounter         *prometheus.CounterVec
 	processingTime     *prometheus.HistogramVec
+	recvTime           *prometheus.HistogramVec
 
 	producersOpened     *prometheus.CounterVec
 	producersClosed     *prometheus.CounterVec
@@ -77,6 +78,7 @@ type LeveledMetrics struct {
 	NacksCounter       prometheus.Counter
 	DlqCounter         prometheus.Counter
 	ProcessingTime     prometheus.Observer
+	RecvTime           prometheus.Observer
 
 	ProducersOpened     prometheus.Counter
 	ProducersClosed     prometheus.Counter
@@ -242,6 +244,13 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
+		recvTime: prometheus.NewHistogramVec(prometheus.HistogramOpts{
+			Name:        "pulsar_client_consumer_recv_time_seconds",
+			Help:        "Time it takes for application to recv messages",
+			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
+			ConstLabels: constLabels,
+		}, metricsLevelLabels),
+
 		readersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_readers_opened",
 			Help:        "Counter of readers created by the client",
@@ -387,6 +396,13 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 			metrics.processingTime = are.ExistingCollector.(*prometheus.HistogramVec)
 		}
 	}
+	err = prometheus.DefaultRegisterer.Register(metrics.recvTime)
+	if err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			metrics.recvTime = are.ExistingCollector.(*prometheus.HistogramVec)
+		}
+	}
+
 	err = prometheus.DefaultRegisterer.Register(metrics.producersOpened)
 	if err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -513,6 +529,7 @@ func (mp *Metrics) GetLeveledMetrics(t string) *LeveledMetrics {
 		NacksCounter:       mp.nacksCounter.With(labels),
 		DlqCounter:         mp.dlqCounter.With(labels),
 		ProcessingTime:     mp.processingTime.With(labels),
+		RecvTime:           mp.recvTime.With(labels),
 
 		ProducersOpened:     mp.producersOpened.With(labels),
 		ProducersClosed:     mp.producersClosed.With(labels),
