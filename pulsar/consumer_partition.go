@@ -203,7 +203,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		pc.nackTracker.Close()
 		return nil, err
 	}
-	pc.log.Info("Created consumer")
+	pc.log.Infof("Created consumer with queueCh cap [%d], len [%d] queueSize [%d]", cap(pc.queueCh), len(pc.queueCh), pc.queueSize)
 	pc.setConsumerState(consumerReady)
 
 	if pc.options.startMessageIDInclusive && pc.startMessageID.equal(lastestMessageID.(messageID)) {
@@ -745,9 +745,10 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 // and manages the flow control
 func (pc *partitionConsumer) dispatcher() {
 	defer func() {
-		pc.log.Debug("exiting dispatch loop")
+		pc.log.Info("exiting dispatch loop")
 	}()
 	var messages []*message
+	var lastLogFlowTimestamp time.Time
 	for {
 		var queueCh chan []*message
 		var messageCh chan ConsumerMessage
@@ -784,7 +785,7 @@ func (pc *partitionConsumer) dispatcher() {
 			if !ok {
 				return
 			}
-			pc.log.Debug("dispatcher received connection event")
+			pc.log.Info("dispatcher received connection event")
 
 			messages = nil
 
@@ -792,7 +793,7 @@ func (pc *partitionConsumer) dispatcher() {
 			pc.availablePermits = 0
 			initialPermits := uint32(pc.queueSize)
 
-			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
+			pc.log.Infof("dispatcher requesting initial permits=%d", initialPermits)
 			// send initial permits
 			if err := pc.internalFlow(initialPermits); err != nil {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
@@ -824,6 +825,10 @@ func (pc *partitionConsumer) dispatcher() {
 				pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
 				if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
 					pc.log.WithError(err).Error("unable to send permits")
+				}
+				if time.Since(lastLogFlowTimestamp) > time.Minute {
+					lastLogFlowTimestamp = time.Now()
+					pc.log.Infof("interval log requesting more permits=%d available=%d", requestedPermits, availablePermits)
 				}
 			}
 
@@ -858,12 +863,11 @@ func (pc *partitionConsumer) dispatcher() {
 			pc.availablePermits = 0
 			initialPermits := uint32(pc.queueSize)
 
-			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
+			pc.log.Infof("dispatcher requesting initial permits=%d cause by clearMessageQueuesCh", initialPermits)
 			// send initial permits
 			if err := pc.internalFlow(initialPermits); err != nil {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
 			}
-
 			close(doneCh)
 		}
 	}
@@ -906,9 +910,9 @@ type seekByTimeRequest struct {
 
 func (pc *partitionConsumer) runEventsLoop() {
 	defer func() {
-		pc.log.Debug("exiting events loop")
+		pc.log.Info("exiting events loop")
 	}()
-	pc.log.Debug("get into runEventsLoop")
+	pc.log.Info("get into runEventsLoop")
 
 	go func() {
 		for {
@@ -917,7 +921,7 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.log.Info("close consumer, exit reconnect")
 				return
 			case <-pc.connectClosedCh:
-				pc.log.Debug("runEventsLoop will reconnect")
+				pc.log.Info("runEventsLoop will reconnect")
 				pc.reconnectToBroker()
 			}
 		}
