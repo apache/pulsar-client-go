@@ -41,16 +41,18 @@ var flagDebug bool
 var PrometheusPort int
 
 type ClientArgs struct {
-	ServiceURL       string
-	TokenFile        string
-	TLSTrustCertFile string
+	ServiceURL              string
+	TokenFile               string
+	TLSTrustCertFile        string
+	MaxConnectionsPerBroker int
 }
 
 var clientArgs ClientArgs
 
 func NewClient() (pulsar.Client, error) {
 	clientOpts := pulsar.ClientOptions{
-		URL: clientArgs.ServiceURL,
+		URL:                     clientArgs.ServiceURL,
+		MaxConnectionsPerBroker: clientArgs.MaxConnectionsPerBroker,
 	}
 
 	if clientArgs.TokenFile != "" {
@@ -97,6 +99,8 @@ func main() {
 		"pulsar://localhost:6650", "The Pulsar service URL")
 	flags.StringVar(&clientArgs.TokenFile, "token-file", "", "file path to the Pulsar JWT file")
 	flags.StringVar(&clientArgs.TLSTrustCertFile, "trust-cert-file", "", "file path to the trusted certificate file")
+	flags.IntVarP(&clientArgs.MaxConnectionsPerBroker, "max-connections", "c", 100,
+		"Max connections to open to broker. Defaults to 100.")
 
 	rootCmd.AddCommand(newProducerCommand())
 	rootCmd.AddCommand(newConsumerCommand())
