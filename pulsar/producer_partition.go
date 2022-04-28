@@ -60,12 +60,12 @@ var (
 var errTopicNotFount = "TopicNotFound"
 
 type partitionProducer struct {
-	state  uAtomic.Int32
-	client *client
-	topic  string
-	log    log.Logger
-
-	conn uAtomic.Value
+	state          uAtomic.Int32
+	client         *client
+	topic          string
+	log            log.Logger
+	errInReconnect error
+	conn           uAtomic.Value
 
 	options                  *ProducerOptions
 	producerName             string
@@ -216,7 +216,7 @@ func (p *partitionProducer) grabCnx() error {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		return err
 	}
-
+	p.log.Infof("id %v create producer request info %+v  responseProducerName %v", id, *cmdProducer, res.Response.ProducerSuccess.GetProducerName())
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
 
 	var encryptor internalcrypto.Encryptor
@@ -314,6 +314,7 @@ func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine
 	p.log.WithField("cnx", p._getConn().ID()).Warn("Connection was closed")
 	p.connectClosedCh <- connectionClosed{}
+	p.log.WithField("cnx", p._getConn().ID()).Warn("connectionClosed msg sent to connectClosedCh")
 }
 
 func (p *partitionProducer) reconnectToBroker() {
@@ -340,6 +341,10 @@ func (p *partitionProducer) reconnectToBroker() {
 		time.Sleep(d)
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
+		// In reconnection logic, grabCnx maybe return err, but we did not return the error.
+		// So in partitionProducer struct, we define an err object to make it easier for users to
+		// determine what caused the grabCnx error.
+		p.errInReconnect = err
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
@@ -748,6 +753,12 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	if p.getProducerState() != producerReady {
 		// Producer is closing
 		callback(nil, msg, errProducerClosed)
+		return
+	}
+	// if error[ProducerBlockedQuotaExceededException] in reconnect, we will fail fast to user code
+	// otherwise the publishSemaphore will stuck
+	if p.errInReconnect != nil {
+		callback(nil, msg, p.errInReconnect)
 		return
 	}
 
