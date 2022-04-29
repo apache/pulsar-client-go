@@ -678,7 +678,7 @@ func (n *namespaces) Unload(namespace string) error {
 		return err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "unload")
-	return n.pulsar.Client.Put(endpoint, "")
+	return n.pulsar.Client.Put(endpoint, nil)
 }
 
 func (n *namespaces) UnloadNamespaceBundle(namespace, bundle string) error {
@@ -687,7 +687,7 @@ func (n *namespaces) UnloadNamespaceBundle(namespace, bundle string) error {
 		return err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), bundle, "unload")
-	return n.pulsar.Client.Put(endpoint, "")
+	return n.pulsar.Client.Put(endpoint, nil)
 }
 
 func (n *namespaces) SplitNamespaceBundle(namespace, bundle string, unloadSplitBundles bool) error {
@@ -699,7 +699,7 @@ func (n *namespaces) SplitNamespaceBundle(namespace, bundle string, unloadSplitB
 	params := map[string]string{
 		"unload": strconv.FormatBool(unloadSplitBundles),
 	}
-	return n.pulsar.Client.PutWithQueryParams(endpoint, "", nil, params)
+	return n.pulsar.Client.PutWithQueryParams(endpoint, nil, nil, params)
 }
 
 func (n *namespaces) GetNamespacePermissions(namespace utils.NameSpaceName) (map[string][]common.AuthAction, error) {
@@ -748,33 +748,33 @@ func (n *namespaces) SetEncryptionRequiredStatus(namespace utils.NameSpaceName, 
 
 func (n *namespaces) UnsubscribeNamespace(namespace utils.NameSpaceName, sName string) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "unsubscribe", url.QueryEscape(sName))
-	return n.pulsar.Client.Post(endpoint, "")
+	return n.pulsar.Client.Post(endpoint, nil)
 }
 
 func (n *namespaces) UnsubscribeNamespaceBundle(namespace utils.NameSpaceName, bundle, sName string) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), bundle, "unsubscribe", url.QueryEscape(sName))
-	return n.pulsar.Client.Post(endpoint, "")
+	return n.pulsar.Client.Post(endpoint, nil)
 }
 
 func (n *namespaces) ClearNamespaceBundleBacklogForSubscription(namespace utils.NameSpaceName,
 	bundle, sName string) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), bundle, "clearBacklog", url.QueryEscape(sName))
-	return n.pulsar.Client.Post(endpoint, "")
+	return n.pulsar.Client.Post(endpoint, nil)
 }
 
 func (n *namespaces) ClearNamespaceBundleBacklog(namespace utils.NameSpaceName, bundle string) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), bundle, "clearBacklog")
-	return n.pulsar.Client.Post(endpoint, "")
+	return n.pulsar.Client.Post(endpoint, nil)
 }
 
 func (n *namespaces) ClearNamespaceBacklogForSubscription(namespace utils.NameSpaceName, sName string) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "clearBacklog", url.QueryEscape(sName))
-	return n.pulsar.Client.Post(endpoint, "")
+	return n.pulsar.Client.Post(endpoint, nil)
 }
 
 func (n *namespaces) ClearNamespaceBacklog(namespace utils.NameSpaceName) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "clearBacklog")
-	return n.pulsar.Client.Post(endpoint, "")
+	return n.pulsar.Client.Post(endpoint, nil)
 }
 
 func (n *namespaces) SetReplicatorDispatchRate(namespace utils.NameSpaceName, rate utils.DispatchRate) error {

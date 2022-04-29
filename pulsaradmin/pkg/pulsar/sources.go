@@ -393,38 +393,38 @@ func (s *sources) GetSourceStatusWithID(tenant, namespace, source string, id int
 
 func (s *sources) RestartSource(tenant, namespace, source string) error {
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	return s.pulsar.Client.Post(endpoint+"/restart", "")
+	return s.pulsar.Client.Post(endpoint+"/restart", nil)
 }
 
 func (s *sources) RestartSourceWithID(tenant, namespace, source string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source, id)
 
-	return s.pulsar.Client.Post(endpoint+"/restart", "")
+	return s.pulsar.Client.Post(endpoint+"/restart", nil)
 }
 
 func (s *sources) StopSource(tenant, namespace, source string) error {
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	return s.pulsar.Client.Post(endpoint+"/stop", "")
+	return s.pulsar.Client.Post(endpoint+"/stop", nil)
 }
 
 func (s *sources) StopSourceWithID(tenant, namespace, source string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source, id)
 
-	return s.pulsar.Client.Post(endpoint+"/stop", "")
+	return s.pulsar.Client.Post(endpoint+"/stop", nil)
 }
 
 func (s *sources) StartSource(tenant, namespace, source string) error {
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	return s.pulsar.Client.Post(endpoint+"/start", "")
+	return s.pulsar.Client.Post(endpoint+"/start", nil)
 }
 
 func (s *sources) StartSourceWithID(tenant, namespace, source string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source, id)
 
-	return s.pulsar.Client.Post(endpoint+"/start", "")
+	return s.pulsar.Client.Post(endpoint+"/start", nil)
 }
 
 func (s *sources) GetBuiltInSources() ([]*utils.ConnectorDefinition, error) {
@@ -436,5 +436,5 @@ func (s *sources) GetBuiltInSources() ([]*utils.ConnectorDefinition, error) {
 
 func (s *sources) ReloadBuiltInSources() error {
 	endpoint := s.pulsar.endpoint(s.basePath, "reloadBuiltInSources")
-	return s.pulsar.Client.Post(endpoint, "")
+	return s.pulsar.Client.Post(endpoint, nil)
 }

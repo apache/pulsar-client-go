@@ -266,14 +266,14 @@ func (f *functions) CreateFuncWithURL(funcConf *utils.FunctionConfig, pkgURL str
 
 func (f *functions) StopFunction(tenant, namespace, name string) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	return f.pulsar.Client.Post(endpoint+"/stop", "")
+	return f.pulsar.Client.Post(endpoint+"/stop", nil)
 }
 
 func (f *functions) StopFunctionWithID(tenant, namespace, name string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, id)
 
-	return f.pulsar.Client.Post(endpoint+"/stop", "")
+	return f.pulsar.Client.Post(endpoint+"/stop", nil)
 }
 
 func (f *functions) DeleteFunction(tenant, namespace, name string) error {
@@ -329,26 +329,26 @@ func (f *functions) DownloadFunctionByNs(destinationFile, tenant, namespace, fun
 
 func (f *functions) StartFunction(tenant, namespace, name string) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	return f.pulsar.Client.Post(endpoint+"/start", "")
+	return f.pulsar.Client.Post(endpoint+"/start", nil)
 }
 
 func (f *functions) StartFunctionWithID(tenant, namespace, name string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, id)
 
-	return f.pulsar.Client.Post(endpoint+"/start", "")
+	return f.pulsar.Client.Post(endpoint+"/start", nil)
 }
 
 func (f *functions) RestartFunction(tenant, namespace, name string) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	return f.pulsar.Client.Post(endpoint+"/restart", "")
+	return f.pulsar.Client.Post(endpoint+"/restart", nil)
 }
 
 func (f *functions) RestartFunctionWithID(tenant, namespace, name string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, id)
 
-	return f.pulsar.Client.Post(endpoint+"/restart", "")
+	return f.pulsar.Client.Post(endpoint+"/restart", nil)
 }
 
 func (f *functions) GetFunctions(tenant, namespace string) ([]string, error) {

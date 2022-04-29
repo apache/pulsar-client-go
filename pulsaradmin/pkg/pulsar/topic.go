@@ -401,7 +401,7 @@ func (t *topics) GetPartitionedStats(topic utils.TopicName, perPartition bool) (
 func (t *topics) Terminate(topic utils.TopicName) (utils.MessageID, error) {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "terminate")
 	var messageID utils.MessageID
-	err := t.pulsar.Client.PostWithObj(endpoint, "", &messageID)
+	err := t.pulsar.Client.PostWithObj(endpoint, nil, &messageID)
 	return messageID, err
 }
 
@@ -419,12 +419,12 @@ func (t *topics) OffloadStatus(topic utils.TopicName) (utils.OffloadProcessStatu
 
 func (t *topics) Unload(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "unload")
-	return t.pulsar.Client.Put(endpoint, "")
+	return t.pulsar.Client.Put(endpoint, nil)
 }
 
 func (t *topics) Compact(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compaction")
-	return t.pulsar.Client.Put(endpoint, "")
+	return t.pulsar.Client.Put(endpoint, nil)
 }
 
 func (t *topics) CompactStatus(topic utils.TopicName) (utils.LongRunningProcessStatus, error) {

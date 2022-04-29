@@ -111,34 +111,34 @@ func (s *subscriptions) ResetCursorToTimestamp(topic utils.TopicName, sName stri
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName),
 		"resetcursor", strconv.FormatInt(timestamp, 10))
-	return s.pulsar.Client.Post(endpoint, "")
+	return s.pulsar.Client.Post(endpoint, nil)
 }
 
 func (s *subscriptions) ClearBacklog(topic utils.TopicName, sName string) error {
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName), "skip_all")
-	return s.pulsar.Client.Post(endpoint, "")
+	return s.pulsar.Client.Post(endpoint, nil)
 }
 
 func (s *subscriptions) SkipMessages(topic utils.TopicName, sName string, n int64) error {
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName),
 		"skip", strconv.FormatInt(n, 10))
-	return s.pulsar.Client.Post(endpoint, "")
+	return s.pulsar.Client.Post(endpoint, nil)
 }
 
 func (s *subscriptions) ExpireMessages(topic utils.TopicName, sName string, expire int64) error {
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName),
 		"expireMessages", strconv.FormatInt(expire, 10))
-	return s.pulsar.Client.Post(endpoint, "")
+	return s.pulsar.Client.Post(endpoint, nil)
 }
 
 func (s *subscriptions) ExpireAllMessages(topic utils.TopicName, expire int64) error {
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), "all_subscription",
 		"expireMessages", strconv.FormatInt(expire, 10))
-	return s.pulsar.Client.Post(endpoint, "")
+	return s.pulsar.Client.Post(endpoint, nil)
 }
 
 func (s *subscriptions) PeekMessages(topic utils.TopicName, sName string, n int) ([]*utils.Message, error) {
