@@ -99,8 +99,8 @@ func main() {
 		"pulsar://localhost:6650", "The Pulsar service URL")
 	flags.StringVar(&clientArgs.TokenFile, "token-file", "", "file path to the Pulsar JWT file")
 	flags.StringVar(&clientArgs.TLSTrustCertFile, "trust-cert-file", "", "file path to the trusted certificate file")
-	flags.IntVarP(&clientArgs.MaxConnectionsPerBroker, "max-connections", "c", 100,
-		"Max connections to open to broker. Defaults to 100.")
+	flags.IntVarP(&clientArgs.MaxConnectionsPerBroker, "max-connections", "c", 1,
+		"Max connections to open to broker. Defaults to 1.")
 
 	rootCmd.AddCommand(newProducerCommand())
 	rootCmd.AddCommand(newConsumerCommand())
