@@ -924,6 +924,50 @@ func TestMaxMessageSize(t *testing.T) {
 	}
 }
 
+func TestFailedSchemaEncode(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: NewAvroSchema("{\"type\":\"string\"}", nil),
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		// producer should send return an error as message is Int64, but schema is String
+		mid, err := producer.Send(ctx, &ProducerMessage{
+			Value: int64(1),
+		})
+		assert.NotNil(t, err)
+		assert.Nil(t, mid)
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	// producer should send return an error as message is Int64, but schema is String
+	producer.SendAsync(ctx, &ProducerMessage{
+		Value: int64(1),
+	}, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+		assert.NotNil(t, err)
+		assert.Nil(t, messageID)
+		wg.Done()
+	})
+	wg.Wait()
+}
+
 func TestSendTimeout(t *testing.T) {
 	quotaURL := adminURL + "/admin/v2/namespaces/public/default/backlogQuota"
 	quotaFmt := `{"limit": "%d", "policy": "producer_request_hold"}`
