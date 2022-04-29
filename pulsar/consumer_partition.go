@@ -203,7 +203,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		pc.nackTracker.Close()
 		return nil, err
 	}
-	pc.log.Infof("Created consumer with queueCh cap [%d], len [%d] queueSize [%d]", cap(pc.queueCh), len(pc.queueCh), pc.queueSize)
+	pc.log.Infof("Created consumer with queueCh cap [%d], len [%d] queueSize [%d]",
+		cap(pc.queueCh), len(pc.queueCh), pc.queueSize)
 	pc.setConsumerState(consumerReady)
 
 	if pc.options.startMessageIDInclusive && pc.startMessageID.equal(lastestMessageID.(messageID)) {

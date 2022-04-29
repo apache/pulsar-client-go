@@ -688,7 +688,7 @@ func (c *connection) handleSendReceipt(response *pb.CommandSendReceipt) {
 	} else {
 		c.log.
 			WithField("producerID", producerID).
-			Warn("Got unexpected send receipt for messageID=%+v", response.MessageId)
+			Warnf("Got unexpected send receipt for messageID=%+v", response.MessageId)
 	}
 }
 
