@@ -19,11 +19,13 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 	"unsafe"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -57,7 +59,7 @@ type producer struct {
 	closeOnce     sync.Once
 	stopDiscovery func()
 	log           log.Logger
-	metrics       *internal.TopicMetrics
+	metrics       *internal.LeveledMetrics
 }
 
 func getHashingFunction(s HashingScheme) func(string) uint32 {
@@ -97,7 +99,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		topic:   options.Topic,
 		client:  client,
 		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics: client.metrics.GetTopicMetrics(options.Topic),
+		metrics: client.metrics.GetLeveledMetrics(options.Topic),
 	}
 
 	if options.Interceptors == nil {
@@ -121,6 +123,25 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
 		if options.Schema.GetSchemaInfo().Type == NONE {
 			options.Schema = NewBytesSchema(nil)
+		}
+	}
+
+	encryption := options.Encryption
+	// add default message crypto if not provided
+	if encryption != nil && len(encryption.Keys) > 0 {
+		if encryption.KeyReader == nil {
+			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
+		}
+
+		if encryption.MessageCrypto == nil {
+			logCtx := fmt.Sprintf("[%v] [%v]", p.topic, p.options.Name)
+			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx,
+				true,
+				client.log.SubLogger(log.Fields{"topic": p.topic}))
+			if err != nil {
+				return nil, fmt.Errorf("unable to get MessageCrypto instance. Producer creation is abandoned. %v", err)
+			}
+			p.options.Encryption.MessageCrypto = messageCrypto
 		}
 	}
 
@@ -174,9 +195,9 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	defer p.Unlock()
 
 	oldProducers := p.producers
+	oldNumPartitions = len(oldProducers)
 
 	if oldProducers != nil {
-		oldNumPartitions = len(oldProducers)
 		if oldNumPartitions == newNumPartitions {
 			p.log.Debug("Number of partitions in topic has not changed")
 			return nil
@@ -185,13 +206,18 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		p.log.WithField("old_partitions", oldNumPartitions).
 			WithField("new_partitions", newNumPartitions).
 			Info("Changed number of partitions in topic")
+
 	}
 
 	p.producers = make([]Producer, newNumPartitions)
 
-	// Copy over the existing consumer instances
-	for i := 0; i < oldNumPartitions; i++ {
-		p.producers[i] = oldProducers[i]
+	// When for some reason (eg: forced deletion of sub partition) causes oldNumPartitions> newNumPartitions,
+	// we need to rebuild the cache of new producers, otherwise the array will be out of bounds.
+	if oldProducers != nil && oldNumPartitions < newNumPartitions {
+		// Copy over the existing consumer instances
+		for i := 0; i < oldNumPartitions; i++ {
+			p.producers[i] = oldProducers[i]
+		}
 	}
 
 	type ProducerError struct {
@@ -200,10 +226,15 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		err       error
 	}
 
+	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
+	if partitionsToAdd < 0 {
+		partitionsToAdd = newNumPartitions
+		startPartition = 0
+	}
 	c := make(chan ProducerError, partitionsToAdd)
 
-	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
+	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partition := partitions[partitionIdx]
 
 		go func(partitionIdx int, partition string) {
@@ -237,7 +268,11 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		return err
 	}
 
-	p.metrics.ProducersPartitions.Add(float64(partitionsToAdd))
+	if newNumPartitions < oldNumPartitions {
+		p.metrics.ProducersPartitions.Set(float64(newNumPartitions))
+	} else {
+		p.metrics.ProducersPartitions.Add(float64(partitionsToAdd))
+	}
 	atomic.StorePointer(&p.producersPtr, unsafe.Pointer(&p.producers))
 	atomic.StoreUint32(&p.numPartitions, uint32(len(p.producers)))
 	return nil

@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -33,11 +34,12 @@ const (
 
 type reader struct {
 	sync.Mutex
+	client              *client
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
 	lastMessageInBroker trackingMessageID
 	log                 log.Logger
-	metrics             *internal.TopicMetrics
+	metrics             *internal.LeveledMetrics
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -64,15 +66,29 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		}
 	}
 
-	subscriptionName := options.SubscriptionRolePrefix
+	subscriptionName := options.SubscriptionName
 	if subscriptionName == "" {
-		subscriptionName = "reader"
+		subscriptionName = options.SubscriptionRolePrefix
+		if subscriptionName == "" {
+			subscriptionName = "reader"
+		}
+		subscriptionName += "-" + generateRandomName()
 	}
-	subscriptionName += "-" + generateRandomName()
 
 	receiverQueueSize := options.ReceiverQueueSize
 	if receiverQueueSize <= 0 {
 		receiverQueueSize = defaultReceiverQueueSize
+	}
+
+	// decryption is enabled, use default message crypto if not provided
+	if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
+		messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
+			false,
+			client.log.SubLogger(log.Fields{"topic": options.Topic}))
+		if err != nil {
+			return nil, err
+		}
+		options.Decryption.MessageCrypto = messageCrypto
 	}
 
 	consumerOptions := &partitionConsumerOpts{
@@ -88,12 +104,15 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		metadata:                   options.Properties,
 		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
 		replicateSubscriptionState: false,
+		decryption:                 options.Decryption,
+		schema:                     options.Schema,
 	}
 
 	reader := &reader{
+		client:    client,
 		messageCh: make(chan ConsumerMessage),
 		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics:   client.metrics.GetTopicMetrics(options.Topic),
+		metrics:   client.metrics.GetLeveledMetrics(options.Topic),
 	}
 
 	// Provide dummy dlq router with not dlq policy
@@ -174,6 +193,7 @@ func (r *reader) hasMoreMessages() bool {
 
 func (r *reader) Close() {
 	r.pc.Close()
+	r.client.handlers.Del(r)
 	r.metrics.ReadersClosed.Inc()
 }
 

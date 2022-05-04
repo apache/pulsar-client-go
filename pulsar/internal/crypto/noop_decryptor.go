@@ -15,19 +15,26 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//go:build !go1.12
-// +build !go1.12
+package crypto
 
-package internal
+import (
+	"fmt"
 
-import "net/http"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
 
-func CloseIdleConnections(c *http.Client) {
-	type closeIdler interface {
-		CloseIdleConnections()
+type noopDecryptor struct{}
+
+func NewNoopDecryptor() Decryptor {
+	return &noopDecryptor{}
+}
+
+// Decrypt noop decryptor
+func (d *noopDecryptor) Decrypt(payload []byte,
+	msgID *pb.MessageIdData,
+	msgMetadata *pb.MessageMetadata) ([]byte, error) {
+	if len(msgMetadata.GetEncryptionKeys()) > 0 {
+		return payload, fmt.Errorf("incoming message payload is encrypted, consumer is not configured to decrypt")
 	}
-
-	if tr, ok := c.Transport.(closeIdler); ok {
-		tr.CloseIdleConnections()
-	}
+	return payload, nil
 }

@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -35,6 +36,7 @@ const defaultNackRedeliveryDelay = 1 * time.Minute
 type acker interface {
 	AckID(id trackingMessageID)
 	NackID(id trackingMessageID)
+	NackMsg(msg Message)
 }
 
 type consumer struct {
@@ -58,7 +60,7 @@ type consumer struct {
 	stopDiscovery func()
 
 	log     log.Logger
-	metrics *internal.TopicMetrics
+	metrics *internal.LeveledMetrics
 }
 
 func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
@@ -86,6 +88,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if options.Schema.GetSchemaInfo().Type == NONE {
 			options.Schema = NewBytesSchema(nil)
 		}
+	}
+
+	if options.NackBackoffPolicy == nil && options.EnableDefaultNackBackoffPolicy {
+		options.NackBackoffPolicy = new(defaultNackBackoffPolicy)
 	}
 
 	// did the user pass in a message channel?
@@ -152,7 +158,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 		topic = tns[0].Name
-		return topicSubscribe(client, options, topic, messageCh, dlq, rlq)
+		err = addMessageCryptoIfMissing(client, &options, topic)
+		if err != nil {
+			return nil, err
+		}
+		return newInternalConsumer(client, options, topic, messageCh, dlq, rlq, false)
 	}
 
 	if len(options.Topics) > 1 {
@@ -163,6 +173,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			options.Topics[i] = tns[i].Name
 		}
 		options.Topics = distinct(options.Topics)
+
+		err = addMessageCryptoIfMissing(client, &options, options.Topics)
+		if err != nil {
+			return nil, err
+		}
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
 	}
@@ -177,6 +192,12 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		err = addMessageCryptoIfMissing(client, &options, tn.Name)
+		if err != nil {
+			return nil, err
+		}
+
 		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq)
 	}
 
@@ -198,7 +219,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		rlq:                       rlq,
 		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
-		metrics:                   client.metrics.GetTopicMetrics(topic),
+		metrics:                   client.metrics.GetLeveledMetrics(topic),
 	}
 
 	err := consumer.internalTopicSubscribeToPartitions()
@@ -214,6 +235,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	consumer.stopDiscovery = consumer.runBackgroundPartitionDiscovery(duration)
 	consumer.close = consumer.closeInternal
 
+	consumer.metrics.ConsumersOpened.Inc()
 	return consumer, nil
 }
 
@@ -259,10 +281,11 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.Lock()
 	defer c.Unlock()
+
 	oldConsumers := c.consumers
+	oldNumPartitions = len(oldConsumers)
 
 	if oldConsumers != nil {
-		oldNumPartitions = len(oldConsumers)
 		if oldNumPartitions == newNumPartitions {
 			c.log.Debug("Number of partitions in topic has not changed")
 			return nil
@@ -275,9 +298,13 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.consumers = make([]*partitionConsumer, newNumPartitions)
 
-	// Copy over the existing consumer instances
-	for i := 0; i < oldNumPartitions; i++ {
-		c.consumers[i] = oldConsumers[i]
+	// When for some reason (eg: forced deletion of sub partition) causes oldNumPartitions> newNumPartitions,
+	// we need to rebuild the cache of new consumers, otherwise the array will be out of bounds.
+	if oldConsumers != nil && oldNumPartitions < newNumPartitions {
+		// Copy over the existing consumer instances
+		for i := 0; i < oldNumPartitions; i++ {
+			c.consumers[i] = oldConsumers[i]
+		}
 	}
 
 	type ConsumerError struct {
@@ -288,13 +315,21 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	receiverQueueSize := c.options.ReceiverQueueSize
 	metadata := c.options.Properties
+	subProperties := c.options.SubscriptionProperties
 
+	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
+
+	if partitionsToAdd < 0 {
+		partitionsToAdd = newNumPartitions
+		startPartition = 0
+	}
+
 	var wg sync.WaitGroup
 	ch := make(chan ConsumerError, partitionsToAdd)
 	wg.Add(partitionsToAdd)
 
-	for partitionIdx := oldNumPartitions; partitionIdx < newNumPartitions; partitionIdx++ {
+	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
 		go func(idx int, pt string) {
@@ -315,7 +350,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				partitionIdx:               idx,
 				receiverQueueSize:          receiverQueueSize,
 				nackRedeliveryDelay:        nackRedeliveryDelay,
+				nackBackoffPolicy:          c.options.NackBackoffPolicy,
 				metadata:                   metadata,
+				subProperties:              subProperties,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
 				startMessageID:             trackingMessageID{},
 				subscriptionMode:           durable,
@@ -324,6 +361,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
+				decryption:                 c.options.Decryption,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
@@ -358,17 +396,12 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		return err
 	}
 
-	c.metrics.ConsumersPartitions.Add(float64(partitionsToAdd))
-	return nil
-}
-
-func topicSubscribe(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlqRouter *dlqRouter, retryRouter *retryRouter) (Consumer, error) {
-	c, err := newInternalConsumer(client, options, topic, messageCh, dlqRouter, retryRouter, false)
-	if err == nil {
-		c.metrics.ConsumersOpened.Inc()
+	if newNumPartitions < oldNumPartitions {
+		c.metrics.ConsumersPartitions.Set(float64(newNumPartitions))
+	} else {
+		c.metrics.ConsumersPartitions.Add(float64(partitionsToAdd))
 	}
-	return c, err
+	return nil
 }
 
 func (c *consumer) Subscription() string {
@@ -486,6 +519,20 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 }
 
 func (c *consumer) Nack(msg Message) {
+	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
+		mid, ok := c.messageID(msg.ID())
+		if !ok {
+			return
+		}
+
+		if mid.consumer != nil {
+			mid.Nack()
+			return
+		}
+		c.consumers[mid.partitionIdx].NackMsg(msg)
+		return
+	}
+
 	c.NackID(msg.ID())
 }
 
@@ -634,4 +681,18 @@ func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 	}
 
 	return mid, true
+}
+
+func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {
+	// decryption is enabled, use default messagecrypto if not provided
+	if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
+		messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
+			false,
+			client.log.SubLogger(log.Fields{"topic": topics}))
+		if err != nil {
+			return err
+		}
+		options.Decryption.MessageCrypto = messageCrypto
+	}
+	return nil
 }

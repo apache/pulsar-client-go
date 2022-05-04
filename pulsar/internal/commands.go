@@ -18,12 +18,14 @@
 package internal
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
@@ -33,8 +35,9 @@ const (
 	// MessageFramePadding is for metadata and other frame headers
 	MessageFramePadding = 10 * 1024
 	// MaxFrameSize limit the maximum size that pulsar allows for messages to be sent.
-	MaxFrameSize        = MaxMessageSize + MessageFramePadding
-	magicCrc32c  uint16 = 0x0e01
+	MaxFrameSize                    = MaxMessageSize + MessageFramePadding
+	magicCrc32c              uint16 = 0x0e01
+	magicBrokerEntryMetadata uint16 = 0x0e02
 )
 
 // ErrCorruptedMessage is the error returned by ReadMessageData when it has detected corrupted data.
@@ -116,6 +119,20 @@ func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
 	}
 
 	return &meta, nil
+}
+
+func (r *MessageReader) ReadBrokerMetadata() (*pb.BrokerEntryMetadata, error) {
+	magicNumber := binary.BigEndian.Uint16(r.buffer.Get(r.buffer.ReaderIndex(), 2))
+	if magicNumber != magicBrokerEntryMetadata {
+		return nil, nil
+	}
+	r.buffer.Skip(2)
+	size := r.buffer.ReadUint32()
+	var brokerEntryMetadata pb.BrokerEntryMetadata
+	if err := proto.Unmarshal(r.buffer.Read(size), &brokerEntryMetadata); err != nil {
+		return nil, err
+	}
+	return &brokerEntryMetadata, nil
 }
 
 func (r *MessageReader) ReadMessage() (*pb.SingleMessageMetadata, []byte, error) {
@@ -221,9 +238,21 @@ func serializeBatch(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,
 	uncompressedPayload Buffer,
-	compressionProvider compression.Provider) {
+	compressionProvider compression.Provider,
+	encryptor crypto.Encryptor) error {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
+
+	// compress the payload
+	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
+
+	// encrypt the compressed payload
+	encryptedPayload, err := encryptor.Encrypt(compressedPayload, msgMetadata)
+	if err != nil {
+		// error occurred while encrypting the payload, ProducerCryptoFailureAction is set to Fail
+		return fmt.Errorf("encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err)
+	}
+
 	cmdSize := uint32(proto.Size(cmdSend))
 	msgMetadataSize := uint32(proto.Size(msgMetadata))
 
@@ -234,7 +263,7 @@ func serializeBatch(wb Buffer,
 	// Write cmd
 	wb.WriteUint32(cmdSize)
 	wb.ResizeIfNeeded(cmdSize)
-	_, err := cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	_, err = cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
 	}
@@ -255,12 +284,8 @@ func serializeBatch(wb Buffer,
 	}
 	wb.WrittenBytes(msgMetadataSize)
 
-	// Make sure the buffer has enough space to hold the compressed data
-	// and perform the compression in-place
-	maxSize := uint32(compressionProvider.CompressMaxSize(int(uncompressedPayload.ReadableBytes())))
-	wb.ResizeIfNeeded(maxSize)
-	b := compressionProvider.Compress(wb.WritableSlice()[:0], uncompressedPayload.ReadableSlice())
-	wb.WrittenBytes(uint32(len(b)))
+	// add payload to the buffer
+	wb.Write(encryptedPayload)
 
 	// Write checksum at created checksum-placeholder
 	frameEndIdx := wb.WriterIndex()
@@ -269,6 +294,7 @@ func serializeBatch(wb Buffer,
 	// Set Sizes and checksum in the fixed-size header
 	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
+	return nil
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte

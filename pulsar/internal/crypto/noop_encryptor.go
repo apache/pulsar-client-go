@@ -15,19 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//go:build !go1.12
-// +build !go1.12
+package crypto
 
-package internal
+import (
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
 
-import "net/http"
+type noopEncryptor struct{}
 
-func CloseIdleConnections(c *http.Client) {
-	type closeIdler interface {
-		CloseIdleConnections()
-	}
+func NewNoopEncryptor() Encryptor {
+	return &noopEncryptor{}
+}
 
-	if tr, ok := c.Transport.(closeIdler); ok {
-		tr.CloseIdleConnections()
-	}
+// Encrypt Noop ecryptor
+func (e *noopEncryptor) Encrypt(data []byte, msgMetadata *pb.MessageMetadata) ([]byte, error) {
+	return data, nil
 }

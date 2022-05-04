@@ -43,7 +43,7 @@ const (
 	PulsarVersion       = "0.1"
 	ClientVersionString = "Pulsar Go " + PulsarVersion
 
-	PulsarProtocolVersion = int32(pb.ProtocolVersion_v13)
+	PulsarProtocolVersion = int32(pb.ProtocolVersion_v18)
 )
 
 type TLSOptions struct {
@@ -53,7 +53,8 @@ type TLSOptions struct {
 }
 
 var (
-	errConnectionClosed = errors.New("connection closed")
+	errConnectionClosed       = errors.New("connection closed")
+	errUnableRegisterListener = errors.New("unable register listener when con closed")
 )
 
 // ConnectionListener is a user of a connection (eg. a producer or
@@ -72,7 +73,7 @@ type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	SendRequestNoWait(req *pb.BaseCommand) error
 	WriteData(data Buffer)
-	RegisterListener(id uint64, listener ConnectionListener)
+	RegisterListener(id uint64, listener ConnectionListener) error
 	UnregisterListener(id uint64)
 	AddConsumeHandler(id uint64, handler ConsumerHandler)
 	DeleteConsumeHandler(id uint64)
@@ -292,7 +293,8 @@ func (c *connection) doHandshake() bool {
 		AuthMethodName:  proto.String(c.auth.Name()),
 		AuthData:        authData,
 		FeatureFlags: &pb.FeatureFlags{
-			SupportsAuthRefresh: proto.Bool(true),
+			SupportsAuthRefresh:         proto.Bool(true),
+			SupportsBrokerEntryMetadata: proto.Bool(true),
 		},
 	}
 
@@ -327,6 +329,9 @@ func (c *connection) doHandshake() bool {
 }
 
 func (c *connection) waitUntilReady() error {
+	// If we are going to call cond.Wait() at all, then we must call it _before_ we call cond.Broadcast().
+	// The lock is held here to prevent changeState() from calling cond.Broadcast() in the time between
+	// the state check and call to cond.Wait().
 	c.Lock()
 	defer c.Unlock()
 
@@ -347,12 +352,21 @@ func (c *connection) failLeftRequestsWhenClose() {
 	// and closing the channel
 	c.incomingRequestsWG.Wait()
 
-	reqLen := len(c.incomingRequestsCh)
-	for i := 0; i < reqLen; i++ {
-		c.internalSendRequest(<-c.incomingRequestsCh)
+	ch := c.incomingRequestsCh
+	go func() {
+		// send a nil message to drain instead of
+		// closing the channel and causing a potential panic
+		//
+		// if other requests come in after the nil message
+		// then the RPC client will time out
+		ch <- nil
+	}()
+	for req := range ch {
+		if nil == req {
+			break // we have drained the requests
+		}
+		c.internalSendRequest(req)
 	}
-
-	close(c.incomingRequestsCh)
 }
 
 func (c *connection) run() {
@@ -509,10 +523,12 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponse(cmd.ProducerSuccess.GetRequestId(), cmd)
 
 	case pb.BaseCommand_PARTITIONED_METADATA_RESPONSE:
+		c.checkServerError(cmd.PartitionMetadataResponse.Error)
 		c.handleResponse(cmd.PartitionMetadataResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_LOOKUP_RESPONSE:
 		lookupResult := cmd.LookupTopicResponse
+		c.checkServerError(lookupResult.Error)
 		c.handleResponse(lookupResult.GetRequestId(), cmd)
 
 	case pb.BaseCommand_CONSUMER_STATS_RESPONSE:
@@ -531,7 +547,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponseError(cmd.GetError())
 
 	case pb.BaseCommand_SEND_ERROR:
-		c.handleSendError(cmd.GetError())
+		c.handleSendError(cmd.GetSendError())
 
 	case pb.BaseCommand_CLOSE_PRODUCER:
 		c.handleCloseProducer(cmd.GetCloseProducer())
@@ -557,6 +573,16 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	default:
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
+		c.Close()
+	}
+}
+
+func (c *connection) checkServerError(err *pb.ServerError) {
+	if err == nil {
+		return
+	}
+
+	if *err == pb.ServerError_ServiceNotReady {
 		c.Close()
 	}
 }
@@ -752,31 +778,29 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 	c.writeCommand(baseCommand(pb.BaseCommand_AUTH_RESPONSE, cmdAuthResponse))
 }
 
-func (c *connection) handleSendError(cmdError *pb.CommandError) {
-	c.log.Warnf("Received send error from server: [%v] : [%s]", cmdError.GetError(), cmdError.GetMessage())
+func (c *connection) handleSendError(sendError *pb.CommandSendError) {
+	c.log.Warnf("Received send error from server: [%v] : [%s]", sendError.GetError(), sendError.GetMessage())
 
-	requestID := cmdError.GetRequestId()
+	producerID := sendError.GetProducerId()
 
-	switch cmdError.GetError() {
+	switch sendError.GetError() {
 	case pb.ServerError_NotAllowedError:
-		request, ok := c.deletePendingRequest(requestID)
+		_, ok := c.deletePendingProducers(producerID)
 		if !ok {
 			c.log.Warnf("Received unexpected error response for request %d of type %s",
-				requestID, cmdError.GetError())
+				producerID, sendError.GetError())
 			return
 		}
 
-		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
-		request.callback(nil, errors.New(errMsg))
+		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
 	case pb.ServerError_TopicTerminatedError:
-		request, ok := c.deletePendingRequest(requestID)
+		_, ok := c.deletePendingProducers(producerID)
 		if !ok {
-			c.log.Warnf("Received unexpected error response for request %d of type %s",
-				requestID, cmdError.GetError())
+			c.log.Warnf("Received unexpected error response for producer %d of type %s",
+				producerID, sendError.GetError())
 			return
 		}
-		errMsg := fmt.Sprintf("server error: %s: %s", cmdError.GetError(), cmdError.GetMessage())
-		request.callback(nil, errors.New(errMsg))
+		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again
@@ -784,9 +808,22 @@ func (c *connection) handleSendError(cmdError *pb.CommandError) {
 	}
 }
 
+func (c *connection) deletePendingProducers(producerID uint64) (ConnectionListener, bool) {
+	c.listenersLock.Lock()
+	producer, ok := c.listeners[producerID]
+	if ok {
+		delete(c.listeners, producerID)
+	}
+	c.listenersLock.Unlock()
+
+	return producer, ok
+}
+
 func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer) {
 	consumerID := closeConsumer.GetConsumerId()
 	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
+
+	c.changeState(connectionClosed)
 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ConnectionClosed()
@@ -800,13 +837,9 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
 
-	c.listenersLock.Lock()
-	producer, ok := c.listeners[producerID]
-	if ok {
-		delete(c.listeners, producerID)
-	}
-	c.listenersLock.Unlock()
+	c.changeState(connectionClosed)
 
+	producer, ok := c.deletePendingProducers(producerID)
 	// did we find a producer?
 	if ok {
 		producer.ConnectionClosed()
@@ -815,17 +848,18 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	}
 }
 
-func (c *connection) RegisterListener(id uint64, listener ConnectionListener) {
+func (c *connection) RegisterListener(id uint64, listener ConnectionListener) error {
 	// do not add if connection is closed
 	if c.closed() {
 		c.log.Warnf("Connection closed unable register listener id=%+v", id)
-		return
+		return errUnableRegisterListener
 	}
 
 	c.listenersLock.Lock()
 	defer c.listenersLock.Unlock()
 
 	c.listeners[id] = listener
+	return nil
 }
 
 func (c *connection) UnregisterListener(id uint64) {
@@ -842,10 +876,8 @@ func (c *connection) Close() {
 	c.closeOnce.Do(func() {
 		c.Lock()
 		cnx := c.cnx
-		// do not use changeState() since they share the same lock
-		c.setState(connectionClosed)
-		c.cond.Broadcast()
 		c.Unlock()
+		c.changeState(connectionClosed)
 
 		if cnx != nil {
 			_ = cnx.Close()
@@ -884,10 +916,13 @@ func (c *connection) Close() {
 }
 
 func (c *connection) changeState(state connectionState) {
+	// The lock is held here because we need setState() and cond.Broadcast() to be
+	// an atomic operation from the point of view of waitUntilReady().
 	c.Lock()
+	defer c.Unlock()
+
 	c.setState(state)
 	c.cond.Broadcast()
-	c.Unlock()
 }
 
 func (c *connection) getState() connectionState {

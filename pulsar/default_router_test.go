@@ -71,16 +71,21 @@ func TestDefaultRouterRoutingBecauseMaxNumberOfMessagesReached(t *testing.T) {
 	const numPartitions = uint32(3)
 	p1 := router(&ProducerMessage{
 		Payload: []byte("message 1"),
-	}, 3)
+	}, numPartitions)
 	assert.LessOrEqual(t, p1, int(numPartitions))
 
 	p2 := router(&ProducerMessage{
 		Payload: []byte("message 2"),
 	}, numPartitions)
-	if p1 == int(numPartitions-1) {
-		assert.Equal(t, 0, p2)
+	assert.Equal(t, p1, p2)
+
+	p3 := router(&ProducerMessage{
+		Payload: []byte("message 3"),
+	}, numPartitions)
+	if p2 == int(numPartitions-1) {
+		assert.Equal(t, 0, p3)
 	} else {
-		assert.Equal(t, p1+1, p2)
+		assert.Equal(t, p2+1, p3)
 	}
 }
 

@@ -75,7 +75,7 @@ func (nmc *nackMockedConsumer) Wait() <-chan messageID {
 
 func TestNacksTracker(t *testing.T) {
 	nmc := newNackMockedConsumer()
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, log.DefaultNopLogger())
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
 
 	nacks.Add(messageID{
 		ledgerID: 1,
@@ -108,7 +108,7 @@ func TestNacksTracker(t *testing.T) {
 
 func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := newNackMockedConsumer()
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, log.DefaultNopLogger())
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
 
 	nacks.Add(messageID{
 		ledgerID: 1,
@@ -147,4 +147,172 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 	assert.Equal(t, int64(2), msgIds[1].entryID)
 
 	nacks.Close()
+}
+
+func TestNackBackoffTracker(t *testing.T) {
+	nmc := newNackMockedConsumer()
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, new(defaultNackBackoffPolicy), log.DefaultNopLogger())
+
+	nacks.AddMessage(new(mockMessage1))
+	nacks.AddMessage(new(mockMessage2))
+
+	msgIds := make([]messageID, 0)
+	for id := range nmc.Wait() {
+		msgIds = append(msgIds, id)
+	}
+	msgIds = sortMessageIds(msgIds)
+
+	assert.Equal(t, 2, len(msgIds))
+	assert.Equal(t, int64(1), msgIds[0].ledgerID)
+	assert.Equal(t, int64(1), msgIds[0].entryID)
+	assert.Equal(t, int64(2), msgIds[1].ledgerID)
+	assert.Equal(t, int64(2), msgIds[1].entryID)
+
+	nacks.Close()
+	// allow multiple Close without panicing
+	nacks.Close()
+}
+
+type mockMessage1 struct {
+	properties map[string]string
+}
+
+func (msg *mockMessage1) Topic() string {
+	return ""
+}
+
+func (msg *mockMessage1) Properties() map[string]string {
+	return msg.properties
+}
+
+func (msg *mockMessage1) Payload() []byte {
+	return nil
+}
+
+func (msg *mockMessage1) ID() MessageID {
+	return messageID{
+		ledgerID: 1,
+		entryID:  1,
+		batchIdx: 1,
+	}
+}
+
+func (msg *mockMessage1) PublishTime() time.Time {
+	return time.Time{}
+}
+
+func (msg *mockMessage1) EventTime() time.Time {
+	return time.Time{}
+}
+
+func (msg *mockMessage1) Key() string {
+	return ""
+}
+
+func (msg *mockMessage1) OrderingKey() string {
+	return ""
+}
+
+func (msg *mockMessage1) RedeliveryCount() uint32 {
+	return 0
+}
+
+func (msg *mockMessage1) IsReplicated() bool {
+	return false
+}
+
+func (msg *mockMessage1) GetReplicatedFrom() string {
+	return ""
+}
+
+func (msg *mockMessage1) GetSchemaValue(v interface{}) error {
+	return nil
+}
+
+func (msg *mockMessage1) ProducerName() string {
+	return ""
+}
+
+func (msg *mockMessage1) GetEncryptionContext() *EncryptionContext {
+	return &EncryptionContext{}
+}
+
+func (msg *mockMessage1) Index() *uint64 {
+	return nil
+}
+
+func (msg *mockMessage1) BrokerPublishTime() *time.Time {
+	return nil
+}
+
+type mockMessage2 struct {
+	properties map[string]string
+}
+
+func (msg *mockMessage2) Topic() string {
+	return ""
+}
+
+func (msg *mockMessage2) Properties() map[string]string {
+	return msg.properties
+}
+
+func (msg *mockMessage2) Payload() []byte {
+	return nil
+}
+
+func (msg *mockMessage2) ID() MessageID {
+	return messageID{
+		ledgerID: 2,
+		entryID:  2,
+		batchIdx: 1,
+	}
+}
+
+func (msg *mockMessage2) PublishTime() time.Time {
+	return time.Time{}
+}
+
+func (msg *mockMessage2) EventTime() time.Time {
+	return time.Time{}
+}
+
+func (msg *mockMessage2) Key() string {
+	return ""
+}
+
+func (msg *mockMessage2) OrderingKey() string {
+	return ""
+}
+
+func (msg *mockMessage2) RedeliveryCount() uint32 {
+	return 0
+}
+
+func (msg *mockMessage2) IsReplicated() bool {
+	return false
+}
+
+func (msg *mockMessage2) GetReplicatedFrom() string {
+	return ""
+}
+
+func (msg *mockMessage2) GetSchemaValue(v interface{}) error {
+	return nil
+}
+
+func (msg *mockMessage2) ProducerName() string {
+	return ""
+}
+
+func (msg *mockMessage2) GetEncryptionContext() *EncryptionContext {
+	return &EncryptionContext{}
+}
+
+func (msg *mockMessage2) Index() *uint64 {
+	return nil
+}
+
+func (msg *mockMessage2) BrokerPublishTime() *time.Time {
+	return nil
 }

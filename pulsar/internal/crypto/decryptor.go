@@ -15,19 +15,13 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//go:build !go1.12
-// +build !go1.12
+package crypto
 
-package internal
+import (
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
 
-import "net/http"
-
-func CloseIdleConnections(c *http.Client) {
-	type closeIdler interface {
-		CloseIdleConnections()
-	}
-
-	if tr, ok := c.Transport.(closeIdler); ok {
-		tr.CloseIdleConnections()
-	}
+// Decryptor support decrypting of message
+type Decryptor interface {
+	Decrypt(payload []byte, msgID *pb.MessageIdData, msgMetadata *pb.MessageMetadata) ([]byte, error)
 }

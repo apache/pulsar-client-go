@@ -23,6 +23,7 @@ import (
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -35,7 +36,7 @@ type BuffersPool interface {
 type BatcherBuilderProvider func(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error)
 
 // BatchBuilder is a interface of batch builders
@@ -51,12 +52,12 @@ type BatchBuilder interface {
 	) bool
 
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{})
+	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}, err error)
 
 	// Flush all the messages buffered in multiple batches and wait until all
 	// messages have been successfully persisted.
 	FlushBatches() (
-		batchData []Buffer, sequenceID []uint64, callbacks [][]interface{},
+		batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}, errors []error,
 	)
 
 	// Return the batch container batch message in multiple batches.
@@ -93,13 +94,15 @@ type batchContainer struct {
 	buffersPool         BuffersPool
 
 	log log.Logger
+
+	encryptor crypto.Encryptor
 }
 
 // newBatchContainer init a batchContainer
 func newBatchContainer(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) batchContainer {
 
 	bc := batchContainer{
@@ -122,6 +125,7 @@ func newBatchContainer(
 		compressionProvider: getCompressionProvider(compressionType, level),
 		buffersPool:         bufferPool,
 		log:                 logger,
+		encryptor:           encryptor,
 	}
 
 	if compressionType != pb.CompressionType_NONE {
@@ -135,25 +139,26 @@ func newBatchContainer(
 func NewBatchBuilder(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
 		maxMessages, maxBatchSize, producerName, producerID, compressionType,
-		level, bufferPool, logger,
+		level, bufferPool, logger, encryptor,
 	)
 
 	return &bc, nil
 }
 
-// IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
+// IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch
 func (bc *batchContainer) IsFull() bool {
-	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() > uint32(bc.maxBatchSize)
+	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize)
 }
 
+// hasSpace should return true if and only if the batch container can accommodate another message of length payload.
 func (bc *batchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
-	return bc.numMessages > 0 && (bc.buffer.ReadableBytes()+msgSize) > uint32(bc.maxBatchSize)
+	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize)
 }
 
 // Add will add single message to batch.
@@ -170,7 +175,7 @@ func (bc *batchContainer) Add(
 		// There's already a message with cluster replication list. need to flush before next
 		// message can be sent
 		return false
-	} else if bc.hasSpace(payload) {
+	} else if !bc.hasSpace(payload) {
 		// The current batch is full. Producer has to call Flush() to
 		return false
 	}
@@ -187,6 +192,7 @@ func (bc *batchContainer) Add(
 		bc.msgMetadata.ProducerName = &bc.producerName
 		bc.msgMetadata.ReplicateTo = replicateTo
 		bc.msgMetadata.PartitionKey = metadata.PartitionKey
+		bc.msgMetadata.Properties = metadata.Properties
 
 		if deliverAt.UnixNano() > 0 {
 			bc.msgMetadata.DeliverAtTime = proto.Int64(int64(TimestampMillis(deliverAt)))
@@ -207,15 +213,16 @@ func (bc *batchContainer) reset() {
 	bc.callbacks = []interface{}{}
 	bc.msgMetadata.ReplicateTo = nil
 	bc.msgMetadata.DeliverAtTime = nil
+	bc.msgMetadata.Properties = nil
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
 func (bc *batchContainer) Flush() (
-	batchData Buffer, sequenceID uint64, callbacks []interface{},
+	batchData Buffer, sequenceID uint64, callbacks []interface{}, err error,
 ) {
 	if bc.numMessages == 0 {
 		// No-Op for empty batch
-		return nil, 0, nil
+		return nil, 0, nil, nil
 	}
 	bc.log.Debug("BatchBuilder flush: messages: ", bc.numMessages)
 
@@ -229,19 +236,21 @@ func (bc *batchContainer) Flush() (
 	if buffer == nil {
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
-	serializeBatch(
-		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
-	)
+
+	if err = serializeBatch(
+		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider, bc.encryptor,
+	); err == nil { // no error in serializing Batch
+		sequenceID = bc.cmdSend.Send.GetSequenceId()
+	}
 
 	callbacks = bc.callbacks
-	sequenceID = bc.cmdSend.Send.GetSequenceId()
 	bc.reset()
-	return buffer, sequenceID, callbacks
+	return buffer, sequenceID, callbacks, err
 }
 
 // FlushBatches only for multiple batches container
 func (bc *batchContainer) FlushBatches() (
-	batchData []Buffer, sequenceID []uint64, callbacks [][]interface{},
+	batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}, errors []error,
 ) {
 	panic("single batch container not support FlushBatches(), please use Flush() instead")
 }

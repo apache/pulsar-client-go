@@ -119,3 +119,15 @@ func (msg *mockConsumerMessage) GetSchemaValue(v interface{}) error {
 func (msg *mockConsumerMessage) ProducerName() string {
 	return ""
 }
+
+func (msg *mockConsumerMessage) GetEncryptionContext() *pulsar.EncryptionContext {
+	return &pulsar.EncryptionContext{}
+}
+
+func (msg *mockConsumerMessage) Index() *uint64 {
+	return nil
+}
+
+func (msg *mockConsumerMessage) BrokerPublishTime() *time.Time {
+	return nil
+}

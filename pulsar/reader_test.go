@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,6 +47,27 @@ func TestReaderConfigErrors(t *testing.T) {
 	})
 	assert.Nil(t, consumer)
 	assert.NotNil(t, err)
+}
+
+func TestReaderConfigSubscribeName(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	consumer, err := client.CreateReader(ReaderOptions{
+		StartMessageID:   EarliestMessageID(),
+		Topic:            uuid.New().String(),
+		SubscriptionName: uuid.New().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	assert.NotNil(t, consumer)
 }
 
 func TestReader(t *testing.T) {
@@ -653,4 +676,102 @@ func TestReaderWithMultiHosts(t *testing.T) {
 	}
 
 	assert.Equal(t, 10, i)
+}
+
+func TestProducerReaderRSAEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create reader
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
+		},
+	})
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			ProducerCryptoFailureAction: crypto.ProducerCryptoFailureActionFail,
+			Keys:                        []string{"client-rsa.pem"},
+		},
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := reader.Next(context.Background())
+		assert.NoError(t, err)
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+	}
+}
+
+func TestReaderWithSchema(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	value := "hello pulsar"
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Value: value,
+	})
+	assert.Nil(t, err)
+
+	// create reader
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+		Schema:         schema,
+	})
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	msg, err := reader.Next(context.Background())
+	assert.NoError(t, err)
+
+	var res *string
+	err = msg.GetSchemaValue(&res)
+	assert.Nil(t, err)
+	assert.Equal(t, *res, value)
 }

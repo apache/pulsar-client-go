@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -85,14 +86,14 @@ func (h *keyBasedBatches) Val(key string) *batchContainer {
 func NewKeyBasedBatchBuilder(
 	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger,
+	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error) {
 
 	bb := &keyBasedBatchContainer{
 		batches: newKeyBasedBatches(),
 		batchContainer: newBatchContainer(
 			maxMessages, maxBatchSize, producerName, producerID,
-			compressionType, level, bufferPool, logger,
+			compressionType, level, bufferPool, logger, encryptor,
 		),
 		compressionType: compressionType,
 		level:           level,
@@ -105,18 +106,19 @@ func NewKeyBasedBatchBuilder(
 	return bb, nil
 }
 
-// IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
+// IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch
 func (bc *keyBasedBatchContainer) IsFull() bool {
-	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() > uint32(bc.maxBatchSize)
+	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize)
 }
 
 func (bc *keyBasedBatchContainer) IsMultiBatches() bool {
 	return true
 }
 
+// hasSpace should return true if and only if the batch container can accommodate another message of length payload.
 func (bc *keyBasedBatchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
-	return bc.numMessages > 0 && (bc.buffer.ReadableBytes()+msgSize) > uint32(bc.maxBatchSize)
+	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize)
 }
 
 // Add will add single message to key-based batch with message key.
@@ -133,7 +135,7 @@ func (bc *keyBasedBatchContainer) Add(
 		// There's already a message with cluster replication list. need to flush before next
 		// message can be sent
 		return false
-	} else if bc.hasSpace(payload) {
+	} else if !bc.hasSpace(payload) {
 		// The current batch is full. Producer has to call Flush() to
 		return false
 	}
@@ -144,7 +146,7 @@ func (bc *keyBasedBatchContainer) Add(
 		// create batchContainer for new key
 		t := newBatchContainer(
 			bc.maxMessages, bc.maxBatchSize, bc.producerName, bc.producerID,
-			bc.compressionType, bc.level, bc.buffersPool, bc.log,
+			bc.compressionType, bc.level, bc.buffersPool, bc.log, bc.encryptor,
 		)
 		batchPart = &t
 		bc.batches.Add(msgKey, &t)
@@ -179,11 +181,11 @@ func (bc *keyBasedBatchContainer) reset() {
 // Flush all the messages buffered in multiple batches and wait until all
 // messages have been successfully persisted.
 func (bc *keyBasedBatchContainer) FlushBatches() (
-	batchesData []Buffer, sequenceIDs []uint64, callbacks [][]interface{},
+	batchesData []Buffer, sequenceIDs []uint64, callbacks [][]interface{}, errors []error,
 ) {
 	if bc.numMessages == 0 {
 		// No-Op for empty batch
-		return nil, nil, nil
+		return nil, nil, nil, nil
 	}
 
 	bc.log.Debug("keyBasedBatchContainer flush: messages: ", bc.numMessages)
@@ -194,6 +196,7 @@ func (bc *keyBasedBatchContainer) FlushBatches() (
 	batchesData = make([]Buffer, batchesLen)
 	sequenceIDs = make([]uint64, batchesLen)
 	callbacks = make([][]interface{}, batchesLen)
+	errors = make([]error, batchesLen)
 
 	bc.batches.l.RLock()
 	defer bc.batches.l.RUnlock()
@@ -203,21 +206,22 @@ func (bc *keyBasedBatchContainer) FlushBatches() (
 	sort.Strings(sortedKeys)
 	for _, k := range sortedKeys {
 		container := bc.batches.containers[k]
-		b, s, c := container.Flush()
+		b, s, c, err := container.Flush()
 		if b != nil {
 			batchesData[idx] = b
 			sequenceIDs[idx] = s
 			callbacks[idx] = c
+			errors[idx] = err
 		}
 		idx++
 	}
 
 	bc.reset()
-	return batchesData, sequenceIDs, callbacks
+	return batchesData, sequenceIDs, callbacks, errors
 }
 
 func (bc *keyBasedBatchContainer) Flush() (
-	batchData Buffer, sequenceID uint64, callbacks []interface{},
+	batchData Buffer, sequenceID uint64, callbacks []interface{}, err error,
 ) {
 	panic("multi batches container not support Flush(), please use FlushBatches() instead")
 }
