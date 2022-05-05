@@ -32,7 +32,7 @@ type Tenants interface {
 	// Update the admins for a tenant
 	Update(utils.TenantData) error
 
-	//List returns the list of tenants
+	// List returns the list of tenants
 	List() ([]string, error)
 
 	// Get returns the config of the tenant.

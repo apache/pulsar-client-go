@@ -17,7 +17,7 @@
 
 package utils
 
-//var TopicsMap map[string]map[string]map[string]TopicStats
+// var TopicsMap map[string]map[string]map[string]TopicStats
 
 type TopicStatsStream struct {
 	TopicsMap map[string]map[string]map[string]TopicStats `json:"topicStatsBuf"`

@@ -81,13 +81,8 @@ func validateNamespaceName(tenant, namespace string) error {
 // allowed characters for property, namespace, cluster and topic
 // names are alphanumeric (a-zA-Z0-9) and these special chars -=:.
 // and % is allowed as part of valid URL encoding
-const PATTEN = "^[-=:.\\w]*$"
+var patten = regexp.MustCompile("^[-=:.\\w]*$")
 
 func CheckName(name string) bool {
-	patten, err := regexp.Compile(PATTEN)
-	if err != nil {
-		return false
-	}
-
 	return patten.MatchString(name)
 }

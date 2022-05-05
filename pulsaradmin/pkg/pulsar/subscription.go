@@ -261,7 +261,7 @@ func getIndividualMsgsFromBatch(topic utils.TopicName, msgID *utils.MessageID, d
 			}
 		}
 
-		//payload
+		// payload
 		singlePayload := make([]byte, singleMeta.GetPayloadSize())
 		if _, err := io.ReadFull(rdBuf, singlePayload); err != nil {
 			return nil, err
