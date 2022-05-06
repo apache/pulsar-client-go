@@ -279,6 +279,10 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 }
 
 func (pc *partitionConsumer) getLastMessageID() (trackingMessageID, error) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
+		return trackingMessageID{}, errors.New("failed to redeliver closing or closed consumer")
+	}
 	req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
 	pc.eventsCh <- req
 
@@ -314,6 +318,10 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 }
 
 func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return
+	}
 	if !msgID.Undefined() && msgID.ack() {
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
@@ -337,6 +345,10 @@ func (pc *partitionConsumer) NackMsg(msg Message) {
 }
 
 func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
+		return
+	}
 	pc.eventsCh <- &redeliveryRequest{msgIds}
 
 	iMsgIds := make([]MessageID, len(msgIds))
@@ -394,6 +406,10 @@ func (pc *partitionConsumer) Close() {
 }
 
 func (pc *partitionConsumer) Seek(msgID trackingMessageID) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to seek by closing or closed consumer")
+		return errors.New("failed to seek by closing or closed consumer")
+	}
 	req := &seekRequest{
 		doneCh: make(chan struct{}),
 		msgID:  msgID,
@@ -447,6 +463,10 @@ func (pc *partitionConsumer) requestSeekWithoutClear(msgID messageID) error {
 }
 
 func (pc *partitionConsumer) SeekByTime(time time.Time) error {
+	if state := pc.getConsumerState(); state == consumerClosing || state == consumerClosed {
+		pc.log.WithField("state", pc.state).Error("Failed seekByTime by consumer is closing or has closed")
+		return errors.New("failed seekByTime by consumer is closing or has closed")
+	}
 	req := &seekByTimeRequest{
 		doneCh:      make(chan struct{}),
 		publishTime: time,
@@ -463,7 +483,7 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 
 	state := pc.getConsumerState()
 	if state == consumerClosing || state == consumerClosed {
-		pc.log.WithField("state", pc.state).Error("failed seekByTime by consumer is closing or has closed")
+		pc.log.WithField("state", pc.state).Error("Failed seekByTime by consumer is closing or has closed")
 		return
 	}
 
