@@ -353,11 +353,14 @@ func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
 		}
 	}
 
-	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(),
+	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(),
 		pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
 			ConsumerId: proto.Uint64(pc.consumerID),
 			MessageIds: msgIDDataList,
 		})
+	if err != nil {
+		pc.log.Errorf("request redeliver message: %v, error: %v", msgIds, err)
+	}
 }
 
 func (pc *partitionConsumer) getConsumerState() consumerState {
@@ -492,7 +495,10 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		AckType:    pb.CommandAck_Individual.Enum(),
 	}
 
-	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, cmdAck)
+	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, cmdAck)
+	if err != nil {
+		pc.log.Errorf("request ack message: %v, consumer: %d, error: %v", msgID.String(), pc.consumerID, err)
+	}
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
@@ -737,9 +743,12 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 		ConsumerId:     proto.Uint64(pc.consumerID),
 		MessagePermits: proto.Uint32(permits),
 	}
-	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_FLOW, cmdFlow)
+	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_FLOW, cmdFlow)
+	if err != nil {
+		pc.log.Errorf("request internal flow consumer: %d, permits: %d, error: %v", pc.consumerID, permits, err)
+	}
 
-	return nil
+	return err
 }
 
 // dispatcher manages the internal message queue channel
@@ -1269,13 +1278,16 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 		"validationError": validationError,
 	}).Error("Discarding corrupted message")
 
-	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(),
+	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(),
 		pb.BaseCommand_ACK, &pb.CommandAck{
 			ConsumerId:      proto.Uint64(pc.consumerID),
 			MessageId:       []*pb.MessageIdData{msgID},
 			AckType:         pb.CommandAck_Individual.Enum(),
 			ValidationError: validationError.Enum(),
 		})
+	if err != nil {
+		pc.log.Errorf("request ack message: %v, consumer: %d, error: %v", msgID.String(), pc.consumerID, err)
+	}
 }
 
 // _setConn sets the internal connection field of this partition consumer atomically.
