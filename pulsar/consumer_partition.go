@@ -328,6 +328,10 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 }
 
 func (pc *partitionConsumer) NackID(msgID trackingMessageID) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to nack message on closing or closed consumer")
+		return newError(ConsumerClosed, "consumer closed")
+	}
 	pc.nackTracker.Add(msgID.messageID)
 	pc.metrics.NacksCounter.Inc()
 	return nil
