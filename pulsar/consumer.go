@@ -200,10 +200,10 @@ type Consumer interface {
 	Chan() <-chan ConsumerMessage
 
 	// Ack the consumption of a single message
-	Ack(Message)
+	Ack(Message) error
 
 	// AckID the consumption of a single message, identified by its MessageID
-	AckID(MessageID)
+	AckID(MessageID) error
 
 	// ReconsumeLater mark a message for redelivery after custom delay
 	ReconsumeLater(msg Message, delay time.Duration)
@@ -215,7 +215,7 @@ type Consumer interface {
 	// with ConsumerOptions.NAckRedeliveryDelay .
 	//
 	// This call is not blocking.
-	Nack(Message)
+	Nack(Message) error
 
 	// NackID acknowledges the failure to process a single message.
 	//
@@ -224,7 +224,7 @@ type Consumer interface {
 	// with ConsumerOptions.NackRedeliveryDelay .
 	//
 	// This call is not blocking.
-	NackID(MessageID)
+	NackID(MessageID) error
 
 	// Close the consumer and stop the broker to push more messages
 	Close()

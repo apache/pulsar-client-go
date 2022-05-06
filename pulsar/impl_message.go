@@ -63,27 +63,28 @@ func (id trackingMessageID) Undefined() bool {
 	return id == trackingMessageID{}
 }
 
-func (id trackingMessageID) Ack() {
+func (id trackingMessageID) Ack() error {
 	if id.consumer == nil {
-		return
+		return nil
 	}
 	if id.ack() {
-		id.consumer.AckID(id)
+		return id.consumer.AckID(id)
 	}
+	return nil
 }
 
-func (id trackingMessageID) Nack() {
+func (id trackingMessageID) Nack() error {
 	if id.consumer == nil {
-		return
+		return nil
 	}
-	id.consumer.NackID(id)
+	return id.consumer.NackID(id)
 }
 
-func (id trackingMessageID) NackByMsg(msg Message) {
+func (id trackingMessageID) NackByMsg(msg Message) error {
 	if id.consumer == nil {
-		return
+		return nil
 	}
-	id.consumer.NackMsg(msg)
+	return id.consumer.NackMsg(msg)
 }
 
 func (id trackingMessageID) ack() bool {

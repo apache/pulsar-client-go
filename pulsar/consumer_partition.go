@@ -308,8 +308,13 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
-func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
+func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 	if !msgID.Undefined() && msgID.ack() {
+		if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+			pc.log.WithField("state", state).Error("Failed to ack message on closing or closed consumer")
+			return newError(ConsumerClosed, "consumer closed")
+		}
+
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
 		req := &ackRequest{
@@ -319,16 +324,19 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
+	return nil
 }
 
-func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
+func (pc *partitionConsumer) NackID(msgID trackingMessageID) error {
 	pc.nackTracker.Add(msgID.messageID)
 	pc.metrics.NacksCounter.Inc()
+	return nil
 }
 
-func (pc *partitionConsumer) NackMsg(msg Message) {
+func (pc *partitionConsumer) NackMsg(msg Message) error {
 	pc.nackTracker.AddMessage(msg)
 	pc.metrics.NacksCounter.Inc()
+	return nil
 }
 
 func (pc *partitionConsumer) Redeliver(msgIds []messageID) {

@@ -34,9 +34,9 @@ import (
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
-	AckID(id trackingMessageID)
-	NackID(id trackingMessageID)
-	NackMsg(msg Message)
+	AckID(id trackingMessageID) error
+	NackID(id trackingMessageID) error
+	NackMsg(msg Message) error
 }
 
 type consumer struct {
@@ -449,23 +449,22 @@ func (c *consumer) Chan() <-chan ConsumerMessage {
 }
 
 // Ack the consumption of a single message
-func (c *consumer) Ack(msg Message) {
-	c.AckID(msg.ID())
+func (c *consumer) Ack(msg Message) error {
+	return c.AckID(msg.ID())
 }
 
-// Ack the consumption of a single message, identified by its MessageID
-func (c *consumer) AckID(msgID MessageID) {
+// AckID the consumption of a single message, identified by its MessageID
+func (c *consumer) AckID(msgID MessageID) error {
 	mid, ok := c.messageID(msgID)
 	if !ok {
-		return
+		return nil
 	}
 
 	if mid.consumer != nil {
-		mid.Ack()
-		return
+		return mid.Ack()
 	}
 
-	c.consumers[mid.partitionIdx].AckID(mid)
+	return c.consumers[mid.partitionIdx].AckID(mid)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -517,36 +516,33 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 	}
 }
 
-func (c *consumer) Nack(msg Message) {
+func (c *consumer) Nack(msg Message) error {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
 		mid, ok := c.messageID(msg.ID())
 		if !ok {
-			return
+			return nil
 		}
 
 		if mid.consumer != nil {
-			mid.Nack()
-			return
+			return mid.Nack()
 		}
-		c.consumers[mid.partitionIdx].NackMsg(msg)
-		return
+		return c.consumers[mid.partitionIdx].NackMsg(msg)
 	}
 
-	c.NackID(msg.ID())
+	return c.NackID(msg.ID())
 }
 
-func (c *consumer) NackID(msgID MessageID) {
+func (c *consumer) NackID(msgID MessageID) error {
 	mid, ok := c.messageID(msgID)
 	if !ok {
-		return
+		return nil
 	}
 
 	if mid.consumer != nil {
-		mid.Nack()
-		return
+		return mid.Nack()
 	}
 
-	c.consumers[mid.partitionIdx].NackID(mid)
+	return c.consumers[mid.partitionIdx].NackID(mid)
 }
 
 func (c *consumer) Close() {

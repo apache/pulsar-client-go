@@ -118,24 +118,24 @@ func (c *multiTopicConsumer) Chan() <-chan ConsumerMessage {
 }
 
 // Ack the consumption of a single message
-func (c *multiTopicConsumer) Ack(msg Message) {
-	c.AckID(msg.ID())
+func (c *multiTopicConsumer) Ack(msg Message) error {
+	return c.AckID(msg.ID())
 }
 
-// Ack the consumption of a single message, identified by its MessageID
-func (c *multiTopicConsumer) AckID(msgID MessageID) {
+// AckID the consumption of a single message, identified by its MessageID
+func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
-		return
+		return nil
 	}
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
-		return
+		return nil
 	}
 
-	mid.Ack()
+	return mid.Ack()
 }
 
 func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
@@ -163,39 +163,38 @@ func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 	consumer.ReconsumeLater(msg, delay)
 }
 
-func (c *multiTopicConsumer) Nack(msg Message) {
+func (c *multiTopicConsumer) Nack(msg Message) error {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
 		msgID := msg.ID()
 		mid, ok := toTrackingMessageID(msgID)
 		if !ok {
 			c.log.Warnf("invalid message id type %T", msgID)
-			return
+			return nil
 		}
 
 		if mid.consumer == nil {
 			c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
-			return
+			return nil
 		}
-		mid.NackByMsg(msg)
-		return
+		return mid.NackByMsg(msg)
 	}
 
-	c.NackID(msg.ID())
+	return c.NackID(msg.ID())
 }
 
-func (c *multiTopicConsumer) NackID(msgID MessageID) {
+func (c *multiTopicConsumer) NackID(msgID MessageID) error {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
-		return
+		return nil
 	}
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
-		return
+		return nil
 	}
 
-	mid.Nack()
+	return mid.Nack()
 }
 
 func (c *multiTopicConsumer) Close() {
