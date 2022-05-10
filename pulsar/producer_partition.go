@@ -53,7 +53,7 @@ var (
 	errContextExpired  = newError(TimeoutError, "message send context expired")
 	errMessageTooLarge = newError(MessageTooBig, "message size exceeds MaxMessageSize")
 	errProducerClosed  = newError(ProducerClosed, "producer already been closed")
-	errSendRateLimited = newError(ProducerBlockedQuotaExceededException, "message send rate is limited")
+	errSendRateLimited = newError(ProducerSendRateIsLimited, "message send rate is limited")
 
 	buffersPool sync.Pool
 )

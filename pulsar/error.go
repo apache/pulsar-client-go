@@ -77,6 +77,8 @@ const (
 	ProducerBlockedQuotaExceededException
 	// ProducerQueueIsFull producer queue is full
 	ProducerQueueIsFull
+	// ProducerSendRateIsLimited producer send rate is limited by broker
+	ProducerSendRateIsLimited
 	// MessageTooBig trying to send a messages exceeding the max size
 	MessageTooBig
 	// TopicNotFound topic not found
@@ -181,6 +183,8 @@ func getResultStr(r Result) string {
 		return "ProducerBlockedQuotaExceededException"
 	case ProducerQueueIsFull:
 		return "ProducerQueueIsFull"
+	case ProducerSendRateIsLimited:
+		return "ProducerSendRateIsLimited"
 	case MessageTooBig:
 		return "MessageTooBig"
 	case TopicNotFound:
