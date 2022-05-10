@@ -15,19 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//go:build !go1.12
-// +build !go1.12
+package pulsar
 
-package internal
+import (
+	"testing"
 
-import "net/http"
+	"github.com/stretchr/testify/assert"
+)
 
-func CloseIdleConnections(c *http.Client) {
-	type closeIdler interface {
-		CloseIdleConnections()
-	}
+func TestDefaultNackBackoffPolicy_Next(t *testing.T) {
+	defaultNackBackoff := new(defaultNackBackoffPolicy)
 
-	if tr, ok := c.Transport.(closeIdler); ok {
-		tr.CloseIdleConnections()
-	}
+	res0 := defaultNackBackoff.Next(0)
+	assert.Equal(t, int64(1000*30), res0)
+
+	res5 := defaultNackBackoff.Next(5)
+	assert.Equal(t, int64(600000), res5)
 }

@@ -90,7 +90,6 @@ func (r *dlqRouter) run() {
 		case cm := <-r.messageCh:
 			r.log.WithField("msgID", cm.ID()).Debug("Got message for DLQ")
 			producer := r.getProducer(cm.Consumer.(*consumer).options.Schema)
-
 			msg := cm.Message.(*message)
 			msgID := msg.ID()
 			producer.SendAsync(context.Background(), &ProducerMessage{

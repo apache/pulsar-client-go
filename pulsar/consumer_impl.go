@@ -25,6 +25,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -35,6 +36,7 @@ const defaultNackRedeliveryDelay = 1 * time.Minute
 type acker interface {
 	AckID(id trackingMessageID)
 	NackID(id trackingMessageID)
+	NackMsg(msg Message)
 }
 
 type consumer struct {
@@ -85,6 +87,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if options.Schema.GetSchemaInfo().Type == NONE {
 			options.Schema = NewBytesSchema(nil)
 		}
+	}
+
+	if options.NackBackoffPolicy == nil && options.EnableDefaultNackBackoffPolicy {
+		options.NackBackoffPolicy = new(defaultNackBackoffPolicy)
 	}
 
 	// did the user pass in a message channel?
@@ -151,6 +157,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 		topic = tns[0].Name
+		err = addMessageCryptoIfMissing(client, &options, topic)
+		if err != nil {
+			return nil, err
+		}
 		return newInternalConsumer(client, options, topic, messageCh, dlq, rlq, false)
 	}
 
@@ -162,6 +172,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			options.Topics[i] = tns[i].Name
 		}
 		options.Topics = distinct(options.Topics)
+
+		err = addMessageCryptoIfMissing(client, &options, options.Topics)
+		if err != nil {
+			return nil, err
+		}
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
 	}
@@ -176,6 +191,12 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		err = addMessageCryptoIfMissing(client, &options, tn.Name)
+		if err != nil {
+			return nil, err
+		}
+
 		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq)
 	}
 
@@ -292,6 +313,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	receiverQueueSize := c.options.ReceiverQueueSize
 	metadata := c.options.Properties
+	subProperties := c.options.SubscriptionProperties
 
 	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
@@ -326,7 +348,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				partitionIdx:               idx,
 				receiverQueueSize:          receiverQueueSize,
 				nackRedeliveryDelay:        nackRedeliveryDelay,
+				nackBackoffPolicy:          c.options.NackBackoffPolicy,
 				metadata:                   metadata,
+				subProperties:              subProperties,
 				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
 				startMessageID:             trackingMessageID{},
 				subscriptionMode:           durable,
@@ -489,6 +513,20 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 }
 
 func (c *consumer) Nack(msg Message) {
+	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
+		mid, ok := c.messageID(msg.ID())
+		if !ok {
+			return
+		}
+
+		if mid.consumer != nil {
+			mid.Nack()
+			return
+		}
+		c.consumers[mid.partitionIdx].NackMsg(msg)
+		return
+	}
+
 	c.NackID(msg.ID())
 }
 
@@ -631,4 +669,18 @@ func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 	}
 
 	return mid, true
+}
+
+func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {
+	// decryption is enabled, use default messagecrypto if not provided
+	if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
+		messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
+			false,
+			client.log.SubLogger(log.Fields{"topic": topics}))
+		if err != nil {
+			return err
+		}
+		options.Decryption.MessageCrypto = messageCrypto
+	}
+	return nil
 }
