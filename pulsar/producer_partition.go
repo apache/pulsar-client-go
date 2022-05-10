@@ -46,7 +46,6 @@ const (
 	producerReady
 	producerClosing
 	producerClosed
-	producerFailed
 )
 
 var (
@@ -145,7 +144,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	// add default message crypto if not provided
 	if encryption != nil && len(encryption.Keys) > 0 {
 		if encryption.KeyReader == nil {
-			p.closeFailedProducer()
 			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
 		}
 
@@ -154,7 +152,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
 			if err != nil {
 				logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
-				p.closeFailedProducer()
 				return nil, err
 			}
 			p.options.Encryption.MessageCrypto = messageCrypto
@@ -164,7 +161,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	err := p.grabCnx()
 	if err != nil {
 		logger.WithError(err).Error("Failed to create producer")
-		p.closeFailedProducer()
 		return nil, err
 	}
 
@@ -845,7 +841,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer req.waitGroup.Done()
-	if !(p.casProducerState(producerReady, producerClosing) || p.casProducerState(producerFailed, producerClosing)) {
+	if !p.casProducerState(producerReady, producerClosing) {
 		return
 	}
 
@@ -863,10 +859,8 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.Info("Closed producer")
 	}
 
-	if p.batchBuilder != nil {
-		if err = p.batchBuilder.Close(); err != nil {
-			p.log.WithError(err).Warn("Failed to close batch builder")
-		}
+	if err = p.batchBuilder.Close(); err != nil {
+		p.log.WithError(err).Warn("Failed to close batch builder")
 	}
 
 	p.setProducerState(producerClosed)
@@ -904,8 +898,7 @@ func (p *partitionProducer) casProducerState(oldState, newState producerState) b
 }
 
 func (p *partitionProducer) Close() {
-	producerState := p.getProducerState()
-	if producerState != producerReady && producerState != producerFailed {
+	if p.getProducerState() != producerReady {
 		// Producer is closing
 		return
 	}
@@ -942,16 +935,4 @@ func (i *pendingItem) Complete() {
 	}
 	i.completed = true
 	buffersPool.Put(i.batchData)
-}
-
-func (p *partitionProducer) closeFailedProducer() {
-	p.setProducerState(producerFailed)
-
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	cp := &closeProducer{&wg}
-	go p.internalClose(cp)
-
-	wg.Wait()
 }
