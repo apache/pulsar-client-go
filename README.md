@@ -36,7 +36,7 @@ CGo based library.
 
 ## Requirements
 
-- Go 1.11+
+- Go 1.15+
 
 ## Status
 
@@ -72,8 +72,9 @@ defer producer.Close()
 
 if err != nil {
     fmt.Println("Failed to publish message", err)
+} else {
+    fmt.Println("Published message")
 }
-fmt.Println("Published message")
 ```
 
 Create a Consumer:
@@ -133,6 +134,16 @@ for reader.HasNext() {
 }
 ```
 
+## Build and Test
+
+Build the sources:
+
+    go build ./pulsar
+
+Run the unit tests:
+
+    ./docker-ci.sh
+
 ## Contributing
 
 Contributions are welcomed and greatly appreciated. See [CONTRIBUTING.md](CONTRIBUTING.md) for details on submitting patches and the contribution workflow.
@@ -141,8 +152,8 @@ Contributions are welcomed and greatly appreciated. See [CONTRIBUTING.md](CONTRI
 
 ##### Mailing lists
 
-| Name                                                                          | Scope                           |                                                                 |                                                                     |                                                                              |
-|:------------------------------------------------------------------------------|:--------------------------------|:----------------------------------------------------------------|:--------------------------------------------------------------------|:-----------------------------------------------------------------------------|
+| Name                                                      | Scope                           |                                                       |                                                           |                                                                    |
+|:----------------------------------------------------------|:--------------------------------|:------------------------------------------------------|:----------------------------------------------------------|:-------------------------------------------------------------------|
 | [users@pulsar.apache.org](mailto:users@pulsar.apache.org) | User-related discussions        | [Subscribe](mailto:users-subscribe@pulsar.apache.org) | [Unsubscribe](mailto:users-unsubscribe@pulsar.apache.org) | [Archives](http://mail-archives.apache.org/mod_mbox/pulsar-users/) |
 | [dev@pulsar.apache.org](mailto:dev@pulsar.apache.org)     | Development-related discussions | [Subscribe](mailto:dev-subscribe@pulsar.apache.org)   | [Unsubscribe](mailto:dev-unsubscribe@pulsar.apache.org)   | [Archives](http://mail-archives.apache.org/mod_mbox/pulsar-dev/)   |
 

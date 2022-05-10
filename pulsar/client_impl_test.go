@@ -348,7 +348,9 @@ func TestTopicPartitions(t *testing.T) {
 	defer client.Close()
 
 	// Create topic with 5 partitions
-	err = httpPut("admin/v2/persistent/public/default/TestGetTopicPartitions/partitions", 5)
+	topicAdminURL := "admin/v2/persistent/public/default/TestGetTopicPartitions/partitions"
+	err = httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
 	assert.Nil(t, err)
 
 	partitionedTopic := "persistent://public/default/TestGetTopicPartitions"
@@ -697,7 +699,9 @@ func TestHTTPTopicPartitions(t *testing.T) {
 	defer client.Close()
 
 	// Create topic with 5 partitions
-	err = httpPut("admin/v2/persistent/public/default/TestHTTPTopicPartitions/partitions", 5)
+	topicAdminURL := "admin/v2/persistent/public/default/TestHTTPTopicPartitions/partitions"
+	err = httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
 	assert.Nil(t, err)
 
 	partitionedTopic := "persistent://public/default/TestHTTPTopicPartitions"

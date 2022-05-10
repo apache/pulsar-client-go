@@ -19,13 +19,11 @@ package pulsar
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
@@ -35,7 +33,7 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
-	ua "go.uber.org/atomic"
+	uAtomic "go.uber.org/atomic"
 )
 
 type producerState int32
@@ -62,11 +60,12 @@ var (
 var errTopicNotFount = "TopicNotFound"
 
 type partitionProducer struct {
-	state  ua.Int32
+	state  uAtomic.Int32
 	client *client
 	topic  string
 	log    log.Logger
-	cnx    internal.Connection
+
+	conn uAtomic.Value
 
 	options                  *ProducerOptions
 	producerName             string
@@ -78,6 +77,7 @@ type partitionProducer struct {
 
 	// Channel where app is posting messages to be published
 	eventsChan      chan interface{}
+	closeCh         chan struct{}
 	connectClosedCh chan connectionClosed
 
 	publishSemaphore internal.Semaphore
@@ -117,6 +117,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		producerID:       client.rpcClient.NewProducerID(),
 		eventsChan:       make(chan interface{}, maxPendingMessages),
 		connectClosedCh:  make(chan connectionClosed, 10),
+		closeCh:          make(chan struct{}),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
@@ -124,6 +125,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
 		epoch:            0,
+	}
+	if p.options.DisableBatching {
+		p.batchFlushTicker.Stop()
 	}
 	p.setProducerState(producerInit)
 
@@ -139,28 +143,10 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	} else {
 		p.userProvidedProducerName = false
 	}
-
-	encryption := options.Encryption
-	// add default message crypto if not provided
-	if encryption != nil && len(encryption.Keys) > 0 {
-		if encryption.KeyReader == nil {
-			return nil, fmt.Errorf("encryption is enabled, KeyReader can not be nil")
-		}
-
-		if encryption.MessageCrypto == nil {
-			logCtx := fmt.Sprintf("[%v] [%v] [%v]", p.topic, p.producerName, p.producerID)
-			messageCrypto, err := crypto.NewDefaultMessageCrypto(logCtx, true, logger)
-			if err != nil {
-				logger.WithError(err).Error("Unable to get MessageCrypto instance. Producer creation is abandoned")
-				return nil, err
-			}
-			p.options.Encryption.MessageCrypto = messageCrypto
-		}
-	}
-
 	err := p.grabCnx()
 	if err != nil {
-		logger.WithError(err).Error("Failed to create producer")
+		p.batchFlushTicker.Stop()
+		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
 		return nil, err
 	}
 
@@ -169,7 +155,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		"producerID":    p.producerID,
 	})
 
-	p.log.WithField("cnx", p.cnx.ID()).Info("Created producer")
+	p.log.WithField("cnx", p._getConn().ID()).Info("Created producer")
 	p.setProducerState(producerReady)
 
 	if p.options.SendTimeout > 0 {
@@ -227,7 +213,7 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
-		p.log.WithError(err).Error("Failed to create producer")
+		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		return err
 	}
 
@@ -275,12 +261,15 @@ func (p *partitionProducer) grabCnx() error {
 		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
 		p.sequenceIDGenerator = &nextSequenceID
 	}
-	p.cnx = res.Cnx
-	p.cnx.RegisterListener(p.producerID, p)
+	p._setConn(res.Cnx)
+	err = p._getConn().RegisterListener(p.producerID, p)
+	if err != nil {
+		return err
+	}
 	p.log.WithFields(log.Fields{
 		"cnx":   res.Cnx.ID(),
 		"epoch": atomic.LoadUint64(&p.epoch),
-	}).Debug("Connected producer")
+	}).Info("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(pendingItems)
@@ -301,7 +290,7 @@ func (p *partitionProducer) grabCnx() error {
 			pi.sentAt = time.Now()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			p.cnx.WriteData(pi.batchData)
+			p._getConn().WriteData(pi.batchData)
 
 			if pi == lastViewItem {
 				break
@@ -323,7 +312,7 @@ func (p *partitionProducer) GetBuffer() internal.Buffer {
 
 func (p *partitionProducer) ConnectionClosed() {
 	// Trigger reconnection in the produce goroutine
-	p.log.WithField("cnx", p.cnx.ID()).Warn("Connection was closed")
+	p.log.WithField("cnx", p._getConn().ID()).Warn("Connection was closed")
 	p.connectClosedCh <- connectionClosed{}
 }
 
@@ -342,6 +331,7 @@ func (p *partitionProducer) reconnectToBroker() {
 	for maxRetry != 0 {
 		if p.getProducerState() != producerReady {
 			// Producer is already closing
+			p.log.Info("producer state not ready, exit reconnect")
 			return
 		}
 
@@ -352,9 +342,10 @@ func (p *partitionProducer) reconnectToBroker() {
 		err := p.grabCnx()
 		if err == nil {
 			// Successfully reconnected
-			p.log.WithField("cnx", p.cnx.ID()).Info("Reconnected producer to broker")
+			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
 			return
 		}
+		p.log.WithError(err).Error("Failed to create producer at reconnect")
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
@@ -369,6 +360,19 @@ func (p *partitionProducer) reconnectToBroker() {
 }
 
 func (p *partitionProducer) runEventsLoop() {
+	go func() {
+		for {
+			select {
+			case <-p.closeCh:
+				p.log.Info("close producer, exit reconnect")
+				return
+			case <-p.connectClosedCh:
+				p.log.Info("runEventsLoop will reconnect in producer")
+				p.reconnectToBroker()
+			}
+		}
+	}()
+
 	for {
 		select {
 		case i := <-p.eventsChan:
@@ -381,14 +385,8 @@ func (p *partitionProducer) runEventsLoop() {
 				p.internalClose(v)
 				return
 			}
-		case <-p.connectClosedCh:
-			p.reconnectToBroker()
 		case <-p.batchFlushTicker.C:
-			if p.batchBuilder.IsMultiBatches() {
-				p.internalFlushCurrentBatches()
-			} else {
-				p.internalFlushCurrentBatch()
-			}
+			p.internalFlushCurrentBatch()
 		}
 	}
 }
@@ -417,6 +415,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		var schemaPayload []byte
 		schemaPayload, err = p.options.Schema.Encode(msg.Value)
 		if err != nil {
+			p.publishSemaphore.Release()
+			request.callback(nil, request.msg, newError(SchemaFailure, err.Error()))
 			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 			return
 		}
@@ -424,13 +424,13 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	// if msg is too large
-	if len(payload) > int(p.cnx.GetMaxMessageSize()) {
+	if len(payload) > int(p._getConn().GetMaxMessageSize()) {
 		p.publishSemaphore.Release()
 		request.callback(nil, request.msg, errMessageTooLarge)
 		p.log.WithError(errMessageTooLarge).
 			WithField("size", len(payload)).
 			WithField("properties", msg.Properties).
-			Errorf("MaxMessageSize %d", int(p.cnx.GetMaxMessageSize()))
+			Errorf("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize()))
 		p.metrics.PublishErrorsMsgTooLarge.Inc()
 		return
 	}
@@ -481,11 +481,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		msg.ReplicationClusters, deliverAt)
 	if !added {
 		// The current batch is full.. flush it and retry
-		if p.batchBuilder.IsMultiBatches() {
-			p.internalFlushCurrentBatches()
-		} else {
-			p.internalFlushCurrentBatch()
-		}
+
+		p.internalFlushCurrentBatch()
 
 		// after flushing try again to add the current payload
 		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
@@ -500,11 +497,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if !sendAsBatch || request.flushImmediately {
-		if p.batchBuilder.IsMultiBatches() {
-			p.internalFlushCurrentBatches()
-		} else {
-			p.internalFlushCurrentBatch()
-		}
+
+		p.internalFlushCurrentBatch()
+
 	}
 }
 
@@ -518,6 +513,11 @@ type pendingItem struct {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
+	if p.batchBuilder.IsMultiBatches() {
+		p.internalFlushCurrentBatches()
+		return
+	}
+
 	batchData, sequenceID, callbacks, err := p.batchBuilder.Flush()
 	if batchData == nil {
 		return
@@ -540,7 +540,7 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 		sequenceID:   sequenceID,
 		sendRequests: callbacks,
 	})
-	p.cnx.WriteData(batchData)
+	p._getConn().WriteData(batchData)
 }
 
 func (p *partitionProducer) failTimeoutMessages() {
@@ -673,21 +673,18 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 			sequenceID:   sequenceIDs[i],
 			sendRequests: callbacks[i],
 		})
-		p.cnx.WriteData(batchesData[i])
+		p._getConn().WriteData(batchesData[i])
 	}
 
 }
 
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
-	if p.batchBuilder.IsMultiBatches() {
-		p.internalFlushCurrentBatches()
-	} else {
-		p.internalFlushCurrentBatch()
-	}
+
+	p.internalFlushCurrentBatch()
 
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
 	if !ok {
-		fr.waitGroup.Done()
+		close(fr.doneCh)
 		return
 	}
 
@@ -700,7 +697,7 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		// The last item in the queue has been completed while we were
 		// looking at it. It's safe at this point to assume that every
 		// message enqueued before Flush() was called are now persisted
-		fr.waitGroup.Done()
+		close(fr.doneCh)
 		return
 	}
 
@@ -708,7 +705,7 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		msg: nil,
 		callback: func(id MessageID, message *ProducerMessage, e error) {
 			fr.err = e
-			fr.waitGroup.Done()
+			close(fr.doneCh)
 		},
 	}
 
@@ -716,19 +713,23 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
 	var err error
 	var msgID MessageID
 
+	// use atomic bool to avoid race
+	isDone := uAtomic.NewBool(false)
+	doneCh := make(chan struct{})
+
 	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
-		err = e
-		msgID = ID
-		wg.Done()
+		if isDone.CAS(false, true) {
+			err = e
+			msgID = ID
+			close(doneCh)
+		}
 	}, true)
 
-	wg.Wait()
+	// wait for send request to finish
+	<-doneCh
 	return msgID, err
 }
 
@@ -779,68 +780,68 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	if !ok {
 		// if we receive a receipt although the pending queue is empty, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
-		p.log.Warnf("Received ack for %v although the pending queue is empty, closing connection", response.GetMessageId())
-		p.cnx.Close()
+		p.log.Warnf("Got ack %v for timed out msg", response.GetMessageId())
 		return
 	}
 
-	if pi.sequenceID != response.GetSequenceId() {
-		// if we receive a receipt that is not the one expected, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
+	if pi.sequenceID < response.GetSequenceId() {
+		// Ignoring the ack since it's referring to a message that has already timed out.
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
-		p.cnx.Close()
 		return
-	}
+	} else if pi.sequenceID > response.GetSequenceId() {
+		// Force connection closing so that messages can be re-transmitted in a new connection
+		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
+			response.GetSequenceId(), pi.sequenceID)
+		p._getConn().Close()
+		return
+	} else {
+		// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
+		p.pendingQueue.Poll()
 
-	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
-	p.pendingQueue.Poll()
+		now := time.Now().UnixNano()
 
-	now := time.Now().UnixNano()
+		// lock the pending item while sending the requests
+		pi.Lock()
+		defer pi.Unlock()
+		p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
+		for idx, i := range pi.sendRequests {
+			sr := i.(*sendRequest)
+			if sr.msg != nil {
+				atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
+				p.publishSemaphore.Release()
 
-	// lock the pending item while sending the requests
-	pi.Lock()
-	defer pi.Unlock()
-	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
-	for idx, i := range pi.sendRequests {
-		sr := i.(*sendRequest)
-		if sr.msg != nil {
-			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
-			p.publishSemaphore.Release()
-
-			p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
-			p.metrics.MessagesPublished.Inc()
-			p.metrics.MessagesPending.Dec()
-			payloadSize := float64(len(sr.msg.Payload))
-			p.metrics.BytesPublished.Add(payloadSize)
-			p.metrics.BytesPending.Sub(payloadSize)
-		}
-
-		if sr.callback != nil || len(p.options.Interceptors) > 0 {
-			msgID := newMessageID(
-				int64(response.MessageId.GetLedgerId()),
-				int64(response.MessageId.GetEntryId()),
-				int32(idx),
-				p.partitionIdx,
-			)
-
-			if sr.callback != nil {
-				sr.callback(msgID, sr.msg, nil)
+				p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
+				p.metrics.MessagesPublished.Inc()
+				p.metrics.MessagesPending.Dec()
+				payloadSize := float64(len(sr.msg.Payload))
+				p.metrics.BytesPublished.Add(payloadSize)
+				p.metrics.BytesPending.Sub(payloadSize)
 			}
 
-			p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
-		}
-	}
+			if sr.callback != nil || len(p.options.Interceptors) > 0 {
+				msgID := newMessageID(
+					int64(response.MessageId.GetLedgerId()),
+					int64(response.MessageId.GetEntryId()),
+					int32(idx),
+					p.partitionIdx,
+				)
 
-	// Mark this pending item as done
-	pi.Complete()
+				if sr.callback != nil {
+					sr.callback(msgID, sr.msg, nil)
+				}
+
+				p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
+			}
+		}
+
+		// Mark this pending item as done
+		pi.Complete()
+	}
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
-	defer req.waitGroup.Done()
+	defer close(req.doneCh)
 	if !p.casProducerState(producerReady, producerClosing) {
 		return
 	}
@@ -848,7 +849,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.log.Info("Closing producer")
 
 	id := p.client.rpcClient.NewRequestID()
-	_, err := p.client.rpcClient.RequestOnCnx(p.cnx, id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
+	_, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
 		ProducerId: &p.producerID,
 		RequestId:  &id,
 	})
@@ -864,8 +865,10 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	}
 
 	p.setProducerState(producerClosed)
-	p.cnx.UnregisterListener(p.producerID)
+	p._getConn().UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
+
+	close(p.closeCh)
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
@@ -873,14 +876,15 @@ func (p *partitionProducer) LastSequenceID() int64 {
 }
 
 func (p *partitionProducer) Flush() error {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	flushReq := &flushRequest{
+		doneCh: make(chan struct{}),
+		err:    nil,
+	}
+	p.eventsChan <- flushReq
 
-	cp := &flushRequest{&wg, nil}
-	p.eventsChan <- cp
-
-	wg.Wait()
-	return cp.err
+	// wait for the flush request to complete
+	<-flushReq.doneCh
+	return flushReq.err
 }
 
 func (p *partitionProducer) getProducerState() producerState {
@@ -903,13 +907,11 @@ func (p *partitionProducer) Close() {
 		return
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	cp := &closeProducer{&wg}
+	cp := &closeProducer{doneCh: make(chan struct{})}
 	p.eventsChan <- cp
 
-	wg.Wait()
+	// wait for close producer request to complete
+	<-cp.doneCh
 }
 
 type sendRequest struct {
@@ -921,12 +923,12 @@ type sendRequest struct {
 }
 
 type closeProducer struct {
-	waitGroup *sync.WaitGroup
+	doneCh chan struct{}
 }
 
 type flushRequest struct {
-	waitGroup *sync.WaitGroup
-	err       error
+	doneCh chan struct{}
+	err    error
 }
 
 func (i *pendingItem) Complete() {
@@ -935,4 +937,19 @@ func (i *pendingItem) Complete() {
 	}
 	i.completed = true
 	buffersPool.Put(i.batchData)
+}
+
+// _setConn sets the internal connection field of this partition producer atomically.
+// Note: should only be called by this partition producer when a new connection is available.
+func (p *partitionProducer) _setConn(conn internal.Connection) {
+	p.conn.Store(conn)
+}
+
+// _getConn returns internal connection field of this partition producer atomically.
+// Note: should only be called by this partition producer before attempting to use the connection
+func (p *partitionProducer) _getConn() internal.Connection {
+	// Invariant: The conn must be non-nill for the lifetime of the partitionProducer.
+	//            For this reason we leave this cast unchecked and panic() if the
+	//            invariant is broken
+	return p.conn.Load().(internal.Connection)
 }
