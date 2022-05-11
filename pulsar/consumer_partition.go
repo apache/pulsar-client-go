@@ -738,7 +738,7 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 
 func (pc *partitionConsumer) ConnectionClosed() {
 	// Trigger reconnection in the consumer goroutine
-	pc.log.Debug("connection closed and send to connectClosedCh")
+	pc.log.Warn("connection closed and send to connectClosedCh")
 	pc.connectClosedCh <- connectionClosed{}
 }
 
@@ -1073,7 +1073,7 @@ func (pc *partitionConsumer) grabConn() error {
 		pc.log.WithError(err).Warn("Failed to lookup topic")
 		return err
 	}
-	pc.log.Debugf("Lookup result: %+v", lr)
+	pc.log.Infof("Lookup result: %+v", lr)
 
 	subType := toProtoSubType(pc.options.subscriptionType)
 	initialPosition := toProtoInitialPosition(pc.options.subscriptionInitPos)
