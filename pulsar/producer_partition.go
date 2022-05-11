@@ -785,13 +785,13 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	}
 
 	if pi.sequenceID < response.GetSequenceId() {
-		// Ignoring the ack since it's referring to a message that has already timed out.
+		// Force connection closing so that messages can be re-transmitted in a new connection
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		p._getConn().Close()
 		return
 	} else if pi.sequenceID > response.GetSequenceId() {
-		// Force connection closing so that messages can be re-transmitted in a new connection
+		// Ignoring the ack since it's referring to a message that has already timed out.
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		return
