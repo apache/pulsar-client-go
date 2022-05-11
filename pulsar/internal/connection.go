@@ -64,6 +64,9 @@ type ConnectionListener interface {
 	// ReceivedSendReceipt receive and process the return value of the send command.
 	ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
+	// ReceivedSendRateLimitedError receive and process the send rate limited error of the send command.
+	ReceivedSendRateLimitedError(sendError *pb.CommandSendError)
+
 	// ConnectionClosed close the TCP connection.
 	ConnectionClosed()
 }
@@ -801,6 +804,18 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 			return
 		}
 		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
+	case pb.ServerError_ProducerBlockedQuotaExceededException:
+		// This error means the message send rate is limited by broker.
+		// Trigger callback to support client fail fast.
+		c.listenersLock.RLock()
+		producer, ok := c.listeners[producerID]
+		c.listenersLock.RUnlock()
+		if !ok {
+			c.log.Warnf("Received unexpected error response for producer %d of type %s",
+				producerID, sendError.GetError())
+			return
+		}
+		producer.ReceivedSendRateLimitedError(sendError)
 	default:
 		// By default, for transient error, let the reconnection logic
 		// to take place and re-establish the produce again

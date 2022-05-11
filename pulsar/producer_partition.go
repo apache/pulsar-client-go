@@ -53,6 +53,7 @@ var (
 	errContextExpired  = newError(TimeoutError, "message send context expired")
 	errMessageTooLarge = newError(MessageTooBig, "message size exceeds MaxMessageSize")
 	errProducerClosed  = newError(ProducerClosed, "producer already been closed")
+	errSendRateLimited = newError(ProducerSendRateIsLimited, "message send rate is limited")
 
 	buffersPool sync.Pool
 )
@@ -855,6 +856,44 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		// Mark this pending item as done
 		pi.Complete()
 	}
+}
+
+func (p *partitionProducer) ReceivedSendRateLimitedError(sendError *pb.CommandSendError) {
+	pi, ok := p.pendingQueue.Peek().(*pendingItem)
+
+	if !ok {
+		p.log.Warnf("Received send quota exceed error %s but pending queue is empty.", sendError.GetMessage())
+		p._getConn().Close()
+		return
+	}
+
+	if pi.sequenceID != sendError.GetSequenceId() {
+		p.log.Warnf("Received send quota exceed error on sequenceId %v - expected: %v, closing connection",
+			sendError.GetSequenceId(), pi.sequenceID)
+		p._getConn().Close()
+		return
+	}
+
+	p.pendingQueue.Poll()
+	pi.Lock()
+	defer pi.Unlock()
+	for _, i := range pi.sendRequests {
+		sr := i.(*sendRequest)
+		if sr.msg != nil {
+			size := len(sr.msg.Payload)
+			p.publishSemaphore.Release()
+			p.metrics.MessagesPending.Dec()
+			p.metrics.BytesPending.Sub(float64(size))
+			p.log.WithError(errSendRateLimited).
+				WithField("size", size).
+				WithField("properties", sr.msg.Properties)
+		}
+		if sr.callback != nil {
+			sr.callback(nil, sr.msg, errSendRateLimited)
+		}
+	}
+	// flag the send has completed with error
+	pi.Complete()
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
