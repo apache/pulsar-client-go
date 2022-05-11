@@ -509,7 +509,7 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 
 	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, cmdAck)
 	if err != nil {
-		pc.log.Errorf("request ack message: %v, consumer: %d, error: %v", msgID.String(), pc.consumerID, err)
+		pc.log.Errorf("request internal ack message: %v, consumer: %d, error: %v", msgID.String(), pc.consumerID, err)
 	}
 }
 
@@ -1298,7 +1298,7 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 			ValidationError: validationError.Enum(),
 		})
 	if err != nil {
-		pc.log.Errorf("request ack message: %v, consumer: %d, error: %v", msgID.String(), pc.consumerID, err)
+		pc.log.Errorf("discard corrupted message: %v, consumer: %d, error: %v", msgID.String(), pc.consumerID, err)
 	}
 }
 
