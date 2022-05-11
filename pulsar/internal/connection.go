@@ -470,7 +470,7 @@ func (c *connection) WriteData(data Buffer) {
 			c.log.Debug("Couldn't write on connection channel immediately")
 			state := c.getState()
 			if state != connectionReady {
-				c.log.Debug("Connection was already closed")
+				c.log.Info("Connection was already closed")
 				return
 			}
 		}
