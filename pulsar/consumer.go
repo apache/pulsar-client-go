@@ -200,10 +200,10 @@ type Consumer interface {
 	Chan() <-chan ConsumerMessage
 
 	// Ack the consumption of a single message
-	Ack(Message)
+	Ack(Message) error
 
 	// AckID the consumption of a single message, identified by its MessageID
-	AckID(MessageID)
+	AckID(MessageID) error
 
 	// ReconsumeLater mark a message for redelivery after custom delay
 	ReconsumeLater(msg Message, delay time.Duration)

@@ -167,6 +167,9 @@ type connection struct {
 	tlsOptions *TLSOptions
 	auth       auth.Provider
 
+	reconnectFlagLock sync.Mutex
+	reconnectFlag     bool
+
 	maxMessageSize int32
 	metrics        *Metrics
 }
@@ -207,6 +210,8 @@ func newConnection(opts connectionOptions) *connection {
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
 		metrics:          opts.metrics,
+
+		reconnectFlag: false,
 	}
 	cnx.setState(connectionInit)
 	cnx.reader = newConnectionReader(cnx)
@@ -823,7 +828,9 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	consumerID := closeConsumer.GetConsumerId()
 	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
 
-	c.changeState(connectionClosed)
+	c.reconnectFlagLock.Lock()
+	c.reconnectFlag = true
+	c.reconnectFlagLock.Unlock()
 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ConnectionClosed()
@@ -837,7 +844,9 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
 
-	c.changeState(connectionClosed)
+	c.reconnectFlagLock.Lock()
+	c.reconnectFlag = true
+	c.reconnectFlagLock.Unlock()
 
 	producer, ok := c.deletePendingProducers(producerID)
 	// did we find a producer?
