@@ -167,9 +167,6 @@ type connection struct {
 	tlsOptions *TLSOptions
 	auth       auth.Provider
 
-	reconnectFlagLock sync.Mutex
-	reconnectFlag     bool
-
 	maxMessageSize int32
 	metrics        *Metrics
 }
@@ -210,8 +207,6 @@ func newConnection(opts connectionOptions) *connection {
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
 		metrics:          opts.metrics,
-
-		reconnectFlag: false,
 	}
 	cnx.setState(connectionInit)
 	cnx.reader = newConnectionReader(cnx)
@@ -604,13 +599,11 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	state := c.getState()
 	if state == connectionClosed || state == connectionClosing {
 		callback(req, ErrConnectionClosed)
-		c.setReconnectFlag(true)
 
 	} else {
 		select {
 		case <-c.closeCh:
 			callback(req, ErrConnectionClosed)
-			c.setReconnectFlag(true)
 
 		case c.incomingRequestsCh <- &request{
 			id:       &requestID,
@@ -627,13 +620,11 @@ func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
 
 	state := c.getState()
 	if state == connectionClosed || state == connectionClosing {
-		c.setReconnectFlag(true)
 		return ErrConnectionClosed
 	}
 
 	select {
 	case <-c.closeCh:
-		c.setReconnectFlag(true)
 		return ErrConnectionClosed
 
 	case c.incomingRequestsCh <- &request{
@@ -832,7 +823,7 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	consumerID := closeConsumer.GetConsumerId()
 	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
 
-	c.setReconnectFlag(true)
+	c.changeState(connectionClosed)
 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ConnectionClosed()
@@ -846,7 +837,7 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	c.log.Infof("Broker notification of Closed producer: %d", closeProducer.GetProducerId())
 	producerID := closeProducer.GetProducerId()
 
-	c.setReconnectFlag(true)
+	c.changeState(connectionClosed)
 
 	producer, ok := c.deletePendingProducers(producerID)
 	// did we find a producer?
@@ -887,7 +878,6 @@ func (c *connection) Close() {
 		cnx := c.cnx
 		c.Unlock()
 		c.changeState(connectionClosed)
-		c.setReconnectFlag(false)
 
 		if cnx != nil {
 			_ = cnx.Close()
@@ -933,12 +923,6 @@ func (c *connection) changeState(state connectionState) {
 
 	c.setState(state)
 	c.cond.Broadcast()
-}
-
-func (c *connection) setReconnectFlag(reconnectFlag bool) {
-	c.reconnectFlagLock.Lock()
-	c.reconnectFlag = reconnectFlag
-	c.reconnectFlagLock.Unlock()
 }
 
 func (c *connection) getState() connectionState {
