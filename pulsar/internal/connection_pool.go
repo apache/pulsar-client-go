@@ -82,7 +82,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		// current connection is closed, we need to remove the connection object from the current
 		// connection pool and create a new connection.
 		if conn.closed() {
-			p.log.Infof("Removed connection from pool key=%s logical_addr=%+v physical_addr=%+v",
+			p.log.Debugf("Removed connection from pool key=%s logical_addr=%+v physical_addr=%+v",
 				key, conn.logicalAddr, conn.physicalAddr)
 			delete(p.connections, key)
 			conn.Close()
