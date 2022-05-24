@@ -104,6 +104,7 @@ type partitionConsumerOpts struct {
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
 	decryption                 *MessageDecryptionInfo
+	ackWithResponse            bool
 }
 
 type partitionConsumer struct {
@@ -525,10 +526,20 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		EntryId:  proto.Uint64(uint64(msgID.entryID)),
 	}
 
+	reqID := pc.client.rpcClient.NewRequestID()
 	cmdAck := &pb.CommandAck{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		MessageId:  messageIDs,
 		AckType:    pb.CommandAck_Individual.Enum(),
+	}
+
+	if pc.options.ackWithResponse {
+		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+		if err != nil {
+			pc.log.WithError(err).Error("Ack with response error")
+			req.err = err
+		}
+		return
 	}
 
 	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, cmdAck)

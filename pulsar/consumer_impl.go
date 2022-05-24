@@ -361,6 +361,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
 				decryption:                 c.options.Decryption,
+				ackWithResponse:            c.options.AckWithResponse,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{

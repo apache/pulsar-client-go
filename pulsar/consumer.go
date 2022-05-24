@@ -182,6 +182,13 @@ type ConsumerOptions struct {
 	// > Notice: the NackBackoffPolicy will not work with `consumer.NackID(MessageID)`
 	// > because we are not able to get the redeliveryCount from the message ID.
 	NackBackoffPolicy NackBackoffPolicy
+
+	// AckWithResponse is a return value added to Ack Command, and its purpose is to confirm whether Ack Command
+	// is executed correctly on the Broker side. When set to true, the error information returned by the Ack
+	// method contains the return value of the Ack Command processed by the Broker side; when set to false, the
+	// error information of the Ack method only contains errors that may occur in the Go SDK's own processing.
+	// Default: false
+	AckWithResponse bool
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

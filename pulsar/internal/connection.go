@@ -564,6 +564,9 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	case pb.BaseCommand_MESSAGE:
 		c.handleMessage(cmd.GetMessage(), headersAndPayload)
 
+	case pb.BaseCommand_ACK_RESPONSE:
+		c.handleAckResponse(cmd.GetAckResponse())
+
 	case pb.BaseCommand_PING:
 		c.handlePing()
 	case pb.BaseCommand_PONG:
@@ -673,6 +676,26 @@ func (c *connection) handleResponseError(serverError *pb.CommandError) {
 	}
 
 	errMsg := fmt.Sprintf("server error: %s: %s", serverError.GetError(), serverError.GetMessage())
+	request.callback(nil, errors.New(errMsg))
+}
+
+func (c *connection) handleAckResponse(ackResponse *pb.CommandAckResponse) {
+	requestID := ackResponse.GetRequestId()
+	consumerID := ackResponse.GetConsumerId()
+
+	request, ok := c.deletePendingRequest(requestID)
+	if !ok {
+		c.log.Warnf("AckResponse has complete when receive response! requestId : %d, consumerId : %d",
+			requestID, consumerID)
+		return
+	}
+
+	if ackResponse.GetMessage() == "" {
+		request.callback(nil, nil)
+		return
+	}
+
+	errMsg := fmt.Sprintf("ack response error: %s: %s", ackResponse.GetError(), ackResponse.GetMessage())
 	request.callback(nil, errors.New(errMsg))
 }
 
