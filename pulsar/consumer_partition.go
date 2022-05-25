@@ -332,12 +332,12 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 		ackReq.msgID = msgID
 		// send ack request to eventsCh
 		pc.eventsCh <- ackReq
+		// wait for the request to complete
+		<-ackReq.doneCh
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
 
-	// wait for the request to complete
-	<-ackReq.doneCh
 	return ackReq.err
 }
 
