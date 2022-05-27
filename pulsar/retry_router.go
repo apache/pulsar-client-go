@@ -87,6 +87,9 @@ func (r *retryRouter) run() {
 			producer := r.getProducer()
 
 			msgID := rm.consumerMsg.ID()
+			if rm.producerMsg.Properties["__topicName__"] != "" {
+				delete(rm.producerMsg.Properties, "__topicName__")
+			}
 			producer.SendAsync(context.Background(), &rm.producerMsg, func(messageID MessageID,
 				producerMessage *ProducerMessage, err error) {
 				if err != nil {
