@@ -37,6 +37,7 @@ type acker interface {
 	AckID(id trackingMessageID)
 	NackID(id trackingMessageID)
 	NackMsg(msg Message)
+	NackMsgLater(msg Message, delay time.Duration)
 }
 
 type consumer struct {
@@ -528,6 +529,19 @@ func (c *consumer) Nack(msg Message) {
 	}
 
 	c.NackID(msg.ID())
+}
+
+func (c *consumer) NackLater(msg Message, delay time.Duration) {
+	mid, ok := c.messageID(msg.ID())
+	if !ok {
+		return
+	}
+
+	if mid.consumer != nil {
+		mid.Nack()
+		return
+	}
+	c.consumers[mid.partitionIdx].NackMsgLater(msg, delay)
 }
 
 func (c *consumer) NackID(msgID MessageID) {

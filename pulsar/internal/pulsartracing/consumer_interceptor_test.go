@@ -72,6 +72,8 @@ func (c *mockConsumer) ReconsumeLater(msg pulsar.Message, delay time.Duration) {
 
 func (c *mockConsumer) Nack(msg pulsar.Message) {}
 
+func (c *mockConsumer)  NackLater(msg pulsar.Message, delay time.Duration) {}
+
 func (c *mockConsumer) NackID(msgID pulsar.MessageID) {}
 
 func (c *mockConsumer) Close() {}

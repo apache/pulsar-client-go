@@ -330,6 +330,11 @@ func (pc *partitionConsumer) NackMsg(msg Message) {
 	pc.metrics.NacksCounter.Inc()
 }
 
+func (pc *partitionConsumer) NackMsgLater(msg Message, delay time.Duration) {
+	pc.nackTracker.AddMessageLater(msg, delay)
+	pc.metrics.NacksCounter.Inc()
+}
+
 func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
 	pc.eventsCh <- &redeliveryRequest{msgIds}
 

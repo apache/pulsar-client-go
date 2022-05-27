@@ -217,6 +217,9 @@ type Consumer interface {
 	// This call is not blocking.
 	Nack(Message)
 
+	// NackLater acknowledges the failure to process a single message after custom delay
+	NackLater(msg Message, delay time.Duration)
+
 	// NackID acknowledges the failure to process a single message.
 	//
 	// When a message is "negatively acked" it will be marked for redelivery after
