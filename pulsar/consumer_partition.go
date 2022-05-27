@@ -534,6 +534,7 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	}
 
 	if pc.options.ackWithResponse {
+		cmdAck.RequestId = proto.Uint64(reqID)
 		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
 		if err != nil {
 			pc.log.WithError(err).Error("Ack with response error")
