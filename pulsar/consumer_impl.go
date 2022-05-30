@@ -589,14 +589,14 @@ func (c *consumer) Seek(msgID MessageID) error {
 func (c *consumer) SeekByTime(time time.Time) error {
 	c.Lock()
 	defer c.Unlock()
-	errChan := make(chan error, len(c.consumers))
+	errorSeek := make([]error, len(c.consumers))
 	// run SeekByTime on every partition of topic
-	for _, cons := range c.consumers {
-		errChan <- cons.SeekByTime(time)
+	for i, cons := range c.consumers {
+		errorSeek[i] = cons.SeekByTime(time)
 	}
 
 	// check if there are any errors on running SeekByTime on every partition of topic
-	for err := range errChan {
+	for _, err := range errorSeek {
 		if err != nil {
 			return newError(SeekFailed, err.Error())
 		}
