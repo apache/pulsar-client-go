@@ -589,11 +589,20 @@ func (c *consumer) Seek(msgID MessageID) error {
 func (c *consumer) SeekByTime(time time.Time) error {
 	c.Lock()
 	defer c.Unlock()
-	if len(c.consumers) > 1 {
-		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
+	errChan := make(chan error, len(c.consumers))
+	// run SeekByTime on every partition of topic
+	for _, cons := range c.consumers {
+		errChan <- cons.SeekByTime(time)
 	}
 
-	return c.consumers[0].SeekByTime(time)
+	// check if there are any errors on running SeekByTime on every partition of topic
+	for err := range errChan {
+		if err != nil {
+			return newError(SeekFailed, err.Error())
+		}
+	}
+
+	return nil
 }
 
 var r = &random{
