@@ -92,6 +92,9 @@ func (r *dlqRouter) run() {
 			producer := r.getProducer(cm.Consumer.(*consumer).options.Schema)
 			msg := cm.Message.(*message)
 			msgID := msg.ID()
+			if msg.properties["__topicName__"] != "" {
+				delete(msg.properties, "__topicName__")
+			}
 			producer.SendAsync(context.Background(), &ProducerMessage{
 				Payload:             msg.Payload(),
 				Key:                 msg.Key(),

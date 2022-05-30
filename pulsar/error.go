@@ -103,6 +103,8 @@ const (
 	SeekFailed
 	// ProducerClosed means producer already been closed
 	ProducerClosed
+	// TopicMismatchInvalidMessage means producer bound topic mismatches message topic property
+	TopicMismatchInvalidMessage
 )
 
 // Error implement error interface, composed of two parts: msg and result.
@@ -209,6 +211,8 @@ func getResultStr(r Result) string {
 		return "SeekFailed"
 	case ProducerClosed:
 		return "ProducerClosed"
+	case TopicMismatchInvalidMessage:
+		return "TopicMismatchInvalidMessage"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
 	}

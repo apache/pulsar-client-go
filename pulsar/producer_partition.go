@@ -54,6 +54,7 @@ var (
 	errMessageTooLarge = newError(MessageTooBig, "message size exceeds MaxMessageSize")
 	errProducerClosed  = newError(ProducerClosed, "producer already been closed")
 	errSendRateLimited = newError(ProducerSendRateIsLimited, "message send rate is limited")
+	errTopicMismatch   = newError(TopicMismatchInvalidMessage, "producer bound topic mismatches message topic property")
 
 	buffersPool sync.Pool
 )
@@ -762,6 +763,15 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	if p.errInReconnect != nil {
 		callback(nil, msg, p.errInReconnect)
 		return
+	}
+
+	// If topic property set, check for mismatch.
+	if msg.Properties["__topicName__"] != "" {
+		if !strings.Contains(p.topic, msg.Properties["__topicName__"]) {
+			callback(nil, msg, errTopicMismatch)
+			return
+		}
+		msg.Properties["__topicName__"] = p.topic // with partition index suffix
 	}
 
 	sr := &sendRequest{
