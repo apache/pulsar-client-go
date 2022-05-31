@@ -105,6 +105,7 @@ type partitionConsumerOpts struct {
 	schema                     Schema
 	decryption                 *MessageDecryptionInfo
 	ackWithResponse            bool
+	priorityLevel              int32
 }
 
 type partitionConsumer struct {
@@ -117,10 +118,11 @@ type partitionConsumer struct {
 
 	conn uAtomic.Value
 
-	topic        string
-	name         string
-	consumerID   uint64
-	partitionIdx int32
+	topic         string
+	name          string
+	priorityLevel int32
+	consumerID    uint64
+	partitionIdx  int32
 
 	// shared channel
 	messageCh chan ConsumerMessage
@@ -160,6 +162,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		options:              options,
 		topic:                options.topic,
 		name:                 options.consumerName,
+		priorityLevel:        options.priorityLevel,
 		consumerID:           client.rpcClient.NewConsumerID(),
 		partitionIdx:         int32(options.partitionIdx),
 		eventsCh:             make(chan interface{}, 10),
@@ -1142,7 +1145,7 @@ func (pc *partitionConsumer) grabConn() error {
 		ConsumerId:                 proto.Uint64(pc.consumerID),
 		RequestId:                  proto.Uint64(requestID),
 		ConsumerName:               proto.String(pc.name),
-		PriorityLevel:              nil,
+		PriorityLevel:              proto.Int32(pc.priorityLevel),
 		Durable:                    proto.Bool(pc.options.subscriptionMode == durable),
 		Metadata:                   internal.ConvertFromStringMap(pc.options.metadata),
 		SubscriptionProperties:     internal.ConvertFromStringMap(pc.options.subProperties),

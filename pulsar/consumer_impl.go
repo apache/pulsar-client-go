@@ -47,6 +47,7 @@ type consumer struct {
 	options                   ConsumerOptions
 	consumers                 []*partitionConsumer
 	consumerName              string
+	priorityLevel             int32
 	disableForceTopicCreation bool
 
 	// channel used to deliver message to clients
@@ -70,6 +71,14 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 	if options.SubscriptionName == "" {
 		return nil, newError(SubscriptionNotFound, "subscription name is required for consumer")
+	}
+
+	if options.PriorityLevel <= 0 {
+		options.PriorityLevel = 0
+	}
+
+	if options.Type != Shared {
+		options.PriorityLevel = 0
 	}
 
 	if options.ReceiverQueueSize <= 0 {
@@ -219,6 +228,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		rlq:                       rlq,
 		log:                       client.log.SubLogger(log.Fields{"topic": topic}),
 		consumerName:              options.Name,
+		priorityLevel:             options.PriorityLevel,
 		metrics:                   client.metrics.GetLeveledMetrics(topic),
 	}
 
@@ -343,6 +353,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			opts := &partitionConsumerOpts{
 				topic:                      pt,
 				consumerName:               c.consumerName,
+				priorityLevel:              c.priorityLevel,
 				subscription:               c.options.SubscriptionName,
 				subscriptionType:           c.options.Type,
 				subscriptionInitPos:        c.options.SubscriptionInitialPosition,

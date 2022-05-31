@@ -97,6 +97,10 @@ type ConsumerOptions struct {
 	// This argument is required when subscribing
 	SubscriptionName string
 
+	// PriorityLevel specifies the priority level for this consumer
+	// Default is `0`
+	PriorityLevel int32
+
 	// Properties represents a set of application defined properties for the consumer.
 	// Those properties will be visible in the topic stats
 	Properties map[string]string
