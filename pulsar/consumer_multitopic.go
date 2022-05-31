@@ -35,8 +35,9 @@ type multiTopicConsumer struct {
 
 	options ConsumerOptions
 
-	consumerName string
-	messageCh    chan ConsumerMessage
+	consumerName  string
+	priorityLevel int32
+	messageCh     chan ConsumerMessage
 
 	consumers map[string]Consumer
 
@@ -51,15 +52,16 @@ type multiTopicConsumer struct {
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
 	mtc := &multiTopicConsumer{
-		client:       client,
-		options:      options,
-		messageCh:    messageCh,
-		consumers:    make(map[string]Consumer, len(topics)),
-		closeCh:      make(chan struct{}),
-		dlq:          dlq,
-		rlq:          rlq,
-		log:          client.log.SubLogger(log.Fields{"topic": topics}),
-		consumerName: options.Name,
+		client:        client,
+		options:       options,
+		messageCh:     messageCh,
+		consumers:     make(map[string]Consumer, len(topics)),
+		closeCh:       make(chan struct{}),
+		dlq:           dlq,
+		rlq:           rlq,
+		log:           client.log.SubLogger(log.Fields{"topic": topics}),
+		consumerName:  options.Name,
+		priorityLevel: options.PriorityLevel,
 	}
 
 	var errs error

@@ -60,7 +60,8 @@ type regexConsumer struct {
 
 	log log.Logger
 
-	consumerName string
+	consumerName  string
+	priorityLevel int32
 }
 
 func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
@@ -81,8 +82,9 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 
 		closeCh: make(chan struct{}),
 
-		log:          c.log.SubLogger(log.Fields{"topic": tn.Name}),
-		consumerName: opts.Name,
+		log:           c.log.SubLogger(log.Fields{"topic": tn.Name}),
+		consumerName:  opts.Name,
+		priorityLevel: opts.PriorityLevel,
 	}
 
 	topics, err := rc.topics()
