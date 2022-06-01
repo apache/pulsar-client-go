@@ -590,21 +590,14 @@ func (c *consumer) Seek(msgID MessageID) error {
 func (c *consumer) SeekByTime(time time.Time) error {
 	c.Lock()
 	defer c.Unlock()
-	errorSeek := make([]error, len(c.consumers))
-	// run SeekByTime on every partition of topic
-	for i, cons := range c.consumers {
-		errorSeek[i] = cons.SeekByTime(time)
-	}
-
 	var errs error
-	// check if there are any errors on running SeekByTime on every partition of topic
-	for _, err := range errorSeek {
-		if err != nil {
-			msg := fmt.Sprintf("unable to SeekByTime for topic=%s partition=%s", c.topic, c.Subscription())
+	// run SeekByTime on every partition of topic
+	for _, cons := range c.consumers {
+		if err := cons.SeekByTime(time); err != nil {
+			msg := fmt.Sprintf("unable to SeekByTime for topic=%s subscription=%s", c.topic, c.Subscription())
 			errs = pkgerrors.Wrap(newError(SeekFailed, err.Error()), msg)
 		}
 	}
-
 	return errs
 }
 
