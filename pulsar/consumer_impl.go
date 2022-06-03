@@ -30,6 +30,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
@@ -589,11 +590,15 @@ func (c *consumer) Seek(msgID MessageID) error {
 func (c *consumer) SeekByTime(time time.Time) error {
 	c.Lock()
 	defer c.Unlock()
-	if len(c.consumers) > 1 {
-		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
+	var errs error
+	// run SeekByTime on every partition of topic
+	for _, cons := range c.consumers {
+		if err := cons.SeekByTime(time); err != nil {
+			msg := fmt.Sprintf("unable to SeekByTime for topic=%s subscription=%s", c.topic, c.Subscription())
+			errs = pkgerrors.Wrap(newError(SeekFailed, err.Error()), msg)
+		}
 	}
-
-	return c.consumers[0].SeekByTime(time)
+	return errs
 }
 
 var r = &random{
