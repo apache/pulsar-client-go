@@ -18,7 +18,6 @@
 package pulsar
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"path"
@@ -61,28 +60,11 @@ type pulsarClient struct {
 
 // New returns a new client
 func New(config *common.Config) (Client, error) {
-	if len(config.WebServiceURL) == 0 {
-		config.WebServiceURL = DefaultWebServiceURL
-	}
-
-	c := &pulsarClient{
-		APIVersion: config.PulsarAPIVersion,
-		Client: &cli.Client{
-			ServiceURL:  config.WebServiceURL,
-			VersionInfo: ReleaseVersion,
-			HTTPClient: &http.Client{
-				Timeout: DefaultHTTPTimeOutDuration,
-			},
-		},
-	}
-
 	authProvider, err := auth.GetAuthProvider(config)
-	if !utils.IsNilFixed(authProvider) {
-		c.Client.HTTPClient.Transport = *authProvider
-	} else {
-		fmt.Printf("No Auth Provider found\n")
+	if err != nil {
+		return nil, err
 	}
-	return c, err
+	return NewPulsarClientWithAuthProvider(config, authProvider)
 }
 
 // NewWithAuthProvider creates a client with auth provider.
@@ -98,12 +80,31 @@ func NewWithAuthProvider(config *common.Config, authProvider auth.Provider) Clie
 // NewPulsarClientWithAuthProvider create a client with auth provider.
 func NewPulsarClientWithAuthProvider(config *common.Config,
 	authProvider auth.Provider) (Client, error) {
-	defaultTransport, err := auth.NewDefaultTransport(config)
-	if err != nil {
-		return nil, err
+	var transport http.RoundTripper
+
+	if authProvider != nil {
+		transport = authProvider.Transport()
+		if transport != nil {
+			transport = authProvider
+		}
 	}
 
-	authProvider.WithTransport(defaultTransport)
+	if transport == nil {
+		defaultTransport, err := auth.NewDefaultTransport(config)
+		if err != nil {
+			return nil, err
+		}
+		if authProvider != nil {
+			authProvider.WithTransport(authProvider)
+		} else {
+			transport = defaultTransport
+		}
+	}
+
+	webServiceURL := config.WebServiceURL
+	if len(webServiceURL) == 0 {
+		config.WebServiceURL = DefaultWebServiceURL
+	}
 
 	c := &pulsarClient{
 		APIVersion: config.PulsarAPIVersion,
@@ -112,7 +113,7 @@ func NewPulsarClientWithAuthProvider(config *common.Config,
 			VersionInfo: ReleaseVersion,
 			HTTPClient: &http.Client{
 				Timeout:   DefaultHTTPTimeOutDuration,
-				Transport: authProvider,
+				Transport: transport,
 			},
 		},
 	}
