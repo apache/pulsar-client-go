@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -63,13 +64,15 @@ func (id trackingMessageID) Undefined() bool {
 	return id == trackingMessageID{}
 }
 
-func (id trackingMessageID) Ack() {
+func (id trackingMessageID) Ack() error {
 	if id.consumer == nil {
-		return
+		return errors.New("consumer is nil in trackingMessageID")
 	}
 	if id.ack() {
-		id.consumer.AckID(id)
+		return id.consumer.AckID(id)
 	}
+
+	return nil
 }
 
 func (id trackingMessageID) Nack() {

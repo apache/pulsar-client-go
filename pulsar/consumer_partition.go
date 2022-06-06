@@ -104,6 +104,7 @@ type partitionConsumerOpts struct {
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
 	decryption                 *MessageDecryptionInfo
+	ackWithResponse            bool
 }
 
 type partitionConsumer struct {
@@ -317,21 +318,24 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
-func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
+func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
-		return
+		return errors.New("consumer state is closed")
 	}
+
+	ackReq := new(ackRequest)
 	if !msgID.Undefined() && msgID.ack() {
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
-		req := &ackRequest{
-			msgID: msgID,
-		}
-		pc.eventsCh <- req
+		ackReq.msgID = msgID
+		// send ack request to eventsCh
+		pc.eventsCh <- ackReq
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
+
+	return ackReq.err
 }
 
 func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
@@ -522,15 +526,27 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		EntryId:  proto.Uint64(uint64(msgID.entryID)),
 	}
 
+	reqID := pc.client.rpcClient.NewRequestID()
 	cmdAck := &pb.CommandAck{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		MessageId:  messageIDs,
 		AckType:    pb.CommandAck_Individual.Enum(),
 	}
 
+	if pc.options.ackWithResponse {
+		cmdAck.RequestId = proto.Uint64(reqID)
+		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+		if err != nil {
+			pc.log.WithError(err).Error("Ack with response error")
+			req.err = err
+		}
+		return
+	}
+
 	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, cmdAck)
 	if err != nil {
 		pc.log.Error("Connection was closed when request ack cmd")
+		req.err = err
 	}
 }
 
@@ -919,6 +935,7 @@ func (pc *partitionConsumer) dispatcher() {
 
 type ackRequest struct {
 	msgID trackingMessageID
+	err   error
 }
 
 type unsubscribeRequest struct {
