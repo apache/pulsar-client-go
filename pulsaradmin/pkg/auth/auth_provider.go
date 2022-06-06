@@ -37,7 +37,7 @@ type Transport struct {
 	T http.RoundTripper
 }
 
-func GetAuthProvider(config *common.Config) (*Provider, error) {
+func GetAuthProvider(config *common.Config) (Provider, error) {
 	var provider Provider
 	defaultTransport, err := NewDefaultTransport(config)
 	if err != nil {
@@ -65,7 +65,7 @@ func GetAuthProvider(config *common.Config) (*Provider, error) {
 				config.IssuerEndpoint, config.ClientID, config.Audience, config.Scope, defaultTransport)
 		}
 	}
-	return &provider, err
+	return provider, err
 }
 
 // GetDefaultTransport gets a default transport.

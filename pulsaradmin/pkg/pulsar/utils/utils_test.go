@@ -58,4 +58,10 @@ func TestIsNilFixed(t *testing.T) {
 
 	var ch chan string
 	assert.True(t, IsNilFixed(ch))
+
+	var nilInterface People
+	assert.True(t, IsNilFixed(nilInterface))
+
+	// pointer to an interface, the IsNilFixed method cannot check this.
+	assert.False(t, IsNilFixed(&nilInterface))
 }
