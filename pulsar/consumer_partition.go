@@ -842,11 +842,12 @@ func (pc *partitionConsumer) dispatcher() {
 			if pc.availablePermits >= flowThreshold {
 				availablePermits := pc.availablePermits
 				requestedPermits := availablePermits
-				pc.availablePermits = 0
 
 				pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
 				if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
 					pc.log.WithError(err).Error("unable to send permits")
+				} else {
+					pc.availablePermits = 0
 				}
 				if time.Since(lastLogFlowTimestamp) > time.Minute {
 					lastLogFlowTimestamp = time.Now()
