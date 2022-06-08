@@ -85,8 +85,8 @@ func TestNewWithCustomAuthProviderWithTransport(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, admin)
 
-	// Expected the transport of customAuthProvider will not be overwritten.
-	require.Equal(t, defaultTransport, admin.(*pulsarClient).Client.HTTPClient.Transport)
+	// Expected the customAuthProvider will not be overwritten.
+	require.Equal(t, customAuthProvider, admin.(*pulsarClient).Client.HTTPClient.Transport)
 }
 
 func TestNewWithTlsAllowInsecure(t *testing.T) {
