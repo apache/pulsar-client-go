@@ -22,10 +22,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/pulsar-client-go/oauth2"
-	"github.com/apache/pulsar-client-go/oauth2/store"
+	"github.com/skulkarni-ns/pulsar-client-go/oauth2"
+	"github.com/skulkarni-ns/pulsar-client-go/oauth2/store"
 
-	"github.com/apache/pulsar-client-go/oauth2/clock"
+	"github.com/skulkarni-ns/pulsar-client-go/oauth2/clock"
 	xoauth2 "golang.org/x/oauth2"
 )
 

@@ -27,8 +27,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/internal"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/log"
 )
 
 func TestFilterTopics(t *testing.T) {

@@ -24,10 +24,10 @@ import (
 	"sync"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/internal"
 	pkgerrors "github.com/pkg/errors"
 
-	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/log"
 )
 
 type multiTopicConsumer struct {

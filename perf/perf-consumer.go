@@ -26,7 +26,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar"
 )
 
 // ConsumeArgs define the parameters required by consume

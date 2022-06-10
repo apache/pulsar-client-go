@@ -24,8 +24,8 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	"github.com/apache/pulsar-client-go/pulsar/log"
+	pb "github.com/skulkarni-ns/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/log"
 )
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.

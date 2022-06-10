@@ -21,8 +21,8 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/internal"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/internal/crypto"
 	"github.com/stretchr/testify/assert"
 )
 

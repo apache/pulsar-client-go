@@ -20,7 +20,7 @@ package oauth2
 import (
 	"net/http"
 
-	"github.com/apache/pulsar-client-go/oauth2/clock"
+	"github.com/skulkarni-ns/pulsar-client-go/oauth2/clock"
 
 	"github.com/pkg/errors"
 )

@@ -18,7 +18,7 @@
 package crypto
 
 import (
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	pb "github.com/skulkarni-ns/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 // MessageMetadataSupplier wrapper implementation around message metadata

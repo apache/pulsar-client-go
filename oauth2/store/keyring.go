@@ -24,8 +24,8 @@ import (
 	"sync"
 
 	"github.com/99designs/keyring"
-	"github.com/apache/pulsar-client-go/oauth2"
-	"github.com/apache/pulsar-client-go/oauth2/clock"
+	"github.com/skulkarni-ns/pulsar-client-go/oauth2"
+	"github.com/skulkarni-ns/pulsar-client-go/oauth2/clock"
 )
 
 type KeyringStore struct {

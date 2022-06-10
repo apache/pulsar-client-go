@@ -24,9 +24,9 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/internal/compression"
+	"github.com/skulkarni-ns/pulsar-client-go/pulsar/internal/crypto"
+	pb "github.com/skulkarni-ns/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 const (
