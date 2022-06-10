@@ -5,7 +5,6 @@ go 1.15
 require (
 	github.com/AthenZ/athenz v1.10.39
 	github.com/DataDog/zstd v1.5.0
-	github.com/skulkarni-ns/pulsar-client-go/oauth2 v0.0.0-20220120090717-25e59572242e
 	github.com/beefsack/go-rate v0.0.0-20220214233405-116f4ca011a0
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/davecgh/go-spew v1.1.1
@@ -19,6 +18,7 @@ require (
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.11.1
 	github.com/sirupsen/logrus v1.6.0
+	github.com/skulkarni-ns/pulsar-client-go/oauth2 v0.8.1-0.20220610084806-4de1eda49c9f
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cobra v1.2.1
 	github.com/stretchr/testify v1.7.0
