@@ -5,7 +5,7 @@ go 1.15
 require (
 	github.com/AthenZ/athenz v1.10.39
 	github.com/DataDog/zstd v1.5.0
-	github.com/apache/pulsar-client-go/oauth2 v0.0.0-20220120090717-25e59572242e
+	github.com/skulkarni-n/pulsar-client-go/oauth2 v0.0.0-20220120090717-25e59572242e
 	github.com/beefsack/go-rate v0.0.0-20220214233405-116f4ca011a0
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/davecgh/go-spew v1.1.1
