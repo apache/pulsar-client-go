@@ -256,7 +256,9 @@ func (c *consumer) runBackgroundPartitionDiscovery(period time.Duration) (cancel
 				return
 			case <-ticker.C:
 				c.log.Debug("Auto discovering new partitions")
-				c.internalTopicSubscribeToPartitions()
+				if err := c.internalTopicSubscribeToPartitions(); err != nil {
+					c.log.WithError(err).Error("Failed to discover topic partitions")
+				}
 			}
 		}
 	}()
@@ -554,6 +556,9 @@ func (c *consumer) Close() {
 
 		var wg sync.WaitGroup
 		for i := range c.consumers {
+			if c.consumers[i] == nil {
+				continue
+			}
 			wg.Add(1)
 			go func(pc *partitionConsumer) {
 				defer wg.Done()
