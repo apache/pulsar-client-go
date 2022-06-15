@@ -877,18 +877,42 @@ func TestMaxBatchSize(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
-	for bias := -1; bias <= 1; bias++ {
+	for bias := -1; bias <= 3; bias++ {
 		payload := make([]byte, batchMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
-		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
-		} else {
-			assert.Equal(t, errFailAddToBatch, err)
-		}
+		// regardless max batch size, if the batch size limit is reached, batching is triggered to send messages
+		assert.NoError(t, err)
+		assert.NotNil(t, ID)
 	}
+}
+
+func TestBatchingDisabled(t *testing.T) {
+	defaultMaxMessageSize := 128 * 1024
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// when batching is disabled, the batching size has no effect
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+		BatchingMaxSize: uint(defaultMaxBatchSize),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	payload := make([]byte, defaultMaxMessageSize+100)
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload: payload,
+	})
+	// regardless max batch size, if the batch size limit is reached, batching is triggered to send messages
+	assert.NoError(t, err)
+	assert.NotNil(t, ID)
 }
 
 func TestMaxMessageSize(t *testing.T) {
