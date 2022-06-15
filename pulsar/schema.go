@@ -235,14 +235,10 @@ func (ss *StringSchema) Encode(v interface{}) ([]byte, error) {
 	return []byte(v.(string)), nil
 }
 
+// Decode convert from byte slice to string without allocating a new string
 func (ss *StringSchema) Decode(data []byte, v interface{}) error {
-	bh := (*reflect.SliceHeader)(unsafe.Pointer(&data))
-	sh := reflect.StringHeader{
-		Data: bh.Data,
-		Len:  bh.Len,
-	}
-	shPtr := (*string)(unsafe.Pointer(&sh))
-	reflect.ValueOf(v).Elem().Set(reflect.ValueOf(shPtr))
+	strPtr := (*string)(unsafe.Pointer(&data))
+	reflect.ValueOf(v).Elem().Set(reflect.ValueOf(strPtr))
 	return nil
 }
 
