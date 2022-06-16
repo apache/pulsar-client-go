@@ -482,7 +482,10 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 
 func (mp *Metrics) GetLeveledMetrics(t string) *LeveledMetrics {
 	labels := make(map[string]string, 3)
-	tn, _ := ParseTopicName(t)
+	tn, err := ParseTopicName(t)
+	if err != nil {
+		return nil
+	}
 	topic := TopicNameWithoutPartitionPart(tn)
 	switch mp.metricsLevel {
 	case 4:

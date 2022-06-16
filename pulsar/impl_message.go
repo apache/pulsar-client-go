@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"math/big"
@@ -63,13 +64,15 @@ func (id trackingMessageID) Undefined() bool {
 	return id == trackingMessageID{}
 }
 
-func (id trackingMessageID) Ack() {
+func (id trackingMessageID) Ack() error {
 	if id.consumer == nil {
-		return
+		return errors.New("consumer is nil in trackingMessageID")
 	}
 	if id.ack() {
-		id.consumer.AckID(id)
+		return id.consumer.AckID(id)
 	}
+
+	return nil
 }
 
 func (id trackingMessageID) Nack() {
@@ -243,6 +246,8 @@ type message struct {
 	schemaVersion       []byte
 	schemaInfoCache     *schemaInfoCache
 	encryptionContext   *EncryptionContext
+	index               *uint64
+	brokerPublishTime   *time.Time
 }
 
 func (msg *message) Topic() string {
@@ -310,6 +315,14 @@ func (msg *message) ProducerName() string {
 
 func (msg *message) GetEncryptionContext() *EncryptionContext {
 	return msg.encryptionContext
+}
+
+func (msg *message) Index() *uint64 {
+	return msg.index
+}
+
+func (msg *message) BrokerPublishTime() *time.Time {
+	return msg.brokerPublishTime
 }
 
 func newAckTracker(size int) *ackTracker {
