@@ -37,4 +37,4 @@ span := pulsartracing.CreateSpanFromMessage(message, tracer, "child_span")
 
 ## License
 
-[Apache 2.0 License](./LICENSE).
+[Apache 2.0 License](./../../../LICENSE).

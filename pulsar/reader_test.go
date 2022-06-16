@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -46,6 +47,27 @@ func TestReaderConfigErrors(t *testing.T) {
 	})
 	assert.Nil(t, consumer)
 	assert.NotNil(t, err)
+}
+
+func TestReaderConfigSubscribeName(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	consumer, err := client.CreateReader(ReaderOptions{
+		StartMessageID:   EarliestMessageID(),
+		Topic:            uuid.New().String(),
+		SubscriptionName: uuid.New().String(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	assert.NotNil(t, consumer)
 }
 
 func TestReader(t *testing.T) {
@@ -709,4 +731,47 @@ func TestProducerReaderRSAEncryption(t *testing.T) {
 		expectMsg := fmt.Sprintf("hello-%d", i)
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
 	}
+}
+
+func TestReaderWithSchema(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	value := "hello pulsar"
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Value: value,
+	})
+	assert.Nil(t, err)
+
+	// create reader
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+		Schema:         schema,
+	})
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	msg, err := reader.Next(context.Background())
+	assert.NoError(t, err)
+
+	var res *string
+	err = msg.GetSchemaValue(&res)
+	assert.Nil(t, err)
+	assert.Equal(t, *res, value)
 }

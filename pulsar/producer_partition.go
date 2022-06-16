@@ -34,7 +34,7 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
-	ua "go.uber.org/atomic"
+	uAtomic "go.uber.org/atomic"
 )
 
 type producerState int32
@@ -61,12 +61,12 @@ var (
 var errTopicNotFount = "TopicNotFound"
 
 type partitionProducer struct {
-	state  ua.Int32
+	state  uAtomic.Int32
 	client *client
 	topic  string
 	log    log.Logger
 
-	conn atomic.Value
+	conn uAtomic.Value
 
 	options                  *ProducerOptions
 	producerName             string
@@ -154,6 +154,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		epoch:            0,
 		schemaCache:      newSchemaCache(),
 	}
+	if p.options.DisableBatching {
+		p.batchFlushTicker.Stop()
+	}
 	p.setProducerState(producerInit)
 
 	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
@@ -170,7 +173,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	err := p.grabCnx()
 	if err != nil {
-		logger.WithError(err).Error("Failed to create producer")
+		p.batchFlushTicker.Stop()
+		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
 		return nil, err
 	}
 
@@ -236,7 +240,7 @@ func (p *partitionProducer) grabCnx() error {
 	}
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
-		p.log.WithError(err).Error("Failed to create producer")
+		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		return err
 	}
 
@@ -291,11 +295,14 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	p._setConn(res.Cnx)
-	p._getConn().RegisterListener(p.producerID, p)
+	err = p._getConn().RegisterListener(p.producerID, p)
+	if err != nil {
+		return err
+	}
 	p.log.WithFields(log.Fields{
 		"cnx":   res.Cnx.ID(),
 		"epoch": atomic.LoadUint64(&p.epoch),
-	}).Debug("Connected producer")
+	}).Info("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(pendingItems)
@@ -387,6 +394,7 @@ func (p *partitionProducer) reconnectToBroker() {
 	for maxRetry != 0 {
 		if p.getProducerState() != producerReady {
 			// Producer is already closing
+			p.log.Info("producer state not ready, exit reconnect")
 			return
 		}
 
@@ -400,6 +408,7 @@ func (p *partitionProducer) reconnectToBroker() {
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
 			return
 		}
+		p.log.WithError(err).Error("Failed to create producer at reconnect")
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errTopicNotFount) {
 			// when topic is deleted, we should give up reconnection.
@@ -415,12 +424,15 @@ func (p *partitionProducer) reconnectToBroker() {
 
 func (p *partitionProducer) runEventsLoop() {
 	go func() {
-		select {
-		case <-p.closeCh:
-			return
-		case <-p.connectClosedCh:
-			p.log.Info("runEventsLoop will reconnect in producer")
-			p.reconnectToBroker()
+		for {
+			select {
+			case <-p.closeCh:
+				p.log.Info("close producer, exit reconnect")
+				return
+			case <-p.connectClosedCh:
+				p.log.Info("runEventsLoop will reconnect in producer")
+				p.reconnectToBroker()
+			}
 		}
 	}()
 
@@ -437,11 +449,7 @@ func (p *partitionProducer) runEventsLoop() {
 				return
 			}
 		case <-p.batchFlushTicker.C:
-			if p.batchBuilder.IsMultiBatches() {
-				p.internalFlushCurrentBatches()
-			} else {
-				p.internalFlushCurrentBatch()
-			}
+			p.internalFlushCurrentBatch()
 		}
 	}
 }
@@ -459,6 +467,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	msg := request.msg
 
+	// read payload from message
 	payload := msg.Payload
 
 	var schemaPayload []byte
@@ -483,7 +492,16 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 	if msg.Value != nil {
 		schemaPayload, err = schema.Encode(msg.Value)
+	var err error
+
+	// payload and schema are mutually exclusive
+	// try to get payload from schema value only if payload is not set
+	if payload == nil && p.options.Schema != nil {
+		var schemaPayload []byte
+		schemaPayload, err = p.options.Schema.Encode(msg.Value)
 		if err != nil {
+			p.publishSemaphore.Release()
+			request.callback(nil, request.msg, newError(SchemaFailure, err.Error()))
 			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 			return
 		}
@@ -561,11 +579,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
 	if !added {
 		// The current batch is full.. flush it and retry
-		if p.batchBuilder.IsMultiBatches() {
-			p.internalFlushCurrentBatches()
-		} else {
-			p.internalFlushCurrentBatch()
-		}
+
+		p.internalFlushCurrentBatch()
 
 		// after flushing try again to add the current payload
 		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
@@ -580,11 +595,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if !sendAsBatch || request.flushImmediately {
-		if p.batchBuilder.IsMultiBatches() {
-			p.internalFlushCurrentBatches()
-		} else {
-			p.internalFlushCurrentBatch()
-		}
+
+		p.internalFlushCurrentBatch()
+
 	}
 }
 
@@ -598,6 +611,11 @@ type pendingItem struct {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
+	if p.batchBuilder.IsMultiBatches() {
+		p.internalFlushCurrentBatches()
+		return
+	}
+
 	batchData, sequenceID, callbacks, err := p.batchBuilder.Flush()
 	if batchData == nil {
 		return
@@ -759,15 +777,12 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 }
 
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
-	if p.batchBuilder.IsMultiBatches() {
-		p.internalFlushCurrentBatches()
-	} else {
-		p.internalFlushCurrentBatch()
-	}
+
+	p.internalFlushCurrentBatch()
 
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
 	if !ok {
-		fr.waitGroup.Done()
+		close(fr.doneCh)
 		return
 	}
 
@@ -780,7 +795,7 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		// The last item in the queue has been completed while we were
 		// looking at it. It's safe at this point to assume that every
 		// message enqueued before Flush() was called are now persisted
-		fr.waitGroup.Done()
+		close(fr.doneCh)
 		return
 	}
 
@@ -788,7 +803,7 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		msg: nil,
 		callback: func(id MessageID, message *ProducerMessage, e error) {
 			fr.err = e
-			fr.waitGroup.Done()
+			close(fr.doneCh)
 		},
 	}
 
@@ -796,19 +811,23 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
 	var err error
 	var msgID MessageID
 
+	// use atomic bool to avoid race
+	isDone := uAtomic.NewBool(false)
+	doneCh := make(chan struct{})
+
 	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
-		err = e
-		msgID = ID
-		wg.Done()
+		if isDone.CAS(false, true) {
+			err = e
+			msgID = ID
+			close(doneCh)
+		}
 	}, true)
 
-	wg.Wait()
+	// wait for send request to finish
+	<-doneCh
 	return msgID, err
 }
 
@@ -859,22 +878,22 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	if !ok {
 		// if we receive a receipt although the pending queue is empty, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
-		p.log.Warnf("Received ack for %v although the pending queue is empty, closing connection", response.GetMessageId())
-		p._getConn().Close()
+		p.log.Warnf("Got ack %v for timed out msg", response.GetMessageId())
 		return
 	}
 
 	if pi.sequenceID < response.GetSequenceId() {
-		// if we receive a receipt that is not the one expected, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
+		// Force connection closing so that messages can be re-transmitted in a new connection
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		p._getConn().Close()
 		return
-	} else if pi.sequenceID == response.GetSequenceId() {
+	} else if pi.sequenceID > response.GetSequenceId() {
+		// Ignoring the ack since it's referring to a message that has already timed out.
+		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
+			response.GetSequenceId(), pi.sequenceID)
+		return
+	} else {
 		// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 		p.pendingQueue.Poll()
 
@@ -920,7 +939,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
-	defer req.waitGroup.Done()
+	defer close(req.doneCh)
 	if !p.casProducerState(producerReady, producerClosing) {
 		return
 	}
@@ -955,14 +974,15 @@ func (p *partitionProducer) LastSequenceID() int64 {
 }
 
 func (p *partitionProducer) Flush() error {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
+	flushReq := &flushRequest{
+		doneCh: make(chan struct{}),
+		err:    nil,
+	}
+	p.eventsChan <- flushReq
 
-	cp := &flushRequest{&wg, nil}
-	p.eventsChan <- cp
-
-	wg.Wait()
-	return cp.err
+	// wait for the flush request to complete
+	<-flushReq.doneCh
+	return flushReq.err
 }
 
 func (p *partitionProducer) getProducerState() producerState {
@@ -985,13 +1005,11 @@ func (p *partitionProducer) Close() {
 		return
 	}
 
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	cp := &closeProducer{&wg}
+	cp := &closeProducer{doneCh: make(chan struct{})}
 	p.eventsChan <- cp
 
-	wg.Wait()
+	// wait for close producer request to complete
+	<-cp.doneCh
 }
 
 type sendRequest struct {
@@ -1003,12 +1021,12 @@ type sendRequest struct {
 }
 
 type closeProducer struct {
-	waitGroup *sync.WaitGroup
+	doneCh chan struct{}
 }
 
 type flushRequest struct {
-	waitGroup *sync.WaitGroup
-	err       error
+	doneCh chan struct{}
+	err    error
 }
 
 func (i *pendingItem) Complete() {

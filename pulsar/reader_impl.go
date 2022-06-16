@@ -66,11 +66,14 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		}
 	}
 
-	subscriptionName := options.SubscriptionRolePrefix
+	subscriptionName := options.SubscriptionName
 	if subscriptionName == "" {
-		subscriptionName = "reader"
+		subscriptionName = options.SubscriptionRolePrefix
+		if subscriptionName == "" {
+			subscriptionName = "reader"
+		}
+		subscriptionName += "-" + generateRandomName()
 	}
-	subscriptionName += "-" + generateRandomName()
 
 	receiverQueueSize := options.ReceiverQueueSize
 	if receiverQueueSize <= 0 {
@@ -102,6 +105,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
 		replicateSubscriptionState: false,
 		decryption:                 options.Decryption,
+		schema:                     options.Schema,
 	}
 
 	reader := &reader{

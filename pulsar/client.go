@@ -141,6 +141,10 @@ type Client interface {
 	// This method will block until the reader is created successfully.
 	CreateReader(ReaderOptions) (Reader, error)
 
+	// CreateTableView creates a table view instance.
+	// This method will block until the table view is created successfully.
+	CreateTableView(TableViewOptions) (TableView, error)
+
 	// TopicPartitions Fetches the list of partitions for a given topic
 	//
 	// If the topic is partitioned, this will return a list of partition names.
