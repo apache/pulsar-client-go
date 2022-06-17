@@ -768,10 +768,14 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	// If topic property set, check for mismatch.
 	if msg.Properties["__topicName__"] != "" {
 		if !strings.Contains(p.topic, msg.Properties["__topicName__"]) {
+			p.log.WithError(errTopicMismatch).Errorf(
+				"msg: %s, producer: %s, __topicName__ not match", msg.Properties["__topicName__"], p.topic)
 			callback(nil, msg, errTopicMismatch)
 			return
 		}
-		msg.Properties["__topicName__"] = p.topic // with partition index suffix
+		// Bugfix: When send failed, this message may be retried to send to another partition. So partition suffix
+		// should not be added here.
+		//msg.Properties["__topicName__"] = p.topic // with partition index suffix
 	}
 
 	sr := &sendRequest{
