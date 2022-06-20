@@ -170,7 +170,9 @@ func (p *producer) runBackgroundPartitionDiscovery(period time.Duration) (cancel
 				return
 			case <-ticker.C:
 				p.log.Debug("Auto discovering new partitions")
-				p.internalCreatePartitionsProducers()
+				if err := p.internalCreatePartitionsProducers(); err != nil {
+					p.log.WithError(err).Error("Failed to discover topic partitions")
+				}
 			}
 		}
 	}()
@@ -350,6 +352,9 @@ func (p *producer) Close() {
 		defer p.Unlock()
 
 		for _, pp := range p.producers {
+			if pp == nil {
+				continue
+			}
 			pp.Close()
 		}
 		p.client.handlers.Del(p)
