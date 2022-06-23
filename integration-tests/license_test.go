@@ -68,6 +68,7 @@ var skip = map[string]bool{
 	"../pulsar/internal/pulsar_proto/PulsarApi.pb.go": true,
 	"../.github/workflows/bot.yaml":                   true,
 	"../integration-tests/pb/hello.pb.go":             true,
+	"../integration-tests/.htpasswd":                  true,
 }
 
 func TestLicense(t *testing.T) {

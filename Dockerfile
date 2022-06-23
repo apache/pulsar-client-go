@@ -30,6 +30,8 @@ COPY integration-tests/certs /pulsar/certs
 COPY integration-tests/tokens /pulsar/tokens
 COPY integration-tests/standalone.conf /pulsar/conf
 COPY integration-tests/client.conf /pulsar/conf
+COPY integration-tests/.htpasswd /pulsar/conf
+ENV PULSAR_EXTRA_OPTS="-Dpulsar.auth.basic.conf=/pulsar/conf/.htpasswd"
 COPY pulsar-test-service-start.sh /pulsar/bin
 COPY pulsar-test-service-stop.sh /pulsar/bin
 COPY run-ci.sh /pulsar/bin
