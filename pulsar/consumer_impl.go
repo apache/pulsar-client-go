@@ -74,7 +74,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	}
 
 	if options.PriorityLevel <= 0 {
-		options.PriorityLevel = 0
+		return nil, newError(ConsumerOptionsInvalid, "consumer option priority level needs to be >= 0")
 	}
 
 	if options.Type != Shared {

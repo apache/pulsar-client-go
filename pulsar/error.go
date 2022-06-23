@@ -85,6 +85,8 @@ const (
 	SubscriptionNotFound
 	// ConsumerNotFound consumer not found
 	ConsumerNotFound
+	// ConsumerOptionsInvalid ConsumerOptions is invalid
+	ConsumerOptionsInvalid
 	// UnsupportedVersionError when an older client/version doesn't support a required feature
 	UnsupportedVersionError
 	// TopicTerminated topic was already terminated
