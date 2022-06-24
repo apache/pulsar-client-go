@@ -148,8 +148,6 @@ type connection struct {
 
 	log log.Logger
 
-	requestIDGenerator uint64
-
 	incomingRequestsWG sync.WaitGroup
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
@@ -955,10 +953,6 @@ func (c *connection) setState(state connectionState) {
 
 func (c *connection) closed() bool {
 	return connectionClosed == c.getState()
-}
-
-func (c *connection) newRequestID() uint64 {
-	return atomic.AddUint64(&c.requestIDGenerator, 1)
 }
 
 func (c *connection) getTLSConfig() (*tls.Config, error) {
