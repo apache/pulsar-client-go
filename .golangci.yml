@@ -5,20 +5,24 @@ run:
   deadline: 6m
 
 linters:
-  disable-all: true
+  # Uncomment this line to run only the explicitly enabled linters
+  # disable-all: true
+
+  # Run these linters in addition to the default ones
   enable:
     - bodyclose
-    - deadcode
     - goimports
-    - revive
-    - gosimple
-    - govet
+    - lll
     - misspell
-    - structcheck
+    - prealloc
+    - revive
     - stylecheck
-    - typecheck
     - unconvert
     - unparam
-    - varcheck
-    - lll
-    - prealloc
+
+  # Disable these default linters
+  disable:
+    - errcheck
+    - ineffassign
+    - staticcheck
+    - unused
