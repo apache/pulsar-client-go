@@ -23,6 +23,5 @@ linters:
   # Disable these default linters
   disable:
     - errcheck
-    - ineffassign
     - staticcheck
     - unused
