@@ -242,14 +242,15 @@ func (tv *TableViewImpl) Close() {
 }
 
 func (tv *TableViewImpl) handleMessage(msg Message) {
-	tv.dataMu.Lock()
-	defer tv.dataMu.Unlock()
-
-	payload := reflect.Indirect(reflect.New(tv.options.SchemaValueType)).Interface()
-	if err := msg.GetSchemaValue(&payload); err != nil {
-		tv.logger.Errorf("msg.GetSchemaValue() failed with %w; msg is %v", msg, err)
-	}
 	if msg.Key() != "" {
+		tv.dataMu.Lock()
+		defer tv.dataMu.Unlock()
+
+		payload := reflect.Indirect(reflect.New(tv.options.SchemaValueType)).Interface()
+		if err := msg.GetSchemaValue(&payload); err != nil {
+			tv.logger.Errorf("msg.GetSchemaValue() failed with %w; msg is %v", msg, err)
+		}
+
 		tv.data[msg.Key()] = payload
 		for _, listener := range tv.listeners {
 			if err := listener(msg.Key(), payload); err != nil {
