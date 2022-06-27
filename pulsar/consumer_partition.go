@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -103,6 +104,7 @@ type partitionConsumerOpts struct {
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
 	decryption                 *MessageDecryptionInfo
+	ackWithResponse            bool
 }
 
 type partitionConsumer struct {
@@ -278,6 +280,10 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 }
 
 func (pc *partitionConsumer) getLastMessageID() (trackingMessageID, error) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
+		return trackingMessageID{}, errors.New("failed to redeliver closing or closed consumer")
+	}
 	req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
 	pc.eventsCh <- req
 
@@ -292,6 +298,11 @@ func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) 
 }
 
 func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to getLastMessageID closing or closed consumer")
+		return trackingMessageID{}, errors.New("failed to getLastMessageID closing or closed consumer")
+	}
+
 	requestID := pc.client.rpcClient.NewRequestID()
 	cmdGetLastMessageID := &pb.CommandGetLastMessageId{
 		RequestId:  proto.Uint64(requestID),
@@ -307,17 +318,24 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
-func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
+func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return errors.New("consumer state is closed")
+	}
+
+	ackReq := new(ackRequest)
 	if !msgID.Undefined() && msgID.ack() {
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
-		req := &ackRequest{
-			msgID: msgID,
-		}
-		pc.eventsCh <- req
+		ackReq.msgID = msgID
+		// send ack request to eventsCh
+		pc.eventsCh <- ackReq
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
+
+	return ackReq.err
 }
 
 func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
@@ -331,6 +349,10 @@ func (pc *partitionConsumer) NackMsg(msg Message) {
 }
 
 func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
+		return
+	}
 	pc.eventsCh <- &redeliveryRequest{msgIds}
 
 	iMsgIds := make([]MessageID, len(msgIds))
@@ -341,6 +363,10 @@ func (pc *partitionConsumer) Redeliver(msgIds []messageID) {
 }
 
 func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
+		return
+	}
 	msgIds := req.msgIds
 	pc.log.Debug("Request redelivery after negative ack for messages", msgIds)
 
@@ -352,11 +378,14 @@ func (pc *partitionConsumer) internalRedeliver(req *redeliveryRequest) {
 		}
 	}
 
-	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(),
+	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(),
 		pb.BaseCommand_REDELIVER_UNACKNOWLEDGED_MESSAGES, &pb.CommandRedeliverUnacknowledgedMessages{
 			ConsumerId: proto.Uint64(pc.consumerID),
 			MessageIds: msgIDDataList,
 		})
+	if err != nil {
+		pc.log.Error("Connection was closed when request redeliver cmd")
+	}
 }
 
 func (pc *partitionConsumer) getConsumerState() consumerState {
@@ -381,6 +410,10 @@ func (pc *partitionConsumer) Close() {
 }
 
 func (pc *partitionConsumer) Seek(msgID trackingMessageID) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to seek by closing or closed consumer")
+		return errors.New("failed to seek by closing or closed consumer")
+	}
 	req := &seekRequest{
 		doneCh: make(chan struct{}),
 		msgID:  msgID,
@@ -407,7 +440,7 @@ func (pc *partitionConsumer) requestSeek(msgID messageID) error {
 func (pc *partitionConsumer) requestSeekWithoutClear(msgID messageID) error {
 	state := pc.getConsumerState()
 	if state == consumerClosing || state == consumerClosed {
-		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
+		pc.log.WithField("state", state).Error("failed seek by consumer is closing or has closed")
 		return nil
 	}
 
@@ -434,6 +467,10 @@ func (pc *partitionConsumer) requestSeekWithoutClear(msgID messageID) error {
 }
 
 func (pc *partitionConsumer) SeekByTime(time time.Time) error {
+	if state := pc.getConsumerState(); state == consumerClosing || state == consumerClosed {
+		pc.log.WithField("state", pc.state).Error("Failed seekByTime by consumer is closing or has closed")
+		return errors.New("failed seekByTime by consumer is closing or has closed")
+	}
 	req := &seekByTimeRequest{
 		doneCh:      make(chan struct{}),
 		publishTime: time,
@@ -450,7 +487,7 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 
 	state := pc.getConsumerState()
 	if state == consumerClosing || state == consumerClosed {
-		pc.log.WithField("state", pc.state).Error("Consumer is closing or has closed")
+		pc.log.WithField("state", pc.state).Error("Failed seekByTime by consumer is closing or has closed")
 		return
 	}
 
@@ -477,6 +514,10 @@ func (pc *partitionConsumer) clearMessageChannels() {
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return
+	}
 	msgID := req.msgID
 
 	messageIDs := make([]*pb.MessageIdData, 1)
@@ -485,13 +526,28 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		EntryId:  proto.Uint64(uint64(msgID.entryID)),
 	}
 
+	reqID := pc.client.rpcClient.NewRequestID()
 	cmdAck := &pb.CommandAck{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		MessageId:  messageIDs,
 		AckType:    pb.CommandAck_Individual.Enum(),
 	}
 
-	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, cmdAck)
+	if pc.options.ackWithResponse {
+		cmdAck.RequestId = proto.Uint64(reqID)
+		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+		if err != nil {
+			pc.log.WithError(err).Error("Ack with response error")
+			req.err = err
+		}
+		return
+	}
+
+	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, cmdAck)
+	if err != nil {
+		pc.log.Error("Connection was closed when request ack cmd")
+		req.err = err
+	}
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
@@ -700,20 +756,20 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 		encCtx.CompressionType = CompressionType(*msgMeta.Compression)
 	}
 
-	kMap := map[string]EncryptionKey{}
+	keyMap := map[string]EncryptionKey{}
 	for _, k := range msgMeta.GetEncryptionKeys() {
 		metaMap := map[string]string{}
 		for _, m := range k.GetMetadata() {
 			metaMap[*m.Key] = *m.Value
 		}
 
-		kMap[*k.Key] = EncryptionKey{
+		keyMap[*k.Key] = EncryptionKey{
 			KeyValue: k.GetValue(),
 			Metadata: metaMap,
 		}
 	}
 
-	encCtx.Keys = kMap
+	encCtx.Keys = keyMap
 	return &encCtx
 }
 
@@ -728,6 +784,10 @@ func (pc *partitionConsumer) ConnectionClosed() {
 // before the application is ready to consume them. After the consumer is ready,
 // the client needs to give permission to the broker to push messages.
 func (pc *partitionConsumer) internalFlow(permits uint32) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
+		return errors.New("consumer closing or closed")
+	}
 	if permits == 0 {
 		return fmt.Errorf("invalid number of permits requested: %d", permits)
 	}
@@ -736,7 +796,11 @@ func (pc *partitionConsumer) internalFlow(permits uint32) error {
 		ConsumerId:     proto.Uint64(pc.consumerID),
 		MessagePermits: proto.Uint32(permits),
 	}
-	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_FLOW, cmdFlow)
+	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_FLOW, cmdFlow)
+	if err != nil {
+		pc.log.Error("Connection was closed when request flow cmd")
+		return err
+	}
 
 	return nil
 }
@@ -871,6 +935,7 @@ func (pc *partitionConsumer) dispatcher() {
 
 type ackRequest struct {
 	msgID trackingMessageID
+	err   error
 }
 
 type unsubscribeRequest struct {
@@ -1127,7 +1192,11 @@ func (pc *partitionConsumer) grabConn() error {
 
 	pc._setConn(res.Cnx)
 	pc.log.Info("Connected consumer")
-	pc._getConn().AddConsumeHandler(pc.consumerID, pc)
+	err = pc._getConn().AddConsumeHandler(pc.consumerID, pc)
+	if err != nil {
+		pc.log.WithError(err).Error("Failed to add consumer handler")
+		return err
+	}
 
 	msgType := res.Response.GetType()
 
@@ -1264,18 +1333,26 @@ func (pc *partitionConsumer) initializeCompressionProvider(
 
 func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 	validationError pb.CommandAck_ValidationError) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to discardCorruptedMessage " +
+			"by closing or closed consumer")
+		return
+	}
 	pc.log.WithFields(log.Fields{
 		"msgID":           msgID,
 		"validationError": validationError,
 	}).Error("Discarding corrupted message")
 
-	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(),
+	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(),
 		pb.BaseCommand_ACK, &pb.CommandAck{
 			ConsumerId:      proto.Uint64(pc.consumerID),
 			MessageId:       []*pb.MessageIdData{msgID},
 			AckType:         pb.CommandAck_Individual.Enum(),
 			ValidationError: validationError.Enum(),
 		})
+	if err != nil {
+		pc.log.Error("Connection was closed when request ack cmd")
+	}
 }
 
 // _setConn sets the internal connection field of this partition consumer atomically.

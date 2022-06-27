@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -116,30 +117,30 @@ func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err 
 	}
 }
 
-// Messages
+// Chan return the message chan to users
 func (c *multiTopicConsumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh
 }
 
 // Ack the consumption of a single message
-func (c *multiTopicConsumer) Ack(msg Message) {
-	c.AckID(msg.ID())
+func (c *multiTopicConsumer) Ack(msg Message) error {
+	return c.AckID(msg.ID())
 }
 
-// Ack the consumption of a single message, identified by its MessageID
-func (c *multiTopicConsumer) AckID(msgID MessageID) {
+// AckID the consumption of a single message, identified by its MessageID
+func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
-		return
+		return errors.New("invalid message id type in multi_consumer")
 	}
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
-		return
+		return errors.New("unable to ack message because consumer is nil")
 	}
 
-	mid.Ack()
+	return mid.Ack()
 }
 
 func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {

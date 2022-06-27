@@ -64,9 +64,13 @@ func (c *mockConsumer) Chan() <-chan pulsar.ConsumerMessage {
 	return nil
 }
 
-func (c *mockConsumer) Ack(msg pulsar.Message) {}
+func (c *mockConsumer) Ack(msg pulsar.Message) error {
+	return nil
+}
 
-func (c *mockConsumer) AckID(msgID pulsar.MessageID) {}
+func (c *mockConsumer) AckID(msgID pulsar.MessageID) error {
+	return nil
+}
 
 func (c *mockConsumer) ReconsumeLater(msg pulsar.Message, delay time.Duration) {}
 
