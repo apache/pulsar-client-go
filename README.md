@@ -24,9 +24,9 @@
 [![LICENSE](https://img.shields.io/hexpm/l/pulsar.svg)](https://github.com/apache/pulsar-client-go/blob/master/LICENSE)
 # Apache Pulsar Go Client Library
 
-A Go client library for the [Apache Pulsar](https://pulsar.incubator.apache.org/) project.
+A Go client library for [Apache Pulsar](https://pulsar.incubator.apache.org/).
 
-## Goal
+## Purpose
 
 This projects is developing a pure-Go client library for Pulsar that does not
 depend on the C++ Pulsar library.
@@ -138,17 +138,21 @@ for reader.HasNext() {
 
 Build the sources:
 
-    go build ./pulsar
+    make build
 
-Run the unit tests:
+Run the tests:
 
-    ./docker-ci.sh
+    make test
+
+Run the tests with specific versions of GOLANG and PULSAR:
+
+    make test GOLANG_VERSION=1.18 PULSAR_VERSION=2.10.0
 
 ## Contributing
 
 Contributions are welcomed and greatly appreciated. See [CONTRIBUTING.md](CONTRIBUTING.md) for details on submitting patches and the contribution workflow.
 
-## Contact
+## Community
 
 ##### Mailing lists
 
