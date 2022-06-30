@@ -168,6 +168,10 @@ type ProducerOptions struct {
 
 	// Encryption specifies the fields required to encrypt a message
 	Encryption *ProducerEncryptionInfo
+
+	// ChunkingEnabled specifies if Producer will split the original message into chunks and publish
+	// them with chunked metadata when message payload size is larger than broker can support.
+	ChunkingEnabled bool
 }
 
 // Producer is used to publish messages on a topic
