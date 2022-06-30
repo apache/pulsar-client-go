@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 
@@ -34,8 +35,9 @@ const (
 	// MessageFramePadding is for metadata and other frame headers
 	MessageFramePadding = 10 * 1024
 	// MaxFrameSize limit the maximum size that pulsar allows for messages to be sent.
-	MaxFrameSize        = MaxMessageSize + MessageFramePadding
-	magicCrc32c  uint16 = 0x0e01
+	MaxFrameSize                    = MaxMessageSize + MessageFramePadding
+	magicCrc32c              uint16 = 0x0e01
+	magicBrokerEntryMetadata uint16 = 0x0e02
 )
 
 // ErrCorruptedMessage is the error returned by ReadMessageData when it has detected corrupted data.
@@ -117,6 +119,20 @@ func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
 	}
 
 	return &meta, nil
+}
+
+func (r *MessageReader) ReadBrokerMetadata() (*pb.BrokerEntryMetadata, error) {
+	magicNumber := binary.BigEndian.Uint16(r.buffer.Get(r.buffer.ReaderIndex(), 2))
+	if magicNumber != magicBrokerEntryMetadata {
+		return nil, nil
+	}
+	r.buffer.Skip(2)
+	size := r.buffer.ReadUint32()
+	var brokerEntryMetadata pb.BrokerEntryMetadata
+	if err := proto.Unmarshal(r.buffer.Read(size), &brokerEntryMetadata); err != nil {
+		return nil, err
+	}
+	return &brokerEntryMetadata, nil
 }
 
 func (r *MessageReader) ReadMessage() (*pb.SingleMessageMetadata, []byte, error) {

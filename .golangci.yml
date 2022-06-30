@@ -10,10 +10,9 @@ linters:
     - bodyclose
     - deadcode
     - goimports
-    - golint
+    - revive
     - gosimple
     - govet
-    - interfacer
     - misspell
     - structcheck
     - stylecheck

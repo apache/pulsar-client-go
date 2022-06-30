@@ -17,8 +17,8 @@
 # under the License.
 #
 
-ARG GO_VERSION=golang:1.13
-FROM apachepulsar/pulsar:latest as pulsar
+ARG GO_VERSION=golang:1.15
+FROM apachepulsar/pulsar:2.8.2 as pulsar
 FROM $GO_VERSION as go
 
 RUN apt-get update && apt-get install -y openjdk-11-jre-headless ca-certificates
@@ -30,6 +30,8 @@ COPY integration-tests/certs /pulsar/certs
 COPY integration-tests/tokens /pulsar/tokens
 COPY integration-tests/standalone.conf /pulsar/conf
 COPY integration-tests/client.conf /pulsar/conf
+COPY integration-tests/.htpasswd /pulsar/conf
+ENV PULSAR_EXTRA_OPTS="-Dpulsar.auth.basic.conf=/pulsar/conf/.htpasswd"
 COPY pulsar-test-service-start.sh /pulsar/bin
 COPY pulsar-test-service-stop.sh /pulsar/bin
 COPY run-ci.sh /pulsar/bin

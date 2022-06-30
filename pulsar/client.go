@@ -78,6 +78,11 @@ func NewAuthenticationOAuth2(authParams map[string]string) Authentication {
 	return oauth
 }
 
+// NewAuthenticationBasic Creates Basic Authentication provider
+func NewAuthenticationBasic(username, password string) (Authentication, error) {
+	return auth.NewAuthenticationBasic(username, password)
+}
+
 // ClientOptions is used to construct a Pulsar Client instance.
 type ClientOptions struct {
 	// Configure the service URL for the Pulsar service.
@@ -140,6 +145,10 @@ type Client interface {
 	// CreateReader Creates a Reader instance.
 	// This method will block until the reader is created successfully.
 	CreateReader(ReaderOptions) (Reader, error)
+
+	// CreateTableView creates a table view instance.
+	// This method will block until the table view is created successfully.
+	CreateTableView(TableViewOptions) (TableView, error)
 
 	// TopicPartitions Fetches the list of partitions for a given topic
 	//

@@ -509,7 +509,9 @@ func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 
 func TestMessageRouter(t *testing.T) {
 	// Create topic with 5 partitions
-	err := httpPut("admin/v2/persistent/public/default/my-partitioned-topic/partitions", 5)
+	topicAdminURL := "admin/v2/persistent/public/default/my-partitioned-topic/partitions"
+	err := httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -875,18 +877,42 @@ func TestMaxBatchSize(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
-	for bias := -1; bias <= 1; bias++ {
+	for bias := -1; bias <= 3; bias++ {
 		payload := make([]byte, batchMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
-		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
-		} else {
-			assert.Equal(t, errFailAddToBatch, err)
-		}
+		// regardless max batch size, if the batch size limit is reached, batching is triggered to send messages
+		assert.NoError(t, err)
+		assert.NotNil(t, ID)
 	}
+}
+
+func TestBatchingDisabled(t *testing.T) {
+	defaultMaxMessageSize := 128 * 1024
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// when batching is disabled, the batching size has no effect
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+		BatchingMaxSize: uint(defaultMaxBatchSize),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	payload := make([]byte, defaultMaxMessageSize+100)
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload: payload,
+	})
+	// regardless max batch size, if the batch size limit is reached, batching is triggered to send messages
+	assert.NoError(t, err)
+	assert.NotNil(t, ID)
 }
 
 func TestMaxMessageSize(t *testing.T) {
@@ -920,6 +946,50 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, errMessageTooLarge, err)
 		}
 	}
+}
+
+func TestFailedSchemaEncode(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: NewAvroSchema("{\"type\":\"string\"}", nil),
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		// producer should send return an error as message is Int64, but schema is String
+		mid, err := producer.Send(ctx, &ProducerMessage{
+			Value: int64(1),
+		})
+		assert.NotNil(t, err)
+		assert.Nil(t, mid)
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	// producer should send return an error as message is Int64, but schema is String
+	producer.SendAsync(ctx, &ProducerMessage{
+		Value: int64(1),
+	}, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+		assert.NotNil(t, err)
+		assert.Nil(t, messageID)
+		wg.Done()
+	})
+	wg.Wait()
 }
 
 func TestSendTimeout(t *testing.T) {
