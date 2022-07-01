@@ -103,9 +103,9 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 	rateLimitCh := make(chan time.Time, produceArgs.Rate)
 	go func(rateLimit int, interval time.Duration) {
 		for {
-			last := <-rateLimitCh
+			oldest := <-rateLimitCh
 			if rateLimit > 0 { // 0 is defined as no limit enforced
-				time.Sleep(interval - time.Since(last))
+				time.Sleep(interval - time.Since(oldest))
 			}
 		}
 	}(produceArgs.Rate, time.Second)
@@ -119,7 +119,9 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 			}
 
 			start := time.Now()
-			rateLimitCh <- start
+			if produceArgs.Rate > 0 {
+				rateLimitCh <- start
+			}
 
 			producer.SendAsync(ctx, &pulsar.ProducerMessage{
 				Payload: payload,
