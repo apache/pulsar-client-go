@@ -102,11 +102,12 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 	ch := make(chan float64)
 	rateLimitCh := make(chan time.Time, produceArgs.Rate)
 	go func(rateLimit int, interval time.Duration) {
+		if rateLimit <= 0 { // 0 as no limit enforced
+			return
+		}
 		for {
 			oldest := <-rateLimitCh
-			if rateLimit > 0 { // 0 is defined as no limit enforced
-				time.Sleep(interval - time.Since(oldest))
-			}
+			time.Sleep(interval - time.Since(oldest))
 		}
 	}(produceArgs.Rate, time.Second)
 
