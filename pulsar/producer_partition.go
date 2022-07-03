@@ -74,6 +74,7 @@ type partitionProducer struct {
 	batchBuilder             internal.BatchBuilder
 	sequenceIDGenerator      *uint64
 	batchFlushTicker         *time.Ticker
+	encryptor                internalcrypto.Encryptor
 
 	// Channel where app is posting messages to be published
 	eventsChan      chan interface{}
@@ -219,27 +220,18 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
 
-	var encryptor internalcrypto.Encryptor
+	//var encryptor internalcrypto.Encryptor
 	if p.options.Encryption != nil {
-		encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
+		p.encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
 			p.options.Encryption.KeyReader,
 			p.options.Encryption.MessageCrypto,
 			p.options.Encryption.ProducerCryptoFailureAction, p.log)
 	} else {
-		encryptor = internalcrypto.NewNoopEncryptor()
+		p.encryptor = internalcrypto.NewNoopEncryptor()
 	}
 
 	if p.options.DisableBatching {
-		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
-		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
-			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
-			compression.Level(p.options.CompressionLevel),
-			p,
-			p.log,
-			encryptor)
-		if err != nil {
-			return err
-		}
+		// removed BatchBuilder creation
 	} else if p.batchBuilder == nil {
 		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
 		if err != nil {
@@ -251,7 +243,7 @@ func (p *partitionProducer) grabCnx() error {
 			compression.Level(p.options.CompressionLevel),
 			p,
 			p.log,
-			encryptor)
+			p.encryptor)
 		if err != nil {
 			return err
 		}
@@ -469,38 +461,79 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		smm.SequenceId = proto.Uint64(sequenceID)
 	}
 
-	if !sendAsBatch {
-		p.internalFlushCurrentBatch()
-	}
-
 	if msg.DisableReplication {
 		msg.ReplicationClusters = []string{"__local__"}
 	}
 
-	added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-		msg.ReplicationClusters, deliverAt)
-	if !added {
-		// The current batch is full.. flush it and retry
+	if !sendAsBatch {
+		p.internalSingleSend(smm, payload, request)
+	} else {
+		added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
+			msg.ReplicationClusters, deliverAt)
+		if !added {
+			// The current batch is full.. flush it and retry
 
-		p.internalFlushCurrentBatch()
+			p.internalFlushCurrentBatch()
 
-		// after flushing try again to add the current payload
-		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-			msg.ReplicationClusters, deliverAt); !ok {
-			p.publishSemaphore.Release()
-			request.callback(nil, request.msg, errFailAddToBatch)
-			p.log.WithField("size", len(payload)).
-				WithField("properties", msg.Properties).
-				Error("unable to add message to batch")
-			return
+			// after flushing try again to add the current payload
+			if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
+				msg.ReplicationClusters, deliverAt); !ok {
+				p.publishSemaphore.Release()
+				request.callback(nil, request.msg, errFailAddToBatch)
+				p.log.WithField("size", len(payload)).
+					WithField("properties", msg.Properties).
+					Error("unable to add message to batch")
+				return
+			}
+		}
+		if request.flushImmediately {
+
+			p.internalFlushCurrentBatch()
+
 		}
 	}
+}
 
-	if !sendAsBatch || request.flushImmediately {
-
-		p.internalFlushCurrentBatch()
-
+func (p *partitionProducer) internalSingleSend(smm *pb.SingleMessageMetadata, payload []byte, request *sendRequest) {
+	msg := request.msg
+	sid := internal.GetAndAdd(p.sequenceIDGenerator, 1)
+	mm := &pb.MessageMetadata{
+		ProducerName: &p.producerName,
+		SequenceId:   proto.Uint64(sid),
+		PublishTime:  proto.Uint64(internal.TimestampMillis(time.Now())),
+		Properties:   smm.Properties,
+		PartitionKey: smm.PartitionKey,
+		ReplicateTo:  msg.ReplicationClusters,
 	}
+	if msg.DeliverAt.UnixNano() > 0 {
+		mm.DeliverAtTime = proto.Int64(int64(internal.TimestampMillis(msg.DeliverAt)))
+	}
+
+	payloadBuf := internal.NewBuffer(len(payload))
+	payloadBuf.Write(payload)
+
+	buffer := p.GetBuffer()
+	if buffer == nil {
+		buffer = internal.NewBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
+	}
+
+	if err := internal.SingleSend(
+		buffer, p.producerID, sid, mm, payloadBuf,
+		pb.CompressionType(p.options.CompressionType),
+		compression.Level(p.options.CompressionLevel),
+		p.encryptor,
+	); err != nil {
+		p.log.WithError(err).Errorf("Single message serialize failed %s", msg.Value)
+		return
+	}
+
+	p.pendingQueue.Put(&pendingItem{
+		sentAt:       time.Now(),
+		batchData:    buffer,
+		sequenceID:   sid,
+		sendRequests: []interface{}{request},
+	})
+	p._getConn().WriteData(buffer)
 }
 
 type pendingItem struct {
@@ -860,8 +893,10 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.Info("Closed producer")
 	}
 
-	if err = p.batchBuilder.Close(); err != nil {
-		p.log.WithError(err).Warn("Failed to close batch builder")
+	if p.batchBuilder != nil {
+		if err = p.batchBuilder.Close(); err != nil {
+			p.log.WithError(err).Warn("Failed to close batch builder")
+		}
 	}
 
 	p.setProducerState(producerClosed)

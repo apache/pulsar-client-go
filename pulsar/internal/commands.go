@@ -21,7 +21,6 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
@@ -295,6 +294,28 @@ func serializeBatch(wb Buffer,
 	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
 	return nil
+}
+
+func SingleSend(wb Buffer,
+	producerID, sequenceID uint64,
+	msgMetadata *pb.MessageMetadata,
+	uncompressedPayload Buffer,
+	compressionType pb.CompressionType,
+	level compression.Level,
+	encryptor crypto.Encryptor) error {
+	cmdSend := baseCommand(
+		pb.BaseCommand_SEND,
+		&pb.CommandSend{
+			ProducerId: &producerID,
+		},
+	)
+	cmdSend.Send.SequenceId = &sequenceID
+	if msgMetadata.GetTotalChunkMsgSize() > 1 {
+		isChunk := true
+		cmdSend.Send.IsChunk = &isChunk
+	}
+	// todo: rename serializeBatch
+	return serializeBatch(wb, cmdSend, msgMetadata, uncompressedPayload, getCompressionProvider(compressionType, level), encryptor)
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte
