@@ -117,6 +117,11 @@ func (bc *keyBasedBatchContainer) IsMultiBatches() bool {
 
 // hasSpace should return true if and only if the batch container can accommodate another message of length payload.
 func (bc *keyBasedBatchContainer) hasSpace(payload []byte) bool {
+	if bc.numMessages == 0 {
+		// allow to add at least one message
+		// and a single max message size is checked in the producer partition, therefore no need to validate batch size
+		return true
+	}
 	msgSize := uint32(len(payload))
 	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize)
 }

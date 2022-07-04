@@ -28,6 +28,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
@@ -1016,6 +1018,51 @@ func TestHTTPOAuth2AuthFailed(t *testing.T) {
 
 	assert.Error(t, err)
 	assert.Nil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPBasicAuth(t *testing.T) {
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSBasicAuth(t *testing.T) {
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+		Authentication:        basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, producer)
 
 	client.Close()
 }

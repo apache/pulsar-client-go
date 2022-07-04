@@ -78,6 +78,11 @@ func NewAuthenticationOAuth2(authParams map[string]string) Authentication {
 	return oauth
 }
 
+// NewAuthenticationBasic Creates Basic Authentication provider
+func NewAuthenticationBasic(username, password string) (Authentication, error) {
+	return auth.NewAuthenticationBasic(username, password)
+}
+
 // ClientOptions is used to construct a Pulsar Client instance.
 type ClientOptions struct {
 	// Configure the service URL for the Pulsar service.

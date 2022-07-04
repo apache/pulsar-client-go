@@ -809,20 +809,20 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 		encCtx.CompressionType = CompressionType(*msgMeta.Compression)
 	}
 
-	kMap := map[string]EncryptionKey{}
+	keyMap := map[string]EncryptionKey{}
 	for _, k := range msgMeta.GetEncryptionKeys() {
 		metaMap := map[string]string{}
 		for _, m := range k.GetMetadata() {
 			metaMap[*m.Key] = *m.Value
 		}
 
-		kMap[*k.Key] = EncryptionKey{
+		keyMap[*k.Key] = EncryptionKey{
 			KeyValue: k.GetValue(),
 			Metadata: metaMap,
 		}
 	}
 
-	encCtx.Keys = kMap
+	encCtx.Keys = keyMap
 	return &encCtx
 }
 
@@ -1239,7 +1239,11 @@ func (pc *partitionConsumer) grabConn() error {
 
 	pc._setConn(res.Cnx)
 	pc.log.Info("Connected consumer")
-	pc._getConn().AddConsumeHandler(pc.consumerID, pc)
+	err = pc._getConn().AddConsumeHandler(pc.consumerID, pc)
+	if err != nil {
+		pc.log.WithError(err).Error("Failed to add consumer handler")
+		return err
+	}
 
 	msgType := res.Response.GetType()
 
