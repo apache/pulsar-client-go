@@ -146,7 +146,6 @@ type partitionConsumer struct {
 	dlq         *dlqRouter
 
 	log                  log.Logger
-	providersMutex       sync.RWMutex
 	compressionProviders sync.Map //map[pb.CompressionType]compression.Provider
 	metrics              *internal.LeveledMetrics
 	decryptor            cryptointernal.Decryptor

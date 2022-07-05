@@ -478,7 +478,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if p.options.DisableMultiSchema {
-		if msg.Schema != nil && p.options.Schema != nil && msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
+		if msg.Schema != nil && p.options.Schema != nil &&
+			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
 			p.log.WithError(err).Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
 			return
 		}
@@ -491,13 +492,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		schema = p.options.Schema
 	}
 	if msg.Value != nil {
-		schemaPayload, err = schema.Encode(msg.Value)
-		var err error
-
 		// payload and schema are mutually exclusive
 		// try to get payload from schema value only if payload is not set
-		if payload == nil && p.options.Schema != nil {
-			schemaPayload, err = p.options.Schema.Encode(msg.Value)
+		if payload == nil && schema != nil {
+			schemaPayload, err = schema.Encode(msg.Value)
 			if err != nil {
 				p.publishSemaphore.Release()
 				request.callback(nil, request.msg, newError(SchemaFailure, err.Error()))
@@ -505,100 +503,101 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 				return
 			}
 		}
-		if payload == nil {
-			payload = schemaPayload
-		}
-		if schema != nil {
-			schemaVersion = p.schemaCache.Get(schema.GetSchemaInfo())
-			if schemaVersion == nil {
-				schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
-				if err != nil {
-					p.log.WithError(err).Error("get schema version fail")
-					return
-				}
-				p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
-			}
-		}
-
-		// if msg is too large
-		if len(payload) > int(p._getConn().GetMaxMessageSize()) {
-			p.publishSemaphore.Release()
-			request.callback(nil, request.msg, errMessageTooLarge)
-			p.log.WithError(errMessageTooLarge).
-				WithField("size", len(payload)).
-				WithField("properties", msg.Properties).
-				Errorf("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize()))
-			p.metrics.PublishErrorsMsgTooLarge.Inc()
-			return
-		}
-
-		deliverAt := msg.DeliverAt
-		if msg.DeliverAfter.Nanoseconds() > 0 {
-			deliverAt = time.Now().Add(msg.DeliverAfter)
-		}
-
-		sendAsBatch := !p.options.DisableBatching &&
-			msg.ReplicationClusters == nil &&
-			deliverAt.UnixNano() < 0
-
-		smm := &pb.SingleMessageMetadata{
-			PayloadSize: proto.Int(len(payload)),
-		}
-
-		if msg.EventTime.UnixNano() != 0 {
-			smm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
-		}
-
-		if msg.Key != "" {
-			smm.PartitionKey = proto.String(msg.Key)
-		}
-
-		if len(msg.OrderingKey) != 0 {
-			smm.OrderingKey = []byte(msg.OrderingKey)
-		}
-
-		if msg.Properties != nil {
-			smm.Properties = internal.ConvertFromStringMap(msg.Properties)
-		}
-
-		if msg.SequenceID != nil {
-			sequenceID := uint64(*msg.SequenceID)
-			smm.SequenceId = proto.Uint64(sequenceID)
-		}
-
-		if !sendAsBatch {
-			p.internalFlushCurrentBatch()
-		}
-
-		if msg.DisableReplication {
-			msg.ReplicationClusters = []string{"__local__"}
-		}
-		multiSchemaEnabled := !p.options.DisableMultiSchema
-		added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
-		if !added {
-			// The current batch is full.. flush it and retry
-
-			p.internalFlushCurrentBatch()
-
-			// after flushing try again to add the current payload
-			if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-				msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled); !ok {
-				p.publishSemaphore.Release()
-				request.callback(nil, request.msg, errFailAddToBatch)
-				p.log.WithField("size", len(payload)).
-					WithField("properties", msg.Properties).
-					Error("unable to add message to batch")
+	}
+	if payload == nil {
+		payload = schemaPayload
+	}
+	if schema != nil {
+		schemaVersion = p.schemaCache.Get(schema.GetSchemaInfo())
+		if schemaVersion == nil {
+			schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
+			if err != nil {
+				p.log.WithError(err).Error("get schema version fail")
 				return
 			}
-		}
-
-		if !sendAsBatch || request.flushImmediately {
-
-			p.internalFlushCurrentBatch()
-
+			p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
 		}
 	}
+
+	// if msg is too large
+	if len(payload) > int(p._getConn().GetMaxMessageSize()) {
+		p.publishSemaphore.Release()
+		request.callback(nil, request.msg, errMessageTooLarge)
+		p.log.WithError(errMessageTooLarge).
+			WithField("size", len(payload)).
+			WithField("properties", msg.Properties).
+			Errorf("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize()))
+		p.metrics.PublishErrorsMsgTooLarge.Inc()
+		return
+	}
+
+	deliverAt := msg.DeliverAt
+	if msg.DeliverAfter.Nanoseconds() > 0 {
+		deliverAt = time.Now().Add(msg.DeliverAfter)
+	}
+
+	sendAsBatch := !p.options.DisableBatching &&
+		msg.ReplicationClusters == nil &&
+		deliverAt.UnixNano() < 0
+
+	smm := &pb.SingleMessageMetadata{
+		PayloadSize: proto.Int(len(payload)),
+	}
+
+	if msg.EventTime.UnixNano() != 0 {
+		smm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
+	}
+
+	if msg.Key != "" {
+		smm.PartitionKey = proto.String(msg.Key)
+	}
+
+	if len(msg.OrderingKey) != 0 {
+		smm.OrderingKey = []byte(msg.OrderingKey)
+	}
+
+	if msg.Properties != nil {
+		smm.Properties = internal.ConvertFromStringMap(msg.Properties)
+	}
+
+	if msg.SequenceID != nil {
+		sequenceID := uint64(*msg.SequenceID)
+		smm.SequenceId = proto.Uint64(sequenceID)
+	}
+
+	if !sendAsBatch {
+		p.internalFlushCurrentBatch()
+	}
+
+	if msg.DisableReplication {
+		msg.ReplicationClusters = []string{"__local__"}
+	}
+	multiSchemaEnabled := !p.options.DisableMultiSchema
+	added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
+		msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
+	if !added {
+		// The current batch is full.. flush it and retry
+
+		p.internalFlushCurrentBatch()
+
+		// after flushing try again to add the current payload
+		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
+			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled); !ok {
+			p.publishSemaphore.Release()
+			request.callback(nil, request.msg, errFailAddToBatch)
+			p.log.WithField("size", len(payload)).
+				WithField("properties", msg.Properties).
+				Error("unable to add message to batch")
+			return
+		}
+	}
+
+	if !sendAsBatch || request.flushImmediately {
+
+		p.internalFlushCurrentBatch()
+
+	}
+
 }
 
 type pendingItem struct {

@@ -124,7 +124,7 @@ type Message interface {
 
 	//SchemaVersion get the schema version of the message, if any
 	SchemaVersion() []byte
-  
+
 	// GetEncryptionContext returns the ecryption context of the message.
 	// It will be used by the application to parse the undecrypted message.
 	GetEncryptionContext() *EncryptionContext

@@ -90,7 +90,6 @@ func TestSimpleProducer(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	//schema := NewAvroSchema(`{"type":"record","name":"MyAvro3","namespace":"com.lakala.bigdata.pulsar.tools.PulsarTestCase","fields":[{"name":"id","type":"int"},{"name":"name","type":["null","string"],"default":null},{"name":"name2","type":["null","string"],"default":null},{"name":"name3","type":["null","string"],"default":null},{"name":"name6","type":["null","string"],"default":null},{"name":"name4","type":["null","string"],"default":null}]}`, nil)
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: newTopicName(),
 	})
@@ -1387,10 +1386,21 @@ func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
+	assert.NoError(t, err)
 	defer client.Close()
 
-	schema1 := NewAvroSchema(`{"fields":[{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
-	schema2 := NewAvroSchema(`{"fields":[{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},{"default":null,"name":"age","type":["null","int"]}],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema1 := NewAvroSchema(`{"fields":
+		[	
+			{"name":"id","type":"int"},
+			{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+				{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			   {"default":null,"name":"age","type":["null","int"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
 	v1 := map[string]interface{}{
 		"id": 1,
 		"name": map[string]interface{}{
@@ -1472,10 +1482,19 @@ func TestMultipleSchemaProducerConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
+	assert.NoError(t, err)
 	defer client.Close()
 
-	schema1 := NewAvroSchema(`{"fields":[{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
-	schema2 := NewAvroSchema(`{"fields":[{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},{"default":null,"name":"age","type":["null","int"]}],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema1 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			{"default":null,"name":"age","type":["null","int"]}
+		],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
 	v1 := map[string]interface{}{
 		"id": 1,
 		"name": map[string]interface{}{
