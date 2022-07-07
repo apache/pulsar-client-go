@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"bytes"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -49,6 +50,7 @@ type BatchBuilder interface {
 		metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
 		payload []byte,
 		callback interface{}, replicateTo []string, deliverAt time.Time,
+		schemaVersion []byte, multiSchemaEnabled bool,
 	) bool
 
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
@@ -165,12 +167,21 @@ func (bc *batchContainer) hasSpace(payload []byte) bool {
 	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize)
 }
 
+func (bc *batchContainer) hasSameSchema(schemaVersion []byte) bool {
+	if bc.numMessages == 0 {
+		return true
+	}
+	return bytes.Equal(bc.msgMetadata.SchemaVersion, schemaVersion)
+}
+
 // Add will add single message to batch.
 func (bc *batchContainer) Add(
 	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
 	payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time,
+	schemaVersion []byte, multiSchemaEnabled bool,
 ) bool {
+
 	if replicateTo != nil && bc.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
 		// then we need to force the current batch to flush and send the message individually
@@ -181,6 +192,9 @@ func (bc *batchContainer) Add(
 		return false
 	} else if !bc.hasSpace(payload) {
 		// The current batch is full. Producer has to call Flush() to
+		return false
+	} else if multiSchemaEnabled && !bc.hasSameSchema(schemaVersion) {
+		// The current batch has a different schema. Producer has to call Flush() to
 		return false
 	}
 
@@ -196,6 +210,7 @@ func (bc *batchContainer) Add(
 		bc.msgMetadata.ProducerName = &bc.producerName
 		bc.msgMetadata.ReplicateTo = replicateTo
 		bc.msgMetadata.PartitionKey = metadata.PartitionKey
+		bc.msgMetadata.SchemaVersion = schemaVersion
 		bc.msgMetadata.Properties = metadata.Properties
 
 		if deliverAt.UnixNano() > 0 {
@@ -217,6 +232,7 @@ func (bc *batchContainer) reset() {
 	bc.callbacks = []interface{}{}
 	bc.msgMetadata.ReplicateTo = nil
 	bc.msgMetadata.DeliverAtTime = nil
+	bc.msgMetadata.SchemaVersion = nil
 	bc.msgMetadata.Properties = nil
 }
 
@@ -228,6 +244,7 @@ func (bc *batchContainer) Flush() (
 		// No-Op for empty batch
 		return nil, 0, nil, nil
 	}
+
 	bc.log.Debug("BatchBuilder flush: messages: ", bc.numMessages)
 
 	bc.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bc.numMessages))
