@@ -24,11 +24,11 @@
 [![LICENSE](https://img.shields.io/hexpm/l/pulsar.svg)](https://github.com/apache/pulsar-client-go/blob/master/LICENSE)
 # Apache Pulsar Go Client Library
 
-A Go client library for [Apache Pulsar](https://pulsar.incubator.apache.org/).
+A Go client library for [Apache Pulsar](https://pulsar.apache.org/).
 
 ## Purpose
 
-This projects is developing a pure-Go client library for Pulsar that does not
+This project is a pure-Go client library for Pulsar that does not
 depend on the C++ Pulsar library.
 
 Once feature parity and stability are reached, this will supersede the current
