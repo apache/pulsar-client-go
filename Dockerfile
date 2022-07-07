@@ -17,6 +17,8 @@
 # under the License.
 #
 
+# Explicit version of Pulsar and Golang images should be
+# set via the Makefile or CLI
 ARG PULSAR_IMAGE=apachepulsar/pulsar:latest
 ARG GOLANG_IMAGE=golang:latest
 
@@ -30,6 +32,9 @@ COPY --from=pulsar /pulsar /pulsar
 ### Add pulsar config
 COPY integration-tests/certs /pulsar/certs
 COPY integration-tests/tokens /pulsar/tokens
-COPY integration-tests/conf /pulsar/conf
+COPY integration-tests/conf/.htpasswd \
+     integration-tests/conf/client.conf \
+     integration-tests/conf/standalone.conf \
+     /pulsar/conf/
 
 ENV PULSAR_EXTRA_OPTS="-Dpulsar.auth.basic.conf=/pulsar/conf/.htpasswd"
