@@ -94,6 +94,10 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 		options.PartitionsAutoDiscoveryInterval = defaultPartitionsAutoDiscoveryInterval
 	}
 
+	if !options.DisableBatching && options.EnableChunking {
+		return nil, fmt.Errorf("batching and chunking can not be enabled together")
+	}
+
 	p := &producer{
 		options: options,
 		topic:   options.Topic,

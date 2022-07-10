@@ -122,7 +122,7 @@ func newBatchContainer(
 			ProducerName: &producerName,
 		},
 		callbacks:           []interface{}{},
-		compressionProvider: getCompressionProvider(compressionType, level),
+		compressionProvider: GetCompressionProvider(compressionType, level),
 		buffersPool:         bufferPool,
 		log:                 logger,
 		encryptor:           encryptor,
@@ -241,8 +241,8 @@ func (bc *batchContainer) Flush() (
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
 
-	if err = serializeBatch(
-		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider, bc.encryptor,
+	if err = serializeMessage(
+		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider, bc.encryptor, true,
 	); err == nil { // no error in serializing Batch
 		sequenceID = bc.cmdSend.Send.GetSequenceId()
 	}
@@ -268,7 +268,7 @@ func (bc *batchContainer) Close() error {
 	return bc.compressionProvider.Close()
 }
 
-func getCompressionProvider(
+func GetCompressionProvider(
 	compressionType pb.CompressionType,
 	level compression.Level,
 ) compression.Provider {

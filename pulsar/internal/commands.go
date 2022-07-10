@@ -233,17 +233,23 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.Write(payload)
 }
 
-func serializeBatch(wb Buffer,
+func serializeMessage(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,
-	uncompressedPayload Buffer,
+	payload Buffer,
 	compressionProvider compression.Provider,
-	encryptor crypto.Encryptor) error {
+	encryptor crypto.Encryptor,
+	doCompress bool) error {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
 
 	// compress the payload
-	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
+	var compressedPayload []byte
+	if doCompress {
+		compressedPayload = compressionProvider.Compress(nil, payload.ReadableSlice())
+	} else {
+		compressedPayload = payload.ReadableSlice()
+	}
 
 	// encrypt the compressed payload
 	encryptedPayload, err := encryptor.Encrypt(compressedPayload, msgMetadata)
@@ -299,9 +305,7 @@ func serializeBatch(wb Buffer,
 func SingleSend(wb Buffer,
 	producerID, sequenceID uint64,
 	msgMetadata *pb.MessageMetadata,
-	uncompressedPayload Buffer,
-	compressionType pb.CompressionType,
-	level compression.Level,
+	compressedPayload Buffer,
 	encryptor crypto.Encryptor) error {
 	cmdSend := baseCommand(
 		pb.BaseCommand_SEND,
@@ -314,8 +318,8 @@ func SingleSend(wb Buffer,
 		isChunk := true
 		cmdSend.Send.IsChunk = &isChunk
 	}
-	// todo: rename serializeBatch
-	return serializeBatch(wb, cmdSend, msgMetadata, uncompressedPayload, getCompressionProvider(compressionType, level), encryptor)
+	// payload has been compressed so compressionProvider can be nil
+	return serializeMessage(wb, cmdSend, msgMetadata, compressedPayload, nil, encryptor, false)
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte
