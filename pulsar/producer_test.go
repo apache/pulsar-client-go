@@ -1409,3 +1409,191 @@ func TestExactlyOnceWithProducerNameSpecified(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Nil(t, producer3)
 }
+
+func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
+	const MsgBatchCount = 10
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema1 := NewAvroSchema(`{"fields":
+		[	
+			{"name":"id","type":"int"},
+			{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+				{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			   {"default":null,"name":"age","type":["null","int"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	v1 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "aac",
+		},
+	}
+	v2 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "test",
+		},
+		"age": map[string]interface{}{
+			"int": 10,
+		},
+	}
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:              topic,
+		Schema:             schema1,
+		BatcherBuilderType: KeyBasedBatchBuilder,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	keys := []string{"key1", "key2", "key3"}
+
+	for i := 0; i < MsgBatchCount; i++ {
+		var messageContent []byte
+		var schema Schema
+		for _, key := range keys {
+			if i%2 == 0 {
+				messageContent, err = schema1.Encode(v1)
+				schema = schema1
+				assert.NoError(t, err)
+			} else {
+				messageContent, err = schema2.Encode(v2)
+				schema = schema2
+				assert.NoError(t, err)
+			}
+			producer.SendAsync(context.Background(), &ProducerMessage{
+				Payload: messageContent,
+				Key:     key,
+				Schema:  schema,
+			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+				assert.NoError(t, err)
+				assert.NotNil(t, id)
+			})
+		}
+
+	}
+	producer.Flush()
+
+	//// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub2",
+		Type:                        Failover,
+		Schema:                      schema1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < MsgBatchCount*len(keys); i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v interface{}
+		err = msg.GetSchemaValue(&v)
+		t.Logf(`schemaVersion: %x recevice %s:%v`, msg.SchemaVersion(), msg.Key(), v)
+		assert.Nil(t, err)
+	}
+}
+
+func TestMultipleSchemaProducerConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema1 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			{"default":null,"name":"age","type":["null","int"]}
+		],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	v1 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "aac",
+		},
+	}
+	v2 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "test",
+		},
+		"age": map[string]interface{}{
+			"int": 10,
+		},
+	}
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema1,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	for i := 0; i < 10; i++ {
+		var messageContent []byte
+		var key string
+		var schema Schema
+		if i%2 == 0 {
+			messageContent, err = schema1.Encode(v1)
+			key = "v1"
+			schema = schema1
+			assert.NoError(t, err)
+		} else {
+			messageContent, err = schema2.Encode(v2)
+			key = "v2"
+			schema = schema2
+			assert.NoError(t, err)
+		}
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: messageContent,
+			Key:     key,
+			Schema:  schema,
+		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			assert.NoError(t, err)
+			assert.NotNil(t, id)
+		})
+	}
+	producer.Flush()
+
+	//// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub2",
+		Type:                        Failover,
+		Schema:                      schema1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v interface{}
+		err = msg.GetSchemaValue(&v)
+		t.Logf(`schemaVersion: %x recevice %s:%v`, msg.SchemaVersion(), msg.Key(), v)
+		assert.Nil(t, err)
+	}
+}

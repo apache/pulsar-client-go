@@ -19,7 +19,10 @@ package pulsar
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"reflect"
 	"unsafe"
 
@@ -62,11 +65,48 @@ type SchemaInfo struct {
 	Properties map[string]string
 }
 
+func (s SchemaInfo) hash() string {
+	h := sha256.New()
+	h.Write([]byte(s.Schema))
+	return hex.EncodeToString(h.Sum(nil))
+}
+
 type Schema interface {
 	Encode(v interface{}) ([]byte, error)
 	Decode(data []byte, v interface{}) error
 	Validate(message []byte) error
 	GetSchemaInfo() *SchemaInfo
+}
+
+func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]string) (schema Schema, err error) {
+	var schemaDef = string(schemaData)
+	var s Schema
+	switch schemaType {
+	case STRING:
+		s = NewStringSchema(properties)
+	case JSON:
+		s = NewJSONSchema(schemaDef, properties)
+	case PROTOBUF:
+		s = NewProtoSchema(schemaDef, properties)
+	case AVRO:
+		s = NewAvroSchema(schemaDef, properties)
+	case INT8:
+		s = NewInt8Schema(properties)
+	case INT16:
+		s = NewInt16Schema(properties)
+	case INT32:
+		s = NewInt32Schema(properties)
+	case INT64:
+		s = NewInt64Schema(properties)
+	case FLOAT:
+		s = NewFloatSchema(properties)
+	case DOUBLE:
+		s = NewDoubleSchema(properties)
+	default:
+		err = fmt.Errorf("not support schema type of %v", schemaType)
+	}
+	schema = s
+	return
 }
 
 type AvroCodec struct {
