@@ -21,6 +21,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+
 	"github.com/gogo/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
@@ -48,6 +49,8 @@ var ErrCorruptedMessage = errors.New("corrupted message")
 var ErrEOM = errors.New("EOF")
 
 var ErrConnectionClosed = errors.New("connection closed")
+
+var ErrExceedMaxMessageSize = errors.New("encryptedPayload exceeds MaxMessageSize")
 
 func NewMessageReader(headersAndPayload Buffer) *MessageReader {
 	return &MessageReader{
@@ -243,6 +246,7 @@ func serializeMessage(wb Buffer,
 	payload Buffer,
 	compressionProvider compression.Provider,
 	encryptor crypto.Encryptor,
+	maxMessageSize uint32,
 	doCompress bool) error {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
@@ -260,6 +264,11 @@ func serializeMessage(wb Buffer,
 	if err != nil {
 		// error occurred while encrypting the payload, ProducerCryptoFailureAction is set to Fail
 		return fmt.Errorf("encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err)
+	}
+	// the maxMessageSize check of batching message is in here
+	if len(encryptedPayload) > int(maxMessageSize) {
+		return fmt.Errorf("%w, size: %d, MaxMessageSize: %d",
+			ErrExceedMaxMessageSize, len(encryptedPayload), maxMessageSize)
 	}
 
 	cmdSize := uint32(proto.Size(cmdSend))
@@ -310,7 +319,8 @@ func SingleSend(wb Buffer,
 	producerID, sequenceID uint64,
 	msgMetadata *pb.MessageMetadata,
 	compressedPayload Buffer,
-	encryptor crypto.Encryptor) error {
+	encryptor crypto.Encryptor,
+	maxMassageSize uint32) error {
 	cmdSend := baseCommand(
 		pb.BaseCommand_SEND,
 		&pb.CommandSend{
@@ -323,7 +333,8 @@ func SingleSend(wb Buffer,
 		cmdSend.Send.IsChunk = &isChunk
 	}
 	// payload has been compressed so compressionProvider can be nil
-	return serializeMessage(wb, cmdSend, msgMetadata, compressedPayload, nil, encryptor, false)
+	return serializeMessage(wb, cmdSend, msgMetadata, compressedPayload,
+		nil, encryptor, maxMassageSize, false)
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte
