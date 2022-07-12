@@ -45,6 +45,9 @@ type BatchBuilder interface {
 	// IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
 	IsFull() bool
 
+	// compress the payload
+	Compress(uncompressedPayload []byte) []byte
+
 	// Add will add single message to batch.
 	Add(
 		metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
@@ -150,6 +153,11 @@ func NewBatchBuilder(
 	)
 
 	return &bc, nil
+}
+
+// compress the payload
+func (bc *batchContainer) Compress(uncompressedPayload []byte) []byte {
+	return bc.compressionProvider.Compress(nil, uncompressedPayload)
 }
 
 // IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch

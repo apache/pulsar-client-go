@@ -520,7 +520,12 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	// if msg is too large
-	if len(payload) > int(p._getConn().GetMaxMessageSize()) {
+	minMessageSize := len(payload)
+	if minMessageSize > int(p._getConn().GetMaxMessageSize()) {
+		minMessageSize = len(p.batchBuilder.Compress(payload))
+	}
+
+	if minMessageSize > int(p._getConn().GetMaxMessageSize()) {
 		p.publishSemaphore.Release()
 		request.callback(nil, request.msg, errMessageTooLarge)
 		p.log.WithError(errMessageTooLarge).
