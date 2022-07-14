@@ -563,6 +563,7 @@ func (c *consumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		close(c.messageCh)
 		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()

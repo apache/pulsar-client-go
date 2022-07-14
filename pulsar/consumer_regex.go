@@ -222,6 +222,7 @@ func (c *regexConsumer) Close() {
 	c.closeOnce.Do(func() {
 		c.ticker.Stop()
 		close(c.closeCh)
+		close(c.messageCh)
 
 		var wg sync.WaitGroup
 		c.consumersLock.Lock()
