@@ -916,7 +916,7 @@ func TestBatchingDisabled(t *testing.T) {
 }
 
 func TestMaxMessageSize(t *testing.T) {
-	serverMaxMessageSize := 1024 * 1024
+	serverMaxMessageSize := 1024 * 1024 * 5
 
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
@@ -924,28 +924,38 @@ func TestMaxMessageSize(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	// Need to set BatchingMaxSize > serverMaxMessageSize to avoid errMessageTooLarge
-	// being masked by an earlier errFailAddToBatch
-	producer, err := client.CreateProducer(ProducerOptions{
+	f := func(option ProducerOptions) {
+		// Need to set BatchingMaxSize > serverMaxMessageSize to avoid errMessageTooLarge
+		// being masked by an earlier errFailAddToBatch
+		producer, err := client.CreateProducer(option)
+		assert.NoError(t, err)
+		assert.NotNil(t, producer)
+		defer producer.Close()
+
+		for i := 0; i < 10; i++ {
+			ID, err := producer.Send(context.Background(), &ProducerMessage{
+				Payload: make([]byte, serverMaxMessageSize),
+			})
+			if option.CompressionType == NoCompression {
+				assert.Equal(t, errMessageTooLarge, err)
+			} else {
+				assert.NoError(t, err)
+				assert.NotNil(t, ID)
+			}
+		}
+	}
+
+	f(ProducerOptions{
 		Topic:           newTopicName(),
 		BatchingMaxSize: uint(2 * serverMaxMessageSize),
 	})
-	assert.NoError(t, err)
-	assert.NotNil(t, producer)
-	defer producer.Close()
 
-	for bias := -1; bias <= 1; bias++ {
-		payload := make([]byte, serverMaxMessageSize+bias)
-		ID, err := producer.Send(context.Background(), &ProducerMessage{
-			Payload: payload,
-		})
-		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
-		} else {
-			assert.Equal(t, errMessageTooLarge, err)
-		}
-	}
+	f(ProducerOptions{
+		Topic:            newTopicName(),
+		BatchingMaxSize:  uint(2 * serverMaxMessageSize),
+		CompressionType:  LZ4,
+		CompressionLevel: Default,
+	})
 }
 
 func TestFailedSchemaEncode(t *testing.T) {

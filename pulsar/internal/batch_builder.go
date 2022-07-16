@@ -35,7 +35,7 @@ type BuffersPool interface {
 
 // BatcherBuilderProvider defines func which returns the BatchBuilder.
 type BatcherBuilderProvider func(
-	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	maxMessages uint, maxBatchSize uint, maxMessageSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error)
@@ -44,9 +44,6 @@ type BatcherBuilderProvider func(
 type BatchBuilder interface {
 	// IsFull check if the size in the current batch exceeds the maximum size allowed by the batch
 	IsFull() bool
-
-	// compress the payload
-	Compress(uncompressedPayload []byte) []byte
 
 	// Add will add single message to batch.
 	Add(
@@ -88,6 +85,8 @@ type batchContainer struct {
 	// without needing costly re-allocations.
 	maxBatchSize uint
 
+	maxMessageSize uint
+
 	producerName string
 	producerID   uint64
 
@@ -105,18 +104,19 @@ type batchContainer struct {
 
 // newBatchContainer init a batchContainer
 func newBatchContainer(
-	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	maxMessages uint, maxBatchSize uint, maxMessageSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) batchContainer {
 
 	bc := batchContainer{
-		buffer:       NewBuffer(4096),
-		numMessages:  0,
-		maxMessages:  maxMessages,
-		maxBatchSize: maxBatchSize,
-		producerName: producerName,
-		producerID:   producerID,
+		buffer:         NewBuffer(4096),
+		numMessages:    0,
+		maxMessages:    maxMessages,
+		maxBatchSize:   maxBatchSize,
+		maxMessageSize: maxMessageSize,
+		producerName:   producerName,
+		producerID:     producerID,
 		cmdSend: baseCommand(
 			pb.BaseCommand_SEND,
 			&pb.CommandSend{
@@ -142,22 +142,17 @@ func newBatchContainer(
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
 func NewBatchBuilder(
-	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	maxMessages uint, maxBatchSize uint, maxMessageSize uint, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
-		maxMessages, maxBatchSize, producerName, producerID, compressionType,
+		maxMessages, maxBatchSize, maxMessageSize, producerName, producerID, compressionType,
 		level, bufferPool, logger, encryptor,
 	)
 
 	return &bc, nil
-}
-
-// compress the payload
-func (bc *batchContainer) Compress(uncompressedPayload []byte) []byte {
-	return bc.compressionProvider.Compress(nil, uncompressedPayload)
 }
 
 // IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch
@@ -267,9 +262,13 @@ func (bc *batchContainer) Flush() (
 	}
 
 	if err = serializeBatch(
-		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider, bc.encryptor,
+		buffer, bc.cmdSend, bc.msgMetadata, bc.maxMessageSize, bc.buffer, bc.compressionProvider, bc.encryptor,
 	); err == nil { // no error in serializing Batch
 		sequenceID = bc.cmdSend.Send.GetSequenceId()
+	} else {
+		bc.log.WithError(err).
+			WithField("payloadSize", len(bc.buffer.ReadableSlice())).
+			Errorf("BatchBuilder flush: MaxMessageSize %d", bc.maxMessageSize)
 	}
 
 	callbacks = bc.callbacks

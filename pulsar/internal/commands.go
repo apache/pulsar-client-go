@@ -50,6 +50,8 @@ var ErrEOM = errors.New("EOF")
 
 var ErrConnectionClosed = errors.New("connection closed")
 
+var ErrMessageTooLarge = errors.New("batch message payload size exceed MaxMessageSize")
+
 func NewMessageReader(headersAndPayload Buffer) *MessageReader {
 	return &MessageReader{
 		buffer: headersAndPayload,
@@ -241,6 +243,7 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 func serializeBatch(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,
+	maxMessageSize uint,
 	uncompressedPayload Buffer,
 	compressionProvider compression.Provider,
 	encryptor crypto.Encryptor) error {
@@ -255,6 +258,12 @@ func serializeBatch(wb Buffer,
 	if err != nil {
 		// error occurred while encrypting the payload, ProducerCryptoFailureAction is set to Fail
 		return fmt.Errorf("encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err)
+	}
+
+	// check whether payload is bigger than MaxMessageSize
+	// refer to https://pulsar.apache.org/docs/developing-binary-protocol
+	if len(encryptedPayload) > int(maxMessageSize) {
+		return ErrMessageTooLarge
 	}
 
 	cmdSize := uint32(proto.Size(cmdSend))

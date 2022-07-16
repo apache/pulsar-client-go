@@ -243,6 +243,7 @@ func (p *partitionProducer) grabCnx() error {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		return err
 	}
+	p._setConn(res.Cnx)
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
 
@@ -258,7 +259,8 @@ func (p *partitionProducer) grabCnx() error {
 
 	if p.options.DisableBatching {
 		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
-		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages,
+			p.options.BatchingMaxSize, uint(p._getConn().GetMaxMessageSize()),
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
@@ -273,7 +275,8 @@ func (p *partitionProducer) grabCnx() error {
 			provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
 		}
 
-		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages,
+			p.options.BatchingMaxSize, uint(p._getConn().GetMaxMessageSize()),
 			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			p,
@@ -294,7 +297,6 @@ func (p *partitionProducer) grabCnx() error {
 		p.schemaCache.Put(p.schemaInfo, schemaVersion)
 	}
 
-	p._setConn(res.Cnx)
 	err = p._getConn().RegisterListener(p.producerID, p)
 	if err != nil {
 		return err
@@ -519,9 +521,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		}
 	}
 
-	// if msg is too large
-	if len(payload) > int(p._getConn().GetMaxMessageSize()) && 
-		len(p.batchBuilder.Compress(payload)) > int(p._getConn().GetMaxMessageSize()) {
+	// if msg is too large and compress is not enabled
+	if len(payload) > int(p._getConn().GetMaxMessageSize()) &&
+		p.options.CompressionType == NoCompression {
 		p.publishSemaphore.Release()
 		request.callback(nil, request.msg, errMessageTooLarge)
 		p.log.WithError(errMessageTooLarge).
@@ -626,6 +628,10 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 	if err != nil {
 		for _, cb := range callbacks {
 			if sr, ok := cb.(*sendRequest); ok {
+				if errors.Is(err, internal.ErrMessageTooLarge) {
+					err = errMessageTooLarge
+					p.metrics.PublishErrorsMsgTooLarge.Inc()
+				}
 				sr.callback(nil, sr.msg, err)
 			}
 		}
