@@ -71,6 +71,9 @@ type DLQPolicy struct {
 	// DeadLetterTopic specifies the name of the topic where the failing messages will be sent.
 	DeadLetterTopic string
 
+	// DLQProducerOptions is the producer options to produce messages to the DLQ topic
+	DLQProducerOptions ProducerOptions
+
 	// RetryLetterTopic specifies the name of the topic where the retry messages will be sent.
 	RetryLetterTopic string
 }
