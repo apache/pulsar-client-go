@@ -35,6 +35,8 @@ import (
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
+var closeChanSet = make(map[chan ConsumerMessage]bool)
+
 type acker interface {
 	AckID(id trackingMessageID) error
 	NackID(id trackingMessageID)
@@ -100,6 +102,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	if options.MessageChannel == nil {
 		messageCh = make(chan ConsumerMessage, 10)
 	}
+	closeChanSet[messageCh] = false
 
 	if options.RetryEnable {
 		usingTopic := ""
@@ -563,7 +566,11 @@ func (c *consumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
-		close(c.messageCh)
+		closed := closeChanSet[c.messageCh]
+		if !closed {
+			close(c.messageCh)
+			closeChanSet[c.messageCh] = true
+		}
 		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()
