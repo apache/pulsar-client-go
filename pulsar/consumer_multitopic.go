@@ -229,3 +229,7 @@ func (c *multiTopicConsumer) SeekByTime(time time.Time) error {
 func (c *multiTopicConsumer) Name() string {
 	return c.consumerName
 }
+
+func (c *multiTopicConsumer) TopicName() (string, error) {
+	return "", newError(SeekFailed, "topic command not allowed for multi topic consumer")
+}

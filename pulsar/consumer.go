@@ -255,4 +255,7 @@ type Consumer interface {
 
 	// Name returns the name of consumer.
 	Name() string
+
+	// TopicName returns the topic of the single topic consumer
+	TopicName() (string, error)
 }
