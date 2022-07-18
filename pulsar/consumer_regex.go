@@ -248,6 +248,10 @@ func (c *regexConsumer) SeekByTime(time time.Time) error {
 	return newError(SeekFailed, "seek command not allowed for regex consumer")
 }
 
+func (c *regexConsumer) TopicName() (string, error) {
+	return "", newError(SeekFailed, "topic command not allowed for multi topic consumer")
+}
+
 // Name returns the name of consumer.
 func (c *regexConsumer) Name() string {
 	return c.consumerName

@@ -91,3 +91,7 @@ func (c *mockConsumer) SeekByTime(time time.Time) error {
 func (c *mockConsumer) Name() string {
 	return ""
 }
+
+func (c *mockConsumer) TopicName() (string, error) {
+	return "", nil
+}

@@ -552,6 +552,8 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 		seek.err = err
 		return
 	}
+	pc.log.Debugf("Successfully reset subscriptio to timestamp : %v",
+		uint64(seek.publishTime.UnixNano()/int64(time.Millisecond)))
 	pc.clearMessageChannels()
 }
 

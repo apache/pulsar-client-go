@@ -690,3 +690,7 @@ func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics 
 	}
 	return nil
 }
+
+func (c *consumer) TopicName() (string, error) {
+	return c.topic, nil
+}
