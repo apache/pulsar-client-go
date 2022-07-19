@@ -1063,7 +1063,7 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 		DeadLetterTopic: dlqTopic,
 	}
 	if prodOpt != nil {
-		dlqPolicy.DLQProducerOptions = *prodOpt
+		dlqPolicy.ProducerOptions = *prodOpt
 	}
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:               topic,
@@ -1173,7 +1173,7 @@ func TestDLQMultiTopics(t *testing.T) {
 		DLQ: &DLQPolicy{
 			MaxDeliveries:   3,
 			DeadLetterTopic: dlqTopic,
-			DLQProducerOptions: ProducerOptions{
+			ProducerOptions: ProducerOptions{
 				BatchingMaxPublishDelay: 100 * time.Millisecond,
 			},
 		},

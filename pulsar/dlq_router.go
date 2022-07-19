@@ -135,13 +135,13 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 	// Retry to create producer indefinitely
 	backoff := &internal.Backoff{}
 	for {
-		opt := r.policy.DLQProducerOptions
+		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.DeadLetterTopic
 		opt.Schema = schema
 
 		// the origin code sets to LZ4 compression with no options
 		// so the new design allows compression type to be overwritten but still set lz4 by default
-		if r.policy.DLQProducerOptions.CompressionType == NoCompression {
+		if r.policy.ProducerOptions.CompressionType == NoCompression {
 			opt.CompressionType = LZ4
 		}
 		producer, err := r.client.CreateProducer(opt)
