@@ -177,6 +177,15 @@ func (c *client) CreateReader(options ReaderOptions) (Reader, error) {
 	return reader, nil
 }
 
+func (c *client) CreateTableView(options TableViewOptions) (TableView, error) {
+	tableView, err := newTableView(c, options)
+	if err != nil {
+		return nil, err
+	}
+	c.handlers.Add(tableView)
+	return tableView, nil
+}
+
 func (c *client) TopicPartitions(topic string) ([]string, error) {
 	topicName, err := internal.ParseTopicName(topic)
 	if err != nil {
