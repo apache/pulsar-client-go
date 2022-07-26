@@ -983,7 +983,7 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 		} else {
 			tlsConfig.ServerName = c.physicalAddr.Hostname()
 		}
-		c.log.Infof("getTLSConfig(): setting tlsConfig.ServerName = %+v", tlsConfig.ServerName)
+		c.log.Debugf("getTLSConfig(): setting tlsConfig.ServerName = %+v", tlsConfig.ServerName)
 	}
 
 	cert, err := c.auth.GetTLSCertificate()
