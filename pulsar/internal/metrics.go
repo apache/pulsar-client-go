@@ -40,14 +40,16 @@ type Metrics struct {
 	dlqCounter         *prometheus.CounterVec
 	processingTime     *prometheus.HistogramVec
 
-	producersOpened     *prometheus.CounterVec
-	producersClosed     *prometheus.CounterVec
-	producersPartitions *prometheus.GaugeVec
-	consumersOpened     *prometheus.CounterVec
-	consumersClosed     *prometheus.CounterVec
-	consumersPartitions *prometheus.GaugeVec
-	readersOpened       *prometheus.CounterVec
-	readersClosed       *prometheus.CounterVec
+	producersOpened           *prometheus.CounterVec
+	producersClosed           *prometheus.CounterVec
+	producersReconnectFailure *prometheus.CounterVec
+	producersPartitions       *prometheus.GaugeVec
+	consumersOpened           *prometheus.CounterVec
+	consumersClosed           *prometheus.CounterVec
+	consumersReconnectFailure *prometheus.CounterVec
+	consumersPartitions       *prometheus.GaugeVec
+	readersOpened             *prometheus.CounterVec
+	readersClosed             *prometheus.CounterVec
 
 	// Metrics that are not labeled with specificity are immediately available
 	ConnectionsOpened                     prometheus.Counter
@@ -78,14 +80,16 @@ type LeveledMetrics struct {
 	DlqCounter         prometheus.Counter
 	ProcessingTime     prometheus.Observer
 
-	ProducersOpened     prometheus.Counter
-	ProducersClosed     prometheus.Counter
-	ProducersPartitions prometheus.Gauge
-	ConsumersOpened     prometheus.Counter
-	ConsumersClosed     prometheus.Counter
-	ConsumersPartitions prometheus.Gauge
-	ReadersOpened       prometheus.Counter
-	ReadersClosed       prometheus.Counter
+	ProducersOpened           prometheus.Counter
+	ProducersClosed           prometheus.Counter
+	ProducersReconnectFailure prometheus.Counter
+	ProducersPartitions       prometheus.Gauge
+	ConsumersOpened           prometheus.Counter
+	ConsumersClosed           prometheus.Counter
+	ConsumersReconnectFailure prometheus.Counter
+	ConsumersPartitions       prometheus.Gauge
+	ReadersOpened             prometheus.Counter
+	ReadersClosed             prometheus.Counter
 }
 
 func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]string) *Metrics {
@@ -175,6 +179,12 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
+		producersReconnectFailure: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name:        "pulsar_client_producers_reconnect_failure",
+			Help:        "Counter of reconnect failure of producers",
+			ConstLabels: constLabels,
+		}, metricsLevelLabels),
+
 		consumersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumers_opened",
 			Help:        "Counter of consumers created by the client",
@@ -184,6 +194,12 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 		consumersClosed: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_consumers_closed",
 			Help:        "Counter of consumers closed by the client",
+			ConstLabels: constLabels,
+		}, metricsLevelLabels),
+
+		consumersReconnectFailure: prometheus.NewCounterVec(prometheus.CounterOpts{
+			Name:        "pulsar_client_consumers_reconnect_failure",
+			Help:        "Counter of reconnect failure of consumers",
 			ConstLabels: constLabels,
 		}, metricsLevelLabels),
 
@@ -399,6 +415,12 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 			metrics.producersClosed = are.ExistingCollector.(*prometheus.CounterVec)
 		}
 	}
+	err = prometheus.DefaultRegisterer.Register(metrics.producersReconnectFailure)
+	if err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			metrics.producersReconnectFailure = are.ExistingCollector.(*prometheus.CounterVec)
+		}
+	}
 	err = prometheus.DefaultRegisterer.Register(metrics.producersPartitions)
 	if err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
@@ -415,6 +437,12 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 	if err != nil {
 		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
 			metrics.consumersClosed = are.ExistingCollector.(*prometheus.CounterVec)
+		}
+	}
+	err = prometheus.DefaultRegisterer.Register(metrics.consumersReconnectFailure)
+	if err != nil {
+		if are, ok := err.(prometheus.AlreadyRegisteredError); ok {
+			metrics.consumersReconnectFailure = are.ExistingCollector.(*prometheus.CounterVec)
 		}
 	}
 	err = prometheus.DefaultRegisterer.Register(metrics.consumersPartitions)
@@ -517,14 +545,16 @@ func (mp *Metrics) GetLeveledMetrics(t string) *LeveledMetrics {
 		DlqCounter:         mp.dlqCounter.With(labels),
 		ProcessingTime:     mp.processingTime.With(labels),
 
-		ProducersOpened:     mp.producersOpened.With(labels),
-		ProducersClosed:     mp.producersClosed.With(labels),
-		ProducersPartitions: mp.producersPartitions.With(labels),
-		ConsumersOpened:     mp.consumersOpened.With(labels),
-		ConsumersClosed:     mp.consumersClosed.With(labels),
-		ConsumersPartitions: mp.consumersPartitions.With(labels),
-		ReadersOpened:       mp.readersOpened.With(labels),
-		ReadersClosed:       mp.readersClosed.With(labels),
+		ProducersOpened:           mp.producersOpened.With(labels),
+		ProducersClosed:           mp.producersClosed.With(labels),
+		ProducersReconnectFailure: mp.producersReconnectFailure.With(labels),
+		ProducersPartitions:       mp.producersPartitions.With(labels),
+		ConsumersOpened:           mp.consumersOpened.With(labels),
+		ConsumersClosed:           mp.consumersClosed.With(labels),
+		ConsumersReconnectFailure: mp.consumersReconnectFailure.With(labels),
+		ConsumersPartitions:       mp.consumersPartitions.With(labels),
+		ReadersOpened:             mp.readersOpened.With(labels),
+		ReadersClosed:             mp.readersClosed.With(labels),
 	}
 
 	return lm
