@@ -419,9 +419,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		if maxRetry > 0 {
 			maxRetry--
 		}
-		if maxRetry == 0 || backoff.IsMaxBackoffReached() {
-			p.metrics.ProducersReconnectFailure.Inc()
-		}
+		p.metrics.ProducersReconnectFailure.Inc()
 	}
 }
 
