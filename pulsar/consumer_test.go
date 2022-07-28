@@ -39,8 +39,8 @@ import (
 )
 
 var (
-	adminURL  = "http://localhost:8080"
-	lookupURL = "pulsar://localhost:6650"
+	adminURL  = "http://10.105.7.225:8080"
+	lookupURL = "pulsar://10.105.7.225:6650"
 )
 
 func TestProducerConsumer(t *testing.T) {
@@ -175,6 +175,31 @@ func TestBatchMessageReceive(t *testing.T) {
 	}
 
 	assert.Equal(t, count, numOfMessages)
+}
+
+func TestChunkMessageReceive(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "persistent://public/default/receive-chunk"
+	subName := "subscription-name"
+	ctx := context.Background()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	fmt.Println("id:", msg.ID().(chunkMessageID).String(), "len:", len(msg.Payload()))
+	consumer.Ack(msg)
 }
 
 func TestConsumerWithInvalidConf(t *testing.T) {

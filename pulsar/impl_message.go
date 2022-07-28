@@ -204,6 +204,15 @@ func toTrackingMessageID(msgID MessageID) (trackingMessageID, bool) {
 	}
 }
 
+func toChunkedMessageID(msgID MessageID) (chunkMessageID, bool) {
+	cid, ok := msgID.(chunkMessageID)
+	if ok {
+		return cid, true
+	} else {
+		return chunkMessageID{}, false
+	}
+}
+
 func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
 	ts := int64(timestamp) * int64(time.Millisecond)
 	seconds := ts / int64(time.Second)
@@ -360,4 +369,35 @@ func (t *ackTracker) completed() bool {
 	t.Lock()
 	defer t.Unlock()
 	return len(t.batchIDs.Bits()) == 0
+}
+
+type chunkMessageID struct {
+	messageID
+
+	firstChunkID messageID
+	receivedTime time.Time
+}
+
+func newChunkMessageID(firstChunkID messageID, lastChunkID messageID) chunkMessageID {
+	return chunkMessageID{
+		messageID:    lastChunkID,
+		firstChunkID: firstChunkID,
+		receivedTime: time.Now(),
+	}
+}
+
+func (id chunkMessageID) firstChunkMessageID() MessageID {
+	return id.firstChunkID
+}
+
+func (id chunkMessageID) lastChunkMessageID() MessageID {
+	return id
+}
+
+func (id chunkMessageID) String() string {
+	return fmt.Sprintf("%s;%s", id.firstChunkID.String(), id.messageID.String())
+}
+
+func (id chunkMessageID) Serialize() []byte {
+	return id.firstChunkID.Serialize()
 }

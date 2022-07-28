@@ -36,7 +36,7 @@ import (
 )
 
 const (
-	serviceURL    = "pulsar://localhost:6650"
+	serviceURL    = "pulsar://10.105.7.225:6650"
 	serviceURLTLS = "pulsar+ssl://localhost:6651"
 
 	webServiceURL    = "http://localhost:8080"

@@ -189,6 +189,17 @@ type ConsumerOptions struct {
 	// error information of the Ack method only contains errors that may occur in the Go SDK's own processing.
 	// Default: false
 	AckWithResponse bool
+
+	// MaxPendingChunkedMessage sets the maximum pending chunked messages. (default: 100)
+	MaxPendingChunkedMessage int
+
+	// ExpireTimeOfIncompleteChunk sets the expiry time of discarding incomplete chunked message.
+	// The timing accuracy is 100ms level and the default value is 60 * 1000 millis
+	ExpireTimeOfIncompleteChunk time.Duration
+
+	// AutoAckIncompleteChunk sets whether consumer auto acknowledges incomplete chunked message when it should
+	// be removed (e.g.the chunked message pending queue is full). (default: false)
+	AutoAckIncompleteChunk bool
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
