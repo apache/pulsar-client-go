@@ -1155,6 +1155,10 @@ func (pc *partitionConsumer) reconnectToBroker() {
 		if maxRetry > 0 {
 			maxRetry--
 		}
+		pc.metrics.ConsumersReconnectFailure.Inc()
+		if maxRetry == 0 || backoff.IsMaxBackoffReached() {
+			pc.metrics.ConsumersReconnectMaxRetry.Inc()
+		}
 	}
 }
 
