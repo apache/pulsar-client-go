@@ -382,7 +382,7 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
-
+	<-ackReq.doneCh
 	return ackReq.err
 }
 
@@ -562,6 +562,7 @@ func (pc *partitionConsumer) clearMessageChannels() {
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
+	defer close(req.doneCh)
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return
@@ -986,8 +987,9 @@ func (pc *partitionConsumer) dispatcher() {
 }
 
 type ackRequest struct {
-	msgID trackingMessageID
-	err   error
+	doneCh chan struct{}
+	msgID  trackingMessageID
+	err    error
 }
 
 type unsubscribeRequest struct {
