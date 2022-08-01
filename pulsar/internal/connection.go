@@ -18,13 +18,16 @@
 package internal
 
 import (
+	"bufio"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
 	"fmt"
+	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
 	"net/url"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -39,10 +42,6 @@ import (
 )
 
 const (
-	// TODO: Find a better way to embed the version in the library code
-	PulsarVersion       = "0.1"
-	ClientVersionString = "Pulsar Go " + PulsarVersion
-
 	PulsarProtocolVersion = int32(pb.ProtocolVersion_v18)
 )
 
@@ -56,6 +55,11 @@ var (
 	errConnectionClosed        = errors.New("connection closed")
 	errUnableRegisterListener  = errors.New("unable register listener when con closed")
 	errUnableAddConsumeHandler = errors.New("unable add consumer handler when con closed")
+)
+
+var (
+	PulsarVersion       = getClientVersion()
+	ClientVersionString = "Pulsar Go " + PulsarVersion
 )
 
 // ConnectionListener is a user of a connection (eg. a producer or
@@ -1024,4 +1028,40 @@ func (c *connection) ID() string {
 
 func (c *connection) GetMaxMessageSize() int32 {
 	return c.maxMessageSize
+}
+
+func getClientVersion() string {
+	// open version file
+	var versionFile = "/VERSION"
+	pwdPath, err := os.Getwd()
+	if err != nil {
+		log.NewLoggerWithLogrus(logrus.StandardLogger()).Warnf("get version file pwd path %s error", versionFile)
+		return time.Unix(time.Now().Unix(), 0).Format("2006-01-02 15:04:05")
+	}
+	file, err := os.Open(pwdPath + versionFile)
+	if err != nil {
+		log.NewLoggerWithLogrus(logrus.StandardLogger()).Warnf("the version file %s not exist", versionFile)
+		return time.Unix(time.Now().Unix(), 0).Format("2006-01-02 15:04:05")
+	}
+	defer file.Close()
+
+	// read the file line by line using scanner
+	lineNum := 1
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		if lineNum == 3 {
+			return scanner.Text()
+		}
+		lineNum++
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.NewLoggerWithLogrus(logrus.StandardLogger()).Warnf("read version file %s error: %v", versionFile, err)
+		return time.Unix(time.Now().Unix(), 0).Format("2006-01-02 15:04:05")
+	}
+	return time.Unix(time.Now().Unix(), 0).Format("2006-01-02 15:04:05")
+}
+
+func init() {
+	getClientVersion()
 }
