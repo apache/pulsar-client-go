@@ -258,6 +258,7 @@ func TestExpireIncompleteChunks(t *testing.T) {
 		SubscriptionName:            "chunk-subscriber",
 		ExpireTimeOfIncompleteChunk: time.Millisecond * 300,
 	})
+	assert.NoError(t, err)
 	defer c.Close()
 
 	uuid := "test-uuid"

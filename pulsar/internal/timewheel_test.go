@@ -6,10 +6,6 @@ import (
 	"time"
 )
 
-func callback() {
-	fmt.Println("callback !!!")
-}
-
 func checkTimeCost(t *testing.T, start, end time.Time, before int, after int) bool {
 	due := end.Sub(start)
 	if due > time.Duration(after)*time.Millisecond {
@@ -42,7 +38,7 @@ func TestAddFunc(t *testing.T) {
 	defer tw.Stop()
 
 	for index := 1; index < 6; index++ {
-		queue := make(chan bool, 0)
+		queue := make(chan bool)
 		start := time.Now()
 		tw.AddJob(fmt.Sprintf("key_%d", index), time.Duration(index)*time.Second, func() {
 			queue <- true
@@ -62,7 +58,7 @@ func TestRemove(t *testing.T) {
 	tw.Start()
 	defer tw.Stop()
 
-	queue := make(chan bool, 0)
+	queue := make(chan bool)
 	tw.AddJob("key", time.Millisecond*500, func() {
 		queue <- true
 	})

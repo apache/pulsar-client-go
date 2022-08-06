@@ -208,9 +208,8 @@ func toChunkedMessageID(msgID MessageID) (chunkMessageID, bool) {
 	cid, ok := msgID.(chunkMessageID)
 	if ok {
 		return cid, true
-	} else {
-		return chunkMessageID{}, false
 	}
+	return chunkMessageID{}, false
 }
 
 func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
@@ -384,14 +383,6 @@ func newChunkMessageID(firstChunkID messageID, lastChunkID messageID) chunkMessa
 		firstChunkID: firstChunkID,
 		receivedTime: time.Now(),
 	}
-}
-
-func (id chunkMessageID) firstChunkMessageID() MessageID {
-	return id.firstChunkID
-}
-
-func (id chunkMessageID) lastChunkMessageID() MessageID {
-	return id
 }
 
 func (id chunkMessageID) String() string {

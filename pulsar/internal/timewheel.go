@@ -148,8 +148,8 @@ func (tw *TimeWheel) addTask(task *task) {
 func (tw *TimeWheel) getPositionAndCircle(d time.Duration) (pos int, circle int) {
 	delaySeconds := int(d.Milliseconds())
 	intervalSeconds := int(tw.interval.Milliseconds())
-	circle = int(delaySeconds / intervalSeconds / tw.slotNum)
-	pos = int(tw.currentPos+delaySeconds/intervalSeconds) % tw.slotNum
+	circle = delaySeconds / intervalSeconds / tw.slotNum
+	pos = tw.currentPos + delaySeconds/intervalSeconds%tw.slotNum
 	if pos < 0 {
 		pos = 0
 	}
