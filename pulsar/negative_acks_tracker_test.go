@@ -233,6 +233,10 @@ func (msg *mockMessage1) ProducerName() string {
 	return ""
 }
 
+func (msg *mockMessage1) SchemaVersion() []byte {
+	return nil
+}
+
 func (msg *mockMessage1) GetEncryptionContext() *EncryptionContext {
 	return &EncryptionContext{}
 }
@@ -298,6 +302,10 @@ func (msg *mockMessage2) GetReplicatedFrom() string {
 }
 
 func (msg *mockMessage2) GetSchemaValue(v interface{}) error {
+	return nil
+}
+
+func (msg *mockMessage2) SchemaVersion() []byte {
 	return nil
 }
 

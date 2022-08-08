@@ -243,6 +243,8 @@ type message struct {
 	replicatedFrom      string
 	redeliveryCount     uint32
 	schema              Schema
+	schemaVersion       []byte
+	schemaInfoCache     *schemaInfoCache
 	encryptionContext   *EncryptionContext
 	index               *uint64
 	brokerPublishTime   *time.Time
@@ -293,7 +295,18 @@ func (msg *message) GetReplicatedFrom() string {
 }
 
 func (msg *message) GetSchemaValue(v interface{}) error {
+	if msg.schemaVersion != nil {
+		schema, err := msg.schemaInfoCache.Get(msg.schemaVersion)
+		if err != nil {
+			return err
+		}
+		return schema.Decode(msg.payLoad, v)
+	}
 	return msg.schema.Decode(msg.payLoad, v)
+}
+
+func (msg *message) SchemaVersion() []byte {
+	return msg.schemaVersion
 }
 
 func (msg *message) ProducerName() string {

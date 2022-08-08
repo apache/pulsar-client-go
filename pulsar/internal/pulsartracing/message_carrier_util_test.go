@@ -120,6 +120,9 @@ func (msg *mockConsumerMessage) ProducerName() string {
 	return ""
 }
 
+func (msg *mockConsumerMessage) SchemaVersion() []byte {
+	return nil
+}
 func (msg *mockConsumerMessage) GetEncryptionContext() *pulsar.EncryptionContext {
 	return &pulsar.EncryptionContext{}
 }
