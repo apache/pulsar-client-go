@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -111,11 +112,17 @@ func newClient(options ClientOptions) (Client, error) {
 		options.MetricsCardinality = MetricsCardinalityNamespace
 	}
 
+	if options.MetricsRegisterer == nil {
+		options.MetricsRegisterer = prometheus.DefaultRegisterer
+	}
+
 	var metrics *internal.Metrics
 	if options.CustomMetricsLabels != nil {
-		metrics = internal.NewMetricsProvider(int(options.MetricsCardinality), options.CustomMetricsLabels)
+		metrics = internal.NewMetricsProvider(
+			int(options.MetricsCardinality), options.CustomMetricsLabels, options.MetricsRegisterer)
 	} else {
-		metrics = internal.NewMetricsProvider(int(options.MetricsCardinality), map[string]string{})
+		metrics = internal.NewMetricsProvider(
+			int(options.MetricsCardinality), map[string]string{}, options.MetricsRegisterer)
 	}
 
 	c := &client{
