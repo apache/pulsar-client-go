@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -612,7 +613,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		}
 		if totalChunks > 1 {
 			var lhs, rhs int
-			uuid := fmt.Sprintf("%s-%d", p.producerName, mm.SequenceId)
+			uuid := fmt.Sprintf("%s-%s", p.producerName, strconv.FormatUint(*mm.SequenceId, 10))
 			mm.Uuid = proto.String(uuid)
 			mm.NumChunksFromMsg = proto.Int(totalChunks)
 			mm.TotalChunkMsgSize = proto.Int(compressedSize)
@@ -1087,7 +1088,11 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 				)
 
 				if sr.callback != nil {
-					sr.callback(msgID, sr.msg, nil)
+					if sr.chunkMsgID != nil && sr.chunkMsgID.complete() {
+						sr.callback(sr.chunkMsgID.firstChunkID, sr.msg, nil)
+					} else {
+						sr.callback(msgID, sr.msg, nil)
+					}
 				}
 
 				p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
@@ -1185,6 +1190,7 @@ type sendRequest struct {
 	blockOnce        sync.Once
 	totalChunks      int
 	chunkID          int
+	chunkMsgID       *chunkMessageID
 }
 
 type closeProducer struct {
