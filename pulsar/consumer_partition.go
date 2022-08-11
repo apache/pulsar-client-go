@@ -470,7 +470,7 @@ func (pc *partitionConsumer) Close() {
 	}
 
 	// close chunkedMsgCtxMap
-	pc.chunkedMsgCtxMap.close()
+	pc.chunkedMsgCtxMap.Close()
 
 	req := &closeRequest{doneCh: make(chan struct{})}
 	pc.eventsCh <- req
@@ -775,6 +775,9 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return err
 		}
 
+		// clean chunkedMsgCtxMap
+		pc.chunkedMsgCtxMap.remove(msgMeta.GetUuid())
+
 		pc.metrics.BytesReceived.Add(float64(len(payload)))
 		pc.metrics.PrefetchedBytes.Add(float64(len(payload)))
 
@@ -898,8 +901,7 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 
 	ctx := pc.chunkedMsgCtxMap.get(uuid)
 
-	if ctx == nil || ctx.chunkedMsgBuffer == nil || chunkID != ctx.lastChunkedMsgID+1 ||
-		int32(compressedPayload.ReadableBytes()+ctx.chunkedMsgBuffer.ReadableBytes()) > msgMeta.GetTotalChunkMsgSize() {
+	if ctx == nil || ctx.chunkedMsgBuffer == nil || chunkID != ctx.lastChunkedMsgID+1 {
 		lastChunkedMsgID := -1
 		totalChunks := -1
 		if ctx != nil {
@@ -908,9 +910,9 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 			// todo: how to release buffer
 			ctx.chunkedMsgBuffer.Clear()
 		}
-		pc.log.Info(fmt.Sprintf(
+		pc.log.Warnf(fmt.Sprintf(
 			"Received unexpected chunk messageId %s, last-chunk-id %d, chunkId = %d, total-chunks %d",
-			msgID.Serialize(), lastChunkedMsgID, chunkID, totalChunks))
+			msgID.String(), lastChunkedMsgID, chunkID, totalChunks))
 		pc.chunkedMsgCtxMap.remove(uuid)
 		pc.availablePermits++
 		// todo: expire tracker ack
@@ -1670,8 +1672,7 @@ func (c *chunkedMsgCtxMap) addIfAbsent(uuid string, totalChunks int32, totalChun
 		c.chunkedMsgCtxs[uuid] = newChunkedMsgCtx(totalChunks, totalChunkMsgSize)
 		c.pendingQueue.PushBack(uuid)
 		c.tw.AddJob(uuid, c.pc.options.expireTimeOfIncompleteChunk, func() {
-			// todo: autoAck is always true in Java client, why?
-			c.removeChunkMessage(uuid, c.pc.options.autoAckIncompleteChunk)
+			c.removeChunkMessage(uuid, true)
 		})
 	}
 	if c.maxPending > 0 && c.pendingQueue.Len() > c.maxPending {
@@ -1730,7 +1731,7 @@ func (c *chunkedMsgCtxMap) removeChunkMessage(uuid string, autoAck bool) {
 	}
 }
 
-func (c *chunkedMsgCtxMap) close() {
+func (c *chunkedMsgCtxMap) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.closed = true

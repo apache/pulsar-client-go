@@ -81,6 +81,7 @@ type partitionProducer struct {
 	batchFlushTicker         *time.Ticker
 	encryptor                internalcrypto.Encryptor
 	compressionProvider      compression.Provider
+	chunkRecorder            *chunkRecorder
 
 	// Channel where app is posting messages to be published
 	eventsChan      chan interface{}
@@ -154,6 +155,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
 			compression.Level(options.CompressionLevel)),
+		chunkRecorder:    newChunkRecorder(),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
@@ -629,7 +631,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 					msg:         request.msg,
 					callback:    request.callback,
 					publishTime: request.publishTime,
+					totalChunks: totalChunks,
 					chunkID:     chunkID,
+					uuid:        uuid,
 				}
 				p.internalSingleSend(mm, compressedPayload[lhs:rhs], nsr, uint32(maxMessageSize))
 			}
@@ -1087,15 +1091,41 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 					p.partitionIdx,
 				)
 
-				if sr.callback != nil {
-					if sr.chunkMsgID != nil && sr.chunkMsgID.complete() {
-						sr.callback(sr.chunkMsgID.firstChunkID, sr.msg, nil)
-					} else {
-						sr.callback(msgID, sr.msg, nil)
+				if sr.totalChunks > 1 {
+					if sr.chunkID == 0 {
+						cmid := p.chunkRecorder.addIfAbsent(sr.uuid)
+						cmid.firstChunkID = messageID{
+							int64(response.MessageId.GetLedgerId()),
+							int64(response.MessageId.GetEntryId()),
+							-1,
+							p.partitionIdx,
+						}
+					} else if sr.chunkID == sr.totalChunks-1 {
+						cmid, ok := p.chunkRecorder.get(sr.uuid)
+						if ok {
+							cmid.messageID = messageID{
+								int64(response.MessageId.GetLedgerId()),
+								int64(response.MessageId.GetEntryId()),
+								-1,
+								p.partitionIdx,
+							}
+							// use chunkMsgID to set msgID
+							msgID = *cmid
+							p.chunkRecorder.remove(sr.uuid)
+						} else {
+							p.log.Warnf("Recorder has lost the chunk message id, uuid: %v",
+								sr.uuid)
+							continue
+						}
 					}
 				}
 
-				p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
+				if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
+					if sr.callback != nil {
+						sr.callback(msgID, sr.msg, nil)
+					}
+					p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
+				}
 			}
 		}
 
@@ -1190,7 +1220,7 @@ type sendRequest struct {
 	blockOnce        sync.Once
 	totalChunks      int
 	chunkID          int
-	chunkMsgID       *chunkMessageID
+	uuid             string
 }
 
 type closeProducer struct {
@@ -1259,4 +1289,37 @@ func (p *partitionProducer) internalErrHandle(err error) {
 		return
 	}
 	// other internal error can be handled here
+}
+
+type chunkRecorder struct {
+	chunkedMsgCtxs map[string]*chunkMessageID
+	mu             sync.Mutex
+}
+
+func newChunkRecorder() *chunkRecorder {
+	return &chunkRecorder{
+		chunkedMsgCtxs: make(map[string]*chunkMessageID),
+	}
+}
+
+func (c *chunkRecorder) addIfAbsent(uuid string) *chunkMessageID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if _, ok := c.chunkedMsgCtxs[uuid]; !ok {
+		c.chunkedMsgCtxs[uuid] = &chunkMessageID{}
+	}
+	return c.chunkedMsgCtxs[uuid]
+}
+
+func (c *chunkRecorder) get(uuid string) (*chunkMessageID, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	cmid, ok := c.chunkedMsgCtxs[uuid]
+	return cmid, ok
+}
+
+func (c *chunkRecorder) remove(uuid string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.chunkedMsgCtxs, uuid)
 }

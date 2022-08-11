@@ -89,7 +89,9 @@ func TestLargeMessage(t *testing.T) {
 
 	// test receive chunk with serverMaxMessageSize limit
 	for i := 0; i < 5; i++ {
-		msg, err := consumer.Receive(context.Background())
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		msg, err := consumer.Receive(ctx)
+		cancel()
 		assert.NoError(t, err)
 
 		expectMsg := expectMsgs[i]
@@ -302,6 +304,128 @@ func TestChunksEnqueueFailed(t *testing.T) {
 	})
 	assert.Error(t, err)
 	assert.Nil(t, ID)
+}
+
+func TestSeekChunkMessages(t *testing.T) {
+	rand.Seed(time.Now().Unix())
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	totalMessages := 5
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		EnableChunking:      true,
+		DisableBatching:     true,
+		ChunkMaxMessageSize: 50,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Type:             Exclusive,
+		SubscriptionName: "default-seek",
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, consumer)
+	defer consumer.Close()
+
+	msgIDs := make([]MessageID, 0)
+	for i := 0; i < totalMessages; i++ {
+		ID, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: createTestMessagePayload(100),
+		})
+		assert.NoError(t, err)
+		msgIDs = append(msgIDs, ID)
+	}
+
+	for i := 0; i < totalMessages; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		msg, err := consumer.Receive(ctx)
+		cancel()
+		assert.NoError(t, err)
+		assert.NotNil(t, msg)
+		assert.Equal(t, msgIDs[i].Serialize(), msg.ID().Serialize())
+	}
+
+	err = consumer.Seek(msgIDs[1])
+	assert.NoError(t, err)
+
+	for i := 1; i < totalMessages; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		msg, err := consumer.Receive(ctx)
+		cancel()
+		assert.NoError(t, err)
+		assert.NotNil(t, msg)
+		assert.Equal(t, msgIDs[i].Serialize(), msg.ID().Serialize())
+	}
+
+	// todo: add reader seek test when support reader read chunk message
+}
+
+func TestChunkAckAndNAck(t *testing.T) {
+	rand.Seed(time.Now().Unix())
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		EnableChunking:      true,
+		DisableBatching:     true,
+		ChunkMaxMessageSize: 50,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               topic,
+		Type:                Exclusive,
+		SubscriptionName:    "default-seek",
+		NackRedeliveryDelay: time.Second,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, consumer)
+	defer consumer.Close()
+
+	content := createTestMessagePayload(100)
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: content,
+	})
+	assert.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	msg, err := consumer.Receive(ctx)
+	cancel()
+	assert.NoError(t, err)
+	assert.NotNil(t, msg)
+	assert.Equal(t, msg.Payload(), content)
+
+	consumer.Nack(msg)
+	time.Sleep(time.Second * 2)
+
+	ctx, cancel = context.WithTimeout(context.Background(), time.Second*5)
+	msg, err = consumer.Receive(ctx)
+	cancel()
+	assert.NoError(t, err)
+	assert.NotNil(t, msg)
+	assert.Equal(t, msg.Payload(), content)
 }
 
 func createTestMessagePayload(size int) []byte {

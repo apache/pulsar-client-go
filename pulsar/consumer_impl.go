@@ -525,16 +525,15 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 
 func (c *consumer) Nack(msg Message) {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
-		mid, ok := c.messageID(msg.ID())
-		if !ok {
+		msgID := msg.ID()
+
+		if msgID.PartitionIdx() < 0 || int(msgID.PartitionIdx()) >= len(c.consumers) {
+			c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
+				msgID.PartitionIdx(), len(c.consumers))
 			return
 		}
 
-		if mid.consumer != nil {
-			mid.Nack()
-			return
-		}
-		c.consumers[mid.partitionIdx].NackMsg(msg)
+		c.consumers[msgID.PartitionIdx()].NackMsg(msg)
 		return
 	}
 
@@ -542,17 +541,13 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	mid, ok := c.messageID(msgID)
-	if !ok {
+	if msgID.PartitionIdx() < 0 || int(msgID.PartitionIdx()) >= len(c.consumers) {
+		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
+			msgID.PartitionIdx(), len(c.consumers))
 		return
 	}
 
-	if mid.consumer != nil {
-		mid.Nack()
-		return
-	}
-
-	c.consumers[mid.partitionIdx].NackID(mid)
+	c.consumers[msgID.PartitionIdx()].NackID(msgID)
 }
 
 func (c *consumer) Close() {
@@ -588,12 +583,13 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
-	mid, ok := c.messageID(msgID)
-	if !ok {
-		return nil
+	if msgID.PartitionIdx() < 0 || int(msgID.PartitionIdx()) >= len(c.consumers) {
+		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			msgID.PartitionIdx(), len(c.consumers))
+		return errors.New("invalid partition index")
 	}
 
-	return c.consumers[mid.partitionIdx].Seek(mid)
+	return c.consumers[msgID.PartitionIdx()].Seek(msgID)
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
