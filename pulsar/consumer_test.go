@@ -177,31 +177,6 @@ func TestBatchMessageReceive(t *testing.T) {
 	assert.Equal(t, count, numOfMessages)
 }
 
-func TestChunkMessageReceive(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
-
-	assert.Nil(t, err)
-	defer client.Close()
-
-	topicName := "persistent://public/default/receive-chunk"
-	subName := "subscription-name"
-	ctx := context.Background()
-
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: subName,
-	})
-	assert.Nil(t, err)
-	defer consumer.Close()
-
-	msg, err := consumer.Receive(ctx)
-	assert.Nil(t, err)
-	fmt.Println("id:", msg.ID().(chunkMessageID).String(), "len:", len(msg.Payload()))
-	consumer.Ack(msg)
-}
-
 func TestConsumerWithInvalidConf(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

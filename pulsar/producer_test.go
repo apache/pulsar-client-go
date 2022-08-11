@@ -981,35 +981,6 @@ func TestMaxMessageSize(t *testing.T) {
 	}
 }
 
-func TestProducerChunking(t *testing.T) {
-	serverMaxMessageSize := 1024 * 1024
-
-	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
-	})
-	assert.NoError(t, err)
-	defer client.Close()
-
-	// both EnableChunking and DisableBatching should be set true to open chunking
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           newTopicName(),
-		EnableChunking:  true,
-		DisableBatching: true,
-	})
-	assert.NoError(t, err)
-	assert.NotNil(t, producer)
-	defer producer.Close()
-
-	payload := make([]byte, serverMaxMessageSize+1)
-	ID, err := producer.Send(context.Background(), &ProducerMessage{
-		Payload: payload,
-	})
-
-	assert.NoError(t, err)
-	assert.NotNil(t, ID)
-
-}
-
 func TestFailedSchemaEncode(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
