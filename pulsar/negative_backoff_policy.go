@@ -35,8 +35,8 @@ type NackBackoffPolicy interface {
 type defaultNackBackoffPolicy struct{}
 
 func (nbp *defaultNackBackoffPolicy) Next(redeliveryCount uint32) int64 {
-	minNackTimeMs := int64(1000 * 30) // 30sec
-	maxNackTimeMs := 1000 * 60 * 10   // 10min
+	minNackTimeMs := int64(30 * 1000 * 1000 * 1000) // 30sec
+	maxNackTimeMs := int64(10 * 60 * 1000 * 1000 * 1000)   // 10min
 
 	if redeliveryCount < 0 {
 		return minNackTimeMs
