@@ -166,3 +166,20 @@ You can self-register at https://apache-pulsar.herokuapp.com/
 ## License
 
 Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
+
+## Troubleshooting
+
+### Go module 'ambiguous import' error
+
+If you've upgraded from a previous version of this library, you may run into an 'ambigous import' error when building.
+
+```
+github.com/apache/pulsar-client-go/oauth2: ambiguous import: found package github.com/apache/pulsar-client-go/oauth2 in multiple modules
+```
+
+The fix for this is to make sure you don't have any references in your `go.mod` file to the old oauth2 module path.  So remove any lines
+similar to the following, and then run `go mod tidy`.
+
+```
+github.com/apache/pulsar-client-go/oauth2 v0.0.0-20220630195735-e95cf0633348 // indirect
+```
