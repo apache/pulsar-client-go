@@ -199,6 +199,11 @@ func toTrackingMessageID(msgID MessageID) (trackingMessageID, bool) {
 		}, true
 	} else if mid, ok := msgID.(trackingMessageID); ok {
 		return mid, true
+	} else if cmid, ok := msgID.(chunkMessageID); ok {
+		return trackingMessageID{
+			messageID:    cmid.messageID,
+			receivedTime: cmid.receivedTime,
+		}, true
 	} else {
 		return trackingMessageID{}, false
 	}

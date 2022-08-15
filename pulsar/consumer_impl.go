@@ -36,8 +36,8 @@ import (
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
-	AckID(id MessageID) error
-	NackID(id MessageID)
+	AckID(id trackingMessageID) error
+	NackID(id trackingMessageID)
 	NackMsg(msg Message)
 }
 
@@ -465,13 +465,16 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
-	if msgID.PartitionIdx() < 0 || int(msgID.PartitionIdx()) >= len(c.consumers) {
-		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
-			msgID.PartitionIdx(), len(c.consumers))
-		return errors.New("invalid partition index")
+	mid, ok := c.messageID(msgID)
+	if !ok {
+		return errors.New("failed to convert trackingMessageID")
 	}
 
-	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
+	if mid.consumer != nil {
+		return mid.Ack()
+	}
+
+	return c.consumers[mid.partitionIdx].AckID(mid)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -525,15 +528,16 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 
 func (c *consumer) Nack(msg Message) {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
-		msgID := msg.ID()
-
-		if msgID.PartitionIdx() < 0 || int(msgID.PartitionIdx()) >= len(c.consumers) {
-			c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
-				msgID.PartitionIdx(), len(c.consumers))
+		mid, ok := c.messageID(msg.ID())
+		if !ok {
 			return
 		}
 
-		c.consumers[msgID.PartitionIdx()].NackMsg(msg)
+		if mid.consumer != nil {
+			mid.Nack()
+			return
+		}
+		c.consumers[mid.partitionIdx].NackMsg(msg)
 		return
 	}
 
@@ -541,13 +545,17 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	if msgID.PartitionIdx() < 0 || int(msgID.PartitionIdx()) >= len(c.consumers) {
-		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
-			msgID.PartitionIdx(), len(c.consumers))
+	mid, ok := c.messageID(msgID)
+	if !ok {
 		return
 	}
 
-	c.consumers[msgID.PartitionIdx()].NackID(msgID)
+	if mid.consumer != nil {
+		mid.Nack()
+		return
+	}
+
+	c.consumers[mid.partitionIdx].NackID(mid)
 }
 
 func (c *consumer) Close() {
