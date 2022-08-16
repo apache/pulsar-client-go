@@ -25,6 +25,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -832,7 +833,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buffer,
 	msgMeta *pb.MessageMetadata,
 	pbMsgID *pb.MessageIdData) internal.Buffer {
-	// todo: expire incomplete chunk message
 	uuid := msgMeta.GetUuid()
 	numChunks := msgMeta.GetNumChunksFromMsg()
 	totalChunksSize := int(msgMeta.GetTotalChunkMsgSize())
@@ -859,23 +859,20 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 		if ctx != nil {
 			lastChunkedMsgID = int(ctx.lastChunkedMsgID)
 			totalChunks = int(ctx.totalChunks)
-			// todo: how to release buffer
 			ctx.chunkedMsgBuffer.Clear()
 		}
 		pc.log.Warnf(fmt.Sprintf(
 			"Received unexpected chunk messageId %s, last-chunk-id %d, chunkId = %d, total-chunks %d",
 			msgID.String(), lastChunkedMsgID, chunkID, totalChunks))
 		pc.chunkedMsgCtxMap.remove(uuid)
-		pc.availablePermits++
-		// todo: expire tracker ack
+		atomic.AddInt32(&pc.availablePermits, 1)
 		return nil
 	}
 
 	ctx.refresh(chunkID, msgID, compressedPayload)
 
 	if msgMeta.GetChunkId() != msgMeta.GetNumChunksFromMsg()-1 {
-		pc.availablePermits++
-		// todo: how to release buffer
+		atomic.AddInt32(&pc.availablePermits, 1)
 		return nil
 	}
 
@@ -1037,12 +1034,13 @@ func (pc *partitionConsumer) dispatcher() {
 
 			// TODO implement a better flow controller
 			// send more permits if needed
-			pc.availablePermits++
+			atomic.AddInt32(&pc.availablePermits, 1)
+			permits := atomic.LoadInt32(&pc.availablePermits)
 			flowThreshold := int32(math.Max(float64(pc.queueSize/2), 1))
-			if pc.availablePermits >= flowThreshold {
-				availablePermits := pc.availablePermits
+			if permits >= flowThreshold {
+				availablePermits := permits
 				requestedPermits := availablePermits
-				pc.availablePermits = 0
+				atomic.StoreInt32(&pc.availablePermits, 0)
 
 				pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
 				if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
@@ -1558,6 +1556,8 @@ type chunkedMsgCtx struct {
 	lastChunkedMsgID int32
 	chunkedMsgIDs    []messageID
 	receivedTime     int64
+
+	mu sync.Mutex
 }
 
 func newChunkedMsgCtx(numChunksFromMsg int32, totalChunkMsgSize int) *chunkedMsgCtx {
@@ -1571,23 +1571,37 @@ func newChunkedMsgCtx(numChunksFromMsg int32, totalChunkMsgSize int) *chunkedMsg
 }
 
 func (c *chunkedMsgCtx) refresh(chunkID int32, msgID messageID, partPayload internal.Buffer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.chunkedMsgIDs[chunkID] = msgID
 	c.chunkedMsgBuffer.Write(partPayload.ReadableSlice())
 	c.lastChunkedMsgID = chunkID
 }
 
 func (c *chunkedMsgCtx) firstChunkID() messageID {
-	if len(c.chunkedMsgIDs) == 0 {
-		return messageID{}
-	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	return c.chunkedMsgIDs[0]
 }
 
 func (c *chunkedMsgCtx) lastChunkID() messageID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	if len(c.chunkedMsgIDs) == 0 {
 		return messageID{}
 	}
 	return c.chunkedMsgIDs[len(c.chunkedMsgIDs)-1]
+}
+
+func (c *chunkedMsgCtx) discard(pc *partitionConsumer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, mid := range c.chunkedMsgIDs {
+		pc.log.Info("Removing chunk message-id", mid.String())
+		tmid, _ := toTrackingMessageID(mid)
+		pc.AckID(tmid)
+	}
 }
 
 type chunkedMsgCtxMap struct {
@@ -1667,12 +1681,8 @@ func (c *chunkedMsgCtxMap) removeChunkMessage(uuid string, autoAck bool) {
 	if !ok {
 		return
 	}
-	for _, mid := range ctx.chunkedMsgIDs {
-		if autoAck {
-			c.pc.log.Info("Removing chunk message-id", mid.String())
-			tmid, _ := toTrackingMessageID(mid)
-			c.pc.AckID(tmid)
-		}
+	if autoAck {
+		ctx.discard(c.pc)
 	}
 	delete(c.chunkedMsgCtxs, uuid)
 	e := c.pendingQueue.Front()
