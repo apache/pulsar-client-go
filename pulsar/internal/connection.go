@@ -172,13 +172,14 @@ type connection struct {
 
 // connectionOptions defines configurations for creating connection.
 type connectionOptions struct {
-	logicalAddr       *url.URL
-	physicalAddr      *url.URL
-	tls               *TLSOptions
-	connectionTimeout time.Duration
-	auth              auth.Provider
-	logger            log.Logger
-	metrics           *Metrics
+	logicalAddr           *url.URL
+	physicalAddr          *url.URL
+	tls                   *TLSOptions
+	connectionTimeout     time.Duration
+	auth                  auth.Provider
+	logger                log.Logger
+	defaultMaxMessageSize int32
+	metrics               *Metrics
 }
 
 func newConnection(opts connectionOptions) *connection {
@@ -206,6 +207,7 @@ func newConnection(opts connectionOptions) *connection {
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
 		metrics:          opts.metrics,
+		maxMessageSize:   opts.defaultMaxMessageSize,
 	}
 	cnx.setState(connectionInit)
 	cnx.reader = newConnectionReader(cnx)
@@ -318,11 +320,8 @@ func (c *connection) doHandshake() bool {
 	if cmd.Connected.MaxMessageSize != nil && *cmd.Connected.MaxMessageSize > 0 {
 		c.log.Debug("Got MaxMessageSize from handshake response:", *cmd.Connected.MaxMessageSize)
 		c.maxMessageSize = *cmd.Connected.MaxMessageSize
-	} else {
-		c.log.Debug("No MaxMessageSize from handshake response, use default: ", MaxMessageSize)
-		c.maxMessageSize = MaxMessageSize
 	}
-	c.log.Info("Connection is ready")
+	c.log.Info("Connection is ready with maxMessageSize ", c.maxMessageSize)
 	c.changeState(connectionReady)
 	return true
 }

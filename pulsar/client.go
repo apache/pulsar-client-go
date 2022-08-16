@@ -128,6 +128,9 @@ type ClientOptions struct {
 
 	// Add custom labels to all the metrics reported by this client instance
 	CustomMetricsLabels map[string]string
+
+	// The default max message size in bytes. The broker default is 5,242,880 (5MB) but it can be increased.
+	DefaultMaxMessageSize int
 }
 
 // Client represents a pulsar client
