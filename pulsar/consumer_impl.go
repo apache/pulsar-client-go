@@ -575,10 +575,6 @@ func (c *consumer) Seek(msgID MessageID) error {
 	c.Lock()
 	defer c.Unlock()
 
-	if len(c.consumers) > 1 {
-		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
-	}
-
 	mid, ok := c.messageID(msgID)
 	if !ok {
 		return nil
