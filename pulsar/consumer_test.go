@@ -3053,6 +3053,151 @@ func TestEncryptDecryptRedeliveryOnFailure(t *testing.T) {
 	consumer.Ack(msg)
 }
 
+// TestConsumerSeekOnPartitionedTopic test seekin on a partitioned topic.
+// It is based on existing test case [TestConsumerSeek] but for a partitioned topic.
+func TestConsumerSeekOnPartitionedTopic(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// Create topic with 5 partitions
+	topicAdminURL := "admin/v2/persistent/public/default/TestSeekOnPartitionedTopic/partitions"
+	err = httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
+	assert.Nil(t, err)
+
+	topicName := "persistent://public/default/TestSeekOnPartitionedTopic"
+
+	partitions, err := client.TopicPartitions(topicName)
+	assert.Nil(t, err)
+	assert.Equal(t, len(partitions), 5)
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, partitions[i],
+			fmt.Sprintf("%s-partition-%d", topicName, i))
+	}
+
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// Use value bigger than 1000 to full-fill queue channel with size 1000 and message channel with size 10
+	const N = 1100
+	var seekID MessageID
+	for i := 0; i < N; i++ {
+		id, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "key", // Ensure all messages go to the same partition.
+		})
+		assert.Nil(t, err)
+
+		if i == N-50 {
+			seekID = id
+		}
+	}
+
+	// Don't consume all messages so some stay in queues
+	for i := 0; i < N-20; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+
+	err = consumer.Seek(seekID)
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf("hello-%d", N-50), string(msg.Payload()))
+}
+
+// TestConsumerSeekOnPartitionedTopicKeyShared test seekin on a partitioned topic with a KeyShared subscription.
+// It is based on existing test case [TestConsumerSeekOnPartitionedTopicKeyShared] but for a KeyShared subscription.
+func TestConsumerSeekOnPartitionedTopicKeyShared(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// Create topic with 5 partitions
+	topicAdminURL := "admin/v2/persistent/public/default/TestSeekOnPartitionedTopicKeyShared/partitions"
+	err = httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
+	assert.Nil(t, err)
+
+	topicName := "persistent://public/default/TestSeekOnPartitionedTopicKeyShared"
+
+	partitions, err := client.TopicPartitions(topicName)
+	assert.Nil(t, err)
+	assert.Equal(t, len(partitions), 5)
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, partitions[i],
+			fmt.Sprintf("%s-partition-%d", topicName, i))
+	}
+
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+		Type:             KeyShared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// Use value bigger than 1000 to full-fill queue channel with size 1000 and message channel with size 10
+	const N = 1100
+	var seekID MessageID
+	for i := 0; i < N; i++ {
+		id, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "key", // Ensure all messages go to the same partition.
+		})
+		assert.Nil(t, err)
+
+		if i == N-50 {
+			seekID = id
+		}
+	}
+
+	// Don't consume all messages so some stay in queues
+	for i := 0; i < N-20; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+
+	err = consumer.Seek(seekID)
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf("hello-%d", N-50), string(msg.Payload()))
+}
+
 // TestConsumerSeekByTimeOnPartitionedTopic test seek by time on partitioned topic.
 // It is based on existing test case [TestConsumerSeekByTime] but for partitioned topic.
 func TestConsumerSeekByTimeOnPartitionedTopic(t *testing.T) {
