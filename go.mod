@@ -23,7 +23,7 @@ require (
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cobra v1.2.1
-	github.com/stretchr/testify v1.7.0
+	github.com/stretchr/testify v1.8.0
 	go.uber.org/atomic v1.7.0
 	golang.org/x/oauth2 v0.0.0-20210402161424-2e8d93401602
 )
