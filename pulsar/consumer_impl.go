@@ -569,13 +569,6 @@ func (c *consumer) Close() {
 		c.closeMsgChOnce.Do(func() {
 			close(c.messageCh)
 		})
-		//closed := closeChanSet[c.messageCh]
-		//fmt.Println("begin close")
-		//if !closed {
-		//	close(c.messageCh)
-		//	fmt.Println("already close")
-		//	closeChanSet[c.messageCh] = true
-		//}
 		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()
