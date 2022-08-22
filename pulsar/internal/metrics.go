@@ -96,7 +96,9 @@ type LeveledMetrics struct {
 	ReadersClosed              prometheus.Counter
 }
 
-func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]string, registerer prometheus.Registerer) *Metrics {
+// NewMetricsProvider returns metrics registered to registerer.
+func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]string,
+	registerer prometheus.Registerer) *Metrics {
 	constLabels := map[string]string{
 		"client": "go",
 	}
