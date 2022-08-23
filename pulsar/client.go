@@ -23,6 +23,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // NewClient Creates a pulsar client instance
@@ -128,6 +129,10 @@ type ClientOptions struct {
 
 	// Add custom labels to all the metrics reported by this client instance
 	CustomMetricsLabels map[string]string
+
+	// Specify metric registerer used to register metrics.
+	// Default prometheus.DefaultRegisterer
+	MetricsRegisterer prometheus.Registerer
 }
 
 // Client represents a pulsar client
