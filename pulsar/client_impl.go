@@ -33,6 +33,7 @@ import (
 const (
 	defaultConnectionTimeout = 10 * time.Second
 	defaultOperationTimeout  = 30 * time.Second
+	defaultKeepAliveInterval = 30 * time.Second
 )
 
 type client struct {
@@ -125,8 +126,13 @@ func newClient(options ClientOptions) (Client, error) {
 			int(options.MetricsCardinality), map[string]string{}, options.MetricsRegisterer)
 	}
 
+	keepAliveInterval := options.KeepAliveInterval
+	if keepAliveInterval.Nanoseconds() == 0 {
+		keepAliveInterval = defaultKeepAliveInterval
+	}
+
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost, logger,
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval, maxConnectionsPerHost, logger,
 			metrics),
 		log:     logger,
 		metrics: metrics,

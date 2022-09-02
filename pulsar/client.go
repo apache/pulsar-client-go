@@ -98,6 +98,9 @@ type ClientOptions struct {
 	// operation will be marked as failed
 	OperationTimeout time.Duration
 
+	// Configure the ping send and check interval, default to 30 seconds.
+	KeepAliveInterval time.Duration
+
 	// Configure the authentication provider. (default: no authentication)
 	// Example: `Authentication: NewAuthenticationTLS("my-cert.pem", "my-key.pem")`
 	Authentication
