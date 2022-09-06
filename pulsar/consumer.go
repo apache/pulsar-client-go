@@ -71,6 +71,9 @@ type DLQPolicy struct {
 	// DeadLetterTopic specifies the name of the topic where the failing messages will be sent.
 	DeadLetterTopic string
 
+	// ProducerOptions is the producer options to produce messages to the DLQ and RLQ topic
+	ProducerOptions ProducerOptions
+
 	// RetryLetterTopic specifies the name of the topic where the retry messages will be sent.
 	RetryLetterTopic string
 }
@@ -182,6 +185,13 @@ type ConsumerOptions struct {
 	// > Notice: the NackBackoffPolicy will not work with `consumer.NackID(MessageID)`
 	// > because we are not able to get the redeliveryCount from the message ID.
 	NackBackoffPolicy NackBackoffPolicy
+
+	// AckWithResponse is a return value added to Ack Command, and its purpose is to confirm whether Ack Command
+	// is executed correctly on the Broker side. When set to true, the error information returned by the Ack
+	// method contains the return value of the Ack Command processed by the Broker side; when set to false, the
+	// error information of the Ack method only contains errors that may occur in the Go SDK's own processing.
+	// Default: false
+	AckWithResponse bool
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
@@ -200,10 +210,10 @@ type Consumer interface {
 	Chan() <-chan ConsumerMessage
 
 	// Ack the consumption of a single message
-	Ack(Message)
+	Ack(Message) error
 
 	// AckID the consumption of a single message, identified by its MessageID
-	AckID(MessageID)
+	AckID(MessageID) error
 
 	// ReconsumeLater mark a message for redelivery after custom delay
 	ReconsumeLater(msg Message, delay time.Duration)
@@ -244,8 +254,8 @@ type Consumer interface {
 	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the seek() on
 	// the individual partitions.
 	//
-	// @param timestamp
-	//            the message publish time where to reposition the subscription
+	// @param time
+	//            the message publish time when to reposition the subscription
 	//
 	SeekByTime(time time.Time) error
 

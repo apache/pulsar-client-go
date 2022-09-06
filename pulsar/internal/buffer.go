@@ -38,6 +38,8 @@ type Buffer interface {
 
 	Read(size uint32) []byte
 
+	Skip(size uint32)
+
 	Get(readerIndex uint32, size uint32) []byte
 
 	ReadableSlice() []byte
@@ -120,6 +122,10 @@ func (b *buffer) Read(size uint32) []byte {
 	res := b.data[b.readerIdx : b.readerIdx+size]
 	b.readerIdx += size
 	return res
+}
+
+func (b *buffer) Skip(size uint32) {
+	b.readerIdx += size
 }
 
 func (b *buffer) Get(readerIdx uint32, size uint32) []byte {

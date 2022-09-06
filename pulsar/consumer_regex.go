@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -152,34 +153,34 @@ func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error
 	}
 }
 
-// Chan
+// Chan return the messages chan to user
 func (c *regexConsumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh
 }
 
 // Ack the consumption of a single message
-func (c *regexConsumer) Ack(msg Message) {
-	c.AckID(msg.ID())
+func (c *regexConsumer) Ack(msg Message) error {
+	return c.AckID(msg.ID())
 }
 
 func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
 }
 
-// Ack the consumption of a single message, identified by its MessageID
-func (c *regexConsumer) AckID(msgID MessageID) {
+// AckID the consumption of a single message, identified by its MessageID
+func (c *regexConsumer) AckID(msgID MessageID) error {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
-		return
+		return errors.New("invalid message id type")
 	}
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
-		return
+		return errors.New("consumer is nil in consumer_regex")
 	}
 
-	mid.Ack()
+	return mid.Ack()
 }
 
 func (c *regexConsumer) Nack(msg Message) {

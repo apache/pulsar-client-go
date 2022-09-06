@@ -509,7 +509,9 @@ func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 
 func TestMessageRouter(t *testing.T) {
 	// Create topic with 5 partitions
-	err := httpPut("admin/v2/persistent/public/default/my-partitioned-topic/partitions", 5)
+	topicAdminURL := "admin/v2/persistent/public/default/my-partitioned-topic/partitions"
+	err := httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -875,18 +877,42 @@ func TestMaxBatchSize(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
-	for bias := -1; bias <= 1; bias++ {
+	for bias := -1; bias <= 3; bias++ {
 		payload := make([]byte, batchMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
-		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
-		} else {
-			assert.Equal(t, errFailAddToBatch, err)
-		}
+		// regardless max batch size, if the batch size limit is reached, batching is triggered to send messages
+		assert.NoError(t, err)
+		assert.NotNil(t, ID)
 	}
+}
+
+func TestBatchingDisabled(t *testing.T) {
+	defaultMaxMessageSize := 128 * 1024
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// when batching is disabled, the batching size has no effect
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+		BatchingMaxSize: uint(defaultMaxBatchSize),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	payload := make([]byte, defaultMaxMessageSize+100)
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload: payload,
+	})
+	// regardless max batch size, if the batch size limit is reached, batching is triggered to send messages
+	assert.NoError(t, err)
+	assert.NotNil(t, ID)
 }
 
 func TestMaxMessageSize(t *testing.T) {
@@ -920,6 +946,50 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, errMessageTooLarge, err)
 		}
 	}
+}
+
+func TestFailedSchemaEncode(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: NewAvroSchema("{\"type\":\"string\"}", nil),
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		// producer should send return an error as message is Int64, but schema is String
+		mid, err := producer.Send(ctx, &ProducerMessage{
+			Value: int64(1),
+		})
+		assert.NotNil(t, err)
+		assert.Nil(t, mid)
+		wg.Done()
+	}()
+
+	wg.Add(1)
+	// producer should send return an error as message is Int64, but schema is String
+	producer.SendAsync(ctx, &ProducerMessage{
+		Value: int64(1),
+	}, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+		assert.NotNil(t, err)
+		assert.Nil(t, messageID)
+		wg.Done()
+	})
+	wg.Wait()
 }
 
 func TestSendTimeout(t *testing.T) {
@@ -1309,4 +1379,192 @@ func TestExactlyOnceWithProducerNameSpecified(t *testing.T) {
 
 	assert.NotNil(t, err)
 	assert.Nil(t, producer3)
+}
+
+func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
+	const MsgBatchCount = 10
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema1 := NewAvroSchema(`{"fields":
+		[	
+			{"name":"id","type":"int"},
+			{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+				{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			   {"default":null,"name":"age","type":["null","int"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	v1 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "aac",
+		},
+	}
+	v2 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "test",
+		},
+		"age": map[string]interface{}{
+			"int": 10,
+		},
+	}
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:              topic,
+		Schema:             schema1,
+		BatcherBuilderType: KeyBasedBatchBuilder,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	keys := []string{"key1", "key2", "key3"}
+
+	for i := 0; i < MsgBatchCount; i++ {
+		var messageContent []byte
+		var schema Schema
+		for _, key := range keys {
+			if i%2 == 0 {
+				messageContent, err = schema1.Encode(v1)
+				schema = schema1
+				assert.NoError(t, err)
+			} else {
+				messageContent, err = schema2.Encode(v2)
+				schema = schema2
+				assert.NoError(t, err)
+			}
+			producer.SendAsync(context.Background(), &ProducerMessage{
+				Payload: messageContent,
+				Key:     key,
+				Schema:  schema,
+			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+				assert.NoError(t, err)
+				assert.NotNil(t, id)
+			})
+		}
+
+	}
+	producer.Flush()
+
+	//// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub2",
+		Type:                        Failover,
+		Schema:                      schema1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < MsgBatchCount*len(keys); i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v interface{}
+		err = msg.GetSchemaValue(&v)
+		t.Logf(`schemaVersion: %x recevice %s:%v`, msg.SchemaVersion(), msg.Key(), v)
+		assert.Nil(t, err)
+	}
+}
+
+func TestMultipleSchemaProducerConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema1 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			{"default":null,"name":"age","type":["null","int"]}
+		],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	v1 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "aac",
+		},
+	}
+	v2 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "test",
+		},
+		"age": map[string]interface{}{
+			"int": 10,
+		},
+	}
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema1,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	for i := 0; i < 10; i++ {
+		var messageContent []byte
+		var key string
+		var schema Schema
+		if i%2 == 0 {
+			messageContent, err = schema1.Encode(v1)
+			key = "v1"
+			schema = schema1
+			assert.NoError(t, err)
+		} else {
+			messageContent, err = schema2.Encode(v2)
+			key = "v2"
+			schema = schema2
+			assert.NoError(t, err)
+		}
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: messageContent,
+			Key:     key,
+			Schema:  schema,
+		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			assert.NoError(t, err)
+			assert.NotNil(t, id)
+		})
+	}
+	producer.Flush()
+
+	//// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub2",
+		Type:                        Failover,
+		Schema:                      schema1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v interface{}
+		err = msg.GetSchemaValue(&v)
+		t.Logf(`schemaVersion: %x recevice %s:%v`, msg.SchemaVersion(), msg.Key(), v)
+		assert.Nil(t, err)
+	}
 }

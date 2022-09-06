@@ -166,6 +166,10 @@ type ProducerOptions struct {
 	// Default is 1 minute
 	PartitionsAutoDiscoveryInterval time.Duration
 
+	// Disable multiple Schame Version
+	// Default false
+	DisableMultiSchema bool
+
 	// Encryption specifies the fields required to encrypt a message
 	Encryption *ProducerEncryptionInfo
 }

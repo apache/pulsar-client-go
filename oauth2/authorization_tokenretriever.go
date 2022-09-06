@@ -243,7 +243,6 @@ func (ce *TokenRetriever) handleAuthTokensResponse(resp *http.Response) (*TokenR
 	if resp.Body != nil {
 		defer resp.Body.Close()
 	}
-
 	if resp.StatusCode < 200 || resp.StatusCode > 299 {
 		cth := resp.Header.Get("Content-Type")
 		if cth == "" {

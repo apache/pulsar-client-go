@@ -22,6 +22,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -32,6 +33,7 @@ import (
 const (
 	defaultConnectionTimeout = 10 * time.Second
 	defaultOperationTimeout  = 30 * time.Second
+	defaultKeepAliveInterval = 30 * time.Second
 )
 
 type client struct {
@@ -111,16 +113,27 @@ func newClient(options ClientOptions) (Client, error) {
 		options.MetricsCardinality = MetricsCardinalityNamespace
 	}
 
+	if options.MetricsRegisterer == nil {
+		options.MetricsRegisterer = prometheus.DefaultRegisterer
+	}
+
 	var metrics *internal.Metrics
 	if options.CustomMetricsLabels != nil {
-		metrics = internal.NewMetricsProvider(int(options.MetricsCardinality), options.CustomMetricsLabels)
+		metrics = internal.NewMetricsProvider(
+			int(options.MetricsCardinality), options.CustomMetricsLabels, options.MetricsRegisterer)
 	} else {
-		metrics = internal.NewMetricsProvider(int(options.MetricsCardinality), map[string]string{})
+		metrics = internal.NewMetricsProvider(
+			int(options.MetricsCardinality), map[string]string{}, options.MetricsRegisterer)
+	}
+
+	keepAliveInterval := options.KeepAliveInterval
+	if keepAliveInterval.Nanoseconds() == 0 {
+		keepAliveInterval = defaultKeepAliveInterval
 	}
 
 	c := &client{
-		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, maxConnectionsPerHost, logger,
-			metrics),
+		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval,
+			maxConnectionsPerHost, logger, metrics),
 		log:     logger,
 		metrics: metrics,
 	}
@@ -174,6 +187,15 @@ func (c *client) CreateReader(options ReaderOptions) (Reader, error) {
 	}
 	c.handlers.Add(reader)
 	return reader, nil
+}
+
+func (c *client) CreateTableView(options TableViewOptions) (TableView, error) {
+	tableView, err := newTableView(c, options)
+	if err != nil {
+		return nil, err
+	}
+	c.handlers.Add(tableView)
+	return tableView, nil
 }
 
 func (c *client) TopicPartitions(topic string) ([]string, error) {

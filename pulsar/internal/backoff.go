@@ -51,3 +51,8 @@ func (b *Backoff) Next() time.Duration {
 
 	return b.backoff + time.Duration(jitter)
 }
+
+// IsMaxBackReached evaluates if the max number of retries is reached
+func (b *Backoff) IsMaxBackoffReached() bool {
+	return b.backoff >= maxBackoff
+}

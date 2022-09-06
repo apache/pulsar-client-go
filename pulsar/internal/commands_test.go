@@ -70,6 +70,19 @@ func TestReadMessageMetadata(t *testing.T) {
 	assert.Equal(t, 10, int(meta.GetNumMessagesInBatch()))
 }
 
+func TestReadBrokerEntryMetadata(t *testing.T) {
+	// read old style message (not batched)
+	reader := NewMessageReaderFromArray(brokerEntryMeta)
+	meta, err := reader.ReadBrokerMetadata()
+	if err != nil {
+		t.Fatal(err)
+	}
+	var expectedBrokerTimestamp uint64 = 1646983036054
+	assert.Equal(t, expectedBrokerTimestamp, *meta.BrokerTimestamp)
+	var expectedIndex uint64 = 5
+	assert.Equal(t, expectedIndex, *meta.Index)
+}
+
 func TestReadMessageOldFormat(t *testing.T) {
 	reader := NewMessageReaderFromArray(rawCompatSingleMessage)
 	_, err := reader.ReadMessageMetadata()
@@ -209,4 +222,9 @@ var rawBatchMessage10 = []byte{
 	0x0a, 0x01, 0x62, 0x12, 0x01, 0x32, 0x18, 0x05,
 	0x28, 0x05, 0x40, 0x09, 0x68, 0x65, 0x6c, 0x6c,
 	0x6f,
+}
+
+var brokerEntryMeta = []byte{
+	0x0e, 0x02, 0x00, 0x00, 0x00, 0x09, 0x08, 0x96,
+	0xf9, 0xda, 0xbe, 0xf7, 0x2f, 0x10, 0x05,
 }

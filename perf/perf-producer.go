@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/beefsack/go-rate"
 	"github.com/bmizerany/perks/quantile"
 	"github.com/spf13/cobra"
 
@@ -101,13 +100,18 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 	payload := make([]byte, produceArgs.MessageSize)
 
 	ch := make(chan float64)
+	rateLimitCh := make(chan time.Time, produceArgs.Rate)
+	go func(rateLimit int, interval time.Duration) {
+		if rateLimit <= 0 { // 0 as no limit enforced
+			return
+		}
+		for {
+			oldest := <-rateLimitCh
+			time.Sleep(interval - time.Since(oldest))
+		}
+	}(produceArgs.Rate, time.Second)
 
 	go func(stopCh <-chan struct{}) {
-		var rateLimiter *rate.RateLimiter
-		if produceArgs.Rate > 0 {
-			rateLimiter = rate.New(produceArgs.Rate, time.Second)
-		}
-
 		for {
 			select {
 			case <-stopCh:
@@ -115,11 +119,10 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 			default:
 			}
 
-			if rateLimiter != nil {
-				rateLimiter.Wait()
-			}
-
 			start := time.Now()
+			if produceArgs.Rate > 0 {
+				rateLimitCh <- start
+			}
 
 			producer.SendAsync(ctx, &pulsar.ProducerMessage{
 				Payload: payload,
