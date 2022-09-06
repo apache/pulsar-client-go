@@ -233,8 +233,20 @@ func (msg *mockMessage1) ProducerName() string {
 	return ""
 }
 
+func (msg *mockMessage1) SchemaVersion() []byte {
+	return nil
+}
+
 func (msg *mockMessage1) GetEncryptionContext() *EncryptionContext {
 	return &EncryptionContext{}
+}
+
+func (msg *mockMessage1) Index() *uint64 {
+	return nil
+}
+
+func (msg *mockMessage1) BrokerPublishTime() *time.Time {
+	return nil
 }
 
 type mockMessage2 struct {
@@ -293,10 +305,22 @@ func (msg *mockMessage2) GetSchemaValue(v interface{}) error {
 	return nil
 }
 
+func (msg *mockMessage2) SchemaVersion() []byte {
+	return nil
+}
+
 func (msg *mockMessage2) ProducerName() string {
 	return ""
 }
 
 func (msg *mockMessage2) GetEncryptionContext() *EncryptionContext {
 	return &EncryptionContext{}
+}
+
+func (msg *mockMessage2) Index() *uint64 {
+	return nil
+}
+
+func (msg *mockMessage2) BrokerPublishTime() *time.Time {
+	return nil
 }

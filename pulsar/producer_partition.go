@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -86,10 +87,36 @@ type partitionProducer struct {
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
 	metrics          *internal.LeveledMetrics
-
-	epoch uint64
+	epoch            uint64
+	schemaCache      *schemaCache
 }
 
+type schemaCache struct {
+	lock    sync.RWMutex
+	schemas map[string][]byte
+}
+
+func newSchemaCache() *schemaCache {
+	return &schemaCache{
+		schemas: make(map[string][]byte),
+	}
+}
+
+func (s *schemaCache) Put(schema *SchemaInfo, schemaVersion []byte) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	key := schema.hash()
+	s.schemas[key] = schemaVersion
+}
+
+func (s *schemaCache) Get(schema *SchemaInfo) (schemaVersion []byte) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	key := schema.hash()
+	return s.schemas[key]
+}
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
 	metrics *internal.LeveledMetrics) (
 	*partitionProducer, error) {
@@ -125,6 +152,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
 		epoch:            0,
+		schemaCache:      newSchemaCache(),
 	}
 	if p.options.DisableBatching {
 		p.batchFlushTicker.Stop()
@@ -145,6 +173,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	err := p.grabCnx()
 	if err != nil {
+		p.batchFlushTicker.Stop()
 		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
 		return nil, err
 	}
@@ -178,7 +207,7 @@ func (p *partitionProducer) grabCnx() error {
 
 	// set schema info for producer
 
-	pbSchema := new(pb.Schema)
+	var pbSchema *pb.Schema
 	if p.schemaInfo != nil {
 		tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
 		pbSchema = &pb.Schema{
@@ -187,10 +216,9 @@ func (p *partitionProducer) grabCnx() error {
 			SchemaData: []byte(p.schemaInfo.Schema),
 			Properties: internal.ConvertFromStringMap(p.schemaInfo.Properties),
 		}
-		p.log.Debugf("The partition consumer schema name is: %s", pbSchema.Name)
+		p.log.Debugf("The partition producer schema name is: %s", pbSchema.Name)
 	} else {
-		pbSchema = nil
-		p.log.Debug("The partition consumer schema is nil")
+		p.log.Debug("The partition producer schema is nil")
 	}
 
 	cmdProducer := &pb.CommandProducer{
@@ -260,12 +288,21 @@ func (p *partitionProducer) grabCnx() error {
 		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
 		p.sequenceIDGenerator = &nextSequenceID
 	}
+
+	schemaVersion := res.Response.ProducerSuccess.GetSchemaVersion()
+	if len(schemaVersion) != 0 {
+		p.schemaCache.Put(p.schemaInfo, schemaVersion)
+	}
+
 	p._setConn(res.Cnx)
-	p._getConn().RegisterListener(p.producerID, p)
+	err = p._getConn().RegisterListener(p.producerID, p)
+	if err != nil {
+		return err
+	}
 	p.log.WithFields(log.Fields{
 		"cnx":   res.Cnx.ID(),
 		"epoch": atomic.LoadUint64(&p.epoch),
-	}).Debug("Connected producer")
+	}).Info("Connected producer")
 
 	pendingItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(pendingItems)
@@ -312,6 +349,36 @@ func (p *partitionProducer) ConnectionClosed() {
 	p.connectClosedCh <- connectionClosed{}
 }
 
+func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVersion []byte, err error) {
+
+	tmpSchemaType := pb.Schema_Type(int32(schemaInfo.Type))
+	pbSchema := &pb.Schema{
+		Name:       proto.String(schemaInfo.Name),
+		Type:       &tmpSchemaType,
+		SchemaData: []byte(schemaInfo.Schema),
+		Properties: internal.ConvertFromStringMap(schemaInfo.Properties),
+	}
+	id := p.client.rpcClient.NewRequestID()
+	req := &pb.CommandGetOrCreateSchema{
+		RequestId: proto.Uint64(id),
+		Topic:     proto.String(p.topic),
+		Schema:    pbSchema,
+	}
+	res, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_GET_OR_CREATE_SCHEMA, req)
+	if err != nil {
+		return
+	}
+	if res.Response.Error != nil {
+		err = errors.New(res.Response.GetError().String())
+		return
+	}
+	if res.Response.GetOrCreateSchemaResponse.ErrorCode != nil {
+		err = errors.New(*res.Response.GetOrCreateSchemaResponse.ErrorMessage)
+		return
+	}
+	return res.Response.GetOrCreateSchemaResponse.SchemaVersion, nil
+}
+
 func (p *partitionProducer) reconnectToBroker() {
 	var (
 		maxRetry int
@@ -352,6 +419,10 @@ func (p *partitionProducer) reconnectToBroker() {
 		if maxRetry > 0 {
 			maxRetry--
 		}
+		p.metrics.ProducersReconnectFailure.Inc()
+		if maxRetry == 0 || backoff.IsMaxBackoffReached() {
+			p.metrics.ProducersReconnectMaxRetry.Inc()
+		}
 	}
 }
 
@@ -382,11 +453,7 @@ func (p *partitionProducer) runEventsLoop() {
 				return
 			}
 		case <-p.batchFlushTicker.C:
-			if p.batchBuilder.IsMultiBatches() {
-				p.internalFlushCurrentBatches()
-			} else {
-				p.internalFlushCurrentBatch()
-			}
+			p.internalFlushCurrentBatch()
 		}
 	}
 }
@@ -404,19 +471,56 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	msg := request.msg
 
+	// read payload from message
 	payload := msg.Payload
+
 	var schemaPayload []byte
 	var err error
-	if p.options.Schema != nil {
-		schemaPayload, err = p.options.Schema.Encode(msg.Value)
-		if err != nil {
-			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
+	if msg.Value != nil && msg.Payload != nil {
+		p.log.Error("Can not set Value and Payload both")
+		return
+	}
+
+	if p.options.DisableMultiSchema {
+		if msg.Schema != nil && p.options.Schema != nil &&
+			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
+			p.log.WithError(err).Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
 			return
 		}
 	}
-
+	var schema Schema
+	var schemaVersion []byte
+	if msg.Schema != nil {
+		schema = msg.Schema
+	} else if p.options.Schema != nil {
+		schema = p.options.Schema
+	}
+	if msg.Value != nil {
+		// payload and schema are mutually exclusive
+		// try to get payload from schema value only if payload is not set
+		if payload == nil && schema != nil {
+			schemaPayload, err = schema.Encode(msg.Value)
+			if err != nil {
+				p.publishSemaphore.Release()
+				request.callback(nil, request.msg, newError(SchemaFailure, err.Error()))
+				p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
+				return
+			}
+		}
+	}
 	if payload == nil {
 		payload = schemaPayload
+	}
+	if schema != nil {
+		schemaVersion = p.schemaCache.Get(schema.GetSchemaInfo())
+		if schemaVersion == nil {
+			schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
+			if err != nil {
+				p.log.WithError(err).Error("get schema version fail")
+				return
+			}
+			p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
+		}
 	}
 
 	// if msg is too large
@@ -472,20 +576,17 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if msg.DisableReplication {
 		msg.ReplicationClusters = []string{"__local__"}
 	}
-
+	multiSchemaEnabled := !p.options.DisableMultiSchema
 	added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-		msg.ReplicationClusters, deliverAt)
+		msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
 	if !added {
 		// The current batch is full.. flush it and retry
-		if p.batchBuilder.IsMultiBatches() {
-			p.internalFlushCurrentBatches()
-		} else {
-			p.internalFlushCurrentBatch()
-		}
+
+		p.internalFlushCurrentBatch()
 
 		// after flushing try again to add the current payload
 		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-			msg.ReplicationClusters, deliverAt); !ok {
+			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled); !ok {
 			p.publishSemaphore.Release()
 			request.callback(nil, request.msg, errFailAddToBatch)
 			p.log.WithField("size", len(payload)).
@@ -496,12 +597,11 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	if !sendAsBatch || request.flushImmediately {
-		if p.batchBuilder.IsMultiBatches() {
-			p.internalFlushCurrentBatches()
-		} else {
-			p.internalFlushCurrentBatch()
-		}
+
+		p.internalFlushCurrentBatch()
+
 	}
+
 }
 
 type pendingItem struct {
@@ -514,6 +614,11 @@ type pendingItem struct {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
+	if p.batchBuilder.IsMultiBatches() {
+		p.internalFlushCurrentBatches()
+		return
+	}
+
 	batchData, sequenceID, callbacks, err := p.batchBuilder.Flush()
 	if batchData == nil {
 		return
@@ -675,11 +780,8 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 }
 
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
-	if p.batchBuilder.IsMultiBatches() {
-		p.internalFlushCurrentBatches()
-	} else {
-		p.internalFlushCurrentBatch()
-	}
+
+	p.internalFlushCurrentBatch()
 
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
 	if !ok {
@@ -779,22 +881,22 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	if !ok {
 		// if we receive a receipt although the pending queue is empty, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
-		p.log.Warnf("Received ack for %v although the pending queue is empty, closing connection", response.GetMessageId())
-		p._getConn().Close()
+		p.log.Warnf("Got ack %v for timed out msg", response.GetMessageId())
 		return
 	}
 
 	if pi.sequenceID < response.GetSequenceId() {
-		// if we receive a receipt that is not the one expected, the state of the broker and the producer differs.
-		// At that point, it is better to close the connection to the broker to reconnect to a broker hopping it solves
-		// the state discrepancy.
+		// Force connection closing so that messages can be re-transmitted in a new connection
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
 			response.GetSequenceId(), pi.sequenceID)
 		p._getConn().Close()
 		return
-	} else if pi.sequenceID == response.GetSequenceId() {
+	} else if pi.sequenceID > response.GetSequenceId() {
+		// Ignoring the ack since it's referring to a message that has already timed out.
+		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, closing connection", response.GetMessageId(),
+			response.GetSequenceId(), pi.sequenceID)
+		return
+	} else {
 		// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
 		p.pendingQueue.Poll()
 
