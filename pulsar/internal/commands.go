@@ -265,14 +265,16 @@ func serializeMessage(wb Buffer,
 		// error occurred while encrypting the payload, ProducerCryptoFailureAction is set to Fail
 		return fmt.Errorf("encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err)
 	}
-	// the maxMessageSize check of batching message is in here
-	if len(encryptedPayload) > int(maxMessageSize) {
-		return fmt.Errorf("%w, size: %d, MaxMessageSize: %d",
-			ErrExceedMaxMessageSize, len(encryptedPayload), maxMessageSize)
-	}
 
 	cmdSize := uint32(proto.Size(cmdSend))
 	msgMetadataSize := uint32(proto.Size(msgMetadata))
+	msgSize := len(encryptedPayload) + int(msgMetadataSize)
+
+	// the maxMessageSize check of batching message is in here
+	if !(msgMetadata.GetTotalChunkMsgSize() != 0) && msgSize > int(maxMessageSize) {
+		return fmt.Errorf("%w, size: %d, MaxMessageSize: %d",
+			ErrExceedMaxMessageSize, msgSize, maxMessageSize)
+	}
 
 	frameSizeIdx := wb.WriterIndex()
 	wb.WriteUint32(0) // Skip frame size until we now the size

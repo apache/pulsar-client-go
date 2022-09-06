@@ -61,7 +61,7 @@ func TestLargeMessage(t *testing.T) {
 
 	topic := newTopicName()
 
-	// create producer without ChunkMaxMessageSize
+	// create producer without MaxChunkSize
 	producer1, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
 		DisableBatching: true,
@@ -71,12 +71,12 @@ func TestLargeMessage(t *testing.T) {
 	assert.NotNil(t, producer1)
 	defer producer1.Close()
 
-	// create producer with ChunkMaxMessageSize
+	// create producer with MaxChunkSize
 	producer2, err := client.CreateProducer(ProducerOptions{
-		Topic:               topic,
-		DisableBatching:     true,
-		EnableChunking:      true,
-		ChunkMaxMessageSize: 5,
+		Topic:           topic,
+		DisableBatching: true,
+		EnableChunking:  true,
+		MaxChunkSize:    5,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, producer2)
@@ -119,7 +119,7 @@ func TestLargeMessage(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	// test send chunk with ChunkMaxMessageSize limit
+	// test send chunk with MaxChunkSize limit
 	for i := 0; i < 5; i++ {
 		msg := createTestMessagePayload(50)
 		expectMsgs = append(expectMsgs, msg)
@@ -130,7 +130,7 @@ func TestLargeMessage(t *testing.T) {
 		assert.NotNil(t, ID)
 	}
 
-	// test receive chunk with ChunkMaxMessageSize limit
+	// test receive chunk with MaxChunkSize limit
 	for i := 5; i < 10; i++ {
 		msg, err := consumer.Receive(context.Background())
 		assert.NoError(t, err)
@@ -156,7 +156,7 @@ func TestPublishChunkWithFailure(t *testing.T) {
 
 	topic := newTopicName()
 
-	// create producer without ChunkMaxMessageSize
+	// create producer without MaxChunkSize
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 	})
@@ -204,10 +204,10 @@ func TestMaxPendingChunkMessages(t *testing.T) {
 		assert.Nil(t, err)
 		clients = append(clients, pc)
 		producer, err := pc.CreateProducer(ProducerOptions{
-			Topic:               topic,
-			DisableBatching:     true,
-			EnableChunking:      true,
-			ChunkMaxMessageSize: 10,
+			Topic:           topic,
+			DisableBatching: true,
+			EnableChunking:  true,
+			MaxChunkSize:    10,
 		})
 		assert.NoError(t, err)
 		assert.NotNil(t, producer)
@@ -309,7 +309,7 @@ func TestChunksEnqueueFailed(t *testing.T) {
 		EnableChunking:          true,
 		DisableBatching:         true,
 		MaxPendingMessages:      10,
-		ChunkMaxMessageSize:     50,
+		MaxChunkSize:            50,
 		DisableBlockIfQueueFull: true,
 	})
 	assert.NoError(t, err)
@@ -337,10 +337,10 @@ func TestSeekChunkMessages(t *testing.T) {
 	totalMessages := 5
 
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:               topic,
-		EnableChunking:      true,
-		DisableBatching:     true,
-		ChunkMaxMessageSize: 50,
+		Topic:           topic,
+		EnableChunking:  true,
+		DisableBatching: true,
+		MaxChunkSize:    50,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -401,10 +401,10 @@ func TestChunkAckAndNAck(t *testing.T) {
 	topic := newTopicName()
 
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:               topic,
-		EnableChunking:      true,
-		DisableBatching:     true,
-		ChunkMaxMessageSize: 50,
+		Topic:           topic,
+		EnableChunking:  true,
+		DisableBatching: true,
+		MaxChunkSize:    50,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -443,6 +443,45 @@ func TestChunkAckAndNAck(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, msg)
 	assert.Equal(t, msg.Payload(), content)
+}
+
+func TestChunkSize(t *testing.T) {
+	rand.Seed(time.Now().Unix())
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	//the default message metadata size for string schema
+	payloadChunkSize := _brokerMaxMessageSize - 18
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Name:            "test",
+		Topic:           topic,
+		EnableChunking:  true,
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	for size := payloadChunkSize; size <= _brokerMaxMessageSize; size++ {
+		msgID, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: createTestMessagePayload(size),
+		})
+		assert.NoError(t, err)
+		if size <= payloadChunkSize {
+			_, ok := msgID.(messageID)
+			assert.Equal(t, true, ok)
+		} else {
+			_, ok := msgID.(chunkMessageID)
+			assert.Equal(t, true, ok)
+		}
+	}
 }
 
 func createTestMessagePayload(size int) []byte {

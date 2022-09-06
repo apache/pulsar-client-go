@@ -81,7 +81,6 @@ type partitionProducer struct {
 	batchFlushTicker         *time.Ticker
 	encryptor                internalcrypto.Encryptor
 	compressionProvider      compression.Provider
-	chunkRecorder            *chunkRecorder
 
 	// Channel where app is posting messages to be published
 	eventsChan      chan interface{}
@@ -155,7 +154,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
 			compression.Level(options.CompressionLevel)),
-		chunkRecorder:    newChunkRecorder(),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
@@ -256,7 +254,6 @@ func (p *partitionProducer) grabCnx() error {
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
 
-	//var encryptor internalcrypto.Encryptor
 	if p.options.Encryption != nil {
 		p.encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
 			p.options.Encryption.KeyReader,
@@ -465,7 +462,7 @@ func (p *partitionProducer) Name() string {
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
-	p.log.Debug("Received send request: ", *request.msg)
+	p.log.Debug("Received send request: ", *request)
 
 	msg := request.msg
 
@@ -528,17 +525,16 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	uncompressedSize := len(uncompressedPayload)
 
-	mm := p.genMetadata(msg, uncompressedSize)
+	deliverAt := msg.DeliverAt
+	if msg.DeliverAfter.Nanoseconds() > 0 {
+		deliverAt = time.Now().Add(msg.DeliverAfter)
+	}
+
+	mm := p.genMetadata(msg, uncompressedSize, deliverAt)
 
 	// set default ReplicationClusters when DisableReplication
 	if msg.DisableReplication {
 		msg.ReplicationClusters = []string{"__local__"}
-	}
-
-	// todo: deliverAt has calculated in genMetadata but it's not a good idea to make genMetadata() return it.
-	deliverAt := msg.DeliverAt
-	if msg.DeliverAfter.Nanoseconds() > 0 {
-		deliverAt = time.Now().Add(msg.DeliverAfter)
 	}
 
 	sendAsBatch := !p.options.DisableBatching &&
@@ -590,9 +586,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			p.metrics.PublishErrorsMsgTooLarge.Inc()
 			return
 		}
-		// set ChunkMaxMessageSize
-		if p.options.ChunkMaxMessageSize != 0 {
-			payloadChunkSize = int(math.Min(float64(payloadChunkSize), float64(p.options.ChunkMaxMessageSize)))
+		// set MaxChunkSize
+		if p.options.MaxChunkSize != 0 {
+			payloadChunkSize = int(math.Min(float64(payloadChunkSize), float64(p.options.MaxChunkSize)))
 		}
 		totalChunks = int(math.Max(1, math.Ceil(float64(compressedSize)/float64(payloadChunkSize))))
 	}
@@ -600,6 +596,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	// correct limit queue when chunked
 	for i := 0; i < totalChunks-1; i++ {
 		if !p.canAddToQueue(request) {
+			// release all permits including the first
+			for j := i; j >= 0; j-- {
+				p.publishSemaphore.Release()
+			}
 			return
 		}
 	}
@@ -608,17 +608,13 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	request.totalChunks = totalChunks
 
 	if !sendAsBatch {
-		if msg.SequenceID != nil {
-			mm.SequenceId = proto.Uint64(uint64(*msg.SequenceID))
-		} else {
-			mm.SequenceId = proto.Uint64(internal.GetAndAdd(p.sequenceIDGenerator, 1))
-		}
 		if totalChunks > 1 {
 			var lhs, rhs int
 			uuid := fmt.Sprintf("%s-%s", p.producerName, strconv.FormatUint(*mm.SequenceId, 10))
 			mm.Uuid = proto.String(uuid)
 			mm.NumChunksFromMsg = proto.Int(totalChunks)
 			mm.TotalChunkMsgSize = proto.Int(compressedSize)
+			cr := newChunkRecorder()
 			for chunkID := 0; chunkID < totalChunks; chunkID++ {
 				lhs = chunkID * payloadChunkSize
 				if rhs = lhs + payloadChunkSize; rhs > compressedSize {
@@ -627,13 +623,15 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 				// update chunk id
 				mm.ChunkId = proto.Int(chunkID)
 				nsr := &sendRequest{
-					ctx:         request.ctx,
-					msg:         request.msg,
-					callback:    request.callback,
-					publishTime: request.publishTime,
-					totalChunks: totalChunks,
-					chunkID:     chunkID,
-					uuid:        uuid,
+					ctx:           request.ctx,
+					msg:           request.msg,
+					callback:      request.callback,
+					callbackOnce:  request.callbackOnce,
+					publishTime:   request.publishTime,
+					totalChunks:   totalChunks,
+					chunkID:       chunkID,
+					uuid:          uuid,
+					chunkRecorder: cr,
 				}
 				p.internalSingleSend(mm, compressedPayload[lhs:rhs], nsr, uint32(maxMessageSize))
 			}
@@ -641,7 +639,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			p.internalSingleSend(mm, compressedPayload, request, uint32(maxMessageSize))
 		}
 	} else {
-		smm := p.genSingleMetaMessage(msg, uncompressedSize)
+		smm := p.genSingleMessageMetadataInBatch(msg, uncompressedSize)
 		multiSchemaEnabled := !p.options.DisableMultiSchema
 		added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
 			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
@@ -669,12 +667,20 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 }
 
-func (p *partitionProducer) genMetadata(msg *ProducerMessage, uncompressedSize int) (mm *pb.MessageMetadata) {
+func (p *partitionProducer) genMetadata(msg *ProducerMessage,
+	uncompressedSize int,
+	deliverAt time.Time) (mm *pb.MessageMetadata) {
 	mm = &pb.MessageMetadata{
 		ProducerName:     &p.producerName,
 		PublishTime:      proto.Uint64(internal.TimestampMillis(time.Now())),
 		ReplicateTo:      msg.ReplicationClusters,
 		UncompressedSize: proto.Uint32(uint32(uncompressedSize)),
+	}
+
+	if msg.SequenceID != nil {
+		mm.SequenceId = proto.Uint64(uint64(*msg.SequenceID))
+	} else {
+		mm.SequenceId = proto.Uint64(internal.GetAndAdd(p.sequenceIDGenerator, 1))
 	}
 
 	if msg.Key != "" {
@@ -685,10 +691,6 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage, uncompressedSize i
 		mm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}
 
-	deliverAt := msg.DeliverAt
-	if msg.DeliverAfter.Nanoseconds() > 0 {
-		deliverAt = time.Now().Add(msg.DeliverAfter)
-	}
 	if deliverAt.UnixNano() > 0 {
 		mm.DeliverAtTime = proto.Int64(int64(internal.TimestampMillis(deliverAt)))
 	}
@@ -696,7 +698,7 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage, uncompressedSize i
 	return
 }
 
-func (p *partitionProducer) genSingleMetaMessage(msg *ProducerMessage,
+func (p *partitionProducer) genSingleMessageMetadataInBatch(msg *ProducerMessage,
 	uncompressedSize int) (smm *pb.SingleMessageMetadata) {
 	smm = &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int(uncompressedSize),
@@ -797,6 +799,12 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 				sr.callback(nil, sr.msg, err)
 			}
 		}
+		if errors.Is(err, internal.ErrExceedMaxMessageSize) {
+			p.log.WithError(errMessageTooLarge).
+				Errorf("internal err: %s", err)
+			p.metrics.PublishErrorsMsgTooLarge.Inc()
+			return
+		}
 		return
 	}
 
@@ -886,7 +894,6 @@ func (p *partitionProducer) failTimeoutMessages() {
 			for _, i := range pi.sendRequests {
 				sr := i.(*sendRequest)
 				if sr.msg != nil {
-					// todo: it's not correct. the size should be schemaed uncompressed payload size
 					size := len(sr.msg.Payload)
 					p.publishSemaphore.Release()
 					p.metrics.MessagesPending.Dec()
@@ -896,9 +903,11 @@ func (p *partitionProducer) failTimeoutMessages() {
 						WithField("size", size).
 						WithField("properties", sr.msg.Properties)
 				}
-				// the callback is only invoked by last chunk when chunked
-				if sr.callback != nil && (sr.totalChunks <= 1 || (sr.chunkID == sr.totalChunks-1)) {
-					sr.callback(nil, sr.msg, errSendTimeout)
+
+				if sr.callback != nil {
+					sr.callbackOnce.Do(func() {
+						sr.callback(nil, sr.msg, errSendTimeout)
+					})
 				}
 			}
 
@@ -929,6 +938,12 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 				if sr, ok := cb.(*sendRequest); ok {
 					sr.callback(nil, sr.msg, errs[i])
 				}
+			}
+			if errors.Is(errs[i], internal.ErrExceedMaxMessageSize) {
+				p.log.WithError(errMessageTooLarge).
+					Errorf("internal err: %s", errs[i])
+				p.metrics.PublishErrorsMsgTooLarge.Inc()
+				return
 			}
 			continue
 		}
@@ -999,9 +1014,6 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	// wait for send request to finish
 	<-doneCh
 
-	// handle internal error
-	p.internalErrHandle(err)
-
 	return msgID, err
 }
 
@@ -1020,10 +1032,15 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 
 	// bc only works when DisableBlockIfQueueFull is false
 	bc := make(chan struct{})
+
+	// callbackOnce make sure the callback is only invoked once in chunking
+	callbackOnce := &sync.Once{}
+
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
 		callback:         callback,
+		callbackOnce:     callbackOnce,
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
 		blockCh:          bc,
@@ -1077,7 +1094,6 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 				p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
 				p.metrics.MessagesPublished.Inc()
 				p.metrics.MessagesPending.Dec()
-				// todo: it's not correct. the size should be schemaed uncompressed payload size
 				payloadSize := float64(len(sr.msg.Payload))
 				p.metrics.BytesPublished.Add(payloadSize)
 				p.metrics.BytesPending.Sub(payloadSize)
@@ -1093,30 +1109,23 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 				if sr.totalChunks > 1 {
 					if sr.chunkID == 0 {
-						cmid := p.chunkRecorder.addIfAbsent(sr.uuid)
-						cmid.firstChunkID = messageID{
-							int64(response.MessageId.GetLedgerId()),
-							int64(response.MessageId.GetEntryId()),
-							-1,
-							p.partitionIdx,
-						}
-					} else if sr.chunkID == sr.totalChunks-1 {
-						cmid, ok := p.chunkRecorder.get(sr.uuid)
-						if ok {
-							cmid.messageID = messageID{
+						sr.chunkRecorder.setFirstChunkID(
+							messageID{
 								int64(response.MessageId.GetLedgerId()),
 								int64(response.MessageId.GetEntryId()),
 								-1,
 								p.partitionIdx,
-							}
-							// use chunkMsgID to set msgID
-							msgID = *cmid
-							p.chunkRecorder.remove(sr.uuid)
-						} else {
-							p.log.Warnf("Recorder has lost the chunk message id, uuid: %v",
-								sr.uuid)
-							continue
-						}
+							})
+					} else if sr.chunkID == sr.totalChunks-1 {
+						sr.chunkRecorder.setLastChunkID(
+							messageID{
+								int64(response.MessageId.GetLedgerId()),
+								int64(response.MessageId.GetEntryId()),
+								-1,
+								p.partitionIdx,
+							})
+						// use chunkMsgID to set msgID
+						msgID = sr.chunkRecorder.chunkedMsgID
 					}
 				}
 
@@ -1214,6 +1223,7 @@ type sendRequest struct {
 	ctx              context.Context
 	msg              *ProducerMessage
 	callback         func(MessageID, *ProducerMessage, error)
+	callbackOnce     *sync.Once
 	publishTime      time.Time
 	flushImmediately bool
 	blockCh          chan struct{}
@@ -1221,6 +1231,7 @@ type sendRequest struct {
 	totalChunks      int
 	chunkID          int
 	uuid             string
+	chunkRecorder    *chunkRecorder
 }
 
 type closeProducer struct {
@@ -1279,47 +1290,20 @@ func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool {
 	return true
 }
 
-func (p *partitionProducer) internalErrHandle(err error) {
-	if err == nil {
-		return
-	} else if errors.Is(err, internal.ErrExceedMaxMessageSize) {
-		p.log.WithError(errMessageTooLarge).
-			Errorf("internal err: %s", err)
-		p.metrics.PublishErrorsMsgTooLarge.Inc()
-		return
-	}
-	// other internal error can be handled here
-}
-
 type chunkRecorder struct {
-	chunkedMsgCtxs map[string]*chunkMessageID
-	mu             sync.Mutex
+	chunkedMsgID chunkMessageID
 }
 
 func newChunkRecorder() *chunkRecorder {
 	return &chunkRecorder{
-		chunkedMsgCtxs: make(map[string]*chunkMessageID),
+		chunkedMsgID: chunkMessageID{},
 	}
 }
 
-func (c *chunkRecorder) addIfAbsent(uuid string) *chunkMessageID {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if _, ok := c.chunkedMsgCtxs[uuid]; !ok {
-		c.chunkedMsgCtxs[uuid] = &chunkMessageID{}
-	}
-	return c.chunkedMsgCtxs[uuid]
+func (c *chunkRecorder) setFirstChunkID(msgID messageID) {
+	c.chunkedMsgID.firstChunkID = msgID
 }
 
-func (c *chunkRecorder) get(uuid string) (*chunkMessageID, bool) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	cmid, ok := c.chunkedMsgCtxs[uuid]
-	return cmid, ok
-}
-
-func (c *chunkRecorder) remove(uuid string) {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	delete(c.chunkedMsgCtxs, uuid)
+func (c *chunkRecorder) setLastChunkID(msgID messageID) {
+	c.chunkedMsgID.messageID = msgID
 }

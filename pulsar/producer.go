@@ -175,12 +175,12 @@ type ProducerOptions struct {
 
 	// EnableChunking controls whether automatic chunking of messages is enabled for the producer. By default, chunking
 	// is disabled.
-	// Chunking can not be enabled when batching is not closed.
+	// Chunking can not be enabled when batching is enabled.
 	EnableChunking bool
 
-	// ChunkMaxMessageSize is the max size of single chunk payload.
+	// MaxChunkSize is the max size of single chunk payload.
 	// It will actually only take effect if it is smaller than broker.MaxMessageSize
-	ChunkMaxMessageSize uint
+	MaxChunkSize uint
 }
 
 // Producer is used to publish messages on a topic
