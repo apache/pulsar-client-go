@@ -53,8 +53,9 @@ type TLSOptions struct {
 }
 
 var (
-	errConnectionClosed       = errors.New("connection closed")
-	errUnableRegisterListener = errors.New("unable register listener when con closed")
+	errConnectionClosed        = errors.New("connection closed")
+	errUnableRegisterListener  = errors.New("unable register listener when con closed")
+	errUnableAddConsumeHandler = errors.New("unable add consumer handler when con closed")
 )
 
 // ConnectionListener is a user of a connection (eg. a producer or
@@ -75,7 +76,7 @@ type Connection interface {
 	WriteData(data Buffer)
 	RegisterListener(id uint64, listener ConnectionListener) error
 	UnregisterListener(id uint64)
-	AddConsumeHandler(id uint64, handler ConsumerHandler)
+	AddConsumeHandler(id uint64, handler ConsumerHandler) error
 	DeleteConsumeHandler(id uint64)
 	ID() string
 	GetMaxMessageSize() int32
@@ -113,8 +114,6 @@ func (s connectionState) String() string {
 	}
 }
 
-const keepAliveInterval = 30 * time.Second
-
 type request struct {
 	id       *uint64
 	cmd      *pb.BaseCommand
@@ -147,8 +146,6 @@ type connection struct {
 
 	log log.Logger
 
-	requestIDGenerator uint64
-
 	incomingRequestsWG sync.WaitGroup
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
@@ -169,6 +166,8 @@ type connection struct {
 
 	maxMessageSize int32
 	metrics        *Metrics
+
+	keepAliveInterval time.Duration
 }
 
 // connectionOptions defines configurations for creating connection.
@@ -180,11 +179,13 @@ type connectionOptions struct {
 	auth              auth.Provider
 	logger            log.Logger
 	metrics           *Metrics
+	keepAliveInterval time.Duration
 }
 
 func newConnection(opts connectionOptions) *connection {
 	cnx := &connection{
 		connectionTimeout:    opts.connectionTimeout,
+		keepAliveInterval:    opts.keepAliveInterval,
 		logicalAddr:          opts.logicalAddr,
 		physicalAddr:         opts.physicalAddr,
 		writeBuffer:          NewBuffer(4096),
@@ -286,7 +287,7 @@ func (c *connection) doHandshake() bool {
 
 	// During the initial handshake, the internal keep alive is not
 	// active yet, so we need to timeout write and read requests
-	c.cnx.SetDeadline(time.Now().Add(keepAliveInterval))
+	c.cnx.SetDeadline(time.Now().Add(c.keepAliveInterval))
 	cmdConnect := &pb.CommandConnect{
 		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
 		ClientVersion:   proto.String(ClientVersionString),
@@ -370,8 +371,8 @@ func (c *connection) failLeftRequestsWhenClose() {
 }
 
 func (c *connection) run() {
-	pingSendTicker := time.NewTicker(keepAliveInterval)
-	pingCheckTicker := time.NewTicker(keepAliveInterval)
+	pingSendTicker := time.NewTicker(c.keepAliveInterval)
+	pingCheckTicker := time.NewTicker(c.keepAliveInterval)
 
 	defer func() {
 		// stop tickers
@@ -433,7 +434,7 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 		case <-c.closeCh:
 			return
 		case <-pingCheckTicker.C:
-			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
+			if c.lastDataReceived().Add(2 * c.keepAliveInterval).Before(time.Now()) {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
 				c.log.Warn("Detected stale connection to broker")
@@ -542,6 +543,9 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 
 	case pb.BaseCommand_GET_SCHEMA_RESPONSE:
 		c.handleResponse(cmd.GetSchemaResponse.GetRequestId(), cmd)
+
+	case pb.BaseCommand_GET_OR_CREATE_SCHEMA_RESPONSE:
+		c.handleResponse(cmd.GetOrCreateSchemaResponse.GetRequestId(), cmd)
 
 	case pb.BaseCommand_ERROR:
 		c.handleResponseError(cmd.GetError())
@@ -956,10 +960,6 @@ func (c *connection) closed() bool {
 	return connectionClosed == c.getState()
 }
 
-func (c *connection) newRequestID() uint64 {
-	return atomic.AddUint64(&c.requestIDGenerator, 1)
-}
-
 func (c *connection) getTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: c.tlsOptions.AllowInsecureConnection,
@@ -994,16 +994,17 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 	return tlsConfig, nil
 }
 
-func (c *connection) AddConsumeHandler(id uint64, handler ConsumerHandler) {
+func (c *connection) AddConsumeHandler(id uint64, handler ConsumerHandler) error {
 	// do not add if connection is closed
 	if c.closed() {
 		c.log.Warnf("Closed connection unable add consumer with id=%+v", id)
-		return
+		return errUnableAddConsumeHandler
 	}
 
 	c.consumerHandlersLock.Lock()
 	defer c.consumerHandlersLock.Unlock()
 	c.consumerHandlers[id] = handler
+	return nil
 }
 
 func (c *connection) DeleteConsumeHandler(id uint64) {
