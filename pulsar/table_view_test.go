@@ -48,8 +48,14 @@ func TestTableView(t *testing.T) {
 
 	numMsg := 10
 	valuePrefix := "hello pulsar: "
+	emptyKeyIndex := 1
+	emptyKey := ""
 	for i := 0; i < numMsg; i++ {
 		key := fmt.Sprintf("%d", i)
+		if i == emptyKeyIndex {
+			emptyKey = key
+			key = ""
+		}
 		t.Log(key)
 		_, err = producer.Send(context.Background(), &ProducerMessage{
 			Key:   key,
@@ -69,7 +75,8 @@ func TestTableView(t *testing.T) {
 	defer tv.Close()
 
 	// Wait until tv receives all messages
-	for tv.Size() < 10 {
+	// exclude one of empty key  message
+	for tv.Size() < (numMsg - 1) {
 		time.Sleep(time.Second * 1)
 		t.Logf("TableView number of elements: %d", tv.Size())
 	}
@@ -77,4 +84,5 @@ func TestTableView(t *testing.T) {
 	for k, v := range tv.Entries() {
 		assert.Equal(t, valuePrefix+k, *(v.(*string)))
 	}
+	assert.Equal(t, false, tv.ContainsKey(emptyKey))
 }
