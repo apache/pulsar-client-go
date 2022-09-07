@@ -462,7 +462,7 @@ func (p *partitionProducer) Name() string {
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
-	p.log.Debug("Received send request: ", *request)
+	p.log.Debug("Received send request: ", *request.msg)
 
 	msg := request.msg
 
@@ -540,6 +540,12 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	sendAsBatch := !p.options.DisableBatching &&
 		msg.ReplicationClusters == nil &&
 		deliverAt.UnixNano() < 0
+
+	if !sendAsBatch {
+		// update sequence id for metadata, make the size of msgMetadata more accurate
+		// batch sending will update sequence ID in the BatchBuilder
+		p.updateMetadataSeqID(mm, msg)
+	}
 
 	maxMessageSize := int(p._getConn().GetMaxMessageSize())
 
@@ -677,12 +683,6 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 		UncompressedSize: proto.Uint32(uint32(uncompressedSize)),
 	}
 
-	if msg.SequenceID != nil {
-		mm.SequenceId = proto.Uint64(uint64(*msg.SequenceID))
-	} else {
-		mm.SequenceId = proto.Uint64(internal.GetAndAdd(p.sequenceIDGenerator, 1))
-	}
-
 	if msg.Key != "" {
 		mm.PartitionKey = proto.String(msg.Key)
 	}
@@ -696,6 +696,14 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 	}
 
 	return
+}
+
+func (p *partitionProducer) updateMetadataSeqID(mm *pb.MessageMetadata, msg *ProducerMessage) {
+	if msg.SequenceID != nil {
+		mm.SequenceId = proto.Uint64(uint64(*msg.SequenceID))
+	} else {
+		mm.SequenceId = proto.Uint64(internal.GetAndAdd(p.sequenceIDGenerator, 1))
+	}
 }
 
 func (p *partitionProducer) genSingleMessageMetadataInBatch(msg *ProducerMessage,

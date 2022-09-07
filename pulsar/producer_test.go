@@ -966,15 +966,14 @@ func TestMaxMessageSize(t *testing.T) {
 		}
 	}
 
-	// singleMsgMetadata is not included in the payload of a non-batching message
 	for bias := -1; bias <= 1; bias++ {
 		payload := make([]byte, serverMaxMessageSize+bias)
 		ID, err := producer2.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
 		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
 		} else {
 			assert.Equal(t, errMessageTooLarge, err)
 		}
