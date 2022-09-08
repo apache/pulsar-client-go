@@ -454,8 +454,12 @@ func TestChunkSize(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	//the default message metadata size for string schema
-	payloadChunkSize := _brokerMaxMessageSize - 18
+	// the default message metadata size for string schema
+	// The proto messageMetaData size as following. (all with tag)
+	// | producerName | sequenceID | publishTime | uncompressedSize |
+	// | ------------ | ---------- | ----------- | ---------------- |
+	// | 6            | 2          | 7           | 4                |
+	payloadChunkSize := _brokerMaxMessageSize - 19
 
 	topic := newTopicName()
 
