@@ -194,7 +194,7 @@ type ConsumerOptions struct {
 	MaxPendingChunkedMessage int
 
 	// ExpireTimeOfIncompleteChunk sets the expiry time of discarding incomplete chunked message.
-	// The timing accuracy is 100ms level and the default value is 60 * 1000 millis
+	// The minimum value is 100ms. (default: 60 * 1000 millis)
 	ExpireTimeOfIncompleteChunk time.Duration
 
 	// AutoAckIncompleteChunk sets whether consumer auto acknowledges incomplete chunked message when it should
