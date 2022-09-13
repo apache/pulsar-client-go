@@ -756,6 +756,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			int32(i),
 			pc.partitionIdx,
 			ackTracker)
+		// set the consumer so we know how to ack the message id
+		trackingMsgID.consumer = pc
 
 		if pc.messageShouldBeDiscarded(trackingMsgID) {
 			pc.AckID(trackingMsgID)
@@ -769,10 +771,13 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				// chunkedMsgCtxMap has closed because of consumer closed
 				return nil
 			}
-			msgID = newChunkMessageID(ctx.firstChunkID(), ctx.lastChunkID())
+			cmid := newChunkMessageID(ctx.firstChunkID(), ctx.lastChunkID())
+			// set the consumer so we know how to ack the message id
+			cmid.consumer = pc
 			// clean chunkedMsgCtxMap
 			pc.chunkedMsgCtxMap.remove(msgMeta.GetUuid())
-			pc.unAckChunksTracker.add(msgID.(chunkMessageID), ctx.chunkedMsgIDs)
+			pc.unAckChunksTracker.add(cmid, ctx.chunkedMsgIDs)
+			msgID = cmid
 		} else {
 			msgID = trackingMsgID
 		}

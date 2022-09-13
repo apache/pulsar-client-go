@@ -203,6 +203,7 @@ func toTrackingMessageID(msgID MessageID) (trackingMessageID, bool) {
 		return trackingMessageID{
 			messageID:    cmid.messageID,
 			receivedTime: cmid.receivedTime,
+			consumer:     cmid.consumer,
 		}, true
 	} else {
 		return trackingMessageID{}, false
@@ -380,6 +381,8 @@ type chunkMessageID struct {
 
 	firstChunkID messageID
 	receivedTime time.Time
+
+	consumer acker
 }
 
 func newChunkMessageID(firstChunkID messageID, lastChunkID messageID) chunkMessageID {

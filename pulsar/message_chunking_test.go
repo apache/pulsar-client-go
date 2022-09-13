@@ -20,7 +20,9 @@ package pulsar
 import (
 	"context"
 	"errors"
+	"fmt"
 	"math/rand"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -486,6 +488,70 @@ func TestChunkSize(t *testing.T) {
 			assert.Equal(t, true, ok)
 		}
 	}
+}
+
+func TestChunkMultiTopicConsumerReceive(t *testing.T) {
+	topic1 := newTopicName()
+	topic2 := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topics := []string{topic1, topic2}
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topics:           topics,
+		SubscriptionName: "multi-topic-sub",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	maxSize := 50
+
+	// produce messages
+	for i, topic := range topics {
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:           topic,
+			DisableBatching: true,
+			EnableChunking:  true,
+			MaxChunkSize:    uint(maxSize),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = genMessages(p, 10, func(idx int) string {
+			return fmt.Sprintf("topic-%d-hello-%d-%s", i+1, idx, string(createTestMessagePayload(100)))
+		})
+		p.Close()
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	receivedTopic1 := 0
+	receivedTopic2 := 0
+	// nolint
+	for receivedTopic1+receivedTopic2 < 20 {
+		select {
+		case cm, ok := <-consumer.Chan():
+			if ok {
+				msg := string(cm.Payload())
+				if strings.HasPrefix(msg, "topic-1") {
+					receivedTopic1++
+				} else if strings.HasPrefix(msg, "topic-2") {
+					receivedTopic2++
+				}
+				consumer.Ack(cm.Message)
+			} else {
+				t.Fail()
+			}
+		}
+	}
+	assert.Equal(t, receivedTopic1, receivedTopic2)
 }
 
 func createTestMessagePayload(size int) []byte {

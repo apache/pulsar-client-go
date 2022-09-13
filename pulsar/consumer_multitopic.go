@@ -136,7 +136,7 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 		return errors.New("unable to ack message because consumer is nil")
 	}
 
-	return mid.Ack()
+	return mid.consumer.AckID(msgID)
 }
 
 func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
@@ -196,7 +196,7 @@ func (c *multiTopicConsumer) NackID(msgID MessageID) {
 		return
 	}
 
-	mid.Nack()
+	mid.consumer.NackID(msgID)
 }
 
 func (c *multiTopicConsumer) Close() {

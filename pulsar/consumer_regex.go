@@ -180,7 +180,7 @@ func (c *regexConsumer) AckID(msgID MessageID) error {
 		return errors.New("consumer is nil in consumer_regex")
 	}
 
-	return mid.Ack()
+	return mid.consumer.AckID(msgID)
 }
 
 func (c *regexConsumer) Nack(msg Message) {
@@ -215,7 +215,7 @@ func (c *regexConsumer) NackID(msgID MessageID) {
 		return
 	}
 
-	mid.Nack()
+	mid.consumer.NackID(msgID)
 }
 
 func (c *regexConsumer) Close() {
