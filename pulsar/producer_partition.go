@@ -548,7 +548,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		PayloadSize: proto.Int(len(payload)),
 	}
 
-	if msg.EventTime.UnixNano() != 0 {
+	if !msg.EventTime.IsZero() {
 		smm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
 	}
 
