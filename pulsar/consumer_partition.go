@@ -156,7 +156,8 @@ type partitionConsumer struct {
 	decryptor            cryptointernal.Decryptor
 	schemaInfoCache      *schemaInfoCache
 
-	chunkedMsgCtxMap *chunkedMsgCtxMap
+	chunkedMsgCtxMap   *chunkedMsgCtxMap
+	unAckChunksTracker *unAckChunksTracker
 }
 
 type schemaInfoCache struct {
@@ -232,6 +233,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
 	}
 	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(options.maxPendingChunkedMessage, pc)
+	pc.unAckChunksTracker = newUnAckChunksTracker(pc)
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
@@ -374,17 +376,26 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
-func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
+func (pc *partitionConsumer) AckID(msgID MessageID) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")
 	}
 
+	if cmid, ok := toChunkedMessageID(msgID); ok {
+		return pc.unAckChunksTracker.ack(cmid)
+	}
+
+	trackingID, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return errors.New("failed to convert trackingMessageID")
+	}
+
 	ackReq := new(ackRequest)
-	if !msgID.Undefined() && msgID.ack() {
+	if !trackingID.Undefined() && trackingID.ack() {
 		pc.metrics.AcksCounter.Inc()
-		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
-		ackReq.msgID = msgID
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+		ackReq.msgID = trackingID
 		// send ack request to eventsCh
 		pc.eventsCh <- ackReq
 
@@ -394,8 +405,18 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 	return ackReq.err
 }
 
-func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
-	pc.nackTracker.Add(msgID.messageID)
+func (pc *partitionConsumer) NackID(msgID MessageID) {
+	if cmid, ok := toChunkedMessageID(msgID); ok {
+		pc.unAckChunksTracker.nack(cmid)
+		return
+	}
+
+	trackingID, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return
+	}
+
+	pc.nackTracker.Add(trackingID.messageID)
 	pc.metrics.NacksCounter.Inc()
 }
 
@@ -729,9 +750,19 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		pc.metrics.BytesReceived.Add(float64(len(payload)))
 		pc.metrics.PrefetchedBytes.Add(float64(len(payload)))
 
-		var msgID MessageID
-		var trackingMsgID trackingMessageID
+		trackingMsgID := newTrackingMessageID(
+			int64(pbMsgID.GetLedgerId()),
+			int64(pbMsgID.GetEntryId()),
+			int32(i),
+			pc.partitionIdx,
+			ackTracker)
 
+		if pc.messageShouldBeDiscarded(trackingMsgID) {
+			pc.AckID(trackingMsgID)
+			continue
+		}
+
+		var msgID MessageID
 		if isChunkedMsg {
 			ctx := pc.chunkedMsgCtxMap.get(msgMeta.GetUuid())
 			if ctx == nil {
@@ -739,27 +770,11 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				return nil
 			}
 			msgID = newChunkMessageID(ctx.firstChunkID(), ctx.lastChunkID())
-			trackingMsgID, _ = toTrackingMessageID(msgID)
-		} else {
-			trackingMsgID = newTrackingMessageID(
-				int64(pbMsgID.GetLedgerId()),
-				int64(pbMsgID.GetEntryId()),
-				int32(i),
-				pc.partitionIdx,
-				ackTracker)
-			// set the consumer so we know how to ack the message id
-			trackingMsgID.consumer = pc
-			msgID = trackingMsgID
-		}
-
-		if pc.messageShouldBeDiscarded(trackingMsgID) {
-			pc.AckID(trackingMsgID)
-			continue
-		}
-
-		if isChunkedMsg {
 			// clean chunkedMsgCtxMap
 			pc.chunkedMsgCtxMap.remove(msgMeta.GetUuid())
+			pc.unAckChunksTracker.add(msgID.(chunkMessageID), ctx.chunkedMsgIDs)
+		} else {
+			msgID = trackingMsgID
 		}
 
 		var messageIndex *uint64
@@ -1701,4 +1716,58 @@ func (c *chunkedMsgCtxMap) Close() {
 	c.closed = true
 
 	c.tw.Stop()
+}
+
+type unAckChunksTracker struct {
+	chunkIDs map[chunkMessageID][]messageID
+	pc       *partitionConsumer
+	mu       sync.Mutex
+}
+
+func newUnAckChunksTracker(pc *partitionConsumer) *unAckChunksTracker {
+	return &unAckChunksTracker{
+		chunkIDs: make(map[chunkMessageID][]messageID),
+		pc:       pc,
+	}
+}
+
+func (u *unAckChunksTracker) add(cmid chunkMessageID, ids []messageID) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	u.chunkIDs[cmid] = ids
+}
+
+func (u *unAckChunksTracker) get(cmid chunkMessageID) []messageID {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	return u.chunkIDs[cmid]
+}
+
+func (u *unAckChunksTracker) remove(cmid chunkMessageID) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	delete(u.chunkIDs, cmid)
+}
+
+func (u *unAckChunksTracker) ack(cmid chunkMessageID) error {
+	ids := u.get(cmid)
+	for _, id := range ids {
+		if err := u.pc.AckID(id); err != nil {
+			return err
+		}
+	}
+	u.remove(cmid)
+	return nil
+}
+
+func (u *unAckChunksTracker) nack(cmid chunkMessageID) {
+	ids := u.get(cmid)
+	for _, id := range ids {
+		u.pc.nackTracker.Add(id)
+		u.pc.metrics.NacksCounter.Inc()
+	}
+	u.remove(cmid)
 }

@@ -36,8 +36,8 @@ import (
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
-	AckID(id trackingMessageID) error
-	NackID(id trackingMessageID)
+	AckID(id MessageID) error
+	NackID(id MessageID)
 	NackMsg(msg Message)
 }
 
@@ -465,16 +465,16 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
-	mid, ok := c.messageID(msgID)
-	if !ok {
-		return errors.New("failed to convert trackingMessageID")
+	partition := int(msgID.PartitionIdx())
+	// did we receive a valid partition index?
+	if partition < 0 || partition >= len(c.consumers) {
+		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
+		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
 	}
 
-	if mid.consumer != nil {
-		return mid.Ack()
-	}
-
-	return c.consumers[mid.partitionIdx].AckID(mid)
+	return c.consumers[partition].AckID(msgID)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -545,17 +545,15 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	mid, ok := c.messageID(msgID)
-	if !ok {
+	partition := int(msgID.PartitionIdx())
+	// did we receive a valid partition index?
+	if partition < 0 || partition >= len(c.consumers) {
+		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
 		return
 	}
 
-	if mid.consumer != nil {
-		mid.Nack()
-		return
-	}
-
-	c.consumers[mid.partitionIdx].NackID(mid)
+	c.consumers[partition].NackID(msgID)
 }
 
 func (c *consumer) Close() {
