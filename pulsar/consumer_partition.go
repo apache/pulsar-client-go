@@ -1601,6 +1601,9 @@ func (c *chunkedMsgCtx) refresh(chunkID int32, msgID messageID, partPayload inte
 func (c *chunkedMsgCtx) firstChunkID() messageID {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if len(c.chunkedMsgIDs) == 0 {
+		return messageID{}
+	}
 	return c.chunkedMsgIDs[0]
 }
 
