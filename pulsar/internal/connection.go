@@ -23,7 +23,6 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"github.com/sirupsen/logrus"
 	"io/ioutil"
 	"net"
 	"net/url"
@@ -33,6 +32,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
