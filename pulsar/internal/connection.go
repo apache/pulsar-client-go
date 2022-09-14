@@ -1030,6 +1030,7 @@ func (c *connection) GetMaxMessageSize() int32 {
 	return c.maxMessageSize
 }
 
+// FIXME: Maybe there is a better way to get Version information.
 func getClientVersion() string {
 	// open version file
 	var versionFile = "/VERSION"
