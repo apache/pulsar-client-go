@@ -18,7 +18,6 @@
 package utils
 
 import (
-	"net/url"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -73,21 +72,4 @@ func TestGetTopicName(t *testing.T) {
 	assert.NotNil(t, err)
 	assert.Equal(t, "topic name can not be empty", err.Error())
 	assert.Nil(t, fail)
-}
-
-func TestTopicNameEncodeTest(t *testing.T) {
-	encodedName := "a%3Aen-in_in_business_content_item_20150312173022_https%5C%3A%2F%2Fin.news.example.com%2Fr"
-	rawName := "a:en-in_in_business_content_item_20150312173022_https\\://in.news.example.com/r"
-
-	assert.Equal(t, encodedName, url.QueryEscape(rawName))
-	o, err := url.QueryUnescape(encodedName)
-	assert.Nil(t, err)
-	assert.Equal(t, rawName, o)
-
-	topicName, err := GetTopicName("persistent://prop/ns/" + rawName)
-	assert.Nil(t, err)
-
-	assert.Equal(t, rawName, topicName.topic)
-	assert.Equal(t, encodedName, topicName.GetEncodedTopic())
-	assert.Equal(t, "persistent/prop/ns/"+encodedName, topicName.GetRestPath())
 }
