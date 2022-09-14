@@ -82,7 +82,10 @@ func TestJsonSchema(t *testing.T) {
 	//create consumer
 	var s testJSON
 
-	consumerJS := NewJSONSchema(exampleSchemaDef, nil)
+	consumerJS, err := NewJSONSchemaWithValidation(exampleSchemaDef, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, consumerJS)
+	consumerJS = NewJSONSchema(exampleSchemaDef, nil) // test this legacy function
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       "jsonTopic",
 		SubscriptionName:            "sub-1",
@@ -105,7 +108,10 @@ func TestProtoSchema(t *testing.T) {
 	defer client.Close()
 
 	// create producer
-	psProducer := NewProtoSchema(protoSchemaDef, nil)
+	psProducer, err := NewProtoSchemaWithValidation(protoSchemaDef, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, psProducer)
+	psProducer = NewProtoSchema(protoSchemaDef, nil)
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:  "proto",
 		Schema: psProducer,
@@ -146,7 +152,10 @@ func TestAvroSchema(t *testing.T) {
 	defer client.Close()
 
 	// create producer
-	asProducer := NewAvroSchema(exampleSchemaDef, nil)
+	asProducer, err := NewAvroSchemaWithValidation(exampleSchemaDef, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, asProducer)
+	asProducer = NewAvroSchema(exampleSchemaDef, nil)
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:  "avro-topic",
 		Schema: asProducer,

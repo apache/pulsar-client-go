@@ -27,12 +27,12 @@ go mod download
 
 # Basic compilation
 go build ./pulsar
-go build -o pulsar-perf ./perf
+go build -o bin/pulsar-perf ./perf
 
-./pulsar-test-service-start.sh
+scripts/pulsar-test-service-start.sh
 
 go test -race -coverprofile=/tmp/coverage -timeout=20m ./...
 go tool cover -html=/tmp/coverage -o coverage.html
 
-./pulsar-test-service-stop.sh
+scripts/pulsar-test-service-stop.sh
 

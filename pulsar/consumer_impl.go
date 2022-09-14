@@ -19,21 +19,24 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	pkgerrors "github.com/pkg/errors"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
-	AckID(id trackingMessageID)
+	AckID(id trackingMessageID) error
 	NackID(id trackingMessageID)
 	NackMsg(msg Message)
 }
@@ -156,6 +159,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 		topic = tns[0].Name
+		err = addMessageCryptoIfMissing(client, &options, topic)
+		if err != nil {
+			return nil, err
+		}
 		return newInternalConsumer(client, options, topic, messageCh, dlq, rlq, false)
 	}
 
@@ -167,6 +174,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			options.Topics[i] = tns[i].Name
 		}
 		options.Topics = distinct(options.Topics)
+
+		err = addMessageCryptoIfMissing(client, &options, options.Topics)
+		if err != nil {
+			return nil, err
+		}
 
 		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
 	}
@@ -181,6 +193,12 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if err != nil {
 			return nil, err
 		}
+
+		err = addMessageCryptoIfMissing(client, &options, tn.Name)
+		if err != nil {
+			return nil, err
+		}
+
 		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq)
 	}
 
@@ -344,6 +362,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				keySharedPolicy:            c.options.KeySharedPolicy,
 				schema:                     c.options.Schema,
 				decryption:                 c.options.Decryption,
+				ackWithResponse:            c.options.AckWithResponse,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
@@ -422,29 +441,28 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	}
 }
 
-// Messages
+// Chan return the message chan to users
 func (c *consumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh
 }
 
 // Ack the consumption of a single message
-func (c *consumer) Ack(msg Message) {
-	c.AckID(msg.ID())
+func (c *consumer) Ack(msg Message) error {
+	return c.AckID(msg.ID())
 }
 
-// Ack the consumption of a single message, identified by its MessageID
-func (c *consumer) AckID(msgID MessageID) {
+// AckID the consumption of a single message, identified by its MessageID
+func (c *consumer) AckID(msgID MessageID) error {
 	mid, ok := c.messageID(msgID)
 	if !ok {
-		return
+		return errors.New("failed to convert trackingMessageID")
 	}
 
 	if mid.consumer != nil {
-		mid.Ack()
-		return
+		return mid.Ack()
 	}
 
-	c.consumers[mid.partitionIdx].AckID(mid)
+	return c.consumers[mid.partitionIdx].AckID(mid)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -572,11 +590,15 @@ func (c *consumer) Seek(msgID MessageID) error {
 func (c *consumer) SeekByTime(time time.Time) error {
 	c.Lock()
 	defer c.Unlock()
-	if len(c.consumers) > 1 {
-		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
+	var errs error
+	// run SeekByTime on every partition of topic
+	for _, cons := range c.consumers {
+		if err := cons.SeekByTime(time); err != nil {
+			msg := fmt.Sprintf("unable to SeekByTime for topic=%s subscription=%s", c.topic, c.Subscription())
+			errs = pkgerrors.Wrap(newError(SeekFailed, err.Error()), msg)
+		}
 	}
-
-	return c.consumers[0].SeekByTime(time)
+	return errs
 }
 
 var r = &random{
@@ -653,4 +675,18 @@ func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 	}
 
 	return mid, true
+}
+
+func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {
+	// decryption is enabled, use default messagecrypto if not provided
+	if options.Decryption != nil && options.Decryption.MessageCrypto == nil {
+		messageCrypto, err := crypto.NewDefaultMessageCrypto("decrypt",
+			false,
+			client.log.SubLogger(log.Fields{"topic": topics}))
+		if err != nil {
+			return err
+		}
+		options.Decryption.MessageCrypto = messageCrypto
+	}
+	return nil
 }

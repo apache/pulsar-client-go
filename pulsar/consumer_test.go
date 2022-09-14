@@ -332,8 +332,8 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "persistent://public/default/testGetPartitions"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
+	topic := "persistent://public/default/testGetPartitions5"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions5/partitions"
 
 	makeHTTPCall(t, http.MethodPut, testURL, "64")
 
@@ -355,6 +355,74 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 		SubscriptionName:  "my-sub",
 		Type:              Exclusive,
 		ReceiverQueueSize: 10,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	msgs := make([]string, 0)
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		msgs = append(msgs, string(msg.Payload()))
+
+		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+			msg.ID(), string(msg.Payload()))
+
+		consumer.Ack(msg)
+	}
+
+	assert.Equal(t, len(msgs), 10)
+}
+
+func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/testGetPartitions"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions/partitions"
+
+	makeHTTPCall(t, http.MethodPut, testURL, "6")
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	topics, err := client.TopicPartitions(topic)
+	assert.Nil(t, err)
+	assert.Equal(t, topic+"-partition-0", topics[0])
+	assert.Equal(t, topic+"-partition-1", topics[1])
+	assert.Equal(t, topic+"-partition-2", topics[2])
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  "my-sub",
+		Type:              Exclusive,
+		ReceiverQueueSize: 10,
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
+		},
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -957,6 +1025,19 @@ func TestConsumerReceiveErrAfterClose(t *testing.T) {
 }
 
 func TestDLQ(t *testing.T) {
+	DLQWithProducerOptions(t, nil)
+}
+
+func TestDLQWithProducerOptions(t *testing.T) {
+	DLQWithProducerOptions(t,
+		&ProducerOptions{
+			BatchingMaxPublishDelay: 100 * time.Millisecond,
+			BatchingMaxSize:         64 * 1024,
+			CompressionType:         ZLib,
+		})
+}
+
+func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -977,15 +1058,19 @@ func TestDLQ(t *testing.T) {
 	ctx := context.Background()
 
 	// create consumer
+	dlqPolicy := DLQPolicy{
+		MaxDeliveries:   3,
+		DeadLetterTopic: dlqTopic,
+	}
+	if prodOpt != nil {
+		dlqPolicy.ProducerOptions = *prodOpt
+	}
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:               topic,
 		SubscriptionName:    "my-sub",
 		NackRedeliveryDelay: 1 * time.Second,
 		Type:                Shared,
-		DLQ: &DLQPolicy{
-			MaxDeliveries:   3,
-			DeadLetterTopic: dlqTopic,
-		},
+		DLQ:                 &dlqPolicy,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -1088,6 +1173,9 @@ func TestDLQMultiTopics(t *testing.T) {
 		DLQ: &DLQPolicy{
 			MaxDeliveries:   3,
 			DeadLetterTopic: dlqTopic,
+			ProducerOptions: ProducerOptions{
+				BatchingMaxPublishDelay: 100 * time.Millisecond,
+			},
 		},
 	})
 	assert.Nil(t, err)
@@ -1251,6 +1339,41 @@ func TestRLQ(t *testing.T) {
 	checkMsg, err := checkConsumer.Receive(checkCtx)
 	assert.Error(t, err)
 	assert.Nil(t, checkMsg)
+}
+
+func TestAckWithResponse(t *testing.T) {
+	now := time.Now().Unix()
+	topic01 := fmt.Sprintf("persistent://public/default/topic-%d-01", now)
+	ctx := context.Background()
+
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic01,
+		SubscriptionName:            "my-sub",
+		Type:                        Shared,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+		AckWithResponse:             true,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer01, err := client.CreateProducer(ProducerOptions{Topic: topic01})
+	assert.Nil(t, err)
+	defer producer01.Close()
+	for i := 0; i < 10; i++ {
+		_, err = producer01.Send(ctx, &ProducerMessage{Payload: []byte(fmt.Sprintf("MSG_01_%d", i))})
+		assert.Nil(t, err)
+	}
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
+	}
 }
 
 func TestRLQMultiTopics(t *testing.T) {
@@ -2948,4 +3071,77 @@ func TestEncryptDecryptRedeliveryOnFailure(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, msg)
 	consumer.Ack(msg)
+}
+
+// TestConsumerSeekByTimeOnPartitionedTopic test seek by time on partitioned topic.
+// It is based on existing test case [TestConsumerSeekByTime] but for partitioned topic.
+func TestConsumerSeekByTimeOnPartitionedTopic(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// Create topic with 5 partitions
+	topicAdminURL := "admin/v2/persistent/public/default/TestSeekByTimeOnPartitionedTopic/partitions"
+	err = httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
+	assert.Nil(t, err)
+
+	topicName := "persistent://public/default/TestSeekByTimeOnPartitionedTopic"
+
+	partitions, err := client.TopicPartitions(topicName)
+	assert.Nil(t, err)
+	assert.Equal(t, len(partitions), 5)
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, partitions[i],
+			fmt.Sprintf("%s-partition-%d", topicName, i))
+	}
+
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// Use value bigger than 1000 to full-fill queue channel with size 1000 and message channel with size 10
+	const N = 1100
+	resetTimeStr := "100s"
+	retentionTimeInSecond, err := internal.ParseRelativeTimeInSeconds(resetTimeStr)
+	assert.Nil(t, err)
+
+	for i := 0; i < N; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	// Don't consume all messages so some stay in queues
+	for i := 0; i < N-20; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		consumer.Ack(msg)
+	}
+
+	currentTimestamp := time.Now()
+	err = consumer.SeekByTime(currentTimestamp.Add(-retentionTimeInSecond))
+	assert.Nil(t, err)
+
+	// should be able to consume all messages once again
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		consumer.Ack(msg)
+	}
 }

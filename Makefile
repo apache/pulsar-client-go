@@ -1,4 +1,3 @@
-#!/bin/bash
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -18,17 +17,27 @@
 # under the License.
 #
 
-set -e -x
+IMAGE_NAME = pulsar-client-go-test:latest
+PULSAR_VERSION ?= 2.8.3
+PULSAR_IMAGE = apachepulsar/pulsar:$(PULSAR_VERSION)
+GO_VERSION ?= 1.18
+GOLANG_IMAGE = golang:$(GO_VERSION)
 
-SRC_DIR=$(git rev-parse --show-toplevel)
-cd ${SRC_DIR}
+build:
+	go build ./pulsar
+	go build -o bin/pulsar-perf ./perf
 
-IMAGE_NAME=pulsar-client-go-test:latest
+lint:
+	golangci-lint run
 
-GO_VERSION=${1:-1.13}
-docker rmi --force ${IMAGE_NAME} || true
-docker rmi --force apachepulsar/pulsar:latest || true
-docker build -t ${IMAGE_NAME} --build-arg GO_VERSION="golang:${GO_VERSION}" .
+container:
+	docker build -t ${IMAGE_NAME} --build-arg GOLANG_IMAGE="${GOLANG_IMAGE}" \
+	    --build-arg PULSAR_IMAGE="${PULSAR_IMAGE}" .
 
-docker run -i -v ${PWD}:/pulsar-client-go ${IMAGE_NAME} \
-       bash -c "cd /pulsar-client-go && ./run-ci.sh"
+test: container
+	docker run -i -v ${PWD}:/pulsar-client-go ${IMAGE_NAME} \
+        bash -c "cd /pulsar-client-go && ./scripts/run-ci.sh"
+
+clean:
+	docker rmi --force $(IMAGE_NAME) || true
+	rm bin/*

@@ -65,6 +65,10 @@ type ProducerMessage struct {
 	//     through a `SubscriptionType=Shared` subscription. With other subscription
 	//     types, the messages will still be delivered immediately.
 	DeliverAt time.Time
+
+	//Schema assign to the current message
+	//Note: messages may have a different schema from producer schema, use it instead of producer schema when assigned
+	Schema Schema
 }
 
 // Message abstraction used in Pulsar
@@ -118,9 +122,20 @@ type Message interface {
 	// GetSchemaValue returns the de-serialized value of the message, according to the configuration.
 	GetSchemaValue(v interface{}) error
 
+	//SchemaVersion get the schema version of the message, if any
+	SchemaVersion() []byte
+
 	// GetEncryptionContext returns the ecryption context of the message.
 	// It will be used by the application to parse the undecrypted message.
 	GetEncryptionContext() *EncryptionContext
+
+	// Index returns index from broker entry metadata,
+	// or empty if the feature is not enabled in the broker.
+	Index() *uint64
+
+	// BrokerPublishTime returns broker publish time from broker entry metadata,
+	// or empty if the feature is not enabled in the broker.
+	BrokerPublishTime() *time.Time
 }
 
 // MessageID identifier for a particular message

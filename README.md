@@ -24,11 +24,11 @@
 [![LICENSE](https://img.shields.io/hexpm/l/pulsar.svg)](https://github.com/apache/pulsar-client-go/blob/master/LICENSE)
 # Apache Pulsar Go Client Library
 
-A Go client library for the [Apache Pulsar](https://pulsar.incubator.apache.org/) project.
+A Go client library for [Apache Pulsar](https://pulsar.apache.org/).
 
-## Goal
+## Purpose
 
-This projects is developing a pure-Go client library for Pulsar that does not
+This project is a pure-Go client library for Pulsar that does not
 depend on the C++ Pulsar library.
 
 Once feature parity and stability are reached, this will supersede the current
@@ -36,7 +36,7 @@ CGo based library.
 
 ## Requirements
 
-- Go 1.13+
+- Go 1.15+
 
 ## Status
 
@@ -134,16 +134,30 @@ for reader.HasNext() {
 }
 ```
 
+## Build and Test
+
+Build the sources:
+
+    make build
+
+Run the tests:
+
+    make test
+
+Run the tests with specific versions of GOLANG and PULSAR:
+
+    make test GOLANG_VERSION=1.18 PULSAR_VERSION=2.10.0
+
 ## Contributing
 
 Contributions are welcomed and greatly appreciated. See [CONTRIBUTING.md](CONTRIBUTING.md) for details on submitting patches and the contribution workflow.
 
-## Contact
+## Community
 
 ##### Mailing lists
 
-| Name                                                                          | Scope                           |                                                                 |                                                                     |                                                                              |
-|:------------------------------------------------------------------------------|:--------------------------------|:----------------------------------------------------------------|:--------------------------------------------------------------------|:-----------------------------------------------------------------------------|
+| Name                                                      | Scope                           |                                                       |                                                           |                                                                    |
+|:----------------------------------------------------------|:--------------------------------|:------------------------------------------------------|:----------------------------------------------------------|:-------------------------------------------------------------------|
 | [users@pulsar.apache.org](mailto:users@pulsar.apache.org) | User-related discussions        | [Subscribe](mailto:users-subscribe@pulsar.apache.org) | [Unsubscribe](mailto:users-unsubscribe@pulsar.apache.org) | [Archives](http://mail-archives.apache.org/mod_mbox/pulsar-users/) |
 | [dev@pulsar.apache.org](mailto:dev@pulsar.apache.org)     | Development-related discussions | [Subscribe](mailto:dev-subscribe@pulsar.apache.org)   | [Unsubscribe](mailto:dev-unsubscribe@pulsar.apache.org)   | [Archives](http://mail-archives.apache.org/mod_mbox/pulsar-dev/)   |
 
@@ -156,3 +170,20 @@ You can self-register at https://apache-pulsar.herokuapp.com/
 ## License
 
 Licensed under the Apache License, Version 2.0: http://www.apache.org/licenses/LICENSE-2.0
+
+## Troubleshooting
+
+### Go module 'ambiguous import' error
+
+If you've upgraded from a previous version of this library, you may run into an 'ambigous import' error when building.
+
+```
+github.com/apache/pulsar-client-go/oauth2: ambiguous import: found package github.com/apache/pulsar-client-go/oauth2 in multiple modules
+```
+
+The fix for this is to make sure you don't have any references in your `go.mod` file to the old oauth2 module path.  So remove any lines
+similar to the following, and then run `go mod tidy`.
+
+```
+github.com/apache/pulsar-client-go/oauth2 v0.0.0-20220630195735-e95cf0633348 // indirect
+```
