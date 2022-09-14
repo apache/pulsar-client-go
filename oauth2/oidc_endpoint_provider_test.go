@@ -55,7 +55,7 @@ var _ = Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
 
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(Equal(
-			"could not parse issuer url to build well known endpoints: parse ://: missing protocol scheme"))
+			"could not parse issuer url to build well known endpoints: parse \"://\": missing protocol scheme"))
 		Expect(endpoints).To(BeNil())
 	})
 
@@ -65,7 +65,7 @@ var _ = Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
 		Expect(err).To(HaveOccurred())
 		Expect(err.Error()).To(Equal(
 			"could not get well known endpoints from url https://.well-known/openid-configuration: " +
-				"Get https://.well-known/openid-configuration: dial tcp: lookup .well-known: no such host"))
+				"Get \"https://.well-known/openid-configuration\": dial tcp: lookup .well-known: no such host"))
 		Expect(endpoints).To(BeNil())
 	})
 

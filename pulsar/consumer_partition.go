@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
@@ -144,11 +145,57 @@ type partitionConsumer struct {
 	nackTracker *negativeAcksTracker
 	dlq         *dlqRouter
 
-	log log.Logger
-
+	log                  log.Logger
 	compressionProviders sync.Map //map[pb.CompressionType]compression.Provider
 	metrics              *internal.LeveledMetrics
 	decryptor            cryptointernal.Decryptor
+	schemaInfoCache      *schemaInfoCache
+}
+
+type schemaInfoCache struct {
+	lock   sync.RWMutex
+	cache  map[string]Schema
+	client *client
+	topic  string
+}
+
+func newSchemaInfoCache(client *client, topic string) *schemaInfoCache {
+	return &schemaInfoCache{
+		cache:  make(map[string]Schema),
+		client: client,
+		topic:  topic,
+	}
+}
+
+func (s *schemaInfoCache) Get(schemaVersion []byte) (schema Schema, err error) {
+	key := hex.EncodeToString(schemaVersion)
+	s.lock.RLock()
+	schema, ok := s.cache[key]
+	s.lock.RUnlock()
+	if ok {
+		return schema, nil
+	}
+
+	pbSchema, err := s.client.lookupService.GetSchema(s.topic, schemaVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	var properties = internal.ConvertToStringMap(pbSchema.Properties)
+
+	schema, err = NewSchema(SchemaType(*pbSchema.Type), pbSchema.SchemaData, properties)
+	if err != nil {
+		return nil, err
+	}
+	s.add(key, schema)
+	return schema, nil
+}
+
+func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	s.cache[schemaVersionHash] = schema
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
@@ -175,6 +222,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		compressionProviders: sync.Map{},
 		dlq:                  dlq,
 		metrics:              metrics,
+		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
 	}
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
@@ -559,6 +607,7 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	}
 
 	if pc.options.ackWithResponse {
+		cmdAck.RequestId = proto.Uint64(reqID)
 		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
 		if err != nil {
 			pc.log.WithError(err).Error("Ack with response error")
@@ -711,6 +760,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
+				schemaVersion:       msgMeta.GetSchemaVersion(),
+				schemaInfoCache:     pc.schemaInfoCache,
 				orderingKey:         string(smm.OrderingKey),
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
@@ -729,6 +780,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				replicationClusters: msgMeta.GetReplicateTo(),
 				replicatedFrom:      msgMeta.GetReplicatedFrom(),
 				redeliveryCount:     response.GetRedeliveryCount(),
+				schemaVersion:       msgMeta.GetSchemaVersion(),
+				schemaInfoCache:     pc.schemaInfoCache,
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
 			}
@@ -780,20 +833,20 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 		encCtx.CompressionType = CompressionType(*msgMeta.Compression)
 	}
 
-	kMap := map[string]EncryptionKey{}
+	keyMap := map[string]EncryptionKey{}
 	for _, k := range msgMeta.GetEncryptionKeys() {
 		metaMap := map[string]string{}
 		for _, m := range k.GetMetadata() {
 			metaMap[*m.Key] = *m.Value
 		}
 
-		kMap[*k.Key] = EncryptionKey{
+		keyMap[*k.Key] = EncryptionKey{
 			KeyValue: k.GetValue(),
 			Metadata: metaMap,
 		}
 	}
 
-	encCtx.Keys = kMap
+	encCtx.Keys = keyMap
 	return &encCtx
 }
 
@@ -1128,6 +1181,10 @@ func (pc *partitionConsumer) reconnectToBroker() {
 		if maxRetry > 0 {
 			maxRetry--
 		}
+		pc.metrics.ConsumersReconnectFailure.Inc()
+		if maxRetry == 0 || backoff.IsMaxBackoffReached() {
+			pc.metrics.ConsumersReconnectMaxRetry.Inc()
+		}
 	}
 }
 
@@ -1144,7 +1201,7 @@ func (pc *partitionConsumer) grabConn() error {
 	keySharedMeta := toProtoKeySharedMeta(pc.options.keySharedPolicy)
 	requestID := pc.client.rpcClient.NewRequestID()
 
-	pbSchema := new(pb.Schema)
+	var pbSchema *pb.Schema
 
 	if pc.options.schema != nil && pc.options.schema.GetSchemaInfo() != nil {
 		tmpSchemaType := pb.Schema_Type(int32(pc.options.schema.GetSchemaInfo().Type))
@@ -1156,7 +1213,6 @@ func (pc *partitionConsumer) grabConn() error {
 		}
 		pc.log.Debugf("The partition consumer schema name is: %s", pbSchema.Name)
 	} else {
-		pbSchema = nil
 		pc.log.Debug("The partition consumer schema is nil")
 	}
 
@@ -1212,7 +1268,11 @@ func (pc *partitionConsumer) grabConn() error {
 
 	pc._setConn(res.Cnx)
 	pc.log.Info("Connected consumer")
-	pc._getConn().AddConsumeHandler(pc.consumerID, pc)
+	err = pc._getConn().AddConsumeHandler(pc.consumerID, pc)
+	if err != nil {
+		pc.log.WithError(err).Error("Failed to add consumer handler")
+		return err
+	}
 
 	msgType := res.Response.GetType()
 
