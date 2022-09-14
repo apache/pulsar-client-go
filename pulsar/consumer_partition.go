@@ -318,7 +318,7 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
-func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
+func (pc *partitionConsumer) AckIDWithResponse(msgID trackingMessageID) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")
@@ -334,6 +334,27 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 		pc.eventsCh <- ackReq
 		// wait for the request to complete
 		<-ackReq.doneCh
+
+		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+	}
+
+	return ackReq.err
+}
+
+func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return errors.New("consumer state is closed")
+	}
+
+	ackReq := new(ackRequest)
+	if !msgID.Undefined() && msgID.ack() {
+		pc.metrics.AcksCounter.Inc()
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
+		ackReq.msgID = msgID
+		// send ack request to eventsCh
+		pc.eventsCh <- ackReq
+		// No need to wait for ackReq.doneCh to finish
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
