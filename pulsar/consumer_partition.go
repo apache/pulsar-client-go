@@ -1713,10 +1713,8 @@ func (c *chunkedMsgCtxMap) removeChunkMessage(uuid string, autoAck bool) {
 
 func (c *chunkedMsgCtxMap) removeChunkIfExpire(uuid string, autoAck bool, expire time.Duration) {
 	timer := time.NewTimer(expire)
-	select {
-	case <-timer.C:
-		c.removeChunkMessage(uuid, autoAck)
-	}
+	<-timer.C
+	c.removeChunkMessage(uuid, autoAck)
 }
 
 func (c *chunkedMsgCtxMap) Close() {
