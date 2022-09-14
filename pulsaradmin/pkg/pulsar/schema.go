@@ -62,7 +62,7 @@ func (s *schemas) GetSchemaInfo(topic string) (*utils.SchemaInfo, error) {
 	}
 	var response utils.GetSchemaResponse
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
-		topicName.GetEncodedTopic(), "schema")
+		topicName.GetLocalName(), "schema")
 
 	err = s.pulsar.Client.Get(endpoint, &response)
 	if err != nil {
@@ -80,7 +80,7 @@ func (s *schemas) GetSchemaInfoWithVersion(topic string) (*utils.SchemaInfoWithV
 	}
 	var response utils.GetSchemaResponse
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
-		topicName.GetEncodedTopic(), "schema")
+		topicName.GetLocalName(), "schema")
 
 	err = s.pulsar.Client.Get(endpoint, &response)
 	if err != nil {
@@ -99,7 +99,7 @@ func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*utils.Sc
 	}
 
 	var response utils.GetSchemaResponse
-	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(), topicName.GetEncodedTopic(),
+	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(), topicName.GetLocalName(),
 		"schema", strconv.FormatInt(version, 10))
 
 	err = s.pulsar.Client.Get(endpoint, &response)
@@ -118,7 +118,7 @@ func (s *schemas) DeleteSchema(topic string) error {
 	}
 
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
-		topicName.GetEncodedTopic(), "schema")
+		topicName.GetLocalName(), "schema")
 
 	fmt.Println(endpoint)
 
@@ -132,7 +132,7 @@ func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload utils.PostSc
 	}
 
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
-		topicName.GetEncodedTopic(), "schema")
+		topicName.GetLocalName(), "schema")
 
 	return s.pulsar.Client.Post(endpoint, &schemaPayload)
 }

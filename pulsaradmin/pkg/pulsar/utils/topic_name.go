@@ -119,7 +119,7 @@ func (t *TopicName) IsPersistent() bool {
 }
 
 func (t *TopicName) GetRestPath() string {
-	return fmt.Sprintf("%s/%s/%s/%s", t.domain, t.tenant, t.namespace, t.GetEncodedTopic())
+	return fmt.Sprintf("%s/%s/%s/%s", t.domain, t.tenant, t.namespace, t.topic)
 }
 
 func (t *TopicName) GetEncodedTopic() string {
