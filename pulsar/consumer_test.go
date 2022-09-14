@@ -589,6 +589,41 @@ func TestConsumerEventTime(t *testing.T) {
 	assert.Equal(t, "test", string(msg.Payload()))
 }
 
+func TestConsumerWithoutEventTime(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "test-without-event-time"
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload: []byte("test"),
+	})
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(0), msg.EventTime().UnixNano())
+	assert.Equal(t, "test", string(msg.Payload()))
+}
+
 func TestConsumerFlow(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
