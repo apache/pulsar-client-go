@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -465,16 +464,11 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
-	partition := int(msgID.PartitionIdx())
-	// did we receive a valid partition index?
-	if partition < 0 || partition >= len(c.consumers) {
-		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(c.consumers))
-		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(c.consumers))
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
 	}
 
-	return c.consumers[partition].AckID(msgID)
+	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -534,7 +528,7 @@ func (c *consumer) Nack(msg Message) {
 		}
 
 		if mid.consumer != nil {
-			mid.Nack()
+			mid.consumer.NackID(msg.ID())
 			return
 		}
 		c.consumers[mid.partitionIdx].NackMsg(msg)
@@ -545,15 +539,11 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	partition := int(msgID.PartitionIdx())
-	// did we receive a valid partition index?
-	if partition < 0 || partition >= len(c.consumers) {
-		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(c.consumers))
+	if err := c.checkMsgIDPartition(msgID); err != nil {
 		return
 	}
 
-	c.consumers[partition].NackID(msgID)
+	c.consumers[msgID.PartitionIdx()].NackID(msgID)
 }
 
 func (c *consumer) Close() {
@@ -589,10 +579,8 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
-	if msgID.PartitionIdx() < 0 || int(msgID.PartitionIdx()) >= len(c.consumers) {
-		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
-			msgID.PartitionIdx(), len(c.consumers))
-		return errors.New("invalid partition index")
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
 	}
 
 	return c.consumers[msgID.PartitionIdx()].Seek(msgID)
@@ -610,6 +598,17 @@ func (c *consumer) SeekByTime(time time.Time) error {
 		}
 	}
 	return errs
+}
+
+func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
+	partition := msgID.PartitionIdx()
+	if partition < 0 || int(partition) >= len(c.consumers) {
+		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
+		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
+	}
+	return nil
 }
 
 var r = &random{

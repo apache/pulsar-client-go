@@ -1630,21 +1630,16 @@ type chunkedMsgCtxMap struct {
 	maxPending     int
 	pc             *partitionConsumer
 	mu             sync.Mutex
-	tw             *internal.TimeWheel
 	closed         bool
 }
 
 func newChunkedMsgCtxMap(maxPending int, pc *partitionConsumer) *chunkedMsgCtxMap {
-	// create a time wheel with 100ms timing accuracy and 36000 slots
-	tw := internal.NewTimeWheel(time.Millisecond*100, 36000)
-	tw.Start()
 	return &chunkedMsgCtxMap{
 		chunkedMsgCtxs: make(map[string]*chunkedMsgCtx, maxPending),
 		pendingQueue:   list.New(),
 		maxPending:     maxPending,
 		pc:             pc,
 		mu:             sync.Mutex{},
-		tw:             tw,
 	}
 }
 
@@ -1657,9 +1652,7 @@ func (c *chunkedMsgCtxMap) addIfAbsent(uuid string, totalChunks int32, totalChun
 	if _, ok := c.chunkedMsgCtxs[uuid]; !ok {
 		c.chunkedMsgCtxs[uuid] = newChunkedMsgCtx(totalChunks, totalChunkMsgSize)
 		c.pendingQueue.PushBack(uuid)
-		c.tw.AddJob(uuid, c.pc.options.expireTimeOfIncompleteChunk, func() {
-			c.removeChunkMessage(uuid, true)
-		})
+		go c.removeChunkIfExpire(uuid, true, c.pc.options.expireTimeOfIncompleteChunk)
 	}
 	if c.maxPending > 0 && c.pendingQueue.Len() > c.maxPending {
 		go c.removeChunkMessage(uuid, c.pc.options.autoAckIncompleteChunk)
@@ -1715,12 +1708,18 @@ func (c *chunkedMsgCtxMap) removeChunkMessage(uuid string, autoAck bool) {
 	c.pc.log.Infof("Chunked message [%s] has been removed from chunkedMsgCtxMap", uuid)
 }
 
+func (c *chunkedMsgCtxMap) removeChunkIfExpire(uuid string, autoAck bool, expire time.Duration) {
+	timer := time.NewTimer(expire)
+	select {
+	case <-timer.C:
+		c.removeChunkMessage(uuid, autoAck)
+	}
+}
+
 func (c *chunkedMsgCtxMap) Close() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.closed = true
-
-	c.tw.Stop()
 }
 
 type unAckChunksTracker struct {
