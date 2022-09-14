@@ -396,6 +396,7 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 	}
 
 	ackReq := new(ackRequest)
+	ackReq.doneCh = make(chan struct{})
 	if !msgID.Undefined() && msgID.ack() {
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
