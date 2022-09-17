@@ -63,7 +63,7 @@ func TestLargeMessage(t *testing.T) {
 
 	topic := newTopicName()
 
-	// create producer without MaxChunkSize
+	// create producer without ChunkMaxMessageSize
 	producer1, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
 		DisableBatching: true,
@@ -73,12 +73,12 @@ func TestLargeMessage(t *testing.T) {
 	assert.NotNil(t, producer1)
 	defer producer1.Close()
 
-	// create producer with MaxChunkSize
+	// create producer with ChunkMaxMessageSize
 	producer2, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-		EnableChunking:  true,
-		MaxChunkSize:    5,
+		Topic:               topic,
+		DisableBatching:     true,
+		EnableChunking:      true,
+		ChunkMaxMessageSize: 5,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, producer2)
@@ -121,7 +121,7 @@ func TestLargeMessage(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	// test send chunk with MaxChunkSize limit
+	// test send chunk with ChunkMaxMessageSize limit
 	for i := 0; i < 5; i++ {
 		msg := createTestMessagePayload(50)
 		expectMsgs = append(expectMsgs, msg)
@@ -132,7 +132,7 @@ func TestLargeMessage(t *testing.T) {
 		assert.NotNil(t, ID)
 	}
 
-	// test receive chunk with MaxChunkSize limit
+	// test receive chunk with ChunkMaxMessageSize limit
 	for i := 5; i < 10; i++ {
 		msg, err := consumer.Receive(context.Background())
 		assert.NoError(t, err)
@@ -158,7 +158,7 @@ func TestPublishChunkWithFailure(t *testing.T) {
 
 	topic := newTopicName()
 
-	// create producer without MaxChunkSize
+	// create producer without ChunkMaxMessageSize
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 	})
@@ -206,10 +206,10 @@ func TestMaxPendingChunkMessages(t *testing.T) {
 		assert.Nil(t, err)
 		clients = append(clients, pc)
 		producer, err := pc.CreateProducer(ProducerOptions{
-			Topic:           topic,
-			DisableBatching: true,
-			EnableChunking:  true,
-			MaxChunkSize:    10,
+			Topic:               topic,
+			DisableBatching:     true,
+			EnableChunking:      true,
+			ChunkMaxMessageSize: 10,
 		})
 		assert.NoError(t, err)
 		assert.NotNil(t, producer)
@@ -311,7 +311,7 @@ func TestChunksEnqueueFailed(t *testing.T) {
 		EnableChunking:          true,
 		DisableBatching:         true,
 		MaxPendingMessages:      10,
-		MaxChunkSize:            50,
+		ChunkMaxMessageSize:     50,
 		DisableBlockIfQueueFull: true,
 	})
 	assert.NoError(t, err)
@@ -339,10 +339,10 @@ func TestSeekChunkMessages(t *testing.T) {
 	totalMessages := 5
 
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		EnableChunking:  true,
-		DisableBatching: true,
-		MaxChunkSize:    50,
+		Topic:               topic,
+		EnableChunking:      true,
+		DisableBatching:     true,
+		ChunkMaxMessageSize: 50,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -403,10 +403,10 @@ func TestChunkAckAndNAck(t *testing.T) {
 	topic := newTopicName()
 
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		EnableChunking:  true,
-		DisableBatching: true,
-		MaxChunkSize:    50,
+		Topic:               topic,
+		EnableChunking:      true,
+		DisableBatching:     true,
+		ChunkMaxMessageSize: 50,
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
@@ -515,10 +515,10 @@ func TestChunkMultiTopicConsumerReceive(t *testing.T) {
 	// produce messages
 	for i, topic := range topics {
 		p, err := client.CreateProducer(ProducerOptions{
-			Topic:           topic,
-			DisableBatching: true,
-			EnableChunking:  true,
-			MaxChunkSize:    uint(maxSize),
+			Topic:               topic,
+			DisableBatching:     true,
+			EnableChunking:      true,
+			ChunkMaxMessageSize: uint(maxSize),
 		})
 		if err != nil {
 			t.Fatal(err)

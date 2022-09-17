@@ -483,6 +483,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if p.options.DisableMultiSchema {
 		if msg.Schema != nil && p.options.Schema != nil &&
 			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
+			p.publishSemaphore.Release()
 			p.log.WithError(err).Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
 			return
 		}
@@ -516,6 +517,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		if schemaVersion == nil {
 			schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
 			if err != nil {
+				p.publishSemaphore.Release()
 				p.log.WithError(err).Error("get schema version fail")
 				return
 			}
@@ -584,6 +586,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	} else {
 		payloadChunkSize = int(p._getConn().GetMaxMessageSize()) - mm.Size()
 		if payloadChunkSize <= 0 {
+			p.publishSemaphore.Release()
 			request.callback(nil, msg, errMetaTooLarge)
 			p.log.WithError(errMetaTooLarge).
 				WithField("metadata size", mm.Size()).
@@ -592,18 +595,18 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			p.metrics.PublishErrorsMsgTooLarge.Inc()
 			return
 		}
-		// set MaxChunkSize
-		if p.options.MaxChunkSize != 0 {
-			payloadChunkSize = int(math.Min(float64(payloadChunkSize), float64(p.options.MaxChunkSize)))
+		// set ChunkMaxMessageSize
+		if p.options.ChunkMaxMessageSize != 0 {
+			payloadChunkSize = int(math.Min(float64(payloadChunkSize), float64(p.options.ChunkMaxMessageSize)))
 		}
 		totalChunks = int(math.Max(1, math.Ceil(float64(compressedSize)/float64(payloadChunkSize))))
 	}
 
 	// correct limit queue when chunked
-	for i := 0; i < totalChunks-1; i++ {
+	for i := 1; i < totalChunks; i++ {
 		if !p.canAddToQueue(request) {
 			// release all permits including the first
-			for j := i; j >= 0; j-- {
+			for j := i; j > 0; j-- {
 				p.publishSemaphore.Release()
 			}
 			return
