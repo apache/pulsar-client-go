@@ -156,13 +156,11 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 
 	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
 	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
-	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
+	rc, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer consumer.Close()
-
-	rc := consumer.(*regexConsumer)
+	defer rc.Close()
 
 	// trigger discovery
 	rc.discover()
@@ -194,13 +192,11 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 
 	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
 	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
-	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
+	rc, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer consumer.Close()
-
-	rc := consumer.(*regexConsumer)
+	defer rc.Close()
 
 	// trigger discovery
 	rc.discover()
