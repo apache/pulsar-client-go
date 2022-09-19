@@ -113,6 +113,38 @@ func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err 
 	}
 }
 
+func (c *multiTopicConsumer) BatchReceive(ctx context.Context) (*Messages, error) {
+	policy := c.options.BatchReceivePolicy
+	var err error
+	timer := time.NewTimer(policy.timeout)
+	messages := NewMessages(c.options.BatchReceivePolicy)
+	for {
+		select {
+		case <-c.closeCh:
+			err = newError(ConsumerClosed, "consumer closed")
+			goto stop
+		case cm, ok := <-c.messageCh:
+			if !ok {
+				err = newError(ConsumerClosed, "consumer closed")
+				goto stop
+			}
+			// batch receive
+			if messages.canAdd(cm) {
+				_ = messages.Add(cm)
+			} else {
+				goto stop
+			}
+		case <-ctx.Done():
+			err = ctx.Err()
+			goto stop
+		case <-timer.C:
+			goto stop
+		}
+	}
+stop:
+	return messages, err
+}
+
 // Chan return the message chan to users
 func (c *multiTopicConsumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh

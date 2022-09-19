@@ -60,6 +60,10 @@ func (c *mockConsumer) Receive(ctx context.Context) (message pulsar.Message, err
 	return nil, nil
 }
 
+func (c *mockConsumer) BatchReceive(ctx context.Context) (*pulsar.Messages, error) {
+	return nil, nil
+}
+
 func (c *mockConsumer) Chan() <-chan pulsar.ConsumerMessage {
 	return nil
 }

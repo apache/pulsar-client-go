@@ -95,6 +95,15 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.NackBackoffPolicy = new(defaultNackBackoffPolicy)
 	}
 
+	if options.BatchReceivePolicy == nil {
+		// default batch receive policy
+		options.BatchReceivePolicy = &BatchReceivePolicy{
+			maxNumMessages: -1,
+			maxNumBytes:    10 * 1024 * 1024,
+			timeout:        100 * time.Millisecond,
+		}
+	}
+
 	// did the user pass in a message channel?
 	messageCh := options.MessageChannel
 	if options.MessageChannel == nil {
@@ -439,6 +448,38 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 			return nil, ctx.Err()
 		}
 	}
+}
+
+func (c *consumer) BatchReceive(ctx context.Context) (*Messages, error) {
+	policy := c.options.BatchReceivePolicy
+	var err error
+	timer := time.NewTimer(policy.timeout)
+	messages := NewMessages(c.options.BatchReceivePolicy)
+	for {
+		select {
+		case <-c.closeCh:
+			err = newError(ConsumerClosed, "consumer closed")
+			goto stop
+		case cm, ok := <-c.messageCh:
+			if !ok {
+				err = newError(ConsumerClosed, "consumer closed")
+				goto stop
+			}
+			// batch receive
+			if messages.canAdd(cm) {
+				_ = messages.Add(cm)
+			} else {
+				goto stop
+			}
+		case <-ctx.Done():
+			err = ctx.Err()
+			goto stop
+		case <-timer.C:
+			goto stop
+		}
+	}
+stop:
+	return messages, err
 }
 
 // Chan return the message chan to users
