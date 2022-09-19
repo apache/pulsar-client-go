@@ -36,6 +36,115 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestBatchReceive(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	commonOpt := ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "test-batch-receive",
+		Type:                        Exclusive,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	}
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	// send 5 messages, 25 byte in total
+	for i := 0; i < 5; i++ {
+		msg := &ProducerMessage{
+			Payload: []byte("12345"),
+		}
+		_, err := producer.Send(context.Background(), msg)
+		assert.Nil(t, err)
+	}
+
+	//test for maxNumMessages
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 3,
+		maxNumBytes:    999,
+		timeout:        10 * time.Second,
+	}
+	_consumer, err := client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer1 := _consumer.(*consumer)
+	messages, err := consumer1.BatchReceive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, 3, messages.Size())
+	consumer1.Close()
+
+	//test for maxNumBytes
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 999,
+		maxNumBytes:    14,
+		timeout:        10 * time.Second,
+	}
+	_consumer, err = client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer2 := _consumer.(*consumer)
+	messages, err = consumer2.BatchReceive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, 2, messages.Size())
+	consumer2.Close()
+
+	//test for maxNumBytes and maxNumMessages
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 3,
+		maxNumBytes:    24,
+		timeout:        10 * time.Second,
+	}
+	_consumer, err = client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer3 := _consumer.(*consumer)
+	messages, err = consumer3.BatchReceive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, 3, messages.Size())
+	consumer3.Close()
+
+	// test for timeout
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 999,
+		maxNumBytes:    999,
+		timeout:        3 * time.Second,
+	}
+	_consumer, err = client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer4 := _consumer.(*consumer)
+
+	ch := make(chan struct{})
+	go func() {
+		messages, err = consumer4.BatchReceive(context.Background())
+		ch <- struct{}{}
+	}()
+	timer := time.NewTimer(4 * time.Second)
+	select {
+	case <-timer.C:
+		assert.Fail(t, "BatchReceivePolicy.timeout failed: should stop after 3 seconds")
+	case <-ch:
+		assert.Nil(t, err)
+		assert.Equal(t, 5, messages.Size())
+	}
+	consumer4.Close()
+
+	// ensure that receive one message at least
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 99,
+		maxNumBytes:    1,
+		timeout:        10 * time.Second,
+	}
+	_consumer, err = client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer5 := _consumer.(*consumer)
+	messages, err = consumer5.BatchReceive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, 1, messages.Size())
+	consumer3.Close()
+}
+
 func TestClient(t *testing.T) {
 	client, err := NewClient(ClientOptions{})
 	assert.Nil(t, client)

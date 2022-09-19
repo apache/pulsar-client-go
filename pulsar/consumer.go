@@ -78,6 +78,23 @@ type DLQPolicy struct {
 	RetryLetterTopic string
 }
 
+type BatchReceivePolicy struct {
+	/**
+	 * maxNumMessages specifies max number of messages for a single batch receive, 0 or negative means no limit.
+	 */
+	maxNumMessages int
+
+	/**
+	 * maxNumBytes specifies max bytes of messages for a single batch receive, 0 or negative means no limit.
+	 */
+	maxNumBytes int64
+
+	/**
+	 * timeout for waiting for enough messages(enough number or enough bytes).
+	 */
+	timeout time.Duration
+}
+
 // ConsumerOptions is used to configure and create instances of Consumer.
 type ConsumerOptions struct {
 	// Topic specifies the topic this consumer will subscribe on.
@@ -192,6 +209,9 @@ type ConsumerOptions struct {
 	// error information of the Ack method only contains errors that may occur in the Go SDK's own processing.
 	// Default: false
 	AckWithResponse bool
+
+	// BatchReceivePolicy is the config of consumer's batch receive behavior
+	BatchReceivePolicy *BatchReceivePolicy
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
@@ -205,6 +225,9 @@ type Consumer interface {
 	// Receive a single message.
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)
+
+	// BatchReceive receive many messages by BatchReceivePolicy
+	BatchReceive(context.Context) (*Messages, error)
 
 	// Chan returns a channel to consume messages from
 	Chan() <-chan ConsumerMessage

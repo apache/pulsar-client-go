@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"errors"
 	"time"
 )
 
@@ -169,4 +170,57 @@ func EarliestMessageID() MessageID {
 // LatestMessageID returns a messageID that points to the latest message
 func LatestMessageID() MessageID {
 	return latestMessageID
+}
+
+type Messages struct {
+	messageList                                  []Message
+	maxNumberOfMessages, currentNumberOfMessages int
+	maxSizeOfMessages, currentSizeOfMessages     int64
+}
+
+func NewMessages(policy *BatchReceivePolicy) *Messages {
+	return &Messages{
+		messageList:             nil,
+		maxNumberOfMessages:     policy.maxNumMessages,
+		currentNumberOfMessages: 0,
+		maxSizeOfMessages:       policy.maxNumBytes,
+		currentSizeOfMessages:   0,
+	}
+}
+
+func (m *Messages) List() []Message {
+	return m.messageList
+}
+
+func (m *Messages) canAdd(message Message) bool {
+	if m.currentNumberOfMessages == 0 {
+		// It's ok to add at least one message into a batch.
+		return true
+	}
+	if m.maxNumberOfMessages > 0 && m.currentNumberOfMessages+1 > m.maxNumberOfMessages {
+		return false
+	}
+
+	if m.maxSizeOfMessages > 0 && m.currentSizeOfMessages+int64(len(message.Payload())) > m.maxSizeOfMessages {
+		return false
+	}
+
+	return true
+}
+
+func (m *Messages) Add(message Message) error {
+	if message == nil {
+		return nil
+	}
+	if !m.canAdd(message) {
+		return errors.New("no more space to add messages")
+	}
+	m.currentNumberOfMessages++
+	m.currentSizeOfMessages += int64(len(message.Payload()))
+	m.messageList = append(m.messageList, message)
+	return nil
+}
+
+func (m *Messages) Size() int {
+	return len(m.messageList)
 }

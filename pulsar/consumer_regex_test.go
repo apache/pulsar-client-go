@@ -156,13 +156,11 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 
 	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
 	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
-	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
+	rc, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer consumer.Close()
-
-	rc := consumer.(*regexConsumer)
+	defer rc.Close()
 
 	// trigger discovery
 	rc.discover()
@@ -194,13 +192,11 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 
 	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
 	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
-	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
+	rc, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer consumer.Close()
-
-	rc := consumer.(*regexConsumer)
+	defer rc.Close()
 
 	// trigger discovery
 	rc.discover()
@@ -367,4 +363,104 @@ func cloneConsumers(rc *regexConsumer) map[string]Consumer {
 		consumers[t] = c
 	}
 	return consumers
+}
+
+func TestRegexTopicConsumerBatchReceive(t *testing.T) {
+	randomPrefix := generateRandomName()
+	topic1 := randomPrefix + "-1"
+	topic2 := randomPrefix + "-2"
+	testTopics := []string{topic1, topic2}
+
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+	assert.Nil(t, err)
+	commonOpt := ConsumerOptions{
+		TopicsPattern:               randomPrefix + "-.*",
+		SubscriptionName:            "regex-topic-sub",
+		Type:                        Exclusive,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	}
+
+	// total 10 messages, 50 byte
+	for _, topic := range testTopics {
+		producer, err := client.CreateProducer(ProducerOptions{
+			Topic: topic,
+		})
+		assert.Nil(t, err)
+		for i := 0; i < 5; i++ {
+			msg := &ProducerMessage{
+				Payload: []byte("12345"),
+			}
+			_, err := producer.Send(context.Background(), msg)
+			assert.Nil(t, err)
+		}
+	}
+
+	//test for maxNumMessages
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 6,
+		maxNumBytes:    999,
+		timeout:        10 * time.Second,
+	}
+	_consumer, err := client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer1 := _consumer.(*regexConsumer)
+	messages, err := consumer1.BatchReceive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, 6, messages.Size())
+	consumer1.Close()
+
+	//test for maxNumBytes
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 999,
+		maxNumBytes:    14,
+		timeout:        10 * time.Second,
+	}
+	_consumer, err = client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer2 := _consumer.(*regexConsumer)
+	messages, err = consumer2.BatchReceive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, 2, messages.Size())
+	consumer2.Close()
+
+	//test for maxNumBytes and maxNumMessages
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 3,
+		maxNumBytes:    24,
+		timeout:        10 * time.Second,
+	}
+	_consumer, err = client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer3 := _consumer.(*regexConsumer)
+	messages, err = consumer3.BatchReceive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, 3, messages.Size())
+	consumer3.Close()
+
+	// test for timeout
+	commonOpt.BatchReceivePolicy = &BatchReceivePolicy{
+		maxNumMessages: 999,
+		maxNumBytes:    999,
+		timeout:        3 * time.Second,
+	}
+	_consumer, err = client.Subscribe(commonOpt)
+	assert.Nil(t, err)
+	consumer4 := _consumer.(*regexConsumer)
+
+	ch := make(chan struct{})
+	go func() {
+		messages, err = consumer4.BatchReceive(context.Background())
+		ch <- struct{}{}
+	}()
+	timer := time.NewTimer(4 * time.Second)
+	select {
+	case <-timer.C:
+		assert.Fail(t, "BatchReceivePolicy.timeout failed: should stop after 3 seconds")
+	case <-ch:
+		assert.Nil(t, err)
+		assert.Equal(t, 10, messages.Size())
+	}
+	consumer4.Close()
 }

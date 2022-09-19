@@ -49,7 +49,7 @@ type multiTopicConsumer struct {
 }
 
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (*multiTopicConsumer, error) {
 	mtc := &multiTopicConsumer{
 		client:       client,
 		options:      options,
@@ -113,6 +113,38 @@ func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err 
 	}
 }
 
+func (c *multiTopicConsumer) BatchReceive(ctx context.Context) (*Messages, error) {
+	policy := c.options.BatchReceivePolicy
+	var err error
+	timer := time.NewTimer(policy.timeout)
+	messages := NewMessages(c.options.BatchReceivePolicy)
+	for {
+		select {
+		case <-c.closeCh:
+			err = newError(ConsumerClosed, "consumer closed")
+			goto stop
+		case cm, ok := <-c.messageCh:
+			if !ok {
+				err = newError(ConsumerClosed, "consumer closed")
+				goto stop
+			}
+			// batch receive
+			if messages.canAdd(cm) {
+				_ = messages.Add(cm)
+			} else {
+				goto stop
+			}
+		case <-ctx.Done():
+			err = ctx.Err()
+			goto stop
+		case <-timer.C:
+			goto stop
+		}
+	}
+stop:
+	return messages, err
+}
+
 // Chan return the message chan to users
 func (c *multiTopicConsumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh
@@ -128,7 +160,7 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
-		return errors.New("invalid message id type in multi_consumer")
+		return errors.New("invalid message id type in consumer")
 	}
 
 	if mid.consumer == nil {
