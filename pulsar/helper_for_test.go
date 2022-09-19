@@ -171,7 +171,7 @@ func retryAssert(t assert.TestingT, times int, milliseconds int, update func(), 
 	for i := 0; i < times; i++ {
 		time.Sleep(time.Duration(milliseconds) * time.Millisecond)
 		update()
-		if assert(nil) {
+		if assert(t) {
 			break
 		}
 	}
