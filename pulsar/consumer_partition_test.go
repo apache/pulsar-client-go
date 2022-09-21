@@ -23,6 +23,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,7 +34,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		metrics:              newTestMetrics(),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
@@ -58,6 +59,10 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	}
 }
 
+func newTestMetrics() *internal.LeveledMetrics {
+	return internal.NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer).GetLeveledMetrics("topic")
+}
+
 func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
@@ -65,7 +70,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		metrics:              newTestMetrics(),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
@@ -97,7 +102,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		metrics:              newTestMetrics(),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 
