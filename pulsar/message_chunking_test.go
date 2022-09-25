@@ -554,6 +554,36 @@ func TestChunkMultiTopicConsumerReceive(t *testing.T) {
 	assert.Equal(t, receivedTopic1, receivedTopic2)
 }
 
+func TestChunkBlockIfQueueFull(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Name:                "test",
+		Topic:               topic,
+		EnableChunking:      true,
+		DisableBatching:     true,
+		MaxPendingMessages:  1,
+		ChunkMaxMessageSize: 10,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	// Large messages will be split into 11 chunks, exceeding the length of pending queue
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(100),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, ID)
+}
+
 func createTestMessagePayload(size int) []byte {
 	payload := make([]byte, size)
 	for i := range payload {

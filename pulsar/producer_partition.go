@@ -476,10 +476,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		return
 	}
 
-	if !p.canAddToQueue(request) {
-		return
-	}
-
 	if p.options.DisableMultiSchema {
 		if msg.Schema != nil && p.options.Schema != nil &&
 			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
@@ -549,6 +545,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		p.updateMetadataSeqID(mm, msg)
 	}
 
+	if sendAsBatch && !p.canAddToQueue(request) {
+		return
+	}
+
 	maxMessageSize := int(p._getConn().GetMaxMessageSize())
 
 	// compress payload if not batching
@@ -602,17 +602,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		totalChunks = int(math.Max(1, math.Ceil(float64(compressedSize)/float64(payloadChunkSize))))
 	}
 
-	// correct limit queue when chunked
-	for i := 1; i < totalChunks; i++ {
-		if !p.canAddToQueue(request) {
-			// release all permits including the first
-			for j := i; j > 0; j-- {
-				p.publishSemaphore.Release()
-			}
-			return
-		}
-	}
-
 	// set total chunks to send request
 	request.totalChunks = totalChunks
 
@@ -637,14 +626,23 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 					callback:      request.callback,
 					callbackOnce:  request.callbackOnce,
 					publishTime:   request.publishTime,
+					blockCh:       request.blockCh,
 					totalChunks:   totalChunks,
 					chunkID:       chunkID,
 					uuid:          uuid,
 					chunkRecorder: cr,
 				}
+				// acquire the permits
+				if !p.canAddToQueue(nsr) {
+					return
+				}
 				p.internalSingleSend(mm, compressedPayload[lhs:rhs], nsr, uint32(maxMessageSize))
 			}
 		} else {
+			// acquire the permits
+			if !p.canAddToQueue(request) {
+				return
+			}
 			p.internalSingleSend(mm, compressedPayload, request, uint32(maxMessageSize))
 		}
 	} else {
@@ -769,6 +767,7 @@ func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 		maxMessageSize,
 	); err != nil {
 		request.callback(nil, request.msg, err)
+		p.publishSemaphore.Release()
 		p.log.WithError(err).Errorf("Single message serialize failed %s", msg.Value)
 		return
 	}
@@ -1238,7 +1237,6 @@ type sendRequest struct {
 	publishTime      time.Time
 	flushImmediately bool
 	blockCh          chan struct{}
-	blockOnce        sync.Once
 	totalChunks      int
 	chunkID          int
 	uuid             string
@@ -1287,14 +1285,10 @@ func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool {
 		}
 	} else if !p.publishSemaphore.Acquire(sr.ctx) {
 		sr.callback(nil, sr.msg, errContextExpired)
-		sr.blockOnce.Do(func() {
-			sr.blockCh <- struct{}{}
-		})
+		sr.blockCh <- struct{}{}
 		return false
-	} else {
-		sr.blockOnce.Do(func() {
-			sr.blockCh <- struct{}{}
-		})
+	} else if sr.totalChunks == 1 || (sr.totalChunks > 1 && sr.chunkID == sr.totalChunks-1) {
+		sr.blockCh <- struct{}{}
 	}
 	p.metrics.MessagesPending.Inc()
 	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
