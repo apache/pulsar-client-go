@@ -1287,7 +1287,7 @@ func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool {
 		sr.callback(nil, sr.msg, errContextExpired)
 		sr.blockCh <- struct{}{}
 		return false
-	} else if sr.totalChunks == 1 || (sr.totalChunks > 1 && sr.chunkID == sr.totalChunks-1) {
+	} else if sr.totalChunks == 0 || sr.totalChunks == 1 || (sr.totalChunks > 1 && sr.chunkID == sr.totalChunks-1) {
 		sr.blockCh <- struct{}{}
 	}
 	p.metrics.MessagesPending.Inc()
