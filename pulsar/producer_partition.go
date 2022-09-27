@@ -476,6 +476,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		return
 	}
 
+	if !p.canAddToQueue(request) {
+		return
+	}
+
 	if p.options.DisableMultiSchema {
 		if msg.Schema != nil && p.options.Schema != nil &&
 			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
@@ -543,10 +547,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		// update sequence id for metadata, make the size of msgMetadata more accurate
 		// batch sending will update sequence ID in the BatchBuilder
 		p.updateMetadataSeqID(mm, msg)
-	}
-
-	if sendAsBatch && !p.canAddToQueue(request) {
-		return
 	}
 
 	maxMessageSize := int(p._getConn().GetMaxMessageSize())
@@ -632,17 +632,13 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 					uuid:          uuid,
 					chunkRecorder: cr,
 				}
-				// acquire the permits
-				if !p.canAddToQueue(nsr) {
+				// the permit of first chunk has acquired
+				if chunkID != 0 && !p.canAddToQueue(nsr) {
 					return
 				}
 				p.internalSingleSend(mm, compressedPayload[lhs:rhs], nsr, uint32(maxMessageSize))
 			}
 		} else {
-			// acquire the permits
-			if !p.canAddToQueue(request) {
-				return
-			}
 			p.internalSingleSend(mm, compressedPayload, request, uint32(maxMessageSize))
 		}
 	} else {

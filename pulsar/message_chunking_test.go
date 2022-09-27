@@ -457,7 +457,7 @@ func TestChunkSize(t *testing.T) {
 	defer client.Close()
 
 	// the default message metadata size for string schema
-	// The proto messageMetaData size as following. (all with tag)
+	// The proto messageMetaData size as following. (all with tag) (maxMessageSize = 1024 * 1024)
 	// | producerName | sequenceID | publishTime | uncompressedSize |
 	// | ------------ | ---------- | ----------- | ---------------- |
 	// | 6            | 2          | 7           | 4                |
