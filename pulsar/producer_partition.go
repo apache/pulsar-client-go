@@ -476,6 +476,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		return
 	}
 
+	defer request.stopBlock()
 	if !p.canAddToQueue(request) {
 		return
 	}
@@ -543,7 +544,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		msg.ReplicationClusters == nil &&
 		deliverAt.UnixNano() < 0
 
-	if !sendAsBatch {
+	// Once the batching can add to queue, it can finish internalSendAsync immediately
+	if sendAsBatch {
+		request.stopBlock()
+	} else {
 		// update sequence id for metadata, make the size of msgMetadata more accurate
 		// batch sending will update sequence ID in the BatchBuilder
 		p.updateMetadataSeqID(mm, msg)
@@ -627,6 +631,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 					callbackOnce:  request.callbackOnce,
 					publishTime:   request.publishTime,
 					blockCh:       request.blockCh,
+					blockOnce:     request.blockOnce,
 					totalChunks:   totalChunks,
 					chunkID:       chunkID,
 					uuid:          uuid,
@@ -638,7 +643,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 				}
 				p.internalSingleSend(mm, compressedPayload[lhs:rhs], nsr, uint32(maxMessageSize))
 			}
+			request.stopBlock()
 		} else {
+			request.stopBlock()
 			p.internalSingleSend(mm, compressedPayload, request, uint32(maxMessageSize))
 		}
 	} else {
@@ -1050,6 +1057,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
 		blockCh:          bc,
+		blockOnce:        &sync.Once{},
 	}
 	p.options.Interceptors.BeforeSend(p, msg)
 
@@ -1233,10 +1241,18 @@ type sendRequest struct {
 	publishTime      time.Time
 	flushImmediately bool
 	blockCh          chan struct{}
+	blockOnce        *sync.Once
 	totalChunks      int
 	chunkID          int
 	uuid             string
 	chunkRecorder    *chunkRecorder
+}
+
+// stopBlock can be invoked multiple times safety
+func (sr *sendRequest) stopBlock() {
+	sr.blockOnce.Do(func() {
+		sr.blockCh <- struct{}{}
+	})
 }
 
 type closeProducer struct {
@@ -1281,10 +1297,7 @@ func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool {
 		}
 	} else if !p.publishSemaphore.Acquire(sr.ctx) {
 		sr.callback(nil, sr.msg, errContextExpired)
-		sr.blockCh <- struct{}{}
 		return false
-	} else if sr.totalChunks == 0 || sr.totalChunks == 1 || (sr.totalChunks > 1 && sr.chunkID == sr.totalChunks-1) {
-		sr.blockCh <- struct{}{}
 	}
 	p.metrics.MessagesPending.Inc()
 	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
