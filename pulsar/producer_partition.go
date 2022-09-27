@@ -480,6 +480,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		return
 	}
 
+	// The block chan must be closed when returned with exception
 	defer request.stopBlock()
 	if !p.canAddToQueue(request) {
 		return
@@ -548,7 +549,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		msg.ReplicationClusters == nil &&
 		deliverAt.UnixNano() < 0
 
-	// Once the batching can add to queue, it can finish internalSendAsync immediately
+	// Once the batching is enabled, it can close blockCh early to make block finish
 	if sendAsBatch {
 		request.stopBlock()
 	} else {
@@ -629,17 +630,17 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 				// update chunk id
 				mm.ChunkId = proto.Int(chunkID)
 				nsr := &sendRequest{
-					ctx:           request.ctx,
-					msg:           request.msg,
-					callback:      request.callback,
-					callbackOnce:  request.callbackOnce,
-					publishTime:   request.publishTime,
-					blockCh:       request.blockCh,
-					blockOnce:     request.blockOnce,
-					totalChunks:   totalChunks,
-					chunkID:       chunkID,
-					uuid:          uuid,
-					chunkRecorder: cr,
+					ctx:              request.ctx,
+					msg:              request.msg,
+					callback:         request.callback,
+					callbackOnce:     request.callbackOnce,
+					publishTime:      request.publishTime,
+					blockCh:          request.blockCh,
+					closeBlockChOnce: request.closeBlockChOnce,
+					totalChunks:      totalChunks,
+					chunkID:          chunkID,
+					uuid:             uuid,
+					chunkRecorder:    cr,
 				}
 				// the permit of first chunk has acquired
 				if chunkID != 0 && !p.canAddToQueue(nsr) {
@@ -647,8 +648,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 				}
 				p.internalSingleSend(mm, compressedPayload[lhs:rhs], nsr, uint32(maxMessageSize))
 			}
+			// close the blockCh when all the chunks acquired permits
 			request.stopBlock()
 		} else {
+			// close the blockCh when totalChunks is 1 (it has acquired permits)
 			request.stopBlock()
 			p.internalSingleSend(mm, compressedPayload, request, uint32(maxMessageSize))
 		}
@@ -1061,7 +1064,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
 		blockCh:          bc,
-		blockOnce:        &sync.Once{},
+		closeBlockChOnce: &sync.Once{},
 	}
 	p.options.Interceptors.BeforeSend(p, msg)
 
@@ -1245,7 +1248,7 @@ type sendRequest struct {
 	publishTime      time.Time
 	flushImmediately bool
 	blockCh          chan struct{}
-	blockOnce        *sync.Once
+	closeBlockChOnce *sync.Once
 	totalChunks      int
 	chunkID          int
 	uuid             string
@@ -1254,8 +1257,8 @@ type sendRequest struct {
 
 // stopBlock can be invoked multiple times safety
 func (sr *sendRequest) stopBlock() {
-	sr.blockOnce.Do(func() {
-		sr.blockCh <- struct{}{}
+	sr.closeBlockChOnce.Do(func() {
+		close(sr.blockCh)
 	})
 }
 
