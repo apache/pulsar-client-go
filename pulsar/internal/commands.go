@@ -72,7 +72,6 @@ func NewMessageReaderFromArray(headersAndPayload []byte) *MessageReader {
 // Batch format
 // [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [METADATA_SIZE][METADATA][PAYLOAD]
 // [METADATA_SIZE][METADATA][PAYLOAD]
-//
 type MessageReader struct {
 	buffer Buffer
 	// true if we are parsing a batched message - set after parsing the message metadata

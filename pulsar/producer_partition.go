@@ -418,6 +418,10 @@ func (p *partitionProducer) reconnectToBroker() {
 		if maxRetry > 0 {
 			maxRetry--
 		}
+		p.metrics.ProducersReconnectFailure.Inc()
+		if maxRetry == 0 || backoff.IsMaxBackoffReached() {
+			p.metrics.ProducersReconnectMaxRetry.Inc()
+		}
 	}
 }
 
@@ -716,7 +720,7 @@ func (p *partitionProducer) genSingleMessageMetadataInBatch(msg *ProducerMessage
 		PayloadSize: proto.Int(uncompressedSize),
 	}
 
-	if msg.EventTime.UnixNano() != 0 {
+	if !msg.EventTime.IsZero() {
 		smm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
 	}
 

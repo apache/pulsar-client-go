@@ -35,7 +35,9 @@ import (
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
+	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
 	AckID(id MessageID) error
+	AckIDWithResponse(id MessageID) error
 	NackID(id MessageID)
 	NackMsg(msg Message)
 }
@@ -466,6 +468,10 @@ func (c *consumer) Ack(msg Message) error {
 func (c *consumer) AckID(msgID MessageID) error {
 	if err := c.checkMsgIDPartition(msgID); err != nil {
 		return err
+	}
+
+	if c.options.AckWithResponse {
+		return c.consumers[msgID.PartitionIdx()].AckIDWithResponse(msgID)
 	}
 
 	return c.consumers[msgID.PartitionIdx()].AckID(msgID)

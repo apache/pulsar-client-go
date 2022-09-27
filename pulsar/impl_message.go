@@ -75,6 +75,17 @@ func (id trackingMessageID) Ack() error {
 	return nil
 }
 
+func (id trackingMessageID) AckWithResponse() error {
+	if id.consumer == nil {
+		return errors.New("consumer is nil in trackingMessageID")
+	}
+	if id.ack() {
+		return id.consumer.AckIDWithResponse(id)
+	}
+
+	return nil
+}
+
 func (id trackingMessageID) Nack() {
 	if id.consumer == nil {
 		return

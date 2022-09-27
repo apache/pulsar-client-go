@@ -376,6 +376,38 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
+func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return errors.New("consumer state is closed")
+	}
+
+	if cmid, ok := toChunkedMessageID(msgID); ok {
+		return pc.unAckChunksTracker.ack(cmid)
+	}
+
+	trackingID, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return errors.New("failed to convert trackingMessageID")
+	}
+
+	ackReq := new(ackRequest)
+	ackReq.doneCh = make(chan struct{})
+	if !trackingID.Undefined() && trackingID.ack() {
+		pc.metrics.AcksCounter.Inc()
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+		ackReq.msgID = trackingID
+		// send ack request to eventsCh
+		pc.eventsCh <- ackReq
+		// wait for the request to complete
+		<-ackReq.doneCh
+
+		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+	}
+
+	return ackReq.err
+}
+
 func (pc *partitionConsumer) AckID(msgID MessageID) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
@@ -392,12 +424,14 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 	}
 
 	ackReq := new(ackRequest)
+	ackReq.doneCh = make(chan struct{})
 	if !trackingID.Undefined() && trackingID.ack() {
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
 		ackReq.msgID = trackingID
 		// send ack request to eventsCh
 		pc.eventsCh <- ackReq
+		// No need to wait for ackReq.doneCh to finish
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
@@ -602,6 +636,7 @@ func (pc *partitionConsumer) clearMessageChannels() {
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
+	defer close(req.doneCh)
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return
@@ -1111,8 +1146,9 @@ func (pc *partitionConsumer) dispatcher() {
 }
 
 type ackRequest struct {
-	msgID trackingMessageID
-	err   error
+	doneCh chan struct{}
+	msgID  trackingMessageID
+	err    error
 }
 
 type unsubscribeRequest struct {
@@ -1279,6 +1315,10 @@ func (pc *partitionConsumer) reconnectToBroker() {
 
 		if maxRetry > 0 {
 			maxRetry--
+		}
+		pc.metrics.ConsumersReconnectFailure.Inc()
+		if maxRetry == 0 || backoff.IsMaxBackoffReached() {
+			pc.metrics.ConsumersReconnectMaxRetry.Inc()
 		}
 	}
 }

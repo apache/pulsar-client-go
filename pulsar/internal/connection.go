@@ -114,8 +114,6 @@ func (s connectionState) String() string {
 	}
 }
 
-const keepAliveInterval = 30 * time.Second
-
 type request struct {
 	id       *uint64
 	cmd      *pb.BaseCommand
@@ -168,6 +166,8 @@ type connection struct {
 
 	maxMessageSize int32
 	metrics        *Metrics
+
+	keepAliveInterval time.Duration
 }
 
 // connectionOptions defines configurations for creating connection.
@@ -179,11 +179,13 @@ type connectionOptions struct {
 	auth              auth.Provider
 	logger            log.Logger
 	metrics           *Metrics
+	keepAliveInterval time.Duration
 }
 
 func newConnection(opts connectionOptions) *connection {
 	cnx := &connection{
 		connectionTimeout:    opts.connectionTimeout,
+		keepAliveInterval:    opts.keepAliveInterval,
 		logicalAddr:          opts.logicalAddr,
 		physicalAddr:         opts.physicalAddr,
 		writeBuffer:          NewBuffer(4096),
@@ -285,7 +287,7 @@ func (c *connection) doHandshake() bool {
 
 	// During the initial handshake, the internal keep alive is not
 	// active yet, so we need to timeout write and read requests
-	c.cnx.SetDeadline(time.Now().Add(keepAliveInterval))
+	c.cnx.SetDeadline(time.Now().Add(c.keepAliveInterval))
 	cmdConnect := &pb.CommandConnect{
 		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
 		ClientVersion:   proto.String(ClientVersionString),
@@ -369,8 +371,8 @@ func (c *connection) failLeftRequestsWhenClose() {
 }
 
 func (c *connection) run() {
-	pingSendTicker := time.NewTicker(keepAliveInterval)
-	pingCheckTicker := time.NewTicker(keepAliveInterval)
+	pingSendTicker := time.NewTicker(c.keepAliveInterval)
+	pingCheckTicker := time.NewTicker(c.keepAliveInterval)
 
 	defer func() {
 		// stop tickers
@@ -432,7 +434,7 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 		case <-c.closeCh:
 			return
 		case <-pingCheckTicker.C:
-			if c.lastDataReceived().Add(2 * keepAliveInterval).Before(time.Now()) {
+			if c.lastDataReceived().Add(2 * c.keepAliveInterval).Before(time.Now()) {
 				// We have not received a response to the previous Ping request, the
 				// connection to broker is stale
 				c.log.Warn("Detected stale connection to broker")

@@ -136,6 +136,10 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 		return errors.New("unable to ack message because consumer is nil")
 	}
 
+	if c.options.AckWithResponse {
+		return mid.consumer.AckIDWithResponse(msgID)
+	}
+
 	return mid.consumer.AckID(msgID)
 }
 

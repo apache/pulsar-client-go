@@ -180,6 +180,10 @@ func (c *regexConsumer) AckID(msgID MessageID) error {
 		return errors.New("consumer is nil in consumer_regex")
 	}
 
+	if c.options.AckWithResponse {
+		return mid.consumer.AckIDWithResponse(msgID)
+	}
+
 	return mid.consumer.AckID(msgID)
 }
 

@@ -589,6 +589,41 @@ func TestConsumerEventTime(t *testing.T) {
 	assert.Equal(t, "test", string(msg.Payload()))
 }
 
+func TestConsumerWithoutEventTime(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := "test-without-event-time"
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload: []byte("test"),
+	})
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, int64(0), msg.EventTime().UnixNano())
+	assert.Equal(t, "test", string(msg.Payload()))
+}
+
 func TestConsumerFlow(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -1025,6 +1060,19 @@ func TestConsumerReceiveErrAfterClose(t *testing.T) {
 }
 
 func TestDLQ(t *testing.T) {
+	DLQWithProducerOptions(t, nil)
+}
+
+func TestDLQWithProducerOptions(t *testing.T) {
+	DLQWithProducerOptions(t,
+		&ProducerOptions{
+			BatchingMaxPublishDelay: 100 * time.Millisecond,
+			BatchingMaxSize:         64 * 1024,
+			CompressionType:         ZLib,
+		})
+}
+
+func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -1045,15 +1093,19 @@ func TestDLQ(t *testing.T) {
 	ctx := context.Background()
 
 	// create consumer
+	dlqPolicy := DLQPolicy{
+		MaxDeliveries:   3,
+		DeadLetterTopic: dlqTopic,
+	}
+	if prodOpt != nil {
+		dlqPolicy.ProducerOptions = *prodOpt
+	}
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:               topic,
 		SubscriptionName:    "my-sub",
 		NackRedeliveryDelay: 1 * time.Second,
 		Type:                Shared,
-		DLQ: &DLQPolicy{
-			MaxDeliveries:   3,
-			DeadLetterTopic: dlqTopic,
-		},
+		DLQ:                 &dlqPolicy,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -1156,6 +1208,9 @@ func TestDLQMultiTopics(t *testing.T) {
 		DLQ: &DLQPolicy{
 			MaxDeliveries:   3,
 			DeadLetterTopic: dlqTopic,
+			ProducerOptions: ProducerOptions{
+				BatchingMaxPublishDelay: 100 * time.Millisecond,
+			},
 		},
 	})
 	assert.Nil(t, err)
