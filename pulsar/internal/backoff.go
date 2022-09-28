@@ -27,10 +27,7 @@ func init() {
 }
 
 // BackoffPolicy parameterize the following options in the reconnection logic to
-// allow users to customize the reconnection logic
-//  - minBackoff
-//  - maxBackoff
-//  - jitterPercentage
+// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
 type BackoffPolicy interface {
 	Next() time.Duration
 }

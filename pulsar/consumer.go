@@ -174,10 +174,7 @@ type ConsumerOptions struct {
 	MaxReconnectToBroker *uint
 
 	// BackoffPolicy parameterize the following options in the reconnection logic to
-	// allow users to customize the reconnection logic
-	//  - minBackoff
-	//  - maxBackoff
-	//  - jitterPercentage
+	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
 	BackoffPolicy internal.BackoffPolicy
 
 	// Decryption represents the encryption related fields required by the consumer to decrypt a message.
