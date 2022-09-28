@@ -19,8 +19,9 @@ package pulsar
 
 import (
 	"context"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 // ConsumerMessage represents a pair of a Consumer and Message.

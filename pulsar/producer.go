@@ -19,8 +19,9 @@ package pulsar
 
 import (
 	"context"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 type HashingScheme int
