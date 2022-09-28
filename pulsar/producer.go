@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"time"
 )
 
@@ -154,6 +155,13 @@ type ProducerOptions struct {
 
 	// MaxReconnectToBroker specifies the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
+
+	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// allow users to customize the reconnection logic
+	//  - minBackoff
+	//  - maxBackoff
+	//  - jitterPercentage
+	BackoffPolicy internal.BackoffPolicy
 
 	// BatcherBuilderType sets the batch builder type (default DefaultBatchBuilder)
 	// This will be used to create batch container when batching is enabled.

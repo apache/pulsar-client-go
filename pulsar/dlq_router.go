@@ -133,7 +133,7 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.Backoff{}
+	backoff := &internal.DefaultBackoff{}
 	for {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.DeadLetterTopic

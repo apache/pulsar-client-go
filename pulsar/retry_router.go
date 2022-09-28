@@ -123,7 +123,7 @@ func (r *retryRouter) getProducer() Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.Backoff{}
+	backoff := &internal.DefaultBackoff{}
 	for {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.RetryLetterTopic

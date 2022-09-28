@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"time"
 )
 
@@ -170,6 +171,13 @@ type ConsumerOptions struct {
 
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
+
+	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// allow users to customize the reconnection logic
+	//  - minBackoff
+	//  - maxBackoff
+	//  - jitterPercentage
+	BackoffPolicy internal.BackoffPolicy
 
 	// Decryption represents the encryption related fields required by the consumer to decrypt a message.
 	Decryption *MessageDecryptionInfo

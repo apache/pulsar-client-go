@@ -102,6 +102,7 @@ type partitionConsumerOpts struct {
 	disableForceTopicCreation  bool
 	interceptors               ConsumerInterceptors
 	maxReconnectToBroker       *uint
+	backoffPolicy              internal.BackoffPolicy
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
 	decryption                 *MessageDecryptionInfo
@@ -1143,10 +1144,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 }
 
 func (pc *partitionConsumer) reconnectToBroker() {
-	var (
-		maxRetry int
-		backoff  = internal.Backoff{}
-	)
+	var maxRetry int
 
 	if pc.options.maxReconnectToBroker == nil {
 		maxRetry = -1
@@ -1161,9 +1159,19 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			return
 		}
 
-		d := backoff.Next()
-		pc.log.Info("Reconnecting to broker in ", d)
-		time.Sleep(d)
+		var (
+			delayReconnectTime time.Duration
+			defaultBackoff     = internal.DefaultBackoff{}
+		)
+
+		if pc.options.backoffPolicy == nil {
+			delayReconnectTime = defaultBackoff.Next()
+		} else {
+			delayReconnectTime = pc.options.backoffPolicy.Next()
+		}
+
+		pc.log.Info("Reconnecting to broker in ", delayReconnectTime)
+		time.Sleep(delayReconnectTime)
 
 		err := pc.grabConn()
 		if err == nil {
@@ -1183,7 +1191,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			maxRetry--
 		}
 		pc.metrics.ConsumersReconnectFailure.Inc()
-		if maxRetry == 0 || backoff.IsMaxBackoffReached() {
+		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
 		}
 	}
