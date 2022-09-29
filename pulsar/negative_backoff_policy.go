@@ -29,7 +29,7 @@ import (
 // > NackBackoffPolicy, which means the message might get redelivered earlier than the delay time
 // > from the backoff.
 type NackBackoffPolicy interface {
-	// The redeliveryCount indicates the number of times the message was redelivered.
+	// Next param redeliveryCount indicates the number of times the message was redelivered.
 	// We can get the redeliveryCount from the CommandMessage.
 	Next(redeliveryCount uint32) time.Duration
 }
