@@ -23,6 +23,54 @@
 
 All notable changes to this project will be documented in this file.
 
+[0.9.0] 2022-07-07
+
+## Feature
+* Add TableView support, see [PR-743](https://github.com/apache/pulsar-client-go/pull/743)
+* Support ack response for Go SDK, see [PR-776](https://github.com/apache/pulsar-client-go/pull/776)
+* Add basic authentication, see [PR-778](https://github.com/apache/pulsar-client-go/pull/778)
+* Support multiple schema version for producer and consumer, see [PR-611](https://github.com/apache/pulsar-client-go/pull/611)
+* Add schema support to Reader, see [PR-741](https://github.com/apache/pulsar-client-go/pull/741)
+
+## Improve
+* Add consumer seek by time on partitioned topic, see [PR-782](https://github.com/apache/pulsar-client-go/pull/782)
+* Fix using closed connection in consumer, see [PR-785](https://github.com/apache/pulsar-client-go/pull/785)
+* Add go 1.18 to the test matrix, see [PR-790](https://github.com/apache/pulsar-client-go/pull/790)
+* Schema creation and validation functions without panic, see [PR-794](https://github.com/apache/pulsar-client-go/pull/794)
+* Fix ack request not set requestId when enable AckWithResponse option, see [PR-780](https://github.com/apache/pulsar-client-go/pull/780)
+* Fix nil pointer dereference in TopicNameWithoutPartitionPart, see [PR-734](https://github.com/apache/pulsar-client-go/pull/734)
+* Add error response for Ack func, see [PR-775](https://github.com/apache/pulsar-client-go/pull/775)
+* Fix sequenceID is not equal to cause the connection to be closed incorrectly, see [PR-774](https://github.com/apache/pulsar-client-go/pull/774)
+* Add consumer state check when request commands, see [PR-772](https://github.com/apache/pulsar-client-go/pull/772)
+* Fix panic caused by flushing current batch with an incorrect internal function, see [PR-750](https://github.com/apache/pulsar-client-go/pull/750)
+* Fix deadlock in Producer Send when message fails to encode, see [PR-762](https://github.com/apache/pulsar-client-go/pull/762)
+* Add `-c/--max-connections` parameter to pulsar-perf-go and set it to 1 by default, see [PR-765](https://github.com/apache/pulsar-client-go/pull/765)
+* Fix producer unable register when cnx closed, see [PR-761](https://github.com/apache/pulsar-client-go/pull/761)
+* Fix annotation typo in `consumer.go`, see [PR-758](https://github.com/apache/pulsar-client-go/pull/758)
+* Dlq producer on topic with schema, see [PR-723](https://github.com/apache/pulsar-client-go/pull/723)
+* Add service not ready check, see [PR-757](https://github.com/apache/pulsar-client-go/pull/757)
+* Fix ack timeout cause reconnect, see [PR-756](https://github.com/apache/pulsar-client-go/pull/756)
+* Cleanup topics after unit tests, see [PR-755](https://github.com/apache/pulsar-client-go/pull/755)
+* Allow config reader subscription name, see [PR-754](https://github.com/apache/pulsar-client-go/pull/754)
+* Exposing broker metadata, see [PR-745](https://github.com/apache/pulsar-client-go/pull/745)
+* Make go version consistent, see [PR-751](https://github.com/apache/pulsar-client-go/pull/751)
+* Temporarily point ci to pulsar 2.8.2, see [PR-747](https://github.com/apache/pulsar-client-go/pull/747)
+* Upgrade klauspost/compress to v1.14.4, see [PR-740](https://github.com/apache/pulsar-client-go/pull/740)
+* Stop ticker when create producer failed, see [PR-730](https://github.com/apache/pulsar-client-go/pull/730)
+
+## New Contributors
+* @NaraLuwan made their first contribution in https://github.com/apache/pulsar-client-go/pull/730
+* @shubham1172 made their first contribution in https://github.com/apache/pulsar-client-go/pull/735
+* @nicoloboschi made their first contribution in https://github.com/apache/pulsar-client-go/pull/738
+* @ZiyaoWei made their first contribution in https://github.com/apache/pulsar-client-go/pull/741
+* @nodece made their first contribution in https://github.com/apache/pulsar-client-go/pull/757
+* @lhotari made their first contribution in https://github.com/apache/pulsar-client-go/pull/765
+* @samuelhewitt made their first contribution in https://github.com/apache/pulsar-client-go/pull/762
+* @shileiyu made their first contribution in https://github.com/apache/pulsar-client-go/pull/750
+* @hantmac made their first contribution in https://github.com/apache/pulsar-client-go/pull/734
+* @liushengzhong0927 made their first contribution in https://github.com/apache/pulsar-client-go/pull/780
+* @oryx2 made their first contribution in https://github.com/apache/pulsar-client-go/pull/611
+
 [0.8.1] 2022-03-08
 
 ## What's Changed
