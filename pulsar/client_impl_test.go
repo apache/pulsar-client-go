@@ -1067,7 +1067,7 @@ func TestHTTPSBasicAuth(t *testing.T) {
 	client.Close()
 }
 
-func testTlsTransportWithBasicAuth(t *testing.T, url string) {
+func testTLSTransportWithBasicAuth(t *testing.T, url string) {
 	t.Helper()
 
 	basicAuth, err := NewAuthenticationBasic("admin", "123456")
@@ -1094,10 +1094,10 @@ func testTlsTransportWithBasicAuth(t *testing.T, url string) {
 	client.Close()
 }
 
-func TestServiceUrlTlsWithTlsTransportWithBasicAuth(t *testing.T) {
-	testTlsTransportWithBasicAuth(t, serviceURLTLS)
+func TestServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
+	testTLSTransportWithBasicAuth(t, serviceURLTLS)
 }
 
-func TestWebServiceUrlTlsWithTlsTransportWithBasicAuth(t *testing.T) {
-	testTlsTransportWithBasicAuth(t, webServiceURLTLS)
+func TestWebServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
+	testTLSTransportWithBasicAuth(t, webServiceURLTLS)
 }
