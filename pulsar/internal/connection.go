@@ -39,10 +39,6 @@ import (
 )
 
 const (
-	// PulsarVersion FIXME: Before each release, please modify the current Version value.
-	PulsarVersion       = "0.9.0"
-	ClientVersionString = "Pulsar Go " + PulsarVersion
-
 	PulsarProtocolVersion = int32(pb.ProtocolVersion_v18)
 )
 
