@@ -1066,3 +1066,38 @@ func TestHTTPSBasicAuth(t *testing.T) {
 
 	client.Close()
 }
+
+func testTlsTransportWithBasicAuth(t *testing.T, url string) {
+	t.Helper()
+
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:                   url,
+		TLSCertificateFile:    tlsClientCertPath,
+		TLSKeyFilePath:        tlsClientKeyPath,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestServiceUrlTlsWithTlsTransportWithBasicAuth(t *testing.T) {
+	testTlsTransportWithBasicAuth(t, serviceURLTLS)
+}
+
+func TestWebServiceUrlTlsWithTlsTransportWithBasicAuth(t *testing.T) {
+	testTlsTransportWithBasicAuth(t, webServiceURLTLS)
+}
