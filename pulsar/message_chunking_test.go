@@ -146,33 +146,6 @@ func TestLargeMessage(t *testing.T) {
 	}
 }
 
-func TestPublishChunkWithFailure(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
-
-	assert.Nil(t, err)
-	defer client.Close()
-
-	topic := newTopicName()
-
-	// create producer without ChunkMaxMessageSize
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
-	assert.NoError(t, err)
-	assert.NotNil(t, producer)
-	defer producer.Close()
-
-	ID, err := producer.Send(context.Background(), &ProducerMessage{
-		Payload: createTestMessagePayload(_brokerMaxMessageSize + 1),
-	})
-	assert.Error(t, err)
-	assert.Nil(t, ID)
-}
-
 func TestMaxPendingChunkMessages(t *testing.T) {
 	rand.Seed(time.Now().Unix())
 
@@ -536,6 +509,7 @@ func TestChunkMultiTopicConsumerReceive(t *testing.T) {
 	receivedTopic2 := 0
 	// nolint
 	for receivedTopic1+receivedTopic2 < 20 {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 		select {
 		case cm, ok := <-consumer.Chan():
 			if ok {
@@ -549,7 +523,10 @@ func TestChunkMultiTopicConsumerReceive(t *testing.T) {
 			} else {
 				t.Fail()
 			}
+		case <-ctx.Done():
+			t.Error(ctx.Err())
 		}
+		cancel()
 	}
 	assert.Equal(t, receivedTopic1, receivedTopic2)
 }

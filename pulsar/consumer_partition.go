@@ -925,7 +925,7 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 		return nil
 	}
 
-	ctx.refresh(chunkID, msgID, compressedPayload)
+	ctx.append(chunkID, msgID, compressedPayload)
 
 	if msgMeta.GetChunkId() != msgMeta.GetNumChunksFromMsg()-1 {
 		atomic.AddInt32(&pc.availablePermits, 1)
@@ -1638,7 +1638,7 @@ func newChunkedMsgCtx(numChunksFromMsg int32, totalChunkMsgSize int) *chunkedMsg
 	}
 }
 
-func (c *chunkedMsgCtx) refresh(chunkID int32, msgID messageID, partPayload internal.Buffer) {
+func (c *chunkedMsgCtx) append(chunkID int32, msgID messageID, partPayload internal.Buffer) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.chunkedMsgIDs[chunkID] = msgID
@@ -1703,10 +1703,10 @@ func (c *chunkedMsgCtxMap) addIfAbsent(uuid string, totalChunks int32, totalChun
 	if _, ok := c.chunkedMsgCtxs[uuid]; !ok {
 		c.chunkedMsgCtxs[uuid] = newChunkedMsgCtx(totalChunks, totalChunkMsgSize)
 		c.pendingQueue.PushBack(uuid)
-		go c.removeChunkIfExpire(uuid, true, c.pc.options.expireTimeOfIncompleteChunk)
+		go c.discardChunkIfExpire(uuid, true, c.pc.options.expireTimeOfIncompleteChunk)
 	}
 	if c.maxPending > 0 && c.pendingQueue.Len() > c.maxPending {
-		go c.removeChunkMessage(uuid, c.pc.options.autoAckIncompleteChunk)
+		go c.discardOldestChunkMessage(c.pc.options.autoAckIncompleteChunk)
 	}
 }
 
@@ -1735,7 +1735,25 @@ func (c *chunkedMsgCtxMap) remove(uuid string) {
 	}
 }
 
-func (c *chunkedMsgCtxMap) removeChunkMessage(uuid string, autoAck bool) {
+func (c *chunkedMsgCtxMap) discardOldestChunkMessage(autoAck bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	oldest := c.pendingQueue.Front().Value.(string)
+	ctx, ok := c.chunkedMsgCtxs[oldest]
+	if !ok {
+		return
+	}
+	if autoAck {
+		ctx.discard(c.pc)
+	}
+	delete(c.chunkedMsgCtxs, oldest)
+	c.pc.log.Infof("Chunked message [%s] has been removed from chunkedMsgCtxMap", oldest)
+}
+
+func (c *chunkedMsgCtxMap) discardChunkMessage(uuid string, autoAck bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed {
@@ -1759,10 +1777,10 @@ func (c *chunkedMsgCtxMap) removeChunkMessage(uuid string, autoAck bool) {
 	c.pc.log.Infof("Chunked message [%s] has been removed from chunkedMsgCtxMap", uuid)
 }
 
-func (c *chunkedMsgCtxMap) removeChunkIfExpire(uuid string, autoAck bool, expire time.Duration) {
+func (c *chunkedMsgCtxMap) discardChunkIfExpire(uuid string, autoAck bool, expire time.Duration) {
 	timer := time.NewTimer(expire)
 	<-timer.C
-	c.removeChunkMessage(uuid, autoAck)
+	c.discardChunkMessage(uuid, autoAck)
 }
 
 func (c *chunkedMsgCtxMap) Close() {
@@ -1819,8 +1837,7 @@ func (u *unAckChunksTracker) ack(cmid chunkMessageID) error {
 func (u *unAckChunksTracker) nack(cmid chunkMessageID) {
 	ids := u.get(cmid)
 	for _, id := range ids {
-		u.pc.nackTracker.Add(id)
-		u.pc.metrics.NacksCounter.Inc()
+		u.pc.NackID(id)
 	}
 	u.remove(cmid)
 }

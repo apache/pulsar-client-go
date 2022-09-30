@@ -96,8 +96,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.MaxPendingChunkedMessage = 100
 	}
 
-	// the minimum timer interval is 100ms
-	if options.ExpireTimeOfIncompleteChunk < 100*time.Millisecond {
+	if options.ExpireTimeOfIncompleteChunk == 0 {
 		options.ExpireTimeOfIncompleteChunk = time.Minute
 	}
 
