@@ -105,6 +105,12 @@ type ClientOptions struct {
 	// Example: `Authentication: NewAuthenticationTLS("my-cert.pem", "my-key.pem")`
 	Authentication
 
+	// Set the path to the TLS key file
+	TLSKeyFilePath string
+
+	// Set the path to the TLS certificate file
+	TLSCertificateFile string
+
 	// Set the path to the trusted TLS certificate file
 	TLSTrustCertsFilePath string
 

@@ -71,6 +71,8 @@ func newClient(options ClientOptions) (Client, error) {
 	case "pulsar+ssl", "https":
 		tlsConfig = &internal.TLSOptions{
 			AllowInsecureConnection: options.TLSAllowInsecureConnection,
+			KeyFile:                 options.TLSKeyFilePath,
+			CertFile:                options.TLSCertificateFile,
 			TrustCertsFilePath:      options.TLSTrustCertsFilePath,
 			ValidateHostname:        options.TLSValidateHostname,
 		}
