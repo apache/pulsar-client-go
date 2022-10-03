@@ -1738,7 +1738,7 @@ func (c *chunkedMsgCtxMap) remove(uuid string) {
 func (c *chunkedMsgCtxMap) discardOldestChunkMessage(autoAck bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if c.closed {
+	if c.closed || (c.maxPending > 0 && c.pendingQueue.Len() <= c.maxPending) {
 		return
 	}
 	oldest := c.pendingQueue.Front().Value.(string)

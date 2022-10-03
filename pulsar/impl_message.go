@@ -409,5 +409,18 @@ func (id chunkMessageID) String() string {
 }
 
 func (id chunkMessageID) Serialize() []byte {
-	return id.firstChunkID.Serialize()
+	msgID := &pb.MessageIdData{
+		LedgerId:   proto.Uint64(uint64(id.ledgerID)),
+		EntryId:    proto.Uint64(uint64(id.entryID)),
+		BatchIndex: proto.Int32(id.batchIdx),
+		Partition:  proto.Int32(id.partitionIdx),
+		FirstChunkMessageId: &pb.MessageIdData{
+			LedgerId:   proto.Uint64(uint64(id.firstChunkID.ledgerID)),
+			EntryId:    proto.Uint64(uint64(id.firstChunkID.entryID)),
+			BatchIndex: proto.Int32(id.firstChunkID.batchIdx),
+			Partition:  proto.Int32(id.firstChunkID.partitionIdx),
+		},
+	}
+	data, _ := proto.Marshal(msgID)
+	return data
 }
