@@ -228,7 +228,7 @@ type Consumer interface {
 	//
 	// When a message is "negatively acked" it will be marked for redelivery after
 	// some fixed delay. The delay is configurable when constructing the consumer
-	// with ConsumerOptions.NAckRedeliveryDelay .
+	// with ConsumerOptions.NackRedeliveryDelay .
 	//
 	// This call is not blocking.
 	Nack(Message)
