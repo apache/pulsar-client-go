@@ -48,7 +48,7 @@ type regexConsumer struct {
 
 func newRegexConsumer(client *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
 	msgCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (*regexConsumer, error) {
-	topics, err := topics(client, tn.Namespace, pattern)
+	topics, err := client.topics(tn.Namespace, pattern)
 	if err != nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func (c *regexConsumer) monitor() {
 }
 
 func (c *regexConsumer) discover() {
-	topics, err := topics(c.client, c.namespace, c.pattern)
+	topics, err := c.client.topics(c.namespace, c.pattern)
 	if err != nil {
 		c.log.WithError(err).Errorf("Failed to discover topics")
 		return
@@ -233,16 +233,6 @@ func (c *regexConsumer) unsubscribe(topics []string) {
 		}
 		consumer.Close()
 	}
-}
-
-func topics(client *client, namespace string, pattern *regexp.Regexp) ([]string, error) {
-	topics, err := client.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
-	if err != nil {
-		return nil, err
-	}
-
-	filtered := filterTopics(topics, pattern)
-	return filtered, nil
 }
 
 type consumerError struct {
