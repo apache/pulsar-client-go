@@ -371,6 +371,10 @@ func (c *connection) failLeftRequestsWhenClose() {
 func (c *connection) run() {
 	pingSendTicker := time.NewTicker(c.keepAliveInterval)
 	pingCheckTicker := time.NewTicker(c.keepAliveInterval)
+	// incomingRequestsWG.Add(1) and Wait() runs concurrently, if Wait() happens before Add(), it'll lead to panic
+	// it's described at https://github.com/golang/go/blob/master/src/sync/waitgroup.go#L30
+	// so we preemptively Add(1) and subtract when the closeCh is closed.
+	c.incomingRequestsWG.Add(1)
 
 	defer func() {
 		// stop tickers
@@ -395,6 +399,11 @@ func (c *connection) run() {
 		for {
 			select {
 			case <-c.closeCh:
+				// clear the preemptive WG.Add()
+				go func() {
+					c.log.Debugf("ready to drain left requests before close")
+					c.incomingRequestsWG.Done()
+				}()
 				c.failLeftRequestsWhenClose()
 				return
 
