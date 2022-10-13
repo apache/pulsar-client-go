@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -3179,4 +3180,85 @@ func TestConsumerSeekByTimeOnPartitionedTopic(t *testing.T) {
 		assert.Nil(t, err)
 		consumer.Ack(msg)
 	}
+}
+
+func TestAvailablePermitsLeak(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	client.Close()
+
+	topic := fmt.Sprintf("my-topic-test-ap-leak-%v", time.Now().Nanosecond())
+
+	// 1. Producer with valid key name
+	p1, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+		Schema:          NewStringSchema(nil),
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, p1)
+
+	subscriptionName := "enc-failure-subcription"
+	totalMessages := 1000
+
+	// 2. KeyReader is not set by the consumer
+	// Receive should fail since KeyReader is not setup
+	// because default behaviour of consumer is fail receiving message if error in decryption
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: subscriptionName,
+	})
+	assert.Nil(t, err)
+
+	messageFormat := "my-message-%v"
+	for i := 0; i < totalMessages; i++ {
+		_, err := p1.Send(context.Background(), &ProducerMessage{
+			Value: fmt.Sprintf(messageFormat, i),
+		})
+		assert.Nil(t, err)
+	}
+
+	// 2. Set another producer that send message without crypto.
+	// The consumer can receive it correct.
+	p2, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		Schema:          NewStringSchema(nil),
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, p2)
+
+	_, err = p2.Send(context.Background(), &ProducerMessage{
+		Value: fmt.Sprintf(messageFormat, totalMessages),
+	})
+	assert.Nil(t, err)
+
+	// 3. Discard action on decryption failure. Create a availablePermits leak scenario
+	consumer.Close()
+
+	consumer, err = client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: subscriptionName,
+		Decryption: &MessageDecryptionInfo{
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionDiscard,
+		},
+		Schema: NewStringSchema(nil),
+	})
+	assert.Nil(t, err)
+	assert.NotNil(t, consumer)
+
+	// 4. If availablePermits does not leak, consumer can get the last message which is no crypto.
+	// The ctx3 will not exceed deadline.
+	ctx3, cancel3 := context.WithTimeout(context.Background(), 15*time.Second)
+	_, err = consumer.Receive(ctx3)
+	cancel3()
+	assert.NotEqual(t, true, errors.Is(err, context.DeadlineExceeded),
+		"This means the resource is exhausted. consumer.Receive() will block forever.")
 }
