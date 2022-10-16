@@ -346,14 +346,6 @@ func (c *connection) waitUntilReady() error {
 }
 
 func (c *connection) failLeftRequestsWhenClose() {
-	// incomingRequestsWG.Add(1) in SendRequst/SendRequestNoWait and Wait() runs concurrently,
-	// if Wait() happens before Add(), it'll lead to panic
-	// it's described at https://github.com/golang/go/blob/master/src/sync/waitgroup.go#L30
-	// so we preemptively Add(1) and subtract when the closeCh is closed.
-
-	// wait for outstanding incoming requests to complete before draining
-	// and closing the channel
-
 	ch := c.incomingRequestsCh
 	go func() {
 		// send a nil message to drain instead of
