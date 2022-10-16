@@ -134,7 +134,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 
 	var maxPendingMessages int
-
 	if options.MaxPendingMessages == 0 {
 		maxPendingMessages = 1000
 	} else {
