@@ -25,7 +25,6 @@ import (
 	"math"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -84,6 +83,15 @@ const (
 	noMessageEntry = -1
 )
 
+type permitsReq int32
+
+const (
+	// reset the availablePermits of pc
+	permitsReset permitsReq = iota
+	// increase the availablePermits
+	permitsInc
+)
+
 type partitionConsumerOpts struct {
 	topic                       string
 	consumerName                string
@@ -133,7 +141,8 @@ type partitionConsumer struct {
 	messageCh chan ConsumerMessage
 
 	// the number of message slots available
-	availablePermits int32
+	availablePermits   int32
+	availablePermitsCh chan permitsReq
 
 	// the size of the queue channel for buffering messages
 	queueSize       int32
@@ -232,6 +241,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
+		availablePermitsCh:   make(chan permitsReq, 10),
 	}
 	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(options.maxPendingChunkedMessage, pc)
 	pc.unAckChunksTracker = newUnAckChunksTracker(pc)
@@ -921,14 +931,14 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 			"Received unexpected chunk messageId %s, last-chunk-id %d, chunkId = %d, total-chunks %d",
 			msgID.String(), lastChunkedMsgID, chunkID, totalChunks))
 		pc.chunkedMsgCtxMap.remove(uuid)
-		atomic.AddInt32(&pc.availablePermits, 1)
+		pc.availablePermitsCh <- permitsInc
 		return nil
 	}
 
 	ctx.append(chunkID, msgID, compressedPayload)
 
 	if msgMeta.GetChunkId() != msgMeta.GetNumChunksFromMsg()-1 {
-		atomic.AddInt32(&pc.availablePermits, 1)
+		pc.availablePermitsCh <- permitsInc
 		return nil
 	}
 
@@ -1065,7 +1075,7 @@ func (pc *partitionConsumer) dispatcher() {
 			messages = nil
 
 			// reset available permits
-			pc.availablePermits = 0
+			pc.availablePermitsCh <- permitsReset
 			initialPermits := uint32(pc.queueSize)
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
@@ -1088,20 +1098,14 @@ func (pc *partitionConsumer) dispatcher() {
 			messages[0] = nil
 			messages = messages[1:]
 
-			// TODO implement a better flow controller
-			// send more permits if needed
-			atomic.AddInt32(&pc.availablePermits, 1)
-			permits := atomic.LoadInt32(&pc.availablePermits)
-			flowThreshold := int32(math.Max(float64(pc.queueSize/2), 1))
-			if permits >= flowThreshold {
-				availablePermits := permits
-				requestedPermits := availablePermits
-				atomic.StoreInt32(&pc.availablePermits, 0)
+			pc.availablePermitsCh <- permitsInc
 
-				pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
-				if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
-					pc.log.WithError(err).Error("unable to send permits")
-				}
+		case pr := <-pc.availablePermitsCh:
+			switch pr {
+			case permitsInc:
+				pc.increasePermitsAndRequestMoreIfNeed()
+			case permitsReset:
+				pc.availablePermits = 0
 			}
 
 		case clearQueueCb := <-pc.clearQueueCh:
@@ -1132,7 +1136,7 @@ func (pc *partitionConsumer) dispatcher() {
 			messages = nil
 
 			// reset available permits
-			pc.availablePermits = 0
+			pc.availablePermitsCh <- permitsReset
 			initialPermits := uint32(pc.queueSize)
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
@@ -1571,6 +1575,25 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 		})
 	if err != nil {
 		pc.log.Error("Connection was closed when request ack cmd")
+	}
+	pc.availablePermitsCh <- permitsInc
+}
+
+func (pc *partitionConsumer) increasePermitsAndRequestMoreIfNeed() {
+	// TODO implement a better flow controller
+	// send more permits if needed
+	flowThreshold := int32(math.Max(float64(pc.queueSize/2), 1))
+	pc.availablePermits++
+	ap := pc.availablePermits
+	if ap >= flowThreshold {
+		availablePermits := ap
+		requestedPermits := ap
+		pc.availablePermitsCh <- permitsReset
+
+		pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
+		if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
+			pc.log.WithError(err).Error("unable to send permits")
+		}
 	}
 }
 
