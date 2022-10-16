@@ -144,7 +144,6 @@ type connection struct {
 
 	log log.Logger
 
-	incomingRequestsWG sync.WaitGroup
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan interface{}
@@ -347,9 +346,13 @@ func (c *connection) waitUntilReady() error {
 }
 
 func (c *connection) failLeftRequestsWhenClose() {
+	// incomingRequestsWG.Add(1) in SendRequst/SendRequestNoWait and Wait() runs concurrently,
+	// if Wait() happens before Add(), it'll lead to panic
+	// it's described at https://github.com/golang/go/blob/master/src/sync/waitgroup.go#L30
+	// so we preemptively Add(1) and subtract when the closeCh is closed.
+
 	// wait for outstanding incoming requests to complete before draining
 	// and closing the channel
-	c.incomingRequestsWG.Wait()
 
 	ch := c.incomingRequestsCh
 	go func() {
@@ -371,10 +374,6 @@ func (c *connection) failLeftRequestsWhenClose() {
 func (c *connection) run() {
 	pingSendTicker := time.NewTicker(c.keepAliveInterval)
 	pingCheckTicker := time.NewTicker(c.keepAliveInterval)
-	// incomingRequestsWG.Add(1) and Wait() runs concurrently, if Wait() happens before Add(), it'll lead to panic
-	// it's described at https://github.com/golang/go/blob/master/src/sync/waitgroup.go#L30
-	// so we preemptively Add(1) and subtract when the closeCh is closed.
-	c.incomingRequestsWG.Add(1)
 
 	defer func() {
 		// stop tickers
@@ -399,11 +398,6 @@ func (c *connection) run() {
 		for {
 			select {
 			case <-c.closeCh:
-				// clear the preemptive WG.Add()
-				go func() {
-					c.log.Debugf("ready to drain left requests before close")
-					c.incomingRequestsWG.Done()
-				}()
 				c.failLeftRequestsWhenClose()
 				return
 
@@ -607,9 +601,6 @@ func (c *connection) Write(data Buffer) {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
-	c.incomingRequestsWG.Add(1)
-	defer c.incomingRequestsWG.Done()
-
 	state := c.getState()
 	if state == connectionClosed || state == connectionClosing {
 		callback(req, ErrConnectionClosed)
@@ -629,9 +620,6 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 }
 
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
-	c.incomingRequestsWG.Add(1)
-	defer c.incomingRequestsWG.Done()
-
 	state := c.getState()
 	if state == connectionClosed || state == connectionClosing {
 		return ErrConnectionClosed
