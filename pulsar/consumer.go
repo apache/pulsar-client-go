@@ -247,9 +247,6 @@ type Consumer interface {
 
 	// Seek resets the subscription associated with this consumer to a specific message id.
 	// The message id can either be a specific message or represent the first or last messages in the topic.
-	//
-	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the
-	//       seek() on the individual partitions.
 	Seek(MessageID) error
 
 	// SeekByTime resets the subscription associated with this consumer to a specific message publish time.

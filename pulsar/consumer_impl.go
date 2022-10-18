@@ -582,13 +582,19 @@ func (c *consumer) Seek(msgID MessageID) error {
 	c.Lock()
 	defer c.Unlock()
 
-	if len(c.consumers) > 1 {
-		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
-	}
-
 	mid, ok := c.messageID(msgID)
 	if !ok {
 		return nil
+	}
+
+	if mid.partitionIdx < 0 {
+		return newError(SeekFailed, "partitionIdx is negative")
+	}
+	if mid.partitionIdx > int32(len(c.consumers)) {
+		return newError(
+			SeekFailed,
+			fmt.Sprintf("partitionIdx is %d, but there are %d partitions", mid.partitionIdx, len(c.consumers)),
+		)
 	}
 
 	return c.consumers[mid.partitionIdx].Seek(mid)
