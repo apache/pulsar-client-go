@@ -540,7 +540,7 @@ func (c *consumer) NackLater(msg Message, delay time.Duration) {
 	}
 
 	if mid.consumer != nil {
-		mid.Nack()
+		mid.NackByMsgLater(msg, delay)
 		return
 	}
 	c.consumers[mid.partitionIdx].NackMsgLater(msg, delay)
