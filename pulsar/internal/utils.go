@@ -28,6 +28,10 @@ import (
 
 // TimestampMillis return a time unix nano.
 func TimestampMillis(t time.Time) uint64 {
+	// calling UnixNano on the zero Time is undefined
+	if t.IsZero() {
+		return 0
+	}
 	return uint64(t.UnixNano()) / uint64(time.Millisecond)
 }
 
