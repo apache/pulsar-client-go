@@ -20,6 +20,8 @@ package pulsar
 import (
 	"context"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 // ConsumerMessage represents a pair of a Consumer and Message.
@@ -70,6 +72,9 @@ type DLQPolicy struct {
 
 	// DeadLetterTopic specifies the name of the topic where the failing messages will be sent.
 	DeadLetterTopic string
+
+	// ProducerOptions is the producer options to produce messages to the DLQ and RLQ topic
+	ProducerOptions ProducerOptions
 
 	// RetryLetterTopic specifies the name of the topic where the retry messages will be sent.
 	RetryLetterTopic string
@@ -168,6 +173,10 @@ type ConsumerOptions struct {
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
+	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
+	BackoffPolicy internal.BackoffPolicy
+
 	// Decryption represents the encryption related fields required by the consumer to decrypt a message.
 	Decryption *MessageDecryptionInfo
 
@@ -219,7 +228,7 @@ type Consumer interface {
 	//
 	// When a message is "negatively acked" it will be marked for redelivery after
 	// some fixed delay. The delay is configurable when constructing the consumer
-	// with ConsumerOptions.NAckRedeliveryDelay .
+	// with ConsumerOptions.NackRedeliveryDelay .
 	//
 	// This call is not blocking.
 	Nack(Message)

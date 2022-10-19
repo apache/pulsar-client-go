@@ -15,21 +15,36 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsar
+package internal
 
 import (
-	"testing"
-	"time"
+	"runtime/debug"
 
-	"github.com/stretchr/testify/assert"
+	"golang.org/x/mod/semver"
 )
 
-func TestDefaultNackBackoffPolicy_Next(t *testing.T) {
-	defaultNackBackoff := new(defaultNackBackoffPolicy)
+const (
+	pulsarClientGoModulePath = "github.com/apache/pulsar-client-go"
+)
 
-	res0 := defaultNackBackoff.Next(0)
-	assert.Equal(t, 1*time.Second, res0)
+var (
+	Version             string
+	ClientVersionString string
+)
 
-	res5 := defaultNackBackoff.Next(5)
-	assert.Equal(t, 32*time.Second, res5)
+// init Initializes the module version information by reading
+// the built in golang build info.  If the application was not built
+// using go modules then the version string will not be available.
+func init() {
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		for _, dep := range buildInfo.Deps {
+			if dep.Path == pulsarClientGoModulePath {
+				Version = semver.Canonical(dep.Version)
+				ClientVersionString = "Pulsar Go " + Version
+				return
+			}
+		}
+	}
+	Version = "unknown"
+	ClientVersionString = "Pulsar Go version unknown"
 }

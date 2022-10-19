@@ -91,7 +91,7 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 	var host *url.URL
 	var rpcResult *RPCResult
 	startTime := time.Now()
-	backoff := Backoff{100 * time.Millisecond}
+	backoff := DefaultBackoff{100 * time.Millisecond}
 	// we can retry these requests because this kind of request is
 	// not specific to any particular broker
 	for time.Since(startTime) < c.requestTimeout {

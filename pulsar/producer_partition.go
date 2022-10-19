@@ -380,11 +380,7 @@ func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVer
 }
 
 func (p *partitionProducer) reconnectToBroker() {
-	var (
-		maxRetry int
-		backoff  = internal.Backoff{}
-	)
-
+	var maxRetry int
 	if p.options.MaxReconnectToBroker == nil {
 		maxRetry = -1
 	} else {
@@ -398,9 +394,18 @@ func (p *partitionProducer) reconnectToBroker() {
 			return
 		}
 
-		d := backoff.Next()
-		p.log.Info("Reconnecting to broker in ", d)
-		time.Sleep(d)
+		var (
+			delayReconnectTime time.Duration
+			defaultBackoff     = internal.DefaultBackoff{}
+		)
+
+		if p.options.BackoffPolicy == nil {
+			delayReconnectTime = defaultBackoff.Next()
+		} else {
+			delayReconnectTime = p.options.BackoffPolicy.Next()
+		}
+		p.log.Info("Reconnecting to broker in ", delayReconnectTime)
+		time.Sleep(delayReconnectTime)
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
 		if err == nil {
@@ -418,6 +423,10 @@ func (p *partitionProducer) reconnectToBroker() {
 
 		if maxRetry > 0 {
 			maxRetry--
+		}
+		p.metrics.ProducersReconnectFailure.Inc()
+		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
+			p.metrics.ProducersReconnectMaxRetry.Inc()
 		}
 	}
 }
@@ -544,7 +553,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		PayloadSize: proto.Int(len(payload)),
 	}
 
-	if msg.EventTime.UnixNano() != 0 {
+	if !msg.EventTime.IsZero() {
 		smm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
 	}
 

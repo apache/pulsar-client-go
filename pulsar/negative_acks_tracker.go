@@ -54,7 +54,7 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 
 	if nackBackoffPolicy != nil {
 		firstDelayForNackBackoff := nackBackoffPolicy.Next(1)
-		t.delay = time.Duration(firstDelayForNackBackoff)
+		t.delay = firstDelayForNackBackoff
 	} else {
 		t.delay = delay
 	}
@@ -109,7 +109,7 @@ func (t *negativeAcksTracker) AddMessage(msg Message) {
 		return
 	}
 
-	targetTime := time.Now().Add(time.Duration(nackBackoffDelay))
+	targetTime := time.Now().Add(nackBackoffDelay)
 	t.negativeAcks[batchMsgID] = targetTime
 }
 

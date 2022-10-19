@@ -148,7 +148,7 @@ func (c *httpClient) Get(endpoint string, obj interface{}, params map[string]str
 	if _, ok := err.(*url.Error); ok {
 		// We can retry this kind of requests over a connection error because they're
 		// not specific to a particular broker.
-		backoff := Backoff{100 * time.Millisecond}
+		backoff := DefaultBackoff{100 * time.Millisecond}
 		startTime := time.Now()
 		var retryTime time.Duration
 
@@ -344,6 +344,14 @@ func getDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
 			}
 			cfg.RootCAs = x509.NewCertPool()
 			cfg.RootCAs.AppendCertsFromPEM(rootCA)
+		}
+
+		if tlsConfig.CertFile != "" || tlsConfig.KeyFile != "" {
+			cert, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
+			if err != nil {
+				return nil, errors.New(err.Error())
+			}
+			cfg.Certificates = []tls.Certificate{cert}
 		}
 		transport.TLSClientConfig = cfg
 	}

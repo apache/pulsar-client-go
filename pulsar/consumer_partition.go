@@ -82,6 +82,15 @@ const (
 	noMessageEntry = -1
 )
 
+type permitsReq int32
+
+const (
+	// reset the availablePermits of pc
+	permitsReset permitsReq = iota
+	// increase the availablePermits
+	permitsInc
+)
+
 type partitionConsumerOpts struct {
 	topic                      string
 	consumerName               string
@@ -102,6 +111,7 @@ type partitionConsumerOpts struct {
 	disableForceTopicCreation  bool
 	interceptors               ConsumerInterceptors
 	maxReconnectToBroker       *uint
+	backoffPolicy              internal.BackoffPolicy
 	keySharedPolicy            *KeySharedPolicy
 	schema                     Schema
 	decryption                 *MessageDecryptionInfo
@@ -127,7 +137,8 @@ type partitionConsumer struct {
 	messageCh chan ConsumerMessage
 
 	// the number of message slots available
-	availablePermits int32
+	availablePermits   int32
+	availablePermitsCh chan permitsReq
 
 	// the size of the queue channel for buffering messages
 	queueSize       int32
@@ -223,6 +234,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
+		availablePermitsCh:   make(chan permitsReq, 10),
 	}
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
@@ -366,6 +378,29 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
+func (pc *partitionConsumer) AckIDWithResponse(msgID trackingMessageID) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return errors.New("consumer state is closed")
+	}
+
+	ackReq := new(ackRequest)
+	ackReq.doneCh = make(chan struct{})
+	if !msgID.Undefined() && msgID.ack() {
+		pc.metrics.AcksCounter.Inc()
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
+		ackReq.msgID = msgID
+		// send ack request to eventsCh
+		pc.eventsCh <- ackReq
+		// wait for the request to complete
+		<-ackReq.doneCh
+
+		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+	}
+
+	return ackReq.err
+}
+
 func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
@@ -373,12 +408,14 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 	}
 
 	ackReq := new(ackRequest)
+	ackReq.doneCh = make(chan struct{})
 	if !msgID.Undefined() && msgID.ack() {
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
 		ackReq.msgID = msgID
 		// send ack request to eventsCh
 		pc.eventsCh <- ackReq
+		// No need to wait for ackReq.doneCh to finish
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
@@ -564,6 +601,7 @@ func (pc *partitionConsumer) clearMessageChannels() {
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
+	defer close(req.doneCh)
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return
@@ -907,7 +945,7 @@ func (pc *partitionConsumer) dispatcher() {
 			messages = nil
 
 			// reset available permits
-			pc.availablePermits = 0
+			pc.availablePermitsCh <- permitsReset
 			initialPermits := uint32(pc.queueSize)
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
@@ -930,19 +968,14 @@ func (pc *partitionConsumer) dispatcher() {
 			messages[0] = nil
 			messages = messages[1:]
 
-			// TODO implement a better flow controller
-			// send more permits if needed
-			pc.availablePermits++
-			flowThreshold := int32(math.Max(float64(pc.queueSize/2), 1))
-			if pc.availablePermits >= flowThreshold {
-				availablePermits := pc.availablePermits
-				requestedPermits := availablePermits
-				pc.availablePermits = 0
+			pc.availablePermitsCh <- permitsInc
 
-				pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
-				if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
-					pc.log.WithError(err).Error("unable to send permits")
-				}
+		case pr := <-pc.availablePermitsCh:
+			switch pr {
+			case permitsInc:
+				pc.increasePermitsAndRequestMoreIfNeed()
+			case permitsReset:
+				pc.availablePermits = 0
 			}
 
 		case clearQueueCb := <-pc.clearQueueCh:
@@ -973,7 +1006,7 @@ func (pc *partitionConsumer) dispatcher() {
 			messages = nil
 
 			// reset available permits
-			pc.availablePermits = 0
+			pc.availablePermitsCh <- permitsReset
 			initialPermits := uint32(pc.queueSize)
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
@@ -988,8 +1021,9 @@ func (pc *partitionConsumer) dispatcher() {
 }
 
 type ackRequest struct {
-	msgID trackingMessageID
-	err   error
+	doneCh chan struct{}
+	msgID  trackingMessageID
+	err    error
 }
 
 type unsubscribeRequest struct {
@@ -1118,10 +1152,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 }
 
 func (pc *partitionConsumer) reconnectToBroker() {
-	var (
-		maxRetry int
-		backoff  = internal.Backoff{}
-	)
+	var maxRetry int
 
 	if pc.options.maxReconnectToBroker == nil {
 		maxRetry = -1
@@ -1136,9 +1167,19 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			return
 		}
 
-		d := backoff.Next()
-		pc.log.Info("Reconnecting to broker in ", d)
-		time.Sleep(d)
+		var (
+			delayReconnectTime time.Duration
+			defaultBackoff     = internal.DefaultBackoff{}
+		)
+
+		if pc.options.backoffPolicy == nil {
+			delayReconnectTime = defaultBackoff.Next()
+		} else {
+			delayReconnectTime = pc.options.backoffPolicy.Next()
+		}
+
+		pc.log.Info("Reconnecting to broker in ", delayReconnectTime)
+		time.Sleep(delayReconnectTime)
 
 		err := pc.grabConn()
 		if err == nil {
@@ -1156,6 +1197,10 @@ func (pc *partitionConsumer) reconnectToBroker() {
 
 		if maxRetry > 0 {
 			maxRetry--
+		}
+		pc.metrics.ConsumersReconnectFailure.Inc()
+		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
+			pc.metrics.ConsumersReconnectMaxRetry.Inc()
 		}
 	}
 }
@@ -1400,6 +1445,25 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 		})
 	if err != nil {
 		pc.log.Error("Connection was closed when request ack cmd")
+	}
+	pc.availablePermitsCh <- permitsInc
+}
+
+func (pc *partitionConsumer) increasePermitsAndRequestMoreIfNeed() {
+	// TODO implement a better flow controller
+	// send more permits if needed
+	flowThreshold := int32(math.Max(float64(pc.queueSize/2), 1))
+	pc.availablePermits++
+	ap := pc.availablePermits
+	if ap >= flowThreshold {
+		availablePermits := ap
+		requestedPermits := ap
+		pc.availablePermitsCh <- permitsReset
+
+		pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
+		if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
+			pc.log.WithError(err).Error("unable to send permits")
+		}
 	}
 }
 

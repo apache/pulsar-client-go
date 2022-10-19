@@ -15,21 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsar
+package internal
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDefaultNackBackoffPolicy_Next(t *testing.T) {
-	defaultNackBackoff := new(defaultNackBackoffPolicy)
-
-	res0 := defaultNackBackoff.Next(0)
-	assert.Equal(t, 1*time.Second, res0)
-
-	res5 := defaultNackBackoff.Next(5)
-	assert.Equal(t, 32*time.Second, res5)
+func TestInitVersion(t *testing.T) {
+	assert.NotEmpty(t, Version, "version string should not be empty")
 }

@@ -45,9 +45,10 @@ type connectionPool struct {
 	auth                  auth.Provider
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
-	metrics               *Metrics
+	keepAliveInterval     time.Duration
 
-	log log.Logger
+	metrics *Metrics
+	log     log.Logger
 }
 
 // NewConnectionPool init connection pool.
@@ -55,6 +56,7 @@ func NewConnectionPool(
 	tlsOptions *TLSOptions,
 	auth auth.Provider,
 	connectionTimeout time.Duration,
+	keepAliveInterval time.Duration,
 	maxConnectionsPerHost int,
 	logger log.Logger,
 	metrics *Metrics) ConnectionPool {
@@ -64,6 +66,7 @@ func NewConnectionPool(
 		auth:                  auth,
 		connectionTimeout:     connectionTimeout,
 		maxConnectionsPerHost: int32(maxConnectionsPerHost),
+		keepAliveInterval:     keepAliveInterval,
 		log:                   logger,
 		metrics:               metrics,
 	}
@@ -97,6 +100,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 			tls:               p.tlsOptions,
 			connectionTimeout: p.connectionTimeout,
 			auth:              p.auth,
+			keepAliveInterval: p.keepAliveInterval,
 			logger:            p.log,
 			metrics:           p.metrics,
 		})
