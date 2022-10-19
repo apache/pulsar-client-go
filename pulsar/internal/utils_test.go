@@ -58,5 +58,5 @@ func TestParseRelativeTimeInSeconds(t *testing.T) {
 
 func TestTimestampMillis(t *testing.T) {
 	assert.Equal(t, uint64(0), TimestampMillis(time.Time{}))
-	assert.Equal(t, uint64(7), TimestampMillis(time.UnixMilli(7)))
+	assert.Equal(t, uint64(7), TimestampMillis(time.Unix(0, 7*int64(time.Millisecond))))
 }
