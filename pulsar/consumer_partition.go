@@ -815,6 +815,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			ctx := pc.chunkedMsgCtxMap.get(msgMeta.GetUuid())
 			if ctx == nil {
 				// chunkedMsgCtxMap has closed because of consumer closed
+				pc.log.Warnf("get chunkedMsgCtx for chunk with uuid %s failed because consumer has closed",
+					msgMeta.Uuid)
 				return nil
 			}
 			cmid := newChunkMessageID(ctx.firstChunkID(), ctx.lastChunkID())
