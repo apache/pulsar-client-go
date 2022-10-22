@@ -55,7 +55,7 @@ func (k *KeyFileProvider) GetClientCredentials() (*KeyFile, error) {
 	case strings.HasPrefix(k.KeyFile, FILE):
 		filename := strings.TrimPrefix(k.KeyFile, FILE)
 		keyFile, err = ioutil.ReadFile(filename)
-	case strings.HasPrefix(k.KeyFile, "data://"):
+	case strings.HasPrefix(k.KeyFile, DATA):
 		keyFile = []byte(strings.TrimPrefix(k.KeyFile, DATA))
 	default:
 		keyFile, err = ioutil.ReadFile(k.KeyFile)
