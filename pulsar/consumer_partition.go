@@ -751,14 +751,12 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		isChunkedMsg = true
 	}
 
-	var processedPayloadBuffer internal.Buffer
+	processedPayloadBuffer := internal.NewBufferWrapper(decryptedPayload)
 	if isChunkedMsg {
 		processedPayloadBuffer = pc.processMessageChunk(processedPayloadBuffer, msgMeta, pbMsgID)
 		if processedPayloadBuffer == nil {
 			return nil
 		}
-	} else {
-		processedPayloadBuffer = internal.NewBufferWrapper(decryptedPayload)
 	}
 
 	// decryption is success, decompress the payload
