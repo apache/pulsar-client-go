@@ -279,12 +279,10 @@ func (p *partitionProducer) grabCnx() error {
 		return err
 	}
 
-	if p.options.DisableBatching {
-		// removed BatchBuilder creation
-	} else if p.batchBuilder == nil {
+	if !p.options.DisableBatching {
 		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
 		if err != nil {
-			provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
+			return err
 		}
 		maxMessageSize := uint32(p._getConn().GetMaxMessageSize())
 		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,

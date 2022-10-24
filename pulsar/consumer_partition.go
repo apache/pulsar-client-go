@@ -751,7 +751,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		isChunkedMsg = true
 	}
 
-	processedPayloadBuffer := internal.NewBufferWrapper(decryptedPayload)
+	var processedPayloadBuffer internal.Buffer
 	if isChunkedMsg {
 		processedPayloadBuffer = pc.processMessageChunk(processedPayloadBuffer, msgMeta, pbMsgID)
 		if processedPayloadBuffer == nil {
