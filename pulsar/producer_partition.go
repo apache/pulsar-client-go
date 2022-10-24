@@ -279,7 +279,7 @@ func (p *partitionProducer) grabCnx() error {
 		return err
 	}
 
-	if !p.options.DisableBatching {
+	if !p.options.DisableBatching && p.batchBuilder == nil {
 		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
 		if err != nil {
 			return err

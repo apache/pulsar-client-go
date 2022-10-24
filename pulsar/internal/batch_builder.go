@@ -168,10 +168,8 @@ func (bc *batchContainer) hasSpace(payload []byte) bool {
 	}
 	msgSize := uint32(len(payload))
 	expectedSize := bc.buffer.ReadableBytes() + msgSize
-	if !(expectedSize <= uint32(bc.maxBatchSize) && expectedSize <= bc.maxMessageSize) {
-		return false
-	}
-	return bc.numMessages+1 <= bc.maxMessages
+	return bc.numMessages+1 <= bc.maxMessages &&
+		expectedSize <= uint32(bc.maxBatchSize) && expectedSize <= bc.maxMessageSize
 }
 
 func (bc *batchContainer) hasSameSchema(schemaVersion []byte) bool {
