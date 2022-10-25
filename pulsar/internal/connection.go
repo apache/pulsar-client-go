@@ -976,8 +976,46 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 		}
 	}
 
-	if c.tlsOptions.ValidateHostname {
-		tlsConfig.ServerName = c.physicalAddr.Hostname()
+	tlsConfig.ServerName = c.physicalAddr.Hostname()
+
+	if tlsConfig.InsecureSkipVerify {
+		// Solution is credited to https://github.com/golang/go/issues/21971
+		// Code is adapted from the original implementation of handshake_client.go at
+		// https://github.com/golang/go/blob/master/src/crypto/tls/handshake_client.go#L804
+		// disable the default verification; use customized VerifyPeerCertificate
+		tlsConfig.VerifyPeerCertificate = func(rawCerts [][]byte, certChain [][]*x509.Certificate) error {
+			// If this is the first handshake on a connection, process and
+			// (optionally) verify the server's certificates.
+			certs := make([]*x509.Certificate, len(rawCerts))
+			for i, asn1Data := range rawCerts {
+				cert, err := x509.ParseCertificate(asn1Data)
+				if err != nil {
+					return fmt.Errorf("tls: failed to parse server certificate error: %s", err.Error())
+				}
+				certs[i] = cert
+			}
+
+			if tlsConfig.RootCAs == nil {
+				return nil
+			}
+
+			// Verify certs if they exist but skip ServerName validation
+			opts := x509.VerifyOptions{
+				Roots:         tlsConfig.RootCAs,
+				CurrentTime:   time.Now(),
+				DNSName:       "", // skip hostname verification
+				Intermediates: x509.NewCertPool(),
+			}
+
+			for i, cert := range certs {
+				if i == 0 {
+					continue
+				}
+				opts.Intermediates.AddCert(cert)
+			}
+			_, err := certs[0].Verify(opts)
+			return err
+		}
 	}
 
 	if c.tlsOptions.CertFile != "" || c.tlsOptions.KeyFile != "" {
