@@ -55,3 +55,8 @@ func TestParseRelativeTimeInSeconds(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, time.Duration(10)*time.Hour*24*7*365, timestamp)
 }
+
+func TestTimestampMillis(t *testing.T) {
+	assert.Equal(t, uint64(0), TimestampMillis(time.Time{}))
+	assert.Equal(t, uint64(7), TimestampMillis(time.Unix(0, 7*int64(time.Millisecond))))
+}
