@@ -137,10 +137,10 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	}
 
 	if c.options.AckWithResponse {
-		return mid.AckWithResponse()
+		return mid.consumer.AckIDWithResponse(msgID)
 	}
 
-	return mid.Ack()
+	return mid.consumer.AckID(msgID)
 }
 
 func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
@@ -200,7 +200,7 @@ func (c *multiTopicConsumer) NackID(msgID MessageID) {
 		return
 	}
 
-	mid.Nack()
+	mid.consumer.NackID(msgID)
 }
 
 func (c *multiTopicConsumer) Close() {

@@ -210,9 +210,23 @@ func toTrackingMessageID(msgID MessageID) (trackingMessageID, bool) {
 		}, true
 	} else if mid, ok := msgID.(trackingMessageID); ok {
 		return mid, true
+	} else if cmid, ok := msgID.(chunkMessageID); ok {
+		return trackingMessageID{
+			messageID:    cmid.messageID,
+			receivedTime: cmid.receivedTime,
+			consumer:     cmid.consumer,
+		}, true
 	} else {
 		return trackingMessageID{}, false
 	}
+}
+
+func toChunkedMessageID(msgID MessageID) (chunkMessageID, bool) {
+	cid, ok := msgID.(chunkMessageID)
+	if ok {
+		return cid, true
+	}
+	return chunkMessageID{}, false
 }
 
 func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
@@ -371,4 +385,42 @@ func (t *ackTracker) completed() bool {
 	t.Lock()
 	defer t.Unlock()
 	return len(t.batchIDs.Bits()) == 0
+}
+
+type chunkMessageID struct {
+	messageID
+
+	firstChunkID messageID
+	receivedTime time.Time
+
+	consumer acker
+}
+
+func newChunkMessageID(firstChunkID messageID, lastChunkID messageID) chunkMessageID {
+	return chunkMessageID{
+		messageID:    lastChunkID,
+		firstChunkID: firstChunkID,
+		receivedTime: time.Now(),
+	}
+}
+
+func (id chunkMessageID) String() string {
+	return fmt.Sprintf("%s;%s", id.firstChunkID.String(), id.messageID.String())
+}
+
+func (id chunkMessageID) Serialize() []byte {
+	msgID := &pb.MessageIdData{
+		LedgerId:   proto.Uint64(uint64(id.ledgerID)),
+		EntryId:    proto.Uint64(uint64(id.entryID)),
+		BatchIndex: proto.Int32(id.batchIdx),
+		Partition:  proto.Int32(id.partitionIdx),
+		FirstChunkMessageId: &pb.MessageIdData{
+			LedgerId:   proto.Uint64(uint64(id.firstChunkID.ledgerID)),
+			EntryId:    proto.Uint64(uint64(id.firstChunkID.entryID)),
+			BatchIndex: proto.Int32(id.firstChunkID.batchIdx),
+			Partition:  proto.Int32(id.firstChunkID.partitionIdx),
+		},
+	}
+	data, _ := proto.Marshal(msgID)
+	return data
 }

@@ -50,6 +50,8 @@ var ErrEOM = errors.New("EOF")
 
 var ErrConnectionClosed = errors.New("connection closed")
 
+var ErrExceedMaxMessageSize = errors.New("encryptedPayload exceeds MaxMessageSize")
+
 func NewMessageReader(headersAndPayload Buffer) *MessageReader {
 	return &MessageReader{
 		buffer: headersAndPayload,
@@ -237,17 +239,24 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.Write(payload)
 }
 
-func serializeBatch(wb Buffer,
+func serializeMessage(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,
-	uncompressedPayload Buffer,
+	payload Buffer,
 	compressionProvider compression.Provider,
-	encryptor crypto.Encryptor) error {
+	encryptor crypto.Encryptor,
+	maxMessageSize uint32,
+	doCompress bool) error {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
 
 	// compress the payload
-	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
+	var compressedPayload []byte
+	if doCompress {
+		compressedPayload = compressionProvider.Compress(nil, payload.ReadableSlice())
+	} else {
+		compressedPayload = payload.ReadableSlice()
+	}
 
 	// encrypt the compressed payload
 	encryptedPayload, err := encryptor.Encrypt(compressedPayload, msgMetadata)
@@ -258,6 +267,13 @@ func serializeBatch(wb Buffer,
 
 	cmdSize := uint32(proto.Size(cmdSend))
 	msgMetadataSize := uint32(proto.Size(msgMetadata))
+	msgSize := len(encryptedPayload) + int(msgMetadataSize)
+
+	// the maxMessageSize check of batching message is in here
+	if !(msgMetadata.GetTotalChunkMsgSize() != 0) && msgSize > int(maxMessageSize) {
+		return fmt.Errorf("%w, size: %d, MaxMessageSize: %d",
+			ErrExceedMaxMessageSize, msgSize, maxMessageSize)
+	}
 
 	frameSizeIdx := wb.WriterIndex()
 	wb.WriteUint32(0) // Skip frame size until we now the size
@@ -298,6 +314,28 @@ func serializeBatch(wb Buffer,
 	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
 	return nil
+}
+
+func SingleSend(wb Buffer,
+	producerID, sequenceID uint64,
+	msgMetadata *pb.MessageMetadata,
+	compressedPayload Buffer,
+	encryptor crypto.Encryptor,
+	maxMassageSize uint32) error {
+	cmdSend := baseCommand(
+		pb.BaseCommand_SEND,
+		&pb.CommandSend{
+			ProducerId: &producerID,
+		},
+	)
+	cmdSend.Send.SequenceId = &sequenceID
+	if msgMetadata.GetTotalChunkMsgSize() > 1 {
+		isChunk := true
+		cmdSend.Send.IsChunk = &isChunk
+	}
+	// payload has been compressed so compressionProvider can be nil
+	return serializeMessage(wb, cmdSend, msgMetadata, compressedPayload,
+		nil, encryptor, maxMassageSize, false)
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte

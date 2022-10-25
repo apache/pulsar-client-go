@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -934,14 +935,45 @@ func TestMaxMessageSize(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
+	// producer2 disable batching
+	producer2, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer2)
+	defer producer2.Close()
+
+	// When serverMaxMessageSize=1024, the batch payload=1041
+	// The totalSize includes:
+	// | singleMsgMetadataLength | singleMsgMetadata | payload |
+	// | ----------------------- | ----------------- | ------- |
+	// | 4                       | 13                | 1024    |
+	// So when bias <= 0, the uncompressed payload will not exceed maxMessageSize,
+	// but encryptedPayloadSize exceeds maxMessageSize, Send() will return an internal error.
+	// When bias = 1, the first check of maxMessageSize (for uncompressed payload) is valid,
+	// Send() will return errMessageTooLarge
 	for bias := -1; bias <= 1; bias++ {
 		payload := make([]byte, serverMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
 		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
+		} else {
+			assert.Equal(t, errMessageTooLarge, err)
+		}
+	}
+
+	for bias := -1; bias <= 1; bias++ {
+		payload := make([]byte, serverMaxMessageSize+bias)
+		ID, err := producer2.Send(context.Background(), &ProducerMessage{
+			Payload: payload,
+		})
+		if bias <= 0 {
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
 		} else {
 			assert.Equal(t, errMessageTooLarge, err)
 		}
