@@ -1440,15 +1440,6 @@ func TestRLQMultiTopics(t *testing.T) {
 	assert.Nil(t, err)
 	defer rlqConsumer.Close()
 
-	// subscribe DLQ Topic
-	dlqConsumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       subName + "-DLQ",
-		SubscriptionName:            subName,
-		SubscriptionInitialPosition: SubscriptionPositionEarliest,
-	})
-	assert.Nil(t, err)
-	defer dlqConsumer.Close()
-
 	// create multi producers
 	producer01, err := client.CreateProducer(ProducerOptions{Topic: topic01})
 	assert.Nil(t, err)
@@ -1482,6 +1473,15 @@ func TestRLQMultiTopics(t *testing.T) {
 	msg, err := rlqConsumer.Receive(rlqCtx)
 	assert.Error(t, err)
 	assert.Nil(t, msg)
+
+	// subscribe DLQ Topic
+	dlqConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       subName + "-DLQ",
+		SubscriptionName:            subName,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer dlqConsumer.Close()
 
 	// 3. Create consumer on the DLQ topic to verify the routing
 	dlqReceived := 0
