@@ -1421,7 +1421,8 @@ func TestRLQMultiTopics(t *testing.T) {
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
 	maxRedeliveries := 2
 	N := 100
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+	defer cancel()
 
 	client, err := NewClient(ClientOptions{URL: lookupURL})
 	assert.Nil(t, err)
