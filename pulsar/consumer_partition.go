@@ -1066,6 +1066,14 @@ func (pc *partitionConsumer) dispatcher() {
 		case <-pc.closeCh:
 			return
 
+		case pr := <-pc.availablePermitsCh:
+			switch pr {
+			case permitsInc:
+				pc.increasePermitsAndRequestMoreIfNeed()
+			case permitsReset:
+				pc.availablePermits = 0
+			}
+
 		case _, ok := <-pc.connectedCh:
 			if !ok {
 				return
@@ -1099,14 +1107,6 @@ func (pc *partitionConsumer) dispatcher() {
 			messages = messages[1:]
 
 			pc.availablePermitsCh <- permitsInc
-
-		case pr := <-pc.availablePermitsCh:
-			switch pr {
-			case permitsInc:
-				pc.increasePermitsAndRequestMoreIfNeed()
-			case permitsReset:
-				pc.availablePermits = 0
-			}
 
 		case clearQueueCb := <-pc.clearQueueCh:
 			// drain the message queue on any new connection by sending a
@@ -1588,7 +1588,7 @@ func (pc *partitionConsumer) increasePermitsAndRequestMoreIfNeed() {
 	if ap >= flowThreshold {
 		availablePermits := ap
 		requestedPermits := ap
-		pc.availablePermitsCh <- permitsReset
+		pc.availablePermits = 0
 
 		pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
 		if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
