@@ -1481,7 +1481,6 @@ func TestRLQMultiTopics(t *testing.T) {
 		SubscriptionName:            subName,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
-
 	assert.Nil(t, err)
 	defer dlqConsumer.Close()
 
