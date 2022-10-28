@@ -1703,7 +1703,7 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 			assert.NoError(t, err)
 			return i
 		},
-		PartitionsAutoDiscoveryInterval: 100 * time.Millisecond,
+		PartitionsAutoDiscoveryInterval: 1000 * time.Millisecond,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
