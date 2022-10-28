@@ -41,7 +41,7 @@ import (
 
 var (
 	adminURL  = "http://localhost:8080"
-	lookupURL = "pulsar://localhost:6650"
+	lookupURL = "pulsar://10.105.7.225:6650"
 )
 
 func TestProducerConsumer(t *testing.T) {
@@ -3262,10 +3262,4 @@ func TestAvailablePermitsLeak(t *testing.T) {
 	cancel3()
 	assert.NotEqual(t, true, errors.Is(err, context.DeadlineExceeded),
 		"This means the resource is exhausted. consumer.Receive() will block forever.")
-}
-
-func TestCI(t *testing.T) {
-	for i := 0; i < 50; i++ {
-		TestAvailablePermitsLeak(t)
-	}
 }
