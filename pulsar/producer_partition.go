@@ -1035,9 +1035,15 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	}, true)
 
 	// wait for send request to finish
-	<-doneCh
-
-	return msgID, err
+	for {
+		select {
+		case <-ctx.Done():
+			isDone.Store(true)
+			return msgID, ctx.Err()
+		case <-doneCh:
+			return msgID, err
+		}
+	}
 }
 
 func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
