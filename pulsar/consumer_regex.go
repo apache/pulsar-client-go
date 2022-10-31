@@ -181,10 +181,10 @@ func (c *regexConsumer) AckID(msgID MessageID) error {
 	}
 
 	if c.options.AckWithResponse {
-		return mid.AckWithResponse()
+		return mid.consumer.AckIDWithResponse(msgID)
 	}
 
-	return mid.Ack()
+	return mid.consumer.AckID(msgID)
 }
 
 func (c *regexConsumer) Nack(msg Message) {
@@ -219,7 +219,7 @@ func (c *regexConsumer) NackID(msgID MessageID) {
 		return
 	}
 
-	mid.Nack()
+	mid.consumer.NackID(msgID)
 }
 
 func (c *regexConsumer) Close() {

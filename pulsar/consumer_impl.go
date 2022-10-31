@@ -19,7 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -37,9 +36,9 @@ const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
-	AckID(id trackingMessageID) error
-	AckIDWithResponse(id trackingMessageID) error
-	NackID(id trackingMessageID)
+	AckID(id MessageID) error
+	AckIDWithResponse(id MessageID) error
+	NackID(id MessageID)
 	NackMsg(msg Message)
 }
 
@@ -91,6 +90,14 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if options.Schema.GetSchemaInfo().Type == NONE {
 			options.Schema = NewBytesSchema(nil)
 		}
+	}
+
+	if options.MaxPendingChunkedMessage == 0 {
+		options.MaxPendingChunkedMessage = 100
+	}
+
+	if options.ExpireTimeOfIncompleteChunk == 0 {
+		options.ExpireTimeOfIncompleteChunk = time.Minute
 	}
 
 	if options.NackBackoffPolicy == nil && options.EnableDefaultNackBackoffPolicy {
@@ -344,28 +351,31 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
 			opts := &partitionConsumerOpts{
-				topic:                      pt,
-				consumerName:               c.consumerName,
-				subscription:               c.options.SubscriptionName,
-				subscriptionType:           c.options.Type,
-				subscriptionInitPos:        c.options.SubscriptionInitialPosition,
-				partitionIdx:               idx,
-				receiverQueueSize:          receiverQueueSize,
-				nackRedeliveryDelay:        nackRedeliveryDelay,
-				nackBackoffPolicy:          c.options.NackBackoffPolicy,
-				metadata:                   metadata,
-				subProperties:              subProperties,
-				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             trackingMessageID{},
-				subscriptionMode:           durable,
-				readCompacted:              c.options.ReadCompacted,
-				interceptors:               c.options.Interceptors,
-				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
-				backoffPolicy:              c.options.BackoffPolicy,
-				keySharedPolicy:            c.options.KeySharedPolicy,
-				schema:                     c.options.Schema,
-				decryption:                 c.options.Decryption,
-				ackWithResponse:            c.options.AckWithResponse,
+				topic:                       pt,
+				consumerName:                c.consumerName,
+				subscription:                c.options.SubscriptionName,
+				subscriptionType:            c.options.Type,
+				subscriptionInitPos:         c.options.SubscriptionInitialPosition,
+				partitionIdx:                idx,
+				receiverQueueSize:           receiverQueueSize,
+				nackRedeliveryDelay:         nackRedeliveryDelay,
+				nackBackoffPolicy:           c.options.NackBackoffPolicy,
+				metadata:                    metadata,
+				subProperties:               subProperties,
+				replicateSubscriptionState:  c.options.ReplicateSubscriptionState,
+				startMessageID:              trackingMessageID{},
+				subscriptionMode:            durable,
+				readCompacted:               c.options.ReadCompacted,
+				interceptors:                c.options.Interceptors,
+				maxReconnectToBroker:        c.options.MaxReconnectToBroker,
+				backoffPolicy:               c.options.BackoffPolicy,
+				keySharedPolicy:             c.options.KeySharedPolicy,
+				schema:                      c.options.Schema,
+				decryption:                  c.options.Decryption,
+				ackWithResponse:             c.options.AckWithResponse,
+				maxPendingChunkedMessage:    c.options.MaxPendingChunkedMessage,
+				expireTimeOfIncompleteChunk: c.options.ExpireTimeOfIncompleteChunk,
+				autoAckIncompleteChunk:      c.options.AutoAckIncompleteChunk,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
@@ -456,20 +466,15 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
-	mid, ok := c.messageID(msgID)
-	if !ok {
-		return errors.New("failed to convert trackingMessageID")
-	}
-
-	if mid.consumer != nil {
-		return mid.Ack()
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
 	}
 
 	if c.options.AckWithResponse {
-		return c.consumers[mid.partitionIdx].AckIDWithResponse(mid)
+		return c.consumers[msgID.PartitionIdx()].AckIDWithResponse(msgID)
 	}
 
-	return c.consumers[mid.partitionIdx].AckID(mid)
+	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -529,7 +534,7 @@ func (c *consumer) Nack(msg Message) {
 		}
 
 		if mid.consumer != nil {
-			mid.Nack()
+			mid.consumer.NackID(msg.ID())
 			return
 		}
 		c.consumers[mid.partitionIdx].NackMsg(msg)
@@ -540,17 +545,11 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	mid, ok := c.messageID(msgID)
-	if !ok {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
 		return
 	}
 
-	if mid.consumer != nil {
-		mid.Nack()
-		return
-	}
-
-	c.consumers[mid.partitionIdx].NackID(mid)
+	c.consumers[msgID.PartitionIdx()].NackID(msgID)
 }
 
 func (c *consumer) Close() {
@@ -586,12 +585,11 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
-	mid, ok := c.messageID(msgID)
-	if !ok {
-		return nil
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
 	}
 
-	return c.consumers[mid.partitionIdx].Seek(mid)
+	return c.consumers[msgID.PartitionIdx()].Seek(msgID)
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
@@ -606,6 +604,17 @@ func (c *consumer) SeekByTime(time time.Time) error {
 		}
 	}
 	return errs
+}
+
+func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
+	partition := msgID.PartitionIdx()
+	if partition < 0 || int(partition) >= len(c.consumers) {
+		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
+		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
+	}
+	return nil
 }
 
 var r = &random{
