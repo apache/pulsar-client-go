@@ -19,6 +19,7 @@ package oauth2
 
 import (
 	"encoding/json"
+	"fmt"
 	"io/ioutil"
 	"strings"
 )
@@ -57,6 +58,15 @@ func (k *KeyFileProvider) GetClientCredentials() (*KeyFile, error) {
 		keyFile, err = ioutil.ReadFile(filename)
 	case strings.HasPrefix(k.KeyFile, DATA):
 		keyFile = []byte(strings.TrimPrefix(k.KeyFile, DATA))
+	case strings.HasPrefix(k.KeyFile, "data:"):
+		url, err := newDataURL(k.KeyFile)
+		if err != nil {
+			return nil, err
+		}
+		if url.Mimetype != "application/json" {
+			return nil, fmt.Errorf("unsupported mimetype: %s", url.Mimetype)
+		}
+		keyFile = url.Data
 	default:
 		keyFile, err = ioutil.ReadFile(k.KeyFile)
 	}
