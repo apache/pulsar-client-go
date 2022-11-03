@@ -1568,3 +1568,68 @@ func TestMultipleSchemaProducerConsumer(t *testing.T) {
 		assert.Nil(t, err)
 	}
 }
+
+func TestProducerWithSchemaAndConsumerSchemaNotFound(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema := NewAvroSchema(`{"fields":
+	[
+		{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+	],
+	"name":"MyAvro","namespace":"schemaNotFoundTestCase","type":"record"}`, nil)
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub-schema-not-found",
+		Type:                        Exclusive,
+		Schema:                      schema,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, consumer)
+
+	// each produced message will have schema version set in the message metadata
+	for i := 0; i < 5; i++ {
+		messageContent, err := schema.Encode(map[string]interface{}{
+			"id": i,
+			"name": map[string]interface{}{
+				"string": "abc",
+			},
+		})
+		assert.NoError(t, err)
+		_, err = producer.Send(context.Background(), &ProducerMessage{
+			Payload: messageContent,
+		})
+		assert.NoError(t, err)
+	}
+
+	// delete schema of topic
+	topicSchemaDeleteUrl := fmt.Sprintf("admin/v2/schemas/public/default/%v/schema", topic)
+	err = httpDelete(topicSchemaDeleteUrl)
+	assert.NoError(t, err)
+
+	// consume message
+	msg, err := consumer.Receive(context.Background())
+	assert.NoError(t, err)
+	assert.NotNil(t, msg)
+
+	// try to serialize message payload
+	var v interface{}
+	err = msg.GetSchemaValue(&v)
+	// should fail with error but not panic
+	assert.Error(t, err)
+}

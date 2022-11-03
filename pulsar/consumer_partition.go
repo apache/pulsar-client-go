@@ -192,6 +192,11 @@ func (s *schemaInfoCache) Get(schemaVersion []byte) (schema Schema, err error) {
 		return nil, err
 	}
 
+	if pbSchema == nil {
+		err = fmt.Errorf("schema not found for topic: [ %v ], schema version : [ %v ]", s.topic, schemaVersion)
+		return nil, err
+	}
+
 	var properties = internal.ConvertToStringMap(pbSchema.Properties)
 
 	schema, err = NewSchema(SchemaType(*pbSchema.Type), pbSchema.SchemaData, properties)
