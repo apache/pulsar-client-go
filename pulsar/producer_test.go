@@ -1650,8 +1650,8 @@ func TestProducerWithSchemaAndConsumerSchemaNotFound(t *testing.T) {
 	}
 
 	// delete schema of topic
-	topicSchemaDeleteUrl := fmt.Sprintf("admin/v2/schemas/public/default/%v/schema", topic)
-	err = httpDelete(topicSchemaDeleteUrl)
+	topicSchemaDeleteURL := fmt.Sprintf("admin/v2/schemas/public/default/%v/schema", topic)
+	err = httpDelete(topicSchemaDeleteURL)
 	assert.NoError(t, err)
 
 	// consume message
