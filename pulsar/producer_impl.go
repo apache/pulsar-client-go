@@ -116,7 +116,16 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 			options.BatchingMaxMessages,
 			options.BatchingMaxSize,
 			options.BatchingMaxPublishDelay,
-			options.DisableBatching)
+			func() bool {
+				if options.DisableBatching {
+					return false
+				}
+
+				if options.MaxRetryOtherPartitions > 0 && !p.isProducerConnected() {
+					return false
+				}
+				return true
+			})
 		p.messageRouter = func(message *ProducerMessage, metadata TopicMetadata) int {
 			return internalRouter(message, metadata.NumPartitions())
 		}
@@ -158,6 +167,15 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 
 	p.metrics.ProducersOpened.Inc()
 	return p, nil
+}
+
+func (p *producer) isProducerConnected() bool {
+	for _, partitionedP := range p.producers {
+		if partitionedP.(*partitionProducer).getProducerState() != producerReady {
+			return false
+		}
+	}
+	return true
 }
 
 func (p *producer) runBackgroundPartitionDiscovery(period time.Duration) (cancel func()) {
@@ -306,6 +324,23 @@ func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	p.getPartition(msg).SendAsync(ctx, msg, callback)
 }
 
+func getNextConnectedPartition(p *producer, msg *ProducerMessage, startPartition int, maxRetry int) int {
+	if maxRetry == 0 {
+		return startPartition
+	}
+	partition := p.messageRouter(msg, p)
+	if partition == startPartition {
+		return partition
+	}
+	producers := *(*[]Producer)(atomic.LoadPointer(&p.producersPtr))
+	producerForPartition := producers[partition].(*partitionProducer)
+	if producerForPartition.getProducerState() == producerReady {
+		return partition
+	}
+	maxRetry--
+	return getNextConnectedPartition(p, msg, partition, maxRetry)
+}
+
 func (p *producer) getPartition(msg *ProducerMessage) Producer {
 	// Since partitions can only increase, it's ok if the producers list
 	// is updated in between. The numPartition is updated only after the list.
@@ -316,7 +351,15 @@ func (p *producer) getPartition(msg *ProducerMessage) Producer {
 		// updated
 		partition %= len(producers)
 	}
-	return producers[partition]
+	producerForPartition := producers[partition].(*partitionProducer)
+	if producerForPartition.getProducerState() != producerReady {
+		nextPartition := getNextConnectedPartition(p, msg, partition, 5)
+		if nextPartition != partition {
+			return producers[nextPartition].(*partitionProducer)
+		}
+	}
+
+	return producerForPartition
 }
 
 func (p *producer) LastSequenceID() int64 {

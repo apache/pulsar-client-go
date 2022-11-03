@@ -60,5 +60,9 @@ func newBenchDefaultRouter() func(*ProducerMessage, uint32) int {
 		maxBatchingSize     = 524288
 		maxBatchingDelay    = 100 * time.Millisecond
 	)
-	return NewDefaultRouter(internal.JavaStringHash, maxBatchingMessages, maxBatchingSize, maxBatchingDelay, false)
+	return NewDefaultRouter(internal.JavaStringHash,
+		maxBatchingMessages, maxBatchingSize,
+		maxBatchingDelay, func() bool {
+			return true
+		})
 }

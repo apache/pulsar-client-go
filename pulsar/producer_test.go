@@ -443,6 +443,68 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	assert.Equal(t, msgCount, numOfMessages/2)
 }
 
+func TestRoundRobinRouterPartitionedProducerProduceOnNextTopicOnFailure(t *testing.T) {
+	topicName := "public/default/partition-ProduceOnNextTopicOnFailure" + strconv.FormatInt(time.Now().Unix(), 10)
+	numberOfPartitions := 10
+
+	// call admin api to make it partitioned
+	url := adminURL + "/" + "admin/v2/persistent/" + topicName + "/partitions"
+	makeHTTPCall(t, http.MethodPut, url, strconv.Itoa(numberOfPartitions))
+
+	numOfMessages := 100
+	ctx := context.Background()
+
+	// creat client connection
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create pro
+	pro, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBatching:         false,
+		BatchingMaxMessages:     uint(5),
+		MaxRetryOtherPartitions: 5,
+	})
+	p := pro.(*producer).producers[0]
+	firstProducer := p.(*partitionProducer)
+	firstProducer.Close()
+	assert.NotEqual(t, firstProducer.getProducerState(), producerReady)
+	defer pro.Close()
+
+	prefix := "msg-"
+	for i := 0; i < numOfMessages; i++ {
+		messageContent := prefix + fmt.Sprintf("%d", i)
+		_, err = pro.Send(ctx, &ProducerMessage{
+			Payload: []byte(messageContent),
+		})
+		assert.Nil(t, err)
+	}
+	mChan := make(chan Message, numOfMessages)
+	for i := 0; i < numOfMessages; i++ {
+		go func() {
+			msg, _ := consumer.Receive(ctx)
+			assert.NotEqual(t, msg.Topic(), "persistent://"+topicName+"-partition-0")
+			mChan <- msg
+		}()
+	}
+
+	time.Sleep(1 * time.Second)
+	l := len(mChan)
+	assert.Equal(t, numOfMessages, l, "Number of messages received")
+}
+
 func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 	topicName := "public/default/partition-testRoundRobinRouterPartitionedProducer"
 	numberOfPartitions := 5

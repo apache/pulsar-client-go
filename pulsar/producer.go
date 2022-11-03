@@ -132,6 +132,13 @@ type ProducerOptions struct {
 	// Setting `DisableBatching: true` will make the producer to send messages individually
 	DisableBatching bool
 
+	// This config will ensure that If possible PartitionedProducer would attempt to produce message on
+	// another available partitions, If currently picked partition is not available for some reason.
+	// Next available partition will be chosen by the same routing policy as client is configured with.
+	// MaxRetryOtherPartitions How many partitions should be tried before bailing out and failing back to the
+	// old behaviour.
+	MaxRetryOtherPartitions int
+	
 	// BatchingMaxPublishDelay specifies the time period within which the messages sent will be batched (default: 10ms)
 	// if batch messages are enabled. If set to a non zero value, messages will be queued until this time
 	// interval or until
