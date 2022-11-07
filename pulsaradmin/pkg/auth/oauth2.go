@@ -18,6 +18,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"net/http"
 	"path/filepath"
 
@@ -31,6 +32,19 @@ import (
 	util "github.com/streamnative/pulsar-admin-go/pkg/pulsar/utils"
 	xoauth2 "golang.org/x/oauth2"
 )
+
+const (
+	OAuth2PluginName      = "org.apache.pulsar.client.impl.auth.oauth2.AuthenticationOAuth2"
+	OAuth2PluginShortName = "oauth2"
+)
+
+type OAuth2ClientCredentials struct {
+	IssuerURL  string `json:"issuerUrl,omitempty"`
+	Audience   string `json:"audience,omitempty"`
+	Scope      string `json:"scope,omitempty"`
+	PrivateKey string `json:"privateKey,omitempty"`
+	ClientID   string `json:"clientId,omitempty"`
+}
 
 type OAuth2Provider struct {
 	clock            clock2.RealClock
@@ -83,6 +97,18 @@ func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string
 	}
 
 	return p, p.loadGrant()
+}
+
+func NewAuthenticationOAuth2FromAuthParams(encodedAuthParam string,
+	transport http.RoundTripper) (*OAuth2Provider, error) {
+
+	var paramsJSON OAuth2ClientCredentials
+	err := json.Unmarshal([]byte(encodedAuthParam), &paramsJSON)
+	if err != nil {
+		return nil, err
+	}
+	return NewAuthenticationOAuth2WithParams(paramsJSON.IssuerURL, paramsJSON.ClientID, paramsJSON.Audience,
+		paramsJSON.Scope, transport)
 }
 
 func NewAuthenticationOAuth2WithParams(
