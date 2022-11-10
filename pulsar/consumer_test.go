@@ -3262,3 +3262,44 @@ func TestAvailablePermitsLeak(t *testing.T) {
 	assert.NotEqual(t, true, errors.Is(err, context.DeadlineExceeded),
 		"This means the resource is exhausted. consumer.Receive() will block forever.")
 }
+
+func TestConsumerWithBackoffPolicy(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	_consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Shared,
+		BackoffPolicy:    backoff,
+	})
+	assert.Nil(t, err)
+	defer _consumer.Close()
+
+	partitionConsumerImp := _consumer.(*consumer).consumers[0]
+	// 1 s
+	startTime := time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.Check(startTime))
+
+	// 2 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.Check(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.Check(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.Check(startTime))
+}
