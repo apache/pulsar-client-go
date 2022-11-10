@@ -3286,20 +3286,20 @@ func TestConsumerWithBackoffPolicy(t *testing.T) {
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker()
-	assert.True(t, backoff.Check(startTime))
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 2 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker()
-	assert.True(t, backoff.Check(startTime))
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker()
-	assert.True(t, backoff.Check(startTime))
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker()
-	assert.True(t, backoff.Check(startTime))
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }

@@ -20,7 +20,6 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	log "github.com/sirupsen/logrus"
 	"testing"
 	"time"
 
@@ -803,8 +802,8 @@ func (b *testBackoffPolicy) Next() time.Duration {
 	return b.curBackoff
 }
 
-func (b *testBackoffPolicy) Check(startTime time.Time) bool {
-	log.Warn(time.Now().Sub(startTime), b.curBackoff)
+func (b *testBackoffPolicy) IsExpectedIntervalFrom(startTime time.Time) bool {
+	// Approximately equal to expected interval
 	if time.Now().Sub(startTime) < b.curBackoff-time.Second {
 		return false
 	}
@@ -834,20 +833,20 @@ func TestReaderWithBackoffPolicy(t *testing.T) {
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker()
-	assert.True(t, backoff.Check(startTime))
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 2 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker()
-	assert.True(t, backoff.Check(startTime))
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker()
-	assert.True(t, backoff.Check(startTime))
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker()
-	assert.True(t, backoff.Check(startTime))
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }
