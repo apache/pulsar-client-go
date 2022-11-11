@@ -18,7 +18,9 @@
 package utils
 
 // nolint
-import "github.com/golang/protobuf/proto"
+import (
+	"github.com/golang/protobuf/proto"
+)
 
 type Message struct {
 	MessageID  MessageID
