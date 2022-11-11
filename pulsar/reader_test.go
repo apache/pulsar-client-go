@@ -804,10 +804,10 @@ func (b *testBackoffPolicy) Next() time.Duration {
 
 func (b *testBackoffPolicy) IsExpectedIntervalFrom(startTime time.Time) bool {
 	// Approximately equal to expected interval
-	if time.Now().Sub(startTime) < b.curBackoff-time.Second {
+	if time.Since(startTime) < b.curBackoff-time.Second {
 		return false
 	}
-	if time.Now().Sub(startTime) > b.curBackoff+time.Second {
+	if time.Since(startTime) > b.curBackoff+time.Second {
 		return false
 	}
 	return true
