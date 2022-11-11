@@ -1072,6 +1072,46 @@ func TestSendTimeout(t *testing.T) {
 	makeHTTPCall(t, http.MethodDelete, quotaURL, "")
 }
 
+func TestProducerWithBackoffPolicy(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Topic:         topicName,
+		SendTimeout:   2 * time.Second,
+		BackoffPolicy: backoff,
+	})
+	assert.Nil(t, err)
+	defer _producer.Close()
+
+	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
+	// 1 s
+	startTime := time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 2 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+}
+
 func TestSendContextExpired(t *testing.T) {
 	quotaURL := adminURL + "/admin/v2/namespaces/public/default/backlogQuota"
 	quotaFmt := `{"limit": "%d", "policy": "producer_request_hold"}`
