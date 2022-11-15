@@ -986,7 +986,7 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 		c.log.Debugf("getTLSConfig(): setting tlsConfig.ServerName = %+v", tlsConfig.ServerName)
 	}
 
-	if c.tlsOptions.CertFile != "" || c.tlsOptions.KeyFile != "" {
+	if c.tlsOptions.CertFile != "" && c.tlsOptions.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(c.tlsOptions.CertFile, c.tlsOptions.KeyFile)
 		if err != nil {
 			return nil, errors.New(err.Error())
