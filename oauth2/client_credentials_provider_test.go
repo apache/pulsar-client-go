@@ -53,18 +53,21 @@ func TestNewClientCredentialsProviderFromKeyFile(t *testing.T) {
 	_, err = tmpFile.Write(b)
 	require.NoError(t, err)
 
+	jsonData := string(b)
+	base64Data := base64.StdEncoding.EncodeToString(b)
+
 	assertCredentials(t, fmt.Sprintf("file://%s", tmpFile.Name()), keyFile)
-	assertCredentials(t, fmt.Sprintf("data://%s", string(b)), keyFile)
-	assertCredentials(t, fmt.Sprintf("data:application/json,%s", string(b)), keyFile)
-	assertCredentials(t, fmt.Sprintf("data:application/json;base64,%s",
-		base64.StdEncoding.EncodeToString(b)), keyFile)
+	assertCredentials(t, fmt.Sprintf("data://%s", jsonData), keyFile)
+	assertCredentials(t, fmt.Sprintf("data:,%s", jsonData), keyFile)
+	assertCredentials(t, fmt.Sprintf("data:application/json,%s", jsonData), keyFile)
+	assertCredentials(t, fmt.Sprintf("data:;base64,%s", base64Data), keyFile)
+	assertCredentials(t, fmt.Sprintf("data:application/json;base64,%s", base64Data), keyFile)
 }
 
 func TestNewInvalidClientCredentialsProviderFromKeyFile(t *testing.T) {
 	p := NewClientCredentialsProviderFromKeyFile("data:application/data,hi")
 	_, err := p.GetClientCredentials()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "unsupported")
 }
 
 func assertCredentials(t *testing.T, keyfile string, expected *KeyFile) {
