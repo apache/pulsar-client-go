@@ -122,8 +122,8 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		retryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
-		dlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
+		retryTopic := tn.Domain + "://" + tn.Namespace + "/" + tn.Topic + "-" + options.SubscriptionName + RetryTopicSuffix
+		dlqTopic := tn.Domain + "://" + tn.Namespace + "/" + tn.Topic + "-" + options.SubscriptionName + DlqTopicSuffix
 		if options.DLQ == nil {
 			options.DLQ = &DLQPolicy{
 				MaxDeliveries:    MaxReconsumeTimes,
