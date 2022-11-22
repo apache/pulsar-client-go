@@ -1710,7 +1710,7 @@ func TestRLQSpecifiedPartitionTopic(t *testing.T) {
 
 	// subscribe DLQ Topic
 	dlqConsumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       subName + "-DLQ",
+		Topic:                       topics[0] + "-" + subName + "-DLQ",
 		SubscriptionName:            subName,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
