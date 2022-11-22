@@ -124,6 +124,18 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 		retryTopic := tn.Domain + "://" + tn.Namespace + "/" + tn.Topic + "-" + options.SubscriptionName + RetryTopicSuffix
 		dlqTopic := tn.Domain + "://" + tn.Namespace + "/" + tn.Topic + "-" + options.SubscriptionName + DlqTopicSuffix
+
+		oldRetryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
+		oldDlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
+
+		if partitions, err := client.TopicPartitions(oldRetryTopic); err == nil && len(partitions) > 0 {
+			retryTopic = oldRetryTopic
+		}
+
+		if partitions, err := client.TopicPartitions(oldDlqTopic); err == nil && len(partitions) > 0 {
+			dlqTopic = oldDlqTopic
+		}
+
 		if options.DLQ == nil {
 			options.DLQ = &DLQPolicy{
 				MaxDeliveries:    MaxReconsumeTimes,
