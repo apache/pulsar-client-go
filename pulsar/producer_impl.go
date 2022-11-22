@@ -45,6 +45,9 @@ const (
 
 	// defaultPartitionsAutoDiscoveryInterval init default time interval for partitions auto discovery
 	defaultPartitionsAutoDiscoveryInterval = 1 * time.Minute
+
+	// minPartitionAutoDiscoveryInterval is the minimum time interval for partition auto discovery
+	minPartitionAutoDiscoveryInterval = 1 * time.Second
 )
 
 type producer struct {
@@ -90,7 +93,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	if options.BatchingMaxPublishDelay <= 0 {
 		options.BatchingMaxPublishDelay = defaultBatchingMaxPublishDelay
 	}
-	if options.PartitionsAutoDiscoveryInterval <= 0 {
+	if options.PartitionsAutoDiscoveryInterval <= minPartitionAutoDiscoveryInterval {
 		options.PartitionsAutoDiscoveryInterval = defaultPartitionsAutoDiscoveryInterval
 	}
 

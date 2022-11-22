@@ -438,7 +438,10 @@ func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
 
-	return ackReq.err
+	ackReq.RLock()
+	err := ackReq.err
+	ackReq.RUnlock()
+	return err
 }
 
 func (pc *partitionConsumer) AckID(msgID MessageID) error {
@@ -469,7 +472,10 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
 
-	return ackReq.err
+	ackReq.RLock()
+	err := ackReq.err
+	ackReq.RUnlock()
+	return err
 }
 
 func (pc *partitionConsumer) NackID(msgID MessageID) {
@@ -694,7 +700,9 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
 		if err != nil {
 			pc.log.WithError(err).Error("Ack with response error")
+			req.Lock()
 			req.err = err
+			req.Unlock()
 		}
 		return
 	}
@@ -702,7 +710,9 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	err := pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, cmdAck)
 	if err != nil {
 		pc.log.Error("Connection was closed when request ack cmd")
+		req.Lock()
 		req.err = err
+		req.Unlock()
 	}
 }
 
@@ -1168,6 +1178,7 @@ type ackRequest struct {
 	doneCh chan struct{}
 	msgID  trackingMessageID
 	err    error
+	sync.RWMutex
 }
 
 type unsubscribeRequest struct {
