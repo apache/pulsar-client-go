@@ -1498,7 +1498,7 @@ func TestRLQ(t *testing.T) {
 
 	// 3. Create consumer on the DLQ topic to verify the routing
 	dlqConsumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       "persistent://public/default/" + subName + "-DLQ",
+		Topic:                       "persistent://public/default/" + topic + "-" + subName + "-DLQ",
 		SubscriptionName:            subName,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
@@ -1603,7 +1603,7 @@ func TestRLQMultiTopics(t *testing.T) {
 
 	// subscribe DLQ Topic
 	dlqConsumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       subName + "-DLQ",
+		Topic:                       partitionTopic + "-" + subName + "-DLQ",
 		SubscriptionName:            subName,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
