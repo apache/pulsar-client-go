@@ -128,11 +128,11 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		oldRetryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
 		oldDlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
 
-		if partitions, err := client.TopicPartitions(oldRetryTopic); err == nil && len(partitions) > 0 {
+		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldRetryTopic); err == nil && r != nil && r.Partitions > 0 {
 			retryTopic = oldRetryTopic
 		}
 
-		if partitions, err := client.TopicPartitions(oldDlqTopic); err == nil && len(partitions) > 0 {
+		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldDlqTopic); err == nil && r != nil && r.Partitions > 0 {
 			dlqTopic = oldDlqTopic
 		}
 
