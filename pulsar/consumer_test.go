@@ -3303,3 +3303,46 @@ func TestConsumerWithBackoffPolicy(t *testing.T) {
 	partitionConsumerImp.reconnectToBroker()
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }
+
+func TestAckWithMessageID(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send messages
+	if _, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("hello"),
+	}); err != nil {
+		log.Fatal(err)
+	}
+
+	message, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+
+	id := message.ID()
+	newId := NewMessageID(id.LedgerID(), id.EntryID(), id.BatchIdx(), id.PartitionIdx())
+	err = consumer.AckID(newId)
+	assert.Nil(t, err)
+}
