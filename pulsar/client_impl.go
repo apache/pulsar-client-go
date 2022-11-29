@@ -76,6 +76,7 @@ func newClient(options ClientOptions) (Client, error) {
 			CertFile:                options.TLSCertificateFile,
 			TrustCertsFilePath:      options.TLSTrustCertsFilePath,
 			ValidateHostname:        options.TLSValidateHostname,
+			ServerName:              url.Hostname(),
 		}
 	default:
 		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))

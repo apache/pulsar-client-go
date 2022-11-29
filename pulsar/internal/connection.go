@@ -48,6 +48,7 @@ type TLSOptions struct {
 	TrustCertsFilePath      string
 	AllowInsecureConnection bool
 	ValidateHostname        bool
+	ServerName              string
 }
 
 var (
@@ -977,10 +978,15 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 	}
 
 	if c.tlsOptions.ValidateHostname {
-		tlsConfig.ServerName = c.physicalAddr.Hostname()
+		if c.tlsOptions.ServerName != "" {
+			tlsConfig.ServerName = c.tlsOptions.ServerName
+		} else {
+			tlsConfig.ServerName = c.physicalAddr.Hostname()
+		}
+		c.log.Debugf("getTLSConfig(): setting tlsConfig.ServerName = %+v", tlsConfig.ServerName)
 	}
 
-	if c.tlsOptions.CertFile != "" || c.tlsOptions.KeyFile != "" {
+	if c.tlsOptions.CertFile != "" && c.tlsOptions.KeyFile != "" {
 		cert, err := tls.LoadX509KeyPair(c.tlsOptions.CertFile, c.tlsOptions.KeyFile)
 		if err != nil {
 			return nil, errors.New(err.Error())

@@ -775,3 +775,78 @@ func TestReaderWithSchema(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, *res, value)
 }
+
+func newTestBackoffPolicy(minBackoff, maxBackoff time.Duration) *testBackoffPolicy {
+	return &testBackoffPolicy{
+		curBackoff: 0,
+		minBackoff: minBackoff,
+		maxBackoff: maxBackoff,
+	}
+}
+
+type testBackoffPolicy struct {
+	curBackoff, minBackoff, maxBackoff time.Duration
+	retryTime                          int
+}
+
+func (b *testBackoffPolicy) Next() time.Duration {
+	// Double the delay each time
+	b.curBackoff += b.curBackoff
+	if b.curBackoff.Nanoseconds() < b.minBackoff.Nanoseconds() {
+		b.curBackoff = b.minBackoff
+	} else if b.curBackoff.Nanoseconds() > b.maxBackoff.Nanoseconds() {
+		b.curBackoff = b.maxBackoff
+	}
+	b.retryTime++
+
+	return b.curBackoff
+}
+
+func (b *testBackoffPolicy) IsExpectedIntervalFrom(startTime time.Time) bool {
+	// Approximately equal to expected interval
+	if time.Since(startTime) < b.curBackoff-time.Second {
+		return false
+	}
+	if time.Since(startTime) > b.curBackoff+time.Second {
+		return false
+	}
+	return true
+}
+
+func TestReaderWithBackoffPolicy(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	_reader, err := client.CreateReader(ReaderOptions{
+		Topic:          "my-topic",
+		StartMessageID: LatestMessageID(),
+		BackoffPolicy:  backoff,
+	})
+	assert.NotNil(t, _reader)
+	assert.Nil(t, err)
+
+	partitionConsumerImp := _reader.(*reader).pc
+	// 1 s
+	startTime := time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 2 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+}

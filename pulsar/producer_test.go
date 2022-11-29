@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -934,14 +935,45 @@ func TestMaxMessageSize(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
+	// producer2 disable batching
+	producer2, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer2)
+	defer producer2.Close()
+
+	// When serverMaxMessageSize=1024, the batch payload=1041
+	// The totalSize includes:
+	// | singleMsgMetadataLength | singleMsgMetadata | payload |
+	// | ----------------------- | ----------------- | ------- |
+	// | 4                       | 13                | 1024    |
+	// So when bias <= 0, the uncompressed payload will not exceed maxMessageSize,
+	// but encryptedPayloadSize exceeds maxMessageSize, Send() will return an internal error.
+	// When bias = 1, the first check of maxMessageSize (for uncompressed payload) is valid,
+	// Send() will return errMessageTooLarge
 	for bias := -1; bias <= 1; bias++ {
 		payload := make([]byte, serverMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
 		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
+		} else {
+			assert.Equal(t, errMessageTooLarge, err)
+		}
+	}
+
+	for bias := -1; bias <= 1; bias++ {
+		payload := make([]byte, serverMaxMessageSize+bias)
+		ID, err := producer2.Send(context.Background(), &ProducerMessage{
+			Payload: payload,
+		})
+		if bias <= 0 {
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
 		} else {
 			assert.Equal(t, errMessageTooLarge, err)
 		}
@@ -1038,6 +1070,46 @@ func TestSendTimeout(t *testing.T) {
 	assert.Nil(t, id)
 
 	makeHTTPCall(t, http.MethodDelete, quotaURL, "")
+}
+
+func TestProducerWithBackoffPolicy(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Topic:         topicName,
+		SendTimeout:   2 * time.Second,
+		BackoffPolicy: backoff,
+	})
+	assert.Nil(t, err)
+	defer _producer.Close()
+
+	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
+	// 1 s
+	startTime := time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 2 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }
 
 func TestSendContextExpired(t *testing.T) {

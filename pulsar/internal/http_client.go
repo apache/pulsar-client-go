@@ -346,7 +346,7 @@ func getDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
 			cfg.RootCAs.AppendCertsFromPEM(rootCA)
 		}
 
-		if tlsConfig.CertFile != "" || tlsConfig.KeyFile != "" {
+		if tlsConfig.CertFile != "" && tlsConfig.KeyFile != "" {
 			cert, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
 			if err != nil {
 				return nil, errors.New(err.Error())

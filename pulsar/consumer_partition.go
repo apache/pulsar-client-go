@@ -18,12 +18,14 @@
 package pulsar
 
 import (
+	"container/list"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -83,30 +85,33 @@ const (
 )
 
 type partitionConsumerOpts struct {
-	topic                      string
-	consumerName               string
-	subscription               string
-	subscriptionType           SubscriptionType
-	subscriptionInitPos        SubscriptionInitialPosition
-	partitionIdx               int
-	receiverQueueSize          int
-	nackRedeliveryDelay        time.Duration
-	nackBackoffPolicy          NackBackoffPolicy
-	metadata                   map[string]string
-	subProperties              map[string]string
-	replicateSubscriptionState bool
-	startMessageID             trackingMessageID
-	startMessageIDInclusive    bool
-	subscriptionMode           subscriptionMode
-	readCompacted              bool
-	disableForceTopicCreation  bool
-	interceptors               ConsumerInterceptors
-	maxReconnectToBroker       *uint
-	backoffPolicy              internal.BackoffPolicy
-	keySharedPolicy            *KeySharedPolicy
-	schema                     Schema
-	decryption                 *MessageDecryptionInfo
-	ackWithResponse            bool
+	topic                       string
+	consumerName                string
+	subscription                string
+	subscriptionType            SubscriptionType
+	subscriptionInitPos         SubscriptionInitialPosition
+	partitionIdx                int
+	receiverQueueSize           int
+	nackRedeliveryDelay         time.Duration
+	nackBackoffPolicy           NackBackoffPolicy
+	metadata                    map[string]string
+	subProperties               map[string]string
+	replicateSubscriptionState  bool
+	startMessageID              trackingMessageID
+	startMessageIDInclusive     bool
+	subscriptionMode            subscriptionMode
+	readCompacted               bool
+	disableForceTopicCreation   bool
+	interceptors                ConsumerInterceptors
+	maxReconnectToBroker        *uint
+	backoffPolicy               internal.BackoffPolicy
+	keySharedPolicy             *KeySharedPolicy
+	schema                      Schema
+	decryption                  *MessageDecryptionInfo
+	ackWithResponse             bool
+	maxPendingChunkedMessage    int
+	expireTimeOfIncompleteChunk time.Duration
+	autoAckIncompleteChunk      bool
 }
 
 type partitionConsumer struct {
@@ -128,7 +133,7 @@ type partitionConsumer struct {
 	messageCh chan ConsumerMessage
 
 	// the number of message slots available
-	availablePermits int32
+	availablePermits *availablePermits
 
 	// the size of the queue channel for buffering messages
 	queueSize       int32
@@ -151,6 +156,40 @@ type partitionConsumer struct {
 	metrics              *internal.LeveledMetrics
 	decryptor            cryptointernal.Decryptor
 	schemaInfoCache      *schemaInfoCache
+
+	chunkedMsgCtxMap   *chunkedMsgCtxMap
+	unAckChunksTracker *unAckChunksTracker
+}
+
+type availablePermits struct {
+	permits int32
+	pc      *partitionConsumer
+}
+
+func (p *availablePermits) inc() {
+	// atomic add availablePermits
+	ap := atomic.AddInt32(&p.permits, 1)
+
+	// TODO implement a better flow controller
+	// send more permits if needed
+	flowThreshold := int32(math.Max(float64(p.pc.queueSize/2), 1))
+	if ap >= flowThreshold {
+		availablePermits := ap
+		requestedPermits := ap
+		// check if permits changed
+		if !atomic.CompareAndSwapInt32(&p.permits, ap, 0) {
+			return
+		}
+
+		p.pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
+		if err := p.pc.internalFlow(uint32(requestedPermits)); err != nil {
+			p.pc.log.WithError(err).Error("unable to send permits")
+		}
+	}
+}
+
+func (p *availablePermits) reset() {
+	atomic.StoreInt32(&p.permits, 0)
 }
 
 type schemaInfoCache struct {
@@ -225,6 +264,9 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
 	}
+	pc.availablePermits = &availablePermits{pc: pc}
+	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(options.maxPendingChunkedMessage, pc)
+	pc.unAckChunksTracker = newUnAckChunksTracker(pc)
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
@@ -367,18 +409,27 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
-func (pc *partitionConsumer) AckIDWithResponse(msgID trackingMessageID) error {
+func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")
 	}
 
+	if cmid, ok := toChunkedMessageID(msgID); ok {
+		return pc.unAckChunksTracker.ack(cmid)
+	}
+
+	trackingID, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return errors.New("failed to convert trackingMessageID")
+	}
+
 	ackReq := new(ackRequest)
 	ackReq.doneCh = make(chan struct{})
-	if !msgID.Undefined() && msgID.ack() {
+	if !trackingID.Undefined() && trackingID.ack() {
 		pc.metrics.AcksCounter.Inc()
-		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
-		ackReq.msgID = msgID
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+		ackReq.msgID = trackingID
 		// send ack request to eventsCh
 		pc.eventsCh <- ackReq
 		// wait for the request to complete
@@ -390,18 +441,27 @@ func (pc *partitionConsumer) AckIDWithResponse(msgID trackingMessageID) error {
 	return ackReq.err
 }
 
-func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
+func (pc *partitionConsumer) AckID(msgID MessageID) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")
 	}
 
+	if cmid, ok := toChunkedMessageID(msgID); ok {
+		return pc.unAckChunksTracker.ack(cmid)
+	}
+
+	trackingID, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return errors.New("failed to convert trackingMessageID")
+	}
+
 	ackReq := new(ackRequest)
 	ackReq.doneCh = make(chan struct{})
-	if !msgID.Undefined() && msgID.ack() {
+	if !trackingID.Undefined() && trackingID.ack() {
 		pc.metrics.AcksCounter.Inc()
-		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
-		ackReq.msgID = msgID
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+		ackReq.msgID = trackingID
 		// send ack request to eventsCh
 		pc.eventsCh <- ackReq
 		// No need to wait for ackReq.doneCh to finish
@@ -409,11 +469,21 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) error {
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
 
-	return ackReq.err
+	return nil
 }
 
-func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
-	pc.nackTracker.Add(msgID.messageID)
+func (pc *partitionConsumer) NackID(msgID MessageID) {
+	if cmid, ok := toChunkedMessageID(msgID); ok {
+		pc.unAckChunksTracker.nack(cmid)
+		return
+	}
+
+	trackingID, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return
+	}
+
+	pc.nackTracker.Add(trackingID.messageID)
 	pc.metrics.NacksCounter.Inc()
 }
 
@@ -476,6 +546,9 @@ func (pc *partitionConsumer) Close() {
 		return
 	}
 
+	// close chunkedMsgCtxMap
+	pc.chunkedMsgCtxMap.Close()
+
 	req := &closeRequest{doneCh: make(chan struct{})}
 	pc.eventsCh <- req
 
@@ -483,15 +556,23 @@ func (pc *partitionConsumer) Close() {
 	<-req.doneCh
 }
 
-func (pc *partitionConsumer) Seek(msgID trackingMessageID) error {
+func (pc *partitionConsumer) Seek(msgID MessageID) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to seek by closing or closed consumer")
 		return errors.New("failed to seek by closing or closed consumer")
 	}
 	req := &seekRequest{
 		doneCh: make(chan struct{}),
-		msgID:  msgID,
 	}
+	if cmid, ok := toChunkedMessageID(msgID); ok {
+		req.msgID = cmid.firstChunkID
+	} else if tmid, ok := toTrackingMessageID(msgID); ok {
+		req.msgID = tmid.messageID
+	} else {
+		// will never reach
+		return errors.New("unhandled messageID type")
+	}
+
 	pc.eventsCh <- req
 
 	// wait for the request to complete
@@ -501,7 +582,7 @@ func (pc *partitionConsumer) Seek(msgID trackingMessageID) error {
 
 func (pc *partitionConsumer) internalSeek(seek *seekRequest) {
 	defer close(seek.doneCh)
-	seek.err = pc.requestSeek(seek.msgID.messageID)
+	seek.err = pc.requestSeek(seek.msgID)
 }
 func (pc *partitionConsumer) requestSeek(msgID messageID) error {
 	if err := pc.requestSeekWithoutClear(msgID); err != nil {
@@ -687,8 +768,21 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 	}
 
+	isChunkedMsg := false
+	if msgMeta.GetNumChunksFromMsg() > 1 {
+		isChunkedMsg = true
+	}
+
+	processedPayloadBuffer := internal.NewBufferWrapper(decryptedPayload)
+	if isChunkedMsg {
+		processedPayloadBuffer = pc.processMessageChunk(processedPayloadBuffer, msgMeta, pbMsgID)
+		if processedPayloadBuffer == nil {
+			return nil
+		}
+	}
+
 	// decryption is success, decompress the payload
-	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, internal.NewBufferWrapper(decryptedPayload))
+	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, processedPayloadBuffer)
 	if err != nil {
 		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
 		return err
@@ -722,17 +816,40 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		pc.metrics.BytesReceived.Add(float64(len(payload)))
 		pc.metrics.PrefetchedBytes.Add(float64(len(payload)))
 
-		msgID := newTrackingMessageID(
+		trackingMsgID := newTrackingMessageID(
 			int64(pbMsgID.GetLedgerId()),
 			int64(pbMsgID.GetEntryId()),
 			int32(i),
 			pc.partitionIdx,
 			ackTracker)
+		// set the consumer so we know how to ack the message id
+		trackingMsgID.consumer = pc
 
-		if pc.messageShouldBeDiscarded(msgID) {
-			pc.AckID(msgID)
+		if pc.messageShouldBeDiscarded(trackingMsgID) {
+			pc.AckID(trackingMsgID)
 			continue
 		}
+
+		var msgID MessageID
+		if isChunkedMsg {
+			ctx := pc.chunkedMsgCtxMap.get(msgMeta.GetUuid())
+			if ctx == nil {
+				// chunkedMsgCtxMap has closed because of consumer closed
+				pc.log.Warnf("get chunkedMsgCtx for chunk with uuid %s failed because consumer has closed",
+					msgMeta.Uuid)
+				return nil
+			}
+			cmid := newChunkMessageID(ctx.firstChunkID(), ctx.lastChunkID())
+			// set the consumer so we know how to ack the message id
+			cmid.consumer = pc
+			// clean chunkedMsgCtxMap
+			pc.chunkedMsgCtxMap.remove(msgMeta.GetUuid())
+			pc.unAckChunksTracker.add(cmid, ctx.chunkedMsgIDs)
+			msgID = cmid
+		} else {
+			msgID = trackingMsgID
+		}
+
 		var messageIndex *uint64
 		var brokerPublishTime *time.Time
 		if brokerMetadata != nil {
@@ -745,8 +862,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				brokerPublishTime = &aux
 			}
 		}
-		// set the consumer so we know how to ack the message id
-		msgID.consumer = pc
+
 		var msg *message
 		if smm != nil {
 			msg = &message{
@@ -800,6 +916,55 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	// send messages to the dispatcher
 	pc.queueCh <- messages
 	return nil
+}
+
+func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buffer,
+	msgMeta *pb.MessageMetadata,
+	pbMsgID *pb.MessageIdData) internal.Buffer {
+	uuid := msgMeta.GetUuid()
+	numChunks := msgMeta.GetNumChunksFromMsg()
+	totalChunksSize := int(msgMeta.GetTotalChunkMsgSize())
+	chunkID := msgMeta.GetChunkId()
+	msgID := messageID{
+		ledgerID:     int64(pbMsgID.GetLedgerId()),
+		entryID:      int64(pbMsgID.GetEntryId()),
+		batchIdx:     -1,
+		partitionIdx: pc.partitionIdx,
+	}
+
+	if msgMeta.GetChunkId() == 0 {
+		pc.chunkedMsgCtxMap.addIfAbsent(uuid,
+			numChunks,
+			totalChunksSize,
+		)
+	}
+
+	ctx := pc.chunkedMsgCtxMap.get(uuid)
+
+	if ctx == nil || ctx.chunkedMsgBuffer == nil || chunkID != ctx.lastChunkedMsgID+1 {
+		lastChunkedMsgID := -1
+		totalChunks := -1
+		if ctx != nil {
+			lastChunkedMsgID = int(ctx.lastChunkedMsgID)
+			totalChunks = int(ctx.totalChunks)
+			ctx.chunkedMsgBuffer.Clear()
+		}
+		pc.log.Warnf(fmt.Sprintf(
+			"Received unexpected chunk messageId %s, last-chunk-id %d, chunkId = %d, total-chunks %d",
+			msgID.String(), lastChunkedMsgID, chunkID, totalChunks))
+		pc.chunkedMsgCtxMap.remove(uuid)
+		pc.availablePermits.inc()
+		return nil
+	}
+
+	ctx.append(chunkID, msgID, compressedPayload)
+
+	if msgMeta.GetChunkId() != msgMeta.GetNumChunksFromMsg()-1 {
+		pc.availablePermits.inc()
+		return nil
+	}
+
+	return ctx.chunkedMsgBuffer
 }
 
 func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) bool {
@@ -932,7 +1097,7 @@ func (pc *partitionConsumer) dispatcher() {
 			messages = nil
 
 			// reset available permits
-			pc.availablePermits = 0
+			pc.availablePermits.reset()
 			initialPermits := uint32(pc.queueSize)
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
@@ -955,20 +1120,7 @@ func (pc *partitionConsumer) dispatcher() {
 			messages[0] = nil
 			messages = messages[1:]
 
-			// TODO implement a better flow controller
-			// send more permits if needed
-			pc.availablePermits++
-			flowThreshold := int32(math.Max(float64(pc.queueSize/2), 1))
-			if pc.availablePermits >= flowThreshold {
-				availablePermits := pc.availablePermits
-				requestedPermits := availablePermits
-				pc.availablePermits = 0
-
-				pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
-				if err := pc.internalFlow(uint32(requestedPermits)); err != nil {
-					pc.log.WithError(err).Error("unable to send permits")
-				}
-			}
+			pc.availablePermits.inc()
 
 		case clearQueueCb := <-pc.clearQueueCh:
 			// drain the message queue on any new connection by sending a
@@ -998,7 +1150,7 @@ func (pc *partitionConsumer) dispatcher() {
 			messages = nil
 
 			// reset available permits
-			pc.availablePermits = 0
+			pc.availablePermits.reset()
 			initialPermits := uint32(pc.queueSize)
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
@@ -1039,7 +1191,7 @@ type getLastMsgIDRequest struct {
 
 type seekRequest struct {
 	doneCh chan struct{}
-	msgID  trackingMessageID
+	msgID  messageID
 	err    error
 }
 
@@ -1438,6 +1590,7 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 	if err != nil {
 		pc.log.Error("Connection was closed when request ack cmd")
 	}
+	pc.availablePermits.inc()
 }
 
 // _setConn sets the internal connection field of this partition consumer atomically.
@@ -1482,4 +1635,228 @@ func convertToMessageID(id *pb.MessageIdData) trackingMessageID {
 	}
 
 	return msgID
+}
+
+type chunkedMsgCtx struct {
+	totalChunks      int32
+	chunkedMsgBuffer internal.Buffer
+	lastChunkedMsgID int32
+	chunkedMsgIDs    []messageID
+	receivedTime     int64
+
+	mu sync.Mutex
+}
+
+func newChunkedMsgCtx(numChunksFromMsg int32, totalChunkMsgSize int) *chunkedMsgCtx {
+	return &chunkedMsgCtx{
+		totalChunks:      numChunksFromMsg,
+		chunkedMsgBuffer: internal.NewBuffer(totalChunkMsgSize),
+		lastChunkedMsgID: -1,
+		chunkedMsgIDs:    make([]messageID, numChunksFromMsg),
+		receivedTime:     time.Now().Unix(),
+	}
+}
+
+func (c *chunkedMsgCtx) append(chunkID int32, msgID messageID, partPayload internal.Buffer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.chunkedMsgIDs[chunkID] = msgID
+	c.chunkedMsgBuffer.Write(partPayload.ReadableSlice())
+	c.lastChunkedMsgID = chunkID
+}
+
+func (c *chunkedMsgCtx) firstChunkID() messageID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.chunkedMsgIDs) == 0 {
+		return messageID{}
+	}
+	return c.chunkedMsgIDs[0]
+}
+
+func (c *chunkedMsgCtx) lastChunkID() messageID {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if len(c.chunkedMsgIDs) == 0 {
+		return messageID{}
+	}
+	return c.chunkedMsgIDs[len(c.chunkedMsgIDs)-1]
+}
+
+func (c *chunkedMsgCtx) discard(pc *partitionConsumer) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	for _, mid := range c.chunkedMsgIDs {
+		pc.log.Info("Removing chunk message-id", mid.String())
+		tmid, _ := toTrackingMessageID(mid)
+		pc.AckID(tmid)
+	}
+}
+
+type chunkedMsgCtxMap struct {
+	chunkedMsgCtxs map[string]*chunkedMsgCtx
+	pendingQueue   *list.List
+	maxPending     int
+	pc             *partitionConsumer
+	mu             sync.Mutex
+	closed         bool
+}
+
+func newChunkedMsgCtxMap(maxPending int, pc *partitionConsumer) *chunkedMsgCtxMap {
+	return &chunkedMsgCtxMap{
+		chunkedMsgCtxs: make(map[string]*chunkedMsgCtx, maxPending),
+		pendingQueue:   list.New(),
+		maxPending:     maxPending,
+		pc:             pc,
+		mu:             sync.Mutex{},
+	}
+}
+
+func (c *chunkedMsgCtxMap) addIfAbsent(uuid string, totalChunks int32, totalChunkMsgSize int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	if _, ok := c.chunkedMsgCtxs[uuid]; !ok {
+		c.chunkedMsgCtxs[uuid] = newChunkedMsgCtx(totalChunks, totalChunkMsgSize)
+		c.pendingQueue.PushBack(uuid)
+		go c.discardChunkIfExpire(uuid, true, c.pc.options.expireTimeOfIncompleteChunk)
+	}
+	if c.maxPending > 0 && c.pendingQueue.Len() > c.maxPending {
+		go c.discardOldestChunkMessage(c.pc.options.autoAckIncompleteChunk)
+	}
+}
+
+func (c *chunkedMsgCtxMap) get(uuid string) *chunkedMsgCtx {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return nil
+	}
+	return c.chunkedMsgCtxs[uuid]
+}
+
+func (c *chunkedMsgCtxMap) remove(uuid string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	delete(c.chunkedMsgCtxs, uuid)
+	e := c.pendingQueue.Front()
+	for ; e != nil; e = e.Next() {
+		if e.Value.(string) == uuid {
+			c.pendingQueue.Remove(e)
+			break
+		}
+	}
+}
+
+func (c *chunkedMsgCtxMap) discardOldestChunkMessage(autoAck bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || (c.maxPending > 0 && c.pendingQueue.Len() <= c.maxPending) {
+		return
+	}
+	oldest := c.pendingQueue.Front().Value.(string)
+	ctx, ok := c.chunkedMsgCtxs[oldest]
+	if !ok {
+		return
+	}
+	if autoAck {
+		ctx.discard(c.pc)
+	}
+	delete(c.chunkedMsgCtxs, oldest)
+	c.pc.log.Infof("Chunked message [%s] has been removed from chunkedMsgCtxMap", oldest)
+}
+
+func (c *chunkedMsgCtxMap) discardChunkMessage(uuid string, autoAck bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed {
+		return
+	}
+	ctx, ok := c.chunkedMsgCtxs[uuid]
+	if !ok {
+		return
+	}
+	if autoAck {
+		ctx.discard(c.pc)
+	}
+	delete(c.chunkedMsgCtxs, uuid)
+	e := c.pendingQueue.Front()
+	for ; e != nil; e = e.Next() {
+		if e.Value.(string) == uuid {
+			c.pendingQueue.Remove(e)
+			break
+		}
+	}
+	c.pc.log.Infof("Chunked message [%s] has been removed from chunkedMsgCtxMap", uuid)
+}
+
+func (c *chunkedMsgCtxMap) discardChunkIfExpire(uuid string, autoAck bool, expire time.Duration) {
+	timer := time.NewTimer(expire)
+	<-timer.C
+	c.discardChunkMessage(uuid, autoAck)
+}
+
+func (c *chunkedMsgCtxMap) Close() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.closed = true
+}
+
+type unAckChunksTracker struct {
+	chunkIDs map[chunkMessageID][]messageID
+	pc       *partitionConsumer
+	mu       sync.Mutex
+}
+
+func newUnAckChunksTracker(pc *partitionConsumer) *unAckChunksTracker {
+	return &unAckChunksTracker{
+		chunkIDs: make(map[chunkMessageID][]messageID),
+		pc:       pc,
+	}
+}
+
+func (u *unAckChunksTracker) add(cmid chunkMessageID, ids []messageID) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	u.chunkIDs[cmid] = ids
+}
+
+func (u *unAckChunksTracker) get(cmid chunkMessageID) []messageID {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	return u.chunkIDs[cmid]
+}
+
+func (u *unAckChunksTracker) remove(cmid chunkMessageID) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	delete(u.chunkIDs, cmid)
+}
+
+func (u *unAckChunksTracker) ack(cmid chunkMessageID) error {
+	ids := u.get(cmid)
+	for _, id := range ids {
+		if err := u.pc.AckID(id); err != nil {
+			return err
+		}
+	}
+	u.remove(cmid)
+	return nil
+}
+
+func (u *unAckChunksTracker) nack(cmid chunkMessageID) {
+	ids := u.get(cmid)
+	for _, id := range ids {
+		u.pc.NackID(id)
+	}
+	u.remove(cmid)
 }

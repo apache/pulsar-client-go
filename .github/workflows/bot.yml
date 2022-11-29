@@ -21,4 +21,5 @@ jobs:
         if: github.event_name == 'issue_comment' && startsWith(github.event.comment.body, '/pulsarbot')
         env:
           GITHUB_TOKEN: ${{ secrets.GO_CLIENT_BOT_TOKEN }}
+          BOT_TARGET_REPOSITORY: apache/pulsar-client-go
         uses: apache/pulsar-test-infra/pulsarbot@master

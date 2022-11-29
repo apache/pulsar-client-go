@@ -106,6 +106,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		replicateSubscriptionState: false,
 		decryption:                 options.Decryption,
 		schema:                     options.Schema,
+		backoffPolicy:              options.BackoffPolicy,
 	}
 
 	reader := &reader{
