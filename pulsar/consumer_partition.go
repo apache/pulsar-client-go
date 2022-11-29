@@ -469,7 +469,7 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
 
-	return ackReq.err
+	return nil
 }
 
 func (pc *partitionConsumer) NackID(msgID MessageID) {
