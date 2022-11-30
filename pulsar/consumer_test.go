@@ -3342,7 +3342,7 @@ func TestAckWithMessageID(t *testing.T) {
 	assert.Nil(t, err)
 
 	id := message.ID()
-	newId := NewMessageID(id.LedgerID(), id.EntryID(), id.BatchIdx(), id.PartitionIdx())
-	err = consumer.AckID(newId)
+	newID := NewMessageID(id.LedgerID(), id.EntryID(), id.BatchIdx(), id.PartitionIdx())
+	err = consumer.AckID(newID)
 	assert.Nil(t, err)
 }
