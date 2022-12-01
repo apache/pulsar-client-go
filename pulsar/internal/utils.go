@@ -23,6 +23,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/pkg/errors"
 )
 
@@ -73,4 +75,13 @@ func ParseRelativeTimeInSeconds(relativeTime string) (time.Duration, error) {
 	default:
 		return -1, errors.Errorf("invalid time unit '%s'", unitTime)
 	}
+}
+
+func MarshalToSizedBuffer(m proto.Message, out []byte) error {
+	b, err := proto.Marshal(m)
+	if err != nil {
+		return err
+	}
+	copy(out, b[:len(out)])
+	return nil
 }

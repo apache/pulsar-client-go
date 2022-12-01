@@ -22,7 +22,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/gogo/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
@@ -226,11 +226,11 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 }
 
 func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte) {
-	metadataSize := uint32(smm.Size())
+	metadataSize := uint32(proto.Size(smm))
 	wb.WriteUint32(metadataSize)
 
 	wb.ResizeIfNeeded(metadataSize)
-	_, err := smm.MarshalToSizedBuffer(wb.WritableSlice()[:metadataSize])
+	err := MarshalToSizedBuffer(smm, wb.WritableSlice()[:metadataSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf serialization error: %v", err))
 	}
@@ -282,7 +282,7 @@ func serializeMessage(wb Buffer,
 	// Write cmd
 	wb.WriteUint32(cmdSize)
 	wb.ResizeIfNeeded(cmdSize)
-	_, err = cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	err = MarshalToSizedBuffer(cmdSend, wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
 	}
@@ -297,7 +297,7 @@ func serializeMessage(wb Buffer,
 	metadataStartIdx := wb.WriterIndex()
 	wb.WriteUint32(msgMetadataSize)
 	wb.ResizeIfNeeded(msgMetadataSize)
-	_, err = msgMetadata.MarshalToSizedBuffer(wb.WritableSlice()[:msgMetadataSize])
+	err = MarshalToSizedBuffer(msgMetadata, wb.WritableSlice()[:msgMetadataSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing msgMetadata: %v", err))
 	}

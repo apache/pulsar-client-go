@@ -18,6 +18,4 @@
 # under the License.
 #
 
-pkg=pb
-protoc --go_out=import_path=${pkg}:. hello.proto
-
+protoc --go_out=. --go_opt=paths=source_relative hello.proto
