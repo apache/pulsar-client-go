@@ -123,9 +123,11 @@ func (s *schemaCache) Get(schema *SchemaInfo) (schemaVersion []byte) {
 	key := schema.hash()
 	return s.schemas[key]
 }
+
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
 	metrics *internal.LeveledMetrics) (
-	*partitionProducer, error) {
+	*partitionProducer, error,
+) {
 	var batchingMaxPublishDelay time.Duration
 	if options.BatchingMaxPublishDelay != 0 {
 		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
@@ -347,7 +349,6 @@ func (p *partitionProducer) ConnectionClosed() {
 }
 
 func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVersion []byte, err error) {
-
 	tmpSchemaType := pb.Schema_Type(int32(schemaInfo.Type))
 	pbSchema := &pb.Schema{
 		Name:       proto.String(schemaInfo.Name),
@@ -683,16 +684,15 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			}
 		}
 		if request.flushImmediately {
-
 			p.internalFlushCurrentBatch()
-
 		}
 	}
 }
 
 func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 	uncompressedSize int,
-	deliverAt time.Time) (mm *pb.MessageMetadata) {
+	deliverAt time.Time,
+) (mm *pb.MessageMetadata) {
 	mm = &pb.MessageMetadata{
 		ProducerName:     &p.producerName,
 		PublishTime:      proto.Uint64(internal.TimestampMillis(time.Now())),
@@ -724,7 +724,8 @@ func (p *partitionProducer) updateMetadataSeqID(mm *pb.MessageMetadata, msg *Pro
 }
 
 func (p *partitionProducer) genSingleMessageMetadataInBatch(msg *ProducerMessage,
-	uncompressedSize int) (smm *pb.SingleMessageMetadata) {
+	uncompressedSize int,
+) (smm *pb.SingleMessageMetadata) {
 	smm = &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int(uncompressedSize),
 	}
@@ -760,7 +761,8 @@ func (p *partitionProducer) genSingleMessageMetadataInBatch(msg *ProducerMessage
 func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 	compressedPayload []byte,
 	request *sendRequest,
-	maxMessageSize uint32) {
+	maxMessageSize uint32,
+) {
 	msg := request.msg
 
 	payloadBuf := internal.NewBuffer(len(compressedPayload))
@@ -807,6 +809,9 @@ type pendingItem struct {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
+	if p.batchBuilder == nil {
+		return
+	}
 	if p.batchBuilder.IsMultiBatches() {
 		p.internalFlushCurrentBatches()
 		return
@@ -984,11 +989,9 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 		})
 		p._getConn().WriteData(batchesData[i])
 	}
-
 }
 
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
-
 	p.internalFlushCurrentBatch()
 
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
@@ -1044,12 +1047,14 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 }
 
 func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
-	callback func(MessageID, *ProducerMessage, error)) {
+	callback func(MessageID, *ProducerMessage, error),
+) {
 	p.internalSendAsync(ctx, msg, callback, false)
 }
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
-	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
+	callback func(MessageID, *ProducerMessage, error), flushImmediately bool,
+) {
 	if p.getProducerState() != producerReady {
 		// Producer is closing
 		callback(nil, msg, errProducerClosed)

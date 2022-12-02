@@ -1705,3 +1705,29 @@ func TestProducerWithSchemaAndConsumerSchemaNotFound(t *testing.T) {
 	// should fail with error but not panic
 	assert.Error(t, err)
 }
+
+func TestProducerFlushNOP(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	assert.NotPanics(t, func() {
+		ID, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte("hello"),
+		})
+		producer.Flush()
+		assert.NoError(t, err)
+		assert.NotNil(t, ID)
+	})
+}
