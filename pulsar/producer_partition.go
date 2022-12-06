@@ -574,6 +574,12 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		compressedPayload = p.compressionProvider.Compress(nil, uncompressedPayload)
 		compressedSize = len(compressedPayload)
 		checkSize = compressedSize
+
+		// set the compress type in msgMetaData
+		compressionType := pb.CompressionType(p.options.CompressionType)
+		if compressionType != pb.CompressionType_NONE {
+			mm.Compression = &compressionType
+		}
 	} else {
 		// final check for batching message is in serializeMessage
 		// this is a double check

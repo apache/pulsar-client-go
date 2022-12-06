@@ -804,12 +804,22 @@ func TestConsumerCompression(t *testing.T) {
 	topicName := newTopicName()
 	ctx := context.Background()
 
-	producer, err := client.CreateProducer(ProducerOptions{
+	// enable batching
+	p1, err := client.CreateProducer(ProducerOptions{
 		Topic:           topicName,
 		CompressionType: LZ4,
 	})
 	assert.Nil(t, err)
-	defer producer.Close()
+	defer p1.Close()
+
+	// disable batching
+	p2, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		CompressionType: LZ4,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer p2.Close()
 
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
@@ -821,8 +831,16 @@ func TestConsumerCompression(t *testing.T) {
 	const N = 100
 
 	for i := 0; i < N; i++ {
-		if _, err := producer.Send(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+		if _, err := p1.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-content-%d-batching-enabled", i)),
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	for i := 0; i < N; i++ {
+		if _, err := p2.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-content-%d-batching-disabled", i)),
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -831,7 +849,14 @@ func TestConsumerCompression(t *testing.T) {
 	for i := 0; i < N; i++ {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
-		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+		assert.Equal(t, fmt.Sprintf("msg-content-%d-batching-enabled", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("msg-content-%d-batching-disabled", i), string(msg.Payload()))
 		consumer.Ack(msg)
 	}
 }
