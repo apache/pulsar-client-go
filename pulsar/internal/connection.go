@@ -85,6 +85,8 @@ type Connection interface {
 type ConsumerHandler interface {
 	MessageReceived(response *pb.CommandMessage, headersAndPayload Buffer) error
 
+	ActiveConsumerChanged(isActive bool)
+
 	// ConnectionClosed close the TCP connection.
 	ConnectionClosed()
 }
@@ -576,6 +578,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handlePong()
 
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
+		c.handleActiveConsumerChange(cmd.GetActiveConsumerChange())
 
 	default:
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
@@ -854,6 +857,16 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 		c.DeleteConsumeHandler(consumerID)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
+	}
+}
+
+func (c *connection) handleActiveConsumerChange(consumerChange *pb.CommandActiveConsumerChange) {
+	consumerId := consumerChange.GetConsumerId()
+	isActive := consumerChange.GetIsActive()
+	if consumer, ok := c.consumerHandler(consumerId); ok {
+		consumer.ActiveConsumerChanged(isActive)
+	} else {
+		c.log.WithField("consumerID", consumerId).Warnf("Consumer not found while active consumer change")
 	}
 }
 

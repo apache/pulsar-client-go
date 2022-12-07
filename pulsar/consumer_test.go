@@ -384,6 +384,72 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 	assert.Equal(t, len(msgs), 10)
 }
 
+type TestActiveConsumerListener struct {
+}
+
+func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, partition int32) {
+	fmt.Printf("%s become active on %d\n", consumer.Name(), partition)
+
+}
+
+func (t *TestActiveConsumerListener) BecameInactive(consumer Consumer, partition int32) {
+	fmt.Printf("%s become inactive on %d\n", consumer.Name(), partition)
+}
+
+func allConsume(consumers []Consumer) {
+	for i := 0; i < len(consumers); i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		consumers[i].Receive(ctx)
+	}
+}
+
+func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/testGetPartitions5"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions5/partitions"
+
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	var consumers []Consumer
+	for i := 0; i < 3; i++ {
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:            topic,
+			Name:             fmt.Sprintf("consumer-%d", i),
+			SubscriptionName: "my-sub",
+			Type:             Failover,
+			EventListener:    &TestActiveConsumerListener{},
+		})
+		assert.Nil(t, err)
+		defer consumer.Close()
+		consumers = append(consumers, consumer)
+	}
+
+	allConsume(consumers)
+	consumers[0].Close()
+	allConsume(consumers)
+}
+
 func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

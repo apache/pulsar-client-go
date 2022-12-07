@@ -120,6 +120,9 @@ type ConsumerOptions struct {
 	// Default is `Latest`
 	SubscriptionInitialPosition
 
+	// EventListener will be called when active consumer changed (in failover subscription type)
+	EventListener ConsumerEventListener
+
 	// DLQ represents the configuration for Dead Letter Queue consumer policy.
 	// eg. route the message to topic X after N failed attempts at processing it
 	// By default is nil and there's no DLQ

@@ -112,6 +112,13 @@ type partitionConsumerOpts struct {
 	maxPendingChunkedMessage    int
 	expireTimeOfIncompleteChunk time.Duration
 	autoAckIncompleteChunk      bool
+	// int failover mode, this callback will be called when consumer change
+	consumerEventListener ConsumerEventListener
+}
+
+type ConsumerEventListener interface {
+	BecameActive(consumer Consumer, partition int32)
+	BecameInactive(consumer Consumer, partition int32)
 }
 
 type partitionConsumer struct {
@@ -159,6 +166,18 @@ type partitionConsumer struct {
 
 	chunkedMsgCtxMap   *chunkedMsgCtxMap
 	unAckChunksTracker *unAckChunksTracker
+}
+
+func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
+	listener := pc.options.consumerEventListener
+	if listener == nil {
+		return
+	}
+	if isActive {
+		listener.BecameActive(pc.parentConsumer, pc.partitionIdx)
+	} else {
+		listener.BecameInactive(pc.parentConsumer, pc.partitionIdx)
+	}
 }
 
 type availablePermits struct {
