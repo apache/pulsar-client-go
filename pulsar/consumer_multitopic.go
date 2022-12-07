@@ -143,6 +143,33 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
+// CumulativeAck the reception of all the messages in the stream up to (and including)
+// the provided message
+func (c *multiTopicConsumer) CumulativeAck(msg Message) error {
+	return c.CumulativeAckID(msg.ID())
+}
+
+// CumulativeAckID the reception of all the messages in the stream up to (and including)
+// the provided message, identified by its MessageID
+func (c *multiTopicConsumer) CumulativeAckID(msgID MessageID) error {
+	mid, ok := toTrackingMessageID(msgID)
+	if !ok {
+		c.log.Warnf("invalid message id type %T", msgID)
+		return errors.New("invalid message id type in multi_consumer")
+	}
+
+	if mid.consumer == nil {
+		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
+		return errors.New("unable to ack message because consumer is nil")
+	}
+
+	if c.options.AckWithResponse {
+		return mid.consumer.CumulativeAckIDWithResponse(msgID)
+	}
+
+	return mid.consumer.CumulativeAckID(msgID)
+}
+
 func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 	names, err := validateTopicNames(msg.Topic())
 	if err != nil {

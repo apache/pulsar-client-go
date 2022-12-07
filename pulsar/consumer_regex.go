@@ -187,6 +187,33 @@ func (c *regexConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
+// CumulativeAck the reception of all the messages in the stream up to (and including)
+// the provided message.
+func (c *regexConsumer) CumulativeAck(msg Message) error {
+	return c.CumulativeAckID(msg.ID())
+}
+
+// CumulativeAckID the reception of all the messages in the stream up to (and including)
+// the provided message, identified by its MessageID
+func (c *regexConsumer) CumulativeAckID(msgID MessageID) error {
+	mid, ok := toTrackingMessageID(msgID)
+	if !ok {
+		c.log.Warnf("invalid message id type %T", msgID)
+		return errors.New("invalid message id type")
+	}
+
+	if mid.consumer == nil {
+		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
+		return errors.New("unable to ack message because consumer is nil")
+	}
+
+	if c.options.AckWithResponse {
+		return mid.consumer.CumulativeAckIDWithResponse(msgID)
+	}
+
+	return mid.consumer.CumulativeAckID(msgID)
+}
+
 func (c *regexConsumer) Nack(msg Message) {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
 		msgID := msg.ID()
