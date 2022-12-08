@@ -385,15 +385,28 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 }
 
 type TestActiveConsumerListener struct {
+	nameToPartitions map[string]map[int32]struct{}
 }
 
 func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, partition int32) {
 	fmt.Printf("%s become active on %d\n", consumer.Name(), partition)
-
+	partitionSet := t.nameToPartitions[consumer.Name()]
+	if partitionSet == nil {
+		partitionSet = map[int32]struct{}{}
+	}
+	partitionSet[partition] = struct{}{}
+	t.nameToPartitions[consumer.Name()] = partitionSet
 }
 
 func (t *TestActiveConsumerListener) BecameInactive(consumer Consumer, partition int32) {
 	fmt.Printf("%s become inactive on %d\n", consumer.Name(), partition)
+	partitionSet := t.nameToPartitions[consumer.Name()]
+	if _, ok := partitionSet[partition]; ok {
+		delete(partitionSet, partition)
+		if len(partitionSet) == 0 {
+			delete(t.nameToPartitions, consumer.Name())
+		}
+	}
 }
 
 func allConsume(consumers []Consumer) {
@@ -432,22 +445,54 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 	}
 
 	var consumers []Consumer
-	for i := 0; i < 3; i++ {
+	listener := &TestActiveConsumerListener{
+		nameToPartitions: map[string]map[int32]struct{}{},
+	}
+	for i := 0; i < 1; i++ {
 		consumer, err := client.Subscribe(ConsumerOptions{
 			Topic:            topic,
 			Name:             fmt.Sprintf("consumer-%d", i),
 			SubscriptionName: "my-sub",
 			Type:             Failover,
-			EventListener:    &TestActiveConsumerListener{},
+			EventListener:    listener,
 		})
 		assert.Nil(t, err)
 		defer consumer.Close()
 		consumers = append(consumers, consumer)
 	}
+	nameToPartitions := listener.nameToPartitions
 
 	allConsume(consumers)
-	consumers[0].Close()
+	// first consumer will get 3 partitions
+	assert.Equal(t, len(nameToPartitions), 1)
+	assert.Equal(t, len(nameToPartitions[consumers[0].Name()]), 3)
+
+	// 1 partition per consumer
+	for i := 1; i < 3; i++ {
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:            topic,
+			Name:             fmt.Sprintf("consumer-%d", i),
+			SubscriptionName: "my-sub",
+			Type:             Failover,
+			EventListener:    listener,
+		})
+		assert.Nil(t, err)
+		defer consumer.Close()
+		consumers = append(consumers, consumer)
+	}
 	allConsume(consumers)
+	assert.Equal(t, len(nameToPartitions), 3)
+	for _, partitionSet := range nameToPartitions {
+		assert.Equal(t, len(partitionSet), 1)
+	}
+
+	consumers[0].Close()
+	time.Sleep(time.Second * 2)
+	allConsume(consumers)
+
+	// close consumer won't get notify
+	assert.Equal(t, len(nameToPartitions), 3)
+	assert.Equal(t, len(nameToPartitions[consumers[1].Name()])+len(nameToPartitions[consumers[2].Name()]), 3)
 }
 
 func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
