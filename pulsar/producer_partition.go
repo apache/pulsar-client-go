@@ -1035,14 +1035,12 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	}, true)
 
 	// wait for send request to finish
-	for {
-		select {
-		case <-ctx.Done():
-			isDone.Store(true)
-			return msgID, ctx.Err()
-		case <-doneCh:
-			return msgID, err
-		}
+	select {
+	case <-ctx.Done():
+		isDone.Store(true)
+		return msgID, ctx.Err()
+	case <-doneCh:
+		return msgID, err
 	}
 }
 
