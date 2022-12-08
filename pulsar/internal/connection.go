@@ -861,12 +861,12 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 }
 
 func (c *connection) handleActiveConsumerChange(consumerChange *pb.CommandActiveConsumerChange) {
-	consumerId := consumerChange.GetConsumerId()
+	consumerID := consumerChange.GetConsumerId()
 	isActive := consumerChange.GetIsActive()
-	if consumer, ok := c.consumerHandler(consumerId); ok {
+	if consumer, ok := c.consumerHandler(consumerID); ok {
 		consumer.ActiveConsumerChanged(isActive)
 	} else {
-		c.log.WithField("consumerID", consumerId).Warnf("Consumer not found while active consumer change")
+		c.log.WithField("consumerID", consumerID).Warnf("Consumer not found while active consumer change")
 	}
 }
 
