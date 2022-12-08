@@ -1157,6 +1157,12 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 
 		expectMsg := fmt.Sprintf("hello-%d", expectedMsgIdx)
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+		// check original messageId
+		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
+
+		// check original topic
+		assert.NotEmpty(t, msg.Properties()[SysPropertyRealTopic])
 	}
 
 	// No more messages on the DLQ
