@@ -80,6 +80,12 @@ func TestAckTracker(t *testing.T) {
 
 	}
 	assert.Equal(t, true, tracker.completed())
+
+	// test large number 1000 cumulative
+	tracker = newAckTracker(1000)
+
+	assert.Equal(t, true, tracker.ackCumulative(999))
+	assert.Equal(t, true, tracker.completed())
 }
 
 func TestAckingMessageIDBatchOne(t *testing.T) {

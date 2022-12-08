@@ -25,6 +25,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -41,7 +42,7 @@ import (
 
 var (
 	adminURL  = "http://localhost:8080"
-	lookupURL = "pulsar://localhost:6650"
+	lookupURL = "pulsar://10.238.18.160:6650"
 )
 
 func TestProducerConsumer(t *testing.T) {
@@ -731,7 +732,7 @@ func TestConsumerAck(t *testing.T) {
 	}
 }
 
-func TestConsumerCumulativeAck(t *testing.T) {
+func TestConsumerNoBatchCumulativeAck(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -744,6 +745,8 @@ func TestConsumerCumulativeAck(t *testing.T) {
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topicName,
+		// disable batching
+		DisableBatching: true,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -789,6 +792,93 @@ func TestConsumerCumulativeAck(t *testing.T) {
 
 	// We should only receive the 2nd half of messages
 	for i := N / 2; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+
+		consumer.Ack(msg)
+	}
+}
+
+func TestConsumerBatchCumulativeAck(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+
+	const N = 100
+
+	// send a batch
+	wg := sync.WaitGroup{}
+	for i := 0; i < N; i++ {
+		wg.Add(1)
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-content-%d", i))},
+			func(id MessageID, producerMessage *ProducerMessage, e error) {
+				assert.NoError(t, e)
+				wg.Done()
+			})
+	}
+	wg.Wait()
+
+	err = producer.Flush()
+	assert.NoError(t, err)
+
+	// send another batch
+	wg = sync.WaitGroup{}
+	for i := N; i < 2*N; i++ {
+		wg.Add(1)
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-content-%d", i))},
+			func(id MessageID, producerMessage *ProducerMessage, e error) {
+				assert.NoError(t, e)
+				wg.Done()
+			})
+	}
+	wg.Wait()
+
+	for i := 0; i < 2*N; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+
+		if i == N-1 {
+			// cumulative acks the first half of messages
+			consumer.CumulativeAck(msg)
+		}
+	}
+
+	consumer.Close()
+
+	// Subscribe again
+	consumer, err = client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// We should only receive the 2nd half of messages
+	for i := N; i < 2*N; i++ {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
@@ -1476,6 +1566,43 @@ func TestAckWithResponse(t *testing.T) {
 		err = consumer.Ack(msg)
 		assert.Nil(t, err)
 	}
+}
+
+func TestCumulativeAckWithResponse(t *testing.T) {
+	now := time.Now().Unix()
+	topic01 := fmt.Sprintf("persistent://public/default/topic-%d-01", now)
+	ctx := context.Background()
+
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic01,
+		SubscriptionName:            "my-sub",
+		Type:                        Exclusive,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+		AckWithResponse:             true,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer01, err := client.CreateProducer(ProducerOptions{Topic: topic01})
+	assert.Nil(t, err)
+	defer producer01.Close()
+	for i := 0; i < 10; i++ {
+		_, err = producer01.Send(ctx, &ProducerMessage{Payload: []byte(fmt.Sprintf("MSG_01_%d", i))})
+		assert.Nil(t, err)
+	}
+
+	var msg Message
+	for i := 0; i < 10; i++ {
+		msg, err = consumer.Receive(ctx)
+		assert.Nil(t, err)
+	}
+
+	err = consumer.CumulativeAck(msg)
+	assert.Nil(t, err)
 }
 
 func TestRLQMultiTopics(t *testing.T) {
