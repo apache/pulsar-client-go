@@ -42,7 +42,7 @@ import (
 
 var (
 	adminURL  = "http://localhost:8080"
-	lookupURL = "pulsar://10.238.18.160:6650"
+	lookupURL = "pulsar://localhost:6650"
 )
 
 func TestProducerConsumer(t *testing.T) {
