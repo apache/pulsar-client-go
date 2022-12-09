@@ -117,8 +117,8 @@ type partitionConsumerOpts struct {
 }
 
 type ConsumerEventListener interface {
-	BecameActive(consumer Consumer, partition int32)
-	BecameInactive(consumer Consumer, partition int32)
+	BecameActive(consumer Consumer, topicName string, partition int32)
+	BecameInactive(consumer Consumer, topicName string, partition int32)
 }
 
 type partitionConsumer struct {
@@ -171,12 +171,13 @@ type partitionConsumer struct {
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
 	listener := pc.options.consumerEventListener
 	if listener == nil {
+		// didn't set a listener
 		return
 	}
 	if isActive {
-		listener.BecameActive(pc.parentConsumer, pc.partitionIdx)
+		listener.BecameActive(pc.parentConsumer, pc.topic, pc.partitionIdx)
 	} else {
-		listener.BecameInactive(pc.parentConsumer, pc.partitionIdx)
+		listener.BecameInactive(pc.parentConsumer, pc.topic, pc.partitionIdx)
 	}
 }
 

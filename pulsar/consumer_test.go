@@ -388,8 +388,8 @@ type TestActiveConsumerListener struct {
 	nameToPartitions map[string]map[int32]struct{}
 }
 
-func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, partition int32) {
-	fmt.Printf("%s become active on %d\n", consumer.Name(), partition)
+func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, topicName string, partition int32) {
+	fmt.Printf("%s become active on %s - %d\n", consumer.Name(), topicName, partition)
 	partitionSet := t.nameToPartitions[consumer.Name()]
 	if partitionSet == nil {
 		partitionSet = map[int32]struct{}{}
@@ -398,8 +398,8 @@ func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, partition i
 	t.nameToPartitions[consumer.Name()] = partitionSet
 }
 
-func (t *TestActiveConsumerListener) BecameInactive(consumer Consumer, partition int32) {
-	fmt.Printf("%s become inactive on %d\n", consumer.Name(), partition)
+func (t *TestActiveConsumerListener) BecameInactive(consumer Consumer, topicName string, partition int32) {
+	fmt.Printf("%s become inactive on %s - %d\n", consumer.Name(), topicName, partition)
 	partitionSet := t.nameToPartitions[consumer.Name()]
 	if _, ok := partitionSet[partition]; ok {
 		delete(partitionSet, partition)
@@ -487,7 +487,8 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 	}
 
 	consumers[0].Close()
-	time.Sleep(time.Second * 2)
+	// wait broker reschedule active consumers
+	time.Sleep(time.Second * 3)
 	allConsume(consumers)
 
 	// close consumer won't get notify
