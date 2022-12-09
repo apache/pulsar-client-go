@@ -510,6 +510,7 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 
 	// close consumer won't get notify
 	assert.Equal(t, 3, listener.getConsumerCount())
+	// residual consumers will cover all partitions
 	assert.Equal(t, 3, listener.getPartitionCount(consumers[1].Name())+listener.getPartitionCount(consumers[2].Name()))
 	for _, c := range consumers {
 		c.Close()
