@@ -386,8 +386,20 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 }
 
 type TestActiveConsumerListener struct {
-	lock             sync.Mutex
+	lock             sync.RWMutex
 	nameToPartitions map[string]map[int32]struct{}
+}
+
+func (t *TestActiveConsumerListener) getConsumerCount() int {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+	return len(t.nameToPartitions)
+}
+
+func (t *TestActiveConsumerListener) getPartitionCount(consumerName string) int {
+	t.lock.RLock()
+	defer t.lock.RUnlock()
+	return len(t.nameToPartitions[consumerName])
 }
 
 func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, topicName string, partition int32) {
@@ -466,12 +478,11 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 		defer consumer.Close()
 		consumers = append(consumers, consumer)
 	}
-	nameToPartitions := listener.nameToPartitions
 
 	allConsume(consumers)
 	// first consumer will get 3 partitions
-	assert.Equal(t, 1, len(nameToPartitions))
-	assert.Equal(t, 3, len(nameToPartitions[consumers[0].Name()]))
+	assert.Equal(t, 1, listener.getConsumerCount())
+	assert.Equal(t, 3, listener.getPartitionCount(consumers[0].Name()))
 
 	// 1 partition per consumer
 	for i := 1; i < 3; i++ {
@@ -487,9 +498,9 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 		consumers = append(consumers, consumer)
 	}
 	allConsume(consumers)
-	assert.Equal(t, 3, len(nameToPartitions))
-	for _, partitionSet := range nameToPartitions {
-		assert.Equal(t, 1, len(partitionSet))
+	assert.Equal(t, 3, listener.getConsumerCount())
+	for _, c := range consumers {
+		assert.Equal(t, 1, listener.getPartitionCount(c.Name()))
 	}
 
 	consumers[0].Close()
@@ -498,8 +509,11 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 	allConsume(consumers)
 
 	// close consumer won't get notify
-	assert.Equal(t, 3, len(nameToPartitions))
-	assert.Equal(t, 3, len(nameToPartitions[consumers[1].Name()])+len(nameToPartitions[consumers[2].Name()]))
+	assert.Equal(t, 3, listener.getConsumerCount())
+	assert.Equal(t, 3, listener.getPartitionCount(consumers[1].Name())+listener.getPartitionCount(consumers[2].Name()))
+	for _, c := range consumers {
+		c.Close()
+	}
 }
 
 func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
