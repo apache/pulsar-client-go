@@ -424,7 +424,7 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "persistent://public/default/testGetPartitions5"
+	topic := "persistent://public/default/testGetPartitions6"
 	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions5/partitions"
 
 	makeHTTPCall(t, http.MethodPut, testURL, "3")
@@ -464,8 +464,8 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 
 	allConsume(consumers)
 	// first consumer will get 3 partitions
-	assert.Equal(t, len(nameToPartitions), 1)
-	assert.Equal(t, len(nameToPartitions[consumers[0].Name()]), 3)
+	assert.Equal(t, 1, len(nameToPartitions))
+	assert.Equal(t, 3, len(nameToPartitions[consumers[0].Name()]))
 
 	// 1 partition per consumer
 	for i := 1; i < 3; i++ {
@@ -481,9 +481,9 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 		consumers = append(consumers, consumer)
 	}
 	allConsume(consumers)
-	assert.Equal(t, len(nameToPartitions), 3)
+	assert.Equal(t, 3, len(nameToPartitions))
 	for _, partitionSet := range nameToPartitions {
-		assert.Equal(t, len(partitionSet), 1)
+		assert.Equal(t, 1, len(partitionSet))
 	}
 
 	consumers[0].Close()
@@ -492,8 +492,8 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 	allConsume(consumers)
 
 	// close consumer won't get notify
-	assert.Equal(t, len(nameToPartitions), 3)
-	assert.Equal(t, len(nameToPartitions[consumers[1].Name()])+len(nameToPartitions[consumers[2].Name()]), 3)
+	assert.Equal(t, 3, len(nameToPartitions))
+	assert.Equal(t, 3, len(nameToPartitions[consumers[1].Name()])+len(nameToPartitions[consumers[2].Name()]))
 }
 
 func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
