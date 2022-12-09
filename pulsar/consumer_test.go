@@ -25,6 +25,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -385,11 +386,14 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 }
 
 type TestActiveConsumerListener struct {
+	lock             sync.Mutex
 	nameToPartitions map[string]map[int32]struct{}
 }
 
 func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, topicName string, partition int32) {
 	fmt.Printf("%s become active on %s - %d\n", consumer.Name(), topicName, partition)
+	t.lock.Lock()
+	defer t.lock.Unlock()
 	partitionSet := t.nameToPartitions[consumer.Name()]
 	if partitionSet == nil {
 		partitionSet = map[int32]struct{}{}
@@ -400,6 +404,8 @@ func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, topicName s
 
 func (t *TestActiveConsumerListener) BecameInactive(consumer Consumer, topicName string, partition int32) {
 	fmt.Printf("%s become inactive on %s - %d\n", consumer.Name(), topicName, partition)
+	t.lock.Lock()
+	defer t.lock.Unlock()
 	partitionSet := t.nameToPartitions[consumer.Name()]
 	if _, ok := partitionSet[partition]; ok {
 		delete(partitionSet, partition)
@@ -425,7 +431,7 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 	defer client.Close()
 
 	topic := "persistent://public/default/testGetPartitions6"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions5/partitions"
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions6/partitions"
 
 	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
