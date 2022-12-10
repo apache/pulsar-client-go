@@ -322,7 +322,7 @@ func TestConsumerKeyShared(t *testing.T) {
 	assert.NotEqual(t, 0, receivedConsumer1)
 	assert.NotEqual(t, 0, receivedConsumer2)
 
-	fmt.Printf("TestConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
+	t.Logf("TestConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
 		receivedConsumer1, receivedConsumer2)
 	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
 }
@@ -376,7 +376,7 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 		assert.Nil(t, err)
 		msgs = append(msgs, string(msg.Payload()))
 
-		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+		t.Logf("Received message msgId: %#v -- content: '%s'\n",
 			msg.ID(), string(msg.Payload()))
 
 		consumer.Ack(msg)
@@ -386,43 +386,44 @@ func TestPartitionTopicsConsumerPubSub(t *testing.T) {
 }
 
 type TestActiveConsumerListener struct {
+	t                *testing.T
 	lock             sync.RWMutex
 	nameToPartitions map[string]map[int32]struct{}
 }
 
-func (t *TestActiveConsumerListener) getConsumerCount() int {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-	return len(t.nameToPartitions)
+func (l *TestActiveConsumerListener) getConsumerCount() int {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+	return len(l.nameToPartitions)
 }
 
-func (t *TestActiveConsumerListener) getPartitionCount(consumerName string) int {
-	t.lock.RLock()
-	defer t.lock.RUnlock()
-	return len(t.nameToPartitions[consumerName])
+func (l *TestActiveConsumerListener) getPartitionCount(consumerName string) int {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+	return len(l.nameToPartitions[consumerName])
 }
 
-func (t *TestActiveConsumerListener) BecameActive(consumer Consumer, topicName string, partition int32) {
-	fmt.Printf("%s become active on %s - %d\n", consumer.Name(), topicName, partition)
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	partitionSet := t.nameToPartitions[consumer.Name()]
+func (l *TestActiveConsumerListener) BecameActive(consumer Consumer, topicName string, partition int32) {
+	l.t.Logf("%s become active on %s - %d\n", consumer.Name(), topicName, partition)
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	partitionSet := l.nameToPartitions[consumer.Name()]
 	if partitionSet == nil {
 		partitionSet = map[int32]struct{}{}
 	}
 	partitionSet[partition] = struct{}{}
-	t.nameToPartitions[consumer.Name()] = partitionSet
+	l.nameToPartitions[consumer.Name()] = partitionSet
 }
 
-func (t *TestActiveConsumerListener) BecameInactive(consumer Consumer, topicName string, partition int32) {
-	fmt.Printf("%s become inactive on %s - %d\n", consumer.Name(), topicName, partition)
-	t.lock.Lock()
-	defer t.lock.Unlock()
-	partitionSet := t.nameToPartitions[consumer.Name()]
+func (l *TestActiveConsumerListener) BecameInactive(consumer Consumer, topicName string, partition int32) {
+	l.t.Logf("%s become inactive on %s - %d\n", consumer.Name(), topicName, partition)
+	l.lock.Lock()
+	defer l.lock.Unlock()
+	partitionSet := l.nameToPartitions[consumer.Name()]
 	if _, ok := partitionSet[partition]; ok {
 		delete(partitionSet, partition)
 		if len(partitionSet) == 0 {
-			delete(t.nameToPartitions, consumer.Name())
+			delete(l.nameToPartitions, consumer.Name())
 		}
 	}
 }
@@ -442,8 +443,9 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "persistent://public/default/testGetPartitions6"
-	testURL := adminURL + "/" + "admin/v2/persistent/public/default/testGetPartitions6/partitions"
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + randomName + "/partitions"
 
 	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
@@ -464,6 +466,7 @@ func TestPartitionTopic_ActiveConsumerChanged(t *testing.T) {
 
 	var consumers []Consumer
 	listener := &TestActiveConsumerListener{
+		t:                t,
 		nameToPartitions: map[string]map[int32]struct{}{},
 	}
 	for i := 0; i < 1; i++ {
@@ -576,7 +579,7 @@ func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
 		assert.Nil(t, err)
 		msgs = append(msgs, string(msg.Payload()))
 
-		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+		t.Logf("Received message msgId: %#v -- content: '%s'\n",
 			msg.ID(), string(msg.Payload()))
 
 		consumer.Ack(msg)
@@ -669,7 +672,7 @@ func TestConsumerShared(t *testing.T) {
 			readMsgs++
 			payload := string(cm.Message.Payload())
 			messages[payload] = struct{}{}
-			fmt.Printf("consumer1 msg id is: %v, value is: %s\n", cm.Message.ID(), payload)
+			t.Logf("consumer1 msg id is: %v, value is: %s\n", cm.Message.ID(), payload)
 			consumer1.Ack(cm.Message)
 		case cm, ok := <-consumer2.Chan():
 			if !ok {
@@ -678,7 +681,7 @@ func TestConsumerShared(t *testing.T) {
 			readMsgs++
 			payload := string(cm.Message.Payload())
 			messages[payload] = struct{}{}
-			fmt.Printf("consumer2 msg id is: %v, value is: %s\n", cm.Message.ID(), payload)
+			t.Logf("consumer2 msg id is: %v, value is: %s\n", cm.Message.ID(), payload)
 			consumer2.Ack(cm.Message)
 		}
 	}
@@ -1872,7 +1875,7 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 		assert.Nil(t, err)
 		msgs = append(msgs, string(msg.Payload()))
 
-		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
+		t.Logf("Received message msgId: %#v -- content: '%s'\n",
 			msg.ID(), string(msg.Payload()))
 
 		consumer.Ack(msg)
@@ -2213,11 +2216,11 @@ func TestKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 	assert.Equal(t, len(consumer1Keys)*MsgBatchCount, receivedConsumer1)
 	assert.Equal(t, len(consumer2Keys)*MsgBatchCount, receivedConsumer2)
 
-	fmt.Printf("TestKeyBasedBatchProducerConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
+	t.Logf("TestKeyBasedBatchProducerConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
 		receivedConsumer1, receivedConsumer2)
 	assert.Equal(t, 300, receivedConsumer1+receivedConsumer2)
 
-	fmt.Printf("TestKeyBasedBatchProducerConsumerKeyShared received messages keys consumer1: %v consumser2: %v\n",
+	t.Logf("TestKeyBasedBatchProducerConsumerKeyShared received messages keys consumer1: %v consumser2: %v\n",
 		consumer1Keys, consumer2Keys)
 }
 
@@ -2395,7 +2398,7 @@ func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
 	assert.NotEqual(t, 0, receivedConsumer1)
 	assert.NotEqual(t, 0, receivedConsumer2)
 
-	fmt.Printf(
+	t.Logf(
 		"TestConsumerKeySharedWithOrderingKey received messages consumer1: %d consumser2: %d\n",
 		receivedConsumer1, receivedConsumer2,
 	)
@@ -2731,7 +2734,7 @@ func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 			Value: fmt.Sprintf(message, i),
 		})
 		assert.Nil(t, err)
-		fmt.Printf("Sent : %v\n", mid)
+		t.Logf("Sent : %v\n", mid)
 	}
 
 	// Consuming from consumer 2 and 3
@@ -2764,7 +2767,7 @@ func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 		assert.Nil(t, err)
 		messageMap[*receivedMsg] = struct{}{}
 		cryptoConsumer.Ack(m)
-		fmt.Printf("Received : %v\n", m.ID())
+		t.Logf("Received : %v\n", m.ID())
 	}
 
 	// check if all messages were received
@@ -3012,7 +3015,7 @@ func TestBatchMessageReceiveWithCompressionAndRSAEcnryption(t *testing.T) {
 
 	for i := 0; i < numOfMessages; i++ {
 		msg, err := consumer.Receive(ctx)
-		fmt.Printf("received : %v\n", string(msg.Payload()))
+		t.Logf("received : %v\n", string(msg.Payload()))
 		assert.Nil(t, err)
 		consumer.Ack(msg)
 		count++

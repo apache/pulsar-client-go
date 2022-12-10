@@ -112,7 +112,7 @@ type partitionConsumerOpts struct {
 	maxPendingChunkedMessage    int
 	expireTimeOfIncompleteChunk time.Duration
 	autoAckIncompleteChunk      bool
-	// int failover mode, this callback will be called when consumer change
+	// in failover mode, this callback will be called when consumer change
 	consumerEventListener ConsumerEventListener
 }
 
