@@ -7,8 +7,8 @@ require (
 	github.com/apache/pulsar-client-go v0.9.0
 	github.com/docker/go-connections v0.4.0
 	github.com/fatih/color v1.7.0
-	github.com/form3tech-oss/jwt-go v3.2.3+incompatible
 	github.com/ghodss/yaml v1.0.0
+	github.com/golang-jwt/jwt/v4 v4.4.3
 	github.com/golang/protobuf v1.5.2
 	github.com/imdario/mergo v0.3.8
 	github.com/kris-nova/logger v0.0.0-20181127235838-fd0d87064b06

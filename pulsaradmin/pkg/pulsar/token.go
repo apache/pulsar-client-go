@@ -18,12 +18,15 @@
 package pulsar
 
 import (
+	"encoding/base64"
 	"strings"
+	"time"
+
+	"github.com/golang-jwt/jwt/v4"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common/algorithm/algorithm"
 	"github.com/streamnative/pulsar-admin-go/pkg/pulsar/common/algorithm/keypair"
 
-	"github.com/form3tech-oss/jwt-go"
 	"github.com/pkg/errors"
 )
 
@@ -37,6 +40,10 @@ type Token interface {
 	// Create creates a token object using the specified signature algorithm, private key,
 	// object and the expire time
 	Create(algorithm.Algorithm, interface{}, string, int64) (string, error)
+
+	// CreateToken creates a token object using the specified signature algorithm, private key
+	// custom claim and header
+	CreateToken(algorithm.Algorithm, interface{}, *jwt.MapClaims, map[string]interface{}) (string, error)
 
 	// Validate a token is valid or not
 	Validate(algorithm.Algorithm, string, interface{}) (string, int64, error)
@@ -77,13 +84,25 @@ func (t *token) CreateSecretKey(signatureAlgorithm algorithm.Algorithm) ([]byte,
 func (t *token) Create(algorithm algorithm.Algorithm, signKey interface{}, subject string,
 	expireTime int64) (string, error) {
 
-	claims := &jwt.StandardClaims{
-		Subject:   subject,
-		ExpiresAt: expireTime,
+	claims := &jwt.MapClaims{
+		"sub": subject,
+		"exp": jwt.NewNumericDate(time.Unix(expireTime, 0)),
 	}
-	signMethod := parseAlgorithmToJwtSignMethod(algorithm)
-	tokenString := jwt.NewWithClaims(signMethod, claims)
+	return t.CreateToken(algorithm, signKey, claims, nil)
+}
 
+func (t *token) CreateToken(
+	algorithm algorithm.Algorithm,
+	signKey interface{},
+	mapClaims *jwt.MapClaims,
+	headers map[string]interface{}) (string, error) {
+	signMethod := parseAlgorithmToJwtSignMethod(algorithm)
+	tokenString := jwt.NewWithClaims(signMethod, mapClaims)
+	if headers != nil && len(headers) > 0 {
+		for s, i := range headers {
+			tokenString.Header[s] = i
+		}
+	}
 	return tokenString.SignedString(signKey)
 }
 
@@ -110,20 +129,20 @@ func (t *token) Validate(algorithm algorithm.Algorithm, tokenString string,
 
 func (t *token) GetAlgorithm(tokenString string) (string, error) {
 	parts := strings.Split(tokenString, ".")
-	algorithm, err := jwt.DecodeSegment(parts[0])
+	alg, err := base64.RawURLEncoding.DecodeString(parts[0])
 	if err != nil {
 		return "", err
 	}
-	return string(algorithm), nil
+	return string(alg), nil
 }
 
 func (t *token) GetSubject(tokenString string) (string, error) {
 	parts := strings.Split(tokenString, ".")
-	algorithm, err := jwt.DecodeSegment(parts[1])
+	alg, err := base64.RawURLEncoding.DecodeString(parts[1])
 	if err != nil {
 		return "", err
 	}
-	return string(algorithm), nil
+	return string(alg), nil
 }
 
 func parseAlgorithmToJwtSignMethod(a algorithm.Algorithm) jwt.SigningMethod {
