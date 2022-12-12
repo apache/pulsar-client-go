@@ -151,13 +151,22 @@ type PartitionedTopicMetadata struct {
 	Partitions int `json:"partitions"`
 }
 
+type ManagedLedgerInfoLedgerInfo struct {
+	LedgerID             int64  `json:"ledgerId"`
+	Entries              int64  `json:"entries"`
+	Size                 int64  `json:"size"`
+	Timestamp            int64  `json:"timestamp"`
+	Offloaded            bool   `json:"isOffloaded"`
+	OffloadedContextUUID string `json:"offloadedContextUuid"`
+}
+
 type ManagedLedgerInfo struct {
-	Version            int                   `json:"version"`
-	CreationDate       string                `json:"creationDate"`
-	ModificationData   string                `json:"modificationData"`
-	Ledgers            []LedgerInfo          `json:"ledgers"`
-	TerminatedPosition PositionInfo          `json:"terminatedPosition"`
-	Cursors            map[string]CursorInfo `json:"cursors"`
+	Version            int                           `json:"version"`
+	CreationDate       string                        `json:"creationDate"`
+	ModificationData   string                        `json:"modificationData"`
+	Ledgers            []ManagedLedgerInfoLedgerInfo `json:"ledgers"`
+	TerminatedPosition PositionInfo                  `json:"terminatedPosition"`
+	Cursors            map[string]CursorInfo         `json:"cursors"`
 }
 
 type NamespacesData struct {
@@ -270,11 +279,13 @@ type PersistentTopicInternalStats struct {
 }
 
 type LedgerInfo struct {
-	LedgerID  int64 `json:"ledgerId"`
-	Entries   int64 `json:"entries"`
-	Size      int64 `json:"size"`
-	Timestamp int64 `json:"timestamp"`
-	Offloaded bool  `json:"isOffloaded"`
+	LedgerID        int64  `json:"ledgerId"`
+	Entries         int64  `json:"entries"`
+	Size            int64  `json:"size"`
+	Timestamp       int64  `json:"timestamp"`
+	Offloaded       bool   `json:"offloaded"`
+	MetaData        string `json:"metadata"`
+	UnderReplicated bool   `json:"underReplicated"`
 }
 
 type CursorInfo struct {
