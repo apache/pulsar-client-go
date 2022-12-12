@@ -41,6 +41,9 @@ type Subscriptions interface {
 	// Delete a persistent subscription from a topic. There should not be any active consumers on the subscription
 	Delete(utils.TopicName, string) error
 
+	// ForceDelete deletes a subscription forcefully
+	ForceDelete(utils.TopicName, string) error
+
 	// List returns the list of subscriptions
 	List(utils.TopicName) ([]string, error)
 
@@ -94,9 +97,19 @@ func (s *subscriptions) Create(topic utils.TopicName, sName string, messageID ut
 	return s.pulsar.Client.Put(endpoint, messageID)
 }
 
+func (s *subscriptions) delete(topic utils.TopicName, subName string, force bool) error {
+	endpoint := s.pulsar.endpoint(s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(subName))
+	queryParams := make(map[string]string)
+	queryParams["force"] = strconv.FormatBool(force)
+	return s.pulsar.Client.DeleteWithQueryParams(endpoint, queryParams)
+}
+
 func (s *subscriptions) Delete(topic utils.TopicName, sName string) error {
-	endpoint := s.pulsar.endpoint(s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName))
-	return s.pulsar.Client.Delete(endpoint)
+	return s.delete(topic, sName, false)
+}
+
+func (s *subscriptions) ForceDelete(topic utils.TopicName, sName string) error {
+	return s.delete(topic, sName, true)
 }
 
 func (s *subscriptions) List(topic utils.TopicName) ([]string, error) {
