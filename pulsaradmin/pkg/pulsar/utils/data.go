@@ -265,6 +265,8 @@ type PersistentTopicInternalStats struct {
 	State                              string                 `json:"state"`
 	Ledgers                            []LedgerInfo           `json:"ledgers"`
 	Cursors                            map[string]CursorStats `json:"cursors"`
+	SchemaLedgers                      []SchemaLedger         `json:"schemaLedgers"`
+	CompactedLedger                    CompactedLedger        `json:"compactedLedger"`
 }
 
 type LedgerInfo struct {
@@ -401,4 +403,20 @@ type DispatchRateData struct {
 type PublishRateData struct {
 	PublishThrottlingRateInMsg  int64 `json:"publishThrottlingRateInMsg"`
 	PublishThrottlingRateInByte int64 `json:"publishThrottlingRateInByte"`
+}
+
+type SchemaLedger struct {
+	LedgerID    int64 `json:"ledgerId"`
+	Entries     int64 `json:"entries"`
+	Size        int64 `json:"size"`
+	Timestamp   int64 `json:"timestamp"`
+	IsOffloaded bool  `json:"isOffloaded"`
+}
+
+type CompactedLedger struct {
+	LedgerID        int64 `json:"ledgerId"`
+	Entries         int64 `json:"entries"`
+	Size            int64 `json:"size"`
+	Offloaded       bool  `json:"offloaded"`
+	UnderReplicated bool  `json:"underReplicated"`
 }
