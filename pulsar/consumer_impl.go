@@ -376,6 +376,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				maxPendingChunkedMessage:    c.options.MaxPendingChunkedMessage,
 				expireTimeOfIncompleteChunk: c.options.ExpireTimeOfIncompleteChunk,
 				autoAckIncompleteChunk:      c.options.AutoAckIncompleteChunk,
+				consumerEventListener:       c.options.EventListener,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
