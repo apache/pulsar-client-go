@@ -27,7 +27,8 @@ go mod download
 
 # Basic compilation
 go build ./pulsar
-go build -o bin/pulsar-perf ./perf
+
+cd ./perf && go build -o ../bin/pulsar-perf . && cd ..
 
 scripts/pulsar-test-service-start.sh
 

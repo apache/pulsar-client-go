@@ -25,7 +25,7 @@ GOLANG_IMAGE = golang:$(GO_VERSION)
 
 build:
 	go build ./pulsar
-	go build -o bin/pulsar-perf ./perf
+	cd ./perf && go build -o ../bin/pulsar-perf . && cd ..
 
 lint:
 	golangci-lint run
