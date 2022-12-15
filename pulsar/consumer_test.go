@@ -1603,7 +1603,7 @@ func TestRLQMultiTopics(t *testing.T) {
 
 	// subscribe DLQ Topic
 	dlqConsumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       partitionTopic + "-" + subName + "-DLQ",
+		Topic:                       normalTopic + "-" + subName + "-DLQ",
 		SubscriptionName:            subName,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
