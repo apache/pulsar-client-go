@@ -122,6 +122,12 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
+		topicName := internal.TopicNameWithoutPartitionPart(tn)
+
+		fmt.Println("tn.Name", tn.Name)
+		fmt.Println("tn.Partition", tn.Partition)
+		fmt.Println("TopicName", topicName)
+
 		retryTopic := tn.Domain + "://" + tn.Namespace + "/" + tn.Topic + "-" + options.SubscriptionName + RetryTopicSuffix
 		dlqTopic := tn.Domain + "://" + tn.Namespace + "/" + tn.Topic + "-" + options.SubscriptionName + DlqTopicSuffix
 
