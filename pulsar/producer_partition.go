@@ -624,11 +624,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		if totalChunks > 1 {
 			var lhs, rhs int
 			uuid := fmt.Sprintf("%s-%s", p.producerName, strconv.FormatUint(*mm.SequenceId, 10))
-			mm.Uuid = &uuid
-			numChunksFromMsg := int32(totalChunks)
-			mm.NumChunksFromMsg = &numChunksFromMsg
-			totalChunkMsgSize := int32(compressedSize)
-			mm.TotalChunkMsgSize = &totalChunkMsgSize
+			mm.Uuid = proto.String(uuid)
+			mm.NumChunksFromMsg = proto.Int32(int32(totalChunks))
+			mm.TotalChunkMsgSize = proto.Int32(int32(compressedSize))
 			cr := newChunkRecorder()
 			for chunkID := 0; chunkID < totalChunks; chunkID++ {
 				lhs = chunkID * payloadChunkSize
@@ -636,8 +634,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 					rhs = compressedSize
 				}
 				// update chunk id
-				id := int32(chunkID)
-				mm.ChunkId = &id
+				mm.ChunkId = proto.Int32(int32(chunkID))
 				nsr := &sendRequest{
 					ctx:              request.ctx,
 					msg:              request.msg,
@@ -665,7 +662,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			p.internalSingleSend(mm, compressedPayload, request, uint32(maxMessageSize))
 		}
 	} else {
-		smm := p.genSingleMessageMetadataInBatch(msg, int32(uncompressedSize))
+		smm := p.genSingleMessageMetadataInBatch(msg, uncompressedSize)
 		multiSchemaEnabled := !p.options.DisableMultiSchema
 		added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
 			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
@@ -727,9 +724,9 @@ func (p *partitionProducer) updateMetadataSeqID(mm *pb.MessageMetadata, msg *Pro
 }
 
 func (p *partitionProducer) genSingleMessageMetadataInBatch(msg *ProducerMessage,
-	uncompressedSize int32) (smm *pb.SingleMessageMetadata) {
+	uncompressedSize int) (smm *pb.SingleMessageMetadata) {
 	smm = &pb.SingleMessageMetadata{
-		PayloadSize: &uncompressedSize,
+		PayloadSize: proto.Int32(int32(uncompressedSize)),
 	}
 
 	if !msg.EventTime.IsZero() {
