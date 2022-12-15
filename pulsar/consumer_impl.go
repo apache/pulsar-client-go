@@ -124,27 +124,19 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 		topicName := internal.TopicNameWithoutPartitionPart(tn)
 
-		fmt.Println("tn.Name", tn.Name)
-		fmt.Println("tn.Partition", tn.Partition)
-		fmt.Println("TopicName", topicName)
-
-		retryTopic := tn.Domain + "://" + tn.Namespace + "/" + tn.Topic + "-" + options.SubscriptionName + RetryTopicSuffix
-		dlqTopic := tn.Domain + "://" + tn.Namespace + "/" + tn.Topic + "-" + options.SubscriptionName + DlqTopicSuffix
+		retryTopic := topicName + "-" + options.SubscriptionName + RetryTopicSuffix
+		dlqTopic := topicName + "-" + options.SubscriptionName + DlqTopicSuffix
 
 		oldRetryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
 		oldDlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
 
-		if tn.Partition > 0 {
-			retryTopic = oldRetryTopic
-		} else if r, err := client.lookupService.GetPartitionedTopicMetadata(oldRetryTopic); err == nil &&
+		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldRetryTopic); err == nil &&
 			r != nil &&
 			r.Partitions > 0 {
 			retryTopic = oldRetryTopic
 		}
 
-		if tn.Partition > 0 {
-			dlqTopic = oldDlqTopic
-		} else if r, err := client.lookupService.GetPartitionedTopicMetadata(oldDlqTopic); err == nil &&
+		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldDlqTopic); err == nil &&
 			r != nil &&
 			r.Partitions > 0 {
 			dlqTopic = oldDlqTopic
