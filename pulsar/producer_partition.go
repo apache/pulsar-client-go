@@ -31,7 +31,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
-	"github.com/gogo/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -605,12 +605,12 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		totalChunks = 1
 		payloadChunkSize = int(p._getConn().GetMaxMessageSize())
 	} else {
-		payloadChunkSize = int(p._getConn().GetMaxMessageSize()) - mm.Size()
+		payloadChunkSize = int(p._getConn().GetMaxMessageSize()) - proto.Size(mm)
 		if payloadChunkSize <= 0 {
 			p.publishSemaphore.Release()
 			request.callback(nil, msg, errMetaTooLarge)
 			p.log.WithError(errMetaTooLarge).
-				WithField("metadata size", mm.Size()).
+				WithField("metadata size", proto.Size(mm)).
 				WithField("properties", msg.Properties).
 				Errorf("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize()))
 			p.metrics.PublishErrorsMsgTooLarge.Inc()
@@ -631,8 +631,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			var lhs, rhs int
 			uuid := fmt.Sprintf("%s-%s", p.producerName, strconv.FormatUint(*mm.SequenceId, 10))
 			mm.Uuid = proto.String(uuid)
-			mm.NumChunksFromMsg = proto.Int(totalChunks)
-			mm.TotalChunkMsgSize = proto.Int(compressedSize)
+			mm.NumChunksFromMsg = proto.Int32(int32(totalChunks))
+			mm.TotalChunkMsgSize = proto.Int32(int32(compressedSize))
 			cr := newChunkRecorder()
 			for chunkID := 0; chunkID < totalChunks; chunkID++ {
 				lhs = chunkID * payloadChunkSize
@@ -640,7 +640,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 					rhs = compressedSize
 				}
 				// update chunk id
-				mm.ChunkId = proto.Int(chunkID)
+				mm.ChunkId = proto.Int32(int32(chunkID))
 				nsr := &sendRequest{
 					ctx:              request.ctx,
 					msg:              request.msg,
@@ -732,7 +732,7 @@ func (p *partitionProducer) updateMetadataSeqID(mm *pb.MessageMetadata, msg *Pro
 func (p *partitionProducer) genSingleMessageMetadataInBatch(msg *ProducerMessage,
 	uncompressedSize int) (smm *pb.SingleMessageMetadata) {
 	smm = &pb.SingleMessageMetadata{
-		PayloadSize: proto.Int(uncompressedSize),
+		PayloadSize: proto.Int32(int32(uncompressedSize)),
 	}
 
 	if !msg.EventTime.IsZero() {
