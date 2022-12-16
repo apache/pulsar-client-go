@@ -535,7 +535,7 @@ func (c *consumer) Nack(msg Message) {
 		}
 
 		if mid.consumer != nil {
-			mid.consumer.NackID(msg.ID())
+			mid.consumer.NackMsg(msg)
 			return
 		}
 		c.consumers[mid.partitionIdx].NackMsg(msg)
