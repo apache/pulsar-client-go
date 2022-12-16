@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io/ioutil"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"sync"
@@ -927,6 +928,74 @@ func TestConsumerNack(t *testing.T) {
 
 		consumer.Ack(msg)
 	}
+}
+
+type TestBackOffPolicy struct {
+	minNackTime time.Duration
+	maxNackTime time.Duration
+}
+
+func (p *TestBackOffPolicy) Next(redeliveryCount uint32) time.Duration {
+	if redeliveryCount < 0 {
+		return p.minNackTime
+	}
+
+	return time.Duration(math.Min(math.Abs(float64(p.minNackTime<<redeliveryCount)), float64(p.maxNackTime)))
+}
+
+func TestConsumerNackWithBackOff(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	minNackTime := 50 * time.Millisecond
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Shared,
+		NackBackoffPolicy: &TestBackOffPolicy{
+			minNackTime: minNackTime,
+			maxNackTime: 1 * time.Second,
+		},
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	if _, err := producer.Send(ctx, &ProducerMessage{
+		Payload: []byte("msg-content"),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, "msg-content", string(msg.Payload()))
+
+	for i := 0; i < 3; i++ {
+		// Fails to process the message and expect a back-off.
+		timeElapsed := time.Now()
+		consumer.Nack(msg)
+
+		msg, err = consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, "msg-content", string(msg.Payload()))
+		assert.True(t, time.Since(timeElapsed).Milliseconds() > minNackTime.Milliseconds()<<i)
+	}
+
+	consumer.Ack(msg)
 }
 
 func TestConsumerCompression(t *testing.T) {
