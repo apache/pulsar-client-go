@@ -36,7 +36,11 @@ CGo based library.
 
 ## Requirements
 
-- Go 1.15+
+- Go 1.18+
+
+> **Note**:
+>
+> While this library should work with Golang versions as early as 1.15, any bugs specific to versions earlier than 1.18 may not be fixed.
 
 ## Status
 
