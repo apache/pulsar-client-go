@@ -1603,7 +1603,7 @@ func TestRLQMultiTopics(t *testing.T) {
 
 	// subscribe DLQ Topic
 	dlqConsumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       normalTopic + "-" + subName + "-DLQ",
+		Topic:                       topics[0] + "-" + subName + "-DLQ",
 		SubscriptionName:            subName,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
@@ -1710,7 +1710,7 @@ func TestRLQSpecifiedPartitionTopic(t *testing.T) {
 
 	// subscribe DLQ Topic
 	dlqConsumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       topics[0] + "-" + subName + "-DLQ",
+		Topic:                       normalTopic + "-" + subName + "-DLQ",
 		SubscriptionName:            subName,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
