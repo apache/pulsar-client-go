@@ -122,8 +122,26 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		retryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
-		dlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
+		topicName := internal.TopicNameWithoutPartitionPart(tn)
+
+		retryTopic := topicName + "-" + options.SubscriptionName + RetryTopicSuffix
+		dlqTopic := topicName + "-" + options.SubscriptionName + DlqTopicSuffix
+
+		oldRetryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
+		oldDlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
+
+		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldRetryTopic); err == nil &&
+			r != nil &&
+			r.Partitions > 0 {
+			retryTopic = oldRetryTopic
+		}
+
+		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldDlqTopic); err == nil &&
+			r != nil &&
+			r.Partitions > 0 {
+			dlqTopic = oldDlqTopic
+		}
+
 		if options.DLQ == nil {
 			options.DLQ = &DLQPolicy{
 				MaxDeliveries:    MaxReconsumeTimes,
