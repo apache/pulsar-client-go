@@ -22,12 +22,11 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/auth"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
-
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
-	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 const (

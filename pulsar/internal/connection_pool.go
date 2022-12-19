@@ -24,7 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+	"github.com/apache/pulsar-client-go/pulsar/auth"
+
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
