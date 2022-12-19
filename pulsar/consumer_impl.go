@@ -502,7 +502,8 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 }
 
 // ReconsumeLaterWithCustomProperties mark a message for redelivery after custom delay with custom properties
-func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string, delay time.Duration) {
+func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string,
+	delay time.Duration) {
 	if delay < 0 {
 		delay = 0
 	}
