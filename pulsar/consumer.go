@@ -237,6 +237,9 @@ type Consumer interface {
 	// ReconsumeLater mark a message for redelivery after custom delay
 	ReconsumeLater(msg Message, delay time.Duration)
 
+	// ReconsumeLaterWithCustomProperties mark a message for redelivery after custom delay with custom properties
+	ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string, delay time.Duration)
+
 	// Nack acknowledges the failure to process a single message.
 	//
 	// When a message is "negatively acked" it will be marked for redelivery after

@@ -144,6 +144,10 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 }
 
 func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
+	c.ReconsumeLaterWithCustomProperties(msg, map[string]string{}, delay)
+}
+
+func (c *multiTopicConsumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string, delay time.Duration) {
 	names, err := validateTopicNames(msg.Topic())
 	if err != nil {
 		c.log.Errorf("validate msg topic %q failed: %v", msg.Topic(), err)
@@ -165,7 +169,7 @@ func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 			return
 		}
 	}
-	consumer.ReconsumeLater(msg, delay)
+	consumer.ReconsumeLaterWithCustomProperties(msg, customProperties, delay)
 }
 
 func (c *multiTopicConsumer) Nack(msg Message) {

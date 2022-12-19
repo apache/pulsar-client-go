@@ -167,6 +167,10 @@ func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
 }
 
+func (c *regexConsumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string, delay time.Duration) {
+	c.log.Warnf("regexp consumer not support ReconsumeLaterWithCustomProperties yet.")
+}
+
 // AckID the consumption of a single message, identified by its MessageID
 func (c *regexConsumer) AckID(msgID MessageID) error {
 	mid, ok := toTrackingMessageID(msgID)
