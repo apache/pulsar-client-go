@@ -132,6 +132,11 @@ type ConsumerOptions struct {
 	// Default is false
 	RetryEnable bool
 
+	// StartMessageIDInclusive, if true, the consumer will start at including the given position
+	// of any reset operation like `Consumer.Seek()`.
+	// Default is `false` and the reader will start from the "next" message
+	StartMessageIDInclusive bool
+
 	// MessageChannel sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
 	MessageChannel chan ConsumerMessage

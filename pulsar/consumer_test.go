@@ -41,7 +41,7 @@ import (
 
 var (
 	adminURL  = "http://localhost:8080"
-	lookupURL = "pulsar://localhost:6650"
+	lookupURL = "pulsar://10.238.18.160:6650"
 )
 
 func TestProducerConsumer(t *testing.T) {
@@ -989,6 +989,85 @@ func TestConsumerSeekByTime(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
 		consumer.Ack(msg)
 	}
+}
+
+func TestConsumerOnSpecificMessage(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// create reader on 5th message (non-included)
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub-non-inclusive",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create consumer on 5th message (included)
+	//consumerInclusive, err := client.Subscribe(ConsumerOptions{
+	//	Topic:                   topic,
+	//	SubscriptionName:        "my-sub-inclusive",
+	//	StartMessageIDInclusive: true,
+	//})
+	//assert.Nil(t, err)
+	//defer consumer.Close()
+
+	// send 10 messages
+	msgIDs := [10]MessageID{}
+	for i := 0; i < 10; i++ {
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, msgID)
+		msgIDs[i] = msgID
+	}
+
+	// seek the 5th msg (non-included)
+	err = consumer.Seek(msgIDs[1])
+	assert.NoError(t, err)
+
+	msg, err := consumer.Receive(ctx)
+	fmt.Println(string(msg.Payload()))
+
+	//// receive the remaining 5 messages
+	//for i := 5; i < 10; i++ {
+	//	msg, err := consumer.Receive(ctx)
+	//	assert.NoError(t, err)
+	//
+	//	fmt.Println(string(msg.Payload()))
+	//
+	//	expectMsg := fmt.Sprintf("hello-%d", i)
+	//	assert.Equal(t, []byte(expectMsg), msg.Payload())
+	//}
+	//
+	//// seek the 5th msg (included)
+	//err = consumerInclusive.Seek(msgIDs[4])
+	//assert.NoError(t, err)
+	//
+	//// receive the remaining 6 messages
+	//for i := 4; i < 10; i++ {
+	//	msg, err := consumerInclusive.Receive(ctx)
+	//	assert.NoError(t, err)
+	//
+	//	expectMsg := fmt.Sprintf("hello-%d", i)
+	//	assert.Equal(t, []byte(expectMsg), msg.Payload())
+	//}
 }
 
 func TestConsumerMetadata(t *testing.T) {
