@@ -733,6 +733,7 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
 	pbMsgID := response.GetMessageId()
+	ackSet := response.GetAckSet()
 
 	reader := internal.NewMessageReader(headersAndPayload)
 	brokerMetadata, err := reader.ReadBrokerMetadata()
@@ -851,6 +852,11 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		trackingMsgID.consumer = pc
 
 		if pc.messageShouldBeDiscarded(trackingMsgID) {
+			pc.AckID(trackingMsgID)
+			continue
+		}
+
+		if ackSet != nil && trackingMsgID.ack() {
 			pc.AckID(trackingMsgID)
 			continue
 		}

@@ -135,6 +135,10 @@ type ConsumerOptions struct {
 	// Default is false
 	RetryEnable bool
 
+	// BatchIndexAcknowledgmentEnable enable or disable the batch index acknowledgment. To enable this feature
+	// must ensure batch index acknowledgment feature is enabled at the broker side.
+	BatchIndexAcknowledgmentEnable bool
+
 	// MessageChannel sets a `MessageChannel` for the consumer
 	// When a message is received, it will be pushed to the channel for consumption
 	MessageChannel chan ConsumerMessage

@@ -350,17 +350,17 @@ func (msg *message) BrokerPublishTime() *time.Time {
 	return msg.brokerPublishTime
 }
 
-func newAckTracker(size int) *ackTracker {
+func newAckTracker(batchMsgSize int) *ackTracker {
 	var batchIDs *big.Int
-	if size <= 64 {
-		shift := uint32(64 - size)
+	if batchMsgSize <= 64 {
+		shift := uint32(64 - batchMsgSize)
 		setBits := ^uint64(0) >> shift
 		batchIDs = new(big.Int).SetUint64(setBits)
 	} else {
-		batchIDs, _ = new(big.Int).SetString(strings.Repeat("1", size), 2)
+		batchIDs, _ = new(big.Int).SetString(strings.Repeat("1", batchMsgSize), 2)
 	}
 	return &ackTracker{
-		size:     size,
+		size:     batchMsgSize,
 		batchIDs: batchIDs,
 	}
 }
