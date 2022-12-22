@@ -264,9 +264,6 @@ type Consumer interface {
 
 	// SeekByTime resets the subscription associated with this consumer to a specific message publish time.
 	//
-	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the seek() on
-	// the individual partitions.
-	//
 	// @param time
 	//            the message publish time when to reposition the subscription
 	//
