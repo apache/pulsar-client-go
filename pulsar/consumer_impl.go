@@ -343,6 +343,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	receiverQueueSize := c.options.ReceiverQueueSize
 	metadata := c.options.Properties
 	subProperties := c.options.SubscriptionProperties
+	batchIndexAckEnable := c.options.BatchIndexAcknowledgmentEnable
 
 	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
@@ -395,6 +396,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				expireTimeOfIncompleteChunk: c.options.ExpireTimeOfIncompleteChunk,
 				autoAckIncompleteChunk:      c.options.AutoAckIncompleteChunk,
 				consumerEventListener:       c.options.EventListener,
+				batchIndexAckEnable:         batchIndexAckEnable,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{

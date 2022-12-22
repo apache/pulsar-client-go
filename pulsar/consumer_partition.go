@@ -114,6 +114,7 @@ type partitionConsumerOpts struct {
 	autoAckIncompleteChunk      bool
 	// in failover mode, this callback will be called when consumer change
 	consumerEventListener ConsumerEventListener
+	batchIndexAckEnable   bool
 }
 
 type ConsumerEventListener interface {
@@ -856,7 +857,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			continue
 		}
 
-		if ackSet != nil && trackingMsgID.ack() {
+		if pc.options.batchIndexAckEnable && ackSet != nil && trackingMsgID.ack() {
 			pc.AckID(trackingMsgID)
 			continue
 		}
