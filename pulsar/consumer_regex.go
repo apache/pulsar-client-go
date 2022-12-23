@@ -18,8 +18,6 @@
 package pulsar
 
 import (
-	"context"
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -37,73 +35,36 @@ const (
 )
 
 type regexConsumer struct {
-	client *client
-	dlq    *dlqRouter
-	rlq    *retryRouter
-
-	options ConsumerOptions
-
-	messageCh chan ConsumerMessage
+	*multiTopicConsumer
 
 	namespace string
 	pattern   *regexp.Regexp
 
 	consumersLock sync.Mutex
-	consumers     map[string]Consumer
 	subscribeCh   chan []string
 	unsubscribeCh chan []string
-
-	closeOnce sync.Once
-	closeCh   chan struct{}
-
-	ticker *time.Ticker
-
-	log log.Logger
-
-	consumerName string
+	ticker        *time.Ticker
 }
 
-func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
-	msgCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
-	rc := &regexConsumer{
-		client:    c,
-		dlq:       dlq,
-		rlq:       rlq,
-		options:   opts,
-		messageCh: msgCh,
-
-		namespace: tn.Namespace,
-		pattern:   pattern,
-
-		consumers:     make(map[string]Consumer),
-		subscribeCh:   make(chan []string, 1),
-		unsubscribeCh: make(chan []string, 1),
-
-		closeCh: make(chan struct{}),
-
-		log:          c.log.SubLogger(log.Fields{"topic": tn.Name}),
-		consumerName: opts.Name,
+func newRegexConsumer(client *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
+	msgCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (*regexConsumer, error) {
+	topics, err := client.topics(tn.Namespace, pattern)
+	if err != nil {
+		return nil, err
 	}
-
-	topics, err := rc.topics()
+	mtc, err := newMultiTopicConsumer(client, opts, topics, msgCh, dlq, rlq)
 	if err != nil {
 		return nil, err
 	}
 
-	var errs error
-	for ce := range subscriber(c, topics, opts, msgCh, dlq, rlq) {
-		if ce.err != nil {
-			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
-		} else {
-			rc.consumers[ce.topic] = ce.consumer
-		}
-	}
+	rc := &regexConsumer{
+		multiTopicConsumer: mtc,
 
-	if errs != nil {
-		for _, c := range rc.consumers {
-			c.Close()
-		}
-		return nil, errs
+		namespace: tn.Namespace,
+		pattern:   pattern,
+
+		subscribeCh:   make(chan []string, 1),
+		unsubscribeCh: make(chan []string, 1),
 	}
 
 	// set up timer
@@ -116,10 +77,6 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 	go rc.monitor()
 
 	return rc, nil
-}
-
-func (c *regexConsumer) Subscription() string {
-	return c.options.SubscriptionName
 }
 
 func (c *regexConsumer) Unsubscribe() error {
@@ -137,89 +94,8 @@ func (c *regexConsumer) Unsubscribe() error {
 	return errs
 }
 
-func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error) {
-	for {
-		select {
-		case <-c.closeCh:
-			return nil, newError(ConsumerClosed, "consumer closed")
-		case cm, ok := <-c.messageCh:
-			if !ok {
-				return nil, newError(ConsumerClosed, "consumer closed")
-			}
-			return cm.Message, nil
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		}
-	}
-}
-
-// Chan return the messages chan to user
-func (c *regexConsumer) Chan() <-chan ConsumerMessage {
-	return c.messageCh
-}
-
-// Ack the consumption of a single message
-func (c *regexConsumer) Ack(msg Message) error {
-	return c.AckID(msg.ID())
-}
-
 func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
-}
-
-// AckID the consumption of a single message, identified by its MessageID
-func (c *regexConsumer) AckID(msgID MessageID) error {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
-		c.log.Warnf("invalid message id type %T", msgID)
-		return errors.New("invalid message id type")
-	}
-
-	if mid.consumer == nil {
-		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
-		return errors.New("consumer is nil in consumer_regex")
-	}
-
-	if c.options.AckWithResponse {
-		return mid.consumer.AckIDWithResponse(msgID)
-	}
-
-	return mid.consumer.AckID(msgID)
-}
-
-func (c *regexConsumer) Nack(msg Message) {
-	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
-		msgID := msg.ID()
-		mid, ok := toTrackingMessageID(msgID)
-		if !ok {
-			c.log.Warnf("invalid message id type %T", msgID)
-			return
-		}
-
-		if mid.consumer == nil {
-			c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
-			return
-		}
-		mid.NackByMsg(msg)
-		return
-	}
-
-	c.NackID(msg.ID())
-}
-
-func (c *regexConsumer) NackID(msgID MessageID) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
-		c.log.Warnf("invalid message id type %T", msgID)
-		return
-	}
-
-	if mid.consumer == nil {
-		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
-		return
-	}
-
-	mid.consumer.NackID(msgID)
 }
 
 func (c *regexConsumer) Close() {
@@ -250,11 +126,6 @@ func (c *regexConsumer) Seek(msgID MessageID) error {
 
 func (c *regexConsumer) SeekByTime(time time.Time) error {
 	return newError(SeekFailed, "seek command not allowed for regex consumer")
-}
-
-// Name returns the name of consumer.
-func (c *regexConsumer) Name() string {
-	return c.consumerName
 }
 
 func (c *regexConsumer) closed() bool {
@@ -289,7 +160,7 @@ func (c *regexConsumer) monitor() {
 }
 
 func (c *regexConsumer) discover() {
-	topics, err := c.topics()
+	topics, err := c.client.topics(c.namespace, c.pattern)
 	if err != nil {
 		c.log.WithError(err).Errorf("Failed to discover topics")
 		return
@@ -364,22 +235,13 @@ func (c *regexConsumer) unsubscribe(topics []string) {
 	}
 }
 
-func (c *regexConsumer) topics() ([]string, error) {
-	topics, err := c.client.lookupService.GetTopicsOfNamespace(c.namespace, internal.Persistent)
-	if err != nil {
-		return nil, err
-	}
-
-	filtered := filterTopics(topics, c.pattern)
-	return filtered, nil
-}
-
 type consumerError struct {
 	err      error
 	topic    string
 	consumer Consumer
 }
 
+// create consumers for all partitions of topics
 func subscriber(c *client, topics []string, opts ConsumerOptions, ch chan ConsumerMessage,
 	dlq *dlqRouter, rlq *retryRouter) <-chan consumerError {
 	consumerErrorCh := make(chan consumerError, len(topics))

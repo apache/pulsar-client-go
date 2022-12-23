@@ -20,6 +20,7 @@ package pulsar
 import (
 	"fmt"
 	"net/url"
+	"regexp"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -229,4 +230,14 @@ func (c *client) Close() {
 	c.handlers.Close()
 	c.cnxPool.Close()
 	c.lookupService.Close()
+}
+
+func (c *client) topics(namespace string, pattern *regexp.Regexp) ([]string, error) {
+	topics, err := c.lookupService.GetTopicsOfNamespace(namespace, internal.Persistent)
+	if err != nil {
+		return nil, err
+	}
+
+	filtered := filterTopics(topics, pattern)
+	return filtered, nil
 }
