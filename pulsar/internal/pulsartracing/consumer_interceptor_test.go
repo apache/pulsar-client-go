@@ -72,11 +72,11 @@ func (c *mockConsumer) AckID(msgID pulsar.MessageID) error {
 	return nil
 }
 
-func (c *mockConsumer) CumulativeAck(msg pulsar.Message) error {
+func (c *mockConsumer) AckCumulative(msg pulsar.Message) error {
 	return nil
 }
 
-func (c *mockConsumer) CumulativeAckID(msgID pulsar.MessageID) error {
+func (c *mockConsumer) AckIDCumulative(msgID pulsar.MessageID) error {
 	return nil
 }
 

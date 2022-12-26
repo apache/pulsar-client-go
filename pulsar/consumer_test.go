@@ -775,7 +775,7 @@ func TestConsumerNoBatchCumulativeAck(t *testing.T) {
 
 		if i == N/2-1 {
 			// cumulative acks the first half of messages
-			consumer.CumulativeAck(msg)
+			consumer.AckCumulative(msg)
 		}
 	}
 
@@ -862,7 +862,7 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 
 		if i == N-1 {
 			// cumulative acks the first half of messages
-			consumer.CumulativeAck(msg)
+			consumer.AckCumulative(msg)
 		}
 	}
 
@@ -1601,7 +1601,7 @@ func TestCumulativeAckWithResponse(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	err = consumer.CumulativeAck(msg)
+	err = consumer.AckCumulative(msg)
 	assert.Nil(t, err)
 }
 

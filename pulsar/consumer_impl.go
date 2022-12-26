@@ -38,8 +38,8 @@ type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
 	AckID(id MessageID) error
 	AckIDWithResponse(id MessageID) error
-	CumulativeAckID(msgID MessageID) error
-	CumulativeAckIDWithResponse(msgID MessageID) error
+	AckIDCumulative(msgID MessageID) error
+	AckIDWithResponseCumulative(msgID MessageID) error
 	NackID(id MessageID)
 	NackMsg(msg Message)
 }
@@ -479,24 +479,24 @@ func (c *consumer) AckID(msgID MessageID) error {
 	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
 }
 
-// CumulativeAck the reception of all the messages in the stream up to (and including)
+// AckCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
-func (c *consumer) CumulativeAck(msg Message) error {
-	return c.CumulativeAckID(msg.ID())
+func (c *consumer) AckCumulative(msg Message) error {
+	return c.AckIDCumulative(msg.ID())
 }
 
-// CumulativeAckID the reception of all the messages in the stream up to (and including)
+// AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
-func (c *consumer) CumulativeAckID(msgID MessageID) error {
+func (c *consumer) AckIDCumulative(msgID MessageID) error {
 	if err := c.checkMsgIDPartition(msgID); err != nil {
 		return err
 	}
 
 	if c.options.AckWithResponse {
-		return c.consumers[msgID.PartitionIdx()].CumulativeAckIDWithResponse(msgID)
+		return c.consumers[msgID.PartitionIdx()].AckIDWithResponseCumulative(msgID)
 	}
 
-	return c.consumers[msgID.PartitionIdx()].CumulativeAckID(msgID)
+	return c.consumers[msgID.PartitionIdx()].AckIDCumulative(msgID)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay

@@ -479,15 +479,15 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 	return nil
 }
 
-func (pc *partitionConsumer) CumulativeAckID(msgID MessageID) error {
-	return pc.internalCumulativeAckID(msgID, false)
+func (pc *partitionConsumer) AckIDCumulative(msgID MessageID) error {
+	return pc.internalAckIDCumulative(msgID, false)
 }
 
-func (pc *partitionConsumer) CumulativeAckIDWithResponse(msgID MessageID) error {
-	return pc.internalCumulativeAckID(msgID, true)
+func (pc *partitionConsumer) AckIDWithResponseCumulative(msgID MessageID) error {
+	return pc.internalAckIDCumulative(msgID, true)
 }
 
-func (pc *partitionConsumer) internalCumulativeAckID(msgID MessageID, withResponse bool) error {
+func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withResponse bool) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")

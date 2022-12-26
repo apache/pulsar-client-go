@@ -231,13 +231,13 @@ type Consumer interface {
 	// AckID the consumption of a single message, identified by its MessageID
 	AckID(MessageID) error
 
-	// CumulativeAck the reception of all the messages in the stream up to (and including)
+	// AckCumulative the reception of all the messages in the stream up to (and including)
 	// the provided message.
-	CumulativeAck(msg Message) error
+	AckCumulative(msg Message) error
 
-	// CumulativeAckID the reception of all the messages in the stream up to (and including)
+	// AckIDCumulative the reception of all the messages in the stream up to (and including)
 	// the provided message, identified by its MessageID
-	CumulativeAckID(msgID MessageID) error
+	AckIDCumulative(msgID MessageID) error
 
 	// ReconsumeLater mark a message for redelivery after custom delay
 	ReconsumeLater(msg Message, delay time.Duration)

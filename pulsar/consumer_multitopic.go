@@ -143,15 +143,15 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
-// CumulativeAck the reception of all the messages in the stream up to (and including)
+// AckCumulative the reception of all the messages in the stream up to (and including)
 // the provided message
-func (c *multiTopicConsumer) CumulativeAck(msg Message) error {
-	return c.CumulativeAckID(msg.ID())
+func (c *multiTopicConsumer) AckCumulative(msg Message) error {
+	return c.AckIDCumulative(msg.ID())
 }
 
-// CumulativeAckID the reception of all the messages in the stream up to (and including)
+// AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
-func (c *multiTopicConsumer) CumulativeAckID(msgID MessageID) error {
+func (c *multiTopicConsumer) AckIDCumulative(msgID MessageID) error {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
@@ -164,10 +164,10 @@ func (c *multiTopicConsumer) CumulativeAckID(msgID MessageID) error {
 	}
 
 	if c.options.AckWithResponse {
-		return mid.consumer.CumulativeAckIDWithResponse(msgID)
+		return mid.consumer.AckIDWithResponseCumulative(msgID)
 	}
 
-	return mid.consumer.CumulativeAckID(msgID)
+	return mid.consumer.AckIDCumulative(msgID)
 }
 
 func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {

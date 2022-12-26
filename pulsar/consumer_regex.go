@@ -187,15 +187,15 @@ func (c *regexConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
-// CumulativeAck the reception of all the messages in the stream up to (and including)
+// AckCumulative the reception of all the messages in the stream up to (and including)
 // the provided message.
-func (c *regexConsumer) CumulativeAck(msg Message) error {
-	return c.CumulativeAckID(msg.ID())
+func (c *regexConsumer) AckCumulative(msg Message) error {
+	return c.AckIDCumulative(msg.ID())
 }
 
-// CumulativeAckID the reception of all the messages in the stream up to (and including)
+// AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
-func (c *regexConsumer) CumulativeAckID(msgID MessageID) error {
+func (c *regexConsumer) AckIDCumulative(msgID MessageID) error {
 	mid, ok := toTrackingMessageID(msgID)
 	if !ok {
 		c.log.Warnf("invalid message id type %T", msgID)
@@ -208,10 +208,10 @@ func (c *regexConsumer) CumulativeAckID(msgID MessageID) error {
 	}
 
 	if c.options.AckWithResponse {
-		return mid.consumer.CumulativeAckIDWithResponse(msgID)
+		return mid.consumer.AckIDWithResponseCumulative(msgID)
 	}
 
-	return mid.consumer.CumulativeAckID(msgID)
+	return mid.consumer.AckIDCumulative(msgID)
 }
 
 func (c *regexConsumer) Nack(msg Message) {
