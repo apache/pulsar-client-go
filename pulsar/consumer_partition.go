@@ -462,7 +462,7 @@ func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	}
-
+	<-ackReq.doneCh
 	return ackReq.err
 }
 
