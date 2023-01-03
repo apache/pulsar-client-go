@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTableView(t *testing.T) {
@@ -114,21 +115,21 @@ func TestPublishNilValue(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	for tv.Size() < 1 {
-		time.Sleep(time.Second * 1)
-	}
+	require.Eventually(t, func() bool {
+		return tv.Size() == 1
+	}, 5*time.Second, 100*time.Millisecond)
 
 	assert.Equal(t, *(tv.Get("key-1").(*string)), "value-1")
 
-	// Send nil value
+	// send nil value
 	_, err = producer.Send(context.Background(), &ProducerMessage{
 		Key: "key-1",
 	})
 	assert.NoError(t, err)
 
-	for tv.Size() >= 1 {
-		time.Sleep(time.Second * 1)
-	}
+	require.Eventually(t, func() bool {
+		return tv.Size() == 0
+	}, 5*time.Second, 100*time.Millisecond)
 
 	_, err = producer.Send(context.Background(), &ProducerMessage{
 		Key:   "key-2",
@@ -136,9 +137,9 @@ func TestPublishNilValue(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	for tv.Size() < 1 {
-		time.Sleep(time.Second * 1)
-	}
+	require.Eventually(t, func() bool {
+		return tv.Size() == 1
+	}, 5*time.Second, 100*time.Millisecond)
 
 	assert.Equal(t, *(tv.Get("key-2").(*string)), "value-2")
 }
