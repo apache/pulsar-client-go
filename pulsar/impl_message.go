@@ -24,6 +24,7 @@ import (
 	"math/big"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -105,6 +106,25 @@ func (id trackingMessageID) ack() bool {
 		return id.tracker.ack(int(id.batchIdx))
 	}
 	return true
+}
+
+func (id trackingMessageID) ackCumulative() bool {
+	if id.tracker != nil && id.batchIdx > -1 {
+		return id.tracker.ackCumulative(int(id.batchIdx))
+	}
+	return true
+}
+
+func (id trackingMessageID) prev() trackingMessageID {
+	return trackingMessageID{
+		messageID: messageID{
+			ledgerID:     id.ledgerID,
+			entryID:      id.entryID - 1,
+			partitionIdx: id.partitionIdx,
+		},
+		tracker:  id.tracker,
+		consumer: id.consumer,
+	}
 }
 
 func (id messageID) isEntryIDValid() bool {
@@ -367,8 +387,9 @@ func newAckTracker(size int) *ackTracker {
 
 type ackTracker struct {
 	sync.Mutex
-	size     int
-	batchIDs *big.Int
+	size           int
+	batchIDs       *big.Int
+	prevBatchAcked uint32
 }
 
 func (t *ackTracker) ack(batchID int) bool {
@@ -379,6 +400,25 @@ func (t *ackTracker) ack(batchID int) bool {
 	defer t.Unlock()
 	t.batchIDs = t.batchIDs.SetBit(t.batchIDs, batchID, 0)
 	return len(t.batchIDs.Bits()) == 0
+}
+
+func (t *ackTracker) ackCumulative(batchID int) bool {
+	if batchID < 0 {
+		return true
+	}
+	mask := big.NewInt(-1)
+	t.Lock()
+	defer t.Unlock()
+	t.batchIDs.And(t.batchIDs, mask.Lsh(mask, uint(batchID+1)))
+	return len(t.batchIDs.Bits()) == 0
+}
+
+func (t *ackTracker) hasPrevBatchAcked() bool {
+	return atomic.LoadUint32(&t.prevBatchAcked) == 1
+}
+
+func (t *ackTracker) setPrevBatchAcked() {
+	atomic.StoreUint32(&t.prevBatchAcked, 1)
 }
 
 func (t *ackTracker) completed() bool {

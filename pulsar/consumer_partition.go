@@ -451,6 +451,7 @@ func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
 
 	ackReq := new(ackRequest)
 	ackReq.doneCh = make(chan struct{})
+	ackReq.ackType = individualAck
 	if !trackingID.Undefined() && trackingID.ack() {
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
@@ -483,6 +484,7 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 
 	ackReq := new(ackRequest)
 	ackReq.doneCh = make(chan struct{})
+	ackReq.ackType = individualAck
 	if !trackingID.Undefined() && trackingID.ack() {
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
@@ -492,6 +494,62 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 		// No need to wait for ackReq.doneCh to finish
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+	}
+
+	return nil
+}
+
+func (pc *partitionConsumer) AckIDCumulative(msgID MessageID) error {
+	return pc.internalAckIDCumulative(msgID, false)
+}
+
+func (pc *partitionConsumer) AckIDWithResponseCumulative(msgID MessageID) error {
+	return pc.internalAckIDCumulative(msgID, true)
+}
+
+func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withResponse bool) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return errors.New("consumer state is closed")
+	}
+
+	// chunk message id will be converted to tracking message id
+	trackingID, ok := toTrackingMessageID(msgID)
+	if !ok {
+		return errors.New("failed to convert trackingMessageID")
+	}
+	if trackingID.Undefined() {
+		return nil
+	}
+
+	ackReq := new(ackRequest)
+	ackReq.doneCh = make(chan struct{})
+	ackReq.ackType = cumulativeAck
+	if trackingID.ackCumulative() {
+		ackReq.msgID = trackingID
+	} else if !trackingID.tracker.hasPrevBatchAcked() {
+		// get previous batch message id
+		ackReq.msgID = trackingID.prev()
+		trackingID.tracker.setPrevBatchAcked()
+	} else {
+		// waiting for all the msgs are acked in this batch
+		return nil
+	}
+
+	pc.metrics.AcksCounter.Inc()
+	pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+	// send ack request to eventsCh
+	pc.eventsCh <- ackReq
+
+	if withResponse {
+		// wait for the request to complete if withResponse set true
+		<-ackReq.doneCh
+	}
+
+	pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+
+	if cmid, ok := toChunkedMessageID(msgID); ok {
+		pc.unAckChunksTracker.remove(cmid)
 	}
 
 	return nil
@@ -711,7 +769,13 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	cmdAck := &pb.CommandAck{
 		ConsumerId: proto.Uint64(pc.consumerID),
 		MessageId:  messageIDs,
-		AckType:    pb.CommandAck_Individual.Enum(),
+	}
+
+	switch req.ackType {
+	case individualAck:
+		cmdAck.AckType = pb.CommandAck_Individual.Enum()
+	case cumulativeAck:
+		cmdAck.AckType = pb.CommandAck_Cumulative.Enum()
 	}
 
 	if pc.options.ackWithResponse {
@@ -1189,10 +1253,16 @@ func (pc *partitionConsumer) dispatcher() {
 	}
 }
 
+const (
+	individualAck = iota
+	cumulativeAck
+)
+
 type ackRequest struct {
-	doneCh chan struct{}
-	msgID  trackingMessageID
-	err    error
+	doneCh  chan struct{}
+	msgID   trackingMessageID
+	ackType int
+	err     error
 }
 
 type unsubscribeRequest struct {

@@ -72,6 +72,14 @@ func (c *mockConsumer) AckID(msgID pulsar.MessageID) error {
 	return nil
 }
 
+func (c *mockConsumer) AckCumulative(msg pulsar.Message) error {
+	return nil
+}
+
+func (c *mockConsumer) AckIDCumulative(msgID pulsar.MessageID) error {
+	return nil
+}
+
 func (c *mockConsumer) ReconsumeLater(msg pulsar.Message, delay time.Duration) {}
 
 func (c *mockConsumer) Nack(msg pulsar.Message) {}
