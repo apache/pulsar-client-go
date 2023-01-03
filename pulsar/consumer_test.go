@@ -817,9 +817,18 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
-	consumer, err := client.Subscribe(ConsumerOptions{
+	c1, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: "sub-1",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+
+	// c2 is used to test if previous batch can be acked
+	// when cumulative ack the next batch message id
+	c2, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-2",
 		Type:             Exclusive,
 	})
 	assert.Nil(t, err)
@@ -856,34 +865,57 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 	wg.Wait()
 
 	for i := 0; i < 2*N; i++ {
-		msg, err := consumer.Receive(ctx)
+		msg, err := c1.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 
 		if i == N-1 {
-			// cumulative acks the first half of messages
-			consumer.AckCumulative(msg)
+			// cumulative ack the first half of messages
+			c1.AckCumulative(msg)
+		} else if i == N {
+			// the N+1 msg is in the second batch
+			// cumulative ack it to test if the first batch can be acked
+			c2.AckCumulative(msg)
 		}
 	}
 
-	consumer.Close()
+	c1.Close()
+	c2.Close()
 
 	// Subscribe again
-	consumer, err = client.Subscribe(ConsumerOptions{
+	c1, err = client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: "sub-1",
 		Type:             Exclusive,
 	})
 	assert.Nil(t, err)
-	defer consumer.Close()
+	defer c1.Close()
+
+	// Subscribe again
+	c2, err = client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-2",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer c2.Close()
 
 	// We should only receive the 2nd half of messages
 	for i := N; i < 2*N; i++ {
-		msg, err := consumer.Receive(ctx)
+		msg, err := c1.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 
-		consumer.Ack(msg)
+		c1.Ack(msg)
+	}
+
+	// We should only receive the 2nd half of messages
+	for i := N; i < 2*N; i++ {
+		msg, err := c2.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+
+		c2.Ack(msg)
 	}
 }
 

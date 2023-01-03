@@ -81,6 +81,17 @@ func TestAckTracker(t *testing.T) {
 	}
 	assert.Equal(t, true, tracker.completed())
 
+	tracker = newAckTracker(1000)
+	for i := 0; i < 1000; i++ {
+		if i < 999 {
+			assert.False(t, tracker.ackCumulative(i))
+			assert.False(t, tracker.completed())
+		} else {
+			assert.True(t, tracker.ackCumulative(i))
+			assert.True(t, tracker.completed())
+		}
+	}
+
 	// test large number 1000 cumulative
 	tracker = newAckTracker(1000)
 
