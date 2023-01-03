@@ -25,6 +25,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTableView(t *testing.T) {
@@ -77,4 +78,68 @@ func TestTableView(t *testing.T) {
 	for k, v := range tv.Entries() {
 		assert.Equal(t, valuePrefix+k, *(v.(*string)))
 	}
+}
+
+func TestPublishNilValue(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	// create table view
+	v := ""
+	tv, err := client.CreateTableView(TableViewOptions{
+		Topic:           topic,
+		Schema:          schema,
+		SchemaValueType: reflect.TypeOf(&v),
+	})
+	assert.NoError(t, err)
+	defer tv.Close()
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Key:   "key-1",
+		Value: "value-1",
+	})
+	assert.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return tv.Size() == 1
+	}, 5*time.Second, 100*time.Millisecond)
+
+	assert.Equal(t, *(tv.Get("key-1").(*string)), "value-1")
+
+	// send nil value
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Key: "key-1",
+	})
+	assert.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return tv.Size() == 0
+	}, 5*time.Second, 100*time.Millisecond)
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Key:   "key-2",
+		Value: "value-2",
+	})
+	assert.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return tv.Size() == 1
+	}, 5*time.Second, 100*time.Millisecond)
+
+	assert.Equal(t, *(tv.Get("key-2").(*string)), "value-2")
 }
