@@ -520,6 +520,12 @@ func (c *consumer) AckIDCumulative(msgID MessageID) error {
 
 // ReconsumeLater mark a message for redelivery after custom delay
 func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
+	c.ReconsumeLaterWithCustomProperties(msg, map[string]string{}, delay)
+}
+
+// ReconsumeLaterWithCustomProperties mark a message for redelivery after custom delay with custom properties
+func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string,
+	delay time.Duration) {
 	if delay < 0 {
 		delay = 0
 	}
@@ -529,6 +535,10 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 	}
 	props := make(map[string]string)
 	for k, v := range msg.Properties() {
+		props[k] = v
+	}
+
+	for k, v := range customProperties {
 		props[k] = v
 	}
 

@@ -1725,6 +1725,120 @@ func TestRLQ(t *testing.T) {
 	assert.Nil(t, checkMsg)
 }
 
+func TestRLQWithCustomProperties(t *testing.T) {
+	topic := newTopicName()
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/partitions"
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
+
+	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
+	maxRedeliveries := 2
+	N := 100
+	ctx := context.Background()
+
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// 1. Pre-produce N messages
+	producer, err := client.CreateProducer(ProducerOptions{Topic: topic})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	for i := 0; i < N; i++ {
+		_, err = producer.Send(ctx, &ProducerMessage{Payload: []byte(fmt.Sprintf("MESSAGE_%d", i))})
+		assert.Nil(t, err)
+	}
+
+	// 2. Create consumer on the Retry Topic to reconsume N messages (maxRedeliveries+1) times
+	rlqConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            subName,
+		Type:                        Shared,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+		DLQ: &DLQPolicy{
+			MaxDeliveries: uint32(maxRedeliveries),
+		},
+		RetryEnable:         true,
+		NackRedeliveryDelay: 1 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer rlqConsumer.Close()
+
+	rlqReceived := 0
+	for rlqReceived < N*(maxRedeliveries+1) {
+		msg, err := rlqConsumer.Receive(ctx)
+		assert.Nil(t, err)
+
+		if msg.RedeliveryCount() > 0 {
+			msgProps := msg.Properties()
+
+			value, ok := msgProps["custom-key-1"]
+			assert.True(t, ok)
+			if ok {
+				assert.Equal(t, value, "custom-value-1")
+			}
+
+			rlqConsumer.ReconsumeLater(msg, 1*time.Second)
+		} else {
+			customProps := map[string]string{
+				"custom-key-1": "custom-val-1",
+			}
+			rlqConsumer.ReconsumeLaterWithCustomProperties(msg, customProps, 1*time.Second)
+		}
+
+		rlqReceived++
+	}
+	fmt.Println("retry consumed:", rlqReceived) // 300
+
+	// No more messages on the Retry Topic
+	rlqCtx, rlqCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer rlqCancel()
+	msg, err := rlqConsumer.Receive(rlqCtx)
+	assert.Error(t, err)
+	assert.Nil(t, msg)
+
+	// 3. Create consumer on the DLQ topic to verify the routing
+	dlqConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       "persistent://public/default/" + topic + "-" + subName + "-DLQ",
+		SubscriptionName:            subName,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer dlqConsumer.Close()
+
+	dlqReceived := 0
+	for dlqReceived < N {
+		msg, err := dlqConsumer.Receive(ctx)
+		assert.Nil(t, err)
+		dlqConsumer.Ack(msg)
+		dlqReceived++
+	}
+	fmt.Println("dlq received:", dlqReceived) // 100
+
+	// No more messages on the DLQ Topic
+	dlqCtx, dlqCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer dlqCancel()
+	msg, err = dlqConsumer.Receive(dlqCtx)
+	assert.Error(t, err)
+	assert.Nil(t, msg)
+
+	// 4. No more messages for same subscription
+	checkConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            subName,
+		Type:                        Shared,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer checkConsumer.Close()
+
+	checkCtx, checkCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer checkCancel()
+	checkMsg, err := checkConsumer.Receive(checkCtx)
+	assert.Error(t, err)
+	assert.Nil(t, checkMsg)
+}
+
 func TestAckWithResponse(t *testing.T) {
 	now := time.Now().Unix()
 	topic01 := fmt.Sprintf("persistent://public/default/topic-%d-01", now)
