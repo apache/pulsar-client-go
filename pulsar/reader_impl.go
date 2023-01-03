@@ -185,11 +185,13 @@ func (r *reader) hasMoreMessages() bool {
 	}
 
 	if r.pc.options.startMessageIDInclusive {
-		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greaterEqual(r.pc.startMessageID.messageID)
+		return r.lastMessageInBroker.isEntryIDValid() &&
+			r.lastMessageInBroker.greaterEqual(r.pc.startMessageID.get().messageID)
 	}
 
 	// Non-inclusive
-	return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.startMessageID.messageID)
+	return r.lastMessageInBroker.isEntryIDValid() &&
+		r.lastMessageInBroker.greater(r.pc.startMessageID.get().messageID)
 }
 
 func (r *reader) Close() {
