@@ -36,6 +36,7 @@ import (
 	cryptointernal "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/bits-and-blooms/bitset"
 
 	uAtomic "go.uber.org/atomic"
 )
@@ -114,6 +115,7 @@ type partitionConsumerOpts struct {
 	autoAckIncompleteChunk      bool
 	// in failover mode, this callback will be called when consumer change
 	consumerEventListener ConsumerEventListener
+	enableBatchIndexAck   bool
 }
 
 type ConsumerEventListener interface {
@@ -434,7 +436,7 @@ func (pc *partitionConsumer) requestGetLastMessageID() (trackingMessageID, error
 	return convertToMessageID(id), nil
 }
 
-func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
+func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")
@@ -458,45 +460,29 @@ func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
 		ackReq.msgID = trackingID
 		// send ack request to eventsCh
 		pc.eventsCh <- ackReq
-		// wait for the request to complete
-		<-ackReq.doneCh
+
+		if withResponse {
+			<-ackReq.doneCh
+		}
 
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+	} else if pc.options.enableBatchIndexAck {
+		ackReq.msgID = trackingID
+		pc.eventsCh <- ackReq
 	}
 
-	return ackReq.err
+	if withResponse {
+		return ackReq.err
+	}
+	return nil
+}
+
+func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
+	return pc.ackID(msgID, true)
 }
 
 func (pc *partitionConsumer) AckID(msgID MessageID) error {
-	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
-		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
-		return errors.New("consumer state is closed")
-	}
-
-	if cmid, ok := toChunkedMessageID(msgID); ok {
-		return pc.unAckChunksTracker.ack(cmid)
-	}
-
-	trackingID, ok := toTrackingMessageID(msgID)
-	if !ok {
-		return errors.New("failed to convert trackingMessageID")
-	}
-
-	ackReq := new(ackRequest)
-	ackReq.doneCh = make(chan struct{})
-	ackReq.ackType = individualAck
-	if !trackingID.Undefined() && trackingID.ack() {
-		pc.metrics.AcksCounter.Inc()
-		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
-		ackReq.msgID = trackingID
-		// send ack request to eventsCh
-		pc.eventsCh <- ackReq
-		// No need to wait for ackReq.doneCh to finish
-
-		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
-	}
-
-	return nil
+	return pc.ackID(msgID, false)
 }
 
 func (pc *partitionConsumer) AckIDCumulative(msgID MessageID) error {
@@ -525,7 +511,7 @@ func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withRespon
 	ackReq := new(ackRequest)
 	ackReq.doneCh = make(chan struct{})
 	ackReq.ackType = cumulativeAck
-	if trackingID.ackCumulative() {
+	if trackingID.ackCumulative() || pc.options.enableBatchIndexAck {
 		ackReq.msgID = trackingID
 	} else if !trackingID.tracker.hasPrevBatchAcked() {
 		// get previous batch message id
@@ -764,6 +750,12 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		LedgerId: proto.Uint64(uint64(msgID.ledgerID)),
 		EntryId:  proto.Uint64(uint64(msgID.entryID)),
 	}
+	if pc.options.enableBatchIndexAck && msgID.tracker != nil {
+		ackSet := msgID.tracker.toAckSet()
+		if ackSet != nil {
+			messageIDs[0].AckSet = ackSet
+		}
+	}
 
 	reqID := pc.client.rpcClient.NewRequestID()
 	cmdAck := &pb.CommandAck{
@@ -822,7 +814,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		switch crypToFailureAction {
 		case crypto.ConsumerCryptoFailureActionFail:
 			pc.log.Errorf("consuming message failed due to decryption err :%v", err)
-			pc.NackID(newTrackingMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), 0, 0, nil))
+			pc.NackID(newTrackingMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), 0, 0, 0, nil))
 			return err
 		case crypto.ConsumerCryptoFailureActionDiscard:
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecryptionError)
@@ -842,6 +834,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 						int64(pbMsgID.GetEntryId()),
 						pbMsgID.GetBatchIndex(),
 						pc.partitionIdx,
+						pbMsgID.GetBatchSize(),
 					),
 					payLoad:             headersAndPayload.ReadableSlice(),
 					schema:              pc.options.schema,
@@ -889,7 +882,17 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	var ackTracker *ackTracker
 	// are there multiple messages in this batch?
 	if numMsgs > 1 {
-		ackTracker = newAckTracker(numMsgs)
+		ackTracker = newAckTracker(uint(numMsgs))
+	}
+
+	var ackSet *bitset.BitSet
+	if response.GetAckSet() != nil {
+		ackSetFromResponse := response.GetAckSet()
+		buf := make([]uint64, len(ackSetFromResponse))
+		for i := 0; i < len(buf); i++ {
+			buf[i] = uint64(ackSetFromResponse[i])
+		}
+		ackSet = bitset.From(buf)
 	}
 
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
@@ -901,6 +904,10 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
 		}
+		if ackSet != nil && !ackSet.Test(uint(i)) {
+			pc.log.Debugf("Ignoring message from %vth message, which has been acknowledged", i)
+			continue
+		}
 
 		pc.metrics.BytesReceived.Add(float64(len(payload)))
 		pc.metrics.PrefetchedBytes.Add(float64(len(payload)))
@@ -910,6 +917,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			int64(pbMsgID.GetEntryId()),
 			int32(i),
 			pc.partitionIdx,
+			int32(numMsgs),
 			ackTracker)
 		// set the consumer so we know how to ack the message id
 		trackingMsgID.consumer = pc

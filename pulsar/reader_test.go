@@ -426,6 +426,10 @@ func (id *myMessageID) BatchIdx() int32 {
 	return id.BatchIdx()
 }
 
+func (id *myMessageID) BatchSize() int32 {
+	return id.BatchSize()
+}
+
 func (id *myMessageID) PartitionIdx() int32 {
 	return id.PartitionIdx()
 }

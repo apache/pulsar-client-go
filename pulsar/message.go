@@ -154,6 +154,9 @@ type MessageID interface {
 
 	// PartitionIdx returns the message partitionIdx
 	PartitionIdx() int32
+
+	// BatchSize returns 0 or the batch size, which must be greater than BatchIdx()
+	BatchSize() int32
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation
@@ -162,8 +165,8 @@ func DeserializeMessageID(data []byte) (MessageID, error) {
 }
 
 // NewMessageID Custom Create MessageID
-func NewMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32) MessageID {
-	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx)
+func NewMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32) MessageID {
+	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx, batchSize)
 }
 
 // EarliestMessageID returns a messageID that points to the earliest message available in a topic

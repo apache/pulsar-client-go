@@ -6,6 +6,7 @@ require (
 	github.com/99designs/keyring v1.2.1
 	github.com/AthenZ/athenz v1.10.39
 	github.com/DataDog/zstd v1.5.0
+	github.com/bits-and-blooms/bitset v1.4.0
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/davecgh/go-spew v1.1.1
 	github.com/golang-jwt/jwt v3.2.1+incompatible
