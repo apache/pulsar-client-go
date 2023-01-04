@@ -561,7 +561,14 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 			msgID:      msgID,
 		},
 	}
-	if uint32(reconsumeTimes) > c.dlq.policy.MaxDeliveries {
+
+	maxDeliveries := c.dlq.policy.MaxDeliveries
+	if s, ok := props[MsgPropertyMaxReconsumeTimes]; ok {
+		md, _ := strconv.Atoi(s)
+		maxDeliveries = uint32(md)
+	}
+
+	if uint32(reconsumeTimes) > maxDeliveries {
 		c.dlq.Chan() <- consumerMsg
 	} else {
 		c.rlq.Chan() <- RetryMessage{

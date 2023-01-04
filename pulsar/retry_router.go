@@ -30,6 +30,8 @@ const (
 	RetryTopicSuffix  = "-RETRY"
 	MaxReconsumeTimes = 16
 
+	MsgPropertyMaxReconsumeTimes = "MAX_RECONSUME_TIMES"
+
 	SysPropertyDelayTime       = "DELAY_TIME"
 	SysPropertyRealTopic       = "REAL_TOPIC"
 	SysPropertyRetryTopic      = "RETRY_TOPIC"
