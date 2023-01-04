@@ -1862,7 +1862,7 @@ func TestRLQWithCustomRetryPerMsg(t *testing.T) {
 		_, err = producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("MESSAGE_%d", i)),
 			Properties: map[string]string{
-				MsgPropertyMaxReconsumeTimes: string(i % maxRedeliveries),
+				MsgPropertyMaxReconsumeTimes: fmt.Sprintf("%d", i%maxRedeliveries),
 			},
 		})
 		assert.Nil(t, err)
