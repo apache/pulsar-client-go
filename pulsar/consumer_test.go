@@ -1890,7 +1890,7 @@ func TestRLQWithCustomRetryPerMsg(t *testing.T) {
 		rlqConsumer.ReconsumeLater(msg, 1*time.Second)
 		rlqReceived++
 	}
-	fmt.Println("retry consumed:", rlqReceived) // 4950
+	fmt.Println("retry consumed:", rlqReceived) // 5050
 
 	// No more messages on the Retry Topic
 	rlqCtx, rlqCancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
