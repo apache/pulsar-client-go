@@ -165,8 +165,8 @@ func DeserializeMessageID(data []byte) (MessageID, error) {
 }
 
 // NewMessageID Custom Create MessageID
-func NewMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32) MessageID {
-	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx, batchSize)
+func NewMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32) MessageID {
+	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx, 0)
 }
 
 // EarliestMessageID returns a messageID that points to the earliest message available in a topic
