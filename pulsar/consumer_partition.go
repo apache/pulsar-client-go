@@ -918,7 +918,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		trackingMsgID := newTrackingMessageID(
 			int64(pbMsgID.GetLedgerId()),
 			int64(pbMsgID.GetEntryId()),
-			int32(i),
+			pbMsgID.GetBatchIndex(),
 			pc.partitionIdx,
 			ackTracker)
 		// set the consumer so we know how to ack the message id
