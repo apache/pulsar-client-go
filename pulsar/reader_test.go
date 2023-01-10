@@ -434,6 +434,14 @@ func (id *myMessageID) PartitionIdx() int32 {
 	return id.PartitionIdx()
 }
 
+func (id *myMessageID) String() string {
+	mid, err := DeserializeMessageID(id.data)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d:%d", mid.LedgerID(), mid.EntryID(), mid.PartitionIdx())
+}
+
 func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

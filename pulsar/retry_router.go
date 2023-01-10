@@ -35,6 +35,7 @@ const (
 	SysPropertyRetryTopic      = "RETRY_TOPIC"
 	SysPropertyReconsumeTimes  = "RECONSUMETIMES"
 	SysPropertyOriginMessageID = "ORIGIN_MESSAGE_IDY_TIME"
+	PropertyOriginMessageID    = "ORIGIN_MESSAGE_ID"
 )
 
 type RetryMessage struct {

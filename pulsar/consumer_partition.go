@@ -147,15 +147,14 @@ type partitionConsumer struct {
 	// the size of the queue channel for buffering messages
 	queueSize       int32
 	queueCh         chan []*message
-	startMessageID  trackingMessageID
+	startMessageID  atomicMessageID
 	lastDequeuedMsg trackingMessageID
 
-	eventsCh             chan interface{}
-	connectedCh          chan struct{}
-	connectClosedCh      chan connectionClosed
-	closeCh              chan struct{}
-	clearQueueCh         chan func(id trackingMessageID)
-	clearMessageQueuesCh chan chan struct{}
+	eventsCh        chan interface{}
+	connectedCh     chan struct{}
+	connectClosedCh chan connectionClosed
+	closeCh         chan struct{}
+	clearQueueCh    chan func(id trackingMessageID)
 
 	nackTracker *negativeAcksTracker
 	dlq         *dlqRouter
@@ -212,6 +211,24 @@ func (p *availablePermits) inc() {
 
 func (p *availablePermits) reset() {
 	atomic.StoreInt32(&p.permits, 0)
+}
+
+// atomicMessageID is a wrapper for trackingMessageID to make get and set atomic
+type atomicMessageID struct {
+	msgID trackingMessageID
+	sync.RWMutex
+}
+
+func (a *atomicMessageID) get() trackingMessageID {
+	a.RLock()
+	defer a.RUnlock()
+	return a.msgID
+}
+
+func (a *atomicMessageID) set(msgID trackingMessageID) {
+	a.Lock()
+	defer a.Unlock()
+	a.msgID = msgID
 }
 
 type schemaInfoCache struct {
@@ -279,13 +296,12 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		eventsCh:             make(chan interface{}, 10),
 		queueSize:            int32(options.receiverQueueSize),
 		queueCh:              make(chan []*message, options.receiverQueueSize),
-		startMessageID:       options.startMessageID,
+		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
 		connectClosedCh:      make(chan connectionClosed, 10),
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id trackingMessageID)),
-		clearMessageQueuesCh: make(chan chan struct{}),
 		compressionProviders: sync.Map{},
 		dlq:                  dlq,
 		metrics:              metrics,
@@ -326,14 +342,14 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.log.Info("Created consumer")
 	pc.setConsumerState(consumerReady)
 
-	if pc.options.startMessageIDInclusive && pc.startMessageID.equal(lastestMessageID.(messageID)) {
+	if pc.options.startMessageIDInclusive && pc.startMessageID.get().equal(lastestMessageID.(messageID)) {
 		msgID, err := pc.requestGetLastMessageID()
 		if err != nil {
 			pc.nackTracker.Close()
 			return nil, err
 		}
 		if msgID.entryID != noMessageEntry {
-			pc.startMessageID = msgID
+			pc.startMessageID.set(msgID)
 
 			// use the WithoutClear version because the dispatcher is not started yet
 			err = pc.requestSeekWithoutClear(msgID.messageID)
@@ -657,7 +673,7 @@ func (pc *partitionConsumer) requestSeek(msgID messageID) error {
 	if err := pc.requestSeekWithoutClear(msgID); err != nil {
 		return err
 	}
-	pc.clearMessageChannels()
+	pc.clearReceiverQueue()
 	return nil
 }
 
@@ -728,13 +744,7 @@ func (pc *partitionConsumer) internalSeekByTime(seek *seekByTimeRequest) {
 		seek.err = err
 		return
 	}
-	pc.clearMessageChannels()
-}
-
-func (pc *partitionConsumer) clearMessageChannels() {
-	doneCh := make(chan struct{})
-	pc.clearMessageQueuesCh <- doneCh
-	<-doneCh
+	pc.clearReceiverQueue()
 }
 
 func (pc *partitionConsumer) internalAck(req *ackRequest) {
@@ -1065,7 +1075,7 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 }
 
 func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) bool {
-	if pc.startMessageID.Undefined() {
+	if pc.startMessageID.get().Undefined() {
 		return false
 	}
 	// if we start at latest message, we should never discard
@@ -1074,11 +1084,11 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID trackingMessageID) b
 	}
 
 	if pc.options.startMessageIDInclusive {
-		return pc.startMessageID.greater(msgID.messageID)
+		return pc.startMessageID.get().greater(msgID.messageID)
 	}
 
 	// Non inclusive
-	return pc.startMessageID.greaterEqual(msgID.messageID)
+	return pc.startMessageID.get().greaterEqual(msgID.messageID)
 }
 
 // create EncryptionContext from message metadata
@@ -1226,37 +1236,19 @@ func (pc *partitionConsumer) dispatcher() {
 			go func() {
 				pc.queueCh <- nil
 			}()
+
 			for m := range pc.queueCh {
 				// the queue has been drained
 				if m == nil {
 					break
 				} else if nextMessageInQueue.Undefined() {
-					nextMessageInQueue = m[0].msgID.(trackingMessageID)
+					nextMessageInQueue, _ = toTrackingMessageID(m[0].msgID)
 				}
 			}
 
-			clearQueueCb(nextMessageInQueue)
-
-		case doneCh := <-pc.clearMessageQueuesCh:
-			for len(pc.queueCh) > 0 {
-				<-pc.queueCh
-			}
-			for len(pc.messageCh) > 0 {
-				<-pc.messageCh
-			}
 			messages = nil
 
-			// reset available permits
-			pc.availablePermits.reset()
-			initialPermits := uint32(pc.queueSize)
-
-			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
-			// send initial permits
-			if err := pc.internalFlow(initialPermits); err != nil {
-				pc.log.WithError(err).Error("unable to send initial permits to broker")
-			}
-
-			close(doneCh)
+			clearQueueCb(nextMessageInQueue)
 		}
 	}
 }
@@ -1498,10 +1490,10 @@ func (pc *partitionConsumer) grabConn() error {
 		KeySharedMeta:              keySharedMeta,
 	}
 
-	pc.startMessageID = pc.clearReceiverQueue()
+	pc.startMessageID.set(pc.clearReceiverQueue())
 	if pc.options.subscriptionMode != durable {
 		// For regular subscriptions the broker will determine the restarting point
-		cmdSubscribe.StartMessageId = convertToMessageIDData(pc.startMessageID)
+		cmdSubscribe.StartMessageId = convertToMessageIDData(pc.startMessageID.get())
 	}
 
 	if len(pc.options.metadata) > 0 {
@@ -1579,8 +1571,8 @@ func (pc *partitionConsumer) clearQueueAndGetNextMessage() trackingMessageID {
 func (pc *partitionConsumer) clearReceiverQueue() trackingMessageID {
 	nextMessageInQueue := pc.clearQueueAndGetNextMessage()
 
-	if pc.startMessageID.Undefined() {
-		return pc.startMessageID
+	if pc.startMessageID.get().Undefined() {
+		return pc.startMessageID.get()
 	}
 
 	if !nextMessageInQueue.Undefined() {
@@ -1591,7 +1583,7 @@ func (pc *partitionConsumer) clearReceiverQueue() trackingMessageID {
 		return pc.lastDequeuedMsg
 	} else {
 		// No message was received or dequeued by this consumer. Next message would still be the startMessageId
-		return pc.startMessageID
+		return pc.startMessageID.get()
 	}
 }
 

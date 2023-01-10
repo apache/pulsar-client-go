@@ -157,6 +157,9 @@ type MessageID interface {
 
 	// BatchSize returns 0 or the batch size, which must be greater than BatchIdx()
 	BatchSize() int32
+
+	// String returns message id in string format
+	String() string
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation

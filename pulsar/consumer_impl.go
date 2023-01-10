@@ -641,7 +641,16 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return err
 	}
 
-	return c.consumers[msgID.PartitionIdx()].Seek(msgID)
+	if err := c.consumers[msgID.PartitionIdx()].Seek(msgID); err != nil {
+		return err
+	}
+
+	// clear messageCh
+	for len(c.messageCh) > 0 {
+		<-c.messageCh
+	}
+
+	return nil
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
@@ -655,6 +664,12 @@ func (c *consumer) SeekByTime(time time.Time) error {
 			errs = pkgerrors.Wrap(newError(SeekFailed, err.Error()), msg)
 		}
 	}
+
+	// clear messageCh
+	for len(c.messageCh) > 0 {
+		<-c.messageCh
+	}
+
 	return errs
 }
 
