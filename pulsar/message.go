@@ -154,6 +154,9 @@ type MessageID interface {
 
 	// PartitionIdx returns the message partitionIdx
 	PartitionIdx() int32
+
+	// String returns message id in string format
+	String() string
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation
