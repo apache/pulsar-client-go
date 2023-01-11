@@ -211,6 +211,10 @@ type ConsumerOptions struct {
 	// AutoAckIncompleteChunk sets whether consumer auto acknowledges incomplete chunked message when it should
 	// be removed (e.g.the chunked message pending queue is full). (default: false)
 	AutoAckIncompleteChunk bool
+
+	// Enable or disable batch index acknowledgment. To enable this feature, ensure batch index acknowledgment
+	// is enabled on the broker side. (default: false)
+	EnableBatchIndexAcknowledgment bool
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

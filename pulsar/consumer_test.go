@@ -3851,3 +3851,138 @@ func TestAckWithMessageID(t *testing.T) {
 	err = consumer.AckID(newID)
 	assert.Nil(t, err)
 }
+
+func TestBatchIndexAck(t *testing.T) {
+	tests := []struct {
+		AckWithResponse bool
+		Cumulative      bool
+	}{
+		{
+			AckWithResponse: true,
+			Cumulative:      true,
+		},
+		{
+			AckWithResponse: true,
+			Cumulative:      false,
+		},
+		{
+			AckWithResponse: false,
+			Cumulative:      true,
+		},
+		{
+			AckWithResponse: false,
+			Cumulative:      false,
+		},
+	}
+	for _, params := range tests {
+		t.Run(fmt.Sprintf("TestBatchIndexAck_WithResponse_%v_Cumulative_%v",
+			params.AckWithResponse, params.Cumulative),
+			func(t *testing.T) {
+				runBatchIndexAckTest(t, params.AckWithResponse, params.Cumulative)
+			})
+	}
+}
+
+func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+
+	topic := newTopicName()
+	createConsumer := func() Consumer {
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:                          topic,
+			SubscriptionName:               "my-sub",
+			AckWithResponse:                ackWithResponse,
+			EnableBatchIndexAcknowledgment: true,
+		})
+		assert.Nil(t, err)
+		return consumer
+	}
+
+	consumer := createConsumer()
+
+	duration, err := time.ParseDuration("1h")
+	assert.Nil(t, err)
+
+	const BatchingMaxSize int = 2 * 5
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		DisableBatching:         false,
+		BatchingMaxMessages:     uint(BatchingMaxSize),
+		BatchingMaxSize:         uint(1024 * 1024 * 10),
+		BatchingMaxPublishDelay: duration,
+	})
+	assert.Nil(t, err)
+	for i := 0; i < BatchingMaxSize; i++ {
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			assert.Nil(t, err)
+			log.Printf("Sent to %v:%d:%d", id, id.BatchIdx(), id.BatchSize())
+		})
+	}
+	assert.Nil(t, producer.Flush())
+
+	msgIds := make([]MessageID, BatchingMaxSize)
+	for i := 0; i < BatchingMaxSize; i++ {
+		message, err := consumer.Receive(context.Background())
+		assert.Nil(t, err)
+		msgIds[i] = message.ID()
+		log.Printf("Received %v from %v:%d:%d", string(message.Payload()), message.ID(),
+			message.ID().BatchIdx(), message.ID().BatchSize())
+	}
+
+	// Acknowledge half of the messages
+	if cumulative {
+		msgID := msgIds[BatchingMaxSize/2-1]
+		consumer.AckIDCumulative(msgID)
+		log.Printf("Acknowledge %v:%d cumulatively\n", msgID, msgID.BatchIdx())
+	} else {
+		for i := 0; i < BatchingMaxSize; i++ {
+			msgID := msgIds[i]
+			if i%2 == 0 {
+				consumer.AckID(msgID)
+				log.Printf("Acknowledge %v:%d\n", msgID, msgID.BatchIdx())
+			}
+		}
+	}
+	consumer.Close()
+	consumer = createConsumer()
+
+	for i := 0; i < BatchingMaxSize/2; i++ {
+		message, err := consumer.Receive(context.Background())
+		assert.Nil(t, err)
+		log.Printf("Received %v from %v:%d:%d", string(message.Payload()), message.ID(),
+			message.ID().BatchIdx(), message.ID().BatchSize())
+		index := i*2 + 1
+		if cumulative {
+			index = i + BatchingMaxSize/2
+		}
+		assert.Equal(t, []byte(fmt.Sprintf("msg-%d", index)), message.Payload())
+		assert.Equal(t, msgIds[index].BatchIdx(), message.ID().BatchIdx())
+		// We should not acknowledge message.ID() here because message.ID() shares a different
+		// tracker with msgIds
+		if !cumulative {
+			msgID := msgIds[index]
+			consumer.AckID(msgID)
+			log.Printf("Acknowledge %v:%d\n", msgID, msgID.BatchIdx())
+		}
+	}
+	if cumulative {
+		msgID := msgIds[BatchingMaxSize-1]
+		consumer.AckIDCumulative(msgID)
+		log.Printf("Acknowledge %v:%d cumulatively\n", msgID, msgID.BatchIdx())
+	}
+	consumer.Close()
+	consumer = createConsumer()
+	_, err = producer.Send(context.Background(), &ProducerMessage{Payload: []byte("end-marker")})
+	assert.Nil(t, err)
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, "end-marker", string(msg.Payload()))
+
+	client.Close()
+}

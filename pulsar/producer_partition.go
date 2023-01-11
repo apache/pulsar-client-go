@@ -1118,6 +1118,15 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		pi.Lock()
 		defer pi.Unlock()
 		p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
+		batchSize := int32(0)
+		for _, i := range pi.sendRequests {
+			sr := i.(*sendRequest)
+			if sr.msg != nil {
+				batchSize = batchSize + 1
+			} else { // Flush request
+				break
+			}
+		}
 		for idx, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
 			if sr.msg != nil {
@@ -1138,6 +1147,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 					int64(response.MessageId.GetEntryId()),
 					int32(idx),
 					p.partitionIdx,
+					batchSize,
 				)
 
 				if sr.totalChunks > 1 {
@@ -1148,6 +1158,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 								int64(response.MessageId.GetEntryId()),
 								-1,
 								p.partitionIdx,
+								0,
 							})
 					} else if sr.chunkID == sr.totalChunks-1 {
 						sr.chunkRecorder.setLastChunkID(
@@ -1156,6 +1167,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 								int64(response.MessageId.GetEntryId()),
 								-1,
 								p.partitionIdx,
+								0,
 							})
 						// use chunkMsgID to set msgID
 						msgID = sr.chunkRecorder.chunkedMsgID
