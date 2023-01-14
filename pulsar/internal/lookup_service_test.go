@@ -20,7 +20,7 @@ package internal
 import (
 	"bytes"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/url"
 	"strings"
 	"testing"
@@ -574,7 +574,7 @@ func mockHTTPGetLookupResult(obj interface{}) error {
 		"httpUrl": "http://broker-1:8080",
 		"httpUrlTls": ""
   	}`
-	r := ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse)))
+	r := io.NopCloser(bytes.NewReader([]byte(jsonResponse)))
 	dec := json.NewDecoder(r)
 	err := dec.Decode(obj)
 	return err
@@ -584,7 +584,7 @@ func mockHTTPGetPartitionedTopicMetadataResult(obj interface{}) error {
 	jsonResponse := `{
    		"partitions": 1
   	}`
-	r := ioutil.NopCloser(bytes.NewReader([]byte(jsonResponse)))
+	r := io.NopCloser(bytes.NewReader([]byte(jsonResponse)))
 	dec := json.NewDecoder(r)
 	err := dec.Decode(obj)
 	return err

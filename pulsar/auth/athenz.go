@@ -21,8 +21,8 @@ import (
 	"crypto/tls"
 	"encoding/base64"
 	"errors"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
@@ -117,7 +117,7 @@ func (p *athenzAuthProvider) Init() error {
 		}
 		keyData = key
 	} else if uriSt.Scheme == "file" {
-		key, err := ioutil.ReadFile(uriSt.Path)
+		key, err := os.ReadFile(uriSt.Path)
 		if err != nil {
 			return err
 		}

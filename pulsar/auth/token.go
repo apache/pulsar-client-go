@@ -20,8 +20,8 @@ package auth
 import (
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -69,7 +69,7 @@ func NewAuthenticationTokenFromSupplier(tokenSupplier func() (string, error)) Pr
 func NewAuthenticationTokenFromFile(tokenFilePath string) Provider {
 	return &tokenAuthProvider{
 		tokenSupplier: func() (string, error) {
-			data, err := ioutil.ReadFile(tokenFilePath)
+			data, err := os.ReadFile(tokenFilePath)
 			if err != nil {
 				return "", err
 			}

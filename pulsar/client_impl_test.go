@@ -21,7 +21,6 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -189,7 +188,7 @@ func TestTLSAuthWithCertSupplier(t *testing.T) {
 }
 
 func TestTokenAuth(t *testing.T) {
-	token, err := ioutil.ReadFile(tokenFilePath)
+	token, err := os.ReadFile(tokenFilePath)
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
@@ -212,7 +211,7 @@ func TestTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
-			token, err := ioutil.ReadFile(tokenFilePath)
+			token, err := os.ReadFile(tokenFilePath)
 			if err != nil {
 				return "", err
 			}
@@ -287,7 +286,7 @@ func mockKeyFile(server string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	kf, err := ioutil.TempFile(pwd, "test_oauth2")
+	kf, err := os.CreateTemp(pwd, "test_oauth2")
 	if err != nil {
 		return "", err
 	}
@@ -838,7 +837,7 @@ func TestHTTPSAuthWithCertSupplier(t *testing.T) {
 }
 
 func TestHTTPTokenAuth(t *testing.T) {
-	token, err := ioutil.ReadFile(tokenFilePath)
+	token, err := os.ReadFile(tokenFilePath)
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
@@ -861,7 +860,7 @@ func TestHTTPTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: webServiceURL,
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
-			token, err := ioutil.ReadFile(tokenFilePath)
+			token, err := os.ReadFile(tokenFilePath)
 			if err != nil {
 				return "", err
 			}

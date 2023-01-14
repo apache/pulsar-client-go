@@ -40,7 +40,7 @@ CGo based library.
 
 > **Note**:
 >
-> While this library should work with Golang versions as early as 1.15, any bugs specific to versions earlier than 1.18 may not be fixed.
+> While this library should work with Golang versions as early as 1.16, any bugs specific to versions earlier than 1.18 may not be fixed.
 
 ## Status
 

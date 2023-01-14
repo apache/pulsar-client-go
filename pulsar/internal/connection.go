@@ -22,9 +22,9 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"net"
 	"net/url"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -979,7 +979,7 @@ func (c *connection) getTLSConfig() (*tls.Config, error) {
 	}
 
 	if c.tlsOptions.TrustCertsFilePath != "" {
-		caCerts, err := ioutil.ReadFile(c.tlsOptions.TrustCertsFilePath)
+		caCerts, err := os.ReadFile(c.tlsOptions.TrustCertsFilePath)
 		if err != nil {
 			return nil, err
 		}

@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
@@ -328,7 +328,7 @@ func buildResponse(statusCode int, body interface{}) *http.Response {
 	resp := &http.Response{
 		StatusCode: statusCode,
 		Header:     map[string][]string{},
-		Body:       ioutil.NopCloser(bytes.NewReader(b)),
+		Body:       io.NopCloser(bytes.NewReader(b)),
 	}
 	if strings.HasPrefix(string(b), "{") {
 		resp.Header.Add("Content-Type", "application/json")

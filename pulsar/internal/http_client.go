@@ -23,9 +23,9 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
 	"path"
 	"time"
 
@@ -209,7 +209,7 @@ func (c *httpClient) GetWithOptions(endpoint string, obj interface{}, params map
 				return nil, err
 			}
 		} else {
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				return nil, err
 			}
@@ -311,7 +311,7 @@ func safeRespClose(resp *http.Response) {
 // responseError is used to parse a response into a client error
 func responseError(resp *http.Response) error {
 	var e error
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	reason := ""
 	code := resp.StatusCode
 	if err != nil {
@@ -338,7 +338,7 @@ func getDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
 			InsecureSkipVerify: tlsConfig.AllowInsecureConnection,
 		}
 		if len(tlsConfig.TrustCertsFilePath) > 0 {
-			rootCA, err := ioutil.ReadFile(tlsConfig.TrustCertsFilePath)
+			rootCA, err := os.ReadFile(tlsConfig.TrustCertsFilePath)
 			if err != nil {
 				return nil, err
 			}

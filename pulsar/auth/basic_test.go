@@ -19,7 +19,7 @@ package auth
 
 import (
 	"errors"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -51,7 +51,7 @@ func TestNewAuthenticationBasicWithParams(t *testing.T) {
 	resp, err := client.Get(s.URL)
 	require.NoError(t, err)
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 	require.NoError(t, err)
 	require.Equal(t, []byte("Basic YWRtaW46MTIzNDU2"), body)

@@ -21,7 +21,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"testing"
 
@@ -45,7 +44,7 @@ func TestNewClientCredentialsProviderFromKeyFile(t *testing.T) {
 
 	b, err := json.Marshal(keyFile)
 	require.NoError(t, err)
-	tmpFile, err := ioutil.TempFile("", "key-file")
+	tmpFile, err := os.CreateTemp("", "key-file")
 	require.NoError(t, err)
 	defer func(name string) {
 		_ = os.Remove(name)
