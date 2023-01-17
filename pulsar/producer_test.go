@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -1704,4 +1705,35 @@ func TestProducerWithSchemaAndConsumerSchemaNotFound(t *testing.T) {
 	err = msg.GetSchemaValue(&v)
 	// should fail with error but not panic
 	assert.Error(t, err)
+}
+
+func TestExclusiveProducer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeExclusive,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	_, err = client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeExclusive,
+	})
+	assert.Error(t, err, "Producer should be fenced")
+	assert.True(t, strings.Contains(err.Error(), "ProducerFenced"))
+
+	_, err = client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Error(t, err, "Producer should be failed")
+	assert.True(t, strings.Contains(err.Error(), "ProducerBusy"))
 }
