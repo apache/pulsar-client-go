@@ -103,6 +103,10 @@ const (
 	ProducerClosed
 	// SchemaFailure means the payload could not be encoded using the Schema
 	SchemaFailure
+
+	//Transaction related error
+
+	ReachMaxPendingOps
 )
 
 // Error implement error interface, composed of two parts: msg and result.
