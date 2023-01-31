@@ -84,10 +84,18 @@ func (t *token) CreateSecretKey(signatureAlgorithm algorithm.Algorithm) ([]byte,
 func (t *token) Create(algorithm algorithm.Algorithm, signKey interface{}, subject string,
 	expireTime int64) (string, error) {
 
-	claims := &jwt.MapClaims{
-		"sub": subject,
-		"exp": jwt.NewNumericDate(time.Unix(expireTime, 0)),
+	var claims *jwt.MapClaims
+	if expireTime <= 0 {
+		claims = &jwt.MapClaims{
+			"sub": subject,
+		}
+	} else {
+		claims = &jwt.MapClaims{
+			"sub": subject,
+			"exp": jwt.NewNumericDate(time.Unix(expireTime, 0)),
+		}
 	}
+
 	return t.CreateToken(algorithm, signKey, claims, nil)
 }
 
@@ -110,7 +118,7 @@ func (t *token) Validate(algorithm algorithm.Algorithm, tokenString string,
 	signKey interface{}) (string, int64, error) {
 
 	// verify the signature algorithm
-	parsedToken, err := jwt.ParseWithClaims(tokenString, &jwt.StandardClaims{},
+	parsedToken, err := jwt.ParseWithClaims(tokenString, &jwt.RegisteredClaims{},
 		func(jt *jwt.Token) (i interface{}, e error) {
 			signMethod := parseAlgorithmToJwtSignMethod(algorithm)
 			if jt.Method != signMethod {
@@ -120,8 +128,13 @@ func (t *token) Validate(algorithm algorithm.Algorithm, tokenString string,
 		})
 
 	// get the subject and the expire time
-	if claim, ok := parsedToken.Claims.(*jwt.StandardClaims); parsedToken.Valid && ok {
-		return claim.Subject, claim.ExpiresAt, nil
+	if claim, ok := parsedToken.Claims.(*jwt.RegisteredClaims); parsedToken.Valid && ok {
+		expiresAt := claim.ExpiresAt
+		exp := int64(0)
+		if expiresAt != nil {
+			exp = expiresAt.Unix()
+		}
+		return claim.Subject, exp, nil
 	}
 
 	return "", 0, err
