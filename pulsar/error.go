@@ -104,9 +104,10 @@ const (
 	// SchemaFailure means the payload could not be encoded using the Schema
 	SchemaFailure
 
-	//Transaction related error
-
+	// ReachMaxPendingOps means the pending operations in transaction coordinator reach the maximum.
 	ReachMaxPendingOps
+	// InvalidStatus means the component status is not as expected.
+	InvalidStatus
 )
 
 // Error implement error interface, composed of two parts: msg and result.
