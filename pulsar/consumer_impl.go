@@ -35,6 +35,7 @@ const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
 	AckID(id trackingMessageID)
+	AckIDWithTxn(msgID trackingMessageID, txn *transactionImpl) error
 	NackID(id trackingMessageID)
 	NackMsg(msg Message)
 }
@@ -461,6 +462,21 @@ func (c *consumer) AckID(msgID MessageID) {
 	}
 
 	c.consumers[mid.partitionIdx].AckID(mid)
+}
+
+func (c *consumer) AckIDWithTxn(msgID MessageID, txn Transaction) error {
+	mid, ok := c.messageID(msgID)
+	if !ok {
+		return newError(InvalidMessage, "Failed to ack a unexpected message ID.")
+	}
+
+	if mid.consumer != nil {
+		if mid.ack() {
+			return mid.consumer.AckIDWithTxn(mid, txn.(*transactionImpl))
+		}
+	}
+
+	return c.consumers[mid.partitionIdx].AckIDWithTxn(mid, txn.(*transactionImpl))
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay

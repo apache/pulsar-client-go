@@ -201,6 +201,8 @@ type Consumer interface {
 
 	// Ack the consumption of a single message
 	Ack(Message)
+	// AckIDWithTxn the consumption of a single message with a transaction
+	AckIDWithTxn(MessageID, Transaction) error
 
 	// AckID the consumption of a single message, identified by its MessageID
 	AckID(MessageID)

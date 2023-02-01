@@ -632,6 +632,9 @@ func (p *partitionProducer) failTimeoutMessages() {
 				if sr.callback != nil {
 					sr.callback(nil, sr.msg, errSendTimeout)
 				}
+				if sr.transaction != nil {
+					sr.transaction.endSendOrAckOp(nil)
+				}
 			}
 
 			// flag the send has completed with error, flush make no effect
@@ -740,6 +743,20 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
+	//Register transaction operation to transaction and the transaction coordinator.
+	if msg.Transaction != nil {
+		transactionImpl, ok := (*msg.Transaction).(*transactionImpl)
+		if !ok {
+			callback(nil, msg, newError(TransactionError, "The transaction of the message is disable."))
+			return
+		}
+		err := transactionImpl.registerProducerTopic(p.topic)
+		if err != nil {
+			callback(nil, msg, err)
+			return
+		}
+		transactionImpl.registerSendOrAckOp()
+	}
 	if p.getProducerState() != producerReady {
 		// Producer is closing
 		callback(nil, msg, errProducerClosed)
@@ -833,6 +850,9 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 				p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
 			}
+			if sr.transaction != nil {
+				sr.transaction.endSendOrAckOp(nil)
+			}
 		}
 
 		// Mark this pending item as done
@@ -919,6 +939,7 @@ type sendRequest struct {
 	msg              *ProducerMessage
 	callback         func(MessageID, *ProducerMessage, error)
 	publishTime      time.Time
+	transaction      *transactionImpl
 	flushImmediately bool
 }
 

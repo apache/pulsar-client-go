@@ -17,18 +17,18 @@ type transactionCoordinatorClient struct {
 	epoch                     uint64
 	semaphore                 internal.Semaphore
 	blockIfReachMaxPendingOps bool
-	//The number of transaction coordinators
+	//The number of transactionImpl coordinators
 	tcNum uint64
 	log   log.Logger
 }
 
-// TransactionCoordinatorAssign is the transaction coordinator topic which is used to look up the broker
+// TransactionCoordinatorAssign is the transaction_impl coordinator topic which is used to look up the broker
 // where the TC located.
 const TransactionCoordinatorAssign = "persistent://pulsar/system/transaction_coordinator_assign"
 
 /*
 *
-Init a transaction coordinator client and acquire connections with all transaction coordinators.
+Init a transactionImpl coordinator client and acquire connections with all transactionImpl coordinators.
 */
 func newTransactionCoordinatorClientImpl(client *client) *transactionCoordinatorClient {
 	tc := &transactionCoordinatorClient{
@@ -46,7 +46,7 @@ func (tc *transactionCoordinatorClient) start() error {
 		return err
 	}
 	tc.tcNum = uint64(r.Partitions)
-	//Get connections with all transaction coordinators which is synchronized
+	//Get connections with all transaction_impl coordinators which is synchronized
 	for i := uint64(0); i < tc.tcNum; i++ {
 		err := tc.grabConn(i)
 		if err != nil {
@@ -59,7 +59,7 @@ func (tc *transactionCoordinatorClient) start() error {
 func (tc *transactionCoordinatorClient) grabConn(partition uint64) error {
 	lr, err := tc.client.lookupService.Lookup(getTCAssignTopicName(partition))
 	if err != nil {
-		tc.log.WithError(err).Warn("Failed to lookup the transaction " +
+		tc.log.WithError(err).Warn("Failed to lookup the transaction_impl " +
 			"coordinator assign topic [" + strconv.FormatUint(partition, 10) + "]")
 		return err
 	}
@@ -74,7 +74,7 @@ func (tc *transactionCoordinatorClient) grabConn(partition uint64) error {
 		pb.BaseCommand_TC_CLIENT_CONNECT_REQUEST, &cmdTCConnect)
 
 	if err != nil {
-		tc.log.WithError(err).Error("Failed to connect transaction coordinator " +
+		tc.log.WithError(err).Error("Failed to connect transaction_impl coordinator " +
 			strconv.FormatUint(partition, 10))
 		return err
 	}
@@ -90,7 +90,7 @@ func (tc *transactionCoordinatorClient) close() {
 
 /*
 *
-New a transaction which can be used to guarantee exactly-once semantics.
+New a transactionImpl which can be used to guarantee exactly-once semantics.
 */
 func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (TxnID, error) {
 	_, err := tc.canSendRequest()
@@ -115,8 +115,8 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (T
 
 /*
 *
-Register the partitions which published messages with the transaction.
-And this can be used when ending the transaction.
+Register the partitions which published messages with the transactionImpl.
+And this can be used when ending the transactionImpl.
 */
 func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id TxnID, partitions []string) error {
 	_, err := tc.canSendRequest()
@@ -137,8 +137,8 @@ func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id TxnID, parti
 
 /*
 *
-Register the subscription which acked messages with the transaction.
-And this can be used when ending the transaction.
+Register the subscription which acked messages with the transactionImpl.
+And this can be used when ending the transactionImpl.
 */
 func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id TxnID, topic string, subscription string) error {
 	_, err := tc.canSendRequest()
@@ -163,7 +163,7 @@ func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id TxnID, topic str
 
 /*
 *
-Commit or abort the transaction.
+Commit or abort the transactionImpl.
 */
 func (tc *transactionCoordinatorClient) endTxn(id TxnID, action pb.TxnAction) error {
 	_, err := tc.canSendRequest()
@@ -192,7 +192,7 @@ func (tc *transactionCoordinatorClient) canSendRequest() (bool, error) {
 		}
 	} else {
 		if !tc.semaphore.TryAcquire() {
-			return false, newError(ReachMaxPendingOps, "transaction coordinator reach max pending ops")
+			return false, newError(ReachMaxPendingOps, "transaction_impl coordinator reach max pending ops")
 		}
 	}
 	return true, nil

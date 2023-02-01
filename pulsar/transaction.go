@@ -21,9 +21,9 @@ type TxnID struct {
 
 // Transaction used to guarantee exactly-once
 type Transaction interface {
-	Commit(context.Context)
+	Commit(context.Context) error
 
-	Abort(context.Context)
+	Abort(context.Context) error
 
 	GetState() State
 

@@ -16,7 +16,7 @@ type subscription struct {
 	subscription string
 }
 
-type transaction struct {
+type transactionImpl struct {
 	sync.Mutex
 	txnID                    TxnID
 	state                    State
@@ -27,8 +27,8 @@ type transaction struct {
 	opCount                  uAtomic.Int32
 }
 
-func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout time.Duration) *transaction {
-	transaction := &transaction{
+func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout time.Duration) *transactionImpl {
+	transaction := &transactionImpl{
 		txnID:                    id,
 		state:                    Open,
 		registerPartitions:       make(map[string]void),
@@ -36,27 +36,27 @@ func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout ti
 		opsFlow:                  make(chan struct{}, 20),
 		tcClient:                 tcClient,
 	}
-	//This means there are not pending requests with this transaction. The transaction can be committed or aborted.
+	//This means there are not pending requests with this transaction_impl. The transaction_impl can be committed or aborted.
 	transaction.opsFlow <- struct{}{}
 	go func() {
-		//Set the state of the transaction to timeout after timeout
+		//Set the state of the transaction_impl to timeout after timeout
 		<-time.After(timeout)
 		atomic.CompareAndSwapInt32((*int32)(&transaction.state), Open, TimeOut)
 	}()
 	return transaction
 }
-func (txn *transaction) GetState() State {
+func (txn *transactionImpl) GetState() State {
 	return txn.state
 }
 
-func (txn *transaction) Commit(ctx context.Context) error {
+func (txn *transactionImpl) Commit(ctx context.Context) error {
 	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), Open, Committing) || txn.state == Committing) {
-		return newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
+		return newError(InvalidStatus, "Expect transaction_impl state is Open but "+txn.state.string())
 	}
 
 	//Wait for all operations to complete
 	<-txn.opsFlow
-	//Send commit transaction command to transaction coordinator
+	//Send commit transaction_impl command to transaction_impl coordinator
 	err := txn.tcClient.endTxn(txn.txnID, pb.TxnAction_COMMIT)
 	if err != nil {
 		atomic.StoreInt32((*int32)(&txn.state), Committed)
@@ -65,14 +65,14 @@ func (txn *transaction) Commit(ctx context.Context) error {
 	return nil
 }
 
-func (txn *transaction) Abort(ctx context.Context) error {
+func (txn *transactionImpl) Abort(ctx context.Context) error {
 	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), Open, Aborting) || txn.state == Aborting) {
-		return newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
+		return newError(InvalidStatus, "Expect transaction_impl state is Open but "+txn.state.string())
 	}
 
 	//Wait for all operations to complete
 	<-txn.opsFlow
-	//Send abort transaction command to transaction coordinator
+	//Send abort transaction_impl command to transaction_impl coordinator
 	err := txn.tcClient.endTxn(txn.txnID, pb.TxnAction_ABORT)
 	if err != nil {
 		atomic.StoreInt32((*int32)(&txn.state), Aborted)
@@ -81,14 +81,14 @@ func (txn *transaction) Abort(ctx context.Context) error {
 	return nil
 }
 
-func (txn *transaction) registerSendOrAckOp() {
+func (txn *transactionImpl) registerSendOrAckOp() {
 	if txn.opCount.Inc() == 1 {
 		//There are new operations that not completed
 		<-txn.opsFlow
 	}
 }
 
-func (txn *transaction) endSendOrAckOp(err error) {
+func (txn *transactionImpl) endSendOrAckOp(err error) {
 	if err != nil {
 		atomic.StoreInt32((*int32)(&txn.state), Errored)
 	}
@@ -98,14 +98,14 @@ func (txn *transaction) endSendOrAckOp(err error) {
 	}
 }
 
-func (txn *transaction) registerProducedTopicAsync(topic string, callback func(err error)) {
+func (txn *transactionImpl) registerProducedTopicAsync(topic string, callback func(err error)) {
 	go func() {
 		err := txn.registerProducerTopic(topic)
 		callback(err)
 	}()
 }
 
-func (txn *transaction) registerAckTopicAsync(topic string, subName string,
+func (txn *transactionImpl) registerAckTopicAsync(topic string, subName string,
 	callback func(err error)) {
 	go func() {
 		err := txn.registerAckTopic(topic, subName)
@@ -113,7 +113,7 @@ func (txn *transaction) registerAckTopicAsync(topic string, subName string,
 	}()
 }
 
-func (txn *transaction) registerProducerTopic(topic string) error {
+func (txn *transactionImpl) registerProducerTopic(topic string) error {
 	isOpen, err := txn.checkIfOpen()
 	if !isOpen {
 		return err
@@ -133,7 +133,7 @@ func (txn *transaction) registerProducerTopic(topic string) error {
 	}
 }
 
-func (txn *transaction) registerAckTopic(topic string, subName string) error {
+func (txn *transactionImpl) registerAckTopic(topic string, subName string) error {
 	isOpen, err := txn.checkIfOpen()
 	if !isOpen {
 		return err
@@ -157,23 +157,23 @@ func (txn *transaction) registerAckTopic(topic string, subName string) error {
 	}
 }
 
-func (txn *transaction) GetTxnID() TxnID {
+func (txn *transactionImpl) GetTxnID() TxnID {
 	return txn.txnID
 }
 
-func (txn *transaction) checkIfOpen() (bool, error) {
+func (txn *transactionImpl) checkIfOpen() (bool, error) {
 	if txn.state == Open {
 		return true, nil
 	} else {
-		return false, newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
+		return false, newError(InvalidStatus, "Expect transaction_impl state is Open but "+txn.state.string())
 	}
 }
 
-func (txn *transaction) checkIfOpenOrAborting() (bool, error) {
+func (txn *transactionImpl) checkIfOpenOrAborting() (bool, error) {
 	if atomic.CompareAndSwapInt32((*int32)(&txn.state), Open, Aborting) || txn.state == Aborted {
 		return true, nil
 	} else {
-		return false, newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
+		return false, newError(InvalidStatus, "Expect transaction_impl state is Open but "+txn.state.string())
 	}
 }
 

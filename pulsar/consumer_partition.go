@@ -334,6 +334,36 @@ func (pc *partitionConsumer) AckID(msgID trackingMessageID) {
 	}
 }
 
+func (pc *partitionConsumer) AckIDWithTxn(msgID trackingMessageID, txn *transactionImpl) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return newError(consumerClosed, "Failed to ack by closing or closed consumer")
+	}
+	if !msgID.Undefined() && msgID.ack() {
+		pc.metrics.AcksCounter.Inc()
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-msgID.receivedTime.UnixNano()) / 1.0e9)
+		var err error
+		// use atomic bool to avoid race
+		isDone := uAtomic.NewBool(false)
+		doneCh := make(chan struct{})
+		req := &ackWithTxnRequest{
+			msgID:       msgID,
+			Transaction: txn,
+			callback: func(error error) {
+				if isDone.CAS(false, true) {
+					err = error
+					close(doneCh)
+				}
+			},
+		}
+		pc.eventsCh <- req
+		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+		<-doneCh
+		return err
+	}
+	return nil
+}
+
 func (pc *partitionConsumer) NackID(msgID trackingMessageID) {
 	pc.nackTracker.Add(msgID.messageID)
 	pc.metrics.NacksCounter.Inc()
@@ -532,6 +562,40 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	if err != nil {
 		pc.log.Error("Connection was closed when request ack cmd")
 	}
+}
+
+func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		req.callback(newError(ConsumerClosed, "Failed to ack by closing or closed consumer"))
+		return
+	}
+	msgID := req.msgID
+
+	messageIDs := make([]*pb.MessageIdData, 1)
+	messageIDs[0] = &pb.MessageIdData{
+		LedgerId: proto.Uint64(uint64(msgID.ledgerID)),
+		EntryId:  proto.Uint64(uint64(msgID.entryID)),
+	}
+	txnID := req.Transaction.GetTxnID()
+	cmdAck := &pb.CommandAck{
+		ConsumerId:     proto.Uint64(pc.consumerID),
+		MessageId:      messageIDs,
+		AckType:        pb.CommandAck_Individual.Enum(),
+		TxnidMostBits:  proto.Uint64(txnID.mostSigBits),
+		TxnidLeastBits: proto.Uint64(txnID.leastSigBits),
+	}
+	err := req.Transaction.registerAckTopic(pc.options.topic, pc.options.subscription)
+	if err != nil {
+		req.callback(err)
+		return
+	}
+	req.Transaction.registerSendOrAckOp()
+	requestID := pc.client.rpcClient.NewRequestID()
+	_, err = pc.client.rpcClient.RequestOnCnx(pc._getConn(), requestID, pb.BaseCommand_ACK, cmdAck)
+	req.Transaction.endSendOrAckOp(err)
+	req.callback(err)
+	return
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
@@ -921,6 +985,12 @@ type ackRequest struct {
 	msgID trackingMessageID
 }
 
+type ackWithTxnRequest struct {
+	msgID       trackingMessageID
+	Transaction *transactionImpl
+	callback    func(error)
+}
+
 type unsubscribeRequest struct {
 	doneCh chan struct{}
 	err    error
@@ -976,6 +1046,8 @@ func (pc *partitionConsumer) runEventsLoop() {
 			switch v := i.(type) {
 			case *ackRequest:
 				pc.internalAck(v)
+			case *ackWithTxnRequest:
+				pc.internalAckWithTxn(v)
 			case *redeliveryRequest:
 				pc.internalRedeliver(v)
 			case *unsubscribeRequest:

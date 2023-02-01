@@ -65,6 +65,8 @@ type ProducerMessage struct {
 	//     through a `SubscriptionType=Shared` subscription. With other subscription
 	//     types, the messages will still be delivered immediately.
 	DeliverAt time.Time
+
+	Transaction *Transaction
 }
 
 // Message abstraction used in Pulsar
