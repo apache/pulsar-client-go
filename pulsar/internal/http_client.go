@@ -47,7 +47,7 @@ type httpClient struct {
 
 func (c *httpClient) Close() {
 	if c.HTTPClient != nil {
-		CloseIdleConnections(c.HTTPClient)
+		c.HTTPClient.CloseIdleConnections()
 	}
 }
 
