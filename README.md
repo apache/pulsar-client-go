@@ -18,7 +18,7 @@
     under the License.
 
 -->
-[![GoDoc](https://img.shields.io/badge/Godoc-reference-blue.svg)](https://godoc.org/github.com/apache/pulsar-client-go)
+[![PkgGoDev](https://pkg.go.dev/badge/github.com/apache/pulsar-client-go)](https://pkg.go.dev/github.com/apache/pulsar-client-go)
 [![Go Report Card](https://goreportcard.com/badge/github.com/apache/pulsar-client-go)](https://goreportcard.com/report/github.com/apache/pulsar-client-go)
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
 [![LICENSE](https://img.shields.io/hexpm/l/pulsar.svg)](https://github.com/apache/pulsar-client-go/blob/master/LICENSE)
