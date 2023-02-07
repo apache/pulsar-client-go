@@ -21,9 +21,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"net/http"
+	"os"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -3422,7 +3422,7 @@ func (d *EncKeyReader) PrivateKey(keyName string, keyMeta map[string]string) (*c
 }
 
 func readKey(keyName, path string, keyMeta map[string]string) (*crypto.EncryptionKeyInfo, error) {
-	key, err := ioutil.ReadFile(path)
+	key, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
 	}

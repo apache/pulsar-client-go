@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"path"
 	"strings"
@@ -110,7 +109,7 @@ func httpDo(method string, requestPath string, in interface{}, out interface{}) 
 	}
 
 	if out != nil {
-		outBytes, err := ioutil.ReadAll(resp.Body)
+		outBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
 		}

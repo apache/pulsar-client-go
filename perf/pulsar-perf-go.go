@@ -20,7 +20,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	_ "net/http/pprof"
 	"os"
@@ -57,7 +56,7 @@ func NewClient() (pulsar.Client, error) {
 
 	if clientArgs.TokenFile != "" {
 		// read JWT from the file
-		tokenBytes, err := ioutil.ReadFile(clientArgs.TokenFile)
+		tokenBytes, err := os.ReadFile(clientArgs.TokenFile)
 		if err != nil {
 			log.WithError(err).Errorf("failed to read Pulsar JWT from a file %s", clientArgs.TokenFile)
 			os.Exit(1)

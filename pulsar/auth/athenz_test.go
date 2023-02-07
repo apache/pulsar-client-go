@@ -20,7 +20,7 @@ package auth
 import (
 	"bytes"
 	"errors"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
@@ -69,7 +69,7 @@ func (m *MockRoleToken) RoleTokenValue() (string, error) {
 
 func MockZmsNewTokenBuilder(domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error) {
 	// assertion
-	key, err := ioutil.ReadFile(tlsClientKeyPath)
+	key, err := os.ReadFile(tlsClientKeyPath)
 	if err != nil {
 		return nil, err
 	}
