@@ -35,8 +35,7 @@ container:
 	    --build-arg PULSAR_IMAGE="${PULSAR_IMAGE}" .
 
 test: container
-	docker run -i -v ${PWD}:/pulsar-client-go ${IMAGE_NAME} \
-        bash -c "cd /pulsar-client-go && ./scripts/run-ci.sh"
+	docker run -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci.sh"
 
 clean:
 	docker rmi --force $(IMAGE_NAME) || true
