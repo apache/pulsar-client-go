@@ -95,6 +95,7 @@ type partitionProducer struct {
 	metrics          *internal.LeveledMetrics
 	epoch            uint64
 	schemaCache      *schemaCache
+	topicEpoch       *uint64
 }
 
 type schemaCache struct {
@@ -237,6 +238,11 @@ func (p *partitionProducer) grabCnx() error {
 		Schema:                   pbSchema,
 		Epoch:                    proto.Uint64(atomic.LoadUint64(&p.epoch)),
 		UserProvidedProducerName: proto.Bool(p.userProvidedProducerName),
+		ProducerAccessMode:       toProtoProducerAccessMode(p.options.ProducerAccessMode).Enum(),
+	}
+
+	if p.topicEpoch != nil {
+		cmdProducer.TopicEpoch = proto.Uint64(*p.topicEpoch)
 	}
 
 	if p.producerName != "" {
@@ -253,6 +259,8 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
+	nextTopicEpoch := res.Response.ProducerSuccess.GetTopicEpoch()
+	p.topicEpoch = &nextTopicEpoch
 
 	if p.options.Encryption != nil {
 		p.encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
@@ -1351,4 +1359,15 @@ func (c *chunkRecorder) setFirstChunkID(msgID messageID) {
 
 func (c *chunkRecorder) setLastChunkID(msgID messageID) {
 	c.chunkedMsgID.messageID = msgID
+}
+
+func toProtoProducerAccessMode(accessMode ProducerAccessMode) pb.ProducerAccessMode {
+	switch accessMode {
+	case ProducerAccessModeShared:
+		return pb.ProducerAccessMode_Shared
+	case ProducerAccessModeExclusive:
+		return pb.ProducerAccessMode_Exclusive
+	}
+
+	return pb.ProducerAccessMode_Shared
 }

@@ -55,6 +55,17 @@ const (
 	Better
 )
 
+type ProducerAccessMode int
+
+const (
+	// ProducerAccessModeShared is default multiple producers can publish on a topic.
+	ProducerAccessModeShared ProducerAccessMode = iota
+
+	// ProducerAccessModeExclusive is required exclusive access for producer.
+	// Fail immediately if there's already a producer connected.
+	ProducerAccessModeExclusive
+)
+
 // TopicMetadata represents a topic metadata.
 type TopicMetadata interface {
 	// NumPartitions returns the number of partitions for a particular topic.
@@ -187,6 +198,12 @@ type ProducerOptions struct {
 	// ChunkMaxMessageSize is the max size of single chunk payload.
 	// It will actually only take effect if it is smaller than the maxMessageSize from the broker.
 	ChunkMaxMessageSize uint
+
+	// The type of access to the topic that the producer requires. (default ProducerAccessModeShared)
+	// Options:
+	// - ProducerAccessModeShared
+	// - ProducerAccessModeExclusive
+	ProducerAccessMode
 }
 
 // Producer is used to publish messages on a topic
