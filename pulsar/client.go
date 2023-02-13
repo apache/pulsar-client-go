@@ -21,8 +21,9 @@ import (
 	"crypto/tls"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 // NewClient Creates a pulsar client instance
@@ -78,6 +79,11 @@ func NewAuthenticationOAuth2(authParams map[string]string) Authentication {
 	return oauth
 }
 
+// NewAuthenticationBasic Creates Basic Authentication provider
+func NewAuthenticationBasic(username, password string) (Authentication, error) {
+	return auth.NewAuthenticationBasic(username, password)
+}
+
 // ClientOptions is used to construct a Pulsar Client instance.
 type ClientOptions struct {
 	// Configure the service URL for the Pulsar service.
@@ -92,9 +98,18 @@ type ClientOptions struct {
 	// operation will be marked as failed
 	OperationTimeout time.Duration
 
+	// Configure the ping send and check interval, default to 30 seconds.
+	KeepAliveInterval time.Duration
+
 	// Configure the authentication provider. (default: no authentication)
 	// Example: `Authentication: NewAuthenticationTLS("my-cert.pem", "my-key.pem")`
 	Authentication
+
+	// Set the path to the TLS key file
+	TLSKeyFilePath string
+
+	// Set the path to the TLS certificate file
+	TLSCertificateFile string
 
 	// Set the path to the trusted TLS certificate file
 	TLSTrustCertsFilePath string
@@ -123,6 +138,10 @@ type ClientOptions struct {
 
 	// Add custom labels to all the metrics reported by this client instance
 	CustomMetricsLabels map[string]string
+
+	// Specify metric registerer used to register metrics.
+	// Default prometheus.DefaultRegisterer
+	MetricsRegisterer prometheus.Registerer
 
 	IsEnableTransaction bool
 }

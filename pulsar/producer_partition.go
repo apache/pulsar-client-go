@@ -19,6 +19,10 @@ package pulsar
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -27,7 +31,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
-	"github.com/gogo/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -52,6 +56,7 @@ var (
 	errSendQueueIsFull = newError(ProducerQueueIsFull, "producer send queue is full")
 	errContextExpired  = newError(TimeoutError, "message send context expired")
 	errMessageTooLarge = newError(MessageTooBig, "message size exceeds MaxMessageSize")
+	errMetaTooLarge    = newError(InvalidMessage, "message metadata size exceeds MaxMessageSize")
 	errProducerClosed  = newError(ProducerClosed, "producer already been closed")
 
 	buffersPool sync.Pool
@@ -74,6 +79,8 @@ type partitionProducer struct {
 	batchBuilder             internal.BatchBuilder
 	sequenceIDGenerator      *uint64
 	batchFlushTicker         *time.Ticker
+	encryptor                internalcrypto.Encryptor
+	compressionProvider      compression.Provider
 
 	// Channel where app is posting messages to be published
 	eventsChan      chan interface{}
@@ -86,10 +93,37 @@ type partitionProducer struct {
 	schemaInfo       *SchemaInfo
 	partitionIdx     int32
 	metrics          *internal.LeveledMetrics
-
-	epoch uint64
+	epoch            uint64
+	schemaCache      *schemaCache
+	topicEpoch       *uint64
 }
 
+type schemaCache struct {
+	lock    sync.RWMutex
+	schemas map[string][]byte
+}
+
+func newSchemaCache() *schemaCache {
+	return &schemaCache{
+		schemas: make(map[string][]byte),
+	}
+}
+
+func (s *schemaCache) Put(schema *SchemaInfo, schemaVersion []byte) {
+	s.lock.Lock()
+	defer s.lock.Unlock()
+
+	key := schema.hash()
+	s.schemas[key] = schemaVersion
+}
+
+func (s *schemaCache) Get(schema *SchemaInfo) (schemaVersion []byte) {
+	s.lock.RLock()
+	defer s.lock.RUnlock()
+
+	key := schema.hash()
+	return s.schemas[key]
+}
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
 	metrics *internal.LeveledMetrics) (
 	*partitionProducer, error) {
@@ -119,12 +153,15 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		connectClosedCh:  make(chan connectionClosed, 10),
 		closeCh:          make(chan struct{}),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
+		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
+			compression.Level(options.CompressionLevel)),
 		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
 		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
 		lastSequenceID:   -1,
 		partitionIdx:     int32(partitionIdx),
 		metrics:          metrics,
 		epoch:            0,
+		schemaCache:      newSchemaCache(),
 	}
 	if p.options.DisableBatching {
 		p.batchFlushTicker.Stop()
@@ -179,7 +216,7 @@ func (p *partitionProducer) grabCnx() error {
 
 	// set schema info for producer
 
-	pbSchema := new(pb.Schema)
+	var pbSchema *pb.Schema
 	if p.schemaInfo != nil {
 		tmpSchemaType := pb.Schema_Type(int32(p.schemaInfo.Type))
 		pbSchema = &pb.Schema{
@@ -188,10 +225,9 @@ func (p *partitionProducer) grabCnx() error {
 			SchemaData: []byte(p.schemaInfo.Schema),
 			Properties: internal.ConvertFromStringMap(p.schemaInfo.Properties),
 		}
-		p.log.Debugf("The partition consumer schema name is: %s", pbSchema.Name)
+		p.log.Debugf("The partition producer schema name is: %s", pbSchema.Name)
 	} else {
-		pbSchema = nil
-		p.log.Debug("The partition consumer schema is nil")
+		p.log.Debug("The partition producer schema is nil")
 	}
 
 	cmdProducer := &pb.CommandProducer{
@@ -202,6 +238,11 @@ func (p *partitionProducer) grabCnx() error {
 		Schema:                   pbSchema,
 		Epoch:                    proto.Uint64(atomic.LoadUint64(&p.epoch)),
 		UserProvidedProducerName: proto.Bool(p.userProvidedProducerName),
+		ProducerAccessMode:       toProtoProducerAccessMode(p.options.ProducerAccessMode).Enum(),
+	}
+
+	if p.topicEpoch != nil {
+		cmdProducer.TopicEpoch = proto.Uint64(*p.topicEpoch)
 	}
 
 	if p.producerName != "" {
@@ -218,54 +259,51 @@ func (p *partitionProducer) grabCnx() error {
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
+	nextTopicEpoch := res.Response.ProducerSuccess.GetTopicEpoch()
+	p.topicEpoch = &nextTopicEpoch
 
-	var encryptor internalcrypto.Encryptor
 	if p.options.Encryption != nil {
-		encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
+		p.encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
 			p.options.Encryption.KeyReader,
 			p.options.Encryption.MessageCrypto,
 			p.options.Encryption.ProducerCryptoFailureAction, p.log)
 	} else {
-		encryptor = internalcrypto.NewNoopEncryptor()
-	}
-
-	if p.options.DisableBatching {
-		provider, _ := GetBatcherBuilderProvider(DefaultBatchBuilder)
-		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
-			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
-			compression.Level(p.options.CompressionLevel),
-			p,
-			p.log,
-			encryptor)
-		if err != nil {
-			return err
-		}
-	} else if p.batchBuilder == nil {
-		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
-		if err != nil {
-			provider, _ = GetBatcherBuilderProvider(DefaultBatchBuilder)
-		}
-
-		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
-			p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
-			compression.Level(p.options.CompressionLevel),
-			p,
-			p.log,
-			encryptor)
-		if err != nil {
-			return err
-		}
+		p.encryptor = internalcrypto.NewNoopEncryptor()
 	}
 
 	if p.sequenceIDGenerator == nil {
 		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
 		p.sequenceIDGenerator = &nextSequenceID
 	}
+
+	schemaVersion := res.Response.ProducerSuccess.GetSchemaVersion()
+	if len(schemaVersion) != 0 {
+		p.schemaCache.Put(p.schemaInfo, schemaVersion)
+	}
+
 	p._setConn(res.Cnx)
 	err = p._getConn().RegisterListener(p.producerID, p)
 	if err != nil {
 		return err
 	}
+
+	if !p.options.DisableBatching && p.batchBuilder == nil {
+		provider, err := GetBatcherBuilderProvider(p.options.BatcherBuilderType)
+		if err != nil {
+			return err
+		}
+		maxMessageSize := uint32(p._getConn().GetMaxMessageSize())
+		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
+			maxMessageSize, p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
+			compression.Level(p.options.CompressionLevel),
+			p,
+			p.log,
+			p.encryptor)
+		if err != nil {
+			return err
+		}
+	}
+
 	p.log.WithFields(log.Fields{
 		"cnx":   res.Cnx.ID(),
 		"epoch": atomic.LoadUint64(&p.epoch),
@@ -290,7 +328,7 @@ func (p *partitionProducer) grabCnx() error {
 			pi.sentAt = time.Now()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			p._getConn().WriteData(pi.batchData)
+			p._getConn().WriteData(pi.buffer)
 
 			if pi == lastViewItem {
 				break
@@ -316,12 +354,38 @@ func (p *partitionProducer) ConnectionClosed() {
 	p.connectClosedCh <- connectionClosed{}
 }
 
-func (p *partitionProducer) reconnectToBroker() {
-	var (
-		maxRetry int
-		backoff  = internal.Backoff{}
-	)
+func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVersion []byte, err error) {
 
+	tmpSchemaType := pb.Schema_Type(int32(schemaInfo.Type))
+	pbSchema := &pb.Schema{
+		Name:       proto.String(schemaInfo.Name),
+		Type:       &tmpSchemaType,
+		SchemaData: []byte(schemaInfo.Schema),
+		Properties: internal.ConvertFromStringMap(schemaInfo.Properties),
+	}
+	id := p.client.rpcClient.NewRequestID()
+	req := &pb.CommandGetOrCreateSchema{
+		RequestId: proto.Uint64(id),
+		Topic:     proto.String(p.topic),
+		Schema:    pbSchema,
+	}
+	res, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_GET_OR_CREATE_SCHEMA, req)
+	if err != nil {
+		return
+	}
+	if res.Response.Error != nil {
+		err = errors.New(res.Response.GetError().String())
+		return
+	}
+	if res.Response.GetOrCreateSchemaResponse.ErrorCode != nil {
+		err = errors.New(*res.Response.GetOrCreateSchemaResponse.ErrorMessage)
+		return
+	}
+	return res.Response.GetOrCreateSchemaResponse.SchemaVersion, nil
+}
+
+func (p *partitionProducer) reconnectToBroker() {
+	var maxRetry int
 	if p.options.MaxReconnectToBroker == nil {
 		maxRetry = -1
 	} else {
@@ -335,9 +399,18 @@ func (p *partitionProducer) reconnectToBroker() {
 			return
 		}
 
-		d := backoff.Next()
-		p.log.Info("Reconnecting to broker in ", d)
-		time.Sleep(d)
+		var (
+			delayReconnectTime time.Duration
+			defaultBackoff     = internal.DefaultBackoff{}
+		)
+
+		if p.options.BackoffPolicy == nil {
+			delayReconnectTime = defaultBackoff.Next()
+		} else {
+			delayReconnectTime = p.options.BackoffPolicy.Next()
+		}
+		p.log.Info("Reconnecting to broker in ", delayReconnectTime)
+		time.Sleep(delayReconnectTime)
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
 		if err == nil {
@@ -355,6 +428,10 @@ func (p *partitionProducer) reconnectToBroker() {
 
 		if maxRetry > 0 {
 			maxRetry--
+		}
+		p.metrics.ProducersReconnectFailure.Inc()
+		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
+			p.metrics.ProducersReconnectMaxRetry.Inc()
 		}
 	}
 }
@@ -400,55 +477,273 @@ func (p *partitionProducer) Name() string {
 }
 
 func (p *partitionProducer) internalSend(request *sendRequest) {
-	p.log.Debug("Received send request: ", *request)
+	p.log.Debug("Received send request: ", *request.msg)
 
 	msg := request.msg
 
 	// read payload from message
-	payload := msg.Payload
+	uncompressedPayload := msg.Payload
 
+	var schemaPayload []byte
 	var err error
-
-	// payload and schema are mutually exclusive
-	// try to get payload from schema value only if payload is not set
-	if payload == nil && p.options.Schema != nil {
-		var schemaPayload []byte
-		schemaPayload, err = p.options.Schema.Encode(msg.Value)
-		if err != nil {
-			p.publishSemaphore.Release()
-			request.callback(nil, request.msg, newError(SchemaFailure, err.Error()))
-			p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
-			return
-		}
-		payload = schemaPayload
-	}
-
-	// if msg is too large
-	if len(payload) > int(p._getConn().GetMaxMessageSize()) {
-		p.publishSemaphore.Release()
-		request.callback(nil, request.msg, errMessageTooLarge)
-		p.log.WithError(errMessageTooLarge).
-			WithField("size", len(payload)).
-			WithField("properties", msg.Properties).
-			Errorf("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize()))
-		p.metrics.PublishErrorsMsgTooLarge.Inc()
+	if msg.Value != nil && msg.Payload != nil {
+		p.log.Error("Can not set Value and Payload both")
+		request.callback(nil, request.msg, errors.New("can not set Value and Payload both"))
 		return
 	}
+
+	// The block chan must be closed when returned with exception
+	defer request.stopBlock()
+	if !p.canAddToQueue(request) {
+		return
+	}
+
+	if p.options.DisableMultiSchema {
+		if msg.Schema != nil && p.options.Schema != nil &&
+			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
+			p.publishSemaphore.Release()
+			request.callback(nil, request.msg, fmt.Errorf("msg schema can not match with producer schema"))
+			p.log.WithError(err).Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
+			return
+		}
+	}
+	var schema Schema
+	var schemaVersion []byte
+	if msg.Schema != nil {
+		schema = msg.Schema
+	} else if p.options.Schema != nil {
+		schema = p.options.Schema
+	}
+	if msg.Value != nil {
+		// payload and schema are mutually exclusive
+		// try to get payload from schema value only if payload is not set
+		if uncompressedPayload == nil && schema != nil {
+			schemaPayload, err = schema.Encode(msg.Value)
+			if err != nil {
+				p.publishSemaphore.Release()
+				request.callback(nil, request.msg, newError(SchemaFailure, err.Error()))
+				p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
+				return
+			}
+		}
+	}
+	if uncompressedPayload == nil {
+		uncompressedPayload = schemaPayload
+	}
+
+	if schema != nil {
+		schemaVersion = p.schemaCache.Get(schema.GetSchemaInfo())
+		if schemaVersion == nil {
+			schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
+			if err != nil {
+				p.publishSemaphore.Release()
+				p.log.WithError(err).Error("get schema version fail")
+				request.callback(nil, request.msg, fmt.Errorf("get schema version fail, err: %w", err))
+				return
+			}
+			p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
+		}
+	}
+
+	uncompressedSize := len(uncompressedPayload)
 
 	deliverAt := msg.DeliverAt
 	if msg.DeliverAfter.Nanoseconds() > 0 {
 		deliverAt = time.Now().Add(msg.DeliverAfter)
 	}
 
+	mm := p.genMetadata(msg, uncompressedSize, deliverAt)
+
+	// set default ReplicationClusters when DisableReplication
+	if msg.DisableReplication {
+		msg.ReplicationClusters = []string{"__local__"}
+	}
+
 	sendAsBatch := !p.options.DisableBatching &&
 		msg.ReplicationClusters == nil &&
 		deliverAt.UnixNano() < 0
 
-	smm := &pb.SingleMessageMetadata{
-		PayloadSize: proto.Int(len(payload)),
+	// Once the batching is enabled, it can close blockCh early to make block finish
+	if sendAsBatch {
+		request.stopBlock()
+	} else {
+		// update sequence id for metadata, make the size of msgMetadata more accurate
+		// batch sending will update sequence ID in the BatchBuilder
+		p.updateMetadataSeqID(mm, msg)
 	}
 
-	if msg.EventTime.UnixNano() != 0 {
+	maxMessageSize := int(p._getConn().GetMaxMessageSize())
+
+	// compress payload if not batching
+	var compressedPayload []byte
+	var compressedSize int
+	var checkSize int
+	if !sendAsBatch {
+		compressedPayload = p.compressionProvider.Compress(nil, uncompressedPayload)
+		compressedSize = len(compressedPayload)
+		checkSize = compressedSize
+
+		// set the compress type in msgMetaData
+		compressionType := pb.CompressionType(p.options.CompressionType)
+		if compressionType != pb.CompressionType_NONE {
+			mm.Compression = &compressionType
+		}
+	} else {
+		// final check for batching message is in serializeMessage
+		// this is a double check
+		checkSize = uncompressedSize
+	}
+
+	// if msg is too large and chunking is disabled
+	if checkSize > maxMessageSize && !p.options.EnableChunking {
+		p.publishSemaphore.Release()
+		request.callback(nil, request.msg, errMessageTooLarge)
+		p.log.WithError(errMessageTooLarge).
+			WithField("size", checkSize).
+			WithField("properties", msg.Properties).
+			Errorf("MaxMessageSize %d", maxMessageSize)
+		p.metrics.PublishErrorsMsgTooLarge.Inc()
+		return
+	}
+
+	var totalChunks int
+	// max chunk payload size
+	var payloadChunkSize int
+	if sendAsBatch || !p.options.EnableChunking {
+		totalChunks = 1
+		payloadChunkSize = int(p._getConn().GetMaxMessageSize())
+	} else {
+		payloadChunkSize = int(p._getConn().GetMaxMessageSize()) - proto.Size(mm)
+		if payloadChunkSize <= 0 {
+			p.publishSemaphore.Release()
+			request.callback(nil, msg, errMetaTooLarge)
+			p.log.WithError(errMetaTooLarge).
+				WithField("metadata size", proto.Size(mm)).
+				WithField("properties", msg.Properties).
+				Errorf("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize()))
+			p.metrics.PublishErrorsMsgTooLarge.Inc()
+			return
+		}
+		// set ChunkMaxMessageSize
+		if p.options.ChunkMaxMessageSize != 0 {
+			payloadChunkSize = int(math.Min(float64(payloadChunkSize), float64(p.options.ChunkMaxMessageSize)))
+		}
+		totalChunks = int(math.Max(1, math.Ceil(float64(compressedSize)/float64(payloadChunkSize))))
+	}
+
+	// set total chunks to send request
+	request.totalChunks = totalChunks
+
+	if !sendAsBatch {
+		if totalChunks > 1 {
+			var lhs, rhs int
+			uuid := fmt.Sprintf("%s-%s", p.producerName, strconv.FormatUint(*mm.SequenceId, 10))
+			mm.Uuid = proto.String(uuid)
+			mm.NumChunksFromMsg = proto.Int32(int32(totalChunks))
+			mm.TotalChunkMsgSize = proto.Int32(int32(compressedSize))
+			cr := newChunkRecorder()
+			for chunkID := 0; chunkID < totalChunks; chunkID++ {
+				lhs = chunkID * payloadChunkSize
+				if rhs = lhs + payloadChunkSize; rhs > compressedSize {
+					rhs = compressedSize
+				}
+				// update chunk id
+				mm.ChunkId = proto.Int32(int32(chunkID))
+				nsr := &sendRequest{
+					ctx:              request.ctx,
+					msg:              request.msg,
+					callback:         request.callback,
+					callbackOnce:     request.callbackOnce,
+					publishTime:      request.publishTime,
+					blockCh:          request.blockCh,
+					closeBlockChOnce: request.closeBlockChOnce,
+					totalChunks:      totalChunks,
+					chunkID:          chunkID,
+					uuid:             uuid,
+					chunkRecorder:    cr,
+				}
+				// the permit of first chunk has acquired
+				if chunkID != 0 && !p.canAddToQueue(nsr) {
+					return
+				}
+				p.internalSingleSend(mm, compressedPayload[lhs:rhs], nsr, uint32(maxMessageSize))
+			}
+			// close the blockCh when all the chunks acquired permits
+			request.stopBlock()
+		} else {
+			// close the blockCh when totalChunks is 1 (it has acquired permits)
+			request.stopBlock()
+			p.internalSingleSend(mm, compressedPayload, request, uint32(maxMessageSize))
+		}
+	} else {
+		smm := p.genSingleMessageMetadataInBatch(msg, uncompressedSize)
+		multiSchemaEnabled := !p.options.DisableMultiSchema
+		added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
+			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
+		if !added {
+			// The current batch is full.. flush it and retry
+
+			p.internalFlushCurrentBatch()
+
+			// after flushing try again to add the current payload
+			if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
+				msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled); !ok {
+				p.publishSemaphore.Release()
+				request.callback(nil, request.msg, errFailAddToBatch)
+				p.log.WithField("size", uncompressedSize).
+					WithField("properties", msg.Properties).
+					Error("unable to add message to batch")
+				return
+			}
+		}
+		if request.flushImmediately {
+
+			p.internalFlushCurrentBatch()
+
+		}
+	}
+}
+
+func (p *partitionProducer) genMetadata(msg *ProducerMessage,
+	uncompressedSize int,
+	deliverAt time.Time) (mm *pb.MessageMetadata) {
+	mm = &pb.MessageMetadata{
+		ProducerName:     &p.producerName,
+		PublishTime:      proto.Uint64(internal.TimestampMillis(time.Now())),
+		ReplicateTo:      msg.ReplicationClusters,
+		UncompressedSize: proto.Uint32(uint32(uncompressedSize)),
+	}
+
+	if msg.Key != "" {
+		mm.PartitionKey = proto.String(msg.Key)
+	}
+
+	if msg.Properties != nil {
+		mm.Properties = internal.ConvertFromStringMap(msg.Properties)
+	}
+
+	if deliverAt.UnixNano() > 0 {
+		mm.DeliverAtTime = proto.Int64(int64(internal.TimestampMillis(deliverAt)))
+	}
+
+	return
+}
+
+func (p *partitionProducer) updateMetadataSeqID(mm *pb.MessageMetadata, msg *ProducerMessage) {
+	if msg.SequenceID != nil {
+		mm.SequenceId = proto.Uint64(uint64(*msg.SequenceID))
+	} else {
+		mm.SequenceId = proto.Uint64(internal.GetAndAdd(p.sequenceIDGenerator, 1))
+	}
+}
+
+func (p *partitionProducer) genSingleMessageMetadataInBatch(msg *ProducerMessage,
+	uncompressedSize int) (smm *pb.SingleMessageMetadata) {
+	smm = &pb.SingleMessageMetadata{
+		PayloadSize: proto.Int32(int32(uncompressedSize)),
+	}
+
+	if !msg.EventTime.IsZero() {
 		smm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
 	}
 
@@ -464,48 +759,61 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		smm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}
 
+	var sequenceID uint64
 	if msg.SequenceID != nil {
-		sequenceID := uint64(*msg.SequenceID)
-		smm.SequenceId = proto.Uint64(sequenceID)
+		sequenceID = uint64(*msg.SequenceID)
+	} else {
+		sequenceID = internal.GetAndAdd(p.sequenceIDGenerator, 1)
 	}
 
-	if !sendAsBatch {
-		p.internalFlushCurrentBatch()
+	smm.SequenceId = proto.Uint64(sequenceID)
+
+	return
+}
+
+func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
+	compressedPayload []byte,
+	request *sendRequest,
+	maxMessageSize uint32) {
+	msg := request.msg
+
+	payloadBuf := internal.NewBuffer(len(compressedPayload))
+	payloadBuf.Write(compressedPayload)
+
+	buffer := p.GetBuffer()
+	if buffer == nil {
+		buffer = internal.NewBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
 	}
 
-	if msg.DisableReplication {
-		msg.ReplicationClusters = []string{"__local__"}
+	sid := *mm.SequenceId
+
+	if err := internal.SingleSend(
+		buffer,
+		p.producerID,
+		sid,
+		mm,
+		payloadBuf,
+		p.encryptor,
+		maxMessageSize,
+	); err != nil {
+		request.callback(nil, request.msg, err)
+		p.publishSemaphore.Release()
+		p.log.WithError(err).Errorf("Single message serialize failed %s", msg.Value)
+		return
 	}
 
-	added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-		msg.ReplicationClusters, deliverAt)
-	if !added {
-		// The current batch is full.. flush it and retry
-
-		p.internalFlushCurrentBatch()
-
-		// after flushing try again to add the current payload
-		if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, payload, request,
-			msg.ReplicationClusters, deliverAt); !ok {
-			p.publishSemaphore.Release()
-			request.callback(nil, request.msg, errFailAddToBatch)
-			p.log.WithField("size", len(payload)).
-				WithField("properties", msg.Properties).
-				Error("unable to add message to batch")
-			return
-		}
-	}
-
-	if !sendAsBatch || request.flushImmediately {
-
-		p.internalFlushCurrentBatch()
-
-	}
+	p.pendingQueue.Put(&pendingItem{
+		sentAt:       time.Now(),
+		buffer:       buffer,
+		sequenceID:   sid,
+		sendRequests: []interface{}{request},
+	})
+	p._getConn().WriteData(buffer)
 }
 
 type pendingItem struct {
 	sync.Mutex
-	batchData    internal.Buffer
+	buffer       internal.Buffer
 	sequenceID   uint64
 	sentAt       time.Time
 	sendRequests []interface{}
@@ -531,12 +839,18 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 				sr.callback(nil, sr.msg, err)
 			}
 		}
+		if errors.Is(err, internal.ErrExceedMaxMessageSize) {
+			p.log.WithError(errMessageTooLarge).
+				Errorf("internal err: %s", err)
+			p.metrics.PublishErrorsMsgTooLarge.Inc()
+			return
+		}
 		return
 	}
 
 	p.pendingQueue.Put(&pendingItem{
 		sentAt:       time.Now(),
-		batchData:    batchData,
+		buffer:       batchData,
 		sequenceID:   sequenceID,
 		sendRequests: callbacks,
 	})
@@ -629,8 +943,11 @@ func (p *partitionProducer) failTimeoutMessages() {
 						WithField("size", size).
 						WithField("properties", sr.msg.Properties)
 				}
+
 				if sr.callback != nil {
-					sr.callback(nil, sr.msg, errSendTimeout)
+					sr.callbackOnce.Do(func() {
+						sr.callback(nil, sr.msg, errSendTimeout)
+					})
 				}
 			}
 
@@ -648,7 +965,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatches() {
-	batchesData, sequenceIDs, callbacks, errors := p.batchBuilder.FlushBatches()
+	batchesData, sequenceIDs, callbacks, errs := p.batchBuilder.FlushBatches()
 	if batchesData == nil {
 		return
 	}
@@ -656,11 +973,17 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 	for i := range batchesData {
 		// error occurred in processing batch
 		// report it using callback
-		if errors[i] != nil {
+		if errs[i] != nil {
 			for _, cb := range callbacks[i] {
 				if sr, ok := cb.(*sendRequest); ok {
-					sr.callback(nil, sr.msg, errors[i])
+					sr.callback(nil, sr.msg, errs[i])
 				}
+			}
+			if errors.Is(errs[i], internal.ErrExceedMaxMessageSize) {
+				p.log.WithError(errMessageTooLarge).
+					Errorf("internal err: %s", errs[i])
+				p.metrics.PublishErrorsMsgTooLarge.Inc()
+				return
 			}
 			continue
 		}
@@ -669,7 +992,7 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 		}
 		p.pendingQueue.Put(&pendingItem{
 			sentAt:       time.Now(),
-			batchData:    batchesData[i],
+			buffer:       batchesData[i],
 			sequenceID:   sequenceIDs[i],
 			sendRequests: callbacks[i],
 		})
@@ -730,6 +1053,7 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 
 	// wait for send request to finish
 	<-doneCh
+
 	return msgID, err
 }
 
@@ -746,33 +1070,30 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		return
 	}
 
+	// bc only works when DisableBlockIfQueueFull is false
+	bc := make(chan struct{})
+
+	// callbackOnce make sure the callback is only invoked once in chunking
+	callbackOnce := &sync.Once{}
+
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
 		callback:         callback,
+		callbackOnce:     callbackOnce,
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
+		blockCh:          bc,
+		closeBlockChOnce: &sync.Once{},
 	}
 	p.options.Interceptors.BeforeSend(p, msg)
 
-	if p.options.DisableBlockIfQueueFull {
-		if !p.publishSemaphore.TryAcquire() {
-			if callback != nil {
-				callback(nil, msg, errSendQueueIsFull)
-			}
-			return
-		}
-	} else {
-		if !p.publishSemaphore.Acquire(ctx) {
-			callback(nil, msg, errContextExpired)
-			return
-		}
-	}
-
-	p.metrics.MessagesPending.Inc()
-	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
-
 	p.eventsChan <- sr
+
+	if !p.options.DisableBlockIfQueueFull {
+		// block if queue full
+		<-bc
+	}
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -805,6 +1126,15 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		pi.Lock()
 		defer pi.Unlock()
 		p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
+		batchSize := int32(0)
+		for _, i := range pi.sendRequests {
+			sr := i.(*sendRequest)
+			if sr.msg != nil {
+				batchSize = batchSize + 1
+			} else { // Flush request
+				break
+			}
+		}
 		for idx, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
 			if sr.msg != nil {
@@ -825,13 +1155,39 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 					int64(response.MessageId.GetEntryId()),
 					int32(idx),
 					p.partitionIdx,
+					batchSize,
 				)
 
-				if sr.callback != nil {
-					sr.callback(msgID, sr.msg, nil)
+				if sr.totalChunks > 1 {
+					if sr.chunkID == 0 {
+						sr.chunkRecorder.setFirstChunkID(
+							messageID{
+								int64(response.MessageId.GetLedgerId()),
+								int64(response.MessageId.GetEntryId()),
+								-1,
+								p.partitionIdx,
+								0,
+							})
+					} else if sr.chunkID == sr.totalChunks-1 {
+						sr.chunkRecorder.setLastChunkID(
+							messageID{
+								int64(response.MessageId.GetLedgerId()),
+								int64(response.MessageId.GetEntryId()),
+								-1,
+								p.partitionIdx,
+								0,
+							})
+						// use chunkMsgID to set msgID
+						msgID = sr.chunkRecorder.chunkedMsgID
+					}
 				}
 
-				p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
+				if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
+					if sr.callback != nil {
+						sr.callback(msgID, sr.msg, nil)
+					}
+					p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
+				}
 			}
 		}
 
@@ -860,8 +1216,10 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		p.log.Info("Closed producer")
 	}
 
-	if err = p.batchBuilder.Close(); err != nil {
-		p.log.WithError(err).Warn("Failed to close batch builder")
+	if p.batchBuilder != nil {
+		if err = p.batchBuilder.Close(); err != nil {
+			p.log.WithError(err).Warn("Failed to close batch builder")
+		}
 	}
 
 	p.setProducerState(producerClosed)
@@ -918,8 +1276,22 @@ type sendRequest struct {
 	ctx              context.Context
 	msg              *ProducerMessage
 	callback         func(MessageID, *ProducerMessage, error)
+	callbackOnce     *sync.Once
 	publishTime      time.Time
 	flushImmediately bool
+	blockCh          chan struct{}
+	closeBlockChOnce *sync.Once
+	totalChunks      int
+	chunkID          int
+	uuid             string
+	chunkRecorder    *chunkRecorder
+}
+
+// stopBlock can be invoked multiple times safety
+func (sr *sendRequest) stopBlock() {
+	sr.closeBlockChOnce.Do(func() {
+		close(sr.blockCh)
+	})
 }
 
 type closeProducer struct {
@@ -936,7 +1308,7 @@ func (i *pendingItem) Complete() {
 		return
 	}
 	i.completed = true
-	buffersPool.Put(i.batchData)
+	buffersPool.Put(i.buffer)
 }
 
 // _setConn sets the internal connection field of this partition producer atomically.
@@ -952,4 +1324,50 @@ func (p *partitionProducer) _getConn() internal.Connection {
 	//            For this reason we leave this cast unchecked and panic() if the
 	//            invariant is broken
 	return p.conn.Load().(internal.Connection)
+}
+
+func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool {
+	if p.options.DisableBlockIfQueueFull {
+		if !p.publishSemaphore.TryAcquire() {
+			if sr.callback != nil {
+				sr.callback(nil, sr.msg, errSendQueueIsFull)
+			}
+			return false
+		}
+	} else if !p.publishSemaphore.Acquire(sr.ctx) {
+		sr.callback(nil, sr.msg, errContextExpired)
+		return false
+	}
+	p.metrics.MessagesPending.Inc()
+	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
+	return true
+}
+
+type chunkRecorder struct {
+	chunkedMsgID chunkMessageID
+}
+
+func newChunkRecorder() *chunkRecorder {
+	return &chunkRecorder{
+		chunkedMsgID: chunkMessageID{},
+	}
+}
+
+func (c *chunkRecorder) setFirstChunkID(msgID messageID) {
+	c.chunkedMsgID.firstChunkID = msgID
+}
+
+func (c *chunkRecorder) setLastChunkID(msgID messageID) {
+	c.chunkedMsgID.messageID = msgID
+}
+
+func toProtoProducerAccessMode(accessMode ProducerAccessMode) pb.ProducerAccessMode {
+	switch accessMode {
+	case ProducerAccessModeShared:
+		return pb.ProducerAccessMode_Shared
+	case ProducerAccessModeExclusive:
+		return pb.ProducerAccessMode_Exclusive
+	}
+
+	return pb.ProducerAccessMode_Shared
 }

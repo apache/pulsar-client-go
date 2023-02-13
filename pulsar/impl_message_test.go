@@ -24,7 +24,7 @@ import (
 )
 
 func TestMessageId(t *testing.T) {
-	id := newMessageID(1, 2, 3, 4)
+	id := newMessageID(1, 2, 3, 4, 5)
 	bytes := id.Serialize()
 
 	id2, err := DeserializeMessageID(bytes)
@@ -35,6 +35,7 @@ func TestMessageId(t *testing.T) {
 	assert.Equal(t, int64(2), id2.(messageID).entryID)
 	assert.Equal(t, int32(3), id2.(messageID).batchIdx)
 	assert.Equal(t, int32(4), id2.(messageID).partitionIdx)
+	assert.Equal(t, int32(5), id2.(messageID).batchSize)
 
 	id, err = DeserializeMessageID(nil)
 	assert.Error(t, err)
@@ -47,11 +48,12 @@ func TestMessageId(t *testing.T) {
 
 func TestMessageIdGetFuncs(t *testing.T) {
 	// test LedgerId,EntryId,BatchIdx,PartitionIdx
-	id := newMessageID(1, 2, 3, 4)
+	id := newMessageID(1, 2, 3, 4, 5)
 	assert.Equal(t, int64(1), id.LedgerID())
 	assert.Equal(t, int64(2), id.EntryID())
 	assert.Equal(t, int32(3), id.BatchIdx())
 	assert.Equal(t, int32(4), id.PartitionIdx())
+	assert.Equal(t, int32(5), id.BatchSize())
 }
 
 func TestAckTracker(t *testing.T) {
@@ -80,11 +82,28 @@ func TestAckTracker(t *testing.T) {
 
 	}
 	assert.Equal(t, true, tracker.completed())
+
+	tracker = newAckTracker(1000)
+	for i := 0; i < 1000; i++ {
+		if i < 999 {
+			assert.False(t, tracker.ackCumulative(i))
+			assert.False(t, tracker.completed())
+		} else {
+			assert.True(t, tracker.ackCumulative(i))
+			assert.True(t, tracker.completed())
+		}
+	}
+
+	// test large number 1000 cumulative
+	tracker = newAckTracker(1000)
+
+	assert.Equal(t, true, tracker.ackCumulative(999))
+	assert.Equal(t, true, tracker.completed())
 }
 
 func TestAckingMessageIDBatchOne(t *testing.T) {
 	tracker := newAckTracker(1)
-	msgID := newTrackingMessageID(1, 1, 0, 0, tracker)
+	msgID := newTrackingMessageID(1, 1, 0, 0, 0, tracker)
 	assert.Equal(t, true, msgID.ack())
 	assert.Equal(t, true, tracker.completed())
 }
@@ -92,8 +111,8 @@ func TestAckingMessageIDBatchOne(t *testing.T) {
 func TestAckingMessageIDBatchTwo(t *testing.T) {
 	tracker := newAckTracker(2)
 	ids := []trackingMessageID{
-		newTrackingMessageID(1, 1, 0, 0, tracker),
-		newTrackingMessageID(1, 1, 1, 0, tracker),
+		newTrackingMessageID(1, 1, 0, 0, 0, tracker),
+		newTrackingMessageID(1, 1, 1, 0, 0, tracker),
 	}
 
 	assert.Equal(t, false, ids[0].ack())
@@ -103,8 +122,8 @@ func TestAckingMessageIDBatchTwo(t *testing.T) {
 	// try reverse order
 	tracker = newAckTracker(2)
 	ids = []trackingMessageID{
-		newTrackingMessageID(1, 1, 0, 0, tracker),
-		newTrackingMessageID(1, 1, 1, 0, tracker),
+		newTrackingMessageID(1, 1, 0, 0, 0, tracker),
+		newTrackingMessageID(1, 1, 1, 0, 0, tracker),
 	}
 	assert.Equal(t, false, ids[1].ack())
 	assert.Equal(t, true, ids[0].ack())

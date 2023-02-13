@@ -21,17 +21,16 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClient(t *testing.T) {
@@ -189,7 +188,7 @@ func TestTLSAuthWithCertSupplier(t *testing.T) {
 }
 
 func TestTokenAuth(t *testing.T) {
-	token, err := ioutil.ReadFile(tokenFilePath)
+	token, err := os.ReadFile(tokenFilePath)
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
@@ -212,7 +211,7 @@ func TestTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
-			token, err := ioutil.ReadFile(tokenFilePath)
+			token, err := os.ReadFile(tokenFilePath)
 			if err != nil {
 				return "", err
 			}
@@ -287,7 +286,7 @@ func mockKeyFile(server string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	kf, err := ioutil.TempFile(pwd, "test_oauth2")
+	kf, err := os.CreateTemp(pwd, "test_oauth2")
 	if err != nil {
 		return "", err
 	}
@@ -838,7 +837,7 @@ func TestHTTPSAuthWithCertSupplier(t *testing.T) {
 }
 
 func TestHTTPTokenAuth(t *testing.T) {
-	token, err := ioutil.ReadFile(tokenFilePath)
+	token, err := os.ReadFile(tokenFilePath)
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
@@ -861,7 +860,7 @@ func TestHTTPTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: webServiceURL,
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
-			token, err := ioutil.ReadFile(tokenFilePath)
+			token, err := os.ReadFile(tokenFilePath)
 			if err != nil {
 				return "", err
 			}
@@ -1018,4 +1017,84 @@ func TestHTTPOAuth2AuthFailed(t *testing.T) {
 	assert.Nil(t, producer)
 
 	client.Close()
+}
+
+func TestHTTPBasicAuth(t *testing.T) {
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSBasicAuth(t *testing.T) {
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+		Authentication:        basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, producer)
+
+	client.Close()
+}
+
+func testTLSTransportWithBasicAuth(t *testing.T, url string) {
+	t.Helper()
+
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:                   url,
+		TLSCertificateFile:    tlsClientCertPath,
+		TLSKeyFilePath:        tlsClientKeyPath,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
+	testTLSTransportWithBasicAuth(t, serviceURLTLS)
+}
+
+func TestWebServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
+	testTLSTransportWithBasicAuth(t, webServiceURLTLS)
 }

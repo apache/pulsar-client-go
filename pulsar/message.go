@@ -65,6 +65,10 @@ type ProducerMessage struct {
 	//     through a `SubscriptionType=Shared` subscription. With other subscription
 	//     types, the messages will still be delivered immediately.
 	DeliverAt time.Time
+
+	//Schema assign to the current message
+	//Note: messages may have a different schema from producer schema, use it instead of producer schema when assigned
+	Schema Schema
 }
 
 // Message abstraction used in Pulsar
@@ -118,6 +122,9 @@ type Message interface {
 	// GetSchemaValue returns the de-serialized value of the message, according to the configuration.
 	GetSchemaValue(v interface{}) error
 
+	//SchemaVersion get the schema version of the message, if any
+	SchemaVersion() []byte
+
 	// GetEncryptionContext returns the ecryption context of the message.
 	// It will be used by the application to parse the undecrypted message.
 	GetEncryptionContext() *EncryptionContext
@@ -147,11 +154,22 @@ type MessageID interface {
 
 	// PartitionIdx returns the message partitionIdx
 	PartitionIdx() int32
+
+	// BatchSize returns 0 or the batch size, which must be greater than BatchIdx()
+	BatchSize() int32
+
+	// String returns message id in string format
+	String() string
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation
 func DeserializeMessageID(data []byte) (MessageID, error) {
 	return deserializeMessageID(data)
+}
+
+// NewMessageID Custom Create MessageID
+func NewMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32) MessageID {
+	return newMessageID(ledgerID, entryID, batchIdx, partitionIdx, 0)
 }
 
 // EarliestMessageID returns a messageID that points to the earliest message available in a topic

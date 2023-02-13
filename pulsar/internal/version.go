@@ -15,19 +15,36 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//go:build !go1.12
-// +build !go1.12
-
 package internal
 
-import "net/http"
+import (
+	"runtime/debug"
 
-func CloseIdleConnections(c *http.Client) {
-	type closeIdler interface {
-		CloseIdleConnections()
-	}
+	"golang.org/x/mod/semver"
+)
 
-	if tr, ok := c.Transport.(closeIdler); ok {
-		tr.CloseIdleConnections()
+const (
+	pulsarClientGoModulePath = "github.com/apache/pulsar-client-go"
+)
+
+var (
+	Version             string
+	ClientVersionString string
+)
+
+// init Initializes the module version information by reading
+// the built in golang build info.  If the application was not built
+// using go modules then the version string will not be available.
+func init() {
+	if buildInfo, ok := debug.ReadBuildInfo(); ok {
+		for _, dep := range buildInfo.Deps {
+			if dep.Path == pulsarClientGoModulePath {
+				Version = semver.Canonical(dep.Version)
+				ClientVersionString = "Pulsar Go " + Version
+				return
+			}
+		}
 	}
+	Version = "unknown"
+	ClientVersionString = "Pulsar Go version unknown"
 }

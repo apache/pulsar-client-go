@@ -19,17 +19,12 @@ package pulsar
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDefaultNackBackoffPolicy_Next(t *testing.T) {
-	defaultNackBackoff := new(defaultNackBackoffPolicy)
-
-	res0 := defaultNackBackoff.Next(0)
-	assert.Equal(t, 1*time.Second, res0)
-
-	res5 := defaultNackBackoff.Next(5)
-	assert.Equal(t, 32*time.Second, res5)
+func TestMessageZeroEventTime(t *testing.T) {
+	msg := &ProducerMessage{}
+	assert.Equal(t, false, msg.EventTime.UnixNano() == 0)
+	assert.Equal(t, true, msg.EventTime.IsZero())
 }

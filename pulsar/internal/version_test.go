@@ -15,13 +15,14 @@
 // specific language governing permissions and limitations
 // under the License.
 
-//go:build go1.12
-// +build go1.12
-
 package internal
 
-import "net/http"
+import (
+	"testing"
 
-func CloseIdleConnections(c *http.Client) {
-	c.CloseIdleConnections()
+	"github.com/stretchr/testify/assert"
+)
+
+func TestInitVersion(t *testing.T) {
+	assert.NotEmpty(t, Version, "version string should not be empty")
 }

@@ -20,6 +20,8 @@ package pulsar
 import (
 	"context"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 // ConsumerMessage represents a pair of a Consumer and Message.
@@ -71,6 +73,9 @@ type DLQPolicy struct {
 	// DeadLetterTopic specifies the name of the topic where the failing messages will be sent.
 	DeadLetterTopic string
 
+	// ProducerOptions is the producer options to produce messages to the DLQ and RLQ topic
+	ProducerOptions ProducerOptions
+
 	// RetryLetterTopic specifies the name of the topic where the retry messages will be sent.
 	RetryLetterTopic string
 }
@@ -114,6 +119,9 @@ type ConsumerOptions struct {
 	// SubscriptionInitialPosition is the initial position at which the cursor will be set when subscribe
 	// Default is `Latest`
 	SubscriptionInitialPosition
+
+	// EventListener will be called when active consumer changed (in failover subscription type)
+	EventListener ConsumerEventListener
 
 	// DLQ represents the configuration for Dead Letter Queue consumer policy.
 	// eg. route the message to topic X after N failed attempts at processing it
@@ -168,6 +176,10 @@ type ConsumerOptions struct {
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
+	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
+	BackoffPolicy internal.BackoffPolicy
+
 	// Decryption represents the encryption related fields required by the consumer to decrypt a message.
 	Decryption *MessageDecryptionInfo
 
@@ -182,6 +194,27 @@ type ConsumerOptions struct {
 	// > Notice: the NackBackoffPolicy will not work with `consumer.NackID(MessageID)`
 	// > because we are not able to get the redeliveryCount from the message ID.
 	NackBackoffPolicy NackBackoffPolicy
+
+	// AckWithResponse is a return value added to Ack Command, and its purpose is to confirm whether Ack Command
+	// is executed correctly on the Broker side. When set to true, the error information returned by the Ack
+	// method contains the return value of the Ack Command processed by the Broker side; when set to false, the
+	// error information of the Ack method only contains errors that may occur in the Go SDK's own processing.
+	// Default: false
+	AckWithResponse bool
+
+	// MaxPendingChunkedMessage sets the maximum pending chunked messages. (default: 100)
+	MaxPendingChunkedMessage int
+
+	// ExpireTimeOfIncompleteChunk sets the expiry time of discarding incomplete chunked message. (default: 60 seconds)
+	ExpireTimeOfIncompleteChunk time.Duration
+
+	// AutoAckIncompleteChunk sets whether consumer auto acknowledges incomplete chunked message when it should
+	// be removed (e.g.the chunked message pending queue is full). (default: false)
+	AutoAckIncompleteChunk bool
+
+	// Enable or disable batch index acknowledgment. To enable this feature, ensure batch index acknowledgment
+	// is enabled on the broker side. (default: false)
+	EnableBatchIndexAcknowledgment bool
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
@@ -200,19 +233,30 @@ type Consumer interface {
 	Chan() <-chan ConsumerMessage
 
 	// Ack the consumption of a single message
-	Ack(Message)
+	Ack(Message) error
 
 	// AckID the consumption of a single message, identified by its MessageID
-	AckID(MessageID)
+	AckID(MessageID) error
+
+	// AckCumulative the reception of all the messages in the stream up to (and including)
+	// the provided message.
+	AckCumulative(msg Message) error
+
+	// AckIDCumulative the reception of all the messages in the stream up to (and including)
+	// the provided message, identified by its MessageID
+	AckIDCumulative(msgID MessageID) error
 
 	// ReconsumeLater mark a message for redelivery after custom delay
 	ReconsumeLater(msg Message, delay time.Duration)
+
+	// ReconsumeLaterWithCustomProperties mark a message for redelivery after custom delay with custom properties
+	ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string, delay time.Duration)
 
 	// Nack acknowledges the failure to process a single message.
 	//
 	// When a message is "negatively acked" it will be marked for redelivery after
 	// some fixed delay. The delay is configurable when constructing the consumer
-	// with ConsumerOptions.NAckRedeliveryDelay .
+	// with ConsumerOptions.NackRedeliveryDelay .
 	//
 	// This call is not blocking.
 	Nack(Message)
@@ -237,9 +281,6 @@ type Consumer interface {
 	Seek(MessageID) error
 
 	// SeekByTime resets the subscription associated with this consumer to a specific message publish time.
-	//
-	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the seek() on
-	// the individual partitions.
 	//
 	// @param time
 	//            the message publish time when to reposition the subscription

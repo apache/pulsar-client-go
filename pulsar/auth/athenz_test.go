@@ -20,17 +20,17 @@ package auth
 import (
 	"bytes"
 	"errors"
-	"io/ioutil"
+	"os"
 	"testing"
 	"time"
 
 	zms "github.com/AthenZ/athenz/libs/go/zmssvctoken"
 	zts "github.com/AthenZ/athenz/libs/go/ztsroletoken"
 	"github.com/stretchr/testify/assert"
-	mock "github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/mock"
 )
 
-const tlsClientKeyPath = "../../../integration-tests/certs/client-key.pem"
+const tlsClientKeyPath = "../../integration-tests/certs/client-key.pem"
 
 type MockTokenBuilder struct {
 	mock.Mock
@@ -69,7 +69,7 @@ func (m *MockRoleToken) RoleTokenValue() (string, error) {
 
 func MockZmsNewTokenBuilder(domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error) {
 	// assertion
-	key, err := ioutil.ReadFile(tlsClientKeyPath)
+	key, err := os.ReadFile(tlsClientKeyPath)
 	if err != nil {
 		return nil, err
 	}

@@ -18,7 +18,6 @@
 package license_test
 
 import (
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -68,6 +67,7 @@ var skip = map[string]bool{
 	"../pulsar/internal/pulsar_proto/PulsarApi.pb.go": true,
 	"../.github/workflows/bot.yaml":                   true,
 	"../integration-tests/pb/hello.pb.go":             true,
+	"../integration-tests/.htpasswd":                  true,
 }
 
 func TestLicense(t *testing.T) {
@@ -82,7 +82,7 @@ func TestLicense(t *testing.T) {
 
 		switch filepath.Ext(path) {
 		case ".go":
-			src, err := ioutil.ReadFile(path)
+			src, err := os.ReadFile(path)
 			if err != nil {
 				return nil
 			}
@@ -95,7 +95,7 @@ func TestLicense(t *testing.T) {
 		case ".yaml":
 			fallthrough
 		case ".conf":
-			src, err := ioutil.ReadFile(path)
+			src, err := os.ReadFile(path)
 			if err != nil {
 				return nil
 			}

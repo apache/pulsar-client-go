@@ -92,11 +92,21 @@ func (r *dlqRouter) run() {
 			producer := r.getProducer(cm.Consumer.(*consumer).options.Schema)
 			msg := cm.Message.(*message)
 			msgID := msg.ID()
+
+			// properties associated with original message
+			properties := msg.Properties()
+
+			// include orinal message id in string format in properties
+			properties[PropertyOriginMessageID] = msgID.String()
+
+			// include original topic name of the message in properties
+			properties[SysPropertyRealTopic] = msg.Topic()
+
 			producer.SendAsync(context.Background(), &ProducerMessage{
 				Payload:             msg.Payload(),
 				Key:                 msg.Key(),
 				OrderingKey:         msg.OrderingKey(),
-				Properties:          msg.Properties(),
+				Properties:          properties,
 				EventTime:           msg.EventTime(),
 				ReplicationClusters: msg.replicationClusters,
 			}, func(MessageID, *ProducerMessage, error) {
@@ -133,14 +143,18 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.Backoff{}
+	backoff := &internal.DefaultBackoff{}
 	for {
-		producer, err := r.client.CreateProducer(ProducerOptions{
-			Topic:                   r.policy.DeadLetterTopic,
-			CompressionType:         LZ4,
-			BatchingMaxPublishDelay: 100 * time.Millisecond,
-			Schema:                  schema,
-		})
+		opt := r.policy.ProducerOptions
+		opt.Topic = r.policy.DeadLetterTopic
+		opt.Schema = schema
+
+		// the origin code sets to LZ4 compression with no options
+		// so the new design allows compression type to be overwritten but still set lz4 by default
+		if r.policy.ProducerOptions.CompressionType == NoCompression {
+			opt.CompressionType = LZ4
+		}
+		producer, err := r.client.CreateProducer(opt)
 
 		if err != nil {
 			r.log.WithError(err).Error("Failed to create DLQ producer")

@@ -19,9 +19,11 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -877,18 +879,42 @@ func TestMaxBatchSize(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
-	for bias := -1; bias <= 1; bias++ {
+	for bias := -1; bias <= 3; bias++ {
 		payload := make([]byte, batchMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
-		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
-		} else {
-			assert.Equal(t, errFailAddToBatch, err)
-		}
+		// regardless max batch size, if the batch size limit is reached, batching is triggered to send messages
+		assert.NoError(t, err)
+		assert.NotNil(t, ID)
 	}
+}
+
+func TestBatchingDisabled(t *testing.T) {
+	defaultMaxMessageSize := 128 * 1024
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// when batching is disabled, the batching size has no effect
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+		BatchingMaxSize: uint(defaultMaxBatchSize),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	payload := make([]byte, defaultMaxMessageSize+100)
+	ID, err := producer.Send(context.Background(), &ProducerMessage{
+		Payload: payload,
+	})
+	// regardless max batch size, if the batch size limit is reached, batching is triggered to send messages
+	assert.NoError(t, err)
+	assert.NotNil(t, ID)
 }
 
 func TestMaxMessageSize(t *testing.T) {
@@ -910,14 +936,45 @@ func TestMaxMessageSize(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
+	// producer2 disable batching
+	producer2, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer2)
+	defer producer2.Close()
+
+	// When serverMaxMessageSize=1024, the batch payload=1041
+	// The totalSize includes:
+	// | singleMsgMetadataLength | singleMsgMetadata | payload |
+	// | ----------------------- | ----------------- | ------- |
+	// | 4                       | 13                | 1024    |
+	// So when bias <= 0, the uncompressed payload will not exceed maxMessageSize,
+	// but encryptedPayloadSize exceeds maxMessageSize, Send() will return an internal error.
+	// When bias = 1, the first check of maxMessageSize (for uncompressed payload) is valid,
+	// Send() will return errMessageTooLarge
 	for bias := -1; bias <= 1; bias++ {
 		payload := make([]byte, serverMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
 		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
+		} else {
+			assert.Equal(t, errMessageTooLarge, err)
+		}
+	}
+
+	for bias := -1; bias <= 1; bias++ {
+		payload := make([]byte, serverMaxMessageSize+bias)
+		ID, err := producer2.Send(context.Background(), &ProducerMessage{
+			Payload: payload,
+		})
+		if bias <= 0 {
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
 		} else {
 			assert.Equal(t, errMessageTooLarge, err)
 		}
@@ -1014,6 +1071,46 @@ func TestSendTimeout(t *testing.T) {
 	assert.Nil(t, id)
 
 	makeHTTPCall(t, http.MethodDelete, quotaURL, "")
+}
+
+func TestProducerWithBackoffPolicy(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Topic:         topicName,
+		SendTimeout:   2 * time.Second,
+		BackoffPolicy: backoff,
+	})
+	assert.Nil(t, err)
+	defer _producer.Close()
+
+	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
+	// 1 s
+	startTime := time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 2 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }
 
 func TestSendContextExpired(t *testing.T) {
@@ -1355,4 +1452,288 @@ func TestExactlyOnceWithProducerNameSpecified(t *testing.T) {
 
 	assert.NotNil(t, err)
 	assert.Nil(t, producer3)
+}
+
+func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
+	const MsgBatchCount = 10
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema1 := NewAvroSchema(`{"fields":
+		[	
+			{"name":"id","type":"int"},
+			{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+				{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			   {"default":null,"name":"age","type":["null","int"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	v1 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "aac",
+		},
+	}
+	v2 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "test",
+		},
+		"age": map[string]interface{}{
+			"int": 10,
+		},
+	}
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:              topic,
+		Schema:             schema1,
+		BatcherBuilderType: KeyBasedBatchBuilder,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	keys := []string{"key1", "key2", "key3"}
+
+	for i := 0; i < MsgBatchCount; i++ {
+		var messageContent []byte
+		var schema Schema
+		for _, key := range keys {
+			if i%2 == 0 {
+				messageContent, err = schema1.Encode(v1)
+				schema = schema1
+				assert.NoError(t, err)
+			} else {
+				messageContent, err = schema2.Encode(v2)
+				schema = schema2
+				assert.NoError(t, err)
+			}
+			producer.SendAsync(context.Background(), &ProducerMessage{
+				Payload: messageContent,
+				Key:     key,
+				Schema:  schema,
+			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+				assert.NoError(t, err)
+				assert.NotNil(t, id)
+			})
+		}
+
+	}
+	producer.Flush()
+
+	//// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub2",
+		Type:                        Failover,
+		Schema:                      schema1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < MsgBatchCount*len(keys); i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v interface{}
+		err = msg.GetSchemaValue(&v)
+		t.Logf(`schemaVersion: %x recevice %s:%v`, msg.SchemaVersion(), msg.Key(), v)
+		assert.Nil(t, err)
+	}
+}
+
+func TestMultipleSchemaProducerConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema1 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			{"default":null,"name":"age","type":["null","int"]}
+		],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	v1 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "aac",
+		},
+	}
+	v2 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "test",
+		},
+		"age": map[string]interface{}{
+			"int": 10,
+		},
+	}
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema1,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	for i := 0; i < 10; i++ {
+		var messageContent []byte
+		var key string
+		var schema Schema
+		if i%2 == 0 {
+			messageContent, err = schema1.Encode(v1)
+			key = "v1"
+			schema = schema1
+			assert.NoError(t, err)
+		} else {
+			messageContent, err = schema2.Encode(v2)
+			key = "v2"
+			schema = schema2
+			assert.NoError(t, err)
+		}
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: messageContent,
+			Key:     key,
+			Schema:  schema,
+		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			assert.NoError(t, err)
+			assert.NotNil(t, id)
+		})
+	}
+	producer.Flush()
+
+	//// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub2",
+		Type:                        Failover,
+		Schema:                      schema1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v interface{}
+		err = msg.GetSchemaValue(&v)
+		t.Logf(`schemaVersion: %x recevice %s:%v`, msg.SchemaVersion(), msg.Key(), v)
+		assert.Nil(t, err)
+	}
+}
+
+func TestProducerWithSchemaAndConsumerSchemaNotFound(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema := NewAvroSchema(`{"fields":
+	[
+		{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+	],
+	"name":"MyAvro","namespace":"schemaNotFoundTestCase","type":"record"}`, nil)
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub-schema-not-found",
+		Type:                        Exclusive,
+		Schema:                      schema,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, consumer)
+
+	// each produced message will have schema version set in the message metadata
+	for i := 0; i < 5; i++ {
+		messageContent, err := schema.Encode(map[string]interface{}{
+			"id": i,
+			"name": map[string]interface{}{
+				"string": "abc",
+			},
+		})
+		assert.NoError(t, err)
+		_, err = producer.Send(context.Background(), &ProducerMessage{
+			Payload: messageContent,
+		})
+		assert.NoError(t, err)
+	}
+
+	// delete schema of topic
+	topicSchemaDeleteURL := fmt.Sprintf("admin/v2/schemas/public/default/%v/schema", topic)
+	err = httpDelete(topicSchemaDeleteURL)
+	assert.NoError(t, err)
+
+	// consume message
+	msg, err := consumer.Receive(context.Background())
+	assert.NoError(t, err)
+	assert.NotNil(t, msg)
+
+	// try to serialize message payload
+	var v interface{}
+	err = msg.GetSchemaValue(&v)
+	// should fail with error but not panic
+	assert.Error(t, err)
+}
+
+func TestExclusiveProducer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeExclusive,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	_, err = client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeExclusive,
+	})
+	assert.Error(t, err, "Producer should be fenced")
+	assert.True(t, strings.Contains(err.Error(), "ProducerFenced"))
+
+	_, err = client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Error(t, err, "Producer should be failed")
+	assert.True(t, strings.Contains(err.Error(), "ProducerBusy"))
 }

@@ -104,20 +104,24 @@ func TestParseTopicNameErrors(t *testing.T) {
 
 func TestTopicNameWithoutPartitionPart(t *testing.T) {
 	tests := []struct {
-		tn       TopicName
+		tn       *TopicName
 		expected string
 	}{
 		{
-			tn:       TopicName{Name: "persistent://public/default/my-topic", Partition: -1},
+			tn:       &TopicName{Name: "persistent://public/default/my-topic", Partition: -1},
 			expected: "persistent://public/default/my-topic",
 		},
 		{
-			tn:       TopicName{Name: "persistent://public/default/my-topic-partition-0", Partition: 0},
+			tn:       &TopicName{Name: "persistent://public/default/my-topic-partition-0", Partition: 0},
 			expected: "persistent://public/default/my-topic",
+		},
+		{
+			tn:       nil,
+			expected: "",
 		},
 	}
 	for _, test := range tests {
-		assert.Equal(t, test.expected, TopicNameWithoutPartitionPart(&test.tn))
+		assert.Equal(t, test.expected, TopicNameWithoutPartitionPart(test.tn))
 	}
 }
 

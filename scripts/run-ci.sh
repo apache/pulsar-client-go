@@ -20,15 +20,19 @@
 
 set -e -x
 
-SRC_DIR=$(git rev-parse --show-toplevel)
-cd ${SRC_DIR}
+export GOPATH=/
 
-IMAGE_NAME=pulsar-client-go-test:latest
+# Install dependencies
+go mod download
 
-GO_VERSION=${1:-1.16}
-docker rmi --force ${IMAGE_NAME} || true
-docker rmi --force apachepulsar/pulsar:latest || true
-docker build -t ${IMAGE_NAME} --build-arg GO_VERSION="golang:${GO_VERSION}" .
+# Basic compilation
+go build ./pulsar
+go build -o bin/pulsar-perf ./perf
 
-docker run -i -v ${PWD}:/pulsar-client-go ${IMAGE_NAME} \
-       bash -c "cd /pulsar-client-go && ./run-ci.sh"
+scripts/pulsar-test-service-start.sh
+
+go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./...
+go tool cover -html=/tmp/coverage -o coverage.html
+
+scripts/pulsar-test-service-stop.sh
+
