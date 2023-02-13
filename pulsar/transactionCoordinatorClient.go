@@ -46,6 +46,8 @@ func (tc *transactionCoordinatorClient) start() error {
 		return err
 	}
 	tc.tcNum = uint64(r.Partitions)
+	tc.cons = make([]internal.Connection, tc.tcNum)
+
 	//Get connections with all transaction_impl coordinators which is synchronized
 	for i := uint64(0); i < tc.tcNum; i++ {
 		err := tc.grabConn(i)
@@ -136,7 +138,6 @@ func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id TxnID, parti
 }
 
 /*
-*
 Register the subscription which acked messages with the transactionImpl.
 And this can be used when ending the transactionImpl.
 */
@@ -187,7 +188,7 @@ func getTCAssignTopicName(partition uint64) string {
 
 func (tc *transactionCoordinatorClient) canSendRequest() (bool, error) {
 	if tc.blockIfReachMaxPendingOps {
-		if tc.semaphore.Acquire(context.Background()) {
+		if !tc.semaphore.Acquire(context.Background()) {
 			return false, newError(UnknownError, "Failed to acquire semaphore")
 		}
 	} else {

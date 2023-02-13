@@ -62,6 +62,11 @@ type regexConsumer struct {
 	consumerName string
 }
 
+func (c *regexConsumer) AckIDWithTxn(id MessageID, transaction Transaction) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, pattern *regexp.Regexp,
 	msgCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
 	rc := &regexConsumer{

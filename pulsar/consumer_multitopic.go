@@ -47,6 +47,11 @@ type multiTopicConsumer struct {
 	log log.Logger
 }
 
+func (c *multiTopicConsumer) AckIDWithTxn(id MessageID, transaction Transaction) error {
+	//TODO implement me
+	panic("implement me")
+}
+
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
 	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
 	mtc := &multiTopicConsumer{
