@@ -568,7 +568,16 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handlePing()
 	case pb.BaseCommand_PONG:
 		c.handlePong()
-
+	case pb.BaseCommand_TC_CLIENT_CONNECT_RESPONSE:
+		c.handleResponse(cmd.TcClientConnectResponse.GetRequestId(), cmd)
+	case pb.BaseCommand_NEW_TXN_RESPONSE:
+		c.handleResponse(cmd.NewTxnResponse.GetRequestId(), cmd)
+	case pb.BaseCommand_ADD_PARTITION_TO_TXN_RESPONSE:
+		c.handleResponse(cmd.AddPartitionToTxnResponse.GetRequestId(), cmd)
+	case pb.BaseCommand_ADD_SUBSCRIPTION_TO_TXN_RESPONSE:
+		c.handleResponse(cmd.AddSubscriptionToTxnResponse.GetRequestId(), cmd)
+	case pb.BaseCommand_END_TXN_RESPONSE:
+		c.handleResponse(cmd.EndTxnResponse.GetRequestId(), cmd)
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
 
 	default:
