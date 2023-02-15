@@ -144,6 +144,10 @@ type ClientOptions struct {
 	MetricsRegisterer prometheus.Registerer
 
 	EnableTransaction bool
+
+	// Limit of client memory usage (in byte). The 64M default can guarantee a high producer throughput.
+	// Config less than 0 indicates off memory limit.
+	MemoryLimitBytes int64
 }
 
 // Client represents a pulsar client
