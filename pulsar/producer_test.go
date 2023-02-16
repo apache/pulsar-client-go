@@ -1737,3 +1737,46 @@ func TestExclusiveProducer(t *testing.T) {
 	assert.Error(t, err, "Producer should be failed")
 	assert.True(t, strings.Contains(err.Error(), "ProducerBusy"))
 }
+
+func TestWaitForExclusiveProducer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+		// Set the request timeout is 200ms
+		OperationTimeout: 200 * time.Millisecond,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	producer1, err := client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeExclusive,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer1)
+	defer producer1.Close()
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		producer2, err := client.CreateProducer(ProducerOptions{
+			Topic:              topicName,
+			ProducerAccessMode: ProducerAccessModeWaitForExclusive,
+		})
+		defer producer2.Close()
+		assert.NoError(t, err)
+		assert.NotNil(t, producer2)
+
+		id, err := producer2.Send(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		})
+		assert.Nil(t, err)
+		assert.NotNil(t, id)
+		wg.Done()
+	}()
+	// Because set the request timeout is 200ms before.
+	// Here waite 300ms to cover wait for exclusive producer never timeout
+	time.Sleep(300 * time.Millisecond)
+	producer1.Close()
+	wg.Wait()
+}
