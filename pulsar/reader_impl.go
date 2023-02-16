@@ -40,6 +40,7 @@ type reader struct {
 	lastMessageInBroker trackingMessageID
 	log                 log.Logger
 	metrics             *internal.LeveledMetrics
+	interceptors        readerInterceptors
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -109,11 +110,19 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		backoffPolicy:              options.BackoffPolicy,
 	}
 
+	var interceptors0 readerInterceptors
+	if options.ReaderInterceptors == nil {
+		interceptors0 = defaultReaderInterceptors
+	} else {
+		interceptors0 = options.ReaderInterceptors
+	}
+
 	reader := &reader{
-		client:    client,
-		messageCh: make(chan ConsumerMessage),
-		log:       client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics:   client.metrics.GetLeveledMetrics(options.Topic),
+		client:       client,
+		messageCh:    make(chan ConsumerMessage),
+		log:          client.log.SubLogger(log.Fields{"topic": options.Topic}),
+		metrics:      client.metrics.GetLeveledMetrics(options.Topic),
+		interceptors: interceptors0,
 	}
 
 	// Provide dummy dlq router with not dlq policy
@@ -145,6 +154,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 				return nil, newError(ConsumerClosed, "consumer closed")
 			}
 
+			r.interceptors.BeforeRead(cm)
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
 			msgID := cm.Message.ID()

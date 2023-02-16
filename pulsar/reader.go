@@ -92,6 +92,12 @@ type ReaderOptions struct {
 	// BackoffPolicy parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
 	BackoffPolicy internal.BackoffPolicy
+
+	AutoUpdatePartitions bool
+
+	AutoUpdatePartitionIntervalSeconds int32
+
+	ReaderInterceptors []ReaderInterceptor
 }
 
 // Reader can be used to scan through all the messages currently available in a topic.
@@ -125,3 +131,18 @@ type Reader interface {
 	//
 	SeekByTime(time time.Time) error
 }
+
+type ReaderInterceptor interface {
+	// BeforeRead called after read messages from Reader
+	BeforeRead(consumerMessage ConsumerMessage)
+}
+
+type readerInterceptors []ReaderInterceptor
+
+func (interceptors readerInterceptors) BeforeRead(consumerMessage ConsumerMessage) {
+	for i := range interceptors {
+		interceptors[i].BeforeRead(consumerMessage)
+	}
+}
+
+var defaultReaderInterceptors = make(readerInterceptors, 0)
