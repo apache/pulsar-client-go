@@ -22,7 +22,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/oauth2/clock"
-	"github.com/golang-jwt/jwt"
+	jwt "github.com/golang-jwt/jwt/v4"
 	"golang.org/x/oauth2"
 )
 
