@@ -112,11 +112,12 @@ func newAckGroupingTracker(options *AckGroupingOptions,
 			case ackFlushType := <-t.flushCh:
 				timeout.Stop()
 				c.flush()
+				if ackFlushType == flushAndClean {
+					c.clean()
+				}
 				t.waitFlushCh <- true
 				if ackFlushType == flushAndClose {
 					return
-				} else if ackFlushType == flushAndClean {
-					c.clean()
 				}
 			}
 		}
