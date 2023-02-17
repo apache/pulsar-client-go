@@ -1,14 +1,32 @@
+// Licensed to the Apache Software Foundation (ASF) under one
+// or more contributor license agreements.  See the NOTICE file
+// distributed with this work for additional information
+// regarding copyright ownership.  The ASF licenses this file
+// to you under the Apache License, Version 2.0 (the
+// "License"); you may not use this file except in compliance
+// with the License.  You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing,
+// software distributed under the License is distributed on an
+// "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+// KIND, either express or implied.  See the License for the
+// specific language governing permissions and limitations
+// under the License.
+
 package pulsar
 
 import (
 	"context"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	"github.com/apache/pulsar-client-go/pulsar/log"
-	"github.com/gogo/protobuf/proto"
 	"strconv"
 	"sync/atomic"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
+	"google.golang.org/protobuf/proto"
 )
 
 type transactionCoordinatorClient struct {
@@ -95,24 +113,24 @@ func (tc *transactionCoordinatorClient) close() {
 New a transactionImpl which can be used to guarantee exactly-once semantics.
 */
 func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (TxnID, error) {
-	_, err := tc.canSendRequest()
+	err := tc.canSendRequest()
 	if err != nil {
 		return TxnID{}, err
 	}
 	requestID := tc.client.rpcClient.NewRequestID()
-	nextTcId := tc.nextTCNumber()
+	nextTcID := tc.nextTCNumber()
 	cmdNewTxn := &pb.CommandNewTxn{
 		RequestId:     proto.Uint64(requestID),
-		TcId:          proto.Uint64(nextTcId),
+		TcId:          proto.Uint64(nextTcID),
 		TxnTtlSeconds: proto.Uint64(uint64(timeout.Milliseconds())),
 	}
 
-	cnx, err := tc.client.rpcClient.RequestOnCnx(tc.cons[nextTcId], requestID, pb.BaseCommand_NEW_TXN, cmdNewTxn)
+	cnx, err := tc.client.rpcClient.RequestOnCnx(tc.cons[nextTcID], requestID, pb.BaseCommand_NEW_TXN, cmdNewTxn)
 	if err != nil {
 		return TxnID{}, err
 	}
 
-	return TxnID{nextTcId, *cnx.Response.NewTxnResponse.TxnidLeastBits}, nil
+	return TxnID{nextTcID, *cnx.Response.NewTxnResponse.TxnidLeastBits}, nil
 }
 
 /*
@@ -121,7 +139,7 @@ Register the partitions which published messages with the transactionImpl.
 And this can be used when ending the transactionImpl.
 */
 func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id TxnID, partitions []string) error {
-	_, err := tc.canSendRequest()
+	err := tc.canSendRequest()
 	if err != nil {
 		return err
 	}
@@ -142,7 +160,7 @@ Register the subscription which acked messages with the transactionImpl.
 And this can be used when ending the transactionImpl.
 */
 func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id TxnID, topic string, subscription string) error {
-	_, err := tc.canSendRequest()
+	err := tc.canSendRequest()
 	if err != nil {
 		return err
 	}
@@ -167,7 +185,7 @@ func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id TxnID, topic str
 Commit or abort the transactionImpl.
 */
 func (tc *transactionCoordinatorClient) endTxn(id TxnID, action pb.TxnAction) error {
-	_, err := tc.canSendRequest()
+	err := tc.canSendRequest()
 	if err != nil {
 		return err
 	}
@@ -186,17 +204,17 @@ func getTCAssignTopicName(partition uint64) string {
 	return TransactionCoordinatorAssign + "-partition-" + strconv.FormatUint(partition, 10)
 }
 
-func (tc *transactionCoordinatorClient) canSendRequest() (bool, error) {
+func (tc *transactionCoordinatorClient) canSendRequest() error {
 	if tc.blockIfReachMaxPendingOps {
 		if !tc.semaphore.Acquire(context.Background()) {
-			return false, newError(UnknownError, "Failed to acquire semaphore")
+			return newError(UnknownError, "Failed to acquire semaphore")
 		}
 	} else {
 		if !tc.semaphore.TryAcquire() {
-			return false, newError(ReachMaxPendingOps, "transaction_impl coordinator reach max pending ops")
+			return newError(ReachMaxPendingOps, "transaction_impl coordinator reach max pending ops")
 		}
 	}
-	return true, nil
+	return nil
 }
 
 func (tc *transactionCoordinatorClient) nextTCNumber() uint64 {
