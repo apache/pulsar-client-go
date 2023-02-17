@@ -224,6 +224,12 @@ type Topics interface {
 
 	// SetInactiveTopicPolicies sets the inactive topic policies on a topic
 	SetInactiveTopicPolicies(topic utils.TopicName, data utils.InactiveTopicPolicies) error
+
+	// GetReplicationClusters get the replication clusters of a topic
+	GetReplicationClusters(topic utils.TopicName) ([]string, error)
+
+	// SetReplicationClusters sets the replication clusters on a topic
+	SetReplicationClusters(topic utils.TopicName, data []string) error
 }
 
 type topics struct {
@@ -695,4 +701,16 @@ func (t *topics) RemoveInactiveTopicPolicies(topic utils.TopicName) error {
 func (t *topics) SetInactiveTopicPolicies(topic utils.TopicName, data utils.InactiveTopicPolicies) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "inactiveTopicPolicies")
 	return t.pulsar.Client.Post(endpoint, data)
+}
+
+func (t *topics) SetReplicationClusters(topic utils.TopicName, data []string) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
+	return t.pulsar.Client.Post(endpoint, data)
+}
+
+func (t *topics) GetReplicationClusters(topic utils.TopicName) ([]string, error) {
+	var data []string
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
+	err := t.pulsar.Client.Get(endpoint, &data)
+	return data, err
 }
