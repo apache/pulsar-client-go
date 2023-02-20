@@ -523,8 +523,14 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponse(cmd.Success.GetRequestId(), cmd)
 
 	case pb.BaseCommand_PRODUCER_SUCCESS:
-		c.handleResponse(cmd.ProducerSuccess.GetRequestId(), cmd)
-
+		if !*cmd.ProducerSuccess.ProducerReady {
+			request, ok := c.findPendingRequest(cmd.ProducerSuccess.GetRequestId())
+			if ok {
+				request.callback(cmd, nil)
+			}
+		} else {
+			c.handleResponse(cmd.ProducerSuccess.GetRequestId(), cmd)
+		}
 	case pb.BaseCommand_PARTITIONED_METADATA_RESPONSE:
 		c.checkServerError(cmd.PartitionMetadataResponse.Error)
 		c.handleResponse(cmd.PartitionMetadataResponse.GetRequestId(), cmd)
@@ -745,6 +751,13 @@ func (c *connection) deletePendingRequest(requestID uint64) (*request, bool) {
 	if ok {
 		delete(c.pendingReqs, requestID)
 	}
+	return request, ok
+}
+
+func (c *connection) findPendingRequest(requestID uint64) (*request, bool) {
+	c.pendingLock.Lock()
+	defer c.pendingLock.Unlock()
+	request, ok := c.pendingReqs[requestID]
 	return request, ok
 }
 
