@@ -1754,7 +1754,6 @@ func TestWaitForExclusiveProducer(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	assert.NotNil(t, producer1)
-	defer producer1.Close()
 
 	wg := sync.WaitGroup{}
 	wg.Add(1)
