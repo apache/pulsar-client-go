@@ -87,7 +87,7 @@ func newAckGroupingTracker(options *AckGroupingOptions,
 		ackCumulativeCh:   make(chan MessageID),
 		duplicateIDCh:     make(chan MessageID),
 		duplicateResultCh: make(chan bool),
-		flushCh:           make(chan ackFlushType, 10),
+		flushCh:           make(chan ackFlushType),
 		waitFlushCh:       make(chan bool),
 	}
 	go func() {
