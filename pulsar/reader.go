@@ -131,18 +131,3 @@ type Reader interface {
 	//
 	SeekByTime(time time.Time) error
 }
-
-type ReaderInterceptor interface {
-	// BeforeRead called after read messages from Reader
-	BeforeRead(consumerMessage ConsumerMessage)
-}
-
-type readerInterceptors []ReaderInterceptor
-
-func (interceptors readerInterceptors) BeforeRead(consumerMessage ConsumerMessage) {
-	for i := range interceptors {
-		interceptors[i].BeforeRead(consumerMessage)
-	}
-}
-
-var defaultReaderInterceptors = make(readerInterceptors, 0)
