@@ -235,7 +235,7 @@ type ConsumerOptions struct {
 	// MaxTime: 100*time.Millisecond
 	// NOTE: This option does not work if AckWithResponse is true
 	//	because there are only synchronous APIs for acknowledgment
-	ackGroupingOptions *AckGroupingOptions
+	AckGroupingOptions *AckGroupingOptions
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

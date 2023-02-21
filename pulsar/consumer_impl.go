@@ -398,7 +398,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				autoAckIncompleteChunk:      c.options.AutoAckIncompleteChunk,
 				consumerEventListener:       c.options.EventListener,
 				enableBatchIndexAck:         c.options.EnableBatchIndexAcknowledgment,
-				ackGroupingOptions:          c.options.ackGroupingOptions,
+				ackGroupingOptions:          c.options.AckGroupingOptions,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
