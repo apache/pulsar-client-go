@@ -112,10 +112,10 @@ func (tc *transactionCoordinatorClient) close() {
 *
 New a transactionImpl which can be used to guarantee exactly-once semantics.
 */
-func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (TxnID, error) {
+func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*TxnID, error) {
 	err := tc.canSendRequest()
 	if err != nil {
-		return TxnID{}, err
+		return &TxnID{}, err
 	}
 	requestID := tc.client.rpcClient.NewRequestID()
 	nextTcID := tc.nextTCNumber()
@@ -127,10 +127,10 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (T
 
 	cnx, err := tc.client.rpcClient.RequestOnCnx(tc.cons[nextTcID], requestID, pb.BaseCommand_NEW_TXN, cmdNewTxn)
 	if err != nil {
-		return TxnID{}, err
+		return &TxnID{}, err
 	}
 
-	return TxnID{*cnx.Response.NewTxnResponse.TxnidMostBits,
+	return &TxnID{*cnx.Response.NewTxnResponse.TxnidMostBits,
 		*cnx.Response.NewTxnResponse.TxnidLeastBits}, nil
 }
 
@@ -139,7 +139,7 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (T
 Register the partitions which published messages with the transactionImpl.
 And this can be used when ending the transactionImpl.
 */
-func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id TxnID, partitions []string) error {
+func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id *TxnID, partitions []string) error {
 	err := tc.canSendRequest()
 	if err != nil {
 		return err
@@ -160,7 +160,7 @@ func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id TxnID, parti
 Register the subscription which acked messages with the transactionImpl.
 And this can be used when ending the transactionImpl.
 */
-func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id TxnID, topic string, subscription string) error {
+func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id *TxnID, topic string, subscription string) error {
 	err := tc.canSendRequest()
 	if err != nil {
 		return err
@@ -185,7 +185,7 @@ func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id TxnID, topic str
 *
 Commit or abort the transactionImpl.
 */
-func (tc *transactionCoordinatorClient) endTxn(id TxnID, action pb.TxnAction) error {
+func (tc *transactionCoordinatorClient) endTxn(id *TxnID, action pb.TxnAction) error {
 	err := tc.canSendRequest()
 	if err != nil {
 		return err
