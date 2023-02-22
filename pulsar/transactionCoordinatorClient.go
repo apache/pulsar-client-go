@@ -130,7 +130,8 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (T
 		return TxnID{}, err
 	}
 
-	return TxnID{nextTcID, *cnx.Response.NewTxnResponse.TxnidLeastBits}, nil
+	return TxnID{*cnx.Response.NewTxnResponse.TxnidMostBits,
+		*cnx.Response.NewTxnResponse.TxnidLeastBits}, nil
 }
 
 /*

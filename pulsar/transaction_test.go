@@ -27,7 +27,7 @@ import (
 
 func TestTCClient(t *testing.T) {
 	//1. Prepare: create PulsarClient and init transaction coordinator client.
-	topic := "my-topic"
+	topic := newTopicName()
 	sub := "my-sub"
 	tc, client := createTcClient(t)
 	//2. Prepare: create Topic and Subscription.
