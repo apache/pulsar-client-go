@@ -930,7 +930,11 @@ func (c *connection) CheckIdle(maxIdleTime time.Duration) bool {
 	c.Lock()
 	defer c.Unlock()
 
-	if len(c.pendingReqs) != 0 || len(c.incomingRequestsCh) != 0 || len(c.writeRequestsCh) != 0 || len(c.listeners) != 0 || len(c.consumerHandlers) != 0 {
+	if len(c.pendingReqs) != 0 ||
+		len(c.incomingRequestsCh) != 0 ||
+		len(c.writeRequestsCh) != 0 ||
+		len(c.listeners) != 0 ||
+		len(c.consumerHandlers) != 0 {
 		c.lastActive = time.Now()
 	}
 	return time.Since(c.lastActive) > maxIdleTime

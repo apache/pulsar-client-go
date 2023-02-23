@@ -59,7 +59,8 @@ func newClient(options ClientOptions) (Client, error) {
 	if connectionMaxIdleTime == 0 {
 		connectionMaxIdleTime = defaultConnectionMaxIdleTime
 	} else if connectionMaxIdleTime > 0 && connectionMaxIdleTime < minConnectionMaxIdleTime {
-		return nil, newError(InvalidConfiguration, fmt.Sprintf("Connection max idle time should be at least %f seconds", minConnectionMaxIdleTime.Seconds()))
+		return nil, newError(InvalidConfiguration, fmt.Sprintf("Connection max idle time should be at least %f "+
+			"seconds", minConnectionMaxIdleTime.Seconds()))
 	} else {
 		logger.Debugf("Disable auto release idle connections")
 	}

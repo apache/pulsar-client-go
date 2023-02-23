@@ -1125,10 +1125,10 @@ func TestConfigureConnectionMaxIdleTime(t *testing.T) {
 	cli.Close()
 }
 
-func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer, ctx context.Context) {
+func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer) {
 	// send 10 messages
 	for i := 0; i < 10; i++ {
-		if _, err := producer.Send(ctx, &ProducerMessage{
+		if _, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
 			log.Fatal(err)
@@ -1176,7 +1176,7 @@ func TestAutoCloseIdleConnection(t *testing.T) {
 	})
 	assert.Nil(t, err)
 
-	testSendAndReceive(t, producer, consumer, context.Background())
+	testSendAndReceive(t, producer, consumer)
 
 	pool := cli.(*client).cnxPool
 
@@ -1205,8 +1205,8 @@ func TestAutoCloseIdleConnection(t *testing.T) {
 	})
 	assert.Nil(t, err)
 
-	// Ensure the client stil works
-	testSendAndReceive(t, producer, consumer, context.Background())
+	// Ensure the client still works
+	testSendAndReceive(t, producer, consumer)
 
 	producer.Close()
 	consumer.Close()
