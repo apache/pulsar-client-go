@@ -9,7 +9,7 @@ require (
 	github.com/bits-and-blooms/bitset v1.4.0
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/davecgh/go-spew v1.1.1
-	github.com/golang-jwt/jwt/v4 v4.4.3
+	github.com/golang-jwt/jwt/v4 v4.5.0
 	github.com/google/uuid v1.1.2
 	github.com/klauspost/compress v1.14.4
 	github.com/linkedin/goavro/v2 v2.9.8
