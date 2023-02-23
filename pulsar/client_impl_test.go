@@ -1101,14 +1101,14 @@ func TestWebServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
 }
 
 func TestConfigureConnectionMaxIdleTime(t *testing.T) {
-	cli, err := NewClient(ClientOptions{
+	_, err := NewClient(ClientOptions{
 		URL:                   serviceURL,
 		ConnectionMaxIdleTime: 1 * time.Second,
 	})
 
 	assert.Error(t, err, "Should be failed when the connectionMaxIdleTime is less than minConnectionMaxIdleTime")
 
-	cli, err = NewClient(ClientOptions{
+	cli, err := NewClient(ClientOptions{
 		URL:                   serviceURL,
 		ConnectionMaxIdleTime: -1, // Disabled
 	})
