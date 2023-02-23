@@ -1163,53 +1163,53 @@ func TestAutoCloseIdleConnection(t *testing.T) {
 	topic := "TestAutoCloseIdleConnection"
 
 	// create consumer
-	consumer, err := cli.Subscribe(ConsumerOptions{
+	consumer1, err := cli.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: "my-sub",
 	})
 	assert.Nil(t, err)
 
 	// create producer
-	producer, err := cli.CreateProducer(ProducerOptions{
+	producer1, err := cli.CreateProducer(ProducerOptions{
 		Topic:           topic,
 		DisableBatching: false,
 	})
 	assert.Nil(t, err)
 
-	testSendAndReceive(t, producer, consumer)
+	testSendAndReceive(t, producer1, consumer1)
 
 	pool := cli.(*client).cnxPool
 
-	producer.Close()
-	consumer.Close()
+	producer1.Close()
+	consumer1.Close()
 
 	assert.NotEqual(t, 0, internal.GetConnectionsCount(&pool))
 
 	internal.StartCleanConnectionsTask(&pool, 2*time.Second) // Enable auto idle connections release manually
 
-	time.Sleep(4 * time.Second) // Need to wait at least 2 * ConnectionMaxIdleTime
+	time.Sleep(6 * time.Second) // Need to wait at least 3 * ConnectionMaxIdleTime
 
 	assert.Equal(t, 0, internal.GetConnectionsCount(&pool))
 
 	// create consumer
-	consumer, err = cli.Subscribe(ConsumerOptions{
+	consumer2, err := cli.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: "my-sub",
 	})
 	assert.Nil(t, err)
 
 	// create producer
-	producer, err = cli.CreateProducer(ProducerOptions{
+	producer2, err := cli.CreateProducer(ProducerOptions{
 		Topic:           topic,
 		DisableBatching: false,
 	})
 	assert.Nil(t, err)
 
 	// Ensure the client still works
-	testSendAndReceive(t, producer, consumer)
+	testSendAndReceive(t, producer2, consumer2)
 
-	producer.Close()
-	consumer.Close()
+	producer2.Close()
+	consumer2.Close()
 
 	cli.Close()
 }

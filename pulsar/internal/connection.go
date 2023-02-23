@@ -926,15 +926,35 @@ func (c *connection) ResetLastActive() {
 	c.lastActive = time.Now()
 }
 
-func (c *connection) CheckIdle(maxIdleTime time.Duration) bool {
-	c.Lock()
-	defer c.Unlock()
+func (c *connection) isIdle() bool {
+	c.pendingLock.Lock()
+	if len(c.pendingReqs) != 0 {
+		return false
+	}
+	c.pendingLock.Unlock()
 
-	if len(c.pendingReqs) != 0 ||
-		len(c.incomingRequestsCh) != 0 ||
-		len(c.writeRequestsCh) != 0 ||
-		len(c.listeners) != 0 ||
-		len(c.consumerHandlers) != 0 {
+	c.listenersLock.RLock()
+	if len(c.listeners) != 0 {
+		return false
+	}
+	c.listenersLock.RUnlock()
+
+	c.consumerHandlersLock.Lock()
+	if len(c.consumerHandlers) != 0 {
+		return false
+	}
+	c.consumerHandlersLock.Unlock()
+
+	if len(c.incomingRequestsCh) != 0 || len(c.writeRequestsCh) != 0 {
+		return false
+	}
+	return true
+}
+
+func (c *connection) CheckIdle(maxIdleTime time.Duration) bool {
+	// We don't need to lock here because this method should only be
+	// called in a single goroutine of the connectionPool
+	if !c.isIdle() {
 		c.lastActive = time.Now()
 	}
 	return time.Since(c.lastActive) > maxIdleTime
