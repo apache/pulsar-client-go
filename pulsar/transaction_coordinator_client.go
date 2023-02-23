@@ -115,7 +115,7 @@ New a transactionImpl which can be used to guarantee exactly-once semantics.
 func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*TxnID, error) {
 	err := tc.canSendRequest()
 	if err != nil {
-		return &TxnID{}, err
+		return nil, err
 	}
 	requestID := tc.client.rpcClient.NewRequestID()
 	nextTcID := tc.nextTCNumber()
@@ -127,7 +127,7 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*
 
 	cnx, err := tc.client.rpcClient.RequestOnCnx(tc.cons[nextTcID], requestID, pb.BaseCommand_NEW_TXN, cmdNewTxn)
 	if err != nil {
-		return &TxnID{}, err
+		return nil, err
 	}
 
 	return &TxnID{*cnx.Response.NewTxnResponse.TxnidMostBits,
