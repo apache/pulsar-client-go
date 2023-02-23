@@ -26,5 +26,8 @@ func StartCleanConnectionsTask(p *ConnectionPool, connectionMaxIdleTime time.Dur
 }
 
 func GetConnectionsCount(p *ConnectionPool) int {
-	return len((*p).(*connectionPool).connections)
+	pool := (*p).(*connectionPool)
+	pool.Lock()
+	defer pool.Unlock()
+	return len(pool.connections)
 }

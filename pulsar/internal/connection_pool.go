@@ -18,7 +18,6 @@
 package internal
 
 import (
-	"container/list"
 	"fmt"
 	"net/url"
 	"sync"
@@ -152,23 +151,13 @@ func (p *connectionPool) cleanConnections(maxIdleTime time.Duration) {
 		case <-p.closeCh:
 			return
 		case <-time.After(maxIdleTime):
-			shouldReleaseConns := list.New()
+			p.Lock()
 			for k, c := range p.connections {
 				if c.CheckIdle(maxIdleTime) {
 					c.log.Debugf("Closed connection due to inactivity.")
-					shouldReleaseConns.PushBack(k)
 					delete(p.connections, k)
 					c.Close()
 				}
-			}
-			p.Lock()
-			for e := shouldReleaseConns.Front(); e != nil; e = e.Next() {
-				c, ok := p.connections[e.Value.(string)]
-				if !ok {
-					continue
-				}
-				delete(p.connections, e.Value.(string))
-				c.Close()
 			}
 			p.Unlock()
 		}
