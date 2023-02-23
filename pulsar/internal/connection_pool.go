@@ -47,6 +47,7 @@ type connectionPool struct {
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
 	keepAliveInterval     time.Duration
+	closeCh               chan struct{}
 
 	metrics *Metrics
 	log     log.Logger
@@ -60,8 +61,9 @@ func NewConnectionPool(
 	keepAliveInterval time.Duration,
 	maxConnectionsPerHost int,
 	logger log.Logger,
-	metrics *Metrics) ConnectionPool {
-	return &connectionPool{
+	metrics *Metrics,
+	connectionMaxIdleTime time.Duration) ConnectionPool {
+	p := &connectionPool{
 		connections:           make(map[string]*connection),
 		tlsOptions:            tlsOptions,
 		auth:                  auth,
@@ -70,7 +72,10 @@ func NewConnectionPool(
 		keepAliveInterval:     keepAliveInterval,
 		log:                   logger,
 		metrics:               metrics,
+		closeCh:               make(chan struct{}),
 	}
+	go p.cleanConnections(connectionMaxIdleTime)
+	return p
 }
 
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
@@ -109,6 +114,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		p.Unlock()
 		conn.start()
 	} else {
+		conn.ResetLastActive()
 		// we already have a connection
 		p.Unlock()
 	}
@@ -123,6 +129,7 @@ func (p *connectionPool) Close() {
 		delete(p.connections, k)
 		c.Close()
 	}
+	close(p.closeCh)
 	p.Unlock()
 }
 
@@ -133,4 +140,34 @@ func (p *connectionPool) getMapKey(addr *url.URL) string {
 	}
 	idx := cnt % p.maxConnectionsPerHost
 	return fmt.Sprint(addr.Host, '-', idx)
+}
+
+func (p *connectionPool) StartCleanConnectionsTask(connectionMaxIdleTime time.Duration) {
+	go p.cleanConnections(connectionMaxIdleTime)
+}
+
+func (p *connectionPool) GetConnectionsCount() int {
+	return len(p.connections)
+}
+
+func (p *connectionPool) cleanConnections(maxIdleTime time.Duration) {
+	if maxIdleTime < 0 {
+		return
+	}
+	for {
+		select {
+		case <-p.closeCh:
+			return
+		case <-time.After(maxIdleTime):
+			p.Lock()
+			for k, c := range p.connections {
+				if c.CheckIdle(maxIdleTime) {
+					c.log.Infof("Closed connection due to inactivity.")
+					delete(p.connections, k)
+					c.Close()
+				}
+			}
+			p.Unlock()
+		}
+	}
 }

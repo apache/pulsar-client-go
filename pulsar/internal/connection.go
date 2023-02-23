@@ -170,6 +170,8 @@ type connection struct {
 	metrics        *Metrics
 
 	keepAliveInterval time.Duration
+
+	lastActive time.Time
 }
 
 // connectionOptions defines configurations for creating connection.
@@ -916,6 +918,22 @@ func (c *connection) UnregisterListener(id uint64) {
 	defer c.listenersLock.Unlock()
 
 	delete(c.listeners, id)
+}
+
+func (c *connection) ResetLastActive() {
+	c.Lock()
+	defer c.Unlock()
+	c.lastActive = time.Now()
+}
+
+func (c *connection) CheckIdle(maxIdleTime time.Duration) bool {
+	c.Lock()
+	defer c.Unlock()
+
+	if len(c.pendingReqs) != 0 || len(c.incomingRequestsCh) != 0 || len(c.writeRequestsCh) != 0 || len(c.listeners) != 0 || len(c.consumerHandlers) != 0 {
+		c.lastActive = time.Now()
+	}
+	return time.Since(c.lastActive) > maxIdleTime
 }
 
 // Close closes the connection by

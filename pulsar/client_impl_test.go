@@ -21,6 +21,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -1097,4 +1098,128 @@ func TestServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
 
 func TestWebServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
 	testTLSTransportWithBasicAuth(t, webServiceURLTLS)
+}
+
+func TestConfigureConnectionMaxIdleTime(t *testing.T) {
+	cli, err := NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: 1 * time.Second,
+	})
+
+	assert.Error(t, err, "Should be failed when the connectionMaxIdleTime is less than minConnectionMaxIdleTime")
+
+	cli, err = NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: -1, // Disabled
+	})
+
+	assert.Nil(t, err)
+	cli.Close()
+
+	cli, err = NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: 60 * time.Second,
+	})
+
+	assert.Nil(t, err)
+	cli.Close()
+}
+
+func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer, ctx context.Context) {
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		expectProperties := map[string]string{
+			"key-1": "pulsar-1",
+		}
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
+		// ack message
+		err = consumer.Ack(msg)
+		if err != nil {
+			return
+		}
+	}
+}
+
+func TestAutoCloseIdleConnection(t *testing.T) {
+	cli, err := NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: -1, // Disable auto release connections first, we will enable it maually
+	})
+
+	assert.Nil(t, err)
+	defer cli.Close()
+
+	topic := "TestAutoCloseIdleConnection"
+
+	// create consumer
+	consumer, err := cli.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := cli.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	testSendAndReceive(t, producer, consumer, context.Background())
+
+	pool := cli.(*client).cnxPool
+
+	producer.Close()
+	consumer.Close()
+
+	assert.NotEqual(t, 0, internal.GetConnectionsCount(&pool))
+
+	internal.StartCleanConnectionsTask(&pool, 2*time.Second) // Enable auto connections release
+
+	time.Sleep(4 * time.Second)
+
+	assert.Equal(t, 0, internal.GetConnectionsCount(&pool))
+
+	// create consumer
+	consumer, err = cli.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err = cli.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	// Ensure the client stil works
+	testSendAndReceive(t, producer, consumer, context.Background())
+
+	producer.Close()
+	consumer.Close()
+
+	cli.Close()
 }

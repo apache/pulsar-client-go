@@ -30,9 +30,11 @@ import (
 )
 
 const (
-	defaultConnectionTimeout = 10 * time.Second
-	defaultOperationTimeout  = 30 * time.Second
-	defaultKeepAliveInterval = 30 * time.Second
+	defaultConnectionTimeout     = 10 * time.Second
+	defaultOperationTimeout      = 30 * time.Second
+	defaultKeepAliveInterval     = 30 * time.Second
+	defaultConnectionMaxIdleTime = 60 * time.Second
+	minConnectionMaxIdleTime     = 60 * time.Second
 )
 
 type client struct {
@@ -51,6 +53,15 @@ func newClient(options ClientOptions) (Client, error) {
 		logger = options.Logger
 	} else {
 		logger = log.NewLoggerWithLogrus(logrus.StandardLogger())
+	}
+
+	connectionMaxIdleTime := options.ConnectionMaxIdleTime
+	if connectionMaxIdleTime == 0 {
+		connectionMaxIdleTime = defaultConnectionMaxIdleTime
+	} else if connectionMaxIdleTime > 0 && connectionMaxIdleTime < minConnectionMaxIdleTime {
+		return nil, newError(InvalidConfiguration, fmt.Sprintf("Connection max idle time should be at least %f seconds", minConnectionMaxIdleTime.Seconds()))
+	} else {
+		logger.Debugf("Disable auto release idle connections")
 	}
 
 	if options.URL == "" {
@@ -135,7 +146,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval,
-			maxConnectionsPerHost, logger, metrics),
+			maxConnectionsPerHost, logger, metrics, connectionMaxIdleTime),
 		log:     logger,
 		metrics: metrics,
 	}
