@@ -3853,37 +3853,38 @@ func TestAckWithMessageID(t *testing.T) {
 }
 
 func TestBatchIndexAck(t *testing.T) {
-	tests := []struct {
-		AckWithResponse bool
-		Cumulative      bool
-	}{
-		{
-			AckWithResponse: true,
-			Cumulative:      true,
-		},
-		{
-			AckWithResponse: true,
-			Cumulative:      false,
-		},
-		{
-			AckWithResponse: false,
-			Cumulative:      true,
-		},
-		{
-			AckWithResponse: false,
-			Cumulative:      false,
-		},
+	type config struct {
+		ackWithResponse    bool
+		cumulative         bool
+		ackGroupingOptions *AckGroupingOptions
 	}
-	for _, params := range tests {
-		t.Run(fmt.Sprintf("TestBatchIndexAck_WithResponse_%v_Cumulative_%v",
-			params.AckWithResponse, params.Cumulative),
+	configs := make([]config, 0)
+	for _, option := range []*AckGroupingOptions{
+		nil, // MaxSize: 1000, MaxTime: 10ms
+		{MaxSize: 0, MaxTime: 0},
+		{MaxSize: 1000, MaxTime: 0},
+	} {
+		configs = append(configs, config{true, true, option})
+		configs = append(configs, config{true, false, option})
+		configs = append(configs, config{false, true, option})
+		configs = append(configs, config{false, false, option})
+	}
+
+	for _, params := range configs {
+		option := params.ackGroupingOptions
+		if option == nil {
+			option = &AckGroupingOptions{1000, 10 * time.Millisecond}
+		}
+
+		t.Run(fmt.Sprintf("TestBatchIndexAck_WithResponse_%v_Cumulative_%v_AckGroupingOption_%v_%v",
+			params.ackWithResponse, params.cumulative, option.MaxSize, option.MaxTime.Milliseconds()),
 			func(t *testing.T) {
-				runBatchIndexAckTest(t, params.AckWithResponse, params.Cumulative)
+				runBatchIndexAckTest(t, params.ackWithResponse, params.cumulative, params.ackGroupingOptions)
 			})
 	}
 }
 
-func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool) {
+func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, option *AckGroupingOptions) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -3897,6 +3898,7 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool) {
 			SubscriptionName:               "my-sub",
 			AckWithResponse:                ackWithResponse,
 			EnableBatchIndexAcknowledgment: true,
+			AckGroupingOptions:             option,
 		})
 		assert.Nil(t, err)
 		return consumer

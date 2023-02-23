@@ -64,6 +64,9 @@ const (
 	// ProducerAccessModeExclusive is required exclusive access for producer.
 	// Fail immediately if there's already a producer connected.
 	ProducerAccessModeExclusive
+
+	// ProducerAccessModeWaitForExclusive is pending until producer can acquire exclusive access.
+	ProducerAccessModeWaitForExclusive
 )
 
 // TopicMetadata represents a topic metadata.

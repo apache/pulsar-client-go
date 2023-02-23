@@ -80,6 +80,20 @@ type DLQPolicy struct {
 	RetryLetterTopic string
 }
 
+// AckGroupingOptions controls how to group ACK requests
+// If maxSize is 0 or 1, any ACK request will be sent immediately.
+// Otherwise, the ACK requests will be cached until one of the following conditions meets:
+// 1. There are `MaxSize` pending ACK requests.
+// 2. `MaxTime` is greater than 1 microsecond and ACK requests have been cached for `maxTime`.
+// Specially, for cumulative acknowledgment, only the latest ACK is cached and it will only be sent after `MaxTime`.
+type AckGroupingOptions struct {
+	// The maximum number of ACK requests to cache
+	MaxSize uint32
+
+	// The maximum time to cache ACK requests
+	MaxTime time.Duration
+}
+
 // ConsumerOptions is used to configure and create instances of Consumer.
 type ConsumerOptions struct {
 	// Topic specifies the topic this consumer will subscribe on.
@@ -215,6 +229,13 @@ type ConsumerOptions struct {
 	// Enable or disable batch index acknowledgment. To enable this feature, ensure batch index acknowledgment
 	// is enabled on the broker side. (default: false)
 	EnableBatchIndexAcknowledgment bool
+
+	// Controls how to group ACK requests, the default value is nil, which means:
+	// MaxSize: 1000
+	// MaxTime: 100*time.Millisecond
+	// NOTE: This option does not work if AckWithResponse is true
+	//	because there are only synchronous APIs for acknowledgment
+	AckGroupingOptions *AckGroupingOptions
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

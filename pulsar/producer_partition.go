@@ -1367,6 +1367,8 @@ func toProtoProducerAccessMode(accessMode ProducerAccessMode) pb.ProducerAccessM
 		return pb.ProducerAccessMode_Shared
 	case ProducerAccessModeExclusive:
 		return pb.ProducerAccessMode_Exclusive
+	case ProducerAccessModeWaitForExclusive:
+		return pb.ProducerAccessMode_WaitForExclusive
 	}
 
 	return pb.ProducerAccessMode_Shared
