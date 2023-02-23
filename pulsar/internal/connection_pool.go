@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"container/list"
 	"fmt"
 	"net/url"
 	"sync"
@@ -125,11 +126,11 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 
 func (p *connectionPool) Close() {
 	p.Lock()
+	close(p.closeCh)
 	for k, c := range p.connections {
 		delete(p.connections, k)
 		c.Close()
 	}
-	close(p.closeCh)
 	p.Unlock()
 }
 
@@ -142,14 +143,6 @@ func (p *connectionPool) getMapKey(addr *url.URL) string {
 	return fmt.Sprint(addr.Host, '-', idx)
 }
 
-func (p *connectionPool) StartCleanConnectionsTask(connectionMaxIdleTime time.Duration) {
-	go p.cleanConnections(connectionMaxIdleTime)
-}
-
-func (p *connectionPool) GetConnectionsCount() int {
-	return len(p.connections)
-}
-
 func (p *connectionPool) cleanConnections(maxIdleTime time.Duration) {
 	if maxIdleTime < 0 {
 		return
@@ -159,13 +152,23 @@ func (p *connectionPool) cleanConnections(maxIdleTime time.Duration) {
 		case <-p.closeCh:
 			return
 		case <-time.After(maxIdleTime):
-			p.Lock()
+			shouldReleaseConns := list.New()
 			for k, c := range p.connections {
 				if c.CheckIdle(maxIdleTime) {
-					c.log.Infof("Closed connection due to inactivity.")
+					c.log.Debugf("Closed connection due to inactivity.")
+					shouldReleaseConns.PushBack(k)
 					delete(p.connections, k)
 					c.Close()
 				}
+			}
+			p.Lock()
+			for e := shouldReleaseConns.Front(); e != nil; e = e.Next() {
+				c, ok := p.connections[e.Value.(string)]
+				if !ok {
+					continue
+				}
+				delete(p.connections, e.Value.(string))
+				c.Close()
 			}
 			p.Unlock()
 		}

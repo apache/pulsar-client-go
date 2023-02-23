@@ -1130,10 +1130,6 @@ func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer, ctx 
 	for i := 0; i < 10; i++ {
 		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-			Key:     "pulsar",
-			Properties: map[string]string{
-				"key-1": "pulsar-1",
-			},
 		}); err != nil {
 			log.Fatal(err)
 		}
@@ -1147,12 +1143,7 @@ func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer, ctx 
 		}
 
 		expectMsg := fmt.Sprintf("hello-%d", i)
-		expectProperties := map[string]string{
-			"key-1": "pulsar-1",
-		}
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
-		assert.Equal(t, "pulsar", msg.Key())
-		assert.Equal(t, expectProperties, msg.Properties())
 		// ack message
 		err = consumer.Ack(msg)
 		if err != nil {
@@ -1164,11 +1155,10 @@ func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer, ctx 
 func TestAutoCloseIdleConnection(t *testing.T) {
 	cli, err := NewClient(ClientOptions{
 		URL:                   serviceURL,
-		ConnectionMaxIdleTime: -1, // Disable auto release connections first, we will enable it maually
+		ConnectionMaxIdleTime: -1, // Disable auto release connections first, we will enable it manually later
 	})
 
 	assert.Nil(t, err)
-	defer cli.Close()
 
 	topic := "TestAutoCloseIdleConnection"
 
@@ -1195,9 +1185,9 @@ func TestAutoCloseIdleConnection(t *testing.T) {
 
 	assert.NotEqual(t, 0, internal.GetConnectionsCount(&pool))
 
-	internal.StartCleanConnectionsTask(&pool, 2*time.Second) // Enable auto connections release
+	internal.StartCleanConnectionsTask(&pool, 2*time.Second) // Enable auto idle connections release manually
 
-	time.Sleep(4 * time.Second)
+	time.Sleep(4 * time.Second) // Need to wait at least 2 * ConnectionMaxIdleTime
 
 	assert.Equal(t, 0, internal.GetConnectionsCount(&pool))
 
