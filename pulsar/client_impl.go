@@ -163,7 +163,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 	c.handlers = internal.NewClientHandlers()
 
-	if options.IsEnableTransaction {
+	if options.EnableTransaction {
 		c.tcClient = newTransactionCoordinatorClientImpl(c)
 		err = c.tcClient.start()
 		if err != nil {

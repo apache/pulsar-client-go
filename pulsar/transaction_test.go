@@ -79,9 +79,7 @@ func TestTCClient(t *testing.T) {
 	defer client.Close()
 }
 
-/*
-Create a transaction coordinator client to send request
-*/
+// createTcClient Create a transaction coordinator client to send request
 func createTcClient(t *testing.T) (*transactionCoordinatorClient, *client) {
 	c, err := NewClient(ClientOptions{
 		URL:                   webServiceURLTLS,

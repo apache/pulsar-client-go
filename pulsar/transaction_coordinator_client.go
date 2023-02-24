@@ -30,14 +30,11 @@ import (
 )
 
 type transactionCoordinatorClient struct {
-	client                    *client
-	cons                      []internal.Connection
-	epoch                     uint64
-	semaphore                 internal.Semaphore
-	blockIfReachMaxPendingOps bool
-	//The number of transactionImpl coordinators
-	tcNum uint64
-	log   log.Logger
+	client    *client
+	cons      []internal.Connection
+	epoch     uint64
+	semaphore internal.Semaphore
+	log       log.Logger
 }
 
 // TransactionCoordinatorAssign is the transaction_impl coordinator topic which is used to look up the broker
@@ -48,9 +45,8 @@ const TransactionCoordinatorAssign = "persistent://pulsar/system/transaction_coo
 // acquire connections with all transactionImpl coordinators.
 func newTransactionCoordinatorClientImpl(client *client) *transactionCoordinatorClient {
 	tc := &transactionCoordinatorClient{
-		client:                    client,
-		blockIfReachMaxPendingOps: true,
-		semaphore:                 internal.NewSemaphore(1000),
+		client:    client,
+		semaphore: internal.NewSemaphore(1000),
 	}
 	tc.log = client.log.SubLogger(log.Fields{})
 	return tc
@@ -61,12 +57,11 @@ func (tc *transactionCoordinatorClient) start() error {
 	if err != nil {
 		return err
 	}
-	tc.tcNum = uint64(r.Partitions)
-	tc.cons = make([]internal.Connection, tc.tcNum)
+	tc.cons = make([]internal.Connection, r.Partitions)
 
 	//Get connections with all transaction_impl coordinators which is synchronized
-	for i := uint64(0); i < tc.tcNum; i++ {
-		err := tc.grabConn(i)
+	for i := 0; i < r.Partitions; i++ {
+		err := tc.grabConn(uint64(i))
 		if err != nil {
 			return err
 		}
@@ -108,8 +103,7 @@ func (tc *transactionCoordinatorClient) close() {
 
 // newTransaction new a transactionImpl which can be used to guarantee exactly-once semantics.
 func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*TxnID, error) {
-	err := tc.canSendRequest()
-	if err != nil {
+	if err := tc.canSendRequest(); err != nil {
 		return nil, err
 	}
 	requestID := tc.client.rpcClient.NewRequestID()
@@ -121,6 +115,7 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*
 	}
 
 	cnx, err := tc.client.rpcClient.RequestOnCnx(tc.cons[nextTcID], requestID, pb.BaseCommand_NEW_TXN, cmdNewTxn)
+	tc.semaphore.Release()
 	if err != nil {
 		return nil, err
 	}
@@ -132,8 +127,7 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*
 // addPublishPartitionToTxn register the partitions which published messages with the transactionImpl.
 // And this can be used when ending the transactionImpl.
 func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id *TxnID, partitions []string) error {
-	err := tc.canSendRequest()
-	if err != nil {
+	if err := tc.canSendRequest(); err != nil {
 		return err
 	}
 	requestID := tc.client.rpcClient.NewRequestID()
@@ -143,16 +137,16 @@ func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id *TxnID, part
 		TxnidLeastBits: proto.Uint64(id.leastSigBits),
 		Partitions:     partitions,
 	}
-	_, err = tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID,
+	_, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID,
 		pb.BaseCommand_ADD_PARTITION_TO_TXN, cmdAddPartitions)
+	tc.semaphore.Release()
 	return err
 }
 
 // addSubscriptionToTxn register the subscription which acked messages with the transactionImpl.
 // And this can be used when ending the transactionImpl.
 func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id *TxnID, topic string, subscription string) error {
-	err := tc.canSendRequest()
-	if err != nil {
+	if err := tc.canSendRequest(); err != nil {
 		return err
 	}
 	requestID := tc.client.rpcClient.NewRequestID()
@@ -166,15 +160,15 @@ func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id *TxnID, topic st
 		TxnidLeastBits: proto.Uint64(id.leastSigBits),
 		Subscription:   []*pb.Subscription{sub},
 	}
-	_, err = tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID,
+	_, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID,
 		pb.BaseCommand_ADD_SUBSCRIPTION_TO_TXN, cmdAddSubscription)
+	tc.semaphore.Release()
 	return err
 }
 
 // endTxn commit or abort the transactionImpl.
 func (tc *transactionCoordinatorClient) endTxn(id *TxnID, action pb.TxnAction) error {
-	err := tc.canSendRequest()
-	if err != nil {
+	if err := tc.canSendRequest(); err != nil {
 		return err
 	}
 	requestID := tc.client.rpcClient.NewRequestID()
@@ -184,7 +178,8 @@ func (tc *transactionCoordinatorClient) endTxn(id *TxnID, action pb.TxnAction) e
 		TxnidMostBits:  proto.Uint64(id.mostSigBits),
 		TxnidLeastBits: proto.Uint64(id.leastSigBits),
 	}
-	_, err = tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID, pb.BaseCommand_END_TXN, cmdEndTxn)
+	_, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID, pb.BaseCommand_END_TXN, cmdEndTxn)
+	tc.semaphore.Release()
 	return err
 }
 
@@ -193,18 +188,12 @@ func getTCAssignTopicName(partition uint64) string {
 }
 
 func (tc *transactionCoordinatorClient) canSendRequest() error {
-	if tc.blockIfReachMaxPendingOps {
-		if !tc.semaphore.Acquire(context.Background()) {
-			return newError(UnknownError, "Failed to acquire semaphore")
-		}
-	} else {
-		if !tc.semaphore.TryAcquire() {
-			return newError(ReachMaxPendingOps, "transaction_impl coordinator reach max pending ops")
-		}
+	if !tc.semaphore.Acquire(context.Background()) {
+		return newError(UnknownError, "Failed to acquire semaphore")
 	}
 	return nil
 }
 
 func (tc *transactionCoordinatorClient) nextTCNumber() uint64 {
-	return atomic.AddUint64(&tc.epoch, 1) % tc.tcNum
+	return atomic.AddUint64(&tc.epoch, 1) % uint64(len(tc.cons))
 }

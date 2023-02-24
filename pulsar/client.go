@@ -143,7 +143,7 @@ type ClientOptions struct {
 	// Default prometheus.DefaultRegisterer
 	MetricsRegisterer prometheus.Registerer
 
-	IsEnableTransaction bool
+	EnableTransaction bool
 }
 
 // Client represents a pulsar client
