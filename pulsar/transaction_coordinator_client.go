@@ -44,7 +44,8 @@ type transactionCoordinatorClient struct {
 // where the TC located.
 const TransactionCoordinatorAssign = "persistent://pulsar/system/transaction_coordinator_assign"
 
-//Init a transactionImpl coordinator client and acquire connections with all transactionImpl coordinators.
+// newTransactionCoordinatorClientImpl init a transactionImpl coordinator client and
+// acquire connections with all transactionImpl coordinators.
 func newTransactionCoordinatorClientImpl(client *client) *transactionCoordinatorClient {
 	tc := &transactionCoordinatorClient{
 		client:                    client,
@@ -105,7 +106,7 @@ func (tc *transactionCoordinatorClient) close() {
 	}
 }
 
-//New a transactionImpl which can be used to guarantee exactly-once semantics.
+// newTransaction new a transactionImpl which can be used to guarantee exactly-once semantics.
 func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*TxnID, error) {
 	err := tc.canSendRequest()
 	if err != nil {
@@ -128,7 +129,7 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*
 		*cnx.Response.NewTxnResponse.TxnidLeastBits}, nil
 }
 
-// Register the partitions which published messages with the transactionImpl.
+// addPublishPartitionToTxn register the partitions which published messages with the transactionImpl.
 // And this can be used when ending the transactionImpl.
 func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id *TxnID, partitions []string) error {
 	err := tc.canSendRequest()
@@ -147,7 +148,7 @@ func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id *TxnID, part
 	return err
 }
 
-// Register the subscription which acked messages with the transactionImpl.
+// addSubscriptionToTxn register the subscription which acked messages with the transactionImpl.
 // And this can be used when ending the transactionImpl.
 func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id *TxnID, topic string, subscription string) error {
 	err := tc.canSendRequest()
@@ -170,7 +171,7 @@ func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id *TxnID, topic st
 	return err
 }
 
-// Commit or abort the transactionImpl.
+// endTxn commit or abort the transactionImpl.
 func (tc *transactionCoordinatorClient) endTxn(id *TxnID, action pb.TxnAction) error {
 	err := tc.canSendRequest()
 	if err != nil {
