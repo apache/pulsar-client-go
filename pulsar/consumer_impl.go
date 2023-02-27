@@ -42,6 +42,7 @@ type acker interface {
 	AckIDWithResponseCumulative(msgID MessageID) error
 	NackID(id MessageID)
 	NackMsg(msg Message)
+	NackMsgLater(msg Message, delay time.Duration)
 }
 
 type consumer struct {
@@ -595,6 +596,19 @@ func (c *consumer) Nack(msg Message) {
 	}
 
 	c.NackID(msg.ID())
+}
+
+func (c *consumer) NackLater(msg Message, delay time.Duration) {
+	mid, ok := c.messageID(msg.ID())
+	if !ok {
+		return
+	}
+
+	if mid.consumer != nil {
+		mid.NackByMsgLater(msg, delay)
+		return
+	}
+	c.consumers[mid.partitionIdx].NackMsgLater(msg, delay)
 }
 
 func (c *consumer) NackID(msgID MessageID) {

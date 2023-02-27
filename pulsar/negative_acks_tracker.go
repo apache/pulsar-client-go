@@ -89,7 +89,10 @@ func (t *negativeAcksTracker) Add(msgID messageID) {
 
 func (t *negativeAcksTracker) AddMessage(msg Message) {
 	nackBackoffDelay := t.nackBackoff.Next(msg.RedeliveryCount())
+	t.AddMessageLater(msg, time.Duration(nackBackoffDelay))
+}
 
+func (t *negativeAcksTracker) AddMessageLater(msg Message, nackBackoffDelay time.Duration) {
 	msgID := msg.ID()
 
 	// Always clear up the batch index since we want to track the nack
@@ -112,6 +115,8 @@ func (t *negativeAcksTracker) AddMessage(msg Message) {
 	targetTime := time.Now().Add(nackBackoffDelay)
 	t.negativeAcks[batchMsgID] = targetTime
 }
+
+
 
 func (t *negativeAcksTracker) track() {
 	for {

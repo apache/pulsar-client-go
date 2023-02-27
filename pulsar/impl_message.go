@@ -103,6 +103,13 @@ func (id trackingMessageID) NackByMsg(msg Message) {
 	id.consumer.NackMsg(msg)
 }
 
+func (id trackingMessageID) NackByMsgLater(msg Message, delay time.Duration) {
+	if id.consumer == nil {
+		return
+	}
+	id.consumer.NackMsgLater(msg, delay)
+}
+
 func (id trackingMessageID) ack() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
 		return id.tracker.ack(int(id.batchIdx))
