@@ -41,6 +41,7 @@ type client struct {
 	handlers      internal.ClientHandlers
 	lookupService internal.LookupService
 	metrics       *internal.Metrics
+	tcClient      *transactionCoordinatorClient
 
 	log log.Logger
 }
@@ -161,6 +162,14 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	c.handlers = internal.NewClientHandlers()
+
+	if options.EnableTransaction {
+		c.tcClient = newTransactionCoordinatorClientImpl(c)
+		err = c.tcClient.start()
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	return c, nil
 }

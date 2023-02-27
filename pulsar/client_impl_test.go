@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -425,7 +426,7 @@ func TestNamespaceTopics(t *testing.T) {
 		t.Fatal(err)
 	}
 	topic2 := fmt.Sprintf("%s/topic-2", namespace)
-	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+	if err := httpPut("admin/v2/persistent/"+topic2, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -446,7 +447,13 @@ func TestNamespaceTopics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount := 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 
 	// add a non-persistent topic
 	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
@@ -467,7 +474,13 @@ func TestNamespaceTopics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount = 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 }
 
 func TestNamespaceTopicsWebURL(t *testing.T) {
@@ -488,7 +501,7 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	topic2 := fmt.Sprintf("%s/topic-2", namespace)
-	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+	if err := httpPut("admin/v2/persistent/"+topic2, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -509,7 +522,13 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount := 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 
 	// add a non-persistent topic
 	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
@@ -530,7 +549,13 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount = 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 }
 
 func anonymousNamespacePolicy() map[string]interface{} {

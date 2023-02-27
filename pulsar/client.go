@@ -142,6 +142,8 @@ type ClientOptions struct {
 	// Specify metric registerer used to register metrics.
 	// Default prometheus.DefaultRegisterer
 	MetricsRegisterer prometheus.Registerer
+
+	EnableTransaction bool
 }
 
 // Client represents a pulsar client
