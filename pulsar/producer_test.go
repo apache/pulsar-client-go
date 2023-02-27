@@ -325,7 +325,7 @@ func TestFlushInProducer(t *testing.T) {
 		assert.Nil(t, err)
 		msgCount++
 
-		msgID := msg.ID().(trackingMessageID)
+		msgID := msg.ID().(*trackingMessageID)
 		// Since messages are batched, they will be sharing the same ledgerId/entryId
 		if ledgerID == -1 {
 			ledgerID = msgID.ledgerID
@@ -742,7 +742,7 @@ func TestBatchDelayMessage(t *testing.T) {
 	var delayMsgID int64
 	ch := make(chan struct{}, 2)
 	producer.SendAsync(ctx, delayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
-		atomic.StoreInt64(&delayMsgID, id.(messageID).entryID)
+		atomic.StoreInt64(&delayMsgID, id.(*messageID).entryID)
 		ch <- struct{}{}
 	})
 	delayMsgPublished := false
@@ -758,13 +758,13 @@ func TestBatchDelayMessage(t *testing.T) {
 	}
 	var noDelayMsgID int64
 	producer.SendAsync(ctx, noDelayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
-		atomic.StoreInt64(&noDelayMsgID, id.(messageID).entryID)
+		atomic.StoreInt64(&noDelayMsgID, id.(*messageID).entryID)
 	})
 	for i := 0; i < 2; i++ {
 		msg, err := consumer.Receive(context.Background())
 		assert.Nil(t, err, "unexpected error occurred when recving message from topic")
 
-		switch msg.ID().(trackingMessageID).entryID {
+		switch msg.ID().(*trackingMessageID).entryID {
 		case atomic.LoadInt64(&noDelayMsgID):
 			assert.LessOrEqual(t, time.Since(msg.PublishTime()).Nanoseconds(), int64(batchingDelay*2))
 		case atomic.LoadInt64(&delayMsgID):

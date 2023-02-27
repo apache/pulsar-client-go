@@ -1161,7 +1161,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 				if sr.totalChunks > 1 {
 					if sr.chunkID == 0 {
 						sr.chunkRecorder.setFirstChunkID(
-							messageID{
+							&messageID{
 								int64(response.MessageId.GetLedgerId()),
 								int64(response.MessageId.GetEntryId()),
 								-1,
@@ -1170,7 +1170,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 							})
 					} else if sr.chunkID == sr.totalChunks-1 {
 						sr.chunkRecorder.setLastChunkID(
-							messageID{
+							&messageID{
 								int64(response.MessageId.GetLedgerId()),
 								int64(response.MessageId.GetEntryId()),
 								-1,
@@ -1178,7 +1178,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 								0,
 							})
 						// use chunkMsgID to set msgID
-						msgID = sr.chunkRecorder.chunkedMsgID
+						msgID = &sr.chunkRecorder.chunkedMsgID
 					}
 				}
 
@@ -1353,11 +1353,11 @@ func newChunkRecorder() *chunkRecorder {
 	}
 }
 
-func (c *chunkRecorder) setFirstChunkID(msgID messageID) {
+func (c *chunkRecorder) setFirstChunkID(msgID *messageID) {
 	c.chunkedMsgID.firstChunkID = msgID
 }
 
-func (c *chunkRecorder) setLastChunkID(msgID messageID) {
+func (c *chunkRecorder) setLastChunkID(msgID *messageID) {
 	c.chunkedMsgID.messageID = msgID
 }
 

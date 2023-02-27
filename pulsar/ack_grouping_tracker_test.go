@@ -184,14 +184,14 @@ func TestTimedTrackerCumulativeAck(t *testing.T) {
 func TestTimedTrackerIsDuplicate(t *testing.T) {
 	tracker := newAckGroupingTracker(nil, func(id MessageID) {}, func(id MessageID) {})
 
-	tracker.add(messageID{batchIdx: 0, batchSize: 3})
-	tracker.add(messageID{batchIdx: 2, batchSize: 3})
-	assert.True(t, tracker.isDuplicate(messageID{batchIdx: 0, batchSize: 3}))
-	assert.False(t, tracker.isDuplicate(messageID{batchIdx: 1, batchSize: 3}))
-	assert.True(t, tracker.isDuplicate(messageID{batchIdx: 2, batchSize: 3}))
+	tracker.add(&messageID{batchIdx: 0, batchSize: 3})
+	tracker.add(&messageID{batchIdx: 2, batchSize: 3})
+	assert.True(t, tracker.isDuplicate(&messageID{batchIdx: 0, batchSize: 3}))
+	assert.False(t, tracker.isDuplicate(&messageID{batchIdx: 1, batchSize: 3}))
+	assert.True(t, tracker.isDuplicate(&messageID{batchIdx: 2, batchSize: 3}))
 
 	tracker.flush()
-	assert.False(t, tracker.isDuplicate(messageID{batchIdx: 0, batchSize: 3}))
-	assert.False(t, tracker.isDuplicate(messageID{batchIdx: 1, batchSize: 3}))
-	assert.False(t, tracker.isDuplicate(messageID{batchIdx: 2, batchSize: 3}))
+	assert.False(t, tracker.isDuplicate(&messageID{batchIdx: 0, batchSize: 3}))
+	assert.False(t, tracker.isDuplicate(&messageID{batchIdx: 1, batchSize: 3}))
+	assert.False(t, tracker.isDuplicate(&messageID{batchIdx: 2, batchSize: 3}))
 }
