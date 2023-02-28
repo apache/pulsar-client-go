@@ -218,6 +218,17 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.GetOrCreateSchema = msg.(*pb.CommandGetOrCreateSchema)
 	case pb.BaseCommand_GET_SCHEMA:
 		cmd.GetSchema = msg.(*pb.CommandGetSchema)
+	case pb.BaseCommand_TC_CLIENT_CONNECT_REQUEST:
+		cmd.TcClientConnectRequest = msg.(*pb.CommandTcClientConnectRequest)
+	case pb.BaseCommand_NEW_TXN:
+		cmd.NewTxn = msg.(*pb.CommandNewTxn)
+	case pb.BaseCommand_ADD_PARTITION_TO_TXN:
+		cmd.AddPartitionToTxn = msg.(*pb.CommandAddPartitionToTxn)
+	case pb.BaseCommand_ADD_SUBSCRIPTION_TO_TXN:
+		cmd.AddSubscriptionToTxn = msg.(*pb.CommandAddSubscriptionToTxn)
+	case pb.BaseCommand_END_TXN:
+		cmd.EndTxn = msg.(*pb.CommandEndTxn)
+
 	default:
 		panic(fmt.Sprintf("Missing command type: %v", cmdType))
 	}
