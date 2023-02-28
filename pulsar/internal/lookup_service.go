@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -257,7 +258,13 @@ func (ls *lookupService) GetTopicsOfNamespace(namespace string, mode GetTopicsOf
 		return []string{}, errors.New(res.Response.GetError().String())
 	}
 
-	return res.Response.GetTopicsOfNamespaceResponse.GetTopics(), nil
+	var topics []string
+	for _, topic := range res.Response.GetTopicsOfNamespaceResponse.GetTopics() {
+		if !strings.Contains(topic, "__change_events") {
+			topics = append(topics, topic)
+		}
+	}
+	return topics, nil
 }
 
 func (ls *lookupService) Close() {}

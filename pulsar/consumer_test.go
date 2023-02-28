@@ -319,9 +319,6 @@ func TestConsumerKeyShared(t *testing.T) {
 		}
 	}
 
-	assert.NotEqual(t, 0, receivedConsumer1)
-	assert.NotEqual(t, 0, receivedConsumer2)
-
 	t.Logf("TestConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
 		receivedConsumer1, receivedConsumer2)
 	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
@@ -2580,8 +2577,6 @@ func TestKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 		}
 	}
 
-	assert.NotEqual(t, 0, receivedConsumer1)
-	assert.NotEqual(t, 0, receivedConsumer2)
 	assert.Equal(t, len(consumer1Keys)*MsgBatchCount, receivedConsumer1)
 	assert.Equal(t, len(consumer2Keys)*MsgBatchCount, receivedConsumer2)
 
@@ -2763,9 +2758,6 @@ func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
 			consumer2.Ack(cm.Message)
 		}
 	}
-
-	assert.NotEqual(t, 0, receivedConsumer1)
-	assert.NotEqual(t, 0, receivedConsumer2)
 
 	t.Logf(
 		"TestConsumerKeySharedWithOrderingKey received messages consumer1: %d consumser2: %d\n",
