@@ -35,14 +35,14 @@ type MemoryLimitController interface {
 
 type memoryLimitController struct {
 	limit        int64
-	chCond       ChCond
+	chCond       *ChCond
 	currentUsage int64
 }
 
 func NewMemoryLimitController(limit int64) MemoryLimitController {
 	mlc := &memoryLimitController{
 		limit:  limit,
-		chCond: *NewCond(&sync.Mutex{}),
+		chCond: NewCond(&sync.Mutex{}),
 	}
 	return mlc
 }

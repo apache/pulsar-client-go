@@ -1836,8 +1836,10 @@ func TestMemLimitRejectProducerMessages(t *testing.T) {
 	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
 
 	// flush pending msg
-	producer1.Flush()
-	producer2.Flush()
+	err = producer1.Flush()
+	assert.NoError(t, err)
+	err = producer2.Flush()
+	assert.NoError(t, err)
 	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
 
 	_, err = producer1.Send(context.Background(), &ProducerMessage{
@@ -1894,7 +1896,8 @@ func TestMemLimitContextCancel(t *testing.T) {
 	cancel()
 	wg.Wait()
 
-	producer.Flush()
+	err = producer.Flush()
+	assert.NoError(t, err)
 	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
 
 	_, err = producer.Send(context.Background(), &ProducerMessage{

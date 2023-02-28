@@ -36,11 +36,11 @@ func TestLimit(t *testing.T) {
 
 	assert.False(t, mlc.TryReserveMemory(1))
 	assert.Equal(t, int64(101), mlc.CurrentUsage())
-	assert.Equal(t, 1.01, mlc.CurrentUsagePercent())
+	assert.InDelta(t, 1.01, mlc.CurrentUsagePercent(), 0.000001)
 
 	mlc.ReleaseMemory(1)
 	assert.Equal(t, int64(100), mlc.CurrentUsage())
-	assert.Equal(t, 1.0, mlc.CurrentUsagePercent())
+	assert.InDelta(t, 1.0, mlc.CurrentUsagePercent(), 0.000001)
 
 	assert.True(t, mlc.TryReserveMemory(1))
 	assert.Equal(t, int64(101), mlc.CurrentUsage())
@@ -48,12 +48,12 @@ func TestLimit(t *testing.T) {
 	mlc.ForceReserveMemory(99)
 	assert.False(t, mlc.TryReserveMemory(1))
 	assert.Equal(t, int64(200), mlc.CurrentUsage())
-	assert.Equal(t, 2.0, mlc.CurrentUsagePercent())
+	assert.InDelta(t, 2.0, mlc.CurrentUsagePercent(), 0.000001)
 
 	mlc.ReleaseMemory(50)
 	assert.False(t, mlc.TryReserveMemory(1))
 	assert.Equal(t, int64(150), mlc.CurrentUsage())
-	assert.Equal(t, 1.5, mlc.CurrentUsagePercent())
+	assert.InDelta(t, 1.5, mlc.CurrentUsagePercent(), 0.000001)
 }
 
 func TestDisableLimit(t *testing.T) {
@@ -83,7 +83,7 @@ func TestMultiGoroutineTryReserveMem(t *testing.T) {
 	wg.Wait()
 	assert.False(t, mlc.TryReserveMemory(1))
 	assert.Equal(t, int64(10001), mlc.CurrentUsage())
-	assert.Equal(t, 1.0001, mlc.CurrentUsagePercent())
+	assert.InDelta(t, 1.0001, mlc.CurrentUsagePercent(), 0.000001)
 }
 
 func TestReserveWithContext(t *testing.T) {
@@ -123,7 +123,7 @@ func TestBlocking(t *testing.T) {
 	mlc := NewMemoryLimitController(100)
 	assert.True(t, mlc.TryReserveMemory(101))
 	assert.Equal(t, int64(101), mlc.CurrentUsage())
-	assert.Equal(t, 1.01, mlc.CurrentUsagePercent())
+	assert.InDelta(t, 1.01, mlc.CurrentUsagePercent(), 0.000001)
 
 	gorNum := 10
 	chs := make([]chan int, gorNum)
@@ -149,7 +149,7 @@ func TestStepRelease(t *testing.T) {
 	mlc := NewMemoryLimitController(100)
 	assert.True(t, mlc.TryReserveMemory(101))
 	assert.Equal(t, int64(101), mlc.CurrentUsage())
-	assert.Equal(t, 1.01, mlc.CurrentUsagePercent())
+	assert.InDelta(t, 1.01, mlc.CurrentUsagePercent(), 0.000001)
 
 	gorNum := 10
 	ch := make(chan int, 1)
