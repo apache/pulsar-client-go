@@ -146,7 +146,7 @@ type ClientOptions struct {
 	// Release the connection if it is not used for more than ConnectionMaxIdleTime.
 	// Default is 60 seconds, negative such as -1 to disable.
 	ConnectionMaxIdleTime time.Duration
-  
+
 	EnableTransaction bool
 }
 
