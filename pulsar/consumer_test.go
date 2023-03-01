@@ -910,7 +910,7 @@ func TestConsumerNoBatchCumulativeAck(t *testing.T) {
 
 		if i == N/2-1 {
 			// cumulative acks the first half of messages
-			consumer.AckCumulative(msg)
+			assert.Nil(t, consumer.AckCumulative(msg))
 		}
 	}
 
@@ -931,7 +931,7 @@ func TestConsumerNoBatchCumulativeAck(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 
-		consumer.Ack(msg)
+		assert.Nil(t, consumer.Ack(msg))
 	}
 }
 

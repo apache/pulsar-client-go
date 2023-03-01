@@ -454,10 +454,10 @@ func TestChunkSize(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		if size <= payloadChunkSize {
-			_, ok := msgID.(messageID)
+			_, ok := msgID.(*messageID)
 			assert.Equal(t, true, ok)
 		} else {
-			_, ok := msgID.(chunkMessageID)
+			_, ok := msgID.(*chunkMessageID)
 			assert.Equal(t, true, ok)
 		}
 	}

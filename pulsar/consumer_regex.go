@@ -174,8 +174,8 @@ func (c *regexConsumer) ReconsumeLaterWithCustomProperties(msg Message, customPr
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *regexConsumer) AckID(msgID MessageID) error {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
+	mid := toTrackingMessageID(msgID)
+	if mid == nil {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return errors.New("invalid message id type")
 	}
@@ -201,8 +201,8 @@ func (c *regexConsumer) AckCumulative(msg Message) error {
 // AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
 func (c *regexConsumer) AckIDCumulative(msgID MessageID) error {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
+	mid := toTrackingMessageID(msgID)
+	if mid == nil {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return errors.New("invalid message id type")
 	}
@@ -222,8 +222,8 @@ func (c *regexConsumer) AckIDCumulative(msgID MessageID) error {
 func (c *regexConsumer) Nack(msg Message) {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
 		msgID := msg.ID()
-		mid, ok := toTrackingMessageID(msgID)
-		if !ok {
+		mid := toTrackingMessageID(msgID)
+		if mid == nil {
 			c.log.Warnf("invalid message id type %T", msgID)
 			return
 		}
@@ -240,8 +240,8 @@ func (c *regexConsumer) Nack(msg Message) {
 }
 
 func (c *regexConsumer) NackID(msgID MessageID) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
+	mid := toTrackingMessageID(msgID)
+	if mid == nil {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}

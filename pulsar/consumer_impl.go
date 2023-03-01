@@ -383,7 +383,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				metadata:                    metadata,
 				subProperties:               subProperties,
 				replicateSubscriptionState:  c.options.ReplicateSubscriptionState,
-				startMessageID:              trackingMessageID{},
+				startMessageID:              nil,
 				subscriptionMode:            durable,
 				readCompacted:               c.options.ReadCompacted,
 				interceptors:                c.options.Interceptors,
@@ -531,8 +531,8 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 	if delay < 0 {
 		delay = 0
 	}
-	msgID, ok := c.messageID(msg.ID())
-	if !ok {
+	msgID := c.messageID(msg.ID())
+	if msgID == nil {
 		return
 	}
 	props := make(map[string]string)
@@ -581,8 +581,8 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 
 func (c *consumer) Nack(msg Message) {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
-		mid, ok := c.messageID(msg.ID())
-		if !ok {
+		mid := c.messageID(msg.ID())
+		if mid == nil {
 			return
 		}
 
@@ -743,11 +743,11 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 	return pb.CommandSubscribe_Latest
 }
 
-func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
+func (c *consumer) messageID(msgID MessageID) *trackingMessageID {
+	mid := toTrackingMessageID(msgID)
+	if mid == nil {
 		c.log.Warnf("invalid message id type %T", msgID)
-		return trackingMessageID{}, false
+		return nil
 	}
 
 	partition := int(mid.partitionIdx)
@@ -755,10 +755,10 @@ func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
 	if partition < 0 || partition >= len(c.consumers) {
 		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
-		return trackingMessageID{}, false
+		return nil
 	}
 
-	return mid, true
+	return mid
 }
 
 func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {

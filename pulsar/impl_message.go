@@ -39,7 +39,7 @@ type messageID struct {
 	batchSize    int32
 }
 
-var latestMessageID = messageID{
+var latestMessageID = &messageID{
 	ledgerID:     math.MaxInt64,
 	entryID:      math.MaxInt64,
 	batchIdx:     -1,
@@ -47,7 +47,7 @@ var latestMessageID = messageID{
 	batchSize:    0,
 }
 
-var earliestMessageID = messageID{
+var earliestMessageID = &messageID{
 	ledgerID:     -1,
 	entryID:      -1,
 	batchIdx:     -1,
@@ -56,18 +56,14 @@ var earliestMessageID = messageID{
 }
 
 type trackingMessageID struct {
-	messageID
+	*messageID
 
 	tracker      *ackTracker
 	consumer     acker
 	receivedTime time.Time
 }
 
-func (id trackingMessageID) Undefined() bool {
-	return id == trackingMessageID{}
-}
-
-func (id trackingMessageID) Ack() error {
+func (id *trackingMessageID) Ack() error {
 	if id.consumer == nil {
 		return errors.New("consumer is nil in trackingMessageID")
 	}
@@ -78,7 +74,7 @@ func (id trackingMessageID) Ack() error {
 	return nil
 }
 
-func (id trackingMessageID) AckWithResponse() error {
+func (id *trackingMessageID) AckWithResponse() error {
 	if id.consumer == nil {
 		return errors.New("consumer is nil in trackingMessageID")
 	}
@@ -89,37 +85,37 @@ func (id trackingMessageID) AckWithResponse() error {
 	return nil
 }
 
-func (id trackingMessageID) Nack() {
+func (id *trackingMessageID) Nack() {
 	if id.consumer == nil {
 		return
 	}
 	id.consumer.NackID(id)
 }
 
-func (id trackingMessageID) NackByMsg(msg Message) {
+func (id *trackingMessageID) NackByMsg(msg Message) {
 	if id.consumer == nil {
 		return
 	}
 	id.consumer.NackMsg(msg)
 }
 
-func (id trackingMessageID) ack() bool {
+func (id *trackingMessageID) ack() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
 		return id.tracker.ack(int(id.batchIdx))
 	}
 	return true
 }
 
-func (id trackingMessageID) ackCumulative() bool {
+func (id *trackingMessageID) ackCumulative() bool {
 	if id.tracker != nil && id.batchIdx > -1 {
 		return id.tracker.ackCumulative(int(id.batchIdx))
 	}
 	return true
 }
 
-func (id trackingMessageID) prev() trackingMessageID {
-	return trackingMessageID{
-		messageID: messageID{
+func (id *trackingMessageID) prev() *trackingMessageID {
+	return &trackingMessageID{
+		messageID: &messageID{
 			ledgerID:     id.ledgerID,
 			entryID:      id.entryID - 1,
 			partitionIdx: id.partitionIdx,
@@ -129,11 +125,11 @@ func (id trackingMessageID) prev() trackingMessageID {
 	}
 }
 
-func (id messageID) isEntryIDValid() bool {
+func (id *messageID) isEntryIDValid() bool {
 	return id.entryID >= 0
 }
 
-func (id messageID) greater(other messageID) bool {
+func (id *messageID) greater(other *messageID) bool {
 	if id.ledgerID != other.ledgerID {
 		return id.ledgerID > other.ledgerID
 	}
@@ -145,17 +141,17 @@ func (id messageID) greater(other messageID) bool {
 	return id.batchIdx > other.batchIdx
 }
 
-func (id messageID) equal(other messageID) bool {
+func (id *messageID) equal(other *messageID) bool {
 	return id.ledgerID == other.ledgerID &&
 		id.entryID == other.entryID &&
 		id.batchIdx == other.batchIdx
 }
 
-func (id messageID) greaterEqual(other messageID) bool {
+func (id *messageID) greaterEqual(other *messageID) bool {
 	return id.equal(other) || id.greater(other)
 }
 
-func (id messageID) Serialize() []byte {
+func (id *messageID) Serialize() []byte {
 	msgID := &pb.MessageIdData{
 		LedgerId:   proto.Uint64(uint64(id.ledgerID)),
 		EntryId:    proto.Uint64(uint64(id.entryID)),
@@ -167,27 +163,27 @@ func (id messageID) Serialize() []byte {
 	return data
 }
 
-func (id messageID) LedgerID() int64 {
+func (id *messageID) LedgerID() int64 {
 	return id.ledgerID
 }
 
-func (id messageID) EntryID() int64 {
+func (id *messageID) EntryID() int64 {
 	return id.entryID
 }
 
-func (id messageID) BatchIdx() int32 {
+func (id *messageID) BatchIdx() int32 {
 	return id.batchIdx
 }
 
-func (id messageID) PartitionIdx() int32 {
+func (id *messageID) PartitionIdx() int32 {
 	return id.partitionIdx
 }
 
-func (id messageID) BatchSize() int32 {
+func (id *messageID) BatchSize() int32 {
 	return id.batchSize
 }
 
-func (id messageID) String() string {
+func (id *messageID) String() string {
 	return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
 }
 
@@ -208,7 +204,7 @@ func deserializeMessageID(data []byte) (MessageID, error) {
 }
 
 func newMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32) MessageID {
-	return messageID{
+	return &messageID{
 		ledgerID:     ledgerID,
 		entryID:      entryID,
 		batchIdx:     batchIdx,
@@ -218,9 +214,9 @@ func newMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx in
 }
 
 func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32,
-	tracker *ackTracker) trackingMessageID {
-	return trackingMessageID{
-		messageID: messageID{
+	tracker *ackTracker) *trackingMessageID {
+	return &trackingMessageID{
+		messageID: &messageID{
 			ledgerID:     ledgerID,
 			entryID:      entryID,
 			batchIdx:     batchIdx,
@@ -232,31 +228,23 @@ func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partiti
 	}
 }
 
-func toTrackingMessageID(msgID MessageID) (trackingMessageID, bool) {
-	if mid, ok := msgID.(messageID); ok {
-		return trackingMessageID{
+func toTrackingMessageID(msgID MessageID) *trackingMessageID {
+	if mid, ok := msgID.(*messageID); ok {
+		return &trackingMessageID{
 			messageID:    mid,
 			receivedTime: time.Now(),
-		}, true
-	} else if mid, ok := msgID.(trackingMessageID); ok {
-		return mid, true
-	} else if cmid, ok := msgID.(chunkMessageID); ok {
-		return trackingMessageID{
+		}
+	} else if mid, ok := msgID.(*trackingMessageID); ok {
+		return mid
+	} else if cmid, ok := msgID.(*chunkMessageID); ok {
+		return &trackingMessageID{
 			messageID:    cmid.messageID,
 			receivedTime: cmid.receivedTime,
 			consumer:     cmid.consumer,
-		}, true
+		}
 	} else {
-		return trackingMessageID{}, false
+		return nil
 	}
-}
-
-func toChunkedMessageID(msgID MessageID) (chunkMessageID, bool) {
-	cid, ok := msgID.(chunkMessageID)
-	if ok {
-		return cid, true
-	}
-	return chunkMessageID{}, false
 }
 
 func timeFromUnixTimestampMillis(timestamp uint64) time.Time {
@@ -449,16 +437,16 @@ func (t *ackTracker) toAckSet() []int64 {
 }
 
 type chunkMessageID struct {
-	messageID
+	*messageID
 
-	firstChunkID messageID
+	firstChunkID *messageID
 	receivedTime time.Time
 
 	consumer acker
 }
 
-func newChunkMessageID(firstChunkID messageID, lastChunkID messageID) chunkMessageID {
-	return chunkMessageID{
+func newChunkMessageID(firstChunkID *messageID, lastChunkID *messageID) *chunkMessageID {
+	return &chunkMessageID{
 		messageID:    lastChunkID,
 		firstChunkID: firstChunkID,
 		receivedTime: time.Now(),

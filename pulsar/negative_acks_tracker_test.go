@@ -81,13 +81,13 @@ func TestNacksTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(nil)
 	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
@@ -114,25 +114,25 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(nil)
 	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 2,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 3,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
@@ -194,7 +194,7 @@ func (msg *mockMessage1) Payload() []byte {
 }
 
 func (msg *mockMessage1) ID() MessageID {
-	return messageID{
+	return &messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
@@ -270,7 +270,7 @@ func (msg *mockMessage2) Payload() []byte {
 }
 
 func (msg *mockMessage2) ID() MessageID {
-	return messageID{
+	return &messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
