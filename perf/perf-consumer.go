@@ -31,9 +31,10 @@ import (
 
 // ConsumeArgs define the parameters required by consume
 type ConsumeArgs struct {
-	Topic             string
-	SubscriptionName  string
-	ReceiverQueueSize int
+	Topic               string
+	SubscriptionName    string
+	ReceiverQueueSize   int
+	EnableBatchIndexAck bool
 }
 
 func newConsumerCommand() *cobra.Command {
@@ -55,6 +56,7 @@ func newConsumerCommand() *cobra.Command {
 	flags := cmd.Flags()
 	flags.StringVarP(&consumeArgs.SubscriptionName, "subscription", "s", "sub", "Subscription name")
 	flags.IntVarP(&consumeArgs.ReceiverQueueSize, "receiver-queue-size", "r", 1000, "Receiver queue size")
+	flags.BoolVar(&consumeArgs.EnableBatchIndexAck, "enable-batch-index-ack", false, "Whether to enable batch index ACK")
 
 	return cmd
 }
@@ -74,8 +76,9 @@ func consume(consumeArgs *ConsumeArgs, stop <-chan struct{}) {
 	defer client.Close()
 
 	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
-		Topic:            consumeArgs.Topic,
-		SubscriptionName: consumeArgs.SubscriptionName,
+		Topic:                          consumeArgs.Topic,
+		SubscriptionName:               consumeArgs.SubscriptionName,
+		EnableBatchIndexAcknowledgment: consumeArgs.EnableBatchIndexAck,
 	})
 
 	if err != nil {

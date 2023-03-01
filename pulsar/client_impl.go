@@ -33,6 +33,7 @@ const (
 	defaultConnectionTimeout     = 10 * time.Second
 	defaultOperationTimeout      = 30 * time.Second
 	defaultKeepAliveInterval     = 30 * time.Second
+	defaultMemoryLimitBytes      = 64 * 1024 * 1024
 	defaultConnectionMaxIdleTime = 60 * time.Second
 	minConnectionMaxIdleTime     = 60 * time.Second
 )
@@ -44,6 +45,7 @@ type client struct {
 	lookupService internal.LookupService
 	metrics       *internal.Metrics
 	tcClient      *transactionCoordinatorClient
+	memLimit      internal.MemoryLimitController
 
 	log log.Logger
 }
@@ -146,11 +148,17 @@ func newClient(options ClientOptions) (Client, error) {
 		keepAliveInterval = defaultKeepAliveInterval
 	}
 
+	memLimitBytes := options.MemoryLimitBytes
+	if memLimitBytes == 0 {
+		memLimitBytes = defaultMemoryLimitBytes
+	}
+
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval,
 			maxConnectionsPerHost, logger, metrics, connectionMaxIdleTime),
-		log:     logger,
-		metrics: metrics,
+		log:      logger,
+		metrics:  metrics,
+		memLimit: internal.NewMemoryLimitController(memLimitBytes),
 	}
 	serviceNameResolver := internal.NewPulsarServiceNameResolver(url)
 
