@@ -35,14 +35,14 @@ type MemoryLimitController interface {
 
 type memoryLimitController struct {
 	limit        int64
-	chCond       *ChCond
+	chCond       *chCond
 	currentUsage int64
 }
 
 func NewMemoryLimitController(limit int64) MemoryLimitController {
 	mlc := &memoryLimitController{
 		limit:  limit,
-		chCond: NewCond(&sync.Mutex{}),
+		chCond: newCond(&sync.Mutex{}),
 	}
 	return mlc
 }
@@ -53,7 +53,7 @@ func (m *memoryLimitController) ReserveMemory(ctx context.Context, size int64) b
 		defer m.chCond.L.Unlock()
 
 		for !m.TryReserveMemory(size) {
-			if !m.chCond.WaitWithContext(ctx) {
+			if !m.chCond.waitWithContext(ctx) {
 				return false
 			}
 		}
@@ -84,7 +84,7 @@ func (m *memoryLimitController) ForceReserveMemory(size int64) {
 func (m *memoryLimitController) ReleaseMemory(size int64) {
 	newUsage := atomic.AddInt64(&m.currentUsage, -size)
 	if newUsage+size > m.limit && newUsage <= m.limit {
-		m.chCond.Broadcast()
+		m.chCond.broadcast()
 	}
 }
 

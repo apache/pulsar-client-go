@@ -24,28 +24,28 @@ import (
 	"unsafe"
 )
 
-type ChCond struct {
+type chCond struct {
 	L sync.Locker
 	n unsafe.Pointer
 }
 
-func NewCond(l sync.Locker) *ChCond {
-	c := &ChCond{L: l}
+func newCond(l sync.Locker) *chCond {
+	c := &chCond{L: l}
 	n := make(chan struct{})
 	c.n = unsafe.Pointer(&n)
 	return c
 }
 
-// Wait for Broadcast calls. Similar to regular sync.Cond
-func (c *ChCond) Wait() {
+// wait for broadcast calls. Similar to regular sync.Cond
+func (c *chCond) wait() {
 	n := c.notifyChan()
 	c.L.Unlock()
 	<-n
 	c.L.Lock()
 }
 
-// WaitWithContext Same as Wait() call, but the end condition can also be controlled through the context.
-func (c *ChCond) WaitWithContext(ctx context.Context) bool {
+// waitWithContext Same as wait() call, but the end condition can also be controlled through the context.
+func (c *chCond) waitWithContext(ctx context.Context) bool {
 	n := c.notifyChan()
 	c.L.Unlock()
 	defer c.L.Lock()
@@ -59,15 +59,15 @@ func (c *ChCond) WaitWithContext(ctx context.Context) bool {
 	}
 }
 
-// Broadcast wakes all goroutines waiting on c.
+// broadcast wakes all goroutines waiting on c.
 // It is not required for the caller to hold c.L during the call.
-func (c *ChCond) Broadcast() {
+func (c *chCond) broadcast() {
 	n := make(chan struct{})
 	ptrOld := atomic.SwapPointer(&c.n, unsafe.Pointer(&n))
 	close(*(*chan struct{})(ptrOld))
 }
 
-func (c *ChCond) notifyChan() <-chan struct{} {
+func (c *chCond) notifyChan() <-chan struct{} {
 	ptr := atomic.LoadPointer(&c.n)
 	return *((*chan struct{})(ptr))
 }

@@ -25,28 +25,28 @@ import (
 )
 
 func TestChCond(t *testing.T) {
-	cond := NewCond(&sync.Mutex{})
+	cond := newCond(&sync.Mutex{})
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	go func() {
 		cond.L.Lock()
-		cond.Wait()
+		cond.wait()
 		cond.L.Unlock()
 		wg.Done()
 	}()
 	time.Sleep(10 * time.Millisecond)
-	cond.Broadcast()
+	cond.broadcast()
 	wg.Wait()
 }
 
 func TestChCondWithContext(t *testing.T) {
-	cond := NewCond(&sync.Mutex{})
+	cond := newCond(&sync.Mutex{})
 	wg := sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())
 	wg.Add(1)
 	go func() {
 		cond.L.Lock()
-		cond.WaitWithContext(ctx)
+		cond.waitWithContext(ctx)
 		cond.L.Unlock()
 		wg.Done()
 	}()
