@@ -1779,3 +1779,129 @@ func TestWaitForExclusiveProducer(t *testing.T) {
 	producer1.Close()
 	wg.Wait()
 }
+
+func TestMemLimitRejectProducerMessages(t *testing.T) {
+
+	c, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		MemoryLimitBytes: 100 * 1024,
+	})
+	assert.NoError(t, err)
+	defer c.Close()
+
+	topicName := newTopicName()
+	producer1, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer2, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	n := 101
+	for i := 0; i < n/2; i++ {
+		producer1.SendAsync(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+
+		producer2.SendAsync(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+	}
+	// Last message in order to reach the limit
+	producer1.SendAsync(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	}, func(id MessageID, message *ProducerMessage, e error) {})
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int64(n*1024), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	_, err = producer2.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	// flush pending msg
+	err = producer1.Flush()
+	assert.NoError(t, err)
+	err = producer2.Flush()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.NoError(t, err)
+	_, err = producer2.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.NoError(t, err)
+}
+
+func TestMemLimitContextCancel(t *testing.T) {
+
+	c, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		MemoryLimitBytes: 100 * 1024,
+	})
+	assert.NoError(t, err)
+	defer c.Close()
+
+	topicName := newTopicName()
+	producer, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: false,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	n := 101
+	ctx, cancel := context.WithCancel(context.Background())
+	for i := 0; i < n; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+	}
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int64(n*1024), c.(*client).memLimit.CurrentUsage())
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {
+			assert.Error(t, e)
+			assert.ErrorContains(t, e, getResultStr(TimeoutError))
+			wg.Done()
+		})
+	}()
+
+	// cancel pending msg
+	cancel()
+	wg.Wait()
+
+	err = producer.Flush()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.NoError(t, err)
+}
