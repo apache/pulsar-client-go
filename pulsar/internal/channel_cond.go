@@ -28,13 +28,13 @@ type chCond struct {
 	L sync.Locker
 	// The pointer to the channel, the channel pointed to may change,
 	// because we will use the channel's close mechanism to implement broadcast notifications.
-	notifyChanPointer unsafe.Pointer
+	notifyChPtr unsafe.Pointer
 }
 
 func newCond(l sync.Locker) *chCond {
 	c := &chCond{L: l}
 	n := make(chan struct{})
-	c.notifyChanPointer = unsafe.Pointer(&n)
+	c.notifyChPtr = unsafe.Pointer(&n)
 	return c
 }
 
@@ -65,12 +65,12 @@ func (c *chCond) waitWithContext(ctx context.Context) bool {
 // It is not required for the caller to hold c.L during the call.
 func (c *chCond) broadcast() {
 	n := make(chan struct{})
-	ptrOld := atomic.SwapPointer(&c.notifyChanPointer, unsafe.Pointer(&n))
+	ptrOld := atomic.SwapPointer(&c.notifyChPtr, unsafe.Pointer(&n))
 	// close old channels to trigger broadcast.
 	close(*(*chan struct{})(ptrOld))
 }
 
 func (c *chCond) notifyChan() <-chan struct{} {
-	ptr := atomic.LoadPointer(&c.notifyChanPointer)
+	ptr := atomic.LoadPointer(&c.notifyChPtr)
 	return *((*chan struct{})(ptr))
 }
