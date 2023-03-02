@@ -19,10 +19,10 @@ package internal
 
 import "time"
 
-// These method should only used by tests
+// These method should only be used by tests
 
 func StartCleanConnectionsTask(p *ConnectionPool, connectionMaxIdleTime time.Duration) {
-	go (*p).(*connectionPool).cleanConnections(connectionMaxIdleTime)
+	go (*p).(*connectionPool).checkAndCleanIdleConnections(connectionMaxIdleTime)
 }
 
 func GetConnectionsCount(p *ConnectionPool) int {

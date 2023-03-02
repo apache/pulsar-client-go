@@ -30,12 +30,12 @@ import (
 )
 
 const (
-	defaultConnectionTimeout     = 10 * time.Second
-	defaultOperationTimeout      = 30 * time.Second
-	defaultKeepAliveInterval     = 30 * time.Second
-	defaultMemoryLimitBytes      = 64 * 1024 * 1024
-	defaultConnectionMaxIdleTime = 60 * time.Second
-	minConnectionMaxIdleTime     = 60 * time.Second
+	defaultConnectionTimeout = 10 * time.Second
+	defaultOperationTimeout  = 30 * time.Second
+	defaultKeepAliveInterval = 30 * time.Second
+	defaultMemoryLimitBytes  = 64 * 1024 * 1024
+	defaultConnMaxIdleTime   = 180 * time.Second
+	minConnMaxIdleTime       = 60 * time.Second
 )
 
 type client struct {
@@ -60,10 +60,10 @@ func newClient(options ClientOptions) (Client, error) {
 
 	connectionMaxIdleTime := options.ConnectionMaxIdleTime
 	if connectionMaxIdleTime == 0 {
-		connectionMaxIdleTime = defaultConnectionMaxIdleTime
-	} else if connectionMaxIdleTime > 0 && connectionMaxIdleTime < minConnectionMaxIdleTime {
+		connectionMaxIdleTime = defaultConnMaxIdleTime
+	} else if connectionMaxIdleTime > 0 && connectionMaxIdleTime < minConnMaxIdleTime {
 		return nil, newError(InvalidConfiguration, fmt.Sprintf("Connection max idle time should be at least %f "+
-			"seconds", minConnectionMaxIdleTime.Seconds()))
+			"seconds", minConnMaxIdleTime.Seconds()))
 	} else {
 		logger.Debugf("Disable auto release idle connections")
 	}

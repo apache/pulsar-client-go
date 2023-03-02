@@ -936,23 +936,29 @@ func (c *connection) ResetLastActive() {
 }
 
 func (c *connection) isIdle() bool {
-	c.pendingLock.Lock()
-	if len(c.pendingReqs) != 0 {
-		return false
+	{
+		c.pendingLock.Lock()
+		defer c.pendingLock.Unlock()
+		if len(c.pendingReqs) != 0 {
+			return false
+		}
 	}
-	c.pendingLock.Unlock()
 
-	c.listenersLock.RLock()
-	if len(c.listeners) != 0 {
-		return false
+	{
+		c.listenersLock.RLock()
+		defer c.listenersLock.RUnlock()
+		if len(c.listeners) != 0 {
+			return false
+		}
 	}
-	c.listenersLock.RUnlock()
 
-	c.consumerHandlersLock.Lock()
-	if len(c.consumerHandlers) != 0 {
-		return false
+	{
+		c.consumerHandlersLock.Lock()
+		defer c.consumerHandlersLock.Unlock()
+		if len(c.consumerHandlers) != 0 {
+			return false
+		}
 	}
-	c.consumerHandlersLock.Unlock()
 
 	if len(c.incomingRequestsCh) != 0 || len(c.writeRequestsCh) != 0 {
 		return false

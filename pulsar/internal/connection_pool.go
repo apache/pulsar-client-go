@@ -74,7 +74,7 @@ func NewConnectionPool(
 		metrics:               metrics,
 		closeCh:               make(chan struct{}),
 	}
-	go p.cleanConnections(connectionMaxIdleTime)
+	go p.checkAndCleanIdleConnections(connectionMaxIdleTime)
 	return p
 }
 
@@ -142,7 +142,7 @@ func (p *connectionPool) getMapKey(addr *url.URL) string {
 	return fmt.Sprint(addr.Host, '-', idx)
 }
 
-func (p *connectionPool) cleanConnections(maxIdleTime time.Duration) {
+func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration) {
 	if maxIdleTime < 0 {
 		return
 	}
