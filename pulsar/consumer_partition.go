@@ -465,9 +465,6 @@ func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 	}
 
 	trackingID := toTrackingMessageID(msgID)
-	if trackingID == nil {
-		return errors.New("failed to convert trackingMessageID")
-	}
 
 	if trackingID != nil && trackingID.ack() {
 		pc.metrics.AcksCounter.Inc()
@@ -501,18 +498,34 @@ func (pc *partitionConsumer) sendIndividualAck(msgID MessageID) *ackRequest {
 }
 
 func (pc *partitionConsumer) AckIDWithResponse(msgID MessageID) error {
+	if !checkMessageIDType(msgID) {
+		pc.log.Errorf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
 	return pc.ackID(msgID, true)
 }
 
 func (pc *partitionConsumer) AckID(msgID MessageID) error {
+	if !checkMessageIDType(msgID) {
+		pc.log.Errorf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
 	return pc.ackID(msgID, false)
 }
 
 func (pc *partitionConsumer) AckIDCumulative(msgID MessageID) error {
+	if !checkMessageIDType(msgID) {
+		pc.log.Errorf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
 	return pc.internalAckIDCumulative(msgID, false)
 }
 
 func (pc *partitionConsumer) AckIDWithResponseCumulative(msgID MessageID) error {
+	if !checkMessageIDType(msgID) {
+		pc.log.Errorf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
 	return pc.internalAckIDCumulative(msgID, true)
 }
 
@@ -574,15 +587,17 @@ func (pc *partitionConsumer) sendCumulativeAck(msgID MessageID) *ackRequest {
 }
 
 func (pc *partitionConsumer) NackID(msgID MessageID) {
+	if !checkMessageIDType(msgID) {
+		pc.log.Warnf("invalid message id type %T", msgID)
+		return
+	}
+
 	if cmid, ok := msgID.(*chunkMessageID); ok {
 		pc.unAckChunksTracker.nack(cmid)
 		return
 	}
 
 	trackingID := toTrackingMessageID(msgID)
-	if trackingID == nil {
-		return
-	}
 
 	pc.nackTracker.Add(trackingID.messageID)
 	pc.metrics.NacksCounter.Inc()
@@ -665,16 +680,20 @@ func (pc *partitionConsumer) Seek(msgID MessageID) error {
 		pc.log.WithField("state", state).Error("Failed to seek by closing or closed consumer")
 		return errors.New("failed to seek by closing or closed consumer")
 	}
+
+	if !checkMessageIDType(msgID) {
+		pc.log.Errorf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
+
 	req := &seekRequest{
 		doneCh: make(chan struct{}),
 	}
 	if cmid, ok := msgID.(*chunkMessageID); ok {
 		req.msgID = cmid.firstChunkID
-	} else if tmid := toTrackingMessageID(msgID); tmid != nil {
-		req.msgID = tmid.messageID
 	} else {
-		// will never reach
-		return errors.New("unhandled messageID type")
+		tmid := toTrackingMessageID(msgID)
+		req.msgID = tmid.messageID
 	}
 
 	pc.ackGroupingTracker.flushAndClean()
@@ -1812,9 +1831,8 @@ func (c *chunkedMsgCtx) discard(pc *partitionConsumer) {
 			continue
 		}
 		pc.log.Info("Removing chunk message-id", mid.String())
-		if tmid := toTrackingMessageID(mid); tmid != nil {
-			pc.AckID(tmid)
-		}
+		tmid := toTrackingMessageID(mid)
+		pc.AckID(tmid)
 	}
 }
 

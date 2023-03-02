@@ -125,11 +125,11 @@ func (c *multiTopicConsumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *multiTopicConsumer) AckID(msgID MessageID) error {
-	mid := toTrackingMessageID(msgID)
-	if mid == nil {
+	if !checkMessageIDType(msgID) {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return errors.New("invalid message id type in multi_consumer")
 	}
+	mid := toTrackingMessageID(msgID)
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
@@ -152,11 +152,11 @@ func (c *multiTopicConsumer) AckCumulative(msg Message) error {
 // AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
 func (c *multiTopicConsumer) AckIDCumulative(msgID MessageID) error {
-	mid := toTrackingMessageID(msgID)
-	if mid == nil {
+	if !checkMessageIDType(msgID) {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return errors.New("invalid message id type in multi_consumer")
 	}
+	mid := toTrackingMessageID(msgID)
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
@@ -203,11 +203,11 @@ func (c *multiTopicConsumer) ReconsumeLaterWithCustomProperties(msg Message, cus
 func (c *multiTopicConsumer) Nack(msg Message) {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
 		msgID := msg.ID()
-		mid := toTrackingMessageID(msgID)
-		if mid == nil {
+		if !checkMessageIDType(msgID) {
 			c.log.Warnf("invalid message id type %T", msgID)
 			return
 		}
+		mid := toTrackingMessageID(msgID)
 
 		if mid.consumer == nil {
 			c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
@@ -221,11 +221,11 @@ func (c *multiTopicConsumer) Nack(msg Message) {
 }
 
 func (c *multiTopicConsumer) NackID(msgID MessageID) {
-	mid := toTrackingMessageID(msgID)
-	if mid == nil {
+	if !checkMessageIDType(msgID) {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}
+	mid := toTrackingMessageID(msgID)
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)

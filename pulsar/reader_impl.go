@@ -51,8 +51,8 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(InvalidConfiguration, "StartMessageID is required")
 	}
 
-	startMessageID := toTrackingMessageID(options.StartMessageID)
-	if startMessageID == nil {
+	var startMessageID *trackingMessageID
+	if !checkMessageIDType(options.StartMessageID) {
 		// a custom type satisfying MessageID may not be a messageID or trackingMessageID
 		// so re-create messageID using its data
 		deserMsgID, err := deserializeMessageID(options.StartMessageID.Serialize())
@@ -60,10 +60,9 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 			return nil, err
 		}
 		// de-serialized MessageID is a messageID
-		startMessageID = &trackingMessageID{
-			messageID:    deserMsgID.(*messageID),
-			receivedTime: time.Now(),
-		}
+		startMessageID = toTrackingMessageID(deserMsgID)
+	} else {
+		startMessageID = toTrackingMessageID(options.StartMessageID)
 	}
 
 	subscriptionName := options.SubscriptionName
@@ -148,12 +147,10 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
 			msgID := cm.Message.ID()
-			if mid := toTrackingMessageID(msgID); mid != nil {
-				r.pc.lastDequeuedMsg = mid
-				r.pc.AckID(mid)
-				return cm.Message, nil
-			}
-			return nil, newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
+			mid := toTrackingMessageID(msgID)
+			r.pc.lastDequeuedMsg = mid
+			r.pc.AckID(mid)
+			return cm.Message, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -202,10 +199,6 @@ func (r *reader) Close() {
 
 func (r *reader) messageID(msgID MessageID) *trackingMessageID {
 	mid := toTrackingMessageID(msgID)
-	if mid == nil {
-		r.log.Warnf("invalid message id type %T", msgID)
-		return nil
-	}
 
 	partition := int(mid.partitionIdx)
 	// did we receive a valid partition index?
@@ -220,6 +213,11 @@ func (r *reader) messageID(msgID MessageID) *trackingMessageID {
 func (r *reader) Seek(msgID MessageID) error {
 	r.Lock()
 	defer r.Unlock()
+
+	if !checkMessageIDType(msgID) {
+		r.log.Warnf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
 
 	mid := r.messageID(msgID)
 	if mid == nil {
