@@ -218,9 +218,6 @@ MIT License
   * github.com/kr/pretty v0.2.0 -- distribution/license/LICENSE-pretty.txt
   * github.com/sirupsen/logrus v1.4.1 -- distribution/license/LICENSE-logrus.txt
 
-GNU GENERAL PUBLIC LICENSE Version 3
-  * github.com/beefsack/go-rate v0.0.0-20180408011153-efa7637bb9b6 -- distribution/license/LICENSE-go-rate.txt
-
 BSD License
   * github.com/DataDog/zstd v1.4.6-0.20210211175136-c6db21d202f4 -- distribution/license/LICENSE-zstd.txt
   * github.com/klauspost/compress v1.9.2 -- distribution/license/LICENSE-compress.txt
