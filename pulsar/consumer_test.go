@@ -3988,3 +3988,89 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 
 	client.Close()
 }
+
+func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	// create consumer
+	c, err := client.Subscribe(ConsumerOptions{
+		Topic:                             topic,
+		SubscriptionName:                  "my-sub",
+		Type:                              Exclusive,
+		ReceiverQueueSize:                 3,
+		EnableAutoScaledReceiverQueueSize: true,
+	})
+	assert.Nil(t, err)
+	pc := c.(*consumer).consumers[0]
+	assert.Equal(t, int32(1), pc.currentQueueSize.Load())
+	defer c.Close()
+
+	// create p
+	p, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer p.Close()
+
+	// send message, it will update scaleReceiverQueueHint from false to true
+	_, err = p.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("hello"),
+	})
+	assert.NoError(t, err)
+
+	// this will trigger receiver queue size expanding to 2 because we have prefetched 1 message >= currentSize 1.
+	_, err = c.Receive(context.Background())
+	assert.Nil(t, err)
+
+	// waiting for prefetched message passing from queueCh to dispatcher()
+	time.Sleep(time.Second)
+
+	// currentQueueSize should be doubled in size
+	assert.Equal(t, 2, int(pc.currentQueueSize.Load()))
+
+	for i := 0; i < 5; i++ {
+		_, err = p.Send(context.Background(), &ProducerMessage{
+			Payload: []byte("hello"),
+		})
+		assert.NoError(t, err)
+
+		// waiting for prefetched message passing from queueCh to dispatcher()
+		time.Sleep(time.Second)
+
+		_, err = p.Send(context.Background(), &ProducerMessage{
+			Payload: []byte("hello"),
+		})
+		assert.NoError(t, err)
+
+		// wait all the messages has been prefetched
+		_, err = c.Receive(context.Background())
+		assert.Nil(t, err)
+		_, err = c.Receive(context.Background())
+		assert.Nil(t, err)
+		// this will not trigger receiver queue size expanding because we have prefetched 2 message < currentSize 4.
+		assert.Equal(t, int32(2), pc.currentQueueSize.Load())
+	}
+
+	for i := 0; i < 5; i++ {
+		p.SendAsync(
+			context.Background(),
+			&ProducerMessage{Payload: []byte("hello")},
+			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			},
+		)
+	}
+
+	// waiting for prefetched message passing from queueCh to dispatcher()
+	time.Sleep(time.Second)
+
+	// currentQueueSize expanding to max size
+	assert.Equal(t, int32(3), pc.currentQueueSize.Load())
+}

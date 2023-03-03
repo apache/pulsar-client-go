@@ -160,6 +160,12 @@ type ConsumerOptions struct {
 	// Default value is `1000` messages and should be good for most use cases.
 	ReceiverQueueSize int
 
+	// EnableAutoScaledReceiverQueueSize, if enabled, the consumer receive queue will be auto-scaled
+	// by the consumer actual throughput. The ReceiverQueueSize will be the maximum size which consumer
+	// receive queue can be scaled.
+	// Default is false.
+	EnableAutoScaledReceiverQueueSize bool
+
 	// NackRedeliveryDelay specifies the delay after which to redeliver the messages that failed to be
 	// processed. Default is 1 min. (See `Consumer.Nack()`)
 	NackRedeliveryDelay time.Duration

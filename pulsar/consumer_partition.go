@@ -19,14 +19,12 @@ package pulsar
 
 import (
 	"container/list"
-	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"math"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -149,12 +147,13 @@ type partitionConsumer struct {
 
 	// the size of the queue channel for buffering messages
 	maxQueueSize    int32
-	queueCh         chan *message
+	queueCh         chan []*message
 	startMessageID  atomicMessageID
 	lastDequeuedMsg *trackingMessageID
 
-	currentQueueSize       atomic.Int32
-	scaleReceiverQueueHint atomic.Bool
+	currentQueueSize       uAtomic.Int32
+	scaleReceiverQueueHint uAtomic.Bool
+	incomingMessages       uAtomic.Int32
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
@@ -190,7 +189,7 @@ func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
 }
 
 type availablePermits struct {
-	permits int32
+	permits uAtomic.Int32
 	pc      *partitionConsumer
 }
 
@@ -200,28 +199,34 @@ func (p *availablePermits) inc() {
 }
 
 func (p *availablePermits) add(delta int32) {
-	atomic.AddInt32(&p.permits, delta)
+	p.permits.Add(delta)
 	p.flowIfNeed()
 }
 
 func (p *availablePermits) reset() {
-	atomic.StoreInt32(&p.permits, 0)
+	p.permits.Store(0)
 }
 
 func (p *availablePermits) get() int32 {
-	return atomic.LoadInt32(&p.permits)
+	return p.permits.Load()
 }
 
 func (p *availablePermits) flowIfNeed() {
 	// TODO implement a better flow controller
 	// send more permits if needed
+	var flowThreshold int32
+	if p.pc.options.autoReceiverQueueSize {
+		flowThreshold = int32(math.Max(float64(p.pc.currentQueueSize.Load()/2), 1))
+	} else {
+		flowThreshold = int32(math.Max(float64(p.pc.maxQueueSize/2), 1))
+	}
+
 	current := p.get()
-	flowThreshold := int32(math.Max(float64(p.pc.currentQueueSize.Load()/2), 1))
 	if current >= flowThreshold {
 		availablePermits := current
 		requestedPermits := current
 		// check if permits changed
-		if !atomic.CompareAndSwapInt32(&p.permits, current, 0) {
+		if !p.permits.CAS(current, 0) {
 			return
 		}
 
@@ -314,7 +319,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		partitionIdx:         int32(options.partitionIdx),
 		eventsCh:             make(chan interface{}, 10),
 		maxQueueSize:         int32(options.receiverQueueSize),
-		queueCh:              make(chan *message, options.receiverQueueSize),
+		queueCh:              make(chan []*message, options.receiverQueueSize),
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
@@ -878,29 +883,37 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return fmt.Errorf("discarding message on decryption error :%v", err)
 		case crypto.ConsumerCryptoFailureActionConsume:
 			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
-			msg := &message{
-				publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-				eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-				key:          msgMeta.GetPartitionKey(),
-				producerName: msgMeta.GetProducerName(),
-				properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
-				topic:        pc.topic,
-				msgID: newMessageID(
-					int64(pbMsgID.GetLedgerId()),
-					int64(pbMsgID.GetEntryId()),
-					pbMsgID.GetBatchIndex(),
-					pc.partitionIdx,
-					pbMsgID.GetBatchSize(),
-				),
-				payLoad:             headersAndPayload.ReadableSlice(),
-				schema:              pc.options.schema,
-				replicationClusters: msgMeta.GetReplicateTo(),
-				replicatedFrom:      msgMeta.GetReplicatedFrom(),
-				redeliveryCount:     response.GetRedeliveryCount(),
-				encryptionContext:   createEncryptionContext(msgMeta),
-				orderingKey:         string(msgMeta.OrderingKey),
+			messages := []*message{
+				{
+					publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+					eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+					key:          msgMeta.GetPartitionKey(),
+					producerName: msgMeta.GetProducerName(),
+					properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
+					topic:        pc.topic,
+					msgID: newMessageID(
+						int64(pbMsgID.GetLedgerId()),
+						int64(pbMsgID.GetEntryId()),
+						pbMsgID.GetBatchIndex(),
+						pc.partitionIdx,
+						pbMsgID.GetBatchSize(),
+					),
+					payLoad:             headersAndPayload.ReadableSlice(),
+					schema:              pc.options.schema,
+					replicationClusters: msgMeta.GetReplicateTo(),
+					replicatedFrom:      msgMeta.GetReplicatedFrom(),
+					redeliveryCount:     response.GetRedeliveryCount(),
+					encryptionContext:   createEncryptionContext(msgMeta),
+					orderingKey:         string(msgMeta.OrderingKey),
+				},
 			}
-			pc.queueCh <- msg
+
+			if pc.options.autoReceiverQueueSize {
+				pc.incomingMessages.Inc()
+				pc.markScaleIfNeed()
+			}
+
+			pc.queueCh <- messages
 			return nil
 		}
 	}
@@ -1069,10 +1082,13 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		messages = append(messages, msg)
 	}
 
-	// send messages to the dispatcher
-	for _, msg := range messages {
-		pc.queueCh <- msg
+	if pc.options.autoReceiverQueueSize {
+		pc.incomingMessages.Add(int32(len(messages)))
+		pc.markScaleIfNeed()
 	}
+
+	// send messages to the dispatcher
+	pc.queueCh <- messages
 	return nil
 }
 
@@ -1214,54 +1230,33 @@ func (pc *partitionConsumer) dispatcher() {
 		pc.log.Debug("exiting dispatch loop")
 	}()
 	var messages []*message
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go func() {
-		var messageCh chan ConsumerMessage
-		for {
-			if len(pc.queueCh) == 0 {
-				pc.expectMoreIncomingMessages()
-			}
-
-			select {
-			case <-ctx.Done():
-				return
-
-			case msg, ok := <-pc.queueCh:
-				if !ok {
-					return
-				}
-				nextMessage := ConsumerMessage{
-					Consumer: pc.parentConsumer,
-					Message:  msg,
-				}
-				if pc.dlq.shouldSendToDlq(&nextMessage) {
-					// pass the message to the DLQ router
-					pc.metrics.DlqCounter.Inc()
-					messageCh = pc.dlq.Chan()
-				} else {
-					// pass the message to application channel
-					messageCh = pc.messageCh
-				}
-
-				select {
-				case messageCh <- nextMessage:
-					// messageCh still can be pushed message. Does not need scale
-				default:
-					pc.markScaleIfNeed()
-					messageCh <- nextMessage
-				}
-
-				pc.availablePermits.inc()
-
-				pc.metrics.PrefetchedMessages.Dec()
-				pc.metrics.PrefetchedBytes.Sub(float64(len(messages[0].payLoad)))
-			}
-		}
-	}()
-
 	for {
+		var queueCh chan []*message
+		var messageCh chan ConsumerMessage
+		var nextMessage ConsumerMessage
+
+		// are there more messages to send?
+		if len(messages) > 0 {
+			nextMessage = ConsumerMessage{
+				Consumer: pc.parentConsumer,
+				Message:  messages[0],
+			}
+
+			if pc.dlq.shouldSendToDlq(&nextMessage) {
+				// pass the message to the DLQ router
+				pc.metrics.DlqCounter.Inc()
+				messageCh = pc.dlq.Chan()
+			} else {
+				// pass the message to application channel
+				messageCh = pc.messageCh
+			}
+
+			pc.metrics.PrefetchedMessages.Dec()
+			pc.metrics.PrefetchedBytes.Sub(float64(len(messages[0].payLoad)))
+		} else {
+			queueCh = pc.queueCh
+		}
+
 		select {
 		case <-pc.closeCh:
 			return
@@ -1276,12 +1271,39 @@ func (pc *partitionConsumer) dispatcher() {
 
 			// reset available permits
 			pc.availablePermits.reset()
-			initialPermits := uint32(pc.maxQueueSize)
+
+			var initialPermits uint32
+			if pc.options.autoReceiverQueueSize {
+				initialPermits = uint32(pc.currentQueueSize.Load())
+			} else {
+				initialPermits = uint32(pc.maxQueueSize)
+			}
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
 			// send initial permits
 			if err := pc.internalFlow(initialPermits); err != nil {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
+			}
+
+		case msgs, ok := <-queueCh:
+			if !ok {
+				return
+			}
+			// we only read messages here after the consumer has processed all messages
+			// in the previous batch
+			messages = msgs
+
+		// if the messageCh is nil or the messageCh is full this will not be selected
+		case messageCh <- nextMessage:
+			// allow this message to be garbage collected
+			messages[0] = nil
+			messages = messages[1:]
+
+			pc.availablePermits.inc()
+
+			if pc.options.autoReceiverQueueSize {
+				pc.incomingMessages.Dec()
+				pc.expectMoreIncomingMessages()
 			}
 
 		case clearQueueCb := <-pc.clearQueueCh:
@@ -1297,11 +1319,15 @@ func (pc *partitionConsumer) dispatcher() {
 				if m == nil {
 					break
 				} else if nextMessageInQueue == nil {
-					nextMessageInQueue = toTrackingMessageID(m.msgID)
+					nextMessageInQueue = toTrackingMessageID(m[0].msgID)
 				}
 			}
 
 			messages = nil
+
+			if pc.options.autoReceiverQueueSize {
+				pc.incomingMessages.Store(0)
+			}
 
 			clearQueueCb(nextMessageInQueue)
 		}
@@ -1675,25 +1701,25 @@ func (pc *partitionConsumer) expectMoreIncomingMessages() {
 	if !pc.options.autoReceiverQueueSize {
 		return
 	}
-	if pc.scaleReceiverQueueHint.CompareAndSwap(true, false) {
+	if pc.scaleReceiverQueueHint.CAS(true, false) {
 		oldSize := pc.currentQueueSize.Load()
 		maxSize := int32(pc.options.receiverQueueSize)
-		// todo: replace internal.MinUInt64 with math.min when go version dump to 1.18
-		newSize := internal.MinInt32(maxSize, oldSize*2)
+		newSize := int32(math.Min(float64(maxSize), float64(oldSize*2)))
 		if newSize > oldSize {
-			pc.currentQueueSize.CompareAndSwap(oldSize, newSize)
+			pc.currentQueueSize.CAS(oldSize, newSize)
 			pc.availablePermits.add(newSize - oldSize)
+			pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
 		}
 	}
 }
 
 func (pc *partitionConsumer) markScaleIfNeed() {
-	needScale := pc.availablePermits.get()+int32(len(pc.queueCh)) >=
-		pc.currentQueueSize.Load()
-	if needScale {
-		if pc.scaleReceiverQueueHint.CompareAndSwap(false, true) {
-			pc.log.Debug("update scaleReceiverQueueHint from false -> false")
-		}
+	// availablePermits + incomingMessages (messages in queueCh) is the number of prefetched messages
+	// The result of auto-scale we expected is currentQueueSize is slightly bigger than prefetched messages
+	prev := pc.scaleReceiverQueueHint.Swap(pc.availablePermits.get()+pc.incomingMessages.Load() >=
+		pc.currentQueueSize.Load())
+	if prev != pc.scaleReceiverQueueHint.Load() {
+		pc.log.Debugf("update scaleReceiverQueueHint from %t -> %t", prev, pc.scaleReceiverQueueHint.Load())
 	}
 }
 

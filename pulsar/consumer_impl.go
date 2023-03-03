@@ -399,6 +399,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				consumerEventListener:       c.options.EventListener,
 				enableBatchIndexAck:         c.options.EnableBatchIndexAcknowledgment,
 				ackGroupingOptions:          c.options.AckGroupingOptions,
+				autoReceiverQueueSize:       c.options.EnableAutoScaledReceiverQueueSize,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
