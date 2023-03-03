@@ -143,6 +143,10 @@ type ClientOptions struct {
 	// Default prometheus.DefaultRegisterer
 	MetricsRegisterer prometheus.Registerer
 
+	// Release the connection if it is not used for more than ConnectionMaxIdleTime.
+	// Default is 60 seconds, negative such as -1 to disable.
+	ConnectionMaxIdleTime time.Duration
+
 	EnableTransaction bool
 
 	// Limit of client memory usage (in byte). The 64M default can guarantee a high producer throughput.

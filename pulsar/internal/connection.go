@@ -170,6 +170,8 @@ type connection struct {
 	metrics        *Metrics
 
 	keepAliveInterval time.Duration
+
+	lastActive time.Time
 }
 
 // connectionOptions defines configurations for creating connection.
@@ -925,6 +927,52 @@ func (c *connection) UnregisterListener(id uint64) {
 	defer c.listenersLock.Unlock()
 
 	delete(c.listeners, id)
+}
+
+func (c *connection) ResetLastActive() {
+	c.Lock()
+	defer c.Unlock()
+	c.lastActive = time.Now()
+}
+
+func (c *connection) isIdle() bool {
+	{
+		c.pendingLock.Lock()
+		defer c.pendingLock.Unlock()
+		if len(c.pendingReqs) != 0 {
+			return false
+		}
+	}
+
+	{
+		c.listenersLock.RLock()
+		defer c.listenersLock.RUnlock()
+		if len(c.listeners) != 0 {
+			return false
+		}
+	}
+
+	{
+		c.consumerHandlersLock.Lock()
+		defer c.consumerHandlersLock.Unlock()
+		if len(c.consumerHandlers) != 0 {
+			return false
+		}
+	}
+
+	if len(c.incomingRequestsCh) != 0 || len(c.writeRequestsCh) != 0 {
+		return false
+	}
+	return true
+}
+
+func (c *connection) CheckIdle(maxIdleTime time.Duration) bool {
+	// We don't need to lock here because this method should only be
+	// called in a single goroutine of the connectionPool
+	if !c.isIdle() {
+		c.lastActive = time.Now()
+	}
+	return time.Since(c.lastActive) > maxIdleTime
 }
 
 // Close closes the connection by
