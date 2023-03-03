@@ -85,3 +85,10 @@ func MarshalToSizedBuffer(m proto.Message, out []byte) error {
 	copy(out, b[:len(out)])
 	return nil
 }
+
+func MinInt32(lhs int32, rhs int32) int32 {
+	if lhs < rhs {
+		return lhs
+	}
+	return rhs
+}

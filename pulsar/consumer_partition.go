@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"container/list"
+	"context"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -78,6 +79,10 @@ const (
 )
 
 const (
+	initialReceiverQueueSize = 1
+)
+
+const (
 	noMessageEntry = -1
 )
 
@@ -89,6 +94,7 @@ type partitionConsumerOpts struct {
 	subscriptionInitPos         SubscriptionInitialPosition
 	partitionIdx                int
 	receiverQueueSize           int
+	autoReceiverQueueSize       bool
 	nackRedeliveryDelay         time.Duration
 	nackBackoffPolicy           NackBackoffPolicy
 	metadata                    map[string]string
@@ -142,10 +148,13 @@ type partitionConsumer struct {
 	availablePermits *availablePermits
 
 	// the size of the queue channel for buffering messages
-	queueSize       int32
-	queueCh         chan []*message
+	maxQueueSize    int32
+	queueCh         chan *message
 	startMessageID  atomicMessageID
 	lastDequeuedMsg *trackingMessageID
+
+	currentQueueSize       atomic.Int32
+	scaleReceiverQueueHint atomic.Bool
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
@@ -187,16 +196,32 @@ type availablePermits struct {
 
 func (p *availablePermits) inc() {
 	// atomic add availablePermits
-	ap := atomic.AddInt32(&p.permits, 1)
+	p.add(1)
+}
 
+func (p *availablePermits) add(delta int32) {
+	atomic.AddInt32(&p.permits, delta)
+	p.flowIfNeed()
+}
+
+func (p *availablePermits) reset() {
+	atomic.StoreInt32(&p.permits, 0)
+}
+
+func (p *availablePermits) get() int32 {
+	return atomic.LoadInt32(&p.permits)
+}
+
+func (p *availablePermits) flowIfNeed() {
 	// TODO implement a better flow controller
 	// send more permits if needed
-	flowThreshold := int32(math.Max(float64(p.pc.queueSize/2), 1))
-	if ap >= flowThreshold {
-		availablePermits := ap
-		requestedPermits := ap
+	current := p.get()
+	flowThreshold := int32(math.Max(float64(p.pc.currentQueueSize.Load()/2), 1))
+	if current >= flowThreshold {
+		availablePermits := current
+		requestedPermits := current
 		// check if permits changed
-		if !atomic.CompareAndSwapInt32(&p.permits, ap, 0) {
+		if !atomic.CompareAndSwapInt32(&p.permits, current, 0) {
 			return
 		}
 
@@ -205,10 +230,6 @@ func (p *availablePermits) inc() {
 			p.pc.log.WithError(err).Error("unable to send permits")
 		}
 	}
-}
-
-func (p *availablePermits) reset() {
-	atomic.StoreInt32(&p.permits, 0)
 }
 
 // atomicMessageID is a wrapper for trackingMessageID to make get and set atomic
@@ -292,8 +313,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		consumerID:           client.rpcClient.NewConsumerID(),
 		partitionIdx:         int32(options.partitionIdx),
 		eventsCh:             make(chan interface{}, 10),
-		queueSize:            int32(options.receiverQueueSize),
-		queueCh:              make(chan []*message, options.receiverQueueSize),
+		maxQueueSize:         int32(options.receiverQueueSize),
+		queueCh:              make(chan *message, options.receiverQueueSize),
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
@@ -304,6 +325,11 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
+	}
+	if pc.options.autoReceiverQueueSize {
+		pc.currentQueueSize.Store(initialReceiverQueueSize)
+	} else {
+		pc.currentQueueSize.Store(int32(pc.options.receiverQueueSize))
 	}
 	pc.availablePermits = &availablePermits{pc: pc}
 	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(options.maxPendingChunkedMessage, pc)
@@ -852,31 +878,29 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return fmt.Errorf("discarding message on decryption error :%v", err)
 		case crypto.ConsumerCryptoFailureActionConsume:
 			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
-			messages := []*message{
-				{
-					publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-					eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-					key:          msgMeta.GetPartitionKey(),
-					producerName: msgMeta.GetProducerName(),
-					properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
-					topic:        pc.topic,
-					msgID: newMessageID(
-						int64(pbMsgID.GetLedgerId()),
-						int64(pbMsgID.GetEntryId()),
-						pbMsgID.GetBatchIndex(),
-						pc.partitionIdx,
-						pbMsgID.GetBatchSize(),
-					),
-					payLoad:             headersAndPayload.ReadableSlice(),
-					schema:              pc.options.schema,
-					replicationClusters: msgMeta.GetReplicateTo(),
-					replicatedFrom:      msgMeta.GetReplicatedFrom(),
-					redeliveryCount:     response.GetRedeliveryCount(),
-					encryptionContext:   createEncryptionContext(msgMeta),
-					orderingKey:         string(msgMeta.OrderingKey),
-				},
+			msg := &message{
+				publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+				key:          msgMeta.GetPartitionKey(),
+				producerName: msgMeta.GetProducerName(),
+				properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
+				topic:        pc.topic,
+				msgID: newMessageID(
+					int64(pbMsgID.GetLedgerId()),
+					int64(pbMsgID.GetEntryId()),
+					pbMsgID.GetBatchIndex(),
+					pc.partitionIdx,
+					pbMsgID.GetBatchSize(),
+				),
+				payLoad:             headersAndPayload.ReadableSlice(),
+				schema:              pc.options.schema,
+				replicationClusters: msgMeta.GetReplicateTo(),
+				replicatedFrom:      msgMeta.GetReplicatedFrom(),
+				redeliveryCount:     response.GetRedeliveryCount(),
+				encryptionContext:   createEncryptionContext(msgMeta),
+				orderingKey:         string(msgMeta.OrderingKey),
 			}
-			pc.queueCh <- messages
+			pc.queueCh <- msg
 			return nil
 		}
 	}
@@ -1046,7 +1070,9 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	}
 
 	// send messages to the dispatcher
-	pc.queueCh <- messages
+	for _, msg := range messages {
+		pc.queueCh <- msg
+	}
 	return nil
 }
 
@@ -1188,34 +1214,54 @@ func (pc *partitionConsumer) dispatcher() {
 		pc.log.Debug("exiting dispatch loop")
 	}()
 	var messages []*message
-	for {
-		var queueCh chan []*message
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
 		var messageCh chan ConsumerMessage
-		var nextMessage ConsumerMessage
-
-		// are there more messages to send?
-		if len(messages) > 0 {
-			nextMessage = ConsumerMessage{
-				Consumer: pc.parentConsumer,
-				Message:  messages[0],
+		for {
+			if len(pc.queueCh) == 0 {
+				pc.expectMoreIncomingMessages()
 			}
 
-			if pc.dlq.shouldSendToDlq(&nextMessage) {
-				// pass the message to the DLQ router
-				pc.metrics.DlqCounter.Inc()
-				messageCh = pc.dlq.Chan()
-			} else {
-				// pass the message to application channel
-				messageCh = pc.messageCh
-			}
+			select {
+			case <-ctx.Done():
+				return
 
-			pc.metrics.PrefetchedMessages.Dec()
-			pc.metrics.PrefetchedBytes.Sub(float64(len(messages[0].payLoad)))
-		} else {
-			// we are ready for more messages
-			queueCh = pc.queueCh
+			case msg, ok := <-pc.queueCh:
+				if !ok {
+					return
+				}
+				nextMessage := ConsumerMessage{
+					Consumer: pc.parentConsumer,
+					Message:  msg,
+				}
+				if pc.dlq.shouldSendToDlq(&nextMessage) {
+					// pass the message to the DLQ router
+					pc.metrics.DlqCounter.Inc()
+					messageCh = pc.dlq.Chan()
+				} else {
+					// pass the message to application channel
+					messageCh = pc.messageCh
+				}
+
+				select {
+				case messageCh <- nextMessage:
+					// messageCh still can be pushed message. Does not need scale
+				default:
+					pc.markScaleIfNeed()
+					messageCh <- nextMessage
+				}
+
+				pc.availablePermits.inc()
+
+				pc.metrics.PrefetchedMessages.Dec()
+				pc.metrics.PrefetchedBytes.Sub(float64(len(messages[0].payLoad)))
+			}
 		}
+	}()
 
+	for {
 		select {
 		case <-pc.closeCh:
 			return
@@ -1230,29 +1276,13 @@ func (pc *partitionConsumer) dispatcher() {
 
 			// reset available permits
 			pc.availablePermits.reset()
-			initialPermits := uint32(pc.queueSize)
+			initialPermits := uint32(pc.maxQueueSize)
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
 			// send initial permits
 			if err := pc.internalFlow(initialPermits); err != nil {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
 			}
-
-		case msgs, ok := <-queueCh:
-			if !ok {
-				return
-			}
-			// we only read messages here after the consumer has processed all messages
-			// in the previous batch
-			messages = msgs
-
-		// if the messageCh is nil or the messageCh is full this will not be selected
-		case messageCh <- nextMessage:
-			// allow this message to be garbage collected
-			messages[0] = nil
-			messages = messages[1:]
-
-			pc.availablePermits.inc()
 
 		case clearQueueCb := <-pc.clearQueueCh:
 			// drain the message queue on any new connection by sending a
@@ -1267,7 +1297,7 @@ func (pc *partitionConsumer) dispatcher() {
 				if m == nil {
 					break
 				} else if nextMessageInQueue == nil {
-					nextMessageInQueue = toTrackingMessageID(m[0].msgID)
+					nextMessageInQueue = toTrackingMessageID(m.msgID)
 				}
 			}
 
@@ -1638,6 +1668,32 @@ func getPreviousMessage(mid *trackingMessageID) *trackingMessageID {
 		tracker:      mid.tracker,
 		consumer:     mid.consumer,
 		receivedTime: mid.receivedTime,
+	}
+}
+
+func (pc *partitionConsumer) expectMoreIncomingMessages() {
+	if !pc.options.autoReceiverQueueSize {
+		return
+	}
+	if pc.scaleReceiverQueueHint.CompareAndSwap(true, false) {
+		oldSize := pc.currentQueueSize.Load()
+		maxSize := int32(pc.options.receiverQueueSize)
+		// todo: replace internal.MinUInt64 with math.min when go version dump to 1.18
+		newSize := internal.MinInt32(maxSize, oldSize*2)
+		if newSize > oldSize {
+			pc.currentQueueSize.CompareAndSwap(oldSize, newSize)
+			pc.availablePermits.add(newSize - oldSize)
+		}
+	}
+}
+
+func (pc *partitionConsumer) markScaleIfNeed() {
+	needScale := pc.availablePermits.get()+int32(len(pc.queueCh)) >=
+		pc.currentQueueSize.Load()
+	if needScale {
+		if pc.scaleReceiverQueueHint.CompareAndSwap(false, true) {
+			pc.log.Debug("update scaleReceiverQueueHint from false -> false")
+		}
 	}
 }
 
