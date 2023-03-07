@@ -154,7 +154,8 @@ func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration)
 			p.Lock()
 			for k, c := range p.connections {
 				if c.CheckIdle(maxIdleTime) {
-					c.log.Debugf("Closed connection due to inactivity.")
+					p.log.Debugf("Closed connection from pool due to inactivity. logical_addr=%+v physical_addr=%+v",
+						c.logicalAddr, c.physicalAddr)
 					delete(p.connections, k)
 					c.Close()
 				}
