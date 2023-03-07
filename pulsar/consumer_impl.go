@@ -538,6 +538,10 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 	}
 
 	msgID := c.messageID(msg.ID())
+	if msgID == nil {
+		return
+	}
+
 	props := make(map[string]string)
 	for k, v := range msg.Properties() {
 		props[k] = v
@@ -589,6 +593,10 @@ func (c *consumer) Nack(msg Message) {
 	}
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
 		mid := c.messageID(msg.ID())
+		if mid == nil {
+			return
+		}
+
 		if mid.consumer != nil {
 			mid.consumer.NackID(msg.ID())
 			return
