@@ -20,10 +20,11 @@ package pulsar
 import (
 	"context"
 	"errors"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	"github.com/stretchr/testify/assert"
 	"testing"
 	"time"
+
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/stretchr/testify/assert"
 )
 
 func TestTCClient(t *testing.T) {
@@ -94,8 +95,7 @@ func TestTCClient(t *testing.T) {
 *			1. Register ack topic and send topic, and call http request to get the stats of the transaction
 *              to do verification.
  */
-
-//1. Test abort and commit txn.
+/** TestTxnImplCommitOrAbort Test abort and commit txn */
 func TestTxnImplCommitOrAbort(t *testing.T) {
 	tc, _ := createTcClient(t)
 	//1. Open a transaction and then commit it.
@@ -129,7 +129,7 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	assert.Equal(t, txn1.GetState(), State(Errored))
 }
 
-//2. Test the internal API, registerSendOrAckOp and endSendOrAckOp
+/** TestRegisterOpAndEndOp Test the internal API including the registerSendOrAckOp and endSendOrAckOp. */
 func TestRegisterOpAndEndOp(t *testing.T) {
 	tc, _ := createTcClient(t)
 	//1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
@@ -137,7 +137,7 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 	res := registerOpAndEndOp(txn3, 4, 3, nil)
 	select {
 	case <-res:
-		t.Fatalf("The transaction %d:%d should not be commited or aborted", txn3.txnID.mostSigBits,
+		t.Fatalf("The transaction %d:%d should not be committed or aborted", txn3.txnID.mostSigBits,
 			txn3.txnID.leastSigBits)
 	case <-time.After(3 * time.Second):
 	}
@@ -147,7 +147,7 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 	select {
 	case <-res:
 	case <-time.After(3 * time.Second):
-		t.Fatalf("The transaction %d:%d should be commited or aborted", txn4.txnID.mostSigBits,
+		t.Fatalf("The transaction %d:%d should be committed or aborted", txn4.txnID.mostSigBits,
 			txn4.txnID.leastSigBits)
 	}
 	//3. Register an operation and end the operation with an error,
@@ -157,7 +157,7 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 	assert.Equal(t, txn5.GetState(), State(Errored))
 }
 
-//3. Test the internal API, registerAckTopic and registerProducerTopic
+/** TestRegisterTopic Test the internal API, registerAckTopic and registerProducerTopic */
 func TestRegisterTopic(t *testing.T) {
 	//1. Prepare: create PulsarClient and init transaction coordinator client.
 	topic := newTopicName()

@@ -2,12 +2,13 @@ package pulsar
 
 import (
 	"context"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	"github.com/apache/pulsar-client-go/pulsar/log"
-	uAtomic "go.uber.org/atomic"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
+	uAtomic "go.uber.org/atomic"
 )
 
 type State int32
@@ -82,9 +83,8 @@ func (txn *transaction) Commit(ctx context.Context) error {
 		if err.(*Error).Result() == TransactionNoFoundError || err.(*Error).Result() == InvalidStatus {
 			atomic.StoreInt32((*int32)(&txn.state), Errored)
 			return err
-		} else {
-			txn.opsFlow <- struct{}{}
 		}
+		txn.opsFlow <- struct{}{}
 	}
 	return err
 }
@@ -127,21 +127,6 @@ func (txn *transaction) endSendOrAckOp(err error) {
 	}
 }
 
-func (txn *transaction) registerProducedTopicAsync(topic string, callback func(err error)) {
-	go func() {
-		err := txn.registerProducerTopic(topic)
-		callback(err)
-	}()
-}
-
-func (txn *transaction) registerAckTopicAsync(topic string, subName string,
-	callback func(err error)) {
-	go func() {
-		err := txn.registerAckTopic(topic, subName)
-		callback(err)
-	}()
-}
-
 func (txn *transaction) registerProducerTopic(topic string) error {
 	isOpen, err := txn.checkIfOpen()
 	if !isOpen {
@@ -156,10 +141,8 @@ func (txn *transaction) registerProducerTopic(topic string) error {
 			return err
 		}
 		txn.registerPartitions[topic] = struct{}{}
-		return nil
-	} else {
-		return nil
 	}
+	return nil
 }
 
 func (txn *transaction) registerAckTopic(topic string, subName string) error {
@@ -180,10 +163,8 @@ func (txn *transaction) registerAckTopic(topic string, subName string) error {
 			return err
 		}
 		txn.registerAckSubscriptions[sub] = struct{}{}
-		return nil
-	} else {
-		return nil
 	}
+	return nil
 }
 
 func (txn *transaction) GetTxnID() TxnID {
@@ -193,17 +174,8 @@ func (txn *transaction) GetTxnID() TxnID {
 func (txn *transaction) checkIfOpen() (bool, error) {
 	if txn.state == Open {
 		return true, nil
-	} else {
-		return false, newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
 	}
-}
-
-func (txn *transaction) checkIfOpenOrAborting() (bool, error) {
-	if atomic.CompareAndSwapInt32((*int32)(&txn.state), Open, Aborting) || txn.state == Aborted {
-		return true, nil
-	} else {
-		return false, newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
-	}
+	return false, newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
 }
 
 func (state State) string() string {
