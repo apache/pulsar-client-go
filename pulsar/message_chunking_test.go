@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"strings"
 	"sync"
 	"testing"
@@ -290,6 +291,13 @@ func TestChunksEnqueueFailed(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 	defer producer.Close()
+
+	// Reduce publish rate to prevent the producer sending messages too fast
+	url := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/publishRate"
+	makeHTTPCall(t, http.MethodPost, url, "{\"publishThrottlingRateInMsg\": 1,\"publishThrottlingRateInByte\": 1000}")
+
+	// Need to wait some time to let the rate limiter take effect
+	time.Sleep(2 * time.Second)
 
 	ID, err := producer.Send(context.Background(), &ProducerMessage{
 		Payload: createTestMessagePayload(1000),
