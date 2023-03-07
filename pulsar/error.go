@@ -17,7 +17,10 @@
 
 package pulsar
 
-import "fmt"
+import (
+	"fmt"
+	proto "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+)
 
 // Result used to represent pulsar processing is an alias of type int.
 type Result int
@@ -103,14 +106,11 @@ const (
 	ProducerClosed
 	// SchemaFailure means the payload could not be encoded using the Schema
 	SchemaFailure
-
-	// ReachMaxPendingOps means the pending operations in transaction_impl coordinator reach the maximum.
-	ReachMaxPendingOps
 	// InvalidStatus means the component status is not as expected.
 	InvalidStatus
-	// TransactionError means this is a transaction related error
-	TransactionError
-
+	// TransactionNoFoundError The transaction is not exist in the transaction coordinator, It may be an error txn
+	// or already ended.
+	TransactionNoFoundError
 	// ClientMemoryBufferIsFull client limit buffer is full
 	ClientMemoryBufferIsFull
 )
@@ -223,5 +223,16 @@ func getResultStr(r Result) string {
 		return "ClientMemoryBufferIsFull"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
+	}
+}
+
+func getErrorFromServerError(serverError *proto.ServerError) error {
+	switch *serverError {
+	case proto.ServerError_TransactionNotFound:
+		return newError(TransactionNoFoundError, serverError.String())
+	case proto.ServerError_InvalidTxnStatus:
+		return newError(InvalidStatus, serverError.String())
+	default:
+		return newError(UnknownError, serverError.String())
 	}
 }
