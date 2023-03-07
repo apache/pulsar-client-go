@@ -531,10 +531,17 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 	if delay < 0 {
 		delay = 0
 	}
+
+	if !checkMessageIDType(msg.ID()) {
+		c.log.Warnf("invalid message id type %T", msg.ID())
+		return
+	}
+
 	msgID := c.messageID(msg.ID())
 	if msgID == nil {
 		return
 	}
+
 	props := make(map[string]string)
 	for k, v := range msg.Properties() {
 		props[k] = v
@@ -580,6 +587,10 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 }
 
 func (c *consumer) Nack(msg Message) {
+	if !checkMessageIDType(msg.ID()) {
+		c.log.Warnf("invalid message id type %T", msg.ID())
+		return
+	}
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
 		mid := c.messageID(msg.ID())
 		if mid == nil {
@@ -745,10 +756,6 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 
 func (c *consumer) messageID(msgID MessageID) *trackingMessageID {
 	mid := toTrackingMessageID(msgID)
-	if mid == nil {
-		c.log.Warnf("invalid message id type %T", msgID)
-		return nil
-	}
 
 	partition := int(mid.partitionIdx)
 	// did we receive a valid partition index?

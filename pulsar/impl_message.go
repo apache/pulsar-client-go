@@ -213,6 +213,16 @@ func newMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx in
 	}
 }
 
+func fromMessageID(msgID MessageID) *messageID {
+	return &messageID{
+		ledgerID:     msgID.LedgerID(),
+		entryID:      msgID.EntryID(),
+		batchIdx:     msgID.BatchIdx(),
+		partitionIdx: msgID.PartitionIdx(),
+		batchSize:    msgID.BatchSize(),
+	}
+}
+
 func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32,
 	tracker *ackTracker) *trackingMessageID {
 	return &trackingMessageID{
@@ -228,22 +238,26 @@ func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partiti
 	}
 }
 
-func toTrackingMessageID(msgID MessageID) *trackingMessageID {
-	if mid, ok := msgID.(*messageID); ok {
-		return &trackingMessageID{
-			messageID:    mid,
-			receivedTime: time.Now(),
-		}
-	} else if mid, ok := msgID.(*trackingMessageID); ok {
+// checkMessageIDType checks if the MessageID is user-defined
+func checkMessageIDType(msgID MessageID) (valid bool) {
+	switch msgID.(type) {
+	case *trackingMessageID:
+		return true
+	case *chunkMessageID:
+		return true
+	case *messageID:
+		return true
+	default:
+		return false
+	}
+}
+
+func toTrackingMessageID(msgID MessageID) (trackingMsgID *trackingMessageID) {
+	if mid, ok := msgID.(*trackingMessageID); ok {
 		return mid
-	} else if cmid, ok := msgID.(*chunkMessageID); ok {
-		return &trackingMessageID{
-			messageID:    cmid.messageID,
-			receivedTime: cmid.receivedTime,
-			consumer:     cmid.consumer,
-		}
-	} else {
-		return nil
+	}
+	return &trackingMessageID{
+		messageID: fromMessageID(msgID),
 	}
 }
 
