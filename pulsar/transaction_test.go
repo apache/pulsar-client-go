@@ -205,13 +205,17 @@ func registerOpAndEndOp(t *testing.T, txn *transaction, rp int, ep int, err erro
 
 	res := make(chan struct{})
 	go func() {
+		txn.Lock()
 		txn.state = Open
 		txn.Commit(context.Background())
+		txn.Unlock()
 		res <- struct{}{}
 	}()
 	go func() {
+		txn.Lock()
 		txn.state = Open
 		txn.Abort(context.Background())
+		txn.Unlock()
 		res <- struct{}{}
 	}()
 	return res
