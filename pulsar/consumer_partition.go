@@ -310,7 +310,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.unAckChunksTracker = newUnAckChunksTracker(pc)
 	pc.ackGroupingTracker = newAckGroupingTracker(options.ackGroupingOptions,
 		func(id MessageID) { pc.sendIndividualAck(id) },
-		func(id MessageID) { pc.sendCumulativeAck(id) })
+		func(id MessageID) { pc.sendCumulativeAck(id) },
+		func(ids []*pb.MessageIdData) { pc.eventsCh <- ids })
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
@@ -835,6 +836,14 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		pc.log.Error("Connection was closed when request ack cmd")
 		req.err = err
 	}
+}
+
+func (pc *partitionConsumer) internalAckList(msgIDs []*pb.MessageIdData) {
+	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, &pb.CommandAck{
+		AckType:    pb.CommandAck_Individual.Enum(),
+		ConsumerId: proto.Uint64(pc.consumerID),
+		MessageId:  msgIDs,
+	})
 }
 
 func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, headersAndPayload internal.Buffer) error {
@@ -1364,6 +1373,8 @@ func (pc *partitionConsumer) runEventsLoop() {
 			switch v := i.(type) {
 			case *ackRequest:
 				pc.internalAck(v)
+			case []*pb.MessageIdData:
+				pc.internalAckList(v)
 			case *redeliveryRequest:
 				pc.internalRedeliver(v)
 			case *unsubscribeRequest:

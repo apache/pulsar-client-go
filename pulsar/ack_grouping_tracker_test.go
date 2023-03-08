@@ -19,11 +19,13 @@ package pulsar
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,7 +47,8 @@ func TestNoCacheTracker(t *testing.T) {
 				ledgerID1 := int64(-1)
 				tracker := newAckGroupingTracker(&option,
 					func(id MessageID) { ledgerID0 = id.LedgerID() },
-					func(id MessageID) { ledgerID1 = id.LedgerID() })
+					func(id MessageID) { ledgerID1 = id.LedgerID() },
+					nil)
 
 				tracker.add(&messageID{ledgerID: 1})
 				assert.Equal(t, atomic.LoadInt64(&ledgerID0), int64(1))
@@ -61,10 +64,12 @@ type mockAcker struct {
 	cumulativeLedgerID int64
 }
 
-func (a *mockAcker) ack(id MessageID) {
+func (a *mockAcker) ack(ids []*pb.MessageIdData) {
 	defer a.Unlock()
 	a.Lock()
-	a.ledgerIDs = append(a.ledgerIDs, id.LedgerID())
+	for _, id := range ids {
+		a.ledgerIDs = append(a.ledgerIDs, int64(*id.LedgerId))
+	}
 }
 
 func (a *mockAcker) ackCumulative(id MessageID) {
@@ -74,6 +79,8 @@ func (a *mockAcker) ackCumulative(id MessageID) {
 func (a *mockAcker) getLedgerIDs() []int64 {
 	defer a.Unlock()
 	a.Lock()
+
+	sort.Slice(a.ledgerIDs, func(i, j int) bool { return a.ledgerIDs[i] < a.ledgerIDs[j] })
 	return a.ledgerIDs
 }
 
@@ -88,8 +95,8 @@ func (a *mockAcker) reset() {
 
 func TestCachedTracker(t *testing.T) {
 	var acker mockAcker
-	tracker := newAckGroupingTracker(&AckGroupingOptions{MaxSize: 3, MaxTime: 0},
-		func(id MessageID) { acker.ack(id) }, func(id MessageID) { acker.ackCumulative(id) })
+	tracker := newAckGroupingTracker(&AckGroupingOptions{MaxSize: 3, MaxTime: 0}, nil,
+		func(id MessageID) { acker.ackCumulative(id) }, func(ids []*pb.MessageIdData) { acker.ack(ids) })
 
 	tracker.add(&messageID{ledgerID: 1})
 	tracker.add(&messageID{ledgerID: 2})
@@ -126,7 +133,8 @@ func TestCachedTracker(t *testing.T) {
 func TestTimedTrackerIndividualAck(t *testing.T) {
 	var acker mockAcker
 	// MaxSize: 1000, MaxTime: 100ms
-	tracker := newAckGroupingTracker(nil, func(id MessageID) { acker.ack(id) }, nil)
+	tracker := newAckGroupingTracker(nil, nil,
+		func(id MessageID) { acker.ackCumulative(id) }, func(ids []*pb.MessageIdData) { acker.ack(ids) })
 
 	expected := make([]int64, 0)
 	for i := 0; i < 999; i++ {
@@ -161,7 +169,7 @@ func TestTimedTrackerIndividualAck(t *testing.T) {
 func TestTimedTrackerCumulativeAck(t *testing.T) {
 	var acker mockAcker
 	// MaxTime is 100ms
-	tracker := newAckGroupingTracker(nil, nil, func(id MessageID) { acker.ackCumulative(id) })
+	tracker := newAckGroupingTracker(nil, nil, func(id MessageID) { acker.ackCumulative(id) }, nil)
 
 	// case 1: flush because of the timeout
 	tracker.addCumulative(&messageID{ledgerID: 1})
@@ -182,7 +190,8 @@ func TestTimedTrackerCumulativeAck(t *testing.T) {
 }
 
 func TestTimedTrackerIsDuplicate(t *testing.T) {
-	tracker := newAckGroupingTracker(nil, func(id MessageID) {}, func(id MessageID) {})
+	tracker := newAckGroupingTracker(nil, func(id MessageID) {}, func(id MessageID) {},
+		func(id []*pb.MessageIdData) {})
 
 	tracker.add(&messageID{batchIdx: 0, batchSize: 3})
 	tracker.add(&messageID{batchIdx: 2, batchSize: 3})
@@ -198,12 +207,37 @@ func TestTimedTrackerIsDuplicate(t *testing.T) {
 
 func TestDuplicateAfterClose(t *testing.T) {
 	var acker mockAcker
-	tracker := newAckGroupingTracker(&AckGroupingOptions{MaxSize: 3, MaxTime: 0},
-		func(id MessageID) { acker.ack(id) }, func(id MessageID) { acker.ackCumulative(id) })
+	tracker := newAckGroupingTracker(&AckGroupingOptions{MaxSize: 3, MaxTime: 0}, nil,
+		func(id MessageID) { acker.ackCumulative(id) }, func(ids []*pb.MessageIdData) { acker.ack(ids) })
 
 	tracker.add(&messageID{ledgerID: 1})
 	assert.True(t, tracker.isDuplicate(&messageID{ledgerID: 1}))
 
 	tracker.close()
 	assert.False(t, tracker.isDuplicate(&messageID{ledgerID: 1}))
+}
+
+func TestTrackerPendingAcks(t *testing.T) {
+	m := make(map[uint64][]int64)
+	tracker := newAckGroupingTracker(&AckGroupingOptions{MaxSize: 3, MaxTime: 0}, nil, nil,
+		func(ids []*pb.MessageIdData) {
+			for _, id := range ids {
+				m[*id.LedgerId] = id.AckSet
+			}
+		})
+	tracker.add(&messageID{ledgerID: 0, batchIdx: 0, batchSize: 30})
+	for i := 0; i < 10; i++ {
+		tracker.add(&messageID{ledgerID: 1, batchIdx: int32(i), batchSize: 10})
+	}
+	assert.Equal(t, 0, len(m)) // the number of entries is 2, so it's not flushed
+	tracker.flush()
+	assert.Equal(t, 2, len(m))
+
+	ackSet, found := m[0]
+	assert.True(t, found)
+	assert.Greater(t, len(ackSet), 0)
+
+	ackSet, found = m[1]
+	assert.True(t, found)
+	assert.Equal(t, 0, len(ackSet)) // all messages in the batch are acknowledged
 }

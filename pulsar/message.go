@@ -212,11 +212,3 @@ func messageIDCompare(lhs MessageID, rhs MessageID) int {
 	}
 	return 0
 }
-
-func messageIDHash(id MessageID) int64 {
-	return id.LedgerID() + 31*id.EntryID()
-}
-
-func messageIDIsBatch(id MessageID) bool {
-	return id.BatchIdx() >= 0 && id.BatchSize() > 0
-}
