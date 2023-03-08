@@ -200,10 +200,12 @@ func registerOpAndEndOp(txn *transaction, rp int, ep int, err error) <-chan stru
 
 	res := make(chan struct{})
 	go func() {
+		txn.state = Open
 		txn.Commit(context.Background())
 		res <- struct{}{}
 	}()
 	go func() {
+		txn.state = Open
 		txn.Abort(context.Background())
 		res <- struct{}{}
 	}()
