@@ -195,3 +195,15 @@ func TestTimedTrackerIsDuplicate(t *testing.T) {
 	assert.False(t, tracker.isDuplicate(&messageID{batchIdx: 1, batchSize: 3}))
 	assert.False(t, tracker.isDuplicate(&messageID{batchIdx: 2, batchSize: 3}))
 }
+
+func TestDuplicateAfterClose(t *testing.T) {
+	var acker mockAcker
+	tracker := newAckGroupingTracker(&AckGroupingOptions{MaxSize: 3, MaxTime: 0},
+		func(id MessageID) { acker.ack(id) }, func(id MessageID) { acker.ackCumulative(id) })
+
+	tracker.add(&messageID{ledgerID: 1})
+	assert.True(t, tracker.isDuplicate(&messageID{ledgerID: 1}))
+
+	tracker.close()
+	assert.False(t, tracker.isDuplicate(&messageID{ledgerID: 1}))
+}
