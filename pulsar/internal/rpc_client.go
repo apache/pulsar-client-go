@@ -138,7 +138,7 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 			// Ignoring producer not ready response.
 			// Continue to wait for the producer to create successfully
 			if res.error == nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
-				if !*res.RPCResult.Response.ProducerSuccess.ProducerReady {
+				if !res.RPCResult.Response.ProducerSuccess.GetProducerReady() {
 					timeoutCh = nil
 					break
 				}
