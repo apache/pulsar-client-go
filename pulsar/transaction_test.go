@@ -88,7 +88,7 @@ func TestTCClient(t *testing.T) {
 *			The operations of committing/aborting txn should success at the first time and fail at the second time.
 *       2. The internal API, registerSendOrAckOp and endSendOrAckOp
 *			1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
-*			2. Register 4 operation and end 4 operation the transaction can be committed and aborted.
+*			2. Register 3 operation and end 3 operation the transaction can be committed and aborted.
 *			3. Register an operation and end the operation with an error,
 *			and then the state of the transaction should be replaced to errored.
 *		3. The internal API, registerAckTopic and registerProducerTopic
@@ -137,28 +137,22 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 func TestRegisterOpAndEndOp(t *testing.T) {
 	tc, _ := createTcClient(t)
 	//1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
-	txn3 := createTxn(tc, t)
-	res := registerOpAndEndOp(t, txn3, 4, 3, nil)
-	select {
-	case <-res:
-		t.Fatalf("The transaction %d:%d should not be committed or aborted", txn3.txnID.mostSigBits,
-			txn3.txnID.leastSigBits)
-	case <-time.After(3 * time.Second):
-	}
-	//2. Register 4 operation and end 4 operation the transaction can be committed and aborted.
-	txn4 := createTxn(tc, t)
-	res = registerOpAndEndOp(t, txn4, 4, 4, nil)
-	select {
-	case <-res:
-	case <-time.After(3 * time.Second):
-		t.Fatalf("The transaction %d:%d should be committed or aborted", txn4.txnID.mostSigBits,
-			txn4.txnID.leastSigBits)
-	}
+	res := registerOpAndEndOp(t, tc, 4, 3, nil, true)
+	assert.Equal(t, res.(*Error).Result(), TimeoutError)
+	res = registerOpAndEndOp(t, tc, 4, 3, nil, false)
+	assert.Equal(t, res.(*Error).Result(), TimeoutError)
+
+	//2. Register 3 operation and end 3 operation the transaction can be committed and aborted.
+	res = registerOpAndEndOp(t, tc, 3, 3, nil, true)
+	assert.Nil(t, res)
+	res = registerOpAndEndOp(t, tc, 3, 3, nil, false)
+	assert.Nil(t, res)
 	//3. Register an operation and end the operation with an error,
 	// and then the state of the transaction should be replaced to errored.
-	txn5 := createTxn(tc, t)
-	registerOpAndEndOp(t, txn5, 4, 4, errors.New(""))
-	assert.Equal(t, txn5.GetState(), State(Errored))
+	res = registerOpAndEndOp(t, tc, 4, 4, errors.New(""), true)
+	assert.Equal(t, res.(*Error).Result(), InvalidStatus)
+	res = registerOpAndEndOp(t, tc, 4, 4, errors.New(""), false)
+	assert.Equal(t, res.(*Error).Result(), InvalidStatus)
 }
 
 /** TestRegisterTopic Test the internal API, registerAckTopic and registerProducerTopic */
@@ -194,7 +188,8 @@ func TestRegisterTopic(t *testing.T) {
 	assert.NotNil(t, subs[sub])
 }
 
-func registerOpAndEndOp(t *testing.T, txn *transaction, rp int, ep int, err error) <-chan struct{} {
+func registerOpAndEndOp(t *testing.T, tc *transactionCoordinatorClient, rp int, ep int, err error, commit bool) error {
+	txn := createTxn(tc, t)
 	for i := 0; i < rp; i++ {
 		err := txn.registerSendOrAckOp()
 		assert.Nil(t, err)
@@ -202,23 +197,12 @@ func registerOpAndEndOp(t *testing.T, txn *transaction, rp int, ep int, err erro
 	for i := 0; i < ep; i++ {
 		txn.endSendOrAckOp(err)
 	}
-
-	res := make(chan struct{})
-	go func() {
-		txn.Lock()
-		txn.state = Open
-		txn.Commit(context.Background())
-		txn.Unlock()
-		res <- struct{}{}
-	}()
-	go func() {
-		txn.Lock()
-		txn.state = Open
-		txn.Abort(context.Background())
-		txn.Unlock()
-		res <- struct{}{}
-	}()
-	return res
+	if commit {
+		err = txn.Commit(context.Background())
+	} else {
+		err = txn.Abort(context.Background())
+	}
+	return err
 }
 
 func createTxn(tc *transactionCoordinatorClient, t *testing.T) *transaction {

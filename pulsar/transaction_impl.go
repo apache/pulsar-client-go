@@ -56,9 +56,10 @@ type transaction struct {
 	*			  1. When the transaction is committed or aborted, an empty struct{} will be read from opsFlow chan.
 	*			  2. When the opsCount increment from 0 to 1, an empty struct{} will be read from opsFlow chan.
 	 */
-	opsFlow  chan struct{}
-	opsCount uAtomic.Int32
-	log      log.Logger
+	opsFlow   chan struct{}
+	opsCount  uAtomic.Int32
+	opTimeout time.Duration
+	log       log.Logger
 }
 
 func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout time.Duration) *transaction {
@@ -68,6 +69,7 @@ func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout ti
 		registerPartitions:       make(map[string]void),
 		registerAckSubscriptions: make(map[subscription]void),
 		opsFlow:                  make(chan struct{}, 1),
+		opTimeout:                5 * time.Second,
 		tcClient:                 tcClient,
 	}
 	//This means there are not pending requests with this transaction. The transaction can be committed or aborted.
@@ -91,7 +93,11 @@ func (txn *transaction) Commit(ctx context.Context) error {
 	}
 
 	//Wait for all operations to complete
-	<-txn.opsFlow
+	select {
+	case <-txn.opsFlow:
+	case <-time.After(txn.opTimeout):
+		return newError(TimeoutError, "There are some operations that are not completed after the timeout.")
+	}
 	//Send commit transaction command to transaction coordinator
 	err := txn.tcClient.endTxn(&txn.txnID, pb.TxnAction_COMMIT)
 	if err == nil {
@@ -112,7 +118,11 @@ func (txn *transaction) Abort(ctx context.Context) error {
 	}
 
 	//Wait for all operations to complete
-	<-txn.opsFlow
+	select {
+	case <-txn.opsFlow:
+	case <-time.After(txn.opTimeout):
+		return newError(TimeoutError, "There are some operations that are not completed after the timeout.")
+	}
 	//Send abort transaction command to transaction coordinator
 	err := txn.tcClient.endTxn(&txn.txnID, pb.TxnAction_ABORT)
 	if err == nil {
@@ -133,7 +143,7 @@ func (txn *transaction) registerSendOrAckOp() error {
 		select {
 		case <-txn.opsFlow:
 			return nil
-		case <-time.After(3 * time.Second):
+		case <-time.After(txn.opTimeout):
 			if txn.state != Open {
 				return newError(InvalidStatus, "Expect state of the transaction is OPEN, "+
 					"but "+txn.GetState().string())
