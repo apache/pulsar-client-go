@@ -525,7 +525,7 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponse(cmd.Success.GetRequestId(), cmd)
 
 	case pb.BaseCommand_PRODUCER_SUCCESS:
-		if !*cmd.ProducerSuccess.ProducerReady {
+		if !cmd.ProducerSuccess.GetProducerReady() {
 			request, ok := c.findPendingRequest(cmd.ProducerSuccess.GetRequestId())
 			if ok {
 				request.callback(cmd, nil)
