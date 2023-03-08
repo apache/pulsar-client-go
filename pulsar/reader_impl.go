@@ -90,22 +90,33 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		options.Decryption.MessageCrypto = messageCrypto
 	}
 
+	if options.MaxPendingChunkedMessage == 0 {
+		options.MaxPendingChunkedMessage = 100
+	}
+
+	if options.ExpireTimeOfIncompleteChunk == 0 {
+		options.ExpireTimeOfIncompleteChunk = time.Minute
+	}
+
 	consumerOptions := &partitionConsumerOpts{
-		topic:                      options.Topic,
-		consumerName:               options.Name,
-		subscription:               subscriptionName,
-		subscriptionType:           Exclusive,
-		receiverQueueSize:          receiverQueueSize,
-		startMessageID:             startMessageID,
-		startMessageIDInclusive:    options.StartMessageIDInclusive,
-		subscriptionMode:           nonDurable,
-		readCompacted:              options.ReadCompacted,
-		metadata:                   options.Properties,
-		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
-		replicateSubscriptionState: false,
-		decryption:                 options.Decryption,
-		schema:                     options.Schema,
-		backoffPolicy:              options.BackoffPolicy,
+		topic:                       options.Topic,
+		consumerName:                options.Name,
+		subscription:                subscriptionName,
+		subscriptionType:            Exclusive,
+		receiverQueueSize:           receiverQueueSize,
+		startMessageID:              startMessageID,
+		startMessageIDInclusive:     options.StartMessageIDInclusive,
+		subscriptionMode:            nonDurable,
+		readCompacted:               options.ReadCompacted,
+		metadata:                    options.Properties,
+		nackRedeliveryDelay:         defaultNackRedeliveryDelay,
+		replicateSubscriptionState:  false,
+		decryption:                  options.Decryption,
+		schema:                      options.Schema,
+		backoffPolicy:               options.BackoffPolicy,
+		maxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
+		expireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
+		autoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
 	}
 
 	reader := &reader{
