@@ -127,6 +127,10 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	err = txn2.Abort(context.Background())
 	assert.Equal(t, err.(*Error).Result(), TransactionNoFoundError)
 	assert.Equal(t, txn1.GetState(), State(Errored))
+	err = txn2.registerSendOrAckOp()
+	assert.Equal(t, err.(*Error).Result(), InvalidStatus)
+	err = txn1.registerSendOrAckOp()
+	assert.Equal(t, err.(*Error).Result(), InvalidStatus)
 }
 
 /** TestRegisterOpAndEndOp Test the internal API including the registerSendOrAckOp and endSendOrAckOp. */
@@ -134,7 +138,7 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 	tc, _ := createTcClient(t)
 	//1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
 	txn3 := createTxn(tc, t)
-	res := registerOpAndEndOp(txn3, 4, 3, nil)
+	res := registerOpAndEndOp(t, txn3, 4, 3, nil)
 	select {
 	case <-res:
 		t.Fatalf("The transaction %d:%d should not be committed or aborted", txn3.txnID.mostSigBits,
@@ -143,7 +147,7 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 	}
 	//2. Register 4 operation and end 4 operation the transaction can be committed and aborted.
 	txn4 := createTxn(tc, t)
-	res = registerOpAndEndOp(txn4, 4, 4, nil)
+	res = registerOpAndEndOp(t, txn4, 4, 4, nil)
 	select {
 	case <-res:
 	case <-time.After(3 * time.Second):
@@ -153,7 +157,7 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 	//3. Register an operation and end the operation with an error,
 	// and then the state of the transaction should be replaced to errored.
 	txn5 := createTxn(tc, t)
-	registerOpAndEndOp(txn5, 4, 4, errors.New(""))
+	registerOpAndEndOp(t, txn5, 4, 4, errors.New(""))
 	assert.Equal(t, txn5.GetState(), State(Errored))
 }
 
@@ -190,9 +194,10 @@ func TestRegisterTopic(t *testing.T) {
 	assert.NotNil(t, subs[sub])
 }
 
-func registerOpAndEndOp(txn *transaction, rp int, ep int, err error) <-chan struct{} {
+func registerOpAndEndOp(t *testing.T, txn *transaction, rp int, ep int, err error) <-chan struct{} {
 	for i := 0; i < rp; i++ {
-		txn.registerSendOrAckOp()
+		err := txn.registerSendOrAckOp()
+		assert.Nil(t, err)
 	}
 	for i := 0; i < ep; i++ {
 		txn.endSendOrAckOp(err)

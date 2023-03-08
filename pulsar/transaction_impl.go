@@ -127,11 +127,21 @@ func (txn *transaction) Abort(ctx context.Context) error {
 	return err
 }
 
-func (txn *transaction) registerSendOrAckOp() {
+func (txn *transaction) registerSendOrAckOp() error {
 	if txn.opsCount.Inc() == 1 {
 		//There are new operations that not completed
-		<-txn.opsFlow
+		select {
+		case <-txn.opsFlow:
+			return nil
+		case <-time.After(3 * time.Second):
+			if txn.state != Open {
+				return newError(InvalidStatus, "Expect state of the transaction is OPEN, "+
+					"but "+txn.GetState().string())
+			}
+			return newError(TimeoutError, "Failed to get the semaphore to register the send/ack operation")
+		}
 	}
+	return nil
 }
 
 func (txn *transaction) endSendOrAckOp(err error) {
