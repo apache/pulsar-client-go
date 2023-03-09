@@ -99,7 +99,7 @@ type ReaderOptions struct {
 	// ExpireTimeOfIncompleteChunk sets the expiry time of discarding incomplete chunked message. (default: 60 seconds)
 	ExpireTimeOfIncompleteChunk time.Duration
 
-	// AutoAckIncompleteChunk sets whether consumer auto acknowledges incomplete chunked message when it should
+	// AutoAckIncompleteChunk sets whether reader auto acknowledges incomplete chunked message when it should
 	// be removed (e.g.the chunked message pending queue is full). (default: false)
 	AutoAckIncompleteChunk bool
 }
