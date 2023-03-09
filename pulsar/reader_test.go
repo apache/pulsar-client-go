@@ -70,6 +70,45 @@ func TestReaderConfigSubscribeName(t *testing.T) {
 	assert.NotNil(t, consumer)
 }
 
+func TestReaderConfigChunk(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	r1, err := client.CreateReader(ReaderOptions{
+		Topic:                       "my-topic1",
+		StartMessageID:              EarliestMessageID(),
+		MaxPendingChunkedMessage:    50,
+		ExpireTimeOfIncompleteChunk: 30 * time.Second,
+		AutoAckIncompleteChunk:      true,
+	})
+	assert.Nil(t, err)
+	defer r1.Close()
+
+	// verify specified chunk options
+	pcOpts := r1.(*reader).pc.options
+	assert.Equal(t, 50, pcOpts.maxPendingChunkedMessage)
+	assert.Equal(t, 30*time.Second, pcOpts.expireTimeOfIncompleteChunk)
+	assert.True(t, pcOpts.autoAckIncompleteChunk)
+
+	r2, err := client.CreateReader(ReaderOptions{
+		Topic:          "my-topic2",
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	defer r2.Close()
+
+	// verify default chunk options
+	pcOpts = r2.(*reader).pc.options
+	assert.Equal(t, 100, pcOpts.maxPendingChunkedMessage)
+	assert.Equal(t, time.Minute, pcOpts.expireTimeOfIncompleteChunk)
+	assert.False(t, pcOpts.autoAckIncompleteChunk)
+}
+
 func TestReader(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
