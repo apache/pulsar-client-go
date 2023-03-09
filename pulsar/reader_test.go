@@ -79,35 +79,31 @@ func TestReaderConfigChunk(t *testing.T) {
 	}
 	defer client.Close()
 
-	consumer1, err := client.CreateReader(ReaderOptions{
+	r1, err := client.CreateReader(ReaderOptions{
 		Topic:                       "my-topic1",
 		StartMessageID:              EarliestMessageID(),
 		MaxPendingChunkedMessage:    50,
 		ExpireTimeOfIncompleteChunk: 30 * time.Second,
 		AutoAckIncompleteChunk:      true,
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer consumer1.Close()
+	assert.Nil(t, err)
+	defer r1.Close()
 
 	// verify specified chunk options
-	pcOpts := consumer1.(*reader).pc.options
+	pcOpts := r1.(*reader).pc.options
 	assert.Equal(t, 50, pcOpts.maxPendingChunkedMessage)
 	assert.Equal(t, 30*time.Second, pcOpts.expireTimeOfIncompleteChunk)
 	assert.True(t, pcOpts.autoAckIncompleteChunk)
 
-	consumer2, err := client.CreateReader(ReaderOptions{
+	r2, err := client.CreateReader(ReaderOptions{
 		Topic:          "my-topic2",
 		StartMessageID: EarliestMessageID(),
 	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer consumer2.Close()
+	assert.Nil(t, err)
+	defer r2.Close()
 
 	// verify default chunk options
-	pcOpts = consumer2.(*reader).pc.options
+	pcOpts = r2.(*reader).pc.options
 	assert.Equal(t, 100, pcOpts.maxPendingChunkedMessage)
 	assert.Equal(t, time.Minute, pcOpts.expireTimeOfIncompleteChunk)
 	assert.False(t, pcOpts.autoAckIncompleteChunk)
