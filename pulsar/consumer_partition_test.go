@@ -38,7 +38,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
-		func(id MessageID) { pc.sendIndividualAck(id) }, nil)
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -76,7 +76,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
-		func(id MessageID) { pc.sendIndividualAck(id) }, nil)
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -111,7 +111,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
-		func(id MessageID) { pc.sendIndividualAck(id) }, nil)
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
