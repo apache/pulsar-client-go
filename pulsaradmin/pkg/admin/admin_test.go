@@ -23,26 +23,29 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/auth"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 )
 
 func TestPulsarClientEndpointEscapes(t *testing.T) {
-	client := pulsarClient{Client: nil, APIVersion: V2}
+	client := pulsarClient{Client: nil, APIVersion: config.V2}
 	actual := client.endpoint("/myendpoint", "abc%? /def", "ghi")
 	expected := "/admin/v2/myendpoint/abc%25%3F%20%2Fdef/ghi"
 	assert.Equal(t, expected, actual)
 }
 
 func TestNew(t *testing.T) {
-	config := &Config{}
+	config := &config.Config{}
 	admin, err := New(config)
 	require.NoError(t, err)
 	require.NotNil(t, admin)
 }
 
 func TestNewWithAuthProvider(t *testing.T) {
-	config := &Config{}
+	config := &config.Config{}
 
-	tokenAuth, err := NewAuthenticationToken("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."+
+	tokenAuth, err := auth.NewAuthenticationToken("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."+
 		"eyJzdWIiOiJhZG1pbiIsImlhdCI6MTUxNjIzOTAyMn0.sVt6cyu3HKd89LcQvZVMNbqT0DTl3FvG9oYbj8hBDqU", nil)
 	require.NoError(t, err)
 	require.NotNil(t, tokenAuth)
@@ -56,7 +59,7 @@ type customAuthProvider struct {
 	transport http.RoundTripper
 }
 
-var _ AuthProvider = &customAuthProvider{}
+var _ auth.Provider = &customAuthProvider{}
 
 func (c *customAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
 	panic("implement me")
@@ -71,8 +74,8 @@ func (c *customAuthProvider) WithTransport(transport http.RoundTripper) {
 }
 
 func TestNewWithCustomAuthProviderWithTransport(t *testing.T) {
-	config := &Config{}
-	defaultTransport, err := NewDefaultTransport(config)
+	config := &config.Config{}
+	defaultTransport, err := auth.NewDefaultTransport(config)
 	require.NoError(t, err)
 
 	customAuthProvider := &customAuthProvider{
@@ -88,7 +91,7 @@ func TestNewWithCustomAuthProviderWithTransport(t *testing.T) {
 }
 
 func TestNewWithTlsAllowInsecure(t *testing.T) {
-	config := &Config{
+	config := &config.Config{
 		TLSAllowInsecureConnection: true,
 	}
 	admin, err := New(config)

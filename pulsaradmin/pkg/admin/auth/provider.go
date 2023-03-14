@@ -15,28 +15,23 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package auth
 
 import (
-	"crypto/tls"
-	"crypto/x509"
-	"io/ioutil"
 	"net/http"
+
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 )
 
-// AuthProvider provide a general method to add auth message
-type AuthProvider interface {
+// Provider provide a general method to add auth message
+type Provider interface {
 	RoundTrip(req *http.Request) (*http.Response, error)
 	Transport() http.RoundTripper
 	WithTransport(tripper http.RoundTripper)
 }
 
-type Transport struct {
-	T http.RoundTripper
-}
-
-func GetAuthProvider(config *Config) (AuthProvider, error) {
-	var provider AuthProvider
+func GetAuthProvider(config *config.Config) (Provider, error) {
+	var provider Provider
 	defaultTransport, err := NewDefaultTransport(config)
 	if err != nil {
 		return nil, err
@@ -68,33 +63,4 @@ func GetAuthProvider(config *Config) (AuthProvider, error) {
 		}
 	}
 	return provider, err
-}
-
-// GetDefaultTransport gets a default transport.
-// Deprecated: Use NewDefaultTransport instead.
-func GetDefaultTransport(config *Config) http.RoundTripper {
-	transport, err := NewDefaultTransport(config)
-	if err != nil {
-		panic(err)
-	}
-
-	return transport
-}
-
-func NewDefaultTransport(config *Config) (http.RoundTripper, error) {
-	transport := http.DefaultTransport.(*http.Transport).Clone()
-	tlsConfig := &tls.Config{
-		InsecureSkipVerify: config.TLSAllowInsecureConnection,
-	}
-	if len(config.TLSTrustCertsFilePath) > 0 {
-		rootCA, err := ioutil.ReadFile(config.TLSTrustCertsFilePath)
-		if err != nil {
-			return nil, err
-		}
-		tlsConfig.RootCAs = x509.NewCertPool()
-		tlsConfig.RootCAs.AppendCertsFromPEM(rootCA)
-	}
-	transport.MaxIdleConnsPerHost = 10
-	transport.TLSClientConfig = tlsConfig
-	return transport, nil
 }

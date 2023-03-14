@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package auth
 
 import (
 	"encoding/json"
@@ -34,7 +34,7 @@ const (
 	TokePluginShortName = "token"
 )
 
-type AuthToken struct {
+type Token struct {
 	Token string `json:"token"`
 }
 
@@ -43,7 +43,7 @@ type TokenAuthProvider struct {
 	token string
 }
 
-// NewAuthenticationToken return a interface of AuthProvider with a string token.
+// NewAuthenticationToken return a interface of Provider with a string token.
 func NewAuthenticationToken(token string, transport http.RoundTripper) (*TokenAuthProvider, error) {
 	if len(token) == 0 {
 		return nil, errors.New("No token provided")
@@ -51,7 +51,7 @@ func NewAuthenticationToken(token string, transport http.RoundTripper) (*TokenAu
 	return &TokenAuthProvider{token: token, T: transport}, nil
 }
 
-// NewAuthenticationTokenFromFile return a interface of a AuthProvider with a string token file path.
+// NewAuthenticationTokenFromFile return a interface of a Provider with a string token file path.
 func NewAuthenticationTokenFromFile(tokenFilePath string, transport http.RoundTripper) (*TokenAuthProvider, error) {
 	data, err := ioutil.ReadFile(tokenFilePath)
 	if err != nil {
@@ -66,7 +66,7 @@ func NewAuthenticationTokenFromAuthParams(encodedAuthParam string,
 	var tokenAuthProvider *TokenAuthProvider
 	var err error
 
-	var tokenJSON AuthToken
+	var tokenJSON Token
 	err = json.Unmarshal([]byte(encodedAuthParam), &tokenJSON)
 	if err != nil {
 		switch {

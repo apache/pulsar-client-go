@@ -15,18 +15,30 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package config
 
-import (
-	"testing"
+type APIVersion int
 
-	"github.com/stretchr/testify/assert"
+const (
+	undefined APIVersion = iota
+	V1
+	V2
+	V3
 )
 
-func TestApiVersion_String(t *testing.T) {
-	assert.Equal(t, "", V1.String())
-	assert.Equal(t, "v2", V2.String())
-	assert.Equal(t, "v3", V3.String())
-	var undefinedAPIVersion APIVersion
-	assert.Equal(t, DefaultAPIVersion, undefinedAPIVersion.String())
+const DefaultAPIVersion = "v2"
+
+func (v APIVersion) String() string {
+	switch v {
+	case undefined:
+		return DefaultAPIVersion
+	case V1:
+		return ""
+	case V2:
+		return "v2"
+	case V3:
+		return "v3"
+	}
+
+	return DefaultAPIVersion
 }
