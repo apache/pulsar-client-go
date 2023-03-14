@@ -1321,13 +1321,12 @@ func (pc *partitionConsumer) dispatcher() {
 				} else if nextMessageInQueue == nil {
 					nextMessageInQueue = toTrackingMessageID(m[0].msgID)
 				}
+				if pc.options.autoReceiverQueueSize {
+					pc.incomingMessages.Sub(int32(len(m)))
+				}
 			}
 
 			messages = nil
-
-			if pc.options.autoReceiverQueueSize {
-				pc.incomingMessages.Store(0)
-			}
 
 			clearQueueCb(nextMessageInQueue)
 		}

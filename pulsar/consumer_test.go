@@ -4030,9 +4030,6 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 	_, err = c.Receive(context.Background())
 	assert.Nil(t, err)
 
-	// waiting for prefetched message passing from queueCh to dispatcher()
-	time.Sleep(time.Second)
-
 	// currentQueueSize should be doubled in size
 	assert.Equal(t, 2, int(pc.currentQueueSize.Load()))
 
