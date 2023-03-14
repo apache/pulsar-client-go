@@ -4069,7 +4069,7 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 		)
 	}
 
-	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+	retryAssert(t, 3, 300, func() {}, func(t assert.TestingT) bool {
 		return assert.Equal(t, 3, int(pc.currentQueueSize.Load()))
 	})
 }
