@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package auth
 
 import (
 	"encoding/json"
@@ -71,7 +71,7 @@ func NewAuthenticationOAuth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Pr
 }
 
 // NewAuthenticationOAuth2WithDefaultFlow uses memory to save the grant
-func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string) (AuthProvider, error) {
+func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string) (Provider, error) {
 	st := store.NewMemoryStore()
 	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
 		KeyFile: keyFile,

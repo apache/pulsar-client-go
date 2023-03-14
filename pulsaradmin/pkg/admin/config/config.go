@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package config
 
 type Config struct {
 	// the web service url that pulsarctl connects to. Default is http://localhost:8080

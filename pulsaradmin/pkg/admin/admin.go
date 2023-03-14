@@ -23,6 +23,8 @@ import (
 	"path"
 	"time"
 
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/auth"
+	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 	"github.com/streamnative/pulsar-admin-go/pkg/rest"
 	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
@@ -60,12 +62,12 @@ type Client interface {
 
 type pulsarClient struct {
 	Client     *rest.Client
-	APIVersion APIVersion
+	APIVersion config.APIVersion
 }
 
 // New returns a new client
-func New(config *Config) (Client, error) {
-	authProvider, err := GetAuthProvider(config)
+func New(config *config.Config) (Client, error) {
+	authProvider, err := auth.GetAuthProvider(config)
 	if err != nil {
 		return nil, err
 	}
@@ -74,7 +76,7 @@ func New(config *Config) (Client, error) {
 
 // NewWithAuthProvider creates a client with auth provider.
 // Deprecated: Use NewPulsarClientWithAuthProvider instead.
-func NewWithAuthProvider(config *Config, authProvider AuthProvider) Client {
+func NewWithAuthProvider(config *config.Config, authProvider auth.Provider) Client {
 	client, err := NewPulsarClientWithAuthProvider(config, authProvider)
 	if err != nil {
 		panic(err)
@@ -83,8 +85,8 @@ func NewWithAuthProvider(config *Config, authProvider AuthProvider) Client {
 }
 
 // NewPulsarClientWithAuthProvider create a client with auth provider.
-func NewPulsarClientWithAuthProvider(config *Config,
-	authProvider AuthProvider) (Client, error) {
+func NewPulsarClientWithAuthProvider(config *config.Config,
+	authProvider auth.Provider) (Client, error) {
 	var transport http.RoundTripper
 
 	if authProvider != nil {
@@ -95,7 +97,7 @@ func NewPulsarClientWithAuthProvider(config *Config,
 	}
 
 	if transport == nil {
-		defaultTransport, err := NewDefaultTransport(config)
+		defaultTransport, err := auth.NewDefaultTransport(config)
 		if err != nil {
 			return nil, err
 		}
