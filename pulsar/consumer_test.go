@@ -4026,18 +4026,14 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	// waiting for prefetched message passing from queueCh to dispatcher()
-	//time.Sleep(time.Second)
-
 	// this will trigger receiver queue size expanding to 2 because we have prefetched 1 message >= currentSize 1.
 	_, err = c.Receive(context.Background())
 	assert.Nil(t, err)
 
+	// currentQueueSize should be doubled in size
 	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
 		return assert.Equal(t, 2, int(pc.currentQueueSize.Load()))
 	})
-	// currentQueueSize should be doubled in size
-	//assert.Equal(t, 2, int(pc.currentQueueSize.Load()))
 
 	for i := 0; i < 5; i++ {
 		_, err = p.Send(context.Background(), &ProducerMessage{
@@ -4076,10 +4072,4 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
 		return assert.Equal(t, 3, int(pc.currentQueueSize.Load()))
 	})
-
-	// waiting for prefetched message passing from queueCh to dispatcher()
-	//time.Sleep(time.Second)
-
-	// currentQueueSize expanding to max size
-	//assert.Equal(t, int32(3), pc.currentQueueSize.Load())
 }
