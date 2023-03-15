@@ -25,7 +25,6 @@ import (
 	"math"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -78,6 +77,10 @@ const (
 )
 
 const (
+	initialReceiverQueueSize = 1
+)
+
+const (
 	noMessageEntry = -1
 )
 
@@ -89,6 +92,7 @@ type partitionConsumerOpts struct {
 	subscriptionInitPos         SubscriptionInitialPosition
 	partitionIdx                int
 	receiverQueueSize           int
+	autoReceiverQueueSize       bool
 	nackRedeliveryDelay         time.Duration
 	nackBackoffPolicy           NackBackoffPolicy
 	metadata                    map[string]string
@@ -142,10 +146,14 @@ type partitionConsumer struct {
 	availablePermits *availablePermits
 
 	// the size of the queue channel for buffering messages
-	queueSize       int32
+	maxQueueSize    int32
 	queueCh         chan []*message
 	startMessageID  atomicMessageID
 	lastDequeuedMsg *trackingMessageID
+
+	currentQueueSize       uAtomic.Int32
+	scaleReceiverQueueHint uAtomic.Bool
+	incomingMessages       uAtomic.Int32
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
@@ -181,22 +189,44 @@ func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
 }
 
 type availablePermits struct {
-	permits int32
+	permits uAtomic.Int32
 	pc      *partitionConsumer
 }
 
 func (p *availablePermits) inc() {
 	// atomic add availablePermits
-	ap := atomic.AddInt32(&p.permits, 1)
+	p.add(1)
+}
 
+func (p *availablePermits) add(delta int32) {
+	p.permits.Add(delta)
+	p.flowIfNeed()
+}
+
+func (p *availablePermits) reset() {
+	p.permits.Store(0)
+}
+
+func (p *availablePermits) get() int32 {
+	return p.permits.Load()
+}
+
+func (p *availablePermits) flowIfNeed() {
 	// TODO implement a better flow controller
 	// send more permits if needed
-	flowThreshold := int32(math.Max(float64(p.pc.queueSize/2), 1))
-	if ap >= flowThreshold {
-		availablePermits := ap
-		requestedPermits := ap
+	var flowThreshold int32
+	if p.pc.options.autoReceiverQueueSize {
+		flowThreshold = int32(math.Max(float64(p.pc.currentQueueSize.Load()/2), 1))
+	} else {
+		flowThreshold = int32(math.Max(float64(p.pc.maxQueueSize/2), 1))
+	}
+
+	current := p.get()
+	if current >= flowThreshold {
+		availablePermits := current
+		requestedPermits := current
 		// check if permits changed
-		if !atomic.CompareAndSwapInt32(&p.permits, ap, 0) {
+		if !p.permits.CAS(current, 0) {
 			return
 		}
 
@@ -205,10 +235,6 @@ func (p *availablePermits) inc() {
 			p.pc.log.WithError(err).Error("unable to send permits")
 		}
 	}
-}
-
-func (p *availablePermits) reset() {
-	atomic.StoreInt32(&p.permits, 0)
 }
 
 // atomicMessageID is a wrapper for trackingMessageID to make get and set atomic
@@ -292,7 +318,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		consumerID:           client.rpcClient.NewConsumerID(),
 		partitionIdx:         int32(options.partitionIdx),
 		eventsCh:             make(chan interface{}, 10),
-		queueSize:            int32(options.receiverQueueSize),
+		maxQueueSize:         int32(options.receiverQueueSize),
 		queueCh:              make(chan []*message, options.receiverQueueSize),
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
@@ -304,6 +330,11 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
+	}
+	if pc.options.autoReceiverQueueSize {
+		pc.currentQueueSize.Store(initialReceiverQueueSize)
+	} else {
+		pc.currentQueueSize.Store(int32(pc.options.receiverQueueSize))
 	}
 	pc.availablePermits = &availablePermits{pc: pc}
 	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(options.maxPendingChunkedMessage, pc)
@@ -904,6 +935,12 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 					orderingKey:         string(msgMeta.OrderingKey),
 				},
 			}
+
+			if pc.options.autoReceiverQueueSize {
+				pc.incomingMessages.Inc()
+				pc.markScaleIfNeed()
+			}
+
 			pc.queueCh <- messages
 			return nil
 		}
@@ -1073,6 +1110,11 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		messages = append(messages, msg)
 	}
 
+	if pc.options.autoReceiverQueueSize {
+		pc.incomingMessages.Add(int32(len(messages)))
+		pc.markScaleIfNeed()
+	}
+
 	// send messages to the dispatcher
 	pc.queueCh <- messages
 	return nil
@@ -1240,7 +1282,6 @@ func (pc *partitionConsumer) dispatcher() {
 			pc.metrics.PrefetchedMessages.Dec()
 			pc.metrics.PrefetchedBytes.Sub(float64(len(messages[0].payLoad)))
 		} else {
-			// we are ready for more messages
 			queueCh = pc.queueCh
 		}
 
@@ -1258,7 +1299,13 @@ func (pc *partitionConsumer) dispatcher() {
 
 			// reset available permits
 			pc.availablePermits.reset()
-			initialPermits := uint32(pc.queueSize)
+
+			var initialPermits uint32
+			if pc.options.autoReceiverQueueSize {
+				initialPermits = uint32(pc.currentQueueSize.Load())
+			} else {
+				initialPermits = uint32(pc.maxQueueSize)
+			}
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
 			// send initial permits
@@ -1282,6 +1329,11 @@ func (pc *partitionConsumer) dispatcher() {
 
 			pc.availablePermits.inc()
 
+			if pc.options.autoReceiverQueueSize {
+				pc.incomingMessages.Dec()
+				pc.expectMoreIncomingMessages()
+			}
+
 		case clearQueueCb := <-pc.clearQueueCh:
 			// drain the message queue on any new connection by sending a
 			// special nil message to the channel so we know when to stop dropping messages
@@ -1296,6 +1348,9 @@ func (pc *partitionConsumer) dispatcher() {
 					break
 				} else if nextMessageInQueue == nil {
 					nextMessageInQueue = toTrackingMessageID(m[0].msgID)
+				}
+				if pc.options.autoReceiverQueueSize {
+					pc.incomingMessages.Sub(int32(len(m)))
 				}
 			}
 
@@ -1668,6 +1723,32 @@ func getPreviousMessage(mid *trackingMessageID) *trackingMessageID {
 		tracker:      mid.tracker,
 		consumer:     mid.consumer,
 		receivedTime: mid.receivedTime,
+	}
+}
+
+func (pc *partitionConsumer) expectMoreIncomingMessages() {
+	if !pc.options.autoReceiverQueueSize {
+		return
+	}
+	if pc.scaleReceiverQueueHint.CAS(true, false) {
+		oldSize := pc.currentQueueSize.Load()
+		maxSize := int32(pc.options.receiverQueueSize)
+		newSize := int32(math.Min(float64(maxSize), float64(oldSize*2)))
+		if newSize > oldSize {
+			pc.currentQueueSize.CAS(oldSize, newSize)
+			pc.availablePermits.add(newSize - oldSize)
+			pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
+		}
+	}
+}
+
+func (pc *partitionConsumer) markScaleIfNeed() {
+	// availablePermits + incomingMessages (messages in queueCh) is the number of prefetched messages
+	// The result of auto-scale we expected is currentQueueSize is slightly bigger than prefetched messages
+	prev := pc.scaleReceiverQueueHint.Swap(pc.availablePermits.get()+pc.incomingMessages.Load() >=
+		pc.currentQueueSize.Load())
+	if prev != pc.scaleReceiverQueueHint.Load() {
+		pc.log.Debugf("update scaleReceiverQueueHint from %t -> %t", prev, pc.scaleReceiverQueueHint.Load())
 	}
 }
 
