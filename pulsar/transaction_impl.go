@@ -28,7 +28,7 @@ import (
 	uAtomic "go.uber.org/atomic"
 )
 
-type State int32
+type TxnState int32
 type void struct{}
 type subscription struct {
 	topic        string
@@ -38,7 +38,7 @@ type subscription struct {
 type transaction struct {
 	sync.Mutex
 	txnID                    TxnID
-	state                    State
+	state                    TxnState
 	tcClient                 *transactionCoordinatorClient
 	registerPartitions       map[string]void
 	registerAckSubscriptions map[subscription]void
@@ -56,7 +56,7 @@ type transaction struct {
 	*			  1. When the transaction is committed or aborted, an empty struct{} will be read from opsFlow chan.
 	*			  2. When the opsCount increment from 0 to 1, an empty struct{} will be read from opsFlow chan.
 	 */
-	opsFlow   chan struct{}
+	opsFlow   chan void
 	opsCount  uAtomic.Int32
 	opTimeout time.Duration
 	log       log.Logger
@@ -68,12 +68,12 @@ func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout ti
 		state:                    Open,
 		registerPartitions:       make(map[string]void),
 		registerAckSubscriptions: make(map[subscription]void),
-		opsFlow:                  make(chan struct{}, 1),
+		opsFlow:                  make(chan void, 1),
 		opTimeout:                5 * time.Second,
 		tcClient:                 tcClient,
 	}
 	//This means there are not pending requests with this transaction. The transaction can be committed or aborted.
-	transaction.opsFlow <- struct{}{}
+	transaction.opsFlow <- void{}
 	go func() {
 		//Set the state of the transaction to timeout after timeout
 		<-time.After(timeout)
@@ -83,7 +83,7 @@ func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout ti
 	return transaction
 }
 
-func (txn *transaction) GetState() State {
+func (txn *transaction) GetState() TxnState {
 	return txn.state
 }
 
@@ -107,7 +107,7 @@ func (txn *transaction) Commit(ctx context.Context) error {
 			atomic.StoreInt32((*int32)(&txn.state), Errored)
 			return err
 		}
-		txn.opsFlow <- struct{}{}
+		txn.opsFlow <- void{}
 	}
 	return err
 }
@@ -131,7 +131,7 @@ func (txn *transaction) Abort(ctx context.Context) error {
 		if err.(*Error).Result() == TransactionNoFoundError || err.(*Error).Result() == InvalidStatus {
 			atomic.StoreInt32((*int32)(&txn.state), Errored)
 		} else {
-			txn.opsFlow <- struct{}{}
+			txn.opsFlow <- void{}
 		}
 	}
 	return err
@@ -160,7 +160,7 @@ func (txn *transaction) endSendOrAckOp(err error) {
 	}
 	if txn.opsCount.Dec() == 0 {
 		//This means there are not pending send/ack requests
-		txn.opsFlow <- struct{}{}
+		txn.opsFlow <- void{}
 	}
 }
 
@@ -177,7 +177,7 @@ func (txn *transaction) registerProducerTopic(topic string) error {
 		if err != nil {
 			return err
 		}
-		txn.registerPartitions[topic] = struct{}{}
+		txn.registerPartitions[topic] = void{}
 	}
 	return nil
 }
@@ -199,7 +199,7 @@ func (txn *transaction) registerAckTopic(topic string, subName string) error {
 		if err != nil {
 			return err
 		}
-		txn.registerAckSubscriptions[sub] = struct{}{}
+		txn.registerAckSubscriptions[sub] = void{}
 	}
 	return nil
 }
@@ -215,7 +215,7 @@ func (txn *transaction) checkIfOpen() (bool, error) {
 	return false, newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
 }
 
-func (state State) string() string {
+func (state TxnState) string() string {
 	switch state {
 	case Open:
 		return "Open"

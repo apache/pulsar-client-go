@@ -42,7 +42,7 @@ type Transaction interface {
 
 	Abort(context.Context) error
 
-	GetState() State
+	GetState() TxnState
 
 	GetTxnID() TxnID
 }
