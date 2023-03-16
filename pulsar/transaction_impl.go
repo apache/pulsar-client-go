@@ -27,7 +27,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-type void struct{}
 type subscription struct {
 	topic        string
 	subscription string
@@ -40,18 +39,20 @@ type transaction struct {
 	tcClient                 *transactionCoordinatorClient
 	registerPartitions       map[string]bool
 	registerAckSubscriptions map[subscription]bool
-	// opsFlow Wait all the operations of sending and acking messages with the transaction complete
+	// opsFlow It has two effects:
+	// 1. Wait all the operations of sending and acking messages with the transaction complete
 	// by reading msg from the chan.
+	// 2. Prevent sending or acking messages with a committed or aborted transaction.
 	// opsCount is record the number of the uncompleted operations.
 	// opsFlow
 	//   Write:
-	//     1. When the transaction is created, a new empty struct{} will be written to opsFlow chan.
-	//     2. When the opsCount decrement from 1 to 0, a new empty struct{} will be written to opsFlow chan.
+	//     1. When the transaction is created, a bool will be written to opsFlow chan.
+	//     2. When the opsCount decrement from 1 to 0, a new bool will be written to opsFlow chan.
 	//     3. When get a retryable error after committing or aborting the transaction,
-	//        a new empty struct{} will be written to opsFlow chan.
+	//        a bool will be written to opsFlow chan.
 	//   Read:
-	//     1. When the transaction is committed or aborted, an empty struct{} will be read from opsFlow chan.
-	//     2. When the opsCount increment from 0 to 1, an empty struct{} will be read from opsFlow chan.
+	//     1. When the transaction is committed or aborted, a bool will be read from opsFlow chan.
+	//     2. When the opsCount increment from 0 to 1, a bool will be read from opsFlow chan.
 	opsFlow   chan bool
 	opsCount  int32
 	opTimeout time.Duration
@@ -99,7 +100,7 @@ func (txn *transaction) Commit(ctx context.Context) error {
 	if err == nil {
 		atomic.StoreInt32((*int32)(&txn.state), int32(Committed))
 	} else {
-		if err.(*Error).Result() == TransactionNoFoundError || err.(*Error).Result() == InvalidStatus {
+		if err.(*Error).Result() == Result(pb.ServerError_TransactionNotFound) || err.(*Error).Result() == InvalidStatus {
 			atomic.StoreInt32((*int32)(&txn.state), int32(Errored))
 			return err
 		}
@@ -124,7 +125,8 @@ func (txn *transaction) Abort(ctx context.Context) error {
 	if err == nil {
 		atomic.StoreInt32((*int32)(&txn.state), int32(Aborted))
 	} else {
-		if err.(*Error).Result() == TransactionNoFoundError || err.(*Error).Result() == InvalidStatus {
+		if err.(*Error).Result() == Result(pb.ServerError_TransactionNotFound) ||
+			err.(*Error).Result() == Result(pb.ServerError_InvalidTxnStatus) {
 			atomic.StoreInt32((*int32)(&txn.state), int32(Errored))
 		} else {
 			txn.opsFlow <- true
