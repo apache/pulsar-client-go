@@ -21,8 +21,11 @@ import (
 	"context"
 )
 
+type TxnState int32
+
 const (
-	Open = iota //The init state is open
+	_ TxnState = iota
+	Open
 	Committing
 	Aborting
 	Committed

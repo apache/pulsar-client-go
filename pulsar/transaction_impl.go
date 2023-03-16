@@ -25,10 +25,8 @@ import (
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	uAtomic "go.uber.org/atomic"
 )
 
-type TxnState int32
 type void struct{}
 type subscription struct {
 	topic        string
@@ -40,24 +38,22 @@ type transaction struct {
 	txnID                    TxnID
 	state                    TxnState
 	tcClient                 *transactionCoordinatorClient
-	registerPartitions       map[string]void
-	registerAckSubscriptions map[subscription]void
-	/**
-	* opsFlow Wait all the operations of sending and acking messages with the transaction complete
-	* by reading msg from the chan.
-	* opsCount is record the number of the uncompleted operations.
-	* opsFlow
-	*        Write:
-	* 		      1. When the transaction is created, a new empty struct{} will be written to opsFlow chan.
-	*			  2. When the opsCount decrement from 1 to 0, a new empty struct{} will be written to opsFlow chan.
-	* 			  3. When get a retryable error after committing or aborting the transaction,
-	*	             a new empty struct{} will be written to opsFlow chan.
-	*        Read:
-	*			  1. When the transaction is committed or aborted, an empty struct{} will be read from opsFlow chan.
-	*			  2. When the opsCount increment from 0 to 1, an empty struct{} will be read from opsFlow chan.
-	 */
-	opsFlow   chan void
-	opsCount  uAtomic.Int32
+	registerPartitions       map[string]bool
+	registerAckSubscriptions map[subscription]bool
+	// opsFlow Wait all the operations of sending and acking messages with the transaction complete
+	// by reading msg from the chan.
+	// opsCount is record the number of the uncompleted operations.
+	// opsFlow
+	//   Write:
+	//     1. When the transaction is created, a new empty struct{} will be written to opsFlow chan.
+	//     2. When the opsCount decrement from 1 to 0, a new empty struct{} will be written to opsFlow chan.
+	//     3. When get a retryable error after committing or aborting the transaction,
+	//        a new empty struct{} will be written to opsFlow chan.
+	//   Read:
+	//     1. When the transaction is committed or aborted, an empty struct{} will be read from opsFlow chan.
+	//     2. When the opsCount increment from 0 to 1, an empty struct{} will be read from opsFlow chan.
+	opsFlow   chan bool
+	opsCount  int32
 	opTimeout time.Duration
 	log       log.Logger
 }
@@ -66,18 +62,18 @@ func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout ti
 	transaction := &transaction{
 		txnID:                    id,
 		state:                    Open,
-		registerPartitions:       make(map[string]void),
-		registerAckSubscriptions: make(map[subscription]void),
-		opsFlow:                  make(chan void, 1),
+		registerPartitions:       make(map[string]bool),
+		registerAckSubscriptions: make(map[subscription]bool),
+		opsFlow:                  make(chan bool, 1),
 		opTimeout:                5 * time.Second,
 		tcClient:                 tcClient,
 	}
 	//This means there are not pending requests with this transaction. The transaction can be committed or aborted.
-	transaction.opsFlow <- void{}
+	transaction.opsFlow <- true
 	go func() {
 		//Set the state of the transaction to timeout after timeout
 		<-time.After(timeout)
-		atomic.CompareAndSwapInt32((*int32)(&transaction.state), Open, TimeOut)
+		atomic.CompareAndSwapInt32((*int32)(&transaction.state), int32(Open), int32(TimeOut))
 	}()
 	transaction.log = tcClient.log.SubLogger(log.Fields{})
 	return transaction
@@ -88,7 +84,7 @@ func (txn *transaction) GetState() TxnState {
 }
 
 func (txn *transaction) Commit(ctx context.Context) error {
-	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), Open, Committing) || txn.state == Committing) {
+	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), int32(Open), int32(Committing)) || txn.state == Committing) {
 		return newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
 	}
 
@@ -101,19 +97,19 @@ func (txn *transaction) Commit(ctx context.Context) error {
 	//Send commit transaction command to transaction coordinator
 	err := txn.tcClient.endTxn(&txn.txnID, pb.TxnAction_COMMIT)
 	if err == nil {
-		atomic.StoreInt32((*int32)(&txn.state), Committed)
+		atomic.StoreInt32((*int32)(&txn.state), int32(Committed))
 	} else {
 		if err.(*Error).Result() == TransactionNoFoundError || err.(*Error).Result() == InvalidStatus {
-			atomic.StoreInt32((*int32)(&txn.state), Errored)
+			atomic.StoreInt32((*int32)(&txn.state), int32(Errored))
 			return err
 		}
-		txn.opsFlow <- void{}
+		txn.opsFlow <- true
 	}
 	return err
 }
 
 func (txn *transaction) Abort(ctx context.Context) error {
-	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), Open, Aborting) || txn.state == Aborting) {
+	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), int32(Open), int32(Aborting)) || txn.state == Aborting) {
 		return newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
 	}
 
@@ -126,27 +122,26 @@ func (txn *transaction) Abort(ctx context.Context) error {
 	//Send abort transaction command to transaction coordinator
 	err := txn.tcClient.endTxn(&txn.txnID, pb.TxnAction_ABORT)
 	if err == nil {
-		atomic.StoreInt32((*int32)(&txn.state), Aborted)
+		atomic.StoreInt32((*int32)(&txn.state), int32(Aborted))
 	} else {
 		if err.(*Error).Result() == TransactionNoFoundError || err.(*Error).Result() == InvalidStatus {
-			atomic.StoreInt32((*int32)(&txn.state), Errored)
+			atomic.StoreInt32((*int32)(&txn.state), int32(Errored))
 		} else {
-			txn.opsFlow <- void{}
+			txn.opsFlow <- true
 		}
 	}
 	return err
 }
 
 func (txn *transaction) registerSendOrAckOp() error {
-	if txn.opsCount.Inc() == 1 {
+	if atomic.AddInt32(&txn.opsCount, 1) == 1 {
 		//There are new operations that not completed
 		select {
 		case <-txn.opsFlow:
 			return nil
 		case <-time.After(txn.opTimeout):
-			if txn.state != Open {
-				return newError(InvalidStatus, "Expect state of the transaction is OPEN, "+
-					"but "+txn.GetState().string())
+			if _, err := txn.checkIfOpen(); err != nil {
+				return err
 			}
 			return newError(TimeoutError, "Failed to get the semaphore to register the send/ack operation")
 		}
@@ -156,11 +151,11 @@ func (txn *transaction) registerSendOrAckOp() error {
 
 func (txn *transaction) endSendOrAckOp(err error) {
 	if err != nil {
-		atomic.StoreInt32((*int32)(&txn.state), Errored)
+		atomic.StoreInt32((*int32)(&txn.state), int32(Errored))
 	}
-	if txn.opsCount.Dec() == 0 {
+	if atomic.AddInt32(&txn.opsCount, -1) == 0 {
 		//This means there are not pending send/ack requests
-		txn.opsFlow <- void{}
+		txn.opsFlow <- true
 	}
 }
 
@@ -177,7 +172,7 @@ func (txn *transaction) registerProducerTopic(topic string) error {
 		if err != nil {
 			return err
 		}
-		txn.registerPartitions[topic] = void{}
+		txn.registerPartitions[topic] = true
 	}
 	return nil
 }
@@ -199,7 +194,7 @@ func (txn *transaction) registerAckTopic(topic string, subName string) error {
 		if err != nil {
 			return err
 		}
-		txn.registerAckSubscriptions[sub] = void{}
+		txn.registerAckSubscriptions[sub] = true
 	}
 	return nil
 }

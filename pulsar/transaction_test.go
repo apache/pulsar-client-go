@@ -107,7 +107,7 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 			err.Error())
 	}
 	txn1.state = Open
-	txn1.opsFlow <- struct{}{}
+	txn1.opsFlow <- true
 	err = txn1.Commit(context.Background())
 	assert.Equal(t, err.(*Error).Result(), TransactionNoFoundError)
 	assert.Equal(t, txn1.GetState(), TxnState(Errored))
@@ -123,7 +123,7 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 		t.Fatalf("Failed to abort the transaction %d:%d, %s\n", id2.mostSigBits, id2.leastSigBits, err.Error())
 	}
 	txn2.state = Open
-	txn2.opsFlow <- struct{}{}
+	txn2.opsFlow <- true
 	err = txn2.Abort(context.Background())
 	assert.Equal(t, err.(*Error).Result(), TransactionNoFoundError)
 	assert.Equal(t, txn1.GetState(), TxnState(Errored))
