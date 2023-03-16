@@ -5,7 +5,6 @@ go 1.18
 require (
 	github.com/99designs/keyring v1.2.1
 	github.com/apache/pulsar-client-go v0.9.0
-	github.com/golang-jwt/jwt/v4 v4.4.3
 	github.com/golang/protobuf v1.5.2
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.8.0
