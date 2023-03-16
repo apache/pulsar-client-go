@@ -27,7 +27,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/golang/protobuf/proto"
+	"github.com/golang/protobuf/proto" //nolint:staticcheck
 
 	"github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
