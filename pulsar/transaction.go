@@ -21,6 +21,8 @@ import (
 	"context"
 )
 
+// TxnState The state of the transaction. Check the state of the transaction before executing some operation
+// with the transaction is necessary.
 type TxnState int32
 
 const (
@@ -34,18 +36,23 @@ const (
 	TimeOut
 )
 
+// TxnID An identifier for representing a transaction.
 type TxnID struct {
-	mostSigBits  uint64
+	// mostSigBits The most significant 64 bits of this TxnID.
+	mostSigBits uint64
+	// leastSigBits The least significant 64 bits of this TxnID.
 	leastSigBits uint64
 }
 
 // Transaction used to guarantee exactly-once
 type Transaction interface {
+	//Commit You can commit the transaction after all the sending/acknowledging operations with the transaction success.
 	Commit(context.Context) error
-
+	//Abort You can abort the transaction when you want to abort all the sending/acknowledging operations
+	// with the transaction.
 	Abort(context.Context) error
-
+	//GetState Get the state of the transaction.
 	GetState() TxnState
-
+	//GetTxnID Get the identified ID of the transaction.
 	GetTxnID() TxnID
 }
