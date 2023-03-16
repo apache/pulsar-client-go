@@ -31,7 +31,9 @@ type HS256 struct{}
 
 func (h *HS256) GenerateSecret() ([]byte, error) {
 	bytes := make([]byte, 32)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, err
+	}
 	s := hmac.New(sha256.New, bytes)
 	return s.Sum(nil), nil
 }

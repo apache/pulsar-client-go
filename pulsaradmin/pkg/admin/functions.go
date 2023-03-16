@@ -675,7 +675,9 @@ func (f *functions) Upload(sourceFile, path string) error {
 	if err != nil {
 		return err
 	}
-	w.WriteField("path", path)
+	if err := w.WriteField("path", path); err != nil {
+		return err
+	}
 	err = w.Close()
 	if err != nil {
 		return err

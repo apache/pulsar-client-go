@@ -120,6 +120,7 @@ func (c *Client) GetWithOptions(endpoint string, obj interface{}, params map[str
 		req.params = query
 	}
 
+	//nolint:bodyclose
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return nil, err
@@ -174,6 +175,7 @@ func (c *Client) PutWithQueryParams(endpoint string, in, obj interface{}, params
 		req.params = query
 	}
 
+	//nolint:bodyclose
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err
@@ -197,7 +199,7 @@ func (c *Client) PutWithMultiPart(endpoint string, body io.Reader, contentType s
 	req.body = body
 	req.contentType = contentType
 
-	// nolint
+	//nolint
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err
@@ -225,7 +227,7 @@ func (c *Client) DeleteWithQueryParams(endpoint string, params map[string]string
 		req.params = query
 	}
 
-	// nolint
+	//nolint
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err
@@ -246,7 +248,7 @@ func (c *Client) PostWithObj(endpoint string, in, obj interface{}) error {
 	}
 	req.obj = in
 
-	// nolint
+	//nolint
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err
@@ -270,7 +272,7 @@ func (c *Client) PostWithMultiPart(endpoint string, in interface{}, body io.Read
 	req.body = body
 	req.contentType = contentType
 
-	// nolint
+	//nolint
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err
@@ -295,7 +297,7 @@ func (c *Client) PostWithQueryParams(endpoint string, in interface{}, params map
 		}
 		req.params = query
 	}
-	// nolint
+	//nolint
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return err

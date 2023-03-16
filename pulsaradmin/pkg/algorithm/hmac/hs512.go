@@ -31,7 +31,9 @@ type HS512 struct{}
 
 func (h *HS512) GenerateSecret() ([]byte, error) {
 	bytes := make([]byte, 64)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, err
+	}
 	s := hmac.New(sha512.New, bytes)
 	return s.Sum(nil), nil
 }

@@ -31,7 +31,9 @@ type HS384 struct{}
 
 func (h *HS384) GenerateSecret() ([]byte, error) {
 	bytes := make([]byte, 48)
-	rand.Read(bytes)
+	if _, err := rand.Read(bytes); err != nil {
+		return nil, err
+	}
 	s := hmac.New(sha512.New384, bytes)
 	return s.Sum(nil), nil
 }

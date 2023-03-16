@@ -106,7 +106,7 @@ func (t *token) CreateToken(
 	headers map[string]interface{}) (string, error) {
 	signMethod := parseAlgorithmToJwtSignMethod(algorithm)
 	tokenString := jwt.NewWithClaims(signMethod, mapClaims)
-	if headers != nil && len(headers) > 0 {
+	if len(headers) > 0 {
 		for s, i := range headers {
 			tokenString.Header[s] = i
 		}

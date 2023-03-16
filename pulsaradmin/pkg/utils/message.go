@@ -17,7 +17,7 @@
 
 package utils
 
-// nolint
+//nolint
 import (
 	"github.com/golang/protobuf/proto"
 )
