@@ -74,7 +74,7 @@ func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout ti
 	go func() {
 		//Set the state of the transaction to timeout after timeout
 		<-time.After(timeout)
-		atomic.CompareAndSwapInt32((*int32)(&transaction.state), int32(Open), int32(TimeOut))
+		atomic.CompareAndSwapInt32((*int32)(&transaction.state), int32(Open), int32(Timeout))
 	}()
 	transaction.log = tcClient.log.SubLogger(log.Fields{})
 	return transaction
@@ -224,8 +224,8 @@ func (state TxnState) string() string {
 		return "Committed"
 	case Aborted:
 		return "Aborted"
-	case TimeOut:
-		return "TimeOut"
+	case Timeout:
+		return "Timeout"
 	default:
 		return "Unknown"
 	}

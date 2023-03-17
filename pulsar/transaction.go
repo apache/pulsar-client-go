@@ -27,13 +27,24 @@ type TxnState int32
 
 const (
 	_ TxnState = iota
+	// Open The transaction in Open state can be used to send/ack messages.
 	Open
+	// Committing The state of the transaction will be Committing after the commit method is called.
+	// The transaction in Committing state can be committed again.
 	Committing
+	// Aborting The state of the transaction will be Aborting after the abort method is called.
+	// The transaction in Aborting state can be aborted again.
 	Aborting
+	// Committed The state of the transaction will be Committed after the commit method is executed success.
+	// This means that all the operations with the transaction are success.
 	Committed
+	// Aborted The state of the transaction will be Aborted after the abort method is executed success.
+	// This means that all the operations with the transaction are aborted.
 	Aborted
+	// Errored The state of the transaction will be Errored after the operation of transaction get a non-retryable error.
 	Errored
-	TimeOut
+	// Timeout The state of the transaction will be Timeout after the transaction timeout.
+	Timeout
 )
 
 // TxnID An identifier for representing a transaction.
