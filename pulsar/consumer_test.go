@@ -4219,20 +4219,9 @@ func TestConsumerMemoryLimit(t *testing.T) {
 	assert.Nil(t, err)
 	defer p2.Close()
 
-	var pErr error
-	p1.SendAsync(
-		context.Background(),
-		&ProducerMessage{Payload: createTestMessagePayload(1)},
-		func(id MessageID, producerMessage *ProducerMessage, err error) {
-			pErr = err
-		},
-	)
-
-	// Producer can't send message
-	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
-		if pErr != nil {
-			return assert.Equal(t, true, errors.Is(pErr, errMemoryBufferIsFull))
-		}
-		return false
+	_, err = p2.Send(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(1),
 	})
+	// Producer can't send message
+	assert.Equal(t, true, errors.Is(err, errMemoryBufferIsFull))
 }
