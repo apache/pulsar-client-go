@@ -43,6 +43,8 @@ type ClientArgs struct {
 	ServiceURL              string
 	TokenFile               string
 	TLSTrustCertFile        string
+	TLSServerCertFile       string
+	TLSServerKeyFile        string
 	MaxConnectionsPerBroker int
 }
 
@@ -62,6 +64,8 @@ func NewClient() (pulsar.Client, error) {
 			os.Exit(1)
 		}
 		clientOpts.Authentication = pulsar.NewAuthenticationToken(string(tokenBytes))
+	} else if clientArgs.TLSServerCertFile != "" && clientArgs.TLSServerKeyFile != "" {
+		clientOpts.Authentication = pulsar.NewAuthenticationTLS(clientArgs.TLSServerCertFile, clientArgs.TLSServerKeyFile)
 	}
 
 	if clientArgs.TLSTrustCertFile != "" {
@@ -97,6 +101,8 @@ func main() {
 	flags.StringVarP(&clientArgs.ServiceURL, "service-url", "u",
 		"pulsar://localhost:6650", "The Pulsar service URL")
 	flags.StringVar(&clientArgs.TokenFile, "token-file", "", "file path to the Pulsar JWT file")
+	flags.StringVar(&clientArgs.TLSServerCertFile, "cert-file", "", "file path to the TLS authentication cert")
+	flags.StringVar(&clientArgs.TLSServerKeyFile, "key-file", "", "file path to the TLS authentication key")
 	flags.StringVar(&clientArgs.TLSTrustCertFile, "trust-cert-file", "", "file path to the trusted certificate file")
 	flags.IntVarP(&clientArgs.MaxConnectionsPerBroker, "max-connections", "c", 1,
 		"Max connections to open to broker. Defaults to 1.")

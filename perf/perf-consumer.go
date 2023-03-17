@@ -36,6 +36,8 @@ type ConsumeArgs struct {
 	ReceiverQueueSize                 int
 	EnableBatchIndexAck               bool
 	EnableAutoScaledReceiverQueueSize bool
+	SubscriptionMode                  pulsar.SubscriptionMode
+	SubscriptionType                  pulsar.SubscriptionType
 }
 
 func newConsumerCommand() *cobra.Command {
@@ -60,6 +62,10 @@ func newConsumerCommand() *cobra.Command {
 	flags.BoolVar(&consumeArgs.EnableBatchIndexAck, "enable-batch-index-ack", false, "Whether to enable batch index ACK")
 	flags.BoolVar(&consumeArgs.EnableAutoScaledReceiverQueueSize, "enable-auto-scaled-queue-size", false,
 		"Whether to enable auto scaled receiver queue size")
+	flags.IntVarP((*int)(&consumeArgs.SubscriptionMode), "subscription-mode", "m", int(pulsar.Durable),
+		"Subscription mode")
+	flags.IntVarP((*int)(&consumeArgs.SubscriptionType), "subscription-type", "t", int(pulsar.Exclusive),
+		"Subscription type")
 
 	return cmd
 }
@@ -83,6 +89,8 @@ func consume(consumeArgs *ConsumeArgs, stop <-chan struct{}) {
 		SubscriptionName:                  consumeArgs.SubscriptionName,
 		EnableBatchIndexAcknowledgment:    consumeArgs.EnableBatchIndexAck,
 		EnableAutoScaledReceiverQueueSize: consumeArgs.EnableAutoScaledReceiverQueueSize,
+		Type:                              consumeArgs.SubscriptionType,
+		SubscriptionMode:                  consumeArgs.SubscriptionMode,
 	})
 
 	if err != nil {
