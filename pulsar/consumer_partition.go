@@ -497,13 +497,10 @@ func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 	}
 
 	trackingID := toTrackingMessageID(msgID)
-	var msgIDToAck MessageID = trackingID
 
 	if trackingID != nil && trackingID.ack() {
-		msgIDToAck = &messageID{
-			ledgerID: trackingID.ledgerID,
-			entryID:  trackingID.entryID,
-		}
+		trackingID.batchIdx = -1
+		trackingID.batchSize = 0
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
 	} else if !pc.options.enableBatchIndexAck {
@@ -512,10 +509,10 @@ func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 
 	var ackReq *ackRequest
 	if withResponse {
-		ackReq := pc.sendIndividualAck(msgIDToAck)
+		ackReq := pc.sendIndividualAck(trackingID)
 		<-ackReq.doneCh
 	} else {
-		pc.ackGroupingTracker.add(msgIDToAck)
+		pc.ackGroupingTracker.add(trackingID)
 	}
 	pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
 	if ackReq == nil {
