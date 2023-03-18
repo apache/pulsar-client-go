@@ -499,8 +499,12 @@ func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 	trackingID := toTrackingMessageID(msgID)
 
 	if trackingID != nil && trackingID.ack() {
-		trackingID.batchIdx = -1
-		trackingID.batchSize = 0
+		trackingID = &trackingMessageID{
+			messageID: &messageID{
+				ledgerID: trackingID.ledgerID,
+				entryID:  trackingID.entryID,
+			},
+		}
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
 	} else if !pc.options.enableBatchIndexAck {
