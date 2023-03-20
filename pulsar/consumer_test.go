@@ -4073,3 +4073,43 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 		return assert.Equal(t, 3, int(pc.currentQueueSize.Load()))
 	})
 }
+
+func TestConsumerBatchIndexAckDisabled(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+
+	for i := 0; i < 5; i++ {
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		}, nil)
+	}
+	for i := 0; i < 5; i++ {
+		message, err := consumer.Receive(context.Background())
+		assert.Nil(t, err)
+		consumer.Ack(message)
+	}
+	consumer.Close()
+	consumer, err = client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+	producer.Send(context.Background(), &ProducerMessage{Payload: []byte("done")})
+	message, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	assert.Equal(t, []byte("done"), message.Payload())
+}
