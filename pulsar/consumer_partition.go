@@ -499,6 +499,8 @@ func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 	trackingID := toTrackingMessageID(msgID)
 
 	if trackingID != nil && trackingID.ack() {
+		// All messages in the same batch have been acknowledged, we only need to acknowledge the
+		// MessageID that represents the entry that stores the whole batch
 		trackingID = &trackingMessageID{
 			messageID: &messageID{
 				ledgerID: trackingID.ledgerID,
