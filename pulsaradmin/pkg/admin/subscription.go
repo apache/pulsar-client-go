@@ -19,7 +19,6 @@ import (
 	"bytes"
 	"encoding/binary"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -229,7 +228,7 @@ func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, e
 	}
 
 	// read data
-	payload, err := ioutil.ReadAll(resp.Body)
+	payload, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, err
 	}

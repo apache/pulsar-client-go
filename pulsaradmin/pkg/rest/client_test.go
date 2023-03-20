@@ -16,7 +16,7 @@
 package rest
 
 import (
-	"io/ioutil"
+	"io"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -37,7 +37,7 @@ func TestEncodeJSONBody(t *testing.T) {
 		r, err := encodeJSONBody(testcase.obj)
 		require.NoError(t, err)
 
-		b, err := ioutil.ReadAll(r)
+		b, err := io.ReadAll(r)
 		require.NoError(t, err)
 
 		require.Equal(t, testcase.expected, len(b))

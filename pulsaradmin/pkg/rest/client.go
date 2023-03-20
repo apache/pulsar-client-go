@@ -19,7 +19,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"net/url"
 	"path"
@@ -139,7 +138,7 @@ func (c *Client) GetWithOptions(endpoint string, obj interface{}, params map[str
 				return nil, err
 			}
 		} else {
-			body, err := ioutil.ReadAll(resp.Body)
+			body, err := io.ReadAll(resp.Body)
 			if err != nil {
 				return nil, err
 			}
@@ -395,7 +394,7 @@ func responseError(resp *http.Response) error {
 		Reason: resp.Status,
 	}
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		e.Reason = err.Error()
 		return e

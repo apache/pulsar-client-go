@@ -18,8 +18,8 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -51,7 +51,7 @@ func NewAuthenticationToken(token string, transport http.RoundTripper) (*TokenAu
 
 // NewAuthenticationTokenFromFile return a interface of a Provider with a string token file path.
 func NewAuthenticationTokenFromFile(tokenFilePath string, transport http.RoundTripper) (*TokenAuthProvider, error) {
-	data, err := ioutil.ReadFile(tokenFilePath)
+	data, err := os.ReadFile(tokenFilePath)
 	if err != nil {
 		return nil, err
 	}

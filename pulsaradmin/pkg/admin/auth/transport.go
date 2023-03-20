@@ -18,8 +18,8 @@ package auth
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"io/ioutil"
 	"net/http"
+	"os"
 
 	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 )
@@ -45,7 +45,7 @@ func NewDefaultTransport(config *config.Config) (http.RoundTripper, error) {
 		InsecureSkipVerify: config.TLSAllowInsecureConnection,
 	}
 	if len(config.TLSTrustCertsFilePath) > 0 {
-		rootCA, err := ioutil.ReadFile(config.TLSTrustCertsFilePath)
+		rootCA, err := os.ReadFile(config.TLSTrustCertsFilePath)
 		if err != nil {
 			return nil, err
 		}
