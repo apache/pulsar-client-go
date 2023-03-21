@@ -22,7 +22,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"path"
 	"strings"
@@ -110,7 +109,7 @@ func httpDo(method string, requestPath string, in interface{}, out interface{}) 
 	}
 
 	if out != nil {
-		outBytes, err := ioutil.ReadAll(resp.Body)
+		outBytes, err := io.ReadAll(resp.Body)
 		if err != nil {
 			return err
 		}
@@ -155,6 +154,13 @@ func deleteTopic(topic string) error {
 func topicStats(topic string) (map[string]interface{}, error) {
 	var metadata map[string]interface{}
 	err := httpGet("admin/v2/persistent/"+topicPath(topic)+"/stats", &metadata)
+	return metadata, err
+}
+
+func transactionStats(id *TxnID) (map[string]interface{}, error) {
+	var metadata map[string]interface{}
+	path := fmt.Sprintf("admin/v3/transactions/transactionMetadata/%d/%d", id.mostSigBits, id.leastSigBits)
+	err := httpGet(path, &metadata)
 	return metadata, err
 }
 

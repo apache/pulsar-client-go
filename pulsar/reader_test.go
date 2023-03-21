@@ -70,6 +70,45 @@ func TestReaderConfigSubscribeName(t *testing.T) {
 	assert.NotNil(t, consumer)
 }
 
+func TestReaderConfigChunk(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer client.Close()
+
+	r1, err := client.CreateReader(ReaderOptions{
+		Topic:                       "my-topic1",
+		StartMessageID:              EarliestMessageID(),
+		MaxPendingChunkedMessage:    50,
+		ExpireTimeOfIncompleteChunk: 30 * time.Second,
+		AutoAckIncompleteChunk:      true,
+	})
+	assert.Nil(t, err)
+	defer r1.Close()
+
+	// verify specified chunk options
+	pcOpts := r1.(*reader).pc.options
+	assert.Equal(t, 50, pcOpts.maxPendingChunkedMessage)
+	assert.Equal(t, 30*time.Second, pcOpts.expireTimeOfIncompleteChunk)
+	assert.True(t, pcOpts.autoAckIncompleteChunk)
+
+	r2, err := client.CreateReader(ReaderOptions{
+		Topic:          "my-topic2",
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	defer r2.Close()
+
+	// verify default chunk options
+	pcOpts = r2.(*reader).pc.options
+	assert.Equal(t, 100, pcOpts.maxPendingChunkedMessage)
+	assert.Equal(t, time.Minute, pcOpts.expireTimeOfIncompleteChunk)
+	assert.False(t, pcOpts.autoAckIncompleteChunk)
+}
+
 func TestReader(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -426,8 +465,20 @@ func (id *myMessageID) BatchIdx() int32 {
 	return id.BatchIdx()
 }
 
+func (id *myMessageID) BatchSize() int32 {
+	return id.BatchSize()
+}
+
 func (id *myMessageID) PartitionIdx() int32 {
 	return id.PartitionIdx()
+}
+
+func (id *myMessageID) String() string {
+	mid, err := DeserializeMessageID(id.data)
+	if err != nil {
+		return ""
+	}
+	return fmt.Sprintf("%d:%d:%d", mid.LedgerID(), mid.EntryID(), mid.PartitionIdx())
 }
 
 func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
@@ -774,4 +825,79 @@ func TestReaderWithSchema(t *testing.T) {
 	err = msg.GetSchemaValue(&res)
 	assert.Nil(t, err)
 	assert.Equal(t, *res, value)
+}
+
+func newTestBackoffPolicy(minBackoff, maxBackoff time.Duration) *testBackoffPolicy {
+	return &testBackoffPolicy{
+		curBackoff: 0,
+		minBackoff: minBackoff,
+		maxBackoff: maxBackoff,
+	}
+}
+
+type testBackoffPolicy struct {
+	curBackoff, minBackoff, maxBackoff time.Duration
+	retryTime                          int
+}
+
+func (b *testBackoffPolicy) Next() time.Duration {
+	// Double the delay each time
+	b.curBackoff += b.curBackoff
+	if b.curBackoff.Nanoseconds() < b.minBackoff.Nanoseconds() {
+		b.curBackoff = b.minBackoff
+	} else if b.curBackoff.Nanoseconds() > b.maxBackoff.Nanoseconds() {
+		b.curBackoff = b.maxBackoff
+	}
+	b.retryTime++
+
+	return b.curBackoff
+}
+
+func (b *testBackoffPolicy) IsExpectedIntervalFrom(startTime time.Time) bool {
+	// Approximately equal to expected interval
+	if time.Since(startTime) < b.curBackoff-time.Second {
+		return false
+	}
+	if time.Since(startTime) > b.curBackoff+time.Second {
+		return false
+	}
+	return true
+}
+
+func TestReaderWithBackoffPolicy(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	_reader, err := client.CreateReader(ReaderOptions{
+		Topic:          "my-topic",
+		StartMessageID: LatestMessageID(),
+		BackoffPolicy:  backoff,
+	})
+	assert.NotNil(t, _reader)
+	assert.Nil(t, err)
+
+	partitionConsumerImp := _reader.(*reader).pc
+	// 1 s
+	startTime := time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 2 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionConsumerImp.reconnectToBroker()
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }

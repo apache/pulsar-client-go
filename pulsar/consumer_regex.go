@@ -167,30 +167,68 @@ func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
 }
 
+func (c *regexConsumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string,
+	delay time.Duration) {
+	c.log.Warnf("regexp consumer not support ReconsumeLaterWithCustomProperties yet.")
+}
+
 // AckID the consumption of a single message, identified by its MessageID
 func (c *regexConsumer) AckID(msgID MessageID) error {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
+	if !checkMessageIDType(msgID) {
 		c.log.Warnf("invalid message id type %T", msgID)
-		return errors.New("invalid message id type")
+		return fmt.Errorf("invalid message id type %T", msgID)
 	}
+
+	mid := toTrackingMessageID(msgID)
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
 		return errors.New("consumer is nil in consumer_regex")
 	}
 
-	return mid.Ack()
+	if c.options.AckWithResponse {
+		return mid.consumer.AckIDWithResponse(msgID)
+	}
+
+	return mid.consumer.AckID(msgID)
+}
+
+// AckCumulative the reception of all the messages in the stream up to (and including)
+// the provided message.
+func (c *regexConsumer) AckCumulative(msg Message) error {
+	return c.AckIDCumulative(msg.ID())
+}
+
+// AckIDCumulative the reception of all the messages in the stream up to (and including)
+// the provided message, identified by its MessageID
+func (c *regexConsumer) AckIDCumulative(msgID MessageID) error {
+	if !checkMessageIDType(msgID) {
+		c.log.Warnf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
+
+	mid := toTrackingMessageID(msgID)
+
+	if mid.consumer == nil {
+		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
+		return errors.New("unable to ack message because consumer is nil")
+	}
+
+	if c.options.AckWithResponse {
+		return mid.consumer.AckIDWithResponseCumulative(msgID)
+	}
+
+	return mid.consumer.AckIDCumulative(msgID)
 }
 
 func (c *regexConsumer) Nack(msg Message) {
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
 		msgID := msg.ID()
-		mid, ok := toTrackingMessageID(msgID)
-		if !ok {
+		if !checkMessageIDType(msgID) {
 			c.log.Warnf("invalid message id type %T", msgID)
 			return
 		}
+		mid := toTrackingMessageID(msgID)
 
 		if mid.consumer == nil {
 			c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
@@ -204,18 +242,19 @@ func (c *regexConsumer) Nack(msg Message) {
 }
 
 func (c *regexConsumer) NackID(msgID MessageID) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
+	if !checkMessageIDType(msgID) {
 		c.log.Warnf("invalid message id type %T", msgID)
 		return
 	}
+
+	mid := toTrackingMessageID(msgID)
 
 	if mid.consumer == nil {
 		c.log.Warnf("unable to nack messageID=%+v can not determine topic", msgID)
 		return
 	}
 
-	mid.Nack()
+	mid.consumer.NackID(msgID)
 }
 
 func (c *regexConsumer) Close() {

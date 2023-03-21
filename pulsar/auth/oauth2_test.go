@@ -19,7 +19,6 @@ package auth
 
 import (
 	"fmt"
-	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -64,7 +63,7 @@ func mockKeyFile(server string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	kf, err := ioutil.TempFile(pwd, "test_oauth2")
+	kf, err := os.CreateTemp(pwd, "test_oauth2")
 	if err != nil {
 		return "", err
 	}

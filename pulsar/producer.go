@@ -20,6 +20,8 @@ package pulsar
 import (
 	"context"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 type HashingScheme int
@@ -51,6 +53,20 @@ const (
 
 	// Higher compression rate, but slower
 	Better
+)
+
+type ProducerAccessMode int
+
+const (
+	// ProducerAccessModeShared is default multiple producers can publish on a topic.
+	ProducerAccessModeShared ProducerAccessMode = iota
+
+	// ProducerAccessModeExclusive is required exclusive access for producer.
+	// Fail immediately if there's already a producer connected.
+	ProducerAccessModeExclusive
+
+	// ProducerAccessModeWaitForExclusive is pending until producer can acquire exclusive access.
+	ProducerAccessModeWaitForExclusive
 )
 
 // TopicMetadata represents a topic metadata.
@@ -155,6 +171,10 @@ type ProducerOptions struct {
 	// MaxReconnectToBroker specifies the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
+	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
+	BackoffPolicy internal.BackoffPolicy
+
 	// BatcherBuilderType sets the batch builder type (default DefaultBatchBuilder)
 	// This will be used to create batch container when batching is enabled.
 	// Options:
@@ -166,8 +186,27 @@ type ProducerOptions struct {
 	// Default is 1 minute
 	PartitionsAutoDiscoveryInterval time.Duration
 
+	// Disable multiple Schame Version
+	// Default false
+	DisableMultiSchema bool
+
 	// Encryption specifies the fields required to encrypt a message
 	Encryption *ProducerEncryptionInfo
+
+	// EnableChunking controls whether automatic chunking of messages is enabled for the producer. By default, chunking
+	// is disabled.
+	// Chunking can not be enabled when batching is enabled.
+	EnableChunking bool
+
+	// ChunkMaxMessageSize is the max size of single chunk payload.
+	// It will actually only take effect if it is smaller than the maxMessageSize from the broker.
+	ChunkMaxMessageSize uint
+
+	// The type of access to the topic that the producer requires. (default ProducerAccessModeShared)
+	// Options:
+	// - ProducerAccessModeShared
+	// - ProducerAccessModeExclusive
+	ProducerAccessMode
 }
 
 // Producer is used to publish messages on a topic

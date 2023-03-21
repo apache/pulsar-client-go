@@ -15,35 +15,19 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsar
+package internal
 
-import (
-	"testing"
-)
+import "time"
 
-var (
-	usedByProducer messageID
-	usedByConsumer trackingMessageID
-)
+// These method should only be used by tests
 
-func producerCall(id messageID) messageID {
-	id.entryID++
-	return id
+func StartCleanConnectionsTask(p *ConnectionPool, connectionMaxIdleTime time.Duration) {
+	go (*p).(*connectionPool).checkAndCleanIdleConnections(connectionMaxIdleTime)
 }
 
-func consumerCall(id trackingMessageID) trackingMessageID {
-	id.entryID++
-	return id
-}
-
-func BenchmarkProducerCall(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		usedByProducer = producerCall(usedByProducer)
-	}
-}
-
-func BenchmarkConsumerCall(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		usedByConsumer = consumerCall(usedByConsumer)
-	}
+func GetConnectionsCount(p *ConnectionPool) int {
+	pool := (*p).(*connectionPool)
+	pool.Lock()
+	defer pool.Unlock()
+	return len(pool.connections)
 }

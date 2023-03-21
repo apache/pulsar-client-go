@@ -1,4 +1,3 @@
-#!/bin/bash
 #
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
@@ -18,21 +17,26 @@
 # under the License.
 #
 
-set -e -x
+IMAGE_NAME = pulsar-client-go-test:latest
+PULSAR_VERSION ?= 2.10.3
+PULSAR_IMAGE = apachepulsar/pulsar:$(PULSAR_VERSION)
+GO_VERSION ?= 1.18
+GOLANG_IMAGE = golang:$(GO_VERSION)
 
-export GOPATH=/
+build:
+	go build ./pulsar
+	go build -o bin/pulsar-perf ./perf
 
-# Install dependencies
-go mod download
+lint:
+	golangci-lint run
 
-# Basic compilation
-go build ./pulsar
-go build -o pulsar-perf ./perf
+container:
+	docker build -t ${IMAGE_NAME} --build-arg GOLANG_IMAGE="${GOLANG_IMAGE}" \
+	    --build-arg PULSAR_IMAGE="${PULSAR_IMAGE}" .
 
-./pulsar-test-service-start.sh
+test: container
+	docker run -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci.sh"
 
-go test -race -coverprofile=/tmp/coverage -timeout=20m ./...
-go tool cover -html=/tmp/coverage -o coverage.html
-
-./pulsar-test-service-stop.sh
-
+clean:
+	docker rmi --force $(IMAGE_NAME) || true
+	rm bin/*

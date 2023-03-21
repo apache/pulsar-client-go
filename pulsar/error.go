@@ -103,6 +103,16 @@ const (
 	ProducerClosed
 	// SchemaFailure means the payload could not be encoded using the Schema
 	SchemaFailure
+
+	// ReachMaxPendingOps means the pending operations in transaction_impl coordinator reach the maximum.
+	ReachMaxPendingOps
+	// InvalidStatus means the component status is not as expected.
+	InvalidStatus
+	// TransactionError means this is a transaction related error
+	TransactionError
+
+	// ClientMemoryBufferIsFull client limit buffer is full
+	ClientMemoryBufferIsFull
 )
 
 // Error implement error interface, composed of two parts: msg and result.
@@ -209,6 +219,8 @@ func getResultStr(r Result) string {
 		return "ProducerClosed"
 	case SchemaFailure:
 		return "SchemaFailure"
+	case ClientMemoryBufferIsFull:
+		return "ClientMemoryBufferIsFull"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
 	}
