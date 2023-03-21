@@ -155,7 +155,6 @@ type partitionConsumer struct {
 
 	currentQueueSize       uAtomic.Int32
 	scaleReceiverQueueHint uAtomic.Bool
-	receiverQueueShrinking uAtomic.Bool
 	incomingMessages       uAtomic.Int32
 
 	eventsCh        chan interface{}
@@ -336,6 +335,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
+		pc.client.memLimit.RegisterTrigger(receiverQueueShrinkMemThreshold, pc.shrinkReceiverQueueSize)
 	} else {
 		pc.currentQueueSize.Store(int32(pc.options.receiverQueueSize))
 	}
@@ -1124,7 +1124,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	}
 
 	if pc.options.autoReceiverQueueSize {
-		pc.reserveMemory(int64(bytesReceived))
+		pc.client.memLimit.ForceReserveMemory(int64(bytesReceived))
 		pc.incomingMessages.Add(int32(len(messages)))
 		pc.markScaleIfNeed()
 	}
@@ -1347,7 +1347,7 @@ func (pc *partitionConsumer) dispatcher() {
 
 			if pc.options.autoReceiverQueueSize {
 				pc.incomingMessages.Dec()
-				pc.releaseMemory(int64(nextMessageSize))
+				pc.client.memLimit.ReleaseMemory(int64(nextMessageSize))
 				pc.expectMoreIncomingMessages()
 			}
 
@@ -1770,34 +1770,18 @@ func (pc *partitionConsumer) markScaleIfNeed() {
 	}
 }
 
-func (pc *partitionConsumer) reserveMemory(size int64) {
-	pc.client.memLimit.ForceReserveMemory(size)
-	if pc.client.memLimit.CurrentUsagePercent() >= receiverQueueShrinkMemThreshold {
-		pc.shrinkReceiverQueueSize()
-	} else {
-		// Reset shrinking so that we can shrink receiver queue again
-		// when memLimit exceed receiverQueueShrinkMemThreshold
-		pc.receiverQueueShrinking.Store(false)
-	}
-}
-
-func (pc *partitionConsumer) releaseMemory(size int64) {
-	pc.client.memLimit.ReleaseMemory(size)
-}
-
 func (pc *partitionConsumer) shrinkReceiverQueueSize() {
 	if !pc.options.autoReceiverQueueSize {
 		return
 	}
-	if pc.receiverQueueShrinking.CAS(false, true) {
-		oldSize := pc.currentQueueSize.Load()
-		minSize := int32(math.Min(float64(initialReceiverQueueSize), float64(pc.options.receiverQueueSize)))
-		newSize := int32(math.Max(float64(minSize), float64(oldSize/2)))
-		if newSize < oldSize {
-			pc.currentQueueSize.CAS(oldSize, newSize)
-			pc.availablePermits.add(newSize - oldSize)
-			pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
-		}
+
+	oldSize := pc.currentQueueSize.Load()
+	minSize := int32(math.Min(float64(initialReceiverQueueSize), float64(pc.options.receiverQueueSize)))
+	newSize := int32(math.Max(float64(minSize), float64(oldSize/2)))
+	if newSize < oldSize {
+		pc.currentQueueSize.CAS(oldSize, newSize)
+		pc.availablePermits.add(newSize - oldSize)
+		pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
 	}
 }
 

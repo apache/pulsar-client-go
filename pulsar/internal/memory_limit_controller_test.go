@@ -19,6 +19,7 @@ package internal
 
 import (
 	"context"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -167,6 +168,55 @@ func TestStepRelease(t *testing.T) {
 		assert.False(t, awaitCh(ch))
 	}
 	assert.Equal(t, int64(101), mlc.CurrentUsage())
+}
+
+func TestRegisterTrigger(t *testing.T) {
+	mlc := NewMemoryLimitController(100)
+	triggeredLowThreshold := false
+	triggeredHighThreshold := false
+	finishCh := make(chan struct{}, 2)
+
+	mlc.RegisterTrigger(0.5, func() {
+		triggeredLowThreshold = true
+		finishCh <- struct{}{}
+	})
+
+	mlc.RegisterTrigger(0.95, func() {
+		triggeredHighThreshold = true
+		finishCh <- struct{}{}
+	})
+
+	mlc.TryReserveMemory(50)
+	timer := time.NewTimer(time.Millisecond * 100)
+	select {
+	case <-finishCh:
+		assert.True(t, triggeredLowThreshold)
+		assert.False(t, triggeredHighThreshold)
+	case <-timer.C:
+		assert.Error(t, fmt.Errorf("trigger timeout"))
+	}
+
+	mlc.TryReserveMemory(45)
+	timer.Reset(time.Millisecond * 100)
+	select {
+	case <-finishCh:
+		assert.True(t, triggeredLowThreshold)
+		assert.True(t, triggeredHighThreshold)
+	case <-timer.C:
+		assert.Error(t, fmt.Errorf("trigger timeout"))
+	}
+
+	triggeredHighThreshold = false
+	mlc.ReleaseMemory(1)
+	assert.False(t, triggeredHighThreshold)
+	mlc.ForceReserveMemory(1)
+	timer.Reset(time.Millisecond * 100)
+	select {
+	case <-finishCh:
+		assert.True(t, triggeredHighThreshold)
+	case <-timer.C:
+		assert.Error(t, fmt.Errorf("trigger timeout"))
+	}
 }
 
 func reserveMemory(mlc MemoryLimitController, ch chan int) {

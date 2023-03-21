@@ -4224,4 +4224,39 @@ func TestConsumerMemoryLimit(t *testing.T) {
 	})
 	// Producer can't send message
 	assert.Equal(t, true, errors.Is(err, errMemoryBufferIsFull))
+
+	// clear messages in messageCh
+	timer := time.NewTimer(time.Second)
+	var stop bool
+	for !stop {
+		select {
+		case <-c1.Chan():
+		case <-c2.Chan():
+		case <-timer.C:
+			stop = true
+		}
+	}
+
+	pc1.currentQueueSize.Store(8)
+	pc2.currentQueueSize.Store(8)
+
+	// Get current receiver queue size of c1 and c2
+	pc1PrevQueueSize := pc1.currentQueueSize.Load()
+	pc2PrevQueueSize := pc2.currentQueueSize.Load()
+
+	// Make the client 1 exceed the memory limit
+	_, err = p1.Send(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(10*1024 + 1),
+	})
+	assert.NoError(t, err)
+
+	// c1 should shrink it's receiver queue size
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, pc1PrevQueueSize/2, pc1.currentQueueSize.Load())
+	})
+
+	// c2 should shrink it's receiver queue size too
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, pc2PrevQueueSize/2, pc2.currentQueueSize.Load())
+	})
 }
