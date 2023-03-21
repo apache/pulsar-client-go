@@ -170,11 +170,13 @@ func (txn *transaction) registerProducerTopic(topic string) error {
 	if !ok {
 		txn.Lock()
 		defer txn.Unlock()
-		err := txn.tcClient.addPublishPartitionToTxn(&txn.txnID, []string{topic})
-		if err != nil {
-			return err
+		if _, ok = txn.registerPartitions[topic]; !ok {
+			err := txn.tcClient.addPublishPartitionToTxn(&txn.txnID, []string{topic})
+			if err != nil {
+				return err
+			}
+			txn.registerPartitions[topic] = true
 		}
-		txn.registerPartitions[topic] = true
 	}
 	return nil
 }
@@ -192,11 +194,13 @@ func (txn *transaction) registerAckTopic(topic string, subName string) error {
 	if !ok {
 		txn.Lock()
 		defer txn.Unlock()
-		err := txn.tcClient.addSubscriptionToTxn(&txn.txnID, topic, subName)
-		if err != nil {
-			return err
+		if _, ok = txn.registerAckSubscriptions[sub]; !ok {
+			err := txn.tcClient.addSubscriptionToTxn(&txn.txnID, topic, subName)
+			if err != nil {
+				return err
+			}
+			txn.registerAckSubscriptions[sub] = true
 		}
-		txn.registerAckSubscriptions[sub] = true
 	}
 	return nil
 }
