@@ -98,7 +98,9 @@ func TestNewWithTlsAllowInsecure(t *testing.T) {
 
 	pulsarClientS := admin.(*pulsarClient)
 	require.NotNil(t, pulsarClientS.Client.HTTPClient.Transport)
-	tr := pulsarClientS.Client.HTTPClient.Transport.(*http.Transport)
+
+	ap := pulsarClientS.Client.HTTPClient.Transport.(*auth.DefaultProvider)
+	tr := ap.Transport().(*http.Transport)
 	require.NotNil(t, tr)
 	require.NotNil(t, tr.TLSClientConfig)
 	require.True(t, tr.TLSClientConfig.InsecureSkipVerify)
