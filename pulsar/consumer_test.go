@@ -4237,6 +4237,16 @@ func TestConsumerMemoryLimit(t *testing.T) {
 		}
 	}
 
+	// Fill up the messageCh of c1 and c2
+	for i := 0; i < 10; i++ {
+		p1.SendAsync(
+			context.Background(),
+			&ProducerMessage{Payload: createTestMessagePayload(1)},
+			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			},
+		)
+	}
+
 	pc1.currentQueueSize.Store(8)
 	pc2.currentQueueSize.Store(8)
 
