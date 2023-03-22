@@ -4224,20 +4224,59 @@ func TestConsumerMemoryLimit(t *testing.T) {
 	})
 	// Producer can't send message
 	assert.Equal(t, true, errors.Is(err, errMemoryBufferIsFull))
+}
 
-	// clear messages in messageCh
-	timer := time.NewTimer(time.Second)
-	var stop bool
-	for !stop {
-		select {
-		case <-c1.Chan():
-		case <-c2.Chan():
-		case <-timer.C:
-			stop = true
-		}
-	}
+func TestMultiConsumerMemoryLimit(t *testing.T) {
+	// Create client 1 without memory limit
+	cli1, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
 
-	// Fill up the messageCh of c1 and c2
+	assert.Nil(t, err)
+	defer cli1.Close()
+
+	// Create client 1 with memory limit
+	cli2, err := NewClient(ClientOptions{
+		URL:              lookupURL,
+		MemoryLimitBytes: 10 * 1024,
+	})
+
+	assert.Nil(t, err)
+	defer cli2.Close()
+
+	topic := newTopicName()
+
+	// Use client 1 to create producer p1
+	p1, err := cli1.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer p1.Close()
+
+	// Use mem-limited client 2 to create consumer c1
+	c1, err := cli2.Subscribe(ConsumerOptions{
+		Topic:                             topic,
+		SubscriptionName:                  "my-sub-1",
+		Type:                              Exclusive,
+		EnableAutoScaledReceiverQueueSize: true,
+	})
+	assert.Nil(t, err)
+	defer c1.Close()
+	pc1 := c1.(*consumer).consumers[0]
+
+	// Use mem-limited client 2 to create consumer c1
+	c2, err := cli2.Subscribe(ConsumerOptions{
+		Topic:                             topic,
+		SubscriptionName:                  "my-sub-2",
+		Type:                              Exclusive,
+		EnableAutoScaledReceiverQueueSize: true,
+	})
+	assert.Nil(t, err)
+	defer c2.Close()
+	pc2 := c1.(*consumer).consumers[0]
+
+	// Fill up the messageCh of c1 nad c2
 	for i := 0; i < 10; i++ {
 		p1.SendAsync(
 			context.Background(),
@@ -4247,8 +4286,13 @@ func TestConsumerMemoryLimit(t *testing.T) {
 		)
 	}
 
-	pc1.currentQueueSize.Store(8)
-	pc2.currentQueueSize.Store(8)
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, 10, len(pc1.messageCh))
+	})
+
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, 10, len(pc2.messageCh))
+	})
 
 	// Get current receiver queue size of c1 and c2
 	pc1PrevQueueSize := pc1.currentQueueSize.Load()
