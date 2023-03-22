@@ -82,47 +82,22 @@ func NewWithAuthProvider(config *config.Config, authProvider auth.Provider) Clie
 }
 
 // NewPulsarClientWithAuthProvider create a client with auth provider.
-func NewPulsarClientWithAuthProvider(config *config.Config,
-	authProvider auth.Provider) (Client, error) {
-	var transport http.RoundTripper
-
-	if authProvider != nil {
-		transport = authProvider.Transport()
-		if transport != nil {
-			transport = authProvider
-		}
-	}
-
-	if transport == nil {
-		defaultTransport, err := auth.NewDefaultTransport(config)
-		if err != nil {
-			return nil, err
-		}
-		if authProvider != nil {
-			authProvider.WithTransport(authProvider)
-		} else {
-			transport = defaultTransport
-		}
-	}
-
-	webServiceURL := config.WebServiceURL
-	if len(webServiceURL) == 0 {
+func NewPulsarClientWithAuthProvider(config *config.Config, authProvider auth.Provider) (Client, error) {
+	if len(config.WebServiceURL) == 0 {
 		config.WebServiceURL = DefaultWebServiceURL
 	}
 
-	c := &pulsarClient{
+	return &pulsarClient{
 		APIVersion: config.PulsarAPIVersion,
 		Client: &rest.Client{
 			ServiceURL:  config.WebServiceURL,
 			VersionInfo: ReleaseVersion,
 			HTTPClient: &http.Client{
 				Timeout:   DefaultHTTPTimeOutDuration,
-				Transport: transport,
+				Transport: authProvider,
 			},
 		},
-	}
-
-	return c, nil
+	}, nil
 }
 
 func (c *pulsarClient) endpoint(componentPath string, parts ...string) string {

@@ -28,6 +28,28 @@ type Provider interface {
 	WithTransport(tripper http.RoundTripper)
 }
 
+type DefaultProvider struct {
+	transport http.RoundTripper
+}
+
+func NewDefaultProvider(t http.RoundTripper) Provider {
+	return &DefaultProvider{
+		transport: t,
+	}
+}
+
+func (dp *DefaultProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+	return dp.transport.RoundTrip(req)
+}
+
+func (dp *DefaultProvider) Transport() http.RoundTripper {
+	return dp.transport
+}
+
+func (dp *DefaultProvider) WithTransport(t http.RoundTripper) {
+	dp.transport = t
+}
+
 func GetAuthProvider(config *config.Config) (Provider, error) {
 	var provider Provider
 	defaultTransport, err := NewDefaultTransport(config)
@@ -58,6 +80,8 @@ func GetAuthProvider(config *config.Config) (Provider, error) {
 		case len(config.IssuerEndpoint) > 0 || len(config.ClientID) > 0 || len(config.Audience) > 0 || len(config.Scope) > 0:
 			provider, err = NewAuthenticationOAuth2WithParams(
 				config.IssuerEndpoint, config.ClientID, config.Audience, config.Scope, defaultTransport)
+		default:
+			provider = NewDefaultProvider(defaultTransport)
 		}
 	}
 	return provider, err
