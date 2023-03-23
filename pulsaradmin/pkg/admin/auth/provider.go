@@ -18,6 +18,8 @@ package auth
 import (
 	"net/http"
 
+	"github.com/apache/pulsar-client-go/oauth2"
+
 	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
 )
 
@@ -68,7 +70,11 @@ func GetAuthProvider(config *config.Config) (Provider, error) {
 	case OAuth2PluginName:
 		fallthrough
 	case OAuth2PluginShortName:
-		provider, err = NewAuthenticationOAuth2FromAuthParams(config.AuthParams, defaultTransport)
+		provider, err = NewAuthenticationOAuth2WithDefaultFlow(oauth2.Issuer{
+			IssuerEndpoint: config.IssuerEndpoint,
+			ClientID:       config.ClientID,
+			Audience:       config.Audience,
+		}, config.KeyFile)
 	default:
 		switch {
 		case len(config.TLSCertFile) > 0 && len(config.TLSKeyFile) > 0:

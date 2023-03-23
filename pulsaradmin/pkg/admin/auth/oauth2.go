@@ -183,13 +183,7 @@ func (o *OAuth2Provider) WithTransport(tripper http.RoundTripper) {
 }
 
 func (o *OAuth2Provider) Transport() http.RoundTripper {
-	return &transport{
-		source: o.source,
-		wrapped: &xoauth2.Transport{
-			Source: o.source,
-			Base:   o.defaultTransport,
-		},
-	}
+	return o.tokenTransport
 }
 
 func (o *OAuth2Provider) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
