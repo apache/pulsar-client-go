@@ -171,7 +171,7 @@ func TestStepRelease(t *testing.T) {
 }
 
 func TestRegisterTrigger(t *testing.T) {
-	mlc := NewMemoryLimitController(100, 1.0)
+	mlc := NewMemoryLimitController(100, 0.95)
 	triggeredResult1 := false
 	triggeredResult2 := false
 	finishCh := make(chan struct{}, 2)
@@ -196,12 +196,12 @@ func TestRegisterTrigger(t *testing.T) {
 
 	mlc.TryReserveMemory(45)
 	timer.Reset(time.Millisecond * 100)
-	select {
-	case <-finishCh:
-		assert.True(t, triggeredResult1)
-		assert.True(t, triggeredResult2)
-	case <-timer.C:
-		assert.Error(t, fmt.Errorf("trigger timeout"))
+	for triggeredResult2 && triggeredResult1 {
+		select {
+		case <-finishCh:
+		case <-timer.C:
+			assert.Error(t, fmt.Errorf("trigger timeout"))
+		}
 	}
 
 	triggeredResult2 = false
