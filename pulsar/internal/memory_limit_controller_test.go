@@ -19,7 +19,6 @@ package internal
 
 import (
 	"context"
-	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -187,34 +186,38 @@ func TestRegisterTrigger(t *testing.T) {
 	})
 
 	mlc.TryReserveMemory(50)
-	timer := time.NewTimer(time.Millisecond * 100)
+	timer := time.NewTimer(time.Millisecond * 500)
 	select {
 	case <-finishCh:
-		assert.Error(t, fmt.Errorf("should not be triggered"))
+		assert.Fail(t, "should not be triggered")
 	case <-timer.C:
 	}
 
 	mlc.TryReserveMemory(45)
-	timer.Reset(time.Millisecond * 100)
-	for triggeredResult2 && triggeredResult1 {
+	timer.Reset(time.Millisecond * 500)
+	for i := 0; i < 2; i++ {
 		select {
 		case <-finishCh:
 		case <-timer.C:
-			assert.Error(t, fmt.Errorf("trigger timeout"))
+			assert.Fail(t, "trigger timeout")
 		}
 	}
 
+	assert.True(t, triggeredResult1)
+	assert.True(t, triggeredResult2)
+
 	triggeredResult2 = false
 	mlc.ReleaseMemory(1)
-	assert.False(t, triggeredResult2)
 	mlc.ForceReserveMemory(1)
-	timer.Reset(time.Millisecond * 100)
-	select {
-	case <-finishCh:
-		assert.True(t, triggeredResult2)
-	case <-timer.C:
-		assert.Error(t, fmt.Errorf("trigger timeout"))
+	timer.Reset(time.Millisecond * 500)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-finishCh:
+		case <-timer.C:
+			assert.Fail(t, "trigger timeout")
+		}
 	}
+	assert.True(t, triggeredResult2)
 }
 
 func reserveMemory(mlc MemoryLimitController, ch chan int) {

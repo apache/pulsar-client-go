@@ -4274,7 +4274,7 @@ func TestMultiConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c2.Close()
-	pc2 := c1.(*consumer).consumers[0]
+	pc2 := c2.(*consumer).consumers[0]
 
 	// Fill up the messageCh of c1 nad c2
 	for i := 0; i < 10; i++ {
