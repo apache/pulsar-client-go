@@ -49,17 +49,17 @@ which also provides a clearer perspective and maintainability from an architectu
 
 ```go
 import (
-	"github.com/streamnative/pulsar-admin-go"
+    "github.com/streamnative/pulsar-admin-go"
 )
 
 func main() {
-	cfg := &pulsaradmin.Config{}
-	admin, err := pulsaradmin.NewClient(cfg)
-	if err != nil {
-		panic(err)
-	}
-
-	tenants, err := admin.Tenants().List()
+    cfg := &pulsaradmin.Config{}
+    admin, err := pulsaradmin.NewClient(cfg)
+    if err != nil {
+        panic(err)
+    }
+    
+    tenants, _ := admin.Tenants().List()
 }
 ```
 
@@ -69,17 +69,17 @@ func main() {
 
 ```go
 import (
-	"github.com/streamnative/pulsar-admin-go"
+    "github.com/streamnative/pulsar-admin-go"
 )
 
 func main() {
-	cfg := &pulsaradmin.Config{}
-	admin, err := pulsaradmin.NewClient(cfg)
-	if err != nil {
-		panic(err)
-	}
-
-	namespaces, err := admin.Namespaces().GetNamespaces("public")
+    cfg := &pulsaradmin.Config{}
+    admin, err := pulsaradmin.NewClient(cfg)
+    if err != nil {
+        panic(err)
+    }
+    
+    namespaces, _ := admin.Namespaces().GetNamespaces("public")
 }
 ```
 
@@ -87,19 +87,17 @@ func main() {
 
 ```go
 import (
-	"github.com/streamnative/pulsar-admin-go"
+    "github.com/streamnative/pulsar-admin-go"
 )
 
 func main() {
-	cfg := &pulsaradmin.Config{}
-	admin, err := pulsaradmin.NewClient(cfg)
-	if err != nil {
-		panic(err)
-	}
-
-	if err := admin.Namespaces().CreateNamespace("public/dev"); err != nil {
-		panic(err)
-	}
+    cfg := &pulsaradmin.Config{}
+    admin, err := pulsaradmin.NewClient(cfg)
+    if err != nil {
+        panic(err)
+    }
+    
+    admin.Namespaces().CreateNamespace("public/dev")
 }
 ```
 
@@ -110,25 +108,20 @@ func main() {
 ```go
 
 import (
-	"github.com/streamnative/pulsar-admin-go"
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+    "github.com/streamnative/pulsar-admin-go"
+    "github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 func main() {
-	cfg := &pulsaradmin.Config{}
-	admin, err := pulsaradmin.NewClient(cfg)
-	if err != nil {
-		panic(err)
-	}
-	
-	topic, err := utils.GetTopicName("public/dev/topic")
-	if err != nil {
-		panic(err)
-	}
-
-	if err := admin.Topics().Create(*topic, 3); err != nil {
-		panic(err)
-	}
+    cfg := &pulsaradmin.Config{}
+    admin, err := pulsaradmin.NewClient(cfg)
+    if err != nil {
+        panic(err)
+    }
+    
+    topic, _ := utils.GetTopicName("public/dev/topic")
+    
+    admin.Topics().Create(*topic, 3)
 }
 ```
 
