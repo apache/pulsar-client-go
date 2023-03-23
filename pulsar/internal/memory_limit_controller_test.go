@@ -28,7 +28,7 @@ import (
 
 func TestLimit(t *testing.T) {
 
-	mlc := NewMemoryLimitController(100)
+	mlc := NewMemoryLimitController(100, 1.0)
 
 	for i := 0; i < 101; i++ {
 		assert.True(t, mlc.TryReserveMemory(1))
@@ -57,7 +57,7 @@ func TestLimit(t *testing.T) {
 }
 
 func TestDisableLimit(t *testing.T) {
-	mlc := NewMemoryLimitController(-1)
+	mlc := NewMemoryLimitController(-1, 1.0)
 	assert.True(t, mlc.TryReserveMemory(1000000))
 	assert.True(t, mlc.ReserveMemory(context.Background(), 1000000))
 	mlc.ReleaseMemory(1000000)
@@ -65,7 +65,7 @@ func TestDisableLimit(t *testing.T) {
 }
 
 func TestMultiGoroutineTryReserveMem(t *testing.T) {
-	mlc := NewMemoryLimitController(10000)
+	mlc := NewMemoryLimitController(10000, 1.0)
 
 	// Multi goroutine try reserve memory.
 	wg := sync.WaitGroup{}
@@ -87,7 +87,7 @@ func TestMultiGoroutineTryReserveMem(t *testing.T) {
 }
 
 func TestReserveWithContext(t *testing.T) {
-	mlc := NewMemoryLimitController(100)
+	mlc := NewMemoryLimitController(100, 1.0)
 	assert.True(t, mlc.TryReserveMemory(101))
 	gorNum := 10
 
@@ -120,7 +120,7 @@ func TestReserveWithContext(t *testing.T) {
 }
 
 func TestBlocking(t *testing.T) {
-	mlc := NewMemoryLimitController(100)
+	mlc := NewMemoryLimitController(100, 1.0)
 	assert.True(t, mlc.TryReserveMemory(101))
 	assert.Equal(t, int64(101), mlc.CurrentUsage())
 	assert.InDelta(t, 1.01, mlc.CurrentUsagePercent(), 0.000001)
@@ -146,7 +146,7 @@ func TestBlocking(t *testing.T) {
 }
 
 func TestStepRelease(t *testing.T) {
-	mlc := NewMemoryLimitController(100)
+	mlc := NewMemoryLimitController(100, 1.0)
 	assert.True(t, mlc.TryReserveMemory(101))
 	assert.Equal(t, int64(101), mlc.CurrentUsage())
 	assert.InDelta(t, 1.01, mlc.CurrentUsagePercent(), 0.000001)
@@ -167,6 +167,57 @@ func TestStepRelease(t *testing.T) {
 		assert.False(t, awaitCh(ch))
 	}
 	assert.Equal(t, int64(101), mlc.CurrentUsage())
+}
+
+func TestRegisterTrigger(t *testing.T) {
+	mlc := NewMemoryLimitController(100, 0.95)
+	triggeredResult1 := false
+	triggeredResult2 := false
+	finishCh := make(chan struct{}, 2)
+
+	mlc.RegisterTrigger(func() {
+		triggeredResult1 = true
+		finishCh <- struct{}{}
+	})
+
+	mlc.RegisterTrigger(func() {
+		triggeredResult2 = true
+		finishCh <- struct{}{}
+	})
+
+	mlc.TryReserveMemory(50)
+	timer := time.NewTimer(time.Millisecond * 500)
+	select {
+	case <-finishCh:
+		assert.Fail(t, "should not be triggered")
+	case <-timer.C:
+	}
+
+	mlc.TryReserveMemory(45)
+	timer.Reset(time.Millisecond * 500)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-finishCh:
+		case <-timer.C:
+			assert.Fail(t, "trigger timeout")
+		}
+	}
+
+	assert.True(t, triggeredResult1)
+	assert.True(t, triggeredResult2)
+
+	triggeredResult2 = false
+	mlc.ReleaseMemory(1)
+	mlc.ForceReserveMemory(1)
+	timer.Reset(time.Millisecond * 500)
+	for i := 0; i < 2; i++ {
+		select {
+		case <-finishCh:
+		case <-timer.C:
+			assert.Fail(t, "trigger timeout")
+		}
+	}
+	assert.True(t, triggeredResult2)
 }
 
 func reserveMemory(mlc MemoryLimitController, ch chan int) {
