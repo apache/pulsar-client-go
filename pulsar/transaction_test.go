@@ -81,21 +81,20 @@ func TestTCClient(t *testing.T) {
 	defer client.Close()
 }
 
-/**
-* Test points:
-* 		1. Abort and commit txn.
-*			1. Do nothing, just open a transaction and then commit it or abort it.
-*			The operations of committing/aborting txn should success at the first time and fail at the second time.
-*       2. The internal API, registerSendOrAckOp and endSendOrAckOp
-*			1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
-*			2. Register 3 operation and end 3 operation the transaction can be committed and aborted.
-*			3. Register an operation and end the operation with an error,
-*			and then the state of the transaction should be replaced to errored.
-*		3. The internal API, registerAckTopic and registerProducerTopic
-*			1. Register ack topic and send topic, and call http request to get the stats of the transaction
-*              to do verification.
- */
-/** TestTxnImplCommitOrAbort Test abort and commit txn */
+//Test points:
+//	1. Abort and commit txn.
+//		1. Do nothing, just open a transaction and then commit it or abort it.
+//		The operations of committing/aborting txn should success at the first time and fail at the second time.
+//	2. The internal API, registerSendOrAckOp and endSendOrAckOp
+//		1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
+//		2. Register 3 operation and end 3 operation the transaction can be committed and aborted.
+//		3. Register an operation and end the operation with an error,
+//		and then the state of the transaction should be replaced to errored.
+//	3. The internal API, registerAckTopic and registerProducerTopic
+//		1. Register ack topic and send topic, and call http request to get the stats of the transaction
+//		to do verification.
+
+// TestTxnImplCommitOrAbort Test abort and commit txn
 func TestTxnImplCommitOrAbort(t *testing.T) {
 	tc, _ := createTcClient(t)
 	//1. Open a transaction and then commit it.
@@ -133,7 +132,7 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	assert.Equal(t, err.(*Error).Result(), InvalidStatus)
 }
 
-/** TestRegisterOpAndEndOp Test the internal API including the registerSendOrAckOp and endSendOrAckOp. */
+// TestRegisterOpAndEndOp Test the internal API including the registerSendOrAckOp and endSendOrAckOp.
 func TestRegisterOpAndEndOp(t *testing.T) {
 	tc, _ := createTcClient(t)
 	//1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
@@ -155,7 +154,7 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 	assert.Equal(t, res.(*Error).Result(), InvalidStatus)
 }
 
-/** TestRegisterTopic Test the internal API, registerAckTopic and registerProducerTopic */
+// TestRegisterTopic Test the internal API, registerAckTopic and registerProducerTopic
 func TestRegisterTopic(t *testing.T) {
 	//1. Prepare: create PulsarClient and init transaction coordinator client.
 	topic := newTopicName()
