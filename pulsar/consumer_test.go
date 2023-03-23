@@ -4073,3 +4073,75 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 		return assert.Equal(t, 3, int(pc.currentQueueSize.Load()))
 	})
 }
+
+func TestConsumerNonDurable(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Shared,
+		SubscrptionMode:  NonDurable,
+	})
+	assert.Nil(t, err)
+
+	i := 1
+	if _, err := producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+	consumer.Ack(msg)
+
+	consumer.Close()
+
+	i += 1
+
+	// send a message. Pulsar should delete it as there is no active subscription
+	if _, err := producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	i += 1
+
+	// Subscribe again
+	consumer, err = client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Shared,
+		SubscrptionMode:  NonDurable,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	if _, err := producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+	consumer.Ack(msg)
+}
