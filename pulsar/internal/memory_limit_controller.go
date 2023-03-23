@@ -31,7 +31,7 @@ type MemoryLimitController interface {
 	CurrentUsage() int64
 	CurrentUsagePercent() float64
 	IsMemoryLimited() bool
-	RegisterTrigger(threshold float64, trigger func())
+	RegisterTrigger(trigger func())
 }
 
 type memoryLimitController struct {
@@ -39,12 +39,12 @@ type memoryLimitController struct {
 	chCond       *chCond
 	currentUsage int64
 
-	triggers     []*thresholdTrigger
-	minThreshold float64
+	triggers []*thresholdTrigger
+	// valid range is (0, 1.0)
+	triggerThreshold float64
 }
 
 type thresholdTrigger struct {
-	threshold      float64
 	triggerFunc    func()
 	triggerRunning int32
 }
@@ -60,11 +60,12 @@ func (t *thresholdTrigger) setRunning(isRunning bool) {
 	atomic.StoreInt32(&t.triggerRunning, 0)
 }
 
-func NewMemoryLimitController(limit int64) MemoryLimitController {
+// NewMemoryLimitController threshold valid range is (0, 1.0)
+func NewMemoryLimitController(limit int64, threshold float64) MemoryLimitController {
 	mlc := &memoryLimitController{
-		limit:        limit,
-		chCond:       newCond(&sync.Mutex{}),
-		minThreshold: 1.0,
+		limit:            limit,
+		chCond:           newCond(&sync.Mutex{}),
+		triggerThreshold: threshold,
 	}
 	return mlc
 }
@@ -125,26 +126,19 @@ func (m *memoryLimitController) IsMemoryLimited() bool {
 	return m.limit > 0
 }
 
-func (m *memoryLimitController) RegisterTrigger(threshold float64, trigger func()) {
+func (m *memoryLimitController) RegisterTrigger(trigger func()) {
 	m.chCond.L.Lock()
 	defer m.chCond.L.Unlock()
-	if threshold < m.minThreshold {
-		m.minThreshold = threshold
-	}
 	m.triggers = append(m.triggers, &thresholdTrigger{
-		threshold:   threshold,
 		triggerFunc: trigger,
 	})
 }
 
 func (m *memoryLimitController) checkTrigger(prevUsage int64, nextUsage int64) {
 	nextUsagePercent := float64(nextUsage) / float64(m.limit)
-	if nextUsagePercent < m.minThreshold {
-		return
-	}
 	prevUsagePercent := float64(prevUsage) / float64(m.limit)
-	for _, trigger := range m.triggers {
-		if prevUsagePercent < trigger.threshold && nextUsagePercent >= trigger.threshold {
+	if nextUsagePercent >= m.triggerThreshold && prevUsagePercent < m.triggerThreshold {
+		for _, trigger := range m.triggers {
 			if trigger.canTryRunning() {
 				go func(trigger *thresholdTrigger) {
 					trigger.triggerFunc()

@@ -79,7 +79,6 @@ const (
 const (
 	initialReceiverQueueSize           = 1
 	receiverQueueExpansionMemThreshold = 0.75
-	receiverQueueShrinkMemThreshold    = 0.95
 )
 
 const (
@@ -335,7 +334,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
-		pc.client.memLimit.RegisterTrigger(receiverQueueShrinkMemThreshold, pc.shrinkReceiverQueueSize)
+		pc.client.memLimit.RegisterTrigger(pc.shrinkReceiverQueueSize)
 	} else {
 		pc.currentQueueSize.Store(int32(pc.options.receiverQueueSize))
 	}
