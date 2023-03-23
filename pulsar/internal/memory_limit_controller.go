@@ -56,8 +56,9 @@ func (t *thresholdTrigger) canTryRunning() bool {
 func (t *thresholdTrigger) setRunning(isRunning bool) {
 	if isRunning {
 		atomic.StoreInt32(&t.triggerRunning, 1)
+	} else {
+		atomic.StoreInt32(&t.triggerRunning, 0)
 	}
-	atomic.StoreInt32(&t.triggerRunning, 0)
 }
 
 // NewMemoryLimitController threshold valid range is (0, 1.0)
