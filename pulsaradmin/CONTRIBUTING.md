@@ -49,6 +49,12 @@ The overall project structure is illustrated below:
 
 ## Conventions
 
+Please read through below conventions before contributions.
+
+### PullRequest conventions
+
+- Use [Conventional Commits specification](https://www.conventionalcommits.org/en/v1.0.0/) to standardize PR title.
+
 ### Code conventions
 
 - [Go Code Review Comments](https://github.com/golang/go/wiki/CodeReviewComments)
