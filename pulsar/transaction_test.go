@@ -103,26 +103,26 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	//The operations of committing txn1 should success at the first time and fail at the second time.
 	txn1 := createTxn(tc, t)
 	err := txn1.Commit(context.Background())
-	require.Nil(t, err, fmt.Sprintf("Failed to commit the transaction %d:%d, %s\n", txn1.txnID.mostSigBits,
-		txn1.txnID.leastSigBits, err.Error()))
-	txn1.state = Open
+	require.Nil(t, err, fmt.Sprintf("Failed to commit the transaction %d:%d\n", txn1.txnID.mostSigBits,
+		txn1.txnID.leastSigBits))
+	txn1.state = TxnOpen
 	txn1.opsFlow <- true
 	err = txn1.Commit(context.Background())
 	assert.Equal(t, err.(*Error).Result(), Result(pb.ServerError_TransactionNotFound))
-	assert.Equal(t, txn1.GetState(), Errored)
+	assert.Equal(t, txn1.GetState(), TxnError)
 	//2. Open a transaction and then abort it.
 	//The operations of aborting txn2 should success at the first time and fail at the second time.
 	id2, err := tc.newTransaction(time.Hour)
-	require.Nil(t, err, fmt.Sprintf("Failed to new a transaction %s", err.Error()))
+	require.Nil(t, err, "Failed to new a transaction")
 	txn2 := newTransaction(*id2, tc, time.Hour)
 	err = txn2.Abort(context.Background())
-	require.Nil(t, err, fmt.Sprintf("Failed to abort the transaction %d:%d, %s\n",
-		id2.mostSigBits, id2.leastSigBits, err.Error()))
-	txn2.state = Open
+	require.Nil(t, err, fmt.Sprintf("Failed to abort the transaction %d:%d\n",
+		id2.mostSigBits, id2.leastSigBits))
+	txn2.state = TxnOpen
 	txn2.opsFlow <- true
 	err = txn2.Abort(context.Background())
 	assert.Equal(t, err.(*Error).Result(), Result(pb.ServerError_TransactionNotFound))
-	assert.Equal(t, txn1.GetState(), Errored)
+	assert.Equal(t, txn1.GetState(), TxnError)
 	err = txn2.registerSendOrAckOp()
 	assert.Equal(t, err.(*Error).Result(), InvalidStatus)
 	err = txn1.registerSendOrAckOp()
@@ -166,9 +166,9 @@ func TestRegisterTopic(t *testing.T) {
 	txn := createTxn(tc, t)
 	//3. Create a topic and register topic and subscription.
 	err = txn.registerAckTopic(topic, sub)
-	require.Nil(t, err, "Failed to register ack topic.", err.Error())
+	require.Nil(t, err, "Failed to register ack topic.")
 	err = txn.registerProducerTopic(topic)
-	require.Nil(t, err, "Failed to register ack topic.", err.Error())
+	require.Nil(t, err, "Failed to register ack topic.")
 	//4. Call http request to get the stats of the transaction to do verification.
 	stats2, err := transactionStats(&txn.txnID)
 	assert.NoError(t, err)
@@ -199,7 +199,7 @@ func registerOpAndEndOp(t *testing.T, tc *transactionCoordinatorClient, rp int, 
 
 func createTxn(tc *transactionCoordinatorClient, t *testing.T) *transaction {
 	id, err := tc.newTransaction(time.Hour)
-	require.Nil(t, err, "Failed to new a transaction.", err.Error())
+	require.Nil(t, err, "Failed to new a transaction.")
 	return newTransaction(*id, tc, time.Hour)
 }
 
@@ -210,10 +210,10 @@ func createTcClient(t *testing.T) (*transactionCoordinatorClient, *client) {
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
 	})
-	require.Nil(t, err, "Failed to create client.", err.Error())
+	require.Nil(t, err, "Failed to create client.")
 	tcClient := newTransactionCoordinatorClientImpl(c.(*client))
 	err = tcClient.start()
-	require.Nil(t, err, "Failed to start transaction coordinator.", err.Error())
+	require.Nil(t, err, "Failed to start transaction coordinator.")
 
 	return tcClient, c.(*client)
 }

@@ -62,7 +62,7 @@ type transaction struct {
 func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout time.Duration) *transaction {
 	transaction := &transaction{
 		txnID:                    id,
-		state:                    Open,
+		state:                    TxnOpen,
 		registerPartitions:       make(map[string]bool),
 		registerAckSubscriptions: make(map[subscription]bool),
 		opsFlow:                  make(chan bool, 1),
@@ -74,7 +74,7 @@ func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout ti
 	go func() {
 		//Set the state of the transaction to timeout after timeout
 		<-time.After(timeout)
-		atomic.CompareAndSwapInt32((*int32)(&transaction.state), int32(Open), int32(Timeout))
+		atomic.CompareAndSwapInt32((*int32)(&transaction.state), int32(TxnOpen), int32(TxnTimeout))
 	}()
 	transaction.log = tcClient.log.SubLogger(log.Fields{})
 	return transaction
@@ -85,8 +85,9 @@ func (txn *transaction) GetState() TxnState {
 }
 
 func (txn *transaction) Commit(ctx context.Context) error {
-	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), int32(Open), int32(Committing)) || txn.state == Committing) {
-		return newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
+	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), int32(TxnOpen), int32(TxnCommitting)) ||
+		txn.state == TxnCommitting) {
+		return newError(InvalidStatus, "Expect transaction state is TxnOpen but "+txn.state.string())
 	}
 
 	//Wait for all operations to complete
@@ -98,10 +99,11 @@ func (txn *transaction) Commit(ctx context.Context) error {
 	//Send commit transaction command to transaction coordinator
 	err := txn.tcClient.endTxn(&txn.txnID, pb.TxnAction_COMMIT)
 	if err == nil {
-		atomic.StoreInt32((*int32)(&txn.state), int32(Committed))
+		atomic.StoreInt32((*int32)(&txn.state), int32(TxnCommitted))
 	} else {
-		if err.(*Error).Result() == Result(pb.ServerError_TransactionNotFound) || err.(*Error).Result() == InvalidStatus {
-			atomic.StoreInt32((*int32)(&txn.state), int32(Errored))
+		if err.(*Error).Result() == Result(pb.ServerError_TransactionNotFound) ||
+			err.(*Error).Result() == InvalidStatus {
+			atomic.StoreInt32((*int32)(&txn.state), int32(TxnError))
 			return err
 		}
 		txn.opsFlow <- true
@@ -110,8 +112,9 @@ func (txn *transaction) Commit(ctx context.Context) error {
 }
 
 func (txn *transaction) Abort(ctx context.Context) error {
-	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), int32(Open), int32(Aborting)) || txn.state == Aborting) {
-		return newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
+	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), int32(TxnOpen), int32(TxnAborting)) ||
+		txn.state == TxnAborting) {
+		return newError(InvalidStatus, "Expect transaction state is TxnOpen but "+txn.state.string())
 	}
 
 	//Wait for all operations to complete
@@ -123,11 +126,11 @@ func (txn *transaction) Abort(ctx context.Context) error {
 	//Send abort transaction command to transaction coordinator
 	err := txn.tcClient.endTxn(&txn.txnID, pb.TxnAction_ABORT)
 	if err == nil {
-		atomic.StoreInt32((*int32)(&txn.state), int32(Aborted))
+		atomic.StoreInt32((*int32)(&txn.state), int32(TxnAborted))
 	} else {
 		if err.(*Error).Result() == Result(pb.ServerError_TransactionNotFound) ||
 			err.(*Error).Result() == Result(pb.ServerError_InvalidTxnStatus) {
-			atomic.StoreInt32((*int32)(&txn.state), int32(Errored))
+			atomic.StoreInt32((*int32)(&txn.state), int32(TxnError))
 		} else {
 			txn.opsFlow <- true
 		}
@@ -153,7 +156,7 @@ func (txn *transaction) registerSendOrAckOp() error {
 
 func (txn *transaction) endSendOrAckOp(err error) {
 	if err != nil {
-		atomic.StoreInt32((*int32)(&txn.state), int32(Errored))
+		atomic.StoreInt32((*int32)(&txn.state), int32(TxnError))
 	}
 	if atomic.AddInt32(&txn.opsCount, -1) == 0 {
 		//This means there are not pending send/ack requests
@@ -210,26 +213,26 @@ func (txn *transaction) GetTxnID() TxnID {
 }
 
 func (txn *transaction) checkIfOpen() (bool, error) {
-	if txn.state == Open {
+	if txn.state == TxnOpen {
 		return true, nil
 	}
-	return false, newError(InvalidStatus, "Expect transaction state is Open but "+txn.state.string())
+	return false, newError(InvalidStatus, "Expect transaction state is TxnOpen but "+txn.state.string())
 }
 
 func (state TxnState) string() string {
 	switch state {
-	case Open:
-		return "Open"
-	case Committing:
-		return "Committing"
-	case Aborting:
-		return "Aborting"
-	case Committed:
-		return "Committed"
-	case Aborted:
-		return "Aborted"
-	case Timeout:
-		return "Timeout"
+	case TxnOpen:
+		return "TxnOpen"
+	case TxnCommitting:
+		return "TxnCommitting"
+	case TxnAborting:
+		return "TxnAborting"
+	case TxnCommitted:
+		return "TxnCommitted"
+	case TxnAborted:
+		return "TxnAborted"
+	case TxnTimeout:
+		return "TxnTimeout"
 	default:
 		return "Unknown"
 	}

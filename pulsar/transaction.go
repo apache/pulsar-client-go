@@ -27,24 +27,24 @@ type TxnState int32
 
 const (
 	_ TxnState = iota
-	// Open The transaction in Open state can be used to send/ack messages.
-	Open
-	// Committing The state of the transaction will be Committing after the commit method is called.
-	// The transaction in Committing state can be committed again.
-	Committing
-	// Aborting The state of the transaction will be Aborting after the abort method is called.
-	// The transaction in Aborting state can be aborted again.
-	Aborting
-	// Committed The state of the transaction will be Committed after the commit method is executed success.
+	// TxnOpen The transaction in TxnOpen state can be used to send/ack messages.
+	TxnOpen
+	// TxnCommitting The state of the transaction will be TxnCommitting after the commit method is called.
+	// The transaction in TxnCommitting state can be committed again.
+	TxnCommitting
+	// TxnAborting The state of the transaction will be TxnAborting after the abort method is called.
+	// The transaction in TxnAborting state can be aborted again.
+	TxnAborting
+	// TxnCommitted The state of the transaction will be TxnCommitted after the commit method is executed success.
 	// This means that all the operations with the transaction are success.
-	Committed
-	// Aborted The state of the transaction will be Aborted after the abort method is executed success.
+	TxnCommitted
+	// TxnAborted The state of the transaction will be TxnAborted after the abort method is executed success.
 	// This means that all the operations with the transaction are aborted.
-	Aborted
-	// Errored The state of the transaction will be Errored after the operation of transaction get a non-retryable error.
-	Errored
-	// Timeout The state of the transaction will be Timeout after the transaction timeout.
-	Timeout
+	TxnAborted
+	// TxnError The state of the transaction will be TxnError after the operation of transaction get a non-retryable error.
+	TxnError
+	// TxnTimeout The state of the transaction will be TxnTimeout after the transaction timeout.
+	TxnTimeout
 )
 
 // TxnID An identifier for representing a transaction.
