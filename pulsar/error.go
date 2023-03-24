@@ -109,6 +109,9 @@ const (
 	SchemaFailure
 	// InvalidStatus means the component status is not as expected.
 	InvalidStatus
+	// TransactionNoFoundError The transaction is not exist in the transaction coordinator, It may be an error txn
+	// or already ended.
+	TransactionNoFoundError
 	// ClientMemoryBufferIsFull client limit buffer is full
 	ClientMemoryBufferIsFull
 )
@@ -219,11 +222,20 @@ func getResultStr(r Result) string {
 		return "SchemaFailure"
 	case ClientMemoryBufferIsFull:
 		return "ClientMemoryBufferIsFull"
+	case TransactionNoFoundError:
+		return "TransactionNoFoundError"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
 	}
 }
 
 func getErrorFromServerError(serverError *proto.ServerError) error {
-	return newError(Result(*serverError), serverError.String())
+	switch *serverError {
+	case proto.ServerError_TransactionNotFound:
+		return newError(TransactionNoFoundError, serverError.String())
+	case proto.ServerError_InvalidTxnStatus:
+		return newError(InvalidStatus, serverError.String())
+	default:
+		return newError(UnknownError, serverError.String())
+	}
 }

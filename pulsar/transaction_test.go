@@ -108,7 +108,7 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	txn1.state = TxnOpen
 	txn1.opsFlow <- true
 	err = txn1.Commit(context.Background())
-	assert.Equal(t, err.(*Error).Result(), Result(pb.ServerError_TransactionNotFound))
+	assert.Equal(t, err.(*Error).Result(), TransactionNoFoundError)
 	assert.Equal(t, txn1.GetState(), TxnError)
 	//2. Open a transaction and then abort it.
 	//The operations of aborting txn2 should success at the first time and fail at the second time.
@@ -121,7 +121,7 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	txn2.state = TxnOpen
 	txn2.opsFlow <- true
 	err = txn2.Abort(context.Background())
-	assert.Equal(t, err.(*Error).Result(), Result(pb.ServerError_TransactionNotFound))
+	assert.Equal(t, err.(*Error).Result(), TransactionNoFoundError)
 	assert.Equal(t, txn1.GetState(), TxnError)
 	err = txn2.registerSendOrAckOp()
 	assert.Equal(t, err.(*Error).Result(), InvalidStatus)
