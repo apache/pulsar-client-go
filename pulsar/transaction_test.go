@@ -20,11 +20,13 @@ package pulsar
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTCClient(t *testing.T) {
@@ -101,10 +103,8 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	//The operations of committing txn1 should success at the first time and fail at the second time.
 	txn1 := createTxn(tc, t)
 	err := txn1.Commit(context.Background())
-	if err != nil {
-		t.Fatalf("Failed to commit the transaction %d:%d, %s\n", txn1.txnID.mostSigBits, txn1.txnID.leastSigBits,
-			err.Error())
-	}
+	require.Nil(t, err, fmt.Sprintf("Failed to commit the transaction %d:%d, %s\n", txn1.txnID.mostSigBits,
+		txn1.txnID.leastSigBits, err.Error()))
 	txn1.state = Open
 	txn1.opsFlow <- true
 	err = txn1.Commit(context.Background())
@@ -113,14 +113,11 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	//2. Open a transaction and then abort it.
 	//The operations of aborting txn2 should success at the first time and fail at the second time.
 	id2, err := tc.newTransaction(time.Hour)
-	if err != nil {
-		t.Fatalf("Failed to new a transaction %s", err.Error())
-	}
+	require.Nil(t, err, fmt.Sprintf("Failed to new a transaction %s", err.Error()))
 	txn2 := newTransaction(*id2, tc, time.Hour)
 	err = txn2.Abort(context.Background())
-	if err != nil {
-		t.Fatalf("Failed to abort the transaction %d:%d, %s\n", id2.mostSigBits, id2.leastSigBits, err.Error())
-	}
+	require.Nil(t, err, fmt.Sprintf("Failed to abort the transaction %d:%d, %s\n",
+		id2.mostSigBits, id2.leastSigBits, err.Error()))
 	txn2.state = Open
 	txn2.opsFlow <- true
 	err = txn2.Abort(context.Background())
@@ -169,13 +166,9 @@ func TestRegisterTopic(t *testing.T) {
 	txn := createTxn(tc, t)
 	//3. Create a topic and register topic and subscription.
 	err = txn.registerAckTopic(topic, sub)
-	if err != nil {
-		t.Fatalf("Failed to register ack topic %s", err.Error())
-	}
+	require.Nil(t, err, "Failed to register ack topic.", err.Error())
 	err = txn.registerProducerTopic(topic)
-	if err != nil {
-		t.Fatalf("Failed to register ack topic %s", err.Error())
-	}
+	require.Nil(t, err, "Failed to register ack topic.", err.Error())
 	//4. Call http request to get the stats of the transaction to do verification.
 	stats2, err := transactionStats(&txn.txnID)
 	assert.NoError(t, err)
@@ -205,11 +198,9 @@ func registerOpAndEndOp(t *testing.T, tc *transactionCoordinatorClient, rp int, 
 }
 
 func createTxn(tc *transactionCoordinatorClient, t *testing.T) *transaction {
-	id3, err := tc.newTransaction(time.Hour)
-	if err != nil {
-		t.Fatalf("Failed to new a transaction %s", err.Error())
-	}
-	return newTransaction(*id3, tc, time.Hour)
+	id, err := tc.newTransaction(time.Hour)
+	require.Nil(t, err, "Failed to new a transaction.", err.Error())
+	return newTransaction(*id, tc, time.Hour)
 }
 
 // createTcClient Create a transaction coordinator client to send request
@@ -219,13 +210,10 @@ func createTcClient(t *testing.T) (*transactionCoordinatorClient, *client) {
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
 	})
-	if err != nil {
-		t.Fatalf("Failed to create client due to %s", err.Error())
-	}
+	require.Nil(t, err, "Failed to create client.", err.Error())
 	tcClient := newTransactionCoordinatorClientImpl(c.(*client))
-	if err = tcClient.start(); err != nil {
-		t.Fatalf("Failed to start transaction coordinator due to %s", err.Error())
-	}
+	err = tcClient.start()
+	require.Nil(t, err, "Failed to start transaction coordinator.", err.Error())
 
 	return tcClient, c.(*client)
 }
