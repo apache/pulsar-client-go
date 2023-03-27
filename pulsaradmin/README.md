@@ -20,6 +20,7 @@
 # Pulsar Admin Go Library
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/streamnative/pulsar-admin-go.svg)](https://pkg.go.dev/github.com/streamnative/pulsar-admin-go)
+[![Go Report Card](https://goreportcard.com/badge/github.com/streamnative/pulsar-admin-go)](https://goreportcard.com/report/github.com/streamnative/pulsar-admin-go)
 [![Language](https://img.shields.io/badge/Language-Go-blue.svg)](https://golang.org/)
 [![License](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](https://github.com/streamnative/pulsar-admin-go/blob/master/LICENSE)
 
