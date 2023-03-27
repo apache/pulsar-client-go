@@ -77,7 +77,8 @@ const (
 )
 
 const (
-	initialReceiverQueueSize = 1
+	initialReceiverQueueSize           = 1
+	receiverQueueExpansionMemThreshold = 0.75
 )
 
 const (
@@ -333,6 +334,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
+		pc.client.memLimit.RegisterTrigger(pc.shrinkReceiverQueueSize)
 	} else {
 		pc.currentQueueSize.Store(int32(pc.options.receiverQueueSize))
 	}
@@ -499,6 +501,14 @@ func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 	trackingID := toTrackingMessageID(msgID)
 
 	if trackingID != nil && trackingID.ack() {
+		// All messages in the same batch have been acknowledged, we only need to acknowledge the
+		// MessageID that represents the entry that stores the whole batch
+		trackingID = &trackingMessageID{
+			messageID: &messageID{
+				ledgerID: trackingID.ledgerID,
+				entryID:  trackingID.entryID,
+			},
+		}
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
 	} else if !pc.options.enableBatchIndexAck {
@@ -994,6 +1004,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
 	pc.metrics.PrefetchedMessages.Add(float64(numMsgs))
 
+	var bytesReceived int
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
 		if err != nil || payload == nil {
@@ -1108,9 +1119,11 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		})
 
 		messages = append(messages, msg)
+		bytesReceived += msg.size()
 	}
 
 	if pc.options.autoReceiverQueueSize {
+		pc.client.memLimit.ForceReserveMemory(int64(bytesReceived))
 		pc.incomingMessages.Add(int32(len(messages)))
 		pc.markScaleIfNeed()
 	}
@@ -1262,6 +1275,7 @@ func (pc *partitionConsumer) dispatcher() {
 		var queueCh chan []*message
 		var messageCh chan ConsumerMessage
 		var nextMessage ConsumerMessage
+		var nextMessageSize int
 
 		// are there more messages to send?
 		if len(messages) > 0 {
@@ -1269,6 +1283,7 @@ func (pc *partitionConsumer) dispatcher() {
 				Consumer: pc.parentConsumer,
 				Message:  messages[0],
 			}
+			nextMessageSize = messages[0].size()
 
 			if pc.dlq.shouldSendToDlq(&nextMessage) {
 				// pass the message to the DLQ router
@@ -1331,6 +1346,7 @@ func (pc *partitionConsumer) dispatcher() {
 
 			if pc.options.autoReceiverQueueSize {
 				pc.incomingMessages.Dec()
+				pc.client.memLimit.ReleaseMemory(int64(nextMessageSize))
 				pc.expectMoreIncomingMessages()
 			}
 
@@ -1734,7 +1750,8 @@ func (pc *partitionConsumer) expectMoreIncomingMessages() {
 		oldSize := pc.currentQueueSize.Load()
 		maxSize := int32(pc.options.receiverQueueSize)
 		newSize := int32(math.Min(float64(maxSize), float64(oldSize*2)))
-		if newSize > oldSize {
+		usagePercent := pc.client.memLimit.CurrentUsagePercent()
+		if usagePercent < receiverQueueExpansionMemThreshold && newSize > oldSize {
 			pc.currentQueueSize.CAS(oldSize, newSize)
 			pc.availablePermits.add(newSize - oldSize)
 			pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
@@ -1749,6 +1766,21 @@ func (pc *partitionConsumer) markScaleIfNeed() {
 		pc.currentQueueSize.Load())
 	if prev != pc.scaleReceiverQueueHint.Load() {
 		pc.log.Debugf("update scaleReceiverQueueHint from %t -> %t", prev, pc.scaleReceiverQueueHint.Load())
+	}
+}
+
+func (pc *partitionConsumer) shrinkReceiverQueueSize() {
+	if !pc.options.autoReceiverQueueSize {
+		return
+	}
+
+	oldSize := pc.currentQueueSize.Load()
+	minSize := int32(math.Min(float64(initialReceiverQueueSize), float64(pc.options.receiverQueueSize)))
+	newSize := int32(math.Max(float64(minSize), float64(oldSize/2)))
+	if newSize < oldSize {
+		pc.currentQueueSize.CAS(oldSize, newSize)
+		pc.availablePermits.add(newSize - oldSize)
+		pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
 	}
 }
 

@@ -30,12 +30,13 @@ import (
 )
 
 const (
-	defaultConnectionTimeout = 10 * time.Second
-	defaultOperationTimeout  = 30 * time.Second
-	defaultKeepAliveInterval = 30 * time.Second
-	defaultMemoryLimitBytes  = 64 * 1024 * 1024
-	defaultConnMaxIdleTime   = 180 * time.Second
-	minConnMaxIdleTime       = 60 * time.Second
+	defaultConnectionTimeout           = 10 * time.Second
+	defaultOperationTimeout            = 30 * time.Second
+	defaultKeepAliveInterval           = 30 * time.Second
+	defaultMemoryLimitBytes            = 64 * 1024 * 1024
+	defaultMemoryLimitTriggerThreshold = 0.95
+	defaultConnMaxIdleTime             = 180 * time.Second
+	minConnMaxIdleTime                 = 60 * time.Second
 )
 
 type client struct {
@@ -158,7 +159,7 @@ func newClient(options ClientOptions) (Client, error) {
 			maxConnectionsPerHost, logger, metrics, connectionMaxIdleTime),
 		log:      logger,
 		metrics:  metrics,
-		memLimit: internal.NewMemoryLimitController(memLimitBytes),
+		memLimit: internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
 	}
 	serviceNameResolver := internal.NewPulsarServiceNameResolver(url)
 
