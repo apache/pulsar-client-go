@@ -26,34 +26,34 @@ All notable changes to this project will be documented in this file.
 [0.10.0] 2023-03-27
 
 ## Feature
-* Support chunking for big messages. by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/805
+* Support chunking for big messages by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/805
 * Add BackoffPolicy to `reader` and improve test case by @labuladong in https://github.com/apache/pulsar-client-go/pull/889
 * Support cumulative acknowledgment by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/903
 * Support consumer event listener by @labuladong in https://github.com/apache/pulsar-client-go/pull/904
-* Allow CustomProperties when sending message for retry by @ngoyal16 in https://github.com/apache/pulsar-client-go/pull/916
+* Allow CustomProperties when sending messages for retry by @ngoyal16 in https://github.com/apache/pulsar-client-go/pull/916
 * Support batch index ACK by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/938
-* Support Exclusive Producer access mode. by @shibd in https://github.com/apache/pulsar-client-go/pull/944
+* Support Exclusive Producer access mode by @shibd in https://github.com/apache/pulsar-client-go/pull/944
 * Add transactionCoordinatorClient by @liangyepianzhou in https://github.com/apache/pulsar-client-go/pull/953
-* Support memory limit for producer. by @shibd in https://github.com/apache/pulsar-client-go/pull/955
+* Support memory limit for the producer by @shibd in https://github.com/apache/pulsar-client-go/pull/955
 * Support grouping ACK requests by time and size by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/957
-* Support WaitForExclusive producer access mode. by @shibd in https://github.com/apache/pulsar-client-go/pull/958
+* Support WaitForExclusive producer access mode by @shibd in https://github.com/apache/pulsar-client-go/pull/958
 * Support Copper Argos in the Athenz auth provider by @massakam in https://github.com/apache/pulsar-client-go/pull/960
-* Support auto release idle connections by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/963
-* Support batch index ACK and max number of messages in batch by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/967
+* Support auto-release idle connections by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/963
+* Support batch index ACK and  set max number of messages in batch for the perf tool by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/967
 * Support auto-scaled consumer receiver queue by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/976
 * Implement transactionImpl by @liangyepianzhou in https://github.com/apache/pulsar-client-go/pull/984
-* Expose the chunk config of consumer to the reader by @CrazyCollin in https://github.com/apache/pulsar-client-go/pull/987
+* Expose the chunk config of the consumer to the reader by @CrazyCollin in https://github.com/apache/pulsar-client-go/pull/987
 * Support consumer client memory limit by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/991
 
 
 ## Improve
 * Nack the message in dlqrouter when sending errors by @leizhiyuan in https://github.com/apache/pulsar-client-go/pull/592
 * Fix TLS certificates that do not include IP SANS, save hostname before switching to a physical address by @dinghram in https://github.com/apache/pulsar-client-go/pull/812
-* Fix the availablePermits leak that could cause consumer stuck. by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/835
+* Fix the availablePermits leak that could cause the consumer stuck by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/835
 * Read module version info from golang runtime by @pgier in https://github.com/apache/pulsar-client-go/pull/856
-* Fix typo in consumer.go by @sekfung in https://github.com/apache/pulsar-client-go/pull/857
-* Fix marshalling time.Time{} to uint64 by @aymkhalil in https://github.com/apache/pulsar-client-go/pull/865
-* Use the `DATA` constant as prefix in OAuth2 KeyFileProvider by @Niennienzz in https://github.com/apache/pulsar-client-go/pull/866
+* Fix typo in `consumer.go` by @sekfung in https://github.com/apache/pulsar-client-go/pull/857
+* Fix marshalling `time.Time{}` to `uint64` by @aymkhalil in https://github.com/apache/pulsar-client-go/pull/865
+* Use the `DATA` constant as the prefix in OAuth2 KeyFileProvider by @Niennienzz in https://github.com/apache/pulsar-client-go/pull/866
 * Fix bot cannot get the pr link by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/868
 * Fix PR template by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/869
 * Add go test flag '-v' for more clearly CI log by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/871
@@ -64,7 +64,7 @@ All notable changes to this project will be documented in this file.
 * Prevent consumer panic on de-serializing message if schema not found by @GPrabhudas in https://github.com/apache/pulsar-client-go/pull/886
 * Fix the conditions of loading TLS certificates by @nodece in https://github.com/apache/pulsar-client-go/pull/888
 * Fix default retry and dlq topic name as per the doc by @ngoyal16 in https://github.com/apache/pulsar-client-go/pull/891
-* Add NewMessageID() method. by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/893
+* Add NewMessageID() method by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/893
 * Use protocolbuffers instead of gogo by @nodece in https://github.com/apache/pulsar-client-go/pull/895
 * Fix the compression broken when batching is disabled by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/902
 * Add messageId and topic as props of DLQ message by @GPrabhudas in https://github.com/apache/pulsar-client-go/pull/907
@@ -84,11 +84,11 @@ All notable changes to this project will be documented in this file.
 * Prevent RPC client panic on RPC response if `ProducerReady` is nil by @sekfung in https://github.com/apache/pulsar-client-go/pull/973
 * Fix nack backoff policy logic by @wolfstudy in https://github.com/apache/pulsar-client-go/pull/974
 * Fix license information for go-rate by @tisonkun in https://github.com/apache/pulsar-client-go/pull/975
-* Fix data race in checkAndCleanIdleConnections by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/981
+* Fix the data race in checkAndCleanIdleConnections by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/981
 * Setup rate limiter for TestChunksEnqueueFailed to reduce flaky by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/982
-* Fix ack grouping tracker is duplicate method will be blocked. by @shibd in https://github.com/apache/pulsar-client-go/pull/986
+* Fix the message is blocked on the AckGroupingTracker.isDuplicate method by @shibd in https://github.com/apache/pulsar-client-go/pull/986
 * Optimize batch index ACK performance by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/988
-* Add More precise producer rate limiter by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/989
+* Add more precise producer rate limiter by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/989
 * Fix batched messages not ACKed correctly when batch index ACK is disabled by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/994
 * Fix panic caused by retryAssert() by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/996
 
