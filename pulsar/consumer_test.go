@@ -4095,7 +4095,7 @@ func TestConsumerNonDurable(t *testing.T) {
 		Topic:            topicName,
 		SubscriptionName: "sub-1",
 		Type:             Shared,
-		SubscrptionMode:  NonDurable,
+		SubscriptionMode: NonDurable,
 	})
 	assert.Nil(t, err)
 
@@ -4129,7 +4129,7 @@ func TestConsumerNonDurable(t *testing.T) {
 		Topic:            topicName,
 		SubscriptionName: "sub-1",
 		Type:             Shared,
-		SubscrptionMode:  NonDurable,
+		SubscriptionMode: NonDurable,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -4140,7 +4140,7 @@ func TestConsumerNonDurable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	msg, err := consumer.Receive(ctx)
+	msg, err = consumer.Receive(ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 	consumer.Ack(msg)
