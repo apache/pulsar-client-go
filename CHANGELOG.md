@@ -28,7 +28,7 @@ All notable changes to this project will be documented in this file.
 ## Feature
 * Support chunking for big messages. by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/805
 * Add BackoffPolicy to `reader` and improve test case by @labuladong in https://github.com/apache/pulsar-client-go/pull/889
-* Support cumulative acknowledge by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/903
+* Support cumulative acknowledgment by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/903
 * Support consumer event listener by @labuladong in https://github.com/apache/pulsar-client-go/pull/904
 * Allow CustomProperties when sending message for retry by @ngoyal16 in https://github.com/apache/pulsar-client-go/pull/916
 * Support batch index ACK by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/938
@@ -40,15 +40,15 @@ All notable changes to this project will be documented in this file.
 * Support Copper Argos in the Athenz auth provider by @massakam in https://github.com/apache/pulsar-client-go/pull/960
 * Support auto release idle connections by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/963
 * Support batch index ACK and max number of messages in batch by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/967
-* Support auto scaled consumer receiver queue by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/976
+* Support auto-scaled consumer receiver queue by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/976
 * Implement transactionImpl by @liangyepianzhou in https://github.com/apache/pulsar-client-go/pull/984
 * Expose the chunk config of consumer to the reader by @CrazyCollin in https://github.com/apache/pulsar-client-go/pull/987
 * Support consumer client memory limit by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/991
 
 
 ## Improve
-* Nack the message in dlqrouter when send errors by @leizhiyuan in https://github.com/apache/pulsar-client-go/pull/592
-* Fix tls for certificate that does not include IP SANS, save hostname before switching to physical addr by @dinghram in https://github.com/apache/pulsar-client-go/pull/812
+* Nack the message in dlqrouter when sending errors by @leizhiyuan in https://github.com/apache/pulsar-client-go/pull/592
+* Fix TLS certificates that do not include IP SANS, save hostname before switching to a physical address by @dinghram in https://github.com/apache/pulsar-client-go/pull/812
 * Fix the availablePermits leak that could cause consumer stuck. by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/835
 * Read module version info from golang runtime by @pgier in https://github.com/apache/pulsar-client-go/pull/856
 * Fix typo in consumer.go by @sekfung in https://github.com/apache/pulsar-client-go/pull/857
@@ -60,9 +60,9 @@ All notable changes to this project will be documented in this file.
 * Fix the dispatcher() stuck caused by availablePermitsCh by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/875
 * Fix the Send() stuck caused by callback() not being called by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/880
 * Fix the data race of ackReq.err by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/881
-* Add data url format to read the key file by @nodece in https://github.com/apache/pulsar-client-go/pull/883
+* Add data URL format to read the key file by @nodece in https://github.com/apache/pulsar-client-go/pull/883
 * Prevent consumer panic on de-serializing message if schema not found by @GPrabhudas in https://github.com/apache/pulsar-client-go/pull/886
-* Fix load tls certificate by @nodece in https://github.com/apache/pulsar-client-go/pull/888
+* Fix the conditions of loading TLS certificates by @nodece in https://github.com/apache/pulsar-client-go/pull/888
 * Fix default retry and dlq topic name as per the doc by @ngoyal16 in https://github.com/apache/pulsar-client-go/pull/891
 * Add NewMessageID() method. by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/893
 * Use protocolbuffers instead of gogo by @nodece in https://github.com/apache/pulsar-client-go/pull/895
@@ -79,9 +79,9 @@ All notable changes to this project will be documented in this file.
 * Use pkg.go.dev badge in the readme by @reugn in https://github.com/apache/pulsar-client-go/pull/947
 * Improve test script by @nodece in https://github.com/apache/pulsar-client-go/pull/951
 * Optimize the performance by passing MessageID implementations by pointers by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/968
-* Fix flaky Key_Shared subscription related tests by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/970
+* Fix flaky Key_Shared subscription-related tests by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/970
 * Refactor the toTrackingMessageID() by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/972
-* Prevent rpc client panic on rpc response if `ProducerReady` is nil by @sekfung in https://github.com/apache/pulsar-client-go/pull/973
+* Prevent RPC client panic on RPC response if `ProducerReady` is nil by @sekfung in https://github.com/apache/pulsar-client-go/pull/973
 * Fix nack backoff policy logic by @wolfstudy in https://github.com/apache/pulsar-client-go/pull/974
 * Fix license information for go-rate by @tisonkun in https://github.com/apache/pulsar-client-go/pull/975
 * Fix data race in checkAndCleanIdleConnections by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/981
