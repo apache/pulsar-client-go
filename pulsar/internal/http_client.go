@@ -190,10 +190,10 @@ func (c *httpClient) GetWithOptions(endpoint string, obj interface{}, params map
 	}
 
 	resp, err := checkSuccessful(c.doRequest(req))
-	defer safeRespClose(resp)
 	if err != nil {
 		return nil, err
 	}
+	defer safeRespClose(resp)
 
 	if obj != nil {
 		if err := decodeJSONBody(resp, &obj); err != nil {
