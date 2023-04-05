@@ -135,11 +135,11 @@ func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id *TxnID, part
 	requestID := tc.client.rpcClient.NewRequestID()
 	cmdAddPartitions := &pb.CommandAddPartitionToTxn{
 		RequestId:      proto.Uint64(requestID),
-		TxnidMostBits:  proto.Uint64(id.mostSigBits),
-		TxnidLeastBits: proto.Uint64(id.leastSigBits),
+		TxnidMostBits:  proto.Uint64(id.MostSigBits),
+		TxnidLeastBits: proto.Uint64(id.LeastSigBits),
 		Partitions:     partitions,
 	}
-	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID,
+	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.MostSigBits], requestID,
 		pb.BaseCommand_ADD_PARTITION_TO_TXN, cmdAddPartitions)
 	tc.semaphore.Release()
 	if err != nil {
@@ -163,11 +163,11 @@ func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id *TxnID, topic st
 	}
 	cmdAddSubscription := &pb.CommandAddSubscriptionToTxn{
 		RequestId:      proto.Uint64(requestID),
-		TxnidMostBits:  proto.Uint64(id.mostSigBits),
-		TxnidLeastBits: proto.Uint64(id.leastSigBits),
+		TxnidMostBits:  proto.Uint64(id.MostSigBits),
+		TxnidLeastBits: proto.Uint64(id.LeastSigBits),
 		Subscription:   []*pb.Subscription{sub},
 	}
-	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID,
+	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.MostSigBits], requestID,
 		pb.BaseCommand_ADD_SUBSCRIPTION_TO_TXN, cmdAddSubscription)
 	tc.semaphore.Release()
 	if err != nil {
@@ -187,10 +187,10 @@ func (tc *transactionCoordinatorClient) endTxn(id *TxnID, action pb.TxnAction) e
 	cmdEndTxn := &pb.CommandEndTxn{
 		RequestId:      proto.Uint64(requestID),
 		TxnAction:      &action,
-		TxnidMostBits:  proto.Uint64(id.mostSigBits),
-		TxnidLeastBits: proto.Uint64(id.leastSigBits),
+		TxnidMostBits:  proto.Uint64(id.MostSigBits),
+		TxnidLeastBits: proto.Uint64(id.LeastSigBits),
 	}
-	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID, pb.BaseCommand_END_TXN, cmdEndTxn)
+	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.MostSigBits], requestID, pb.BaseCommand_END_TXN, cmdEndTxn)
 	tc.semaphore.Release()
 	if err != nil {
 		return err

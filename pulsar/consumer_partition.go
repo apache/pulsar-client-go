@@ -417,6 +417,93 @@ func (pc *partitionConsumer) Unsubscribe() error {
 	return req.err
 }
 
+func (pc *partitionConsumer) AckIDWithTxn(msgID MessageID, txn Transaction) error {
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return errors.New("consumer state is closed")
+	}
+
+	if cmid, ok := msgID.(*chunkMessageID); ok {
+		return pc.unAckChunksTracker.ack(cmid)
+	}
+
+	trackingID := toTrackingMessageID(msgID)
+
+	if trackingID != nil && trackingID.ack() {
+		// All messages in the same batch have been acknowledged, we only need to acknowledge the
+		// MessageID that represents the entry that stores the whole batch
+		trackingID = &trackingMessageID{
+			messageID: &messageID{
+				ledgerID: trackingID.ledgerID,
+				entryID:  trackingID.entryID,
+			},
+		}
+		pc.metrics.AcksCounter.Inc()
+		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+	} else if !pc.options.enableBatchIndexAck {
+		return nil
+	}
+
+	ackReq := pc.sendIndividualAckWithTxn(trackingID, txn.(*transaction))
+	<-ackReq.doneCh
+	pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+	if ackReq == nil {
+		return nil
+	}
+	return ackReq.err
+}
+
+func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
+	defer close(req.doneCh)
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		req.err = newError(ConsumerClosed, "Failed to ack by closing or closed consumer")
+		return
+	}
+	msgID := req.msgID
+
+	messageIDs := make([]*pb.MessageIdData, 1)
+	messageIDs[0] = &pb.MessageIdData{
+		LedgerId: proto.Uint64(uint64(msgID.ledgerID)),
+		EntryId:  proto.Uint64(uint64(msgID.entryID)),
+	}
+	if pc.options.enableBatchIndexAck && msgID.tracker != nil {
+		ackSet := msgID.tracker.toAckSet()
+		if ackSet != nil {
+			messageIDs[0].AckSet = ackSet
+		}
+	}
+
+	reqID := pc.client.rpcClient.NewRequestID()
+	txnID := req.Transaction.GetTxnID()
+	cmdAck := &pb.CommandAck{
+		ConsumerId:     proto.Uint64(pc.consumerID),
+		MessageId:      messageIDs,
+		AckType:        pb.CommandAck_Individual.Enum(),
+		TxnidMostBits:  proto.Uint64(txnID.MostSigBits),
+		TxnidLeastBits: proto.Uint64(txnID.LeastSigBits),
+	}
+
+	err := req.Transaction.registerAckTopic(pc.options.topic, pc.options.subscription)
+	if err != nil {
+		req.err = err
+		return
+	}
+	err = req.Transaction.registerSendOrAckOp()
+	if err != nil {
+		req.err = err
+		return
+	}
+	cmdAck.RequestId = proto.Uint64(reqID)
+	_, err = pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+	if err != nil {
+		pc.log.WithError(err).Error("Ack with response error")
+		req.err = err
+	}
+	req.Transaction.endSendOrAckOp(err)
+	req.err = err
+}
+
 func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	defer close(unsub.doneCh)
 
@@ -534,6 +621,17 @@ func (pc *partitionConsumer) sendIndividualAck(msgID MessageID) *ackRequest {
 		doneCh:  make(chan struct{}),
 		ackType: individualAck,
 		msgID:   *msgID.(*trackingMessageID),
+	}
+	pc.eventsCh <- ackReq
+	return ackReq
+}
+
+func (pc *partitionConsumer) sendIndividualAckWithTxn(msgID MessageID, txn *transaction) *ackWithTxnRequest {
+	ackReq := &ackWithTxnRequest{
+		Transaction: txn,
+		doneCh:      make(chan struct{}),
+		ackType:     individualAck,
+		msgID:       *msgID.(*trackingMessageID),
 	}
 	pc.eventsCh <- ackReq
 	return ackReq
@@ -1389,6 +1487,14 @@ type ackRequest struct {
 	err     error
 }
 
+type ackWithTxnRequest struct {
+	doneCh      chan struct{}
+	msgID       trackingMessageID
+	Transaction *transaction
+	ackType     int
+	err         error
+}
+
 type unsubscribeRequest struct {
 	doneCh chan struct{}
 	err    error
@@ -1444,6 +1550,8 @@ func (pc *partitionConsumer) runEventsLoop() {
 			switch v := i.(type) {
 			case *ackRequest:
 				pc.internalAck(v)
+			case *ackWithTxnRequest:
+				pc.internalAckWithTxn(v)
 			case []*pb.MessageIdData:
 				pc.internalAckList(v)
 			case *redeliveryRequest:

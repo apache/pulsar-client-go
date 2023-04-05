@@ -38,6 +38,7 @@ type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
 	AckID(id MessageID) error
 	AckIDWithResponse(id MessageID) error
+	AckIDWithTxn(msgID MessageID, txn Transaction) error
 	AckIDCumulative(msgID MessageID) error
 	AckIDWithResponseCumulative(msgID MessageID) error
 	NackID(id MessageID)
@@ -476,6 +477,15 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 			return nil, ctx.Err()
 		}
 	}
+}
+
+func (c *consumer) AckWithTxn(msg Message, txn Transaction) error {
+	msgID := msg.ID()
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+
+	return c.consumers[msgID.PartitionIdx()].AckIDWithTxn(msgID, txn)
 }
 
 // Chan return the message chan to users

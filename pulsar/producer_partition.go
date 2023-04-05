@@ -663,6 +663,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 					chunkID:          chunkID,
 					uuid:             uuid,
 					chunkRecorder:    cr,
+					transaction:      request.transaction,
 				}
 				// the permit of first chunk has acquired
 				if chunkID != 0 && !p.canAddToQueue(nsr, 0) {
@@ -681,16 +682,16 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	} else {
 		smm := p.genSingleMessageMetadataInBatch(msg, uncompressedSize)
 		multiSchemaEnabled := !p.options.DisableMultiSchema
-		added := p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
-			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled)
+		added := addRequestToBatch(smm, p, uncompressedPayload, request, msg, deliverAt, schemaVersion,
+			multiSchemaEnabled)
 		if !added {
-			// The current batch is full.. flush it and retry
+			// The current batch is full. flush it and retry
 
 			p.internalFlushCurrentBatch()
 
 			// after flushing try again to add the current payload
-			if ok := p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
-				msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled); !ok {
+			if ok := addRequestToBatch(smm, p, uncompressedPayload, request, msg, deliverAt, schemaVersion,
+				multiSchemaEnabled); !ok {
 				p.releaseSemaphoreAndMem(uncompressedPayloadSize)
 				request.callback(nil, request.msg, errFailAddToBatch)
 				p.log.WithField("size", uncompressedSize).
@@ -705,6 +706,23 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 		}
 	}
+}
+
+func addRequestToBatch(smm *pb.SingleMessageMetadata, p *partitionProducer,
+	uncompressedPayload []byte,
+	request *sendRequest, msg *ProducerMessage, deliverAt time.Time,
+	schemaVersion []byte, multiSchemaEnabled bool) bool {
+	var ok bool
+	if request.transaction != nil {
+		txnID := request.transaction.GetTxnID()
+		ok = p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
+			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled, true, txnID.MostSigBits,
+			txnID.LeastSigBits)
+	} else {
+		ok = p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
+			msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled, false, 0, 0)
+	}
+	return ok
 }
 
 func (p *partitionProducer) genMetadata(msg *ProducerMessage,
@@ -789,16 +807,36 @@ func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 	}
 
 	sid := *mm.SequenceId
-
-	if err := internal.SingleSend(
-		buffer,
-		p.producerID,
-		sid,
-		mm,
-		payloadBuf,
-		p.encryptor,
-		maxMessageSize,
-	); err != nil {
+	var err error
+	if request.transaction != nil {
+		txnID := request.transaction.GetTxnID()
+		err = internal.SingleSend(
+			buffer,
+			p.producerID,
+			sid,
+			mm,
+			payloadBuf,
+			p.encryptor,
+			maxMessageSize,
+			true,
+			txnID.MostSigBits,
+			txnID.LeastSigBits,
+		)
+	} else {
+		err = internal.SingleSend(
+			buffer,
+			p.producerID,
+			sid,
+			mm,
+			payloadBuf,
+			p.encryptor,
+			maxMessageSize,
+			false,
+			0,
+			0,
+		)
+	}
+	if err != nil {
 		request.callback(nil, request.msg, err)
 		p.releaseSemaphoreAndMem(int64(len(msg.Payload)))
 		p.log.WithError(err).Errorf("Single message serialize failed %s", msg.Value)
@@ -952,6 +990,9 @@ func (p *partitionProducer) failTimeoutMessages() {
 						sr.callback(nil, sr.msg, errSendTimeout)
 					})
 				}
+				if sr.transaction != nil {
+					sr.transaction.endSendOrAckOp(nil)
+				}
 			}
 
 			// flag the send has completed with error, flush make no effect
@@ -1067,6 +1108,20 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
+	//Register transaction operation to transaction and the transaction coordinator.
+	if msg.Transaction != nil {
+		transactionImpl := (msg.Transaction).(*transaction)
+
+		err := transactionImpl.registerProducerTopic(p.topic)
+		if err != nil {
+			callback(nil, msg, err)
+			return
+		}
+		err = transactionImpl.registerSendOrAckOp()
+		if err != nil {
+			callback(nil, msg, err)
+		}
+	}
 	if p.getProducerState() != producerReady {
 		// Producer is closing
 		callback(nil, msg, errProducerClosed)
@@ -1078,7 +1133,10 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 
 	// callbackOnce make sure the callback is only invoked once in chunking
 	callbackOnce := &sync.Once{}
-
+	var txn *transaction
+	if msg.Transaction != nil {
+		txn = (msg.Transaction).(*transaction)
+	}
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
@@ -1088,6 +1146,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		publishTime:      time.Now(),
 		blockCh:          bc,
 		closeBlockChOnce: &sync.Once{},
+		transaction:      txn,
 	}
 	p.options.Interceptors.BeforeSend(p, msg)
 
@@ -1191,6 +1250,9 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 					p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
 				}
 			}
+			if sr.transaction != nil {
+				sr.transaction.endSendOrAckOp(nil)
+			}
 		}
 
 		// Mark this pending item as done
@@ -1287,6 +1349,7 @@ type sendRequest struct {
 	chunkID          int
 	uuid             string
 	chunkRecorder    *chunkRecorder
+	transaction      *transaction
 }
 
 // stopBlock can be invoked multiple times safety
