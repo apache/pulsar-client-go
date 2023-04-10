@@ -154,7 +154,7 @@ func TestProtoNativeSchema(t *testing.T) {
 	topic := "proto-native"
 
 	// create producer
-	psProducer := NewProtoNativeSchema(&pb.Test{}, nil)
+	psProducer := NewProtoNativeSchemaWithMessage(&pb.Test{}, nil)
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:  topic,
 		Schema: psProducer,
@@ -186,7 +186,7 @@ func TestProtoNativeSchema(t *testing.T) {
 
 	//create consumer
 	unobj := pb.Test{}
-	psConsumer := NewProtoNativeSchema(&pb.Test{}, nil)
+	psConsumer := NewProtoNativeSchemaWithMessage(&pb.Test{}, nil)
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "sub-1",

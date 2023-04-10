@@ -107,6 +107,8 @@ func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]s
 		s = NewFloatSchema(properties)
 	case DOUBLE:
 		s = NewDoubleSchema(properties)
+	case PROTOBUF_NATIVE:
+		s = NewProtoNativeSchema(schemaDef, properties)
 	default:
 		err = fmt.Errorf("not support schema type of %v", schemaType)
 	}
@@ -228,9 +230,13 @@ type ProtoNativeSchema struct {
 	SchemaInfo
 }
 
-func NewProtoNativeSchema(message proto.Message, properties map[string]string) *ProtoNativeSchema {
+func NewProtoNativeSchemaWithMessage(message proto.Message, properties map[string]string) *ProtoNativeSchema {
+	return NewProtoNativeSchema(GetProtoNativeSchemaInfo(message), properties)
+}
+
+func NewProtoNativeSchema(protoNativeSchemaDef string, properties map[string]string) *ProtoNativeSchema {
 	pns := new(ProtoNativeSchema)
-	pns.SchemaInfo.Schema = GetProtoNativeSchemaInfo(message)
+	pns.SchemaInfo.Schema = protoNativeSchemaDef
 	pns.SchemaInfo.Type = PROTOBUF_NATIVE
 	pns.SchemaInfo.Properties = properties
 	pns.SchemaInfo.Name = "ProtoNative"
@@ -239,12 +245,24 @@ func NewProtoNativeSchema(message proto.Message, properties map[string]string) *
 
 func GetProtoNativeSchemaInfo(message proto.Message) string {
 	fileDesc := message.ProtoReflect().Descriptor().ParentFile()
-	fileProtoMap := make(map[string]descriptorpb.FileDescriptorProto)
-	GetFileProto(fileDesc, &fileProtoMap)
+	fileProtoMap := make(map[string]*descriptorpb.FileDescriptorProto)
+	GetFileProto(fileDesc, fileProtoMap)
 
 	fileDescList := make([]*descriptorpb.FileDescriptorProto, 0, len(fileProtoMap))
 	for k := range fileProtoMap {
-		value := fileProtoMap[k]
+		value := descriptorpb.FileDescriptorProto{
+			Name:             fileProtoMap[k].Name,
+			Package:          fileProtoMap[k].Package,
+			Dependency:       fileProtoMap[k].Dependency,
+			PublicDependency: fileProtoMap[k].PublicDependency,
+			MessageType:      fileProtoMap[k].MessageType,
+			EnumType:         fileProtoMap[k].EnumType,
+			Service:          fileProtoMap[k].Service,
+			Extension:        fileProtoMap[k].Extension,
+			Options:          fileProtoMap[k].Options,
+			SourceCodeInfo:   fileProtoMap[k].SourceCodeInfo,
+			Syntax:           fileProtoMap[k].Syntax,
+		}
 		fileDescList = append(fileDescList, &value)
 	}
 	fileDescSet := descriptorpb.FileDescriptorSet{
@@ -272,7 +290,7 @@ type ProtoNativeSchemaData struct {
 	RootFileDescriptorName string `json:"rootFileDescriptorName"`
 }
 
-func GetFileProto(fileDesc protoreflect.FileDescriptor, protoMap *map[string]descriptorpb.FileDescriptorProto) {
+func GetFileProto(fileDesc protoreflect.FileDescriptor, protoMap map[string]*descriptorpb.FileDescriptorProto) {
 	if fileDesc.Imports().Len() > 0 {
 		for i := 0; i < fileDesc.Imports().Len(); i++ {
 			GetFileProto(fileDesc.Imports().Get(i).ParentFile(), protoMap)
@@ -280,16 +298,17 @@ func GetFileProto(fileDesc protoreflect.FileDescriptor, protoMap *map[string]des
 	}
 	unResolvedDependencies := make([]string, 0)
 	for i := 0; i < fileDesc.Imports().Len(); i++ {
-		_, ok := (*protoMap)[fileDesc.Imports().Get(i).Path()]
-		if !ok {
-			unResolvedDependencies = append(unResolvedDependencies, fileDesc.Imports().Get(i).Path())
+		if _, ok := protoMap[fileDesc.Imports().Get(i).Path()]; ok {
+			if !ok {
+				unResolvedDependencies = append(unResolvedDependencies, fileDesc.Imports().Get(i).Path())
+			}
 		}
 	}
 	if len(unResolvedDependencies) > 0 {
 		log.Fatalf("%v can't resolve dependency [%v].",
 			fileDesc.Path(), strings.Join(unResolvedDependencies, ","))
 	}
-	(*protoMap)[fileDesc.Path()] = *protodesc.ToFileDescriptorProto(fileDesc)
+	protoMap[fileDesc.Path()] = protodesc.ToFileDescriptorProto(fileDesc)
 }
 
 func (ps *ProtoNativeSchema) Encode(data interface{}) ([]byte, error) {
