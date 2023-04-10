@@ -59,7 +59,7 @@ const (
 	AUTO            = -2              //
 	AutoConsume     = -3              //Auto Consume Type.
 	AutoPublish     = -4              // Auto Publish Type.
-	PROTOBUF_NATIVE = 20              //Protobuf message encoding and decoding
+	PROTOBUF_NATIVE = 20              //Protobuf native message encoding and decoding
 )
 
 // Encapsulates data around the schema definition
