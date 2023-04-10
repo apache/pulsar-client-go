@@ -710,6 +710,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 	uncompressedSize int,
 	deliverAt time.Time) (mm *pb.MessageMetadata) {
+
 	mm = &pb.MessageMetadata{
 		ProducerName:     &p.producerName,
 		PublishTime:      proto.Uint64(internal.TimestampMillis(time.Now())),
