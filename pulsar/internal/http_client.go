@@ -173,6 +173,7 @@ func (c *httpClient) GetWithQueryParams(endpoint string, obj interface{}, params
 	return c.GetWithOptions(endpoint, obj, params, decode, nil)
 }
 
+//nolint:bodyclose // false positive
 func (c *httpClient) GetWithOptions(endpoint string, obj interface{}, params map[string]string,
 	decode bool, file io.Writer) ([]byte, error) {
 
