@@ -24,37 +24,42 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strings"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
 
 	"github.com/linkedin/goavro/v2"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 type SchemaType int
 
 const (
-	NONE        SchemaType = iota //No schema defined
-	STRING                        //Simple String encoding with UTF-8
-	JSON                          //JSON object encoding and validation
-	PROTOBUF                      //Protobuf message encoding and decoding
-	AVRO                          //Serialize and deserialize via Avro
-	BOOLEAN                       //
-	INT8                          //A 8-byte integer.
-	INT16                         //A 16-byte integer.
-	INT32                         //A 32-byte integer.
-	INT64                         //A 64-byte integer.
-	FLOAT                         //A float number.
-	DOUBLE                        //A double number
-	_                             //
-	_                             //
-	_                             //
-	KeyValue                      //A Schema that contains Key Schema and Value Schema.
-	BYTES       = -1              //A bytes array.
-	AUTO        = -2              //
-	AutoConsume = -3              //Auto Consume Type.
-	AutoPublish = -4              // Auto Publish Type.
+	NONE            SchemaType = iota //No schema defined
+	STRING                            //Simple String encoding with UTF-8
+	JSON                              //JSON object encoding and validation
+	PROTOBUF                          //Protobuf message encoding and decoding
+	AVRO                              //Serialize and deserialize via Avro
+	BOOLEAN                           //
+	INT8                              //A 8-byte integer.
+	INT16                             //A 16-byte integer.
+	INT32                             //A 32-byte integer.
+	INT64                             //A 64-byte integer.
+	FLOAT                             //A float number.
+	DOUBLE                            //A double number
+	_                                 //
+	_                                 //
+	_                                 //
+	KeyValue                          //A Schema that contains Key Schema and Value Schema.
+	BYTES           = -1              //A bytes array.
+	AUTO            = -2              //
+	AutoConsume     = -3              //Auto Consume Type.
+	AutoPublish     = -4              // Auto Publish Type.
+	PROTOBUF_NATIVE = 20              //Protobuf message encoding and decoding
 )
 
 // Encapsulates data around the schema definition
@@ -216,6 +221,90 @@ func (ps *ProtoSchema) Validate(message []byte) error {
 }
 
 func (ps *ProtoSchema) GetSchemaInfo() *SchemaInfo {
+	return &ps.SchemaInfo
+}
+
+type ProtoNativeSchema struct {
+	SchemaInfo
+}
+
+func NewProtoNativeSchema(message proto.Message, properties map[string]string) *ProtoNativeSchema {
+	pns := new(ProtoNativeSchema)
+	pns.SchemaInfo.Schema = GetProtoNativeSchemaInfo(message)
+	pns.SchemaInfo.Type = PROTOBUF_NATIVE
+	pns.SchemaInfo.Properties = properties
+	pns.SchemaInfo.Name = "ProtoNative"
+	return pns
+}
+
+func GetProtoNativeSchemaInfo(message proto.Message) string {
+	fileDesc := message.ProtoReflect().Descriptor().ParentFile()
+	fileProtoMap := make(map[string]descriptorpb.FileDescriptorProto)
+	GetFileProto(fileDesc, &fileProtoMap)
+
+	fileDescList := make([]*descriptorpb.FileDescriptorProto, 0, len(fileProtoMap))
+	for k := range fileProtoMap {
+		value := fileProtoMap[k]
+		fileDescList = append(fileDescList, &value)
+	}
+	fileDescSet := descriptorpb.FileDescriptorSet{
+		File: fileDescList,
+	}
+	bytesData, err := proto.Marshal(&fileDescSet)
+	if err != nil {
+		log.Fatalf("get serialized proto file data error: %v", err)
+	}
+	schemaData := ProtoNativeSchemaData{
+		FileDescriptorSet:      bytesData,
+		RootMessageTypeName:    string(message.ProtoReflect().Descriptor().FullName()),
+		RootFileDescriptorName: fileDesc.Path(),
+	}
+	jsonData, err := json.Marshal(schemaData)
+	if err != nil {
+		log.Fatalf("get json schema data for proto native schema error: %v", err)
+	}
+	return string(jsonData)
+}
+
+type ProtoNativeSchemaData struct {
+	FileDescriptorSet      []byte `json:"fileDescriptorSet"`
+	RootMessageTypeName    string `json:"rootMessageTypeName"`
+	RootFileDescriptorName string `json:"rootFileDescriptorName"`
+}
+
+func GetFileProto(fileDesc protoreflect.FileDescriptor, protoMap *map[string]descriptorpb.FileDescriptorProto) {
+	if fileDesc.Imports().Len() > 0 {
+		for i := 0; i < fileDesc.Imports().Len(); i++ {
+			GetFileProto(fileDesc.Imports().Get(i).ParentFile(), protoMap)
+		}
+	}
+	unResolvedDependencies := make([]string, 0)
+	for i := 0; i < fileDesc.Imports().Len(); i++ {
+		_, ok := (*protoMap)[fileDesc.Imports().Get(i).Path()]
+		if !ok {
+			unResolvedDependencies = append(unResolvedDependencies, fileDesc.Imports().Get(i).Path())
+		}
+	}
+	if len(unResolvedDependencies) > 0 {
+		log.Fatalf("%v can't resolve dependency [%v].",
+			fileDesc.Path(), strings.Join(unResolvedDependencies, ","))
+	}
+	(*protoMap)[fileDesc.Path()] = *protodesc.ToFileDescriptorProto(fileDesc)
+}
+
+func (ps *ProtoNativeSchema) Encode(data interface{}) ([]byte, error) {
+	return proto.Marshal(data.(proto.Message))
+}
+
+func (ps *ProtoNativeSchema) Decode(data []byte, v interface{}) error {
+	return proto.Unmarshal(data, v.(proto.Message))
+}
+
+func (ps *ProtoNativeSchema) Validate(message []byte) error {
+	return ps.Decode(message, nil)
+}
+
+func (ps *ProtoNativeSchema) GetSchemaInfo() *SchemaInfo {
 	return &ps.SchemaInfo
 }
 

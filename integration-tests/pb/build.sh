@@ -18,4 +18,9 @@
 # under the License.
 #
 
-protoc --go_out=. --go_opt=paths=source_relative hello.proto
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+SOURCE_PATH="$PROJECT_DIR/integration-tests/pb"
+DEST_PATH="$PROJECT_DIR/integration-tests/pb"
+echo "source_path: $SOURCE_PATH"
+echo "dest_path: $DEST_PATH"
+protoc -I=$SOURCE_PATH --go_out=$DEST_PATH $SOURCE_PATH/*.proto

@@ -22,7 +22,7 @@ import (
 	"log"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/integration-tests/pb"
+	pb "github.com/apache/pulsar-client-go/integration-tests/pb"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -144,6 +144,69 @@ func TestProtoSchema(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, unobj.Num, int32(100))
 	assert.Equal(t, unobj.Msf, "pulsar")
+	defer consumer.Close()
+}
+
+func TestProtoNativeSchema(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	topic := "proto-native"
+
+	// create producer
+	psProducer := NewProtoNativeSchema(&pb.Test{}, nil)
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: psProducer,
+	})
+	assert.Nil(t, err)
+
+	names := []string{
+		"name-a",
+		"name-b",
+		"name-c",
+	}
+	if _, err := producer.Send(context.Background(), &ProducerMessage{
+		Value: &pb.Test{
+			Num: 100,
+			Msf: "pulsar",
+			Foo: &pb.Foo{
+				Name:  "foo name",
+				Value: 200,
+				Names: names,
+			},
+			HiContent: &pb.HiContent{
+				Id:      300,
+				Content: "hi content",
+			},
+		},
+	}); err != nil {
+		log.Fatal(err)
+	}
+
+	//create consumer
+	unobj := pb.Test{}
+	psConsumer := NewProtoNativeSchema(&pb.Test{}, nil)
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "sub-1",
+		Schema:                      psConsumer,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	err = msg.GetSchemaValue(&unobj)
+	assert.Nil(t, err)
+	assert.Equal(t, unobj.Num, int32(100))
+	assert.Equal(t, unobj.Msf, "pulsar")
+	assert.Equal(t, unobj.Foo.Name, "foo name")
+	assert.Equal(t, unobj.Foo.Value, int32(200))
+	assert.Equal(t, unobj.Foo.Names, names)
+	assert.Equal(t, unobj.HiContent.Id, int32(300))
+	assert.Equal(t, unobj.HiContent.Content, "hi content")
+	consumer.Ack(msg)
 	defer consumer.Close()
 }
 

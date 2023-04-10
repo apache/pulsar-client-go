@@ -1,0 +1,9 @@
+syntax = "proto3";
+package prototest;
+
+option go_package = ".";
+
+message HiContent {
+  int32 id = 2;
+  string content = 1;
+}

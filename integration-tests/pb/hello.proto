@@ -19,9 +19,19 @@
 syntax = "proto3";
 package prototest;
 
-option go_package = "./pb";
+option go_package = ".";
+
+import "hi.proto";
 
 message Test {
     int32 num = 1;
     string msf = 2;
+    Foo foo = 3;
+    HiContent hiContent = 4;
+}
+
+message Foo {
+    string name = 1;
+    int32 value = 2;
+    repeated string names = 3;
 }
