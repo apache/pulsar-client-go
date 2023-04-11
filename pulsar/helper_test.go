@@ -19,7 +19,9 @@ package pulsar
 
 import (
 	"testing"
+	"time"
 
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -43,4 +45,50 @@ func TestToKeyValues(t *testing.T) {
 		v := meta[*kv.Key]
 		assert.Equal(t, v, *kv.Value)
 	}
+}
+
+func TestToStringMap(t *testing.T) {
+	key1, key2, value1, value2 := "key1", "key2", "value1", "value2"
+	dataAsKeyValues := []*pb.KeyValue{
+		&pb.KeyValue{
+			Key:   &key1,
+			Value: &value1,
+		}, &pb.KeyValue{
+			Key:   &key2,
+			Value: &value2,
+		},
+	}
+	expectedMap := map[string]string{
+		"key1": "value1",
+		"key2": "value2",
+	}
+	actualMap := toStringMap(dataAsKeyValues)
+	assert.Equal(t, expectedMap, actualMap)
+}
+
+func TestIsPriorBatchIndex(t *testing.T) {
+	msgID := messageID{
+		batchIdx: 30,
+	}
+	isPrior := isPriorBatchIndex(20, &msgID)
+	assert.True(t, isPrior)
+	isPrior = isPriorBatchIndex(34, &msgID)
+	assert.False(t, isPrior)
+}
+
+func TestGetMessageIndex(t *testing.T) {
+	var index uint64 = 30
+	batchSize := 10
+	msgIdx := getMessageIndex(&pb.BrokerEntryMetadata{
+		Index: &index,
+	}, 2, batchSize)
+
+	assert.Equal(t, uint64(23), msgIdx)
+}
+
+func TestGetBrokerPublishTime(t *testing.T) {
+	timestamp := uint64(1646983036054)
+	publishedTime := getBrokerPublishTime(&pb.BrokerEntryMetadata{BrokerTimestamp: &timestamp})
+	expectedTimeInLocal := time.Date(2022, time.March, 11, 7, 17, 16, 54000000, time.UTC).Local()
+	assert.Equal(t, expectedTimeInLocal, publishedTime)
 }

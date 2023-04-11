@@ -141,10 +141,10 @@ func (id *messageID) greater(other *messageID) bool {
 	return id.batchIdx > other.batchIdx
 }
 
-func (id *messageID) equal(other *messageID) bool {
-	return id.ledgerID == other.ledgerID &&
-		id.entryID == other.entryID &&
-		id.batchIdx == other.batchIdx
+func (id *messageID) equal(other MessageID) bool {
+	return id.ledgerID == other.LedgerID() &&
+		id.entryID == other.EntryID() &&
+		id.batchIdx == other.BatchIdx()
 }
 
 func (id *messageID) greaterEqual(other *messageID) bool {
@@ -286,7 +286,9 @@ type EncryptionKey struct {
 	Metadata map[string]string
 }
 
-type message struct {
+// MessagePayloadProcessor needs to construct message
+// Need visibility to client code
+type MessageImpl struct {
 	publishTime         time.Time
 	eventTime           time.Time
 	key                 string
@@ -307,51 +309,86 @@ type message struct {
 	brokerPublishTime   *time.Time
 }
 
-func (msg *message) Topic() string {
+func NewMessage(topic string,
+	properties map[string]string,
+	payload []byte,
+	msgID MessageID,
+	publishTime time.Time,
+	eventTime time.Time,
+	key string,
+	orderingKey string,
+	rediliveryCount int,
+	replicatedFrom string,
+	schema Schema,
+	schemaVersioin []byte,
+	encryptionContext *EncryptionContext,
+	index uint64,
+	brokerPublishTime time.Time,
+	producerName string) *MessageImpl {
+	return &MessageImpl{
+		properties:        properties,
+		payLoad:           payload,
+		msgID:             msgID,
+		publishTime:       publishTime,
+		eventTime:         eventTime,
+		key:               key,
+		orderingKey:       orderingKey,
+		redeliveryCount:   uint32(rediliveryCount),
+		replicatedFrom:    replicatedFrom,
+		schema:            schema,
+		schemaVersion:     schemaVersioin,
+		encryptionContext: encryptionContext,
+		index:             &index,
+		brokerPublishTime: &brokerPublishTime,
+		producerName:      producerName,
+	}
+}
+
+func (msg *MessageImpl) Topic() string {
 	return msg.topic
 }
 
-func (msg *message) Properties() map[string]string {
+func (msg *MessageImpl) Properties() map[string]string {
 	return msg.properties
 }
 
-func (msg *message) Payload() []byte {
+func (msg *MessageImpl) Payload() []byte {
 	return msg.payLoad
 }
 
-func (msg *message) ID() MessageID {
+func (msg *MessageImpl) ID() MessageID {
 	return msg.msgID
 }
 
-func (msg *message) PublishTime() time.Time {
+func (msg *MessageImpl) PublishTime() time.Time {
 	return msg.publishTime
 }
 
-func (msg *message) EventTime() time.Time {
+func (msg *MessageImpl) EventTime() time.Time {
 	return msg.eventTime
 }
 
-func (msg *message) Key() string {
+func (msg *MessageImpl) Key() string {
 	return msg.key
 }
 
-func (msg *message) OrderingKey() string {
+func (msg *MessageImpl) OrderingKey() string {
 	return msg.orderingKey
 }
 
-func (msg *message) RedeliveryCount() uint32 {
+func (msg *MessageImpl) RedeliveryCount() uint32 {
 	return msg.redeliveryCount
 }
 
-func (msg *message) IsReplicated() bool {
+func (msg *MessageImpl) IsReplicated() bool {
 	return msg.replicatedFrom != ""
 }
 
-func (msg *message) GetReplicatedFrom() string {
+func (msg *MessageImpl) GetReplicatedFrom() string {
 	return msg.replicatedFrom
 }
 
-func (msg *message) GetSchemaValue(v interface{}) error {
+func (msg *MessageImpl) GetSchemaValue(v interface{}) error {
 	if msg.schemaVersion != nil {
 		schema, err := msg.schemaInfoCache.Get(msg.schemaVersion)
 		if err != nil {
@@ -362,27 +399,27 @@ func (msg *message) GetSchemaValue(v interface{}) error {
 	return msg.schema.Decode(msg.payLoad, v)
 }
 
-func (msg *message) SchemaVersion() []byte {
+func (msg *MessageImpl) SchemaVersion() []byte {
 	return msg.schemaVersion
 }
 
-func (msg *message) ProducerName() string {
+func (msg *MessageImpl) ProducerName() string {
 	return msg.producerName
 }
 
-func (msg *message) GetEncryptionContext() *EncryptionContext {
+func (msg *MessageImpl) GetEncryptionContext() *EncryptionContext {
 	return msg.encryptionContext
 }
 
-func (msg *message) Index() *uint64 {
+func (msg *MessageImpl) Index() *uint64 {
 	return msg.index
 }
 
-func (msg *message) BrokerPublishTime() *time.Time {
+func (msg *MessageImpl) BrokerPublishTime() *time.Time {
 	return msg.brokerPublishTime
 }
 
-func (msg *message) size() int {
+func (msg *MessageImpl) size() int {
 	return len(msg.payLoad)
 }
 

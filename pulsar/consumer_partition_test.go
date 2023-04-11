@@ -30,7 +30,7 @@ import (
 func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan []*message, 1),
+		queueCh:              make(chan []*MessageImpl, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -69,7 +69,7 @@ func newTestMetrics() *internal.LeveledMetrics {
 func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan []*message, 1),
+		queueCh:              make(chan []*MessageImpl, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -105,7 +105,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan []*message, 1),
+		queueCh:              make(chan []*MessageImpl, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},

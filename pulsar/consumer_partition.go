@@ -115,9 +115,10 @@ type partitionConsumerOpts struct {
 	expireTimeOfIncompleteChunk time.Duration
 	autoAckIncompleteChunk      bool
 	// in failover mode, this callback will be called when consumer change
-	consumerEventListener ConsumerEventListener
-	enableBatchIndexAck   bool
-	ackGroupingOptions    *AckGroupingOptions
+	consumerEventListener   ConsumerEventListener
+	enableBatchIndexAck     bool
+	ackGroupingOptions      *AckGroupingOptions
+	messagePayloadProcessor MessagePayloadProcessor
 }
 
 type ConsumerEventListener interface {
@@ -148,7 +149,7 @@ type partitionConsumer struct {
 
 	// the size of the queue channel for buffering messages
 	maxQueueSize    int32
-	queueCh         chan []*message
+	queueCh         chan []*MessageImpl
 	startMessageID  atomicMessageID
 	lastDequeuedMsg *trackingMessageID
 
@@ -320,7 +321,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		partitionIdx:         int32(options.partitionIdx),
 		eventsCh:             make(chan interface{}, 10),
 		maxQueueSize:         int32(options.receiverQueueSize),
-		queueCh:              make(chan []*message, options.receiverQueueSize),
+		queueCh:              make(chan []*MessageImpl, options.receiverQueueSize),
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
@@ -897,11 +898,16 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 		return err
 	}
+	checksumOk, err := reader.VerifyChecksumIfExists()
+	if err != nil || !checksumOk {
+		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_ChecksumMismatch)
+	}
 	msgMeta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_ChecksumMismatch)
 		return err
 	}
+
 	decryptedPayload, err := pc.decryptor.Decrypt(headersAndPayload.ReadableSlice(), pbMsgID, msgMeta)
 	// error decrypting the payload
 	if err != nil {
@@ -921,7 +927,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return fmt.Errorf("discarding message on decryption error :%v", err)
 		case crypto.ConsumerCryptoFailureActionConsume:
 			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
-			messages := []*message{
+			messages := []*MessageImpl{
 				{
 					publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
 					eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
@@ -976,21 +982,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		return err
 	}
 
-	// Reset the reader on the uncompressed buffer
-	reader.ResetBuffer(uncompressedHeadersAndPayload)
-
-	numMsgs := 1
-	if msgMeta.NumMessagesInBatch != nil {
-		numMsgs = int(msgMeta.GetNumMessagesInBatch())
-	}
-
-	messages := make([]*message, 0)
-	var ackTracker *ackTracker
-	// are there multiple messages in this batch?
-	if numMsgs > 1 {
-		ackTracker = newAckTracker(uint(numMsgs))
-	}
-
 	var ackSet *bitset.BitSet
 	if response.GetAckSet() != nil {
 		ackSetFromResponse := response.GetAckSet()
@@ -999,6 +990,125 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			buf[i] = uint64(ackSetFromResponse[i])
 		}
 		ackSet = bitset.From(buf)
+	}
+
+	if pc.options.messagePayloadProcessor != nil {
+
+		msgCtx := &MessagePayloadContext{
+			topic:           pc.topic,
+			redeliveryCount: response.GetRedeliveryCount(),
+			msgID: newMessageID(int64(pbMsgID.GetLedgerId()),
+				int64(pbMsgID.GetEntryId()),
+				pbMsgID.GetBatchIndex(),
+				pc.partitionIdx,
+				pbMsgID.GetBatchSize(),
+			),
+			startMsgID:      pc.options.startMessageID,
+			schema:          pc.options.schema,
+			schemaInfoCache: pc.schemaInfoCache,
+			brokerMetaData:  brokerMetadata,
+			msgMetaData:     msgMeta,
+			ackSet:          ackSet,
+			pc:              pc,
+		}
+
+		// When receiving the data, client receives as single message meta + single message
+		// if the entry.format is not pulsar, it'll only return palyoad the custom processor expects
+		var payload []byte
+		if value, found := msgCtx.GetProperty("entry.format"); found && value != "pulsar" {
+			_, payload, err = reader.ReadMessage()
+			if err != nil {
+				pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
+				return err
+			}
+		} else {
+			payload = uncompressedHeadersAndPayload.ReadableSlice()
+		}
+		if !(pc.options.decryption != nil &&
+			pc.options.decryption.ConsumerCryptoFailureAction == crypto.ConsumerCryptoFailureActionConsume &&
+			(msgMeta.GetEncryptionKeys() != nil && len(msgMeta.GetEncryptionKeys()) > 0)) &&
+			msgMeta.GetNumMessagesInBatch() != -1 {
+			msgCtx.batch = true
+		}
+
+		err := pc.options.messagePayloadProcessor.Process(msgCtx,
+			payload, pc.options.schema, func(msgs []Message) {
+				numMsgs := len(msgs)
+				if numMsgs == 0 {
+					return
+				}
+
+				pc.metrics.MessagesReceived.Add(float64(numMsgs))
+				pc.metrics.PrefetchedMessages.Add(float64(numMsgs))
+
+				bytesReceived := 0
+				for _, msg := range msgs {
+					if msg == nil {
+						continue
+					}
+					payloadSize := len(msg.Payload())
+					bytesReceived += payloadSize
+					pc.metrics.BytesReceived.Add(float64(payloadSize))
+					pc.metrics.PrefetchedBytes.Add(float64(payloadSize))
+				}
+
+				if pc.options.autoReceiverQueueSize {
+					pc.client.memLimit.ForceReserveMemory(int64(bytesReceived))
+					pc.incomingMessages.Add(int32(numMsgs))
+					pc.markScaleIfNeed()
+				}
+				//try to convert to MessageImpl or *MessageImpl
+				//if not success construct MessageImpl manually
+				messagesToConsume := make([]*MessageImpl, 0)
+				for _, msg := range msgs {
+					if msg == nil {
+						continue
+					}
+					if messageImplPtr, ok := msg.(*MessageImpl); ok {
+						messagesToConsume = append(messagesToConsume, messageImplPtr)
+						continue
+					}
+					messageImpl := &MessageImpl{
+						topic:             msg.Topic(),
+						producerName:      msg.ProducerName(),
+						properties:        msg.Properties(),
+						payLoad:           msg.Payload(),
+						msgID:             msg.ID(), // have to check
+						publishTime:       msg.PublishTime(),
+						eventTime:         msg.EventTime(),
+						key:               msg.Key(),
+						orderingKey:       msg.OrderingKey(),
+						redeliveryCount:   msg.RedeliveryCount(),
+						replicatedFrom:    msg.GetReplicatedFrom(),
+						schemaVersion:     msg.SchemaVersion(),
+						encryptionContext: msg.GetEncryptionContext(),
+						index:             msg.Index(),
+						brokerPublishTime: msg.BrokerPublishTime(),
+					}
+					messagesToConsume = append(messagesToConsume, messageImpl)
+				}
+				pc.queueCh <- messagesToConsume
+			})
+		if err != nil && errors.Is(err, ErrBatchDeSerialization) {
+			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
+			return err
+		}
+		// TODO: handle unknown errors
+		return nil
+	}
+	// Reset the reader on the uncompressed buffer
+	reader.ResetBuffer(uncompressedHeadersAndPayload)
+
+	numMsgs := 1
+	if msgMeta.NumMessagesInBatch != nil {
+		numMsgs = int(msgMeta.GetNumMessagesInBatch())
+	}
+
+	messages := make([]*MessageImpl, 0)
+	var ackTracker *ackTracker
+	// are there multiple messages in this batch?
+	if numMsgs > 1 {
+		ackTracker = newAckTracker(uint(numMsgs))
 	}
 
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
@@ -1010,10 +1120,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		if err != nil || payload == nil {
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
-		}
-		if ackSet != nil && !ackSet.Test(uint(i)) {
-			pc.log.Debugf("Ignoring message from %vth message, which has been acknowledged", i)
-			continue
 		}
 
 		pc.metrics.BytesReceived.Add(float64(len(payload)))
@@ -1071,9 +1177,9 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			}
 		}
 
-		var msg *message
+		var msg *MessageImpl
 		if smm != nil {
-			msg = &message{
+			msg = &MessageImpl{
 				publishTime:         timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
 				eventTime:           timeFromUnixTimestampMillis(smm.GetEventTime()),
 				key:                 smm.GetPartitionKey(),
@@ -1093,7 +1199,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				brokerPublishTime:   brokerPublishTime,
 			}
 		} else {
-			msg = &message{
+			msg = &MessageImpl{
 				publishTime:         timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
 				eventTime:           timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
 				key:                 msgMeta.GetPartitionKey(),
@@ -1201,7 +1307,7 @@ func (pc *partitionConsumer) messageShouldBeDiscarded(msgID *trackingMessageID) 
 
 // create EncryptionContext from message metadata
 // this will be used to decrypt the message payload outside of this client
-// it is the responsibility of end user to decrypt the payload
+// it is the responsibility of end user to decrypt the p	ayload
 // It will be used only when  crypto failure action is set to consume i.e crypto.ConsumerCryptoFailureActionConsume
 func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 	encCtx := EncryptionContext{
@@ -1270,9 +1376,9 @@ func (pc *partitionConsumer) dispatcher() {
 	defer func() {
 		pc.log.Debug("exiting dispatch loop")
 	}()
-	var messages []*message
+	var messages []*MessageImpl
 	for {
-		var queueCh chan []*message
+		var queueCh chan []*MessageImpl
 		var messageCh chan ConsumerMessage
 		var nextMessage ConsumerMessage
 		var nextMessageSize int

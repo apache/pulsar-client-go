@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"fmt"
+	"time"
 
 	pkgerrors "github.com/pkg/errors"
 
@@ -76,4 +77,32 @@ func toKeyValues(metadata map[string]string) []*pb.KeyValue {
 	}
 
 	return kvs
+}
+
+func toStringMap(metadata []*pb.KeyValue) map[string]string {
+	m := make(map[string]string, len(metadata))
+	for _, kv := range metadata {
+		m[*kv.Key] = *kv.Value
+	}
+	return m
+}
+
+func isPriorBatchIndex(index int, messageID MessageID) bool {
+	return index < int(messageID.BatchIdx())
+}
+
+func getMessageIndex(brokerMetaData *pb.BrokerEntryMetadata, index int, batchSize int) uint64 {
+	var messageIndex uint64
+	if brokerMetaData != nil && brokerMetaData.GetIndex() != 0 {
+		messageIndex = brokerMetaData.GetIndex() - uint64(batchSize) + uint64(index) + 1
+	}
+	return messageIndex
+}
+
+func getBrokerPublishTime(brokerMetaData *pb.BrokerEntryMetadata) time.Time {
+	var brokerPublishTime time.Time
+	if brokerMetaData.GetBrokerTimestamp() != 0 {
+		brokerPublishTime = timeFromUnixTimestampMillis(brokerMetaData.GetBrokerTimestamp())
+	}
+	return brokerPublishTime
 }
