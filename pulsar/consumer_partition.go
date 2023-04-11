@@ -1525,17 +1525,17 @@ func (pc *partitionConsumer) reconnectToBroker() {
 		maxRetry = int(*pc.options.maxReconnectToBroker)
 	}
 
+	var (
+		delayReconnectTime time.Duration
+		defaultBackoff     = internal.DefaultBackoff{}
+	)
+
 	for maxRetry != 0 {
 		if pc.getConsumerState() != consumerReady {
 			// Consumer is already closing
 			pc.log.Info("consumer state not ready, exit reconnect")
 			return
 		}
-
-		var (
-			delayReconnectTime time.Duration
-			defaultBackoff     = internal.DefaultBackoff{}
-		)
 
 		if pc.options.backoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
