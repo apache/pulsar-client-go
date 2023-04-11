@@ -39,27 +39,27 @@ import (
 type SchemaType int
 
 const (
-	NONE            SchemaType = iota //No schema defined
-	STRING                            //Simple String encoding with UTF-8
-	JSON                              //JSON object encoding and validation
-	PROTOBUF                          //Protobuf message encoding and decoding
-	AVRO                              //Serialize and deserialize via Avro
-	BOOLEAN                           //
-	INT8                              //A 8-byte integer.
-	INT16                             //A 16-byte integer.
-	INT32                             //A 32-byte integer.
-	INT64                             //A 64-byte integer.
-	FLOAT                             //A float number.
-	DOUBLE                            //A double number
-	_                                 //
-	_                                 //
-	_                                 //
-	KeyValue                          //A Schema that contains Key Schema and Value Schema.
-	BYTES           = -1              //A bytes array.
-	AUTO            = -2              //
-	AutoConsume     = -3              //Auto Consume Type.
-	AutoPublish     = -4              // Auto Publish Type.
-	PROTOBUF_NATIVE = 20              //Protobuf native message encoding and decoding
+	NONE        SchemaType = iota //No schema defined
+	STRING                        //Simple String encoding with UTF-8
+	JSON                          //JSON object encoding and validation
+	PROTOBUF                      //Protobuf message encoding and decoding
+	AVRO                          //Serialize and deserialize via Avro
+	BOOLEAN                       //
+	INT8                          //A 8-byte integer.
+	INT16                         //A 16-byte integer.
+	INT32                         //A 32-byte integer.
+	INT64                         //A 64-byte integer.
+	FLOAT                         //A float number.
+	DOUBLE                        //A double number
+	_                             //
+	_                             //
+	_                             //
+	KeyValue                      //A Schema that contains Key Schema and Value Schema.
+	BYTES       = -1              //A bytes array.
+	AUTO        = -2              //
+	AutoConsume = -3              //Auto Consume Type.
+	AutoPublish = -4              // Auto Publish Type.
+	ProtoNative = 20              //Protobuf native message encoding and decoding
 )
 
 // Encapsulates data around the schema definition
@@ -107,7 +107,7 @@ func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]s
 		s = NewFloatSchema(properties)
 	case DOUBLE:
 		s = NewDoubleSchema(properties)
-	case PROTOBUF_NATIVE:
+	case ProtoNative:
 		s = NewProtoNativeSchema(schemaDef, properties)
 	default:
 		err = fmt.Errorf("not support schema type of %v", schemaType)
@@ -237,7 +237,7 @@ func NewProtoNativeSchemaWithMessage(message proto.Message, properties map[strin
 func NewProtoNativeSchema(protoNativeSchemaDef string, properties map[string]string) *ProtoNativeSchema {
 	pns := new(ProtoNativeSchema)
 	pns.SchemaInfo.Schema = protoNativeSchemaDef
-	pns.SchemaInfo.Type = PROTOBUF_NATIVE
+	pns.SchemaInfo.Type = ProtoNative
 	pns.SchemaInfo.Properties = properties
 	pns.SchemaInfo.Name = "ProtoNative"
 	return pns
