@@ -417,7 +417,9 @@ func (pc *partitionConsumer) Unsubscribe() error {
 	return req.err
 }
 
-func (pc *partitionConsumer) AckIDWithTxn(msgID MessageID, txn Transaction) error {
+// ackIDCommon handles common logic for acknowledging messages with or without transactions.
+// withTxn should be set to true when dealing with transactions.
+func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn Transaction) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")
@@ -444,13 +446,32 @@ func (pc *partitionConsumer) AckIDWithTxn(msgID MessageID, txn Transaction) erro
 		return nil
 	}
 
-	ackReq := pc.sendIndividualAckWithTxn(trackingID, txn.(*transaction))
-	<-ackReq.doneCh
-	pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
-	if ackReq == nil {
-		return nil
+	var err error
+	if withResponse {
+		if txn != nil {
+			ackReq := pc.sendIndividualAckWithTxn(trackingID, txn.(*transaction))
+			<-ackReq.doneCh
+			err = ackReq.err
+		} else {
+			ackReq := pc.sendIndividualAck(trackingID)
+			<-ackReq.doneCh
+			err = ackReq.err
+		}
+	} else {
+		pc.ackGroupingTracker.add(trackingID)
 	}
-	return ackReq.err
+	pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+	return err
+}
+
+// AckIDWithTxn acknowledges the consumption of a message with transaction.
+func (pc *partitionConsumer) AckIDWithTxn(msgID MessageID, txn Transaction) error {
+	return pc.ackIDCommon(msgID, true, txn)
+}
+
+// ackID acknowledges the consumption of a message and optionally waits for response from the broker.
+func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
+	return pc.ackIDCommon(msgID, withResponse, nil)
 }
 
 func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
@@ -483,22 +504,19 @@ func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
 		TxnidMostBits:  proto.Uint64(txnID.MostSigBits),
 		TxnidLeastBits: proto.Uint64(txnID.LeastSigBits),
 	}
+	if err := req.Transaction.registerSendOrAckOp(); err != nil {
+		req.err = err
+		return
+	}
+	if err := req.Transaction.registerAckTopic(pc.options.topic, pc.options.subscription); err != nil {
+		req.err = err
+		return
+	}
 
-	err := req.Transaction.registerAckTopic(pc.options.topic, pc.options.subscription)
-	if err != nil {
-		req.err = err
-		return
-	}
-	err = req.Transaction.registerSendOrAckOp()
-	if err != nil {
-		req.err = err
-		return
-	}
 	cmdAck.RequestId = proto.Uint64(reqID)
-	_, err = pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+	_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
 	if err != nil {
 		pc.log.WithError(err).Error("Ack with response error")
-		req.err = err
 	}
 	req.Transaction.endSendOrAckOp(err)
 	req.err = err
@@ -573,47 +591,6 @@ func (pc *partitionConsumer) requestGetLastMessageID() (*trackingMessageID, erro
 	}
 	id := res.Response.GetLastMessageIdResponse.GetLastMessageId()
 	return convertToMessageID(id), nil
-}
-
-func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
-	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
-		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
-		return errors.New("consumer state is closed")
-	}
-
-	if cmid, ok := msgID.(*chunkMessageID); ok {
-		return pc.unAckChunksTracker.ack(cmid)
-	}
-
-	trackingID := toTrackingMessageID(msgID)
-
-	if trackingID != nil && trackingID.ack() {
-		// All messages in the same batch have been acknowledged, we only need to acknowledge the
-		// MessageID that represents the entry that stores the whole batch
-		trackingID = &trackingMessageID{
-			messageID: &messageID{
-				ledgerID: trackingID.ledgerID,
-				entryID:  trackingID.entryID,
-			},
-		}
-		pc.metrics.AcksCounter.Inc()
-		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
-	} else if !pc.options.enableBatchIndexAck {
-		return nil
-	}
-
-	var ackReq *ackRequest
-	if withResponse {
-		ackReq := pc.sendIndividualAck(trackingID)
-		<-ackReq.doneCh
-	} else {
-		pc.ackGroupingTracker.add(trackingID)
-	}
-	pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
-	if ackReq == nil {
-		return nil
-	}
-	return ackReq.err
 }
 
 func (pc *partitionConsumer) sendIndividualAck(msgID MessageID) *ackRequest {

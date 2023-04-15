@@ -1112,13 +1112,11 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	if msg.Transaction != nil {
 		transactionImpl := (msg.Transaction).(*transaction)
 
-		err := transactionImpl.registerProducerTopic(p.topic)
-		if err != nil {
+		if err := transactionImpl.registerProducerTopic(p.topic); err != nil {
 			callback(nil, msg, err)
 			return
 		}
-		err = transactionImpl.registerSendOrAckOp()
-		if err != nil {
+		if err := transactionImpl.registerSendOrAckOp(); err != nil {
 			callback(nil, msg, err)
 		}
 	}
