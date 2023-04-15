@@ -1111,6 +1111,12 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	//Register transaction operation to transaction and the transaction coordinator.
 	if msg.Transaction != nil {
 		transactionImpl := (msg.Transaction).(*transaction)
+		if transactionImpl.state != TxnOpen {
+			p.log.WithField("state", transactionImpl.state).Error("Failed to send message" +
+				" by a non-open transaction.")
+			callback(nil, msg, newError(InvalidStatus, "Failed to send message by a non-open transaction."))
+			return
+		}
 
 		if err := transactionImpl.registerProducerTopic(p.topic); err != nil {
 			callback(nil, msg, err)
@@ -1118,6 +1124,10 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		}
 		if err := transactionImpl.registerSendOrAckOp(); err != nil {
 			callback(nil, msg, err)
+		}
+		callback = func(id MessageID, producerMessage *ProducerMessage, err error) {
+			callback(id, producerMessage, err)
+			transactionImpl.endSendOrAckOp(err)
 		}
 	}
 	if p.getProducerState() != producerReady {

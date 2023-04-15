@@ -481,6 +481,11 @@ func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
 		req.err = newError(ConsumerClosed, "Failed to ack by closing or closed consumer")
 		return
 	}
+	if req.Transaction.state != TxnOpen {
+		pc.log.WithField("state", req.Transaction.state).Error("Failed to ack by a non-open transaction.")
+		req.err = newError(InvalidStatus, "Failed to ack by a non-open transaction.")
+		return
+	}
 	msgID := req.msgID
 
 	messageIDs := make([]*pb.MessageIdData, 1)
@@ -504,11 +509,13 @@ func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
 		TxnidMostBits:  proto.Uint64(txnID.MostSigBits),
 		TxnidLeastBits: proto.Uint64(txnID.LeastSigBits),
 	}
-	if err := req.Transaction.registerSendOrAckOp(); err != nil {
+
+	if err := req.Transaction.registerAckTopic(pc.options.topic, pc.options.subscription); err != nil {
 		req.err = err
 		return
 	}
-	if err := req.Transaction.registerAckTopic(pc.options.topic, pc.options.subscription); err != nil {
+
+	if err := req.Transaction.registerSendOrAckOp(); err != nil {
 		req.err = err
 		return
 	}
