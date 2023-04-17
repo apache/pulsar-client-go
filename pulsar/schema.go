@@ -230,7 +230,11 @@ type ProtoNativeSchema struct {
 }
 
 func NewProtoNativeSchemaWithMessage(message proto.Message, properties map[string]string) *ProtoNativeSchema {
-	return newProtoNativeSchema(getProtoNativeSchemaInfo(message), properties)
+	schemaDef, err := getProtoNativeSchemaInfo(message)
+	if err != nil {
+		log.Fatalf("Get ProtoNaive schema info error:%v", err)
+	}
+	return newProtoNativeSchema(schemaDef, properties)
 }
 
 func newProtoNativeSchema(protoNativeSchemaDef string, properties map[string]string) *ProtoNativeSchema {
@@ -242,7 +246,7 @@ func newProtoNativeSchema(protoNativeSchemaDef string, properties map[string]str
 	return pns
 }
 
-func getProtoNativeSchemaInfo(message proto.Message) string {
+func getProtoNativeSchemaInfo(message proto.Message) (string, error) {
 	fileDesc := message.ProtoReflect().Descriptor().ParentFile()
 	fileProtoMap := make(map[string]*descriptorpb.FileDescriptorProto)
 	getFileProto(fileDesc, fileProtoMap)
@@ -256,7 +260,7 @@ func getProtoNativeSchemaInfo(message proto.Message) string {
 	}
 	bytesData, err := proto.Marshal(&fileDescSet)
 	if err != nil {
-		log.Fatalf("get serialized proto file data error: %v", err)
+		return "", err
 	}
 	schemaData := ProtoNativeSchemaData{
 		FileDescriptorSet:      bytesData,
@@ -265,9 +269,9 @@ func getProtoNativeSchemaInfo(message proto.Message) string {
 	}
 	jsonData, err := json.Marshal(schemaData)
 	if err != nil {
-		log.Fatalf("get json schema data for proto native schema error: %v", err)
+		return "", err
 	}
-	return string(jsonData)
+	return string(jsonData), nil
 }
 
 type ProtoNativeSchemaData struct {
