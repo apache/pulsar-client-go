@@ -14,4 +14,3 @@ coverage.html
 perf/perf
 pulsar-perf
 bin
-integration-tests/pkg
