@@ -1109,6 +1109,7 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
 	//Register transaction operation to transaction and the transaction coordinator.
+	var newCallback func(MessageID, *ProducerMessage, error)
 	if msg.Transaction != nil {
 		transactionImpl := (msg.Transaction).(*transaction)
 		if transactionImpl.state != TxnOpen {
@@ -1125,14 +1126,16 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		if err := transactionImpl.registerSendOrAckOp(); err != nil {
 			callback(nil, msg, err)
 		}
-		callback = func(id MessageID, producerMessage *ProducerMessage, err error) {
+		newCallback = func(id MessageID, producerMessage *ProducerMessage, err error) {
 			callback(id, producerMessage, err)
 			transactionImpl.endSendOrAckOp(err)
 		}
+	} else {
+		newCallback = callback
 	}
 	if p.getProducerState() != producerReady {
 		// Producer is closing
-		callback(nil, msg, errProducerClosed)
+		newCallback(nil, msg, errProducerClosed)
 		return
 	}
 
@@ -1148,7 +1151,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
-		callback:         callback,
+		callback:         newCallback,
 		callbackOnce:     callbackOnce,
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
