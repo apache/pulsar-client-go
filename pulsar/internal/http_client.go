@@ -189,7 +189,9 @@ func (c *httpClient) GetWithOptions(endpoint string, obj interface{}, params map
 		req.params = query
 	}
 
-	resp, err := checkSuccessful(c.doRequest(req))
+	doRequest, err := c.doRequest(req)
+	defer safeRespClose(doRequest)
+	resp, err := checkSuccessful(doRequest, err)
 	if err != nil {
 		return nil, err
 	}
