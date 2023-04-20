@@ -232,7 +232,7 @@ type ProtoNativeSchema struct {
 func NewProtoNativeSchemaWithMessage(message proto.Message, properties map[string]string) *ProtoNativeSchema {
 	schemaDef, err := getProtoNativeSchemaInfo(message)
 	if err != nil {
-		log.Fatalf("Get ProtoNaive schema info error:%v", err)
+		log.Fatalf("Get ProtoNative schema info error:%v", err)
 	}
 	return newProtoNativeSchema(schemaDef, properties)
 }
