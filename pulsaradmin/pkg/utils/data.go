@@ -17,14 +17,16 @@ package utils
 
 // ClusterData information on a cluster
 type ClusterData struct {
-	Name                     string   `json:"-"`
-	ServiceURL               string   `json:"serviceUrl"`
-	ServiceURLTls            string   `json:"serviceUrlTls"`
-	BrokerServiceURL         string   `json:"brokerServiceUrl"`
-	BrokerServiceURLTls      string   `json:"brokerServiceUrlTls"`
-	PeerClusterNames         []string `json:"peerClusterNames"`
-	AuthenticationPlugin     string   `json:"authenticationPlugin"`
-	AuthenticationParameters string   `json:"authenticationParameters"`
+	Name                           string   `json:"-"`
+	ServiceURL                     string   `json:"serviceUrl"`
+	ServiceURLTls                  string   `json:"serviceUrlTls"`
+	BrokerServiceURL               string   `json:"brokerServiceUrl"`
+	BrokerServiceURLTls            string   `json:"brokerServiceUrlTls"`
+	PeerClusterNames               []string `json:"peerClusterNames"`
+	AuthenticationPlugin           string   `json:"authenticationPlugin"`
+	AuthenticationParameters       string   `json:"authenticationParameters"`
+	BrokerClientTrustCertsFilePath string   `json:"brokerClientTrustCertsFilePath"`
+	BrokerClientTLSEnabled         bool     `json:"brokerClientTlsEnabled"`
 }
 
 // FunctionData information for a Pulsar Function
