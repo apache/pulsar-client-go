@@ -151,8 +151,6 @@ func TestLargeMessage(t *testing.T) {
 }
 
 func TestMaxPendingChunkMessages(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -562,13 +560,18 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 	mm.ChunkId = proto.Int32(int32(chunkID))
 	producerImpl.updateMetadataSeqID(mm, msg)
 
+	doneCh := make(chan struct{})
 	producerImpl.internalSingleSend(
 		mm,
 		msg.Payload,
 		&sendRequest{
-			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {},
-			msg:      msg,
+			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {
+				close(doneCh)
+			},
+			msg: msg,
 		},
 		uint32(internal.MaxMessageSize),
 	)
+
+	<-doneCh
 }
