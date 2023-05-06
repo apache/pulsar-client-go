@@ -184,6 +184,17 @@ type Client interface {
 	// {@link Consumer} or {@link Producer} instances directly on a particular partition.
 	TopicPartitions(topic string) ([]string, error)
 
+	// NewTransaction creates a new Transaction instance.
+	//
+	// This function is used to initiate a new transaction for performing
+	// atomic operations on the message broker. It returns a Transaction
+	// object that can be used to produce, consume and commit messages in a
+	// transactional manner.
+	//
+	// In case of any errors while creating the transaction, an error will
+	// be returned.
+	NewTransaction(duration time.Duration) (Transaction, error)
+
 	// Close Closes the Client and free associated resources
 	Close()
 }

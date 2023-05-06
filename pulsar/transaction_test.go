@@ -103,8 +103,8 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	//The operations of committing txn1 should success at the first time and fail at the second time.
 	txn1 := createTxn(tc, t)
 	err := txn1.Commit(context.Background())
-	require.Nil(t, err, fmt.Sprintf("Failed to commit the transaction %d:%d\n", txn1.txnID.mostSigBits,
-		txn1.txnID.leastSigBits))
+	require.Nil(t, err, fmt.Sprintf("Failed to commit the transaction %d:%d\n", txn1.txnID.MostSigBits,
+		txn1.txnID.LeastSigBits))
 	txn1.state = TxnOpen
 	txn1.opsFlow <- true
 	err = txn1.Commit(context.Background())
@@ -117,7 +117,7 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	txn2 := newTransaction(*id2, tc, time.Hour)
 	err = txn2.Abort(context.Background())
 	require.Nil(t, err, fmt.Sprintf("Failed to abort the transaction %d:%d\n",
-		id2.mostSigBits, id2.leastSigBits))
+		id2.MostSigBits, id2.LeastSigBits))
 	txn2.state = TxnOpen
 	txn2.opsFlow <- true
 	err = txn2.Abort(context.Background())
@@ -209,11 +209,237 @@ func createTcClient(t *testing.T) (*transactionCoordinatorClient, *client) {
 		URL:                   webServiceURLTLS,
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
+		EnableTransaction:     true,
 	})
 	require.Nil(t, err, "Failed to create client.")
-	tcClient := newTransactionCoordinatorClientImpl(c.(*client))
-	err = tcClient.start()
-	require.Nil(t, err, "Failed to start transaction coordinator.")
 
-	return tcClient, c.(*client)
+	return c.(*client).tcClient, c.(*client)
+}
+
+// TestConsumeAndProduceWithTxn is a test function that validates the behavior of producing and consuming
+// messages with and without transactions. It consists of the following steps:
+//
+// 1. Prepare: Create a PulsarClient and initialize the transaction coordinator client.
+// 2. Prepare: Create a topic and a subscription.
+// 3. Produce 10 messages with a transaction and 10 messages without a transaction.
+// - Expectation: The consumer should be able to receive the 10 messages sent without a transaction,
+// but not the 10 messages sent with the transaction.
+// 4. Commit the transaction and receive the remaining 10 messages.
+// - Expectation: The consumer should be able to receive the 10 messages sent with the transaction.
+// 5. Clean up: Close the consumer and producer instances.
+//
+// The test ensures that the consumer can only receive messages sent with a transaction after it is committed,
+// and that it can always receive messages sent without a transaction.
+func TestConsumeAndProduceWithTxn(t *testing.T) {
+	// Step 1: Prepare - Create PulsarClient and initialize the transaction coordinator client.
+	topic := newTopicName()
+	sub := "my-sub"
+	_, client := createTcClient(t)
+	// Step 2: Prepare - Create Topic and Subscription.
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: sub,
+	})
+	assert.NoError(t, err)
+	producer, _ := client.CreateProducer(ProducerOptions{
+		Topic:       topic,
+		SendTimeout: 0,
+	})
+	// Step 3: Open a transaction, send 10 messages with the transaction and 10 messages without the transaction.
+	// Expectation: We can receive the 10 messages sent without a transaction and
+	// cannot receive the 10 messages sent with the transaction.
+	txn, err := client.NewTransaction(time.Hour)
+	require.Nil(t, err)
+	for i := 0; i < 10; i++ {
+		_, err = producer.Send(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		})
+		require.Nil(t, err)
+	}
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(context.Background(), &ProducerMessage{
+			Transaction: txn,
+			Payload:     make([]byte, 1024),
+		})
+		require.Nil(t, err)
+	}
+	// Attempt to receive and acknowledge the 10 messages sent without a transaction.
+	for i := 0; i < 10; i++ {
+		msg, _ := consumer.Receive(context.Background())
+		assert.NotNil(t, msg)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
+	}
+	// Create a goroutine to attempt receiving a message and send it to the 'done1' channel.
+	done1 := make(chan Message)
+	go func() {
+		msg, _ := consumer.Receive(context.Background())
+		err := consumer.AckID(msg.ID())
+		require.Nil(t, err)
+		close(done1)
+	}()
+	// Expectation: The consumer should not receive uncommitted messages.
+	select {
+	case <-done1:
+		require.Fail(t, "The consumer should not receive uncommitted message")
+	case <-time.After(time.Second):
+	}
+	// Step 4: After committing the transaction, we should be able to receive the remaining 10 messages.
+	// Acknowledge the rest of the 10 messages with the transaction.
+	// Expectation: After committing the transaction, all messages of the subscription will be acknowledged.
+	_ = txn.Commit(context.Background())
+	txn, err = client.NewTransaction(time.Hour)
+	require.Nil(t, err)
+	for i := 0; i < 9; i++ {
+		msg, _ := consumer.Receive(context.Background())
+		require.NotNil(t, msg)
+		err = consumer.AckWithTxn(msg, txn)
+		require.Nil(t, err)
+	}
+	_ = txn.Commit(context.Background())
+	<-done1
+	consumer.Close()
+	consumer, _ = client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: sub,
+	})
+	// Create a goroutine to attempt receiving a message and send it to the 'done1' channel.
+	done2 := make(chan Message)
+	go func() {
+		consumer.Receive(context.Background())
+		close(done2)
+	}()
+
+	// Expectation: The consumer should not receive uncommitted messages.
+	select {
+	case <-done2:
+		require.Fail(t, "The consumer should not receive messages")
+	case <-time.After(time.Second):
+	}
+
+	// Step 5: Clean up - Close the consumer and producer instances.
+	consumer.Close()
+	producer.Close()
+}
+
+func TestAckAndSendWithTxn(t *testing.T) {
+	// Prepare: Create PulsarClient and initialize the transaction coordinator client.
+	sourceTopic := newTopicName()
+	sinkTopic := newTopicName()
+	sub := "my-sub"
+	_, client := createTcClient(t)
+
+	// Prepare: Create source and sink topics and subscriptions.
+	sourceConsumer, _ := client.Subscribe(ConsumerOptions{
+		Topic:            sourceTopic,
+		SubscriptionName: sub,
+	})
+	sourceProducer, _ := client.CreateProducer(ProducerOptions{
+		Topic:       sourceTopic,
+		SendTimeout: 0,
+	})
+	sinkConsumer, _ := client.Subscribe(ConsumerOptions{
+		Topic:            sinkTopic,
+		SubscriptionName: sub,
+	})
+	sinkProducer, _ := client.CreateProducer(ProducerOptions{
+		Topic:       sinkTopic,
+		SendTimeout: 0,
+	})
+
+	// Produce 10 messages to the source topic.
+	for i := 0; i < 10; i++ {
+		_, err := sourceProducer.Send(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		})
+		require.Nil(t, err)
+	}
+
+	// Open a transaction and consume messages from the source topic while sending messages to the sink topic.
+	txn, err := client.NewTransaction(time.Hour)
+	require.Nil(t, err)
+
+	for i := 0; i < 10; i++ {
+		msg, _ := sourceConsumer.Receive(context.Background())
+		require.NotNil(t, msg)
+
+		payload := msg.Payload()
+		_, err := sinkProducer.Send(context.Background(), &ProducerMessage{
+			Transaction: txn,
+			Payload:     payload,
+		})
+		require.Nil(t, err)
+
+		err = sourceConsumer.AckWithTxn(msg, txn)
+		require.Nil(t, err)
+	}
+
+	// Commit the transaction.
+	_ = txn.Commit(context.Background())
+
+	// Verify that the messages are available in the sink topic.
+	for i := 0; i < 10; i++ {
+		msg, _ := sinkConsumer.Receive(context.Background())
+		require.NotNil(t, msg)
+		err = sinkConsumer.Ack(msg)
+		require.Nil(t, err)
+	}
+
+	// Clean up: Close consumers and producers.
+	sourceConsumer.Close()
+	sourceProducer.Close()
+	sinkConsumer.Close()
+	sinkProducer.Close()
+}
+
+func TestTransactionAbort(t *testing.T) {
+	// Prepare: Create PulsarClient and initialize the transaction coordinator client.
+	topic := newTopicName()
+	sub := "my-sub"
+	_, client := createTcClient(t)
+
+	// Prepare: Create Topic and Subscription.
+	consumer, _ := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: sub,
+	})
+	producer, _ := client.CreateProducer(ProducerOptions{
+		Topic:       topic,
+		SendTimeout: 0,
+	})
+
+	// Open a transaction and send 10 messages with the transaction.
+	txn, err := client.NewTransaction(time.Hour)
+	require.Nil(t, err)
+
+	for i := 0; i < 10; i++ {
+		_, err = producer.Send(context.Background(), &ProducerMessage{
+			Transaction: txn,
+			Payload:     make([]byte, 1024),
+		})
+		require.Nil(t, err)
+	}
+
+	// Abort the transaction.
+	_ = txn.Abort(context.Background())
+
+	// Expectation: The consumer should not receive any messages.
+	done := make(chan struct{})
+	go func() {
+		_, err := consumer.Receive(context.Background())
+		if err != nil {
+			close(done)
+		}
+	}()
+
+	select {
+	case <-done:
+		// The consumer should not receive any messages.
+		require.Fail(t, "The consumer should not receive any messages")
+	case <-time.After(time.Second):
+	}
+
+	// Clean up: Close the consumer and producer instances.
+	consumer.Close()
+	producer.Close()
 }

@@ -195,6 +195,14 @@ func newClient(options ClientOptions) (Client, error) {
 	return c, nil
 }
 
+func (c *client) NewTransaction(timeout time.Duration) (Transaction, error) {
+	id, err := c.tcClient.newTransaction(timeout)
+	if err != nil {
+		return nil, err
+	}
+	return newTransaction(*id, c.tcClient, timeout), nil
+}
+
 func (c *client) CreateProducer(options ProducerOptions) (Producer, error) {
 	producer, err := newProducer(c, &options)
 	if err == nil {

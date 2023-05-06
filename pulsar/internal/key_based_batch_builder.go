@@ -132,6 +132,9 @@ func (bc *keyBasedBatchContainer) Add(
 	payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time,
 	schemaVersion []byte, multiSchemaEnabled bool,
+	useTxn bool,
+	mostSigBits uint64,
+	leastSigBits uint64,
 ) bool {
 	if replicateTo != nil && bc.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
@@ -162,7 +165,7 @@ func (bc *keyBasedBatchContainer) Add(
 	add := batchPart.Add(
 		metadata, sequenceIDGenerator, payload, callback, replicateTo,
 		deliverAt,
-		schemaVersion, multiSchemaEnabled,
+		schemaVersion, multiSchemaEnabled, useTxn, mostSigBits, leastSigBits,
 	)
 	if !add {
 		return false

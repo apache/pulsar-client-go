@@ -193,6 +193,24 @@ func (c *regexConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
+// AckID the consumption of a single message, identified by its MessageID
+func (c *regexConsumer) AckWithTxn(msg Message, txn Transaction) error {
+	msgID := msg.ID()
+	if !checkMessageIDType(msgID) {
+		c.log.Warnf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
+
+	mid := toTrackingMessageID(msgID)
+
+	if mid.consumer == nil {
+		c.log.Warnf("unable to ack messageID=%+v can not determine topic", msgID)
+		return errors.New("consumer is nil in consumer_regex")
+	}
+
+	return mid.consumer.AckIDWithTxn(msgID, txn)
+}
+
 // AckCumulative the reception of all the messages in the stream up to (and including)
 // the provided message.
 func (c *regexConsumer) AckCumulative(msg Message) error {
