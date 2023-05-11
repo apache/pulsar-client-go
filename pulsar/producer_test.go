@@ -1928,11 +1928,13 @@ func TestSendMessagesWithMetadata(t *testing.T) {
 	assert.Nil(t, err)
 
 	msg := &ProducerMessage{EventTime: time.Now().Local(),
-		Payload: []byte(fmt.Sprintf("msg"))}
+		Payload: []byte("msg")}
 
 	_, err = producer.Send(context.Background(), msg)
+	assert.Nil(t, err)
 
 	recvMsg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
 
 	assert.Equal(t, internal.TimestampMillis(recvMsg.EventTime()), internal.TimestampMillis(msg.EventTime))
 }
