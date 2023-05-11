@@ -735,6 +735,10 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 		UncompressedSize: proto.Uint32(uint32(uncompressedSize)),
 	}
 
+	if !msg.EventTime.IsZero() {
+		mm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
+	}
+
 	if msg.Key != "" {
 		mm.PartitionKey = proto.String(msg.Key)
 	}
