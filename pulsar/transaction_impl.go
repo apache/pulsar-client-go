@@ -231,6 +231,8 @@ func (state TxnState) string() string {
 		return "TxnAborted"
 	case TxnTimeout:
 		return "TxnTimeout"
+	case TxnError:
+		return "TxnError"
 	default:
 		return "Unknown"
 	}

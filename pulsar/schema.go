@@ -30,6 +30,9 @@ import (
 
 	"github.com/linkedin/goavro/v2"
 	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 type SchemaType int
@@ -55,6 +58,7 @@ const (
 	AUTO        = -2              //
 	AutoConsume = -3              //Auto Consume Type.
 	AutoPublish = -4              // Auto Publish Type.
+	ProtoNative = 20              //Protobuf native message encoding and decoding
 )
 
 // Encapsulates data around the schema definition
@@ -102,6 +106,8 @@ func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]s
 		s = NewFloatSchema(properties)
 	case DOUBLE:
 		s = NewDoubleSchema(properties)
+	case ProtoNative:
+		s = newProtoNativeSchema(schemaDef, properties)
 	default:
 		err = fmt.Errorf("not support schema type of %v", schemaType)
 	}
@@ -216,6 +222,84 @@ func (ps *ProtoSchema) Validate(message []byte) error {
 }
 
 func (ps *ProtoSchema) GetSchemaInfo() *SchemaInfo {
+	return &ps.SchemaInfo
+}
+
+type ProtoNativeSchema struct {
+	SchemaInfo
+}
+
+func NewProtoNativeSchemaWithMessage(message proto.Message, properties map[string]string) *ProtoNativeSchema {
+	schemaDef, err := getProtoNativeSchemaInfo(message)
+	if err != nil {
+		log.Fatalf("Get ProtoNative schema info error:%v", err)
+	}
+	return newProtoNativeSchema(schemaDef, properties)
+}
+
+func newProtoNativeSchema(protoNativeSchemaDef string, properties map[string]string) *ProtoNativeSchema {
+	pns := new(ProtoNativeSchema)
+	pns.SchemaInfo.Schema = protoNativeSchemaDef
+	pns.SchemaInfo.Type = ProtoNative
+	pns.SchemaInfo.Properties = properties
+	pns.SchemaInfo.Name = "ProtoNative"
+	return pns
+}
+
+func getProtoNativeSchemaInfo(message proto.Message) (string, error) {
+	fileDesc := message.ProtoReflect().Descriptor().ParentFile()
+	fileProtoMap := make(map[string]*descriptorpb.FileDescriptorProto)
+	getFileProto(fileDesc, fileProtoMap)
+
+	fileDescList := make([]*descriptorpb.FileDescriptorProto, 0, len(fileProtoMap))
+	for _, v := range fileProtoMap {
+		fileDescList = append(fileDescList, v)
+	}
+	fileDescSet := descriptorpb.FileDescriptorSet{
+		File: fileDescList,
+	}
+	bytesData, err := proto.Marshal(&fileDescSet)
+	if err != nil {
+		return "", err
+	}
+	schemaData := ProtoNativeSchemaData{
+		FileDescriptorSet:      bytesData,
+		RootMessageTypeName:    string(message.ProtoReflect().Descriptor().FullName()),
+		RootFileDescriptorName: fileDesc.Path(),
+	}
+	jsonData, err := json.Marshal(schemaData)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonData), nil
+}
+
+type ProtoNativeSchemaData struct {
+	FileDescriptorSet      []byte `json:"fileDescriptorSet"`
+	RootMessageTypeName    string `json:"rootMessageTypeName"`
+	RootFileDescriptorName string `json:"rootFileDescriptorName"`
+}
+
+func getFileProto(fileDesc protoreflect.FileDescriptor, protoMap map[string]*descriptorpb.FileDescriptorProto) {
+	for i := 0; i < fileDesc.Imports().Len(); i++ {
+		getFileProto(fileDesc.Imports().Get(i).ParentFile(), protoMap)
+	}
+	protoMap[fileDesc.Path()] = protodesc.ToFileDescriptorProto(fileDesc)
+}
+
+func (ps *ProtoNativeSchema) Encode(data interface{}) ([]byte, error) {
+	return proto.Marshal(data.(proto.Message))
+}
+
+func (ps *ProtoNativeSchema) Decode(data []byte, v interface{}) error {
+	return proto.Unmarshal(data, v.(proto.Message))
+}
+
+func (ps *ProtoNativeSchema) Validate(message []byte) error {
+	return ps.Decode(message, nil)
+}
+
+func (ps *ProtoNativeSchema) GetSchemaInfo() *SchemaInfo {
 	return &ps.SchemaInfo
 }
 

@@ -52,6 +52,10 @@ func (c *mockConsumer) Subscription() string {
 	return ""
 }
 
+func (c *mockConsumer) AckWithTxn(msg pulsar.Message, txn pulsar.Transaction) error {
+	return nil
+}
+
 func (c *mockConsumer) Unsubscribe() error {
 	return nil
 }

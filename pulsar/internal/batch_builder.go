@@ -51,6 +51,9 @@ type BatchBuilder interface {
 		payload []byte,
 		callback interface{}, replicateTo []string, deliverAt time.Time,
 		schemaVersion []byte, multiSchemaEnabled bool,
+		useTxn bool,
+		mostSigBits uint64,
+		leastSigBits uint64,
 	) bool
 
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
@@ -185,6 +188,7 @@ func (bc *batchContainer) Add(
 	payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time,
 	schemaVersion []byte, multiSchemaEnabled bool,
+	useTxn bool, mostSigBits uint64, leastSigBits uint64,
 ) bool {
 
 	if replicateTo != nil && bc.numMessages != 0 {
@@ -223,6 +227,10 @@ func (bc *batchContainer) Add(
 		}
 
 		bc.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
+		if useTxn {
+			bc.cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
+			bc.cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
+		}
 	}
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
 

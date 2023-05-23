@@ -69,6 +69,10 @@ type ProducerMessage struct {
 	//Schema assign to the current message
 	//Note: messages may have a different schema from producer schema, use it instead of producer schema when assigned
 	Schema Schema
+
+	//Transaction assign to the current message
+	//Note: The message is not visible before the transaction is committed.
+	Transaction Transaction
 }
 
 // Message abstraction used in Pulsar
