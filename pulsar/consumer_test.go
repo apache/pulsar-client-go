@@ -4113,7 +4113,7 @@ func TestConsumerNonDurable(t *testing.T) {
 
 	consumer.Close()
 
-	i += 1
+	i++
 
 	// send a message. Pulsar should delete it as there is no active subscription
 	if _, err := producer.Send(ctx, &ProducerMessage{
@@ -4122,7 +4122,7 @@ func TestConsumerNonDurable(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	i += 1
+	i++
 
 	// Subscribe again
 	consumer, err = client.Subscribe(ConsumerOptions{
