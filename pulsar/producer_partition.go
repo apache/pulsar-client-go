@@ -101,12 +101,12 @@ type partitionProducer struct {
 
 type schemaCache struct {
 	lock    sync.RWMutex
-	schemas map[string][]byte
+	schemas map[uint64][]byte
 }
 
 func newSchemaCache() *schemaCache {
 	return &schemaCache{
-		schemas: make(map[string][]byte),
+		schemas: make(map[uint64][]byte),
 	}
 }
 
@@ -122,9 +122,9 @@ func (s *schemaCache) Get(schema *SchemaInfo) (schemaVersion []byte) {
 	s.lock.RLock()
 	defer s.lock.RUnlock()
 
-	key := schema.hash()
-	return s.schemas[key]
+	return s.schemas[schema.hash()]
 }
+
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
 	metrics *internal.LeveledMetrics) (
 	*partitionProducer, error) {
