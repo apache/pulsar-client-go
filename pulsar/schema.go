@@ -19,10 +19,9 @@ package pulsar
 
 import (
 	"bytes"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/maphash"
 	"reflect"
 	"unsafe"
 
@@ -69,10 +68,11 @@ type SchemaInfo struct {
 	Properties map[string]string
 }
 
-func (s SchemaInfo) hash() string {
-	h := sha256.New()
+func (s SchemaInfo) hash() uint64 {
+	h := maphash.Hash{}
+	h.SetSeed(seed)
 	h.Write([]byte(s.Schema))
-	return hex.EncodeToString(h.Sum(nil))
+	return h.Sum64()
 }
 
 type Schema interface {
@@ -182,6 +182,8 @@ type ProtoSchema struct {
 	AvroCodec
 	SchemaInfo
 }
+
+var seed = maphash.MakeSeed()
 
 // NewProtoSchema creates a new ProtoSchema
 // Note: the function will panic if creation of codec fails
