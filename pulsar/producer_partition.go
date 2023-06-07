@@ -940,7 +940,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 			t.Reset(p.options.SendTimeout)
 			continue
 		}
-		p.log.Infof("Failing %d messages", viewSize)
+		p.log.Infof("Failing %d messages on timeout %s", viewSize, p.options.SendTimeout)
 		lastViewItem := curViewItems[viewSize-1].(*pendingItem)
 
 		// iterate at most viewSize items
