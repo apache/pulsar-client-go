@@ -27,8 +27,6 @@ import (
 	"github.com/apache/pulsar-client-go/oauth2/store"
 	"github.com/pkg/errors"
 	xoauth2 "golang.org/x/oauth2"
-
-	util "github.com/streamnative/pulsar-admin-go/pkg/utils"
 )
 
 const (
@@ -243,7 +241,7 @@ func makeKeyring() (keyring.Keyring, error) {
 		ServiceName:              serviceName,
 		KeychainName:             keyChainName,
 		KeychainTrustApplication: true,
-		FileDir:                  filepath.Join(util.HomeDir(), "~/.config/pulsar", "credentials"),
+		FileDir:                  filepath.Join("~/.config/pulsar", "credentials"),
 		FilePasswordFunc:         keyringPrompt,
 	})
 }
