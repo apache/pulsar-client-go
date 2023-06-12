@@ -138,3 +138,11 @@ func IsV2TopicName(tn *TopicName) bool {
 func GetTopicRestPath(tn *TopicName) string {
 	return fmt.Sprintf("%s/%s/%s", tn.Domain, tn.Namespace, url.QueryEscape(tn.Topic))
 }
+
+func IsPersistent(topic string) bool {
+	tn, err := ParseTopicName(topic)
+	if err != nil {
+		return false
+	}
+	return tn.Domain == "persistent"
+}

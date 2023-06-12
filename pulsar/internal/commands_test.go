@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -41,6 +42,10 @@ func TestConvertStringMap(t *testing.T) {
 func TestReadMessageMetadata(t *testing.T) {
 	// read old style message (not batched)
 	reader := NewMessageReaderFromArray(rawCompatSingleMessage)
+	ok, err := reader.VerifyChecksumIfExists()
+	if !ok || err != nil {
+		t.Fatal(errors.New("checksum validation failed"))
+	}
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -55,6 +60,10 @@ func TestReadMessageMetadata(t *testing.T) {
 
 	// read message with batch of 1
 	reader = NewMessageReaderFromArray(rawBatchMessage1)
+	ok, err = reader.VerifyChecksumIfExists()
+	if !ok || err != nil {
+		t.Fatal(errors.New("checksum validation failed"))
+	}
 	meta, err = reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -63,6 +72,10 @@ func TestReadMessageMetadata(t *testing.T) {
 
 	// read message with batch of 10
 	reader = NewMessageReaderFromArray(rawBatchMessage10)
+	ok, err = reader.VerifyChecksumIfExists()
+	if !ok || err != nil {
+		t.Fatal(errors.New("checksum validation failed"))
+	}
 	meta, err = reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -85,7 +98,11 @@ func TestReadBrokerEntryMetadata(t *testing.T) {
 
 func TestReadMessageOldFormat(t *testing.T) {
 	reader := NewMessageReaderFromArray(rawCompatSingleMessage)
-	_, err := reader.ReadMessageMetadata()
+	ok, err := reader.VerifyChecksumIfExists()
+	if !ok || err != nil {
+		t.Fatal(errors.New("checksum validation failed"))
+	}
+	_, err = reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,6 +121,10 @@ func TestReadMessageOldFormat(t *testing.T) {
 
 func TestReadMessagesBatchSize1(t *testing.T) {
 	reader := NewMessageReaderFromArray(rawBatchMessage1)
+	ok, err := reader.VerifyChecksumIfExists()
+	if !ok || err != nil {
+		t.Fatal(errors.New("checksum validation failed"))
+	}
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)
@@ -125,6 +146,10 @@ func TestReadMessagesBatchSize1(t *testing.T) {
 
 func TestReadMessagesBatchSize10(t *testing.T) {
 	reader := NewMessageReaderFromArray(rawBatchMessage10)
+	ok, err := reader.VerifyChecksumIfExists()
+	if !ok || err != nil {
+		t.Fatal(errors.New("checksum validation failed"))
+	}
 	meta, err := reader.ReadMessageMetadata()
 	if err != nil {
 		t.Fatal(err)

@@ -57,6 +57,13 @@ func NewMessageReader(headersAndPayload Buffer) *MessageReader {
 	}
 }
 
+func NewBatchMessageReader(headersAndPayload Buffer) *MessageReader {
+	return &MessageReader{
+		buffer:  headersAndPayload,
+		batched: true,
+	}
+}
+
 func NewMessageReaderFromArray(headersAndPayload []byte) *MessageReader {
 	return NewMessageReader(NewBufferWrapper(headersAndPayload))
 }
@@ -77,47 +84,39 @@ type MessageReader struct {
 	batched bool
 }
 
-// ReadChecksum
-func (r *MessageReader) readChecksum() (uint32, error) {
-	if r.buffer.ReadableBytes() < 6 {
-		return 0, errors.New("missing message header")
+// VerifyChecksum verify checksum only if first two bytes matches with magic number
+// following same approach as Java pluser client
+func (r *MessageReader) VerifyChecksumIfExists() (bool, error) {
+	if r.buffer.ReadableBytes() < 2 {
+		return false, errors.New("missing message header")
 	}
 	// reader magic number
-	magicNumber := r.buffer.ReadUint16()
+	magicNumber := binary.BigEndian.Uint16(r.buffer.Get(r.buffer.ReaderIndex(), 2))
 	if magicNumber != magicCrc32c {
-		return 0, ErrCorruptedMessage
+		// if checksum is not available, validation return true and nil error
+		return true, nil
 	}
+	r.buffer.Skip(2)
 	checksum := r.buffer.ReadUint32()
-	return checksum, nil
+	computedChecksum := Crc32cCheckSum(r.buffer.ReadableSlice())
+	if checksum != computedChecksum {
+		return false, nil
+	}
+	return true, nil
 }
 
 func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
-	// Wire format
+	// Wire format of pulsar entry format
 	// [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA]
-
-	// read checksum
-	checksum, err := r.readChecksum()
-	if err != nil {
-		return nil, err
-	}
-
-	// validate checksum
-	computedChecksum := Crc32cCheckSum(r.buffer.ReadableSlice())
-	if checksum != computedChecksum {
-		return nil, fmt.Errorf("checksum mismatch received: 0x%x computed: 0x%x", checksum, computedChecksum)
-	}
-
 	size := r.buffer.ReadUint32()
 	data := r.buffer.Read(size)
 	var meta pb.MessageMetadata
 	if err := proto.Unmarshal(data, &meta); err != nil {
 		return nil, ErrCorruptedMessage
 	}
-
 	if meta.NumMessagesInBatch != nil {
 		r.batched = true
 	}
-
 	return &meta, nil
 }
 

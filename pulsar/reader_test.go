@@ -481,6 +481,12 @@ func (id *myMessageID) String() string {
 	return fmt.Sprintf("%d:%d:%d", mid.LedgerID(), mid.EntryID(), mid.PartitionIdx())
 }
 
+func (id *myMessageID) equal(other MessageID) bool {
+	return id.LedgerID() == other.LedgerID() &&
+		id.EntryID() == other.EntryID() &&
+		id.BatchIdx() == other.BatchIdx()
+}
+
 func TestReaderOnSpecificMessageWithCustomMessageID(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

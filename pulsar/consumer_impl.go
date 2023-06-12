@@ -401,6 +401,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				enableBatchIndexAck:         c.options.EnableBatchIndexAcknowledgment,
 				ackGroupingOptions:          c.options.AckGroupingOptions,
 				autoReceiverQueueSize:       c.options.EnableAutoScaledReceiverQueueSize,
+				messagePayloadProcessor:     c.options.MessagePayloadProcessor,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
@@ -575,7 +576,7 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 
 	consumerMsg := ConsumerMessage{
 		Consumer: c,
-		Message: &message{
+		Message: &MessageImpl{
 			payLoad:    msg.Payload(),
 			properties: props,
 			msgID:      msgID,

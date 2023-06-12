@@ -164,6 +164,9 @@ type MessageID interface {
 
 	// String returns message id in string format
 	String() string
+
+	//equal compare another MessageID and returns true both are same and false otherwise.
+	equal(other MessageID) bool
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation

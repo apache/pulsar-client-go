@@ -242,6 +242,12 @@ type ConsumerOptions struct {
 	// NOTE: This option does not work if AckWithResponse is true
 	//	because there are only synchronous APIs for acknowledgment
 	AckGroupingOptions *AckGroupingOptions
+
+	// Process the message if it is not nil. If it's nil, the messages will be
+	// considered to be in pulsar's format. If they are in different format, the client
+	// may produce errors when processing.
+	// See PIP-96 https://github.com/apache/pulsar/wiki/PIP-96%3A-Message-payload-processor-for-Pulsar-client
+	MessagePayloadProcessor MessagePayloadProcessor
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
