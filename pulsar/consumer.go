@@ -242,6 +242,10 @@ type ConsumerOptions struct {
 	// NOTE: This option does not work if AckWithResponse is true
 	//	because there are only synchronous APIs for acknowledgment
 	AckGroupingOptions *AckGroupingOptions
+
+	// SubscriptionMode specifies the subscription mode to be used when subscribing to a topic.
+	// Default is `Durable`
+	SubscriptionMode SubscriptionMode
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
