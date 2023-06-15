@@ -86,7 +86,6 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	dataChan        chan *sendRequest
 	cmdChan         chan interface{}
-	closeCh         chan struct{}
 	connectClosedCh chan connectionClosed
 
 	publishSemaphore internal.Semaphore
@@ -154,7 +153,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
 		cmdChan:          make(chan interface{}, 10),
 		connectClosedCh:  make(chan connectionClosed, 10),
-		closeCh:          make(chan struct{}),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
 			compression.Level(options.CompressionLevel)),
@@ -1296,8 +1294,6 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.setProducerState(producerClosed)
 	p._getConn().UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
-
-	close(p.closeCh)
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
