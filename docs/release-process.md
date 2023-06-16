@@ -13,7 +13,7 @@ In general, you need to perform the following steps:
 9. Announce the release.
 
 ### Requirements
-- [GPG keys to sign release artifacts](https://github.com/apache/pulsar/wiki/Create-GPG-keys-to-sign-release-artifacts)
+- [Creating GPG keys to sign release artifacts](https://pulsar.apache.org/contribute/create-gpg-keys/)
 
 ## Steps in detail
 

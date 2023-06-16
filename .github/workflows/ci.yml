@@ -15,28 +15,33 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# Run `make lint` from the root path of this project to check code with golangci-lint.
+name: CI
+on: [pull_request]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v3
+      - run: make build
 
-run:
-  deadline: 6m
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - run: make lint
 
-linters:
-  # Uncomment this line to run only the explicitly enabled linters
-  # disable-all: true
-
-  # Run these linters in addition to the default ones
-  enable:
-    - bodyclose
-    - goimports
-    - lll
-    - misspell
-    - prealloc
-    - revive
-    - stylecheck
-    - unconvert
-    - unparam
-
-  # Disable these default linters
-  disable:
-    - errcheck
-    - staticcheck
+  integration-tests:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        go-version: [1.16, 1.17, 1.18, 1.19]
+    steps:
+      - uses: actions/checkout@v3
+      - name: clean docker cache
+        run: docker rmi $(docker images -q) -f && df -h
+      - uses: actions/setup-go@v3
+        with:
+          go-version: ${{ matrix.go-version }}
+      - name: Run Tests
+        run: make test GO_VERSION=${{ matrix.go-version }}

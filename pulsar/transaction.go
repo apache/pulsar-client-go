@@ -49,10 +49,10 @@ const (
 
 // TxnID An identifier for representing a transaction.
 type TxnID struct {
-	// mostSigBits The most significant 64 bits of this TxnID.
-	mostSigBits uint64
-	// leastSigBits The least significant 64 bits of this TxnID.
-	leastSigBits uint64
+	// MostSigBits The most significant 64 bits of this TxnID.
+	MostSigBits uint64
+	// LeastSigBits The least significant 64 bits of this TxnID.
+	LeastSigBits uint64
 }
 
 // Transaction used to guarantee exactly-once

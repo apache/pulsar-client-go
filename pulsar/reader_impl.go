@@ -106,7 +106,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		receiverQueueSize:           receiverQueueSize,
 		startMessageID:              startMessageID,
 		startMessageIDInclusive:     options.StartMessageIDInclusive,
-		subscriptionMode:            nonDurable,
+		subscriptionMode:            NonDurable,
 		readCompacted:               options.ReadCompacted,
 		metadata:                    options.Properties,
 		nackRedeliveryDelay:         defaultNackRedeliveryDelay,

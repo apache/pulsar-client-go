@@ -1953,3 +1953,36 @@ func TestMemLimitContextCancel(t *testing.T) {
 	})
 	assert.NoError(t, err)
 }
+
+func TestSendMessagesWithMetadata(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+
+	msg := &ProducerMessage{EventTime: time.Now().Local(),
+		Payload: []byte("msg")}
+
+	_, err = producer.Send(context.Background(), msg)
+	assert.Nil(t, err)
+
+	recvMsg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+
+	assert.Equal(t, internal.TimestampMillis(recvMsg.EventTime()), internal.TimestampMillis(msg.EventTime))
+}
