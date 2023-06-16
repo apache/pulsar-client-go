@@ -65,15 +65,15 @@ func (s consumerState) String() string {
 	}
 }
 
-type subscriptionMode int
+type SubscriptionMode int
 
 const (
 	// Make the subscription to be backed by a durable cursor that will retain messages and persist the current
 	// position
-	durable subscriptionMode = iota
+	Durable SubscriptionMode = iota
 
 	// Lightweight subscription mode that doesn't have a durable cursor associated
-	nonDurable
+	NonDurable
 )
 
 const (
@@ -101,7 +101,7 @@ type partitionConsumerOpts struct {
 	replicateSubscriptionState  bool
 	startMessageID              *trackingMessageID
 	startMessageIDInclusive     bool
-	subscriptionMode            subscriptionMode
+	subscriptionMode            SubscriptionMode
 	readCompacted               bool
 	disableForceTopicCreation   bool
 	interceptors                ConsumerInterceptors
@@ -1698,7 +1698,7 @@ func (pc *partitionConsumer) grabConn() error {
 		RequestId:                  proto.Uint64(requestID),
 		ConsumerName:               proto.String(pc.name),
 		PriorityLevel:              nil,
-		Durable:                    proto.Bool(pc.options.subscriptionMode == durable),
+		Durable:                    proto.Bool(pc.options.subscriptionMode == Durable),
 		Metadata:                   internal.ConvertFromStringMap(pc.options.metadata),
 		SubscriptionProperties:     internal.ConvertFromStringMap(pc.options.subProperties),
 		ReadCompacted:              proto.Bool(pc.options.readCompacted),
@@ -1709,7 +1709,7 @@ func (pc *partitionConsumer) grabConn() error {
 	}
 
 	pc.startMessageID.set(pc.clearReceiverQueue())
-	if pc.options.subscriptionMode != durable {
+	if pc.options.subscriptionMode != Durable {
 		// For regular subscriptions the broker will determine the restarting point
 		cmdSubscribe.StartMessageId = convertToMessageIDData(pc.startMessageID.get())
 	}
