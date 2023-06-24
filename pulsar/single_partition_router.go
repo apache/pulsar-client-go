@@ -21,7 +21,7 @@ import "sync"
 
 var (
 	singlePartition *int
-	mutex           sync.Mutex
+	once            sync.Once
 )
 
 func NewSinglePartitionRouter() func(*ProducerMessage, TopicMetadata) int {
@@ -36,14 +36,14 @@ func NewSinglePartitionRouter() func(*ProducerMessage, TopicMetadata) int {
 			// When a key is specified, use the hash of that key
 			return int(getHashingFunction(JavaStringHash)(message.Key) % numPartitions)
 		}
-		if singlePartition != nil {
-			return *singlePartition
-		}
-		mutex.Lock()
-		defer mutex.Unlock()
-		partition := r.R.Intn(int(numPartitions))
-		singlePartition = &partition
-		return partition
+		once.Do(func() {
+			if singlePartition == nil {
+				partition := r.R.Intn(int(numPartitions))
+				singlePartition = &partition
+			}
+		})
+
+		return *singlePartition
 
 	}
 
