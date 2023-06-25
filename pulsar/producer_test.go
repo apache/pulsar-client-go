@@ -1906,7 +1906,15 @@ func TestMemLimitContextCancel(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestSendMessagesWithMetadata(t *testing.T) {
+func TestBatchSendMessagesWithMetadata(t *testing.T) {
+	testSendMessagesWithMetadata(t, false)
+}
+
+func TestNoBatchSendMessagesWithMetadata(t *testing.T) {
+	testSendMessagesWithMetadata(t, true)
+}
+
+func testSendMessagesWithMetadata(t *testing.T, disableBatch bool) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -1917,7 +1925,7 @@ func TestSendMessagesWithMetadata(t *testing.T) {
 	topic := newTopicName()
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
-		DisableBatching: true,
+		DisableBatching: disableBatch,
 	})
 	assert.Nil(t, err)
 
@@ -1928,7 +1936,10 @@ func TestSendMessagesWithMetadata(t *testing.T) {
 	assert.Nil(t, err)
 
 	msg := &ProducerMessage{EventTime: time.Now().Local(),
-		Payload: []byte("msg")}
+		Key:         "my-key",
+		OrderingKey: "my-ordering-key",
+		Properties:  map[string]string{"k1": "v1", "k2": "v2"},
+		Payload:     []byte("msg")}
 
 	_, err = producer.Send(context.Background(), msg)
 	assert.Nil(t, err)
@@ -1936,5 +1947,8 @@ func TestSendMessagesWithMetadata(t *testing.T) {
 	recvMsg, err := consumer.Receive(context.Background())
 	assert.Nil(t, err)
 
-	assert.Equal(t, internal.TimestampMillis(recvMsg.EventTime()), internal.TimestampMillis(msg.EventTime))
+	assert.Equal(t, internal.TimestampMillis(msg.EventTime), internal.TimestampMillis(recvMsg.EventTime()))
+	assert.Equal(t, msg.Key, recvMsg.Key())
+	assert.Equal(t, msg.OrderingKey, recvMsg.OrderingKey())
+	assert.Equal(t, msg.Properties, recvMsg.Properties())
 }
