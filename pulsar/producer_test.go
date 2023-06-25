@@ -600,7 +600,6 @@ func TestMessageSingleRouter(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, ID)
 
-	fmt.Println("PUBLISHED")
 
 	// Verify message was published on partition 2
 	msg, err := consumer.Receive(ctx)
