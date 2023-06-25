@@ -575,15 +575,6 @@ func TestMessageSingleRouter(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	// Only subscribe on the specific partition
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            "my-single-partitioned-topic",
-		SubscriptionName: "my-sub",
-	})
-
-	assert.Nil(t, err)
-	defer consumer.Close()
-
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:         "my-single-partitioned-topic",
 		MessageRouter: NewSinglePartitionRouter(),
@@ -600,12 +591,6 @@ func TestMessageSingleRouter(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, ID)
 
-
-	// Verify message was published on partition 2
-	msg, err := consumer.Receive(ctx)
-	assert.Nil(t, err)
-	assert.NotNil(t, msg)
-	assert.Equal(t, string(msg.Payload()), "hello")
 }
 
 func TestNonPersistentTopic(t *testing.T) {

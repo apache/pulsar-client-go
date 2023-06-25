@@ -19,28 +19,20 @@ package pulsar
 
 import "sync"
 
-var (
-	singlePartition *int
-	once            sync.Once
-)
-
 func NewSinglePartitionRouter() func(*ProducerMessage, TopicMetadata) int {
+	var (
+		singlePartition *int
+		once            sync.Once
+	)
 	return func(message *ProducerMessage, metadata TopicMetadata) int {
 		numPartitions := metadata.NumPartitions()
-		if len(message.OrderingKey) != 0 {
-			// When an OrderingKey is specified, use the hash of that key
-			return int(getHashingFunction(JavaStringHash)(message.OrderingKey) % numPartitions)
-		}
-
 		if len(message.Key) != 0 {
 			// When a key is specified, use the hash of that key
 			return int(getHashingFunction(JavaStringHash)(message.Key) % numPartitions)
 		}
 		once.Do(func() {
-			if singlePartition == nil {
-				partition := r.R.Intn(int(numPartitions))
-				singlePartition = &partition
-			}
+			partition := r.R.Intn(int(numPartitions))
+			singlePartition = &partition
 		})
 
 		return *singlePartition

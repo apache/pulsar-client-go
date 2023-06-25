@@ -60,18 +60,3 @@ func TestNewSinglePartitionRouterWithKey(t *testing.T) {
 	}, numPartitions)
 	assert.Equal(t, p, p2)
 }
-func TestNewSinglePartitionRouterWithOrderingKey(t *testing.T) {
-	router := NewSinglePartitionRouter()
-	numPartitions := topicMetaData{3}
-	p := router(&ProducerMessage{
-		Payload:     []byte("message 2"),
-		OrderingKey: "my-key",
-	}, numPartitions)
-	assert.Equal(t, 1, p)
-
-	p2 := router(&ProducerMessage{
-		OrderingKey: "my-key",
-		Payload:     []byte("message 2"),
-	}, numPartitions)
-	assert.Equal(t, p, p2)
-}
