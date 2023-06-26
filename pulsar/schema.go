@@ -70,7 +70,7 @@ type SchemaInfo struct {
 	hashVal    atomic.Uint64
 }
 
-func (s SchemaInfo) hash() uint64 {
+func (s *SchemaInfo) hash() uint64 {
 	oldHash := s.hashVal.Load()
 	if oldHash != 0 {
 		return oldHash
