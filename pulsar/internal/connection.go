@@ -50,6 +50,9 @@ type TLSOptions struct {
 	AllowInsecureConnection bool
 	ValidateHostname        bool
 	ServerName              string
+	CipherSuites            []uint16
+	MinVersion              uint16
+	MaxVersion              uint16
 }
 
 var (
@@ -1046,6 +1049,9 @@ func (c *connection) closed() bool {
 func (c *connection) getTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: c.tlsOptions.AllowInsecureConnection,
+		CipherSuites:       c.tlsOptions.CipherSuites,
+		MinVersion:         c.tlsOptions.MinVersion,
+		MaxVersion:         c.tlsOptions.MaxVersion,
 	}
 
 	if c.tlsOptions.TrustCertsFilePath != "" {
