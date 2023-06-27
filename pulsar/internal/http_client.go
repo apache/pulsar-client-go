@@ -339,6 +339,9 @@ func getDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
 	if tlsConfig != nil {
 		cfg := &tls.Config{
 			InsecureSkipVerify: tlsConfig.AllowInsecureConnection,
+			CipherSuites:       tlsConfig.CipherSuites,
+			MinVersion:         tlsConfig.MinVersion,
+			MaxVersion:         tlsConfig.MaxVersion,
 		}
 		if len(tlsConfig.TrustCertsFilePath) > 0 {
 			rootCA, err := os.ReadFile(tlsConfig.TrustCertsFilePath)

@@ -120,6 +120,15 @@ type ClientOptions struct {
 	// Configure whether the Pulsar client verify the validity of the host name from broker (default: false)
 	TLSValidateHostname bool
 
+	// TLSCipherSuites is a list of enabled TLS 1.0–1.2 cipher suites. See tls.Config CipherSuites for more information.
+	TLSCipherSuites []uint16
+
+	// TLSMinVersion contains the minimum TLS version that is acceptable. See tls.Config MinVersion for more information.
+	TLSMinVersion uint16
+
+	// TLSMaxVersion contains the maximum TLS version that is acceptable. See tls.Config MaxVersion for more information.
+	TLSMaxVersion uint16
+
 	// Configure the net model for vpc user to connect the pulsar broker
 	ListenerName string
 
