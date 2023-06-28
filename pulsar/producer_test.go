@@ -560,6 +560,67 @@ func TestMessageRouter(t *testing.T) {
 	assert.NotNil(t, msg)
 	assert.Equal(t, string(msg.Payload()), "hello")
 }
+func TestMessageSingleRouter(t *testing.T) {
+	// Create topic with 5 partitions
+	topicAdminURL := "admin/v2/persistent/public/default/my-single-partitioned-topic/partitions"
+	err := httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	numOfMessages := 10
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            "my-single-partitioned-topic",
+		SubscriptionName: "my-sub",
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:         "my-single-partitioned-topic",
+		MessageRouter: NewSinglePartitionRouter(),
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+
+	for i := 0; i < numOfMessages; i++ {
+		ID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte("hello"),
+		})
+		assert.Nil(t, err)
+		assert.NotNil(t, ID)
+	}
+
+	// Verify message was published on single partition
+	msgCount := 0
+	msgPartitionMap := make(map[string]int)
+	for i := 0; i < numOfMessages; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.NotNil(t, msg)
+		consumer.Ack(msg)
+		msgCount++
+		msgPartitionMap[msg.Topic()]++
+	}
+	assert.Equal(t, msgCount, numOfMessages)
+	assert.Equal(t, len(msgPartitionMap), 1)
+	for _, i := range msgPartitionMap {
+		assert.Equal(t, i, numOfMessages)
+	}
+
+}
 
 func TestNonPersistentTopic(t *testing.T) {
 	topicName := "non-persistent://public/default/testNonPersistentTopic"
