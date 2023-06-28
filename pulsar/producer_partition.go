@@ -733,6 +733,10 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 		mm.PartitionKey = proto.String(msg.Key)
 	}
 
+	if len(msg.OrderingKey) != 0 {
+		mm.OrderingKey = []byte(msg.OrderingKey)
+	}
+
 	if msg.Properties != nil {
 		mm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}

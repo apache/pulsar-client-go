@@ -1190,6 +1190,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				redeliveryCount:     response.GetRedeliveryCount(),
 				schemaVersion:       msgMeta.GetSchemaVersion(),
 				schemaInfoCache:     pc.schemaInfoCache,
+				orderingKey:         string(msgMeta.GetOrderingKey()),
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
 			}
