@@ -38,27 +38,27 @@ import (
 type SchemaType int
 
 const (
-	NONE        SchemaType = iota // No schema defined
-	STRING                        // Simple String encoding with UTF-8
-	JSON                          // JSON object encoding and validation
-	PROTOBUF                      // Protobuf message encoding and decoding
-	AVRO                          // Serialize and deserialize via Avro
+	NONE        SchemaType = iota //No schema defined
+	STRING                        //Simple String encoding with UTF-8
+	JSON                          //JSON object encoding and validation
+	PROTOBUF                      //Protobuf message encoding and decoding
+	AVRO                          //Serialize and deserialize via Avro
 	BOOLEAN                       //
-	INT8                          // A 8-byte integer.
-	INT16                         // A 16-byte integer.
-	INT32                         // A 32-byte integer.
-	INT64                         // A 64-byte integer.
-	FLOAT                         // A float number.
-	DOUBLE                        // A double number
+	INT8                          //A 8-byte integer.
+	INT16                         //A 16-byte integer.
+	INT32                         //A 32-byte integer.
+	INT64                         //A 64-byte integer.
+	FLOAT                         //A float number.
+	DOUBLE                        //A double number
 	_                             //
 	_                             //
 	_                             //
-	KeyValue                      // A Schema that contains Key Schema and Value Schema.
-	BYTES       = -1              // A bytes array.
+	KeyValue                      //A Schema that contains Key Schema and Value Schema.
+	BYTES       = -1              //A bytes array.
 	AUTO        = -2              //
-	AutoConsume = -3              // Auto Consume Type.
-	AutoPublish = -4              // Auto Publish Type.
-	ProtoNative = 20              // Protobuf native message encoding and decoding
+	AutoConsume = -3              //Auto Consume Type.
+	AutoPublish = -4              //Auto Publish Type.
+	ProtoNative = 20              //Protobuf native message encoding and decoding
 )
 
 // Encapsulates data around the schema definition
