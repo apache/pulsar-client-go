@@ -1104,8 +1104,10 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
 	// Register transaction operation to transaction and the transaction coordinator.
 	var newCallback func(MessageID, *ProducerMessage, error)
+	var txn *transaction
 	if msg.Transaction != nil {
 		transactionImpl := (msg.Transaction).(*transaction)
+		txn = transactionImpl
 		if transactionImpl.state != TxnOpen {
 			p.log.WithField("state", transactionImpl.state).Error("Failed to send message" +
 				" by a non-open transaction.")
@@ -1138,10 +1140,6 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 
 	// callbackOnce make sure the callback is only invoked once in chunking
 	callbackOnce := &sync.Once{}
-	var txn *transaction
-	if msg.Transaction != nil {
-		txn = (msg.Transaction).(*transaction)
-	}
 	sr := &sendRequest{
 		ctx:              ctx,
 		msg:              msg,
