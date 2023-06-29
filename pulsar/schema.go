@@ -57,7 +57,7 @@ const (
 	BYTES       = -1              //A bytes array.
 	AUTO        = -2              //
 	AutoConsume = -3              //Auto Consume Type.
-	AutoPublish = -4              //Auto Publish Type.
+	AutoPublish = -4              // Auto Publish Type.
 	ProtoNative = 20              //Protobuf native message encoding and decoding
 )
 
