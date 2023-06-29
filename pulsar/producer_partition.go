@@ -29,7 +29,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
-	internalCrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
+	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
 	"google.golang.org/protobuf/proto"
 
@@ -80,7 +80,7 @@ type partitionProducer struct {
 	batchBuilder             internal.BatchBuilder
 	sequenceIDGenerator      *uint64
 	batchFlushTicker         *time.Ticker
-	encryptor                internalCrypto.Encryptor
+	encryptor                internalcrypto.Encryptor
 	compressionProvider      compression.Provider
 
 	// Channel where app is posting messages to be published
@@ -264,12 +264,12 @@ func (p *partitionProducer) grabCnx() error {
 	p.topicEpoch = &nextTopicEpoch
 
 	if p.options.Encryption != nil {
-		p.encryptor = internalCrypto.NewProducerEncryptor(p.options.Encryption.Keys,
+		p.encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
 			p.options.Encryption.KeyReader,
 			p.options.Encryption.MessageCrypto,
 			p.options.Encryption.ProducerCryptoFailureAction, p.log)
 	} else {
-		p.encryptor = internalCrypto.NewNoopEncryptor()
+		p.encryptor = internalcrypto.NewNoopEncryptor()
 	}
 
 	if p.sequenceIDGenerator == nil {
@@ -499,7 +499,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			return
 		}
 	}
-
 	var schema Schema
 	var schemaVersion []byte
 	if msg.Schema != nil {
@@ -507,7 +506,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	} else if p.options.Schema != nil {
 		schema = p.options.Schema
 	}
-
 	if msg.Value != nil {
 		// payload and schema are mutually exclusive
 		// try to get payload from schema value only if payload is not set
@@ -525,7 +523,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if uncompressedPayload == nil {
 		uncompressedPayload = schemaPayload
 	}
-
 	if schema != nil {
 		schemaVersion = p.schemaCache.Get(schema.GetSchemaInfo())
 		if schemaVersion == nil {
@@ -693,9 +690,10 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 				return
 			}
 		}
-
 		if request.flushImmediately {
+			
 			p.internalFlushCurrentBatch()
+
 		}
 	}
 }
