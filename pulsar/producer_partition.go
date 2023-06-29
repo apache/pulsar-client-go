@@ -989,7 +989,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 				}
 			}
 
-			// mark the sending has completed with error, flush make no effect
+			// flag the sending has completed with error, flush make no effect
 			pi.Complete()
 			pi.Unlock()
 
@@ -1386,7 +1386,7 @@ func (p *partitionProducer) _setConn(conn internal.Connection) {
 // _getConn returns internal connection field of this partition producer atomically.
 // Note: should only be called by this partition producer before attempting to use the connection
 func (p *partitionProducer) _getConn() internal.Connection {
-	// Invariant: The connection must be non-nil for the lifetime of the partitionProducer.
+	// Invariant: The conn must be non-nil for the lifetime of the partitionProducer.
 	//            For this reason we leave this cast unchecked and panic() if the
 	//            invariant is broken
 	return p.conn.Load().(internal.Connection)
