@@ -522,7 +522,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	if uncompressedPayload == nil {
 		uncompressedPayload = schemaPayload
 	}
-	
+
 	if schema != nil {
 		schemaVersion = p.schemaCache.Get(schema.GetSchemaInfo())
 		if schemaVersion == nil {
