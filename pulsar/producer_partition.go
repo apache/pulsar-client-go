@@ -707,6 +707,7 @@ func addRequestToBatch(smm *pb.SingleMessageMetadata, p *partitionProducer,
 	var leastSigBits uint64
 	if request.transaction != nil {
 		txnID := request.transaction.GetTxnID()
+		useTxn = true
 		mostSigBits = txnID.MostSigBits
 		leastSigBits = txnID.LeastSigBits
 	}
@@ -813,6 +814,7 @@ func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 
 	if request.transaction != nil {
 		txnID := request.transaction.GetTxnID()
+		useTxn = true
 		mostSigBits = txnID.MostSigBits
 		leastSigBits = txnID.LeastSigBits
 	}
