@@ -1112,7 +1112,7 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
-	// Register transaction operation to transaction and the transaction coordinator.
+	//Register transaction operation to transaction and the transaction coordinator.
 	var newCallback func(MessageID, *ProducerMessage, error)
 	var txn *transaction
 	if msg.Transaction != nil {
