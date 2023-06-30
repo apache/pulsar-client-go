@@ -16,8 +16,12 @@
 package utils
 
 type ConsumerConfig struct {
-	SchemaType        string
-	SerdeClassName    string
-	IsRegexPattern    bool
-	ReceiverQueueSize int
+	SchemaType         string            `json:"schemaType,omitempty" yaml:"schemaType"`
+	SerdeClassName     string            `json:"serdeClassName,omitempty" yaml:"serdeClassName"`
+	IsRegexPattern     bool              `json:"isRegexPattern,omitempty" yaml:"isRegexPattern"`
+	ReceiverQueueSize  int               `json:"receiverQueueSize,omitempty" yaml:"receiverQueueSize"`
+	SchemaProperties   map[string]string `json:"schemaProperties,omitempty" yaml:"schemaProperties"`
+	ConsumerProperties map[string]string `json:"consumerProperties,omitempty" yaml:"consumerProperties"`
+	CryptoConfig       CryptoConfig      `json:"cryptoConfig,omitempty" yaml:"cryptoConfig"`
+	PoolMessages       bool              `json:"poolMessages,omitempty" yaml:"poolMessages"`
 }

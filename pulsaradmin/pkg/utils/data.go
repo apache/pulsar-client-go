@@ -54,30 +54,44 @@ type FunctionData struct {
 	TriggerFile               string  `json:"triggerFile"`
 	Topic                     string  `json:"topic"`
 
-	UserCodeFile         string          `json:"-"`
-	FQFN                 string          `json:"fqfn"`
-	Tenant               string          `json:"tenant"`
-	Namespace            string          `json:"namespace"`
-	FuncName             string          `json:"functionName"`
-	InstanceID           string          `json:"instance_id"`
-	ClassName            string          `json:"className"`
-	Jar                  string          `json:"jarFile"`
-	Py                   string          `json:"pyFile"`
-	Go                   string          `json:"goFile"`
-	Inputs               string          `json:"inputs"`
-	TopicsPattern        string          `json:"topicsPattern"`
-	Output               string          `json:"output"`
-	LogTopic             string          `json:"logTopic"`
-	SchemaType           string          `json:"schemaType"`
-	CustomSerDeInputs    string          `json:"customSerdeInputString"`
-	CustomSchemaInput    string          `json:"customSchemaInputString"`
-	OutputSerDeClassName string          `json:"outputSerdeClassName"`
-	FunctionConfigFile   string          `json:"fnConfigFile"`
-	ProcessingGuarantees string          `json:"processingGuarantees"`
-	UserConfig           string          `json:"userConfigString"`
-	DestinationFile      string          `json:"destinationFile"`
-	Path                 string          `json:"path"`
-	FuncConf             *FunctionConfig `json:"-"`
+	UserCodeFile                 string          `json:"-"`
+	FQFN                         string          `json:"fqfn"`
+	Tenant                       string          `json:"tenant"`
+	Namespace                    string          `json:"namespace"`
+	FuncName                     string          `json:"functionName"`
+	InstanceID                   string          `json:"instance_id"`
+	ClassName                    string          `json:"className"`
+	FunctionType                 string          `json:"functionType"`
+	CleanupSubscription          bool            `json:"cleanupSubscription"`
+	Jar                          string          `json:"jarFile"`
+	Py                           string          `json:"pyFile"`
+	Go                           string          `json:"goFile"`
+	Inputs                       string          `json:"inputs"`
+	TopicsPattern                string          `json:"topicsPattern"`
+	Output                       string          `json:"output"`
+	ProducerConfig               string          `json:"producerConfig"`
+	LogTopic                     string          `json:"logTopic"`
+	SchemaType                   string          `json:"schemaType"`
+	CustomSerDeInputs            string          `json:"customSerdeInputString"`
+	CustomSchemaInput            string          `json:"customSchemaInputString"`
+	CustomSchemaOutput           string          `json:"customSchemaOutputString"`
+	InputSpecs                   string          `json:"inputSpecs"`
+	InputTypeClassName           string          `json:"inputTypeClassName"`
+	OutputSerDeClassName         string          `json:"outputSerdeClassName"`
+	OutputTypeClassName          string          `json:"outputTypeClassName"`
+	FunctionConfigFile           string          `json:"fnConfigFile"`
+	ProcessingGuarantees         string          `json:"processingGuarantees"`
+	UserConfig                   string          `json:"userConfigString"`
+	RetainKeyOrdering            bool            `json:"retainKeyOrdering"`
+	BatchBuilder                 string          `json:"batchBuilder"`
+	ForwardSourceMessageProperty bool            `json:"forwardSourceMessageProperty"`
+	SubsPosition                 string          `json:"subsPosition"`
+	SkipToLatest                 bool            `json:"skipToLatest"`
+	CustomRuntimeOptions         string          `json:"customRuntimeOptions"`
+	Secrets                      string          `json:"secretsString"`
+	DestinationFile              string          `json:"destinationFile"`
+	Path                         string          `json:"path"`
+	FuncConf                     *FunctionConfig `json:"-"`
 }
 
 // Failure Domain information
@@ -103,6 +117,8 @@ type SourceData struct {
 	SourceType               string  `json:"sourceType,omitempty"`
 	ProcessingGuarantees     string  `json:"processingGuarantees,omitempty"`
 	DestinationTopicName     string  `json:"destinationTopicName,omitempty"`
+	ProducerConfig           string  `json:"producerConfig,omitempty"`
+	BatchBuilder             string  `json:"batchBuilder,omitempty"`
 	DeserializationClassName string  `json:"deserializationClassName,omitempty"`
 	SchemaType               string  `json:"schemaType,omitempty"`
 	Parallelism              int     `json:"parallelism,omitempty"`
@@ -113,6 +129,9 @@ type SourceData struct {
 	RAM                      int64   `json:"ram,omitempty"`
 	Disk                     int64   `json:"disk,omitempty"`
 	SourceConfigString       string  `json:"sourceConfigString,omitempty"`
+	BatchSourceConfigString  string  `json:"batchSourceConfigString,omitempty"`
+	CustomRuntimeOptions     string  `json:"customRuntimeOptions,omitempty"`
+	Secrets                  string  `json:"secretsString,omitempty"`
 
 	SourceConf *SourceConfig `json:"-,omitempty"`
 	InstanceID string        `json:"instanceId,omitempty"`
@@ -121,31 +140,41 @@ type SourceData struct {
 }
 
 type SinkData struct {
-	UpdateAuthData          bool        `json:"updateAuthData,omitempty"`
-	RetainOrdering          bool        `json:"retainOrdering,omitempty"`
-	AutoAck                 bool        `json:"autoAck,omitempty"`
-	Parallelism             int         `json:"parallelism,omitempty"`
-	RAM                     int64       `json:"ram,omitempty"`
-	Disk                    int64       `json:"disk,omitempty"`
-	TimeoutMs               int64       `json:"timeoutMs,omitempty"`
-	CPU                     float64     `json:"cpu,omitempty"`
-	Tenant                  string      `json:"tenant,omitempty"`
-	Namespace               string      `json:"namespace,omitempty"`
-	Name                    string      `json:"name,omitempty"`
-	SinkType                string      `json:"sinkType,omitempty"`
-	Inputs                  string      `json:"inputs,omitempty"`
-	TopicsPattern           string      `json:"topicsPattern,omitempty"`
-	SubsName                string      `json:"subsName,omitempty"`
-	SubsPosition            string      `json:"subsPosition,omitempty"`
-	CustomSerdeInputString  string      `json:"customSerdeInputString,omitempty"`
-	CustomSchemaInputString string      `json:"customSchemaInputString,omitempty"`
-	ProcessingGuarantees    string      `json:"processingGuarantees,omitempty"`
-	Archive                 string      `json:"archive,omitempty"`
-	ClassName               string      `json:"className,omitempty"`
-	SinkConfigFile          string      `json:"sinkConfigFile,omitempty"`
-	SinkConfigString        string      `json:"sinkConfigString,omitempty"`
-	InstanceID              string      `json:"instanceId,omitempty"`
-	SinkConf                *SinkConfig `json:"-,omitempty"`
+	UpdateAuthData               bool        `json:"updateAuthData,omitempty"`
+	RetainOrdering               bool        `json:"retainOrdering,omitempty"`
+	AutoAck                      bool        `json:"autoAck,omitempty"`
+	Parallelism                  int         `json:"parallelism,omitempty"`
+	RAM                          int64       `json:"ram,omitempty"`
+	Disk                         int64       `json:"disk,omitempty"`
+	TimeoutMs                    int64       `json:"timeoutMs,omitempty"`
+	CPU                          float64     `json:"cpu,omitempty"`
+	Tenant                       string      `json:"tenant,omitempty"`
+	Namespace                    string      `json:"namespace,omitempty"`
+	Name                         string      `json:"name,omitempty"`
+	SinkType                     string      `json:"sinkType,omitempty"`
+	CleanupSubscription          bool        `json:"cleanupSubscription"`
+	Inputs                       string      `json:"inputs,omitempty"`
+	TopicsPattern                string      `json:"topicsPattern,omitempty"`
+	SubsName                     string      `json:"subsName,omitempty"`
+	SubsPosition                 string      `json:"subsPosition,omitempty"`
+	CustomSerdeInputString       string      `json:"customSerdeInputString,omitempty"`
+	CustomSchemaInputString      string      `json:"customSchemaInputString,omitempty"`
+	InputSpecs                   string      `json:"inputSpecs,omitempty"`
+	MaxMessageRetries            int         `json:"maxMessageRetries,omitempty"`
+	DeadLetterTopic              string      `json:"deadLetterTopic,omitempty"`
+	ProcessingGuarantees         string      `json:"processingGuarantees,omitempty"`
+	Archive                      string      `json:"archive,omitempty"`
+	ClassName                    string      `json:"className,omitempty"`
+	SinkConfigFile               string      `json:"sinkConfigFile,omitempty"`
+	SinkConfigString             string      `json:"sinkConfigString,omitempty"`
+	NegativeAckRedeliveryDelayMs int64       `json:"negativeAckRedeliveryDelayMs,omitempty"`
+	CustomRuntimeOptions         string      `json:"customRuntimeOptions,omitempty"`
+	Secrets                      string      `json:"secretsString,omitempty"`
+	InstanceID                   string      `json:"instanceId,omitempty"`
+	TransformFunction            string      `json:"transformFunction,omitempty"`
+	TransformFunctionClassName   string      `json:"transformFunctionClassName,omitempty"`
+	TransformFunctionConfig      string      `json:"transformFunctionConfig,omitempty"`
+	SinkConf                     *SinkConfig `json:"-,omitempty"`
 }
 
 // Topic data

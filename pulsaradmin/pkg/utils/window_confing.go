@@ -27,6 +27,7 @@ type WindowConfig struct {
 	WatermarkEmitIntervalMs       *int64  `json:"watermarkEmitIntervalMs" yaml:"watermarkEmitIntervalMs"`
 	TimestampExtractorClassName   *string `json:"timestampExtractorClassName" yaml:"timestampExtractorClassName"`
 	ActualWindowFunctionClassName *string `json:"actualWindowFunctionClassName" yaml:"actualWindowFunctionClassName"`
+	ProcessingGuarantees          *string `json:"processingGuarantees" yaml:"processingGuarantees"`
 }
 
 func NewDefaultWindowConfing() *WindowConfig {
