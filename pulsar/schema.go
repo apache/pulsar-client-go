@@ -23,7 +23,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"reflect"
-	"sync/atomic"
+	"sync"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -38,27 +38,27 @@ import (
 type SchemaType int
 
 const (
-	NONE        SchemaType = iota //No schema defined
-	STRING                        //Simple String encoding with UTF-8
-	JSON                          //JSON object encoding and validation
-	PROTOBUF                      //Protobuf message encoding and decoding
-	AVRO                          //Serialize and deserialize via Avro
+	NONE        SchemaType = iota // No schema defined
+	STRING                        // Simple String encoding with UTF-8
+	JSON                          // JSON object encoding and validation
+	PROTOBUF                      // Protobuf message encoding and decoding
+	AVRO                          // Serialize and deserialize via Avro
 	BOOLEAN                       //
-	INT8                          //A 8-byte integer.
-	INT16                         //A 16-byte integer.
-	INT32                         //A 32-byte integer.
-	INT64                         //A 64-byte integer.
-	FLOAT                         //A float number.
-	DOUBLE                        //A double number
+	INT8                          // A 8-byte integer.
+	INT16                         // A 16-byte integer.
+	INT32                         // A 32-byte integer.
+	INT64                         // A 64-byte integer.
+	FLOAT                         // A float number.
+	DOUBLE                        // A double number
 	_                             //
 	_                             //
 	_                             //
-	KeyValue                      //A Schema that contains Key Schema and Value Schema.
-	BYTES       = -1              //A bytes array.
+	KeyValue                      // A Schema that contains Key Schema and Value Schema.
+	BYTES       = -1              // A bytes array.
 	AUTO        = -2              //
-	AutoConsume = -3              //Auto Consume Type.
+	AutoConsume = -3              // Auto Consume Type.
 	AutoPublish = -4              // Auto Publish Type.
-	ProtoNative = 20              //Protobuf native message encoding and decoding
+	ProtoNative = 20              // Protobuf native message encoding and decoding
 )
 
 // Encapsulates data around the schema definition
@@ -67,21 +67,19 @@ type SchemaInfo struct {
 	Schema     string
 	Type       SchemaType
 	Properties map[string]string
-	hashVal    atomic.Uint64
+	hashVal    uint64
+	hashOnce   sync.Once
 }
 
 func (s *SchemaInfo) hash() uint64 {
-	oldHash := s.hashVal.Load()
-	if oldHash != 0 {
-		return oldHash
-	}
+	s.hashOnce.Do(func() {
+		h := maphash.Hash{}
+		h.SetSeed(seed)
+		h.Write([]byte(s.Schema))
+		s.hashVal = h.Sum64()
+	})
 
-	h := maphash.Hash{}
-	h.SetSeed(seed)
-	h.Write([]byte(s.Schema))
-	newHash := h.Sum64()
-	s.hashVal.CompareAndSwap(oldHash, newHash)
-	return newHash
+	return s.hashVal
 }
 
 type Schema interface {
