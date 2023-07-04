@@ -100,29 +100,24 @@ type partitionProducer struct {
 }
 
 type schemaCache struct {
-	lock    sync.RWMutex
-	schemas map[uint64][]byte
+	schemas sync.Map
 }
 
 func newSchemaCache() *schemaCache {
-	return &schemaCache{
-		schemas: make(map[uint64][]byte),
-	}
+	return &schemaCache{}
 }
 
 func (s *schemaCache) Put(schema *SchemaInfo, schemaVersion []byte) {
-	s.lock.Lock()
-	defer s.lock.Unlock()
-
 	key := schema.hash()
-	s.schemas[key] = schemaVersion
+	s.schemas.Store(key, schemaVersion)
 }
 
 func (s *schemaCache) Get(schema *SchemaInfo) (schemaVersion []byte) {
-	s.lock.RLock()
-	defer s.lock.RUnlock()
-
-	return s.schemas[schema.hash()]
+	val, ok := s.schemas.Load(schema.hash())
+	if !ok {
+		return nil
+	}
+	return val.([]byte)
 }
 
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,

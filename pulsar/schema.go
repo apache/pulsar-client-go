@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"reflect"
+	"sync"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
@@ -66,13 +67,19 @@ type SchemaInfo struct {
 	Schema     string
 	Type       SchemaType
 	Properties map[string]string
+	hashVal    uint64
+	hashOnce   sync.Once
 }
 
-func (s SchemaInfo) hash() uint64 {
-	h := maphash.Hash{}
-	h.SetSeed(seed)
-	h.Write([]byte(s.Schema))
-	return h.Sum64()
+func (s *SchemaInfo) hash() uint64 {
+	s.hashOnce.Do(func() {
+		h := maphash.Hash{}
+		h.SetSeed(seed)
+		h.Write([]byte(s.Schema))
+		s.hashVal = h.Sum64()
+	})
+
+	return s.hashVal
 }
 
 type Schema interface {
