@@ -846,6 +846,8 @@ func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 	p._getConn().WriteData(buffer)
 }
 
+type pendingItemCallback func()
+
 type pendingItem struct {
 	sync.Mutex
 	buffer       internal.Buffer
@@ -853,6 +855,7 @@ type pendingItem struct {
 	sentAt       time.Time
 	sendRequests []interface{}
 	completed    bool
+	callback     pendingItemCallback
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
@@ -1062,15 +1065,10 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		return
 	}
 
-	sendReq := &sendRequest{
-		msg: nil,
-		callback: func(id MessageID, message *ProducerMessage, e error) {
-			fr.err = e
-			close(fr.doneCh)
-		},
+	pi.callback = func() {
+		fr.err = nil
+		close(fr.doneCh)
 	}
-
-	pi.sendRequests = append(pi.sendRequests, sendReq)
 }
 
 func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
@@ -1208,27 +1206,17 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		pi.Lock()
 		defer pi.Unlock()
 		p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
-		batchSize := int32(0)
-		for _, i := range pi.sendRequests {
-			sr := i.(*sendRequest)
-			if sr.msg != nil {
-				batchSize = batchSize + 1
-			} else { // Flush request
-				break
-			}
-		}
+		batchSize := int32(len(pi.sendRequests))
 		for idx, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
-			if sr.msg != nil {
-				atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
-				p.releaseSemaphoreAndMem(int64(len(sr.msg.Payload)))
-				p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
-				p.metrics.MessagesPublished.Inc()
-				p.metrics.MessagesPending.Dec()
-				payloadSize := float64(len(sr.msg.Payload))
-				p.metrics.BytesPublished.Add(payloadSize)
-				p.metrics.BytesPending.Sub(payloadSize)
-			}
+			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
+			p.releaseSemaphoreAndMem(int64(len(sr.msg.Payload)))
+			p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
+			p.metrics.MessagesPublished.Inc()
+			p.metrics.MessagesPending.Dec()
+			payloadSize := float64(len(sr.msg.Payload))
+			p.metrics.BytesPublished.Add(payloadSize)
+			p.metrics.BytesPending.Sub(payloadSize)
 
 			if sr.callback != nil || len(p.options.Interceptors) > 0 {
 				msgID := newMessageID(
@@ -1390,6 +1378,9 @@ func (i *pendingItem) Complete() {
 	}
 	i.completed = true
 	buffersPool.Put(i.buffer)
+	if i.callback != nil {
+		i.callback()
+	}
 }
 
 // _setConn sets the internal connection field of this partition producer atomically.
