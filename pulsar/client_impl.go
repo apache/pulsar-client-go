@@ -20,6 +20,7 @@ package pulsar
 import (
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/auth"
@@ -47,6 +48,7 @@ type client struct {
 	metrics       *internal.Metrics
 	tcClient      *transactionCoordinatorClient
 	memLimit      internal.MemoryLimitController
+	closeOnce     sync.Once
 
 	log log.Logger
 }
@@ -266,7 +268,9 @@ func (c *client) TopicPartitions(topic string) ([]string, error) {
 }
 
 func (c *client) Close() {
-	c.handlers.Close()
-	c.cnxPool.Close()
-	c.lookupService.Close()
+	c.closeOnce.Do(func() {
+		c.handlers.Close()
+		c.cnxPool.Close()
+		c.lookupService.Close()
+	})
 }

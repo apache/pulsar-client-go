@@ -1238,3 +1238,10 @@ func TestAutoCloseIdleConnection(t *testing.T) {
 
 	cli.Close()
 }
+
+func TestMultipleCloseClient(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	assert.Nil(t, err)
+	client.Close()
+	client.Close()
+}
