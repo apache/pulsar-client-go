@@ -1145,6 +1145,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		}
 		if err := transactionImpl.registerSendOrAckOp(); err != nil {
 			runCallback(callback, nil, msg, err)
+			return
 		}
 		newCallback = func(id MessageID, producerMessage *ProducerMessage, err error) {
 			runCallback(callback, id, producerMessage, err)
