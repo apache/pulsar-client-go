@@ -1108,6 +1108,7 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
 	if msg == nil {
+		p.log.Error("Message is nil")
 		runCallback(callback, nil, msg, newError(InvalidMessage, "Message is nil"))
 		return
 	}
