@@ -846,7 +846,7 @@ func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 	p._getConn().WriteData(buffer)
 }
 
-type pendingItemCallback func()
+type pendingItemCallback func(err error)
 
 type pendingItem struct {
 	sync.Mutex
@@ -993,7 +993,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 			}
 
 			// flag the sending has completed with error, flush make no effect
-			pi.Complete()
+			pi.Complete(errSendTimeout)
 			pi.Unlock()
 
 			// finally reached the last view item, current iteration ends
@@ -1065,8 +1065,8 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		return
 	}
 
-	pi.callback = func() {
-		fr.err = nil
+	pi.callback = func(err error) {
+		fr.err = err
 		close(fr.doneCh)
 	}
 }
@@ -1262,7 +1262,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		}
 
 		// Mark this pending item as done
-		pi.Complete()
+		pi.Complete(nil)
 	}
 }
 
@@ -1372,14 +1372,14 @@ type flushRequest struct {
 	err    error
 }
 
-func (i *pendingItem) Complete() {
+func (i *pendingItem) Complete(err error) {
 	if i.completed {
 		return
 	}
 	i.completed = true
 	buffersPool.Put(i.buffer)
 	if i.callback != nil {
-		i.callback()
+		i.callback(err)
 	}
 }
 
