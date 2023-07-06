@@ -108,6 +108,9 @@ func TestSimpleProducer(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, ID)
 	}
+
+	_, err = producer.Send(context.Background(), nil)
+	assert.NotNil(t, err)
 }
 
 func TestProducerAsyncSend(t *testing.T) {
@@ -152,6 +155,14 @@ func TestProducerAsyncSend(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, 0, errors.Size())
+
+	wg.Add(1)
+	producer.SendAsync(context.Background(), nil, func(id MessageID, m *ProducerMessage, e error) {
+		assert.NotNil(t, e)
+		assert.Nil(t, id)
+		wg.Done()
+	})
+	wg.Wait()
 }
 
 func TestProducerCompression(t *testing.T) {
