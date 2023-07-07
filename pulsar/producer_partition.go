@@ -473,8 +473,10 @@ func runCallback(cb func(MessageID, *ProducerMessage, error), id MessageID, msg 
 func (p *partitionProducer) internalSend(request *sendRequest) {
 	p.log.Debug("Received send request: ", *request.msg)
 
-	msg := request.msg
+	// The block chan must be closed when returned with exception
+	defer request.stopBlock()
 
+	msg := request.msg
 	// read payload from message
 	uncompressedPayload := msg.Payload
 	uncompressedPayloadSize := int64(len(uncompressedPayload))
@@ -487,8 +489,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		return
 	}
 
-	// The block chan must be closed when returned with exception
-	defer request.stopBlock()
 	if !p.canAddToQueue(request, uncompressedPayloadSize) {
 		return
 	}
