@@ -473,9 +473,6 @@ func runCallback(cb func(MessageID, *ProducerMessage, error), id MessageID, msg 
 func (p *partitionProducer) internalSend(request *sendRequest) {
 	p.log.Debug("Received send request: ", *request.msg)
 
-	// The block chan must be closed when returned with exception
-	defer request.stopBlock()
-
 	msg := request.msg
 	// read payload from message
 	uncompressedPayload := msg.Payload
@@ -483,11 +480,9 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	var schemaPayload []byte
 	var err error
-	if msg.Value != nil && msg.Payload != nil {
-		p.log.Error("Can not set Value and Payload both")
-		runCallback(request.callback, nil, request.msg, errors.New("can not set Value and Payload both"))
-		return
-	}
+
+	// The block chan must be closed when returned with exception
+	defer request.stopBlock()
 
 	if !p.canAddToQueue(request, uncompressedPayloadSize) {
 		return
@@ -1114,6 +1109,12 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	if msg == nil {
 		p.log.Error("Message is nil")
 		runCallback(callback, nil, msg, newError(InvalidMessage, "Message is nil"))
+		return
+	}
+
+	if msg.Value != nil && msg.Payload != nil {
+		p.log.Error("Can not set Value and Payload both")
+		runCallback(callback, nil, msg, errors.New("can not set Value and Payload both"))
 		return
 	}
 
