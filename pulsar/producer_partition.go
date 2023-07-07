@@ -1114,7 +1114,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 
 	if msg.Value != nil && msg.Payload != nil {
 		p.log.Error("Can not set Value and Payload both")
-		runCallback(callback, nil, msg, errors.New("can not set Value and Payload both"))
+		runCallback(callback, nil, msg, newError(InvalidMessage, "Can not set Value and Payload both"))
 		return
 	}
 
