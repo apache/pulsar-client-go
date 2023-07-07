@@ -66,6 +66,9 @@ type Topics interface {
 	// GetLastMessageID returns the last commit message Id of a topic
 	GetLastMessageID(utils.TopicName) (utils.MessageID, error)
 
+	// GetMessageID returns the message Id by timestamp(ms) of a topic
+	GetMessageID(utils.TopicName, int64) (utils.MessageID, error)
+
 	// GetStats returns the stats for the topic
 	// All the rates are computed over a 1 minute window and are relative the last completed 1 minute period
 	GetStats(utils.TopicName) (utils.TopicStats, error)
@@ -373,6 +376,13 @@ func (t *topics) GetBundleRange(topic utils.TopicName) (string, error) {
 func (t *topics) GetLastMessageID(topic utils.TopicName) (utils.MessageID, error) {
 	var messageID utils.MessageID
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "lastMessageId")
+	err := t.pulsar.Client.Get(endpoint, &messageID)
+	return messageID, err
+}
+
+func (t *topics) GetMessageID(topic utils.TopicName, timestamp int64) (utils.MessageID, error) {
+	var messageID utils.MessageID
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageid", strconv.FormatInt(timestamp, 10))
 	err := t.pulsar.Client.Get(endpoint, &messageID)
 	return messageID, err
 }
