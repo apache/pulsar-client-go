@@ -56,6 +56,7 @@ All notable changes to this project will be documented in this file.
 * @momo-jun made their first contribution in https://github.com/apache/pulsar-client-go/pull/1014
 * @bpereto made their first contribution in https://github.com/apache/pulsar-client-go/pull/1022
 * @zengguan made their first contribution in https://github.com/apache/pulsar-client-go/pull/1029
+* @gunli made their first contribution in https://github.com/apache/pulsar-client-go/pull/1036
 
 **Full Changelog**: https://github.com/apache/pulsar-client-go/compare/v0.10.0...v0.11.0-candidate-1
 
