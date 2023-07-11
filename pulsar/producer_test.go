@@ -29,12 +29,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
-	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -111,6 +113,12 @@ func TestSimpleProducer(t *testing.T) {
 
 	_, err = producer.Send(context.Background(), nil)
 	assert.NotNil(t, err)
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("hello"),
+		Value:   []byte("hello"),
+	})
+	assert.NotNil(t, err)
 }
 
 func TestProducerAsyncSend(t *testing.T) {
@@ -162,6 +170,15 @@ func TestProducerAsyncSend(t *testing.T) {
 		assert.Nil(t, id)
 		wg.Done()
 	})
+	wg.Wait()
+
+	wg.Add(1)
+	producer.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("hello"), Value: []byte("hello")},
+		func(id MessageID, m *ProducerMessage, e error) {
+			assert.NotNil(t, e)
+			assert.Nil(t, id)
+			wg.Done()
+		})
 	wg.Wait()
 }
 
@@ -1600,7 +1617,7 @@ func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
 	}
 	producer.Flush()
 
-	//// create consumer
+	// // create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "my-sub2",
@@ -1691,7 +1708,7 @@ func TestMultipleSchemaProducerConsumer(t *testing.T) {
 	}
 	producer.Flush()
 
-	//// create consumer
+	// // create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "my-sub2",
