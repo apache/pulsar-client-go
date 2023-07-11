@@ -28,15 +28,13 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
-
-	"github.com/stretchr/testify/assert"
-
+	
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-
-	log "github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
+	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
