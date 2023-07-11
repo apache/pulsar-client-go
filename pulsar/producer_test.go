@@ -1617,7 +1617,7 @@ func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
 	}
 	producer.Flush()
 
-	// // create consumer
+	//// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "my-sub2",
@@ -1708,7 +1708,7 @@ func TestMultipleSchemaProducerConsumer(t *testing.T) {
 	}
 	producer.Flush()
 
-	// // create consumer
+	//// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "my-sub2",
