@@ -2198,3 +2198,29 @@ func testSendMessagesWithMetadata(t *testing.T, disableBatch bool) {
 	assert.Equal(t, msg.OrderingKey, recvMsg.OrderingKey())
 	assert.Equal(t, msg.Properties, recvMsg.Properties())
 }
+
+func TestProducerSendWithContext(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Make ctx be canceled to invalidate the context immediately
+	cancel()
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload: make([]byte, 1024*1024),
+	})
+	//  producer.Send should fail and return err context.Canceled
+	assert.True(t, errors.Is(err, context.Canceled))
+}
