@@ -1939,6 +1939,159 @@ func TestMemLimitRejectProducerMessages(t *testing.T) {
 	assert.NoError(t, err)
 }
 
+func TestMemLimitRejectProducerMessagesWithSchema(t *testing.T) {
+
+	c, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		MemoryLimitBytes: 100 * 6,
+	})
+	assert.NoError(t, err)
+	defer c.Close()
+
+	schema := NewAvroSchema(`{"fields":
+	[
+		{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+	],
+	"name":"MyAvro","namespace":"schemaNotFoundTestCase","type":"record"}`, nil)
+
+	topicName := newTopicName()
+	producer1, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer2, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	// the size of encoded value is 6 bytes
+	value := map[string]interface{}{
+		"id": 0,
+		"name": map[string]interface{}{
+			"string": "abc",
+		},
+	}
+
+	n := 101
+	for i := 0; i < n/2; i++ {
+		producer1.SendAsync(context.Background(), &ProducerMessage{
+			Value:  value,
+			Schema: schema,
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+
+		producer2.SendAsync(context.Background(), &ProducerMessage{
+			Value:  value,
+			Schema: schema,
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+	}
+	// Last message in order to reach the limit
+	producer1.SendAsync(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	}, func(id MessageID, message *ProducerMessage, e error) {})
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int64(n*6), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	_, err = producer2.Send(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	// flush pending msg
+	err = producer1.Flush()
+	assert.NoError(t, err)
+	err = producer2.Flush()
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	_, err = producer2.Send(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+}
+
+func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
+
+	c, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		MemoryLimitBytes: 10 * 1024,
+	})
+	assert.NoError(t, err)
+	defer c.Close()
+
+	topicName := newTopicName()
+	producer1, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         true,
+		EnableChunking:          true,
+		ChunkMaxMessageSize:     1024,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer1.SendAsync(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 10*1024+1),
+	}, func(id MessageID, message *ProducerMessage, e error) {
+		if e != nil {
+			t.Fatal(e)
+		}
+	})
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1),
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	// wait all the chunks have been released
+	retryAssert(t, 10, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, 0, int(c.(*client).memLimit.CurrentUsage()))
+	})
+
+	producer2, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         true,
+		EnableChunking:          true,
+		MaxPendingMessages:      1,
+		ChunkMaxMessageSize:     5 * 1024,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer1.SendAsync(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 5*1024),
+	}, func(id MessageID, message *ProducerMessage, e error) {})
+
+	// producer2 will reserve 5*1024+1 bytes and then release 1 byte (release the second chunk)
+	// because it reaches MaxPendingMessages in chunking
+	_, _ = producer2.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 5*1024+1),
+	})
+	assert.Equal(t, int64(10*1024), c.(*client).memLimit.CurrentUsage())
+}
+
 func TestMemLimitContextCancel(t *testing.T) {
 
 	c, err := NewClient(ClientOptions{

@@ -532,6 +532,8 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	uncompressedSize := len(uncompressedPayload)
+
+	// try to reserve memory for uncompressedPayload
 	if !p.canReserveMem(request, int64(uncompressedSize)) {
 		return
 	}
@@ -1208,7 +1210,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		for idx, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
 			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
-			p.releaseSemaphoreAndMem(int64(len(sr.msg.Payload)))
+			p.releaseSemaphoreAndMem(sr.reservedMem)
 			p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
 			p.metrics.MessagesPublished.Inc()
 			p.metrics.MessagesPending.Dec()
