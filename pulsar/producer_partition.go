@@ -481,11 +481,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	var schemaPayload []byte
 	var err error
-	if msg.Value != nil && msg.Payload != nil {
-		p.log.Error("Can not set Value and Payload both")
-		runCallback(request.callback, nil, request.msg, errors.New("can not set Value and Payload both"))
-		return
-	}
 
 	// The block chan must be closed when returned with exception
 	defer request.stopBlock()
@@ -1114,6 +1109,12 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 	if msg == nil {
 		p.log.Error("Message is nil")
 		runCallback(callback, nil, msg, newError(InvalidMessage, "Message is nil"))
+		return
+	}
+
+	if msg.Value != nil && msg.Payload != nil {
+		p.log.Error("Can not set Value and Payload both")
+		runCallback(callback, nil, msg, newError(InvalidMessage, "Can not set Value and Payload both"))
 		return
 	}
 
