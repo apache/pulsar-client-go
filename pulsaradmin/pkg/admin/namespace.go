@@ -262,6 +262,15 @@ type Namespaces interface {
 
 	// GetIsAllowAutoUpdateSchema gets whether to allow auto update schema on a namespace
 	GetIsAllowAutoUpdateSchema(namespace utils.NameSpaceName) (bool, error)
+
+	// GetInactiveTopicPolicies gets the inactive topic policies on a namespace
+	GetInactiveTopicPolicies(namespace utils.NameSpaceName) (utils.InactiveTopicPolicies, error)
+
+	// RemoveInactiveTopicPolicies removes inactive topic policies from a namespace
+	RemoveInactiveTopicPolicies(namespace utils.NameSpaceName) error
+
+	// SetInactiveTopicPolicies sets the inactive topic policies on a namespace
+	SetInactiveTopicPolicies(namespace utils.NameSpaceName, data utils.InactiveTopicPolicies) error
 }
 
 type namespaces struct {
@@ -844,4 +853,21 @@ func (n *namespaces) GetIsAllowAutoUpdateSchema(namespace utils.NameSpaceName) (
 	var result bool
 	err := n.pulsar.Client.Get(endpoint, &result)
 	return result, err
+}
+
+func (n *namespaces) GetInactiveTopicPolicies(namespace utils.NameSpaceName) (utils.InactiveTopicPolicies, error) {
+	var out utils.InactiveTopicPolicies
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "inactiveTopicPolicies")
+	err := n.pulsar.Client.Get(endpoint, &out)
+	return out, err
+}
+
+func (n *namespaces) RemoveInactiveTopicPolicies(namespace utils.NameSpaceName) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "inactiveTopicPolicies")
+	return n.pulsar.Client.Delete(endpoint)
+}
+
+func (n *namespaces) SetInactiveTopicPolicies(namespace utils.NameSpaceName, data utils.InactiveTopicPolicies) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "inactiveTopicPolicies")
+	return n.pulsar.Client.Post(endpoint, data)
 }
