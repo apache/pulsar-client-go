@@ -24,5 +24,6 @@ header:
     - '**/go.sum'
     - 'LICENSE'
     - 'NOTICE'
+    - PULL_REQUEST_TEMPLATE.md
 
   comment: on-failure
