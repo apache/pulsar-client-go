@@ -1417,7 +1417,6 @@ func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool {
 		}
 	}
 	p.metrics.MessagesPending.Inc()
-	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
 	return true
 }
 
@@ -1437,6 +1436,7 @@ func (p *partitionProducer) canReserveMem(sr *sendRequest, size int64) bool {
 		}
 	}
 	sr.reservedMem += size
+	p.metrics.BytesPending.Add(float64(size))
 	return true
 }
 
