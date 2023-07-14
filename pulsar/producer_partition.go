@@ -846,16 +846,14 @@ func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 	p._getConn().WriteData(buffer)
 }
 
-type pendingItemCallback func(err error)
-
 type pendingItem struct {
 	sync.Mutex
-	buffer       internal.Buffer
-	sequenceID   uint64
-	sentAt       time.Time
-	sendRequests []interface{}
-	completed    bool
-	callback     pendingItemCallback
+	buffer        internal.Buffer
+	sequenceID    uint64
+	sentAt        time.Time
+	sendRequests  []interface{}
+	completed     bool
+	flushCallback func(err error)
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
@@ -1065,7 +1063,7 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		return
 	}
 
-	pi.callback = func(err error) {
+	pi.flushCallback = func(err error) {
 		fr.err = err
 		close(fr.doneCh)
 	}
@@ -1378,8 +1376,8 @@ func (i *pendingItem) Complete(err error) {
 	}
 	i.completed = true
 	buffersPool.Put(i.buffer)
-	if i.callback != nil {
-		i.callback(err)
+	if i.flushCallback != nil {
+		i.flushCallback(err)
 	}
 }
 
