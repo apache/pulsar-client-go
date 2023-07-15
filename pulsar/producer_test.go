@@ -2076,20 +2076,16 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 		DisableBatching:         true,
 		EnableChunking:          true,
 		MaxPendingMessages:      1,
-		ChunkMaxMessageSize:     5 * 1024,
+		ChunkMaxMessageSize:     1024,
 		SendTimeout:             2 * time.Second,
 	})
 
-	producer1.SendAsync(context.Background(), &ProducerMessage{
-		Payload: make([]byte, 5*1024),
-	}, func(id MessageID, message *ProducerMessage, e error) {})
-
-	// producer2 will reserve 5*1024+1 bytes and then release 1 byte (release the second chunk)
+	// producer2 will reserve 2*1024 bytes and then release 1024 byte (release the second chunk)
 	// because it reaches MaxPendingMessages in chunking
 	_, _ = producer2.Send(context.Background(), &ProducerMessage{
-		Payload: make([]byte, 5*1024+1),
+		Payload: make([]byte, 2*1024),
 	})
-	assert.Equal(t, int64(10*1024), c.(*client).memLimit.CurrentUsage())
+	assert.Equal(t, int64(1024), c.(*client).memLimit.CurrentUsage())
 }
 
 func TestMemLimitContextCancel(t *testing.T) {
