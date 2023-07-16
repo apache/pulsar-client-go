@@ -195,3 +195,9 @@ similar to the following, and then run `go mod tidy`.
 ```
 github.com/apache/pulsar-client-go/oauth2 v0.0.0-20220630195735-e95cf0633348 // indirect
 ```
+### Schema compatibility with JAVA client
+Due to the differences in programming language features and data representation, 
+schema incompatibility may arise between different languages.
+We have conducted an analysis of the schema compatibility between Java and Go, 
+and we have provided some feasible solutions.
+You can get more details in [schema-compatibility](docs/schema-compatibility.md).
