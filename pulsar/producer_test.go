@@ -2036,7 +2036,7 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 
 	c, err := NewClient(ClientOptions{
 		URL:              serviceURL,
-		MemoryLimitBytes: 10 * 1024,
+		MemoryLimitBytes: 5 * 1024,
 	})
 	assert.NoError(t, err)
 	defer c.Close()
@@ -2047,17 +2047,27 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 		DisableBlockIfQueueFull: true,
 		DisableBatching:         true,
 		EnableChunking:          true,
-		ChunkMaxMessageSize:     1024,
 		SendTimeout:             2 * time.Second,
 	})
 
-	producer1.SendAsync(context.Background(), &ProducerMessage{
-		Payload: make([]byte, 10*1024+1),
+	producer2, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Millisecond,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer2.SendAsync(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 5*1024+1),
 	}, func(id MessageID, message *ProducerMessage, e error) {
 		if e != nil {
 			t.Fatal(e)
 		}
 	})
+
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, int64(5*1024+1), c.(*client).memLimit.CurrentUsage())
 
 	_, err = producer1.Send(context.Background(), &ProducerMessage{
 		Payload: make([]byte, 1),
@@ -2065,12 +2075,12 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 	assert.Error(t, err)
 	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
 
-	// wait all the chunks have been released
+	// wait all the mem have been released
 	retryAssert(t, 10, 200, func() {}, func(t assert.TestingT) bool {
 		return assert.Equal(t, 0, int(c.(*client).memLimit.CurrentUsage()))
 	})
 
-	producer2, _ := c.CreateProducer(ProducerOptions{
+	producer3, _ := c.CreateProducer(ProducerOptions{
 		Topic:                   topicName,
 		DisableBlockIfQueueFull: true,
 		DisableBatching:         true,
@@ -2082,7 +2092,7 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 
 	// producer2 will reserve 2*1024 bytes and then release 1024 byte (release the second chunk)
 	// because it reaches MaxPendingMessages in chunking
-	_, _ = producer2.Send(context.Background(), &ProducerMessage{
+	_, _ = producer3.Send(context.Background(), &ProducerMessage{
 		Payload: make([]byte, 2*1024),
 	})
 	assert.Equal(t, int64(1024), c.(*client).memLimit.CurrentUsage())
