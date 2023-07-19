@@ -1733,6 +1733,15 @@ func (pc *partitionConsumer) grabConn() error {
 
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
+		if err == internal.ErrRequestTimeOut {
+			requestID := pc.client.rpcClient.NewRequestID()
+			cmdClose := &pb.CommandCloseConsumer{
+				ConsumerId: proto.Uint64(pc.consumerID),
+				RequestId:  proto.Uint64(requestID),
+			}
+			_, _ = pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
+				pb.BaseCommand_CLOSE_CONSUMER, cmdClose)
+		}
 		return err
 	}
 
