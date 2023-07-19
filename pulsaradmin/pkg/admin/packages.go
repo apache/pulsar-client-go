@@ -23,6 +23,7 @@ import (
 	"mime/multipart"
 	"net/textproto"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -96,6 +97,15 @@ func (p packages) Download(packageURL, destinationFile string) error {
 	}
 	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion())
+
+	parent := path.Dir(destinationFile)
+	if parent != "." {
+		err = os.MkdirAll(parent, 0755)
+		if err != nil {
+			return fmt.Errorf("failed to create parent directory %s: %w", parent, err)
+		}
+	}
+
 	_, err = os.Open(destinationFile)
 	if err != nil {
 		if !os.IsNotExist(err) {
