@@ -20,8 +20,8 @@ type ProducerConfig struct {
 	//nolint
 	MaxPendingMessagesAcrossPartitions int `json:"maxPendingMessagesAcrossPartitions" yaml:"maxPendingMessagesAcrossPartitions"`
 
-	UseThreadLocalProducers bool         `json:"useThreadLocalProducers" yaml:"useThreadLocalProducers"`
-	CryptoConfig            CryptoConfig `json:"cryptoConfig" yaml:"cryptoConfig"`
-	BatchBuilder            string       `json:"batchBuilder" yaml:"batchBuilder"`
-	CompressionType         string       `json:"compressionType" yaml:"compressionType"`
+	UseThreadLocalProducers bool          `json:"useThreadLocalProducers" yaml:"useThreadLocalProducers"`
+	CryptoConfig            *CryptoConfig `json:"cryptoConfig" yaml:"cryptoConfig"`
+	BatchBuilder            string        `json:"batchBuilder" yaml:"batchBuilder"`
+	CompressionType         string        `json:"compressionType" yaml:"compressionType"`
 }
