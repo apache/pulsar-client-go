@@ -21,7 +21,7 @@ type SourceConfig struct {
 	Name      string `json:"name,omitempty" yaml:"name"`
 	ClassName string `json:"className,omitempty" yaml:"className"`
 
-	ProducerConfig ProducerConfig `json:"producerConfig,omitempty" yaml:"producerConfig"`
+	ProducerConfig *ProducerConfig `json:"producerConfig,omitempty" yaml:"producerConfig"`
 
 	TopicName      string `json:"topicName,omitempty" yaml:"topicName"`
 	SerdeClassName string `json:"serdeClassName,omitempty" yaml:"serdeClassName"`
@@ -45,6 +45,6 @@ type SourceConfig struct {
 
 	CustomRuntimeOptions string `json:"customRuntimeOptions,omitempty" yaml:"customRuntimeOptions"`
 
-	BatchSourceConfig BatchSourceConfig `json:"batchSourceConfig,omitempty" yaml:"batchSourceConfig"`
-	BatchBuilder      string            `json:"batchBuilder,omitempty" yaml:"batchBuilder"`
+	BatchSourceConfig *BatchSourceConfig `json:"batchSourceConfig,omitempty" yaml:"batchSourceConfig"`
+	BatchBuilder      string             `json:"batchBuilder,omitempty" yaml:"batchBuilder"`
 }

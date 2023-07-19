@@ -22,6 +22,6 @@ type ConsumerConfig struct {
 	ReceiverQueueSize  int               `json:"receiverQueueSize,omitempty" yaml:"receiverQueueSize"`
 	SchemaProperties   map[string]string `json:"schemaProperties,omitempty" yaml:"schemaProperties"`
 	ConsumerProperties map[string]string `json:"consumerProperties,omitempty" yaml:"consumerProperties"`
-	CryptoConfig       CryptoConfig      `json:"cryptoConfig,omitempty" yaml:"cryptoConfig"`
+	CryptoConfig       *CryptoConfig     `json:"cryptoConfig,omitempty" yaml:"cryptoConfig"`
 	PoolMessages       bool              `json:"poolMessages,omitempty" yaml:"poolMessages"`
 }

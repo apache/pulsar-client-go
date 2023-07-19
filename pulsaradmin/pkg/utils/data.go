@@ -163,6 +163,7 @@ type SinkData struct {
 	MaxMessageRetries            int         `json:"maxMessageRetries,omitempty"`
 	DeadLetterTopic              string      `json:"deadLetterTopic,omitempty"`
 	ProcessingGuarantees         string      `json:"processingGuarantees,omitempty"`
+	RetainKeyOrdering            bool        `json:"retainKeyOrdering,omitempty"`
 	Archive                      string      `json:"archive,omitempty"`
 	ClassName                    string      `json:"className,omitempty"`
 	SinkConfigFile               string      `json:"sinkConfigFile,omitempty"`

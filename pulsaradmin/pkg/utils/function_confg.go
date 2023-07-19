@@ -36,7 +36,7 @@ type FunctionConfig struct {
 
 	Output string `json:"output,omitempty" yaml:"output"`
 
-	ProducerConfig      ProducerConfig    `json:"producerConfig,omitempty" yaml:"producerConfig"`
+	ProducerConfig      *ProducerConfig   `json:"producerConfig,omitempty" yaml:"producerConfig"`
 	CustomSchemaOutputs map[string]string `json:"customSchemaOutputs,omitempty" yaml:"customSchemaOutputs"`
 
 	OutputSerdeClassName string `json:"outputSerdeClassName,omitempty" yaml:"outputSerdeClassName"`
