@@ -1041,6 +1041,7 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 }
 
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
+	// clear all the messages which have sent to dataChan before flush
 	if len(p.dataChan) != 0 {
 		oldDataChan := p.dataChan
 		p.dataChan = make(chan *sendRequest, p.options.MaxPendingMessages)
