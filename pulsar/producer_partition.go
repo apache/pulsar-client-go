@@ -1041,11 +1041,13 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 }
 
 func (p *partitionProducer) internalFlush(fr *flushRequest) {
-	oldDataChan := p.dataChan
-	p.dataChan = make(chan *sendRequest, p.options.MaxPendingMessages)
-	for len(oldDataChan) != 0 {
-		pendingData := <-oldDataChan
-		p.internalSend(pendingData)
+	if len(p.dataChan) != 0 {
+		oldDataChan := p.dataChan
+		p.dataChan = make(chan *sendRequest, p.options.MaxPendingMessages)
+		for len(oldDataChan) != 0 {
+			pendingData := <-oldDataChan
+			p.internalSend(pendingData)
+		}
 	}
 
 	p.internalFlushCurrentBatch()
