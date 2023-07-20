@@ -1291,7 +1291,16 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		return
 	}
 
+	defer close(p.dataChan)
+	defer close(p.cmdChan)
 	p.log.Info("Closing producer")
+	flushReq := &flushRequest{
+		doneCh: make(chan struct{}),
+		err:    nil,
+	}
+	p.internalFlush(flushReq)
+	// wait for the flush request to complete
+	<-flushReq.doneCh
 
 	id := p.client.rpcClient.NewRequestID()
 	_, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
