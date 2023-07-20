@@ -482,21 +482,19 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	// read payload from message
 	uncompressedPayload := msg.Payload
-	uncompressedPayloadSize := int64(len(uncompressedPayload))
 
 	var schemaPayload []byte
 	var err error
 
 	// The block chan must be closed when returned with exception
 	defer request.stopBlock()
-	if !p.canAddToQueue(request, uncompressedPayloadSize) {
+	if !p.canAddToQueue(request) {
 		return
 	}
 
 	if p.options.DisableMultiSchema {
 		if msg.Schema != nil && p.options.Schema != nil &&
 			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
-			p.releaseSemaphoreAndMem(uncompressedPayloadSize)
 			runCallback(request.callback, nil, request.msg, fmt.Errorf("msg schema can not match with producer schema"))
 			p.log.WithError(err).Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
 			return
@@ -515,7 +513,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		if uncompressedPayload == nil && schema != nil {
 			schemaPayload, err = schema.Encode(msg.Value)
 			if err != nil {
-				p.releaseSemaphoreAndMem(uncompressedPayloadSize)
 				runCallback(request.callback, nil, request.msg, newError(SchemaFailure, err.Error()))
 				p.log.WithError(err).Errorf("Schema encode message failed %s", msg.Value)
 				return
@@ -531,7 +528,6 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		if schemaVersion == nil {
 			schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
 			if err != nil {
-				p.releaseSemaphoreAndMem(uncompressedPayloadSize)
 				p.log.WithError(err).Error("get schema version fail")
 				runCallback(request.callback, nil, request.msg, fmt.Errorf("get schema version fail, err: %w", err))
 				return
@@ -541,6 +537,11 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	}
 
 	uncompressedSize := len(uncompressedPayload)
+
+	// try to reserve memory for uncompressedPayload
+	if !p.canReserveMem(request, int64(uncompressedSize)) {
+		return
+	}
 
 	deliverAt := msg.DeliverAt
 	if msg.DeliverAfter.Nanoseconds() > 0 {
@@ -591,7 +592,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 
 	// if msg is too large and chunking is disabled
 	if checkSize > maxMessageSize && !p.options.EnableChunking {
-		p.releaseSemaphoreAndMem(uncompressedPayloadSize)
+		p.releaseSemaphoreAndMem(int64(uncompressedSize))
 		runCallback(request.callback, nil, request.msg, errMessageTooLarge)
 		p.log.WithError(errMessageTooLarge).
 			WithField("size", checkSize).
@@ -610,7 +611,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 	} else {
 		payloadChunkSize = int(p._getConn().GetMaxMessageSize()) - proto.Size(mm)
 		if payloadChunkSize <= 0 {
-			p.releaseSemaphoreAndMem(uncompressedPayloadSize)
+			p.releaseSemaphoreAndMem(int64(uncompressedSize))
 			runCallback(request.callback, nil, msg, errMetaTooLarge)
 			p.log.WithError(errMetaTooLarge).
 				WithField("metadata size", proto.Size(mm)).
@@ -657,10 +658,11 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 					uuid:             uuid,
 					chunkRecorder:    cr,
 					transaction:      request.transaction,
+					reservedMem:      int64(rhs - lhs),
 				}
 				// the permit of first chunk has acquired
-				if chunkID != 0 && !p.canAddToQueue(nsr, 0) {
-					p.releaseSemaphoreAndMem(uncompressedPayloadSize - int64(rhs))
+				if chunkID != 0 && !p.canAddToQueue(nsr) {
+					p.releaseSemaphoreAndMem(int64(uncompressedSize - lhs))
 					return
 				}
 				p.internalSingleSend(mm, compressedPayload[lhs:rhs], nsr, uint32(maxMessageSize))
@@ -685,7 +687,7 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 			// after flushing try again to add the current payload
 			if ok := addRequestToBatch(smm, p, uncompressedPayload, request, msg, deliverAt, schemaVersion,
 				multiSchemaEnabled); !ok {
-				p.releaseSemaphoreAndMem(uncompressedPayloadSize)
+				p.releaseSemaphoreAndMem(int64(uncompressedSize))
 				runCallback(request.callback, nil, request.msg, errFailAddToBatch)
 				p.log.WithField("size", uncompressedSize).
 					WithField("properties", msg.Properties).
@@ -837,7 +839,7 @@ func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 
 	if err != nil {
 		runCallback(request.callback, nil, request.msg, err)
-		p.releaseSemaphoreAndMem(int64(len(msg.Payload)))
+		p.releaseSemaphoreAndMem(request.reservedMem)
 		p.log.WithError(err).Errorf("Single message serialize failed %s", msg.Value)
 		return
 	}
@@ -976,7 +978,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 				sr := i.(*sendRequest)
 				if sr.msg != nil {
 					size := len(sr.msg.Payload)
-					p.releaseSemaphoreAndMem(int64(size))
+					p.releaseSemaphoreAndMem(sr.reservedMem)
 					p.metrics.MessagesPending.Dec()
 					p.metrics.BytesPending.Sub(float64(size))
 					p.metrics.PublishErrorsTimeout.Inc()
@@ -1208,7 +1210,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		for idx, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
 			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
-			p.releaseSemaphoreAndMem(int64(len(sr.msg.Payload)))
+			p.releaseSemaphoreAndMem(sr.reservedMem)
 			p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
 			p.metrics.MessagesPublished.Inc()
 			p.metrics.MessagesPending.Dec()
@@ -1352,6 +1354,7 @@ type sendRequest struct {
 	uuid             string
 	chunkRecorder    *chunkRecorder
 	transaction      *transaction
+	reservedMem      int64
 }
 
 // stopBlock can be invoked multiple times safety
@@ -1401,31 +1404,39 @@ func (p *partitionProducer) releaseSemaphoreAndMem(size int64) {
 	p.client.memLimit.ReleaseMemory(size)
 }
 
-func (p *partitionProducer) canAddToQueue(sr *sendRequest, uncompressedPayloadSize int64) bool {
+func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool {
 	if p.options.DisableBlockIfQueueFull {
 		if !p.publishSemaphore.TryAcquire() {
 			runCallback(sr.callback, nil, sr.msg, errSendQueueIsFull)
 			return false
 		}
-		if !p.client.memLimit.TryReserveMemory(uncompressedPayloadSize) {
+	} else {
+		if !p.publishSemaphore.Acquire(sr.ctx) {
+			runCallback(sr.callback, nil, sr.msg, errContextExpired)
+			return false
+		}
+	}
+	p.metrics.MessagesPending.Inc()
+	return true
+}
+
+func (p *partitionProducer) canReserveMem(sr *sendRequest, size int64) bool {
+	if p.options.DisableBlockIfQueueFull {
+		if !p.client.memLimit.TryReserveMemory(size) {
 			p.publishSemaphore.Release()
 			runCallback(sr.callback, nil, sr.msg, errMemoryBufferIsFull)
 			return false
 		}
 
 	} else {
-		if !p.publishSemaphore.Acquire(sr.ctx) {
-			runCallback(sr.callback, nil, sr.msg, errContextExpired)
-			return false
-		}
-		if !p.client.memLimit.ReserveMemory(sr.ctx, uncompressedPayloadSize) {
+		if !p.client.memLimit.ReserveMemory(sr.ctx, size) {
 			p.publishSemaphore.Release()
 			runCallback(sr.callback, nil, sr.msg, errContextExpired)
 			return false
 		}
 	}
-	p.metrics.MessagesPending.Inc()
-	p.metrics.BytesPending.Add(float64(len(sr.msg.Payload)))
+	sr.reservedMem += size
+	p.metrics.BytesPending.Add(float64(size))
 	return true
 }
 
