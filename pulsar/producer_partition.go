@@ -913,7 +913,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 
 	for range t.C {
 		state := p.getProducerState()
-		if state == producerClosing || state == producerClosed {
+		if state == producerClosed {
 			return
 		}
 
