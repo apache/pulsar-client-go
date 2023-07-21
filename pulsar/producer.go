@@ -224,8 +224,7 @@ type Producer interface {
 	Send(context.Context, *ProducerMessage) (MessageID, error)
 
 	// SendAsync a message in asynchronous mode
-	// This call is blocked when the `event channel` becomes full (default: 10) or the
-	// `maxPendingMessages` becomes full (default: 1000)
+	// This call is blocked when the `maxPendingMessages` becomes full (default: 1000)
 	// The callback will report back the message being published and
 	// the eventual error in publishing
 	SendAsync(context.Context, *ProducerMessage, func(MessageID, *ProducerMessage, error))
