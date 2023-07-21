@@ -145,7 +145,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		log:              logger,
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
-		dataChan:         make(chan *sendRequest, maxPendingMessages),
+		dataChan:         make(chan *sendRequest, 10),
 		cmdChan:          make(chan interface{}, 10),
 		connectClosedCh:  make(chan connectionClosed, 10),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
