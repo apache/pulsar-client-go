@@ -84,6 +84,7 @@ type Connection interface {
 	ID() string
 	GetMaxMessageSize() int32
 	Close()
+	FailPendingRequests(err error) bool
 }
 
 type ConsumerHandler interface {
@@ -389,7 +390,7 @@ func (c *connection) run() {
 		// all the accesses to the pendingReqs should be happened in this run loop thread,
 		// including the final cleanup, to avoid the issue
 		// https://github.com/apache/pulsar-client-go/issues/239
-		c.failPendingRequests(errConnectionClosed)
+		c.FailPendingRequests(errConnectionClosed)
 		c.Close()
 	}()
 
@@ -775,7 +776,7 @@ func (c *connection) findPendingRequest(requestID uint64) (*request, bool) {
 	return request, ok
 }
 
-func (c *connection) failPendingRequests(err error) bool {
+func (c *connection) FailPendingRequests(err error) bool {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
 	for id, req := range c.pendingReqs {

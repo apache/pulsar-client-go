@@ -913,7 +913,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 
 	for range t.C {
 		state := p.getProducerState()
-		if state == producerClosed {
+		if state == producerClosing || state == producerClosed {
 			return
 		}
 
@@ -1294,13 +1294,6 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer close(p.dataChan)
 	defer close(p.cmdChan)
 	p.log.Info("Closing producer")
-	flushReq := &flushRequest{
-		doneCh: make(chan struct{}),
-		err:    nil,
-	}
-	p.internalFlush(flushReq)
-	// wait for the flush request to complete
-	<-flushReq.doneCh
 
 	id := p.client.rpcClient.NewRequestID()
 	_, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
@@ -1310,8 +1303,10 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 
 	if err != nil {
 		p.log.WithError(err).Warn("Failed to close producer")
+		p._getConn().FailPendingRequests(err)
 	} else {
 		p.log.Info("Closed producer")
+		p._getConn().FailPendingRequests(nil)
 	}
 
 	if p.batchBuilder != nil {
