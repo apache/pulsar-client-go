@@ -1303,11 +1303,10 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 
 	if err != nil {
 		p.log.WithError(err).Warn("Failed to close producer")
-		p._getConn().FailPendingRequests(err)
 	} else {
 		p.log.Info("Closed producer")
-		p._getConn().FailPendingRequests(nil)
 	}
+	p._getConn().FailPendingRequests(errProducerClosed)
 
 	if p.batchBuilder != nil {
 		if err = p.batchBuilder.Close(); err != nil {
