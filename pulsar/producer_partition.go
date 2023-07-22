@@ -1253,7 +1253,9 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 						sr.callback(msgID, sr.msg, nil)
 					}
 					p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
-					sr.transaction.endSendOrAckOp(nil)
+					if sr.transaction != nil {
+						sr.transaction.endSendOrAckOp(nil)
+					}
 				}
 			}
 		}
