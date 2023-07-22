@@ -428,9 +428,8 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 	if cmid, ok := msgID.(*chunkMessageID); ok {
 		if txn == nil {
 			return pc.unAckChunksTracker.ack(cmid)
-		} else {
-			return pc.unAckChunksTracker.ackWithTxn(cmid, txn)
 		}
+		return pc.unAckChunksTracker.ackWithTxn(cmid, txn)
 	}
 
 	trackingID := toTrackingMessageID(msgID)
