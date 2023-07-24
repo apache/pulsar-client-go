@@ -372,6 +372,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
 		pc.nackTracker.Close()
+		pc.ackGroupingTracker.close()
+		pc.chunkedMsgCtxMap.Close()
 		return nil, err
 	}
 	pc.log.Info("Created consumer")
@@ -381,7 +383,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	if pc.options.startMessageIDInclusive && startingMessageID != nil && startingMessageID.equal(latestMessageID) {
 		msgID, err := pc.requestGetLastMessageID()
 		if err != nil {
-			pc.nackTracker.Close()
+			pc.Close()
 			return nil, err
 		}
 		if msgID.entryID != noMessageEntry {
@@ -390,7 +392,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 			// use the WithoutClear version because the dispatcher is not started yet
 			err = pc.requestSeekWithoutClear(msgID.messageID)
 			if err != nil {
-				pc.nackTracker.Close()
+				pc.Close()
 				return nil, err
 			}
 		}
