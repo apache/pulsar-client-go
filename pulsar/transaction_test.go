@@ -482,7 +482,8 @@ func TestSendAndAckChunkMessage(t *testing.T) {
 
 	// Send a large message that will be split into chunks.
 	msgID, err := producer.Send(context.Background(), &ProducerMessage{
-		Payload: createTestMessagePayload(_brokerMaxMessageSize),
+		Transaction: txn,
+		Payload:     createTestMessagePayload(_brokerMaxMessageSize),
 	})
 	require.NoError(t, err)
 	_, ok := msgID.(*chunkMessageID)

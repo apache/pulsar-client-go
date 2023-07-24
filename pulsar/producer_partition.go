@@ -979,13 +979,10 @@ func (p *partitionProducer) failTimeoutMessages() {
 						WithField("properties", sr.msg.Properties)
 				}
 
-				if sr.callback != nil {
+				if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
 					sr.callbackOnce.Do(func() {
 						sr.callback(nil, sr.msg, errSendTimeout)
 					})
-				}
-				if (sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1) && sr.transaction != nil {
-					sr.transaction.endSendOrAckOp(nil)
 				}
 			}
 
@@ -1253,9 +1250,6 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 						sr.callback(msgID, sr.msg, nil)
 					}
 					p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
-					if sr.transaction != nil {
-						sr.transaction.endSendOrAckOp(nil)
-					}
 				}
 			}
 		}
