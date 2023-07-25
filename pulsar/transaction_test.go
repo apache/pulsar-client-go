@@ -448,7 +448,7 @@ func consumerShouldNotReceiveMessage(t *testing.T, consumer Consumer) {
 	}
 }
 
-func TestSendAndAckChunkMessage(t *testing.T) {
+func TestAckChunkMessage(t *testing.T) {
 	topic := newTopicName()
 	sub := "my-sub"
 
@@ -489,14 +489,6 @@ func TestSendAndAckChunkMessage(t *testing.T) {
 	_, ok := msgID.(*chunkMessageID)
 	require.True(t, ok)
 
-	// Attempt to commit the transaction, it should not succeed at this point.
-	err = txn.Commit(context.Background())
-	require.NotNil(t, err)
-
-	// End the previously registered send operation, allowing the transaction to commit successfully.
-	txn.(*transaction).endSendOrAckOp(nil)
-
-	// Commit the transaction successfully now.
 	err = txn.Commit(context.Background())
 	require.Nil(t, err)
 
