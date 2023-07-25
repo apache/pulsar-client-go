@@ -979,7 +979,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 						WithField("properties", sr.msg.Properties)
 				}
 
-				if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
+				if sr.callback != nil && (sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1) {
 					sr.callbackOnce.Do(func() {
 						sr.callback(nil, sr.msg, errSendTimeout)
 					})
