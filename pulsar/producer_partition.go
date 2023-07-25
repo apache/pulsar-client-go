@@ -1058,7 +1058,9 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		}
 	}
 
-	p.internalFlushCurrentBatch()
+	if !p.options.DisableBatching {
+		p.internalFlushCurrentBatch()
+	}
 
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
 	if !ok {

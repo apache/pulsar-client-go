@@ -180,6 +180,50 @@ func TestProducerAsyncSend(t *testing.T) {
 	wg.Wait()
 }
 
+func TestProducerFlushDisableBatching(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	wg := sync.WaitGroup{}
+	wg.Add(10)
+	errors := internal.NewBlockingQueue(10)
+
+	for i := 0; i < 10; i++ {
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: []byte("hello"),
+		}, func(id MessageID, message *ProducerMessage, e error) {
+			if e != nil {
+				log.WithError(e).Error("Failed to publish")
+				errors.Put(e)
+			} else {
+				log.Info("Published message ", id)
+			}
+			wg.Done()
+		})
+
+		assert.NoError(t, err)
+	}
+
+	err = producer.Flush()
+	assert.Nil(t, err)
+
+	wg.Wait()
+
+	assert.Equal(t, 0, errors.Size())
+}
+
 func TestProducerCompression(t *testing.T) {
 	type testProvider struct {
 		name            string
