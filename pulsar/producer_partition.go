@@ -1340,7 +1340,7 @@ func (p *partitionProducer) setProducerState(state producerState) {
 	p.state.Swap(int32(state))
 }
 
-// set a new consumerState and return the last state
+// set a new producerState and return the last state
 // returns bool if the new state has been set or not
 func (p *partitionProducer) casProducerState(oldState, newState producerState) bool {
 	return p.state.CAS(int32(oldState), int32(newState))
