@@ -70,7 +70,7 @@ func (p *tlsAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
 }
 
 func (p *tlsAuthProvider) GetData() ([]byte, error) {
-	return []byte{}, nil
+	return nil, nil
 }
 
 func (tlsAuthProvider) Close() error {
