@@ -426,7 +426,10 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 	}
 
 	if cmid, ok := msgID.(*chunkMessageID); ok {
-		return pc.unAckChunksTracker.ack(cmid)
+		if txn == nil {
+			return pc.unAckChunksTracker.ack(cmid)
+		}
+		return pc.unAckChunksTracker.ackWithTxn(cmid, txn)
 	}
 
 	trackingID := toTrackingMessageID(msgID)
@@ -2212,9 +2215,19 @@ func (u *unAckChunksTracker) remove(cmid *chunkMessageID) {
 }
 
 func (u *unAckChunksTracker) ack(cmid *chunkMessageID) error {
+	return u.ackWithTxn(cmid, nil)
+}
+
+func (u *unAckChunksTracker) ackWithTxn(cmid *chunkMessageID, txn Transaction) error {
 	ids := u.get(cmid)
 	for _, id := range ids {
-		if err := u.pc.AckID(id); err != nil {
+		var err error
+		if txn == nil {
+			err = u.pc.AckID(id)
+		} else {
+			err = u.pc.AckIDWithTxn(id, txn)
+		}
+		if err != nil {
 			return err
 		}
 	}
