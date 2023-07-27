@@ -1007,7 +1007,7 @@ func (p *partitionProducer) updateSchema(sr *sendRequest) error {
 	return nil
 }
 
-func (p *partitionProducer) updateUncompressPayload(sr *sendRequest) error {
+func (p *partitionProducer) updateUncompressedPayload(sr *sendRequest) error {
 	// read payload from message
 	sr.uncompressedPayload = sr.msg.Payload
 
@@ -1221,7 +1221,7 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		return
 	}
 
-	err = p.updateUncompressPayload(sr)
+	err = p.updateUncompressedPayload(sr)
 	if err != nil {
 		p.log.Error(err)
 		sr.done(nil, err)
