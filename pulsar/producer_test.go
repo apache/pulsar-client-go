@@ -2268,3 +2268,28 @@ func TestProducerSendWithContext(t *testing.T) {
 	//  producer.Send should fail and return err context.Canceled
 	assert.True(t, errors.Is(err, context.Canceled))
 }
+
+func TestFailPendingMessageWithClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+		DisableBlockIfQueueFull: false,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	for i := 0; i < 3; i++ {
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {
+			if e != nil {
+				assert.Equal(t, errProducerClosed, e)
+			}
+		})
+	}
+	producer.Close()
+}
