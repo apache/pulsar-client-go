@@ -2276,8 +2276,10 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 	testProducer, err := client.CreateProducer(ProducerOptions{
-		Topic: newTopicName(),
+		Topic:                   newTopicName(),
 		DisableBlockIfQueueFull: false,
+		BatchingMaxPublishDelay: 100000,
+		BatchingMaxMessages:     1000,
 	})
 
 	assert.NoError(t, err)
