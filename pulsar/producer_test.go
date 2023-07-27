@@ -2275,15 +2275,15 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	defer client.Close()
-	producer, err := client.CreateProducer(ProducerOptions{
+	testProducer, err := client.CreateProducer(ProducerOptions{
 		Topic: newTopicName(),
 		DisableBlockIfQueueFull: false,
 	})
 
 	assert.NoError(t, err)
-	assert.NotNil(t, producer)
+	assert.NotNil(t, testProducer)
 	for i := 0; i < 3; i++ {
-		producer.SendAsync(context.Background(), &ProducerMessage{
+		testProducer.SendAsync(context.Background(), &ProducerMessage{
 			Payload: make([]byte, 1024),
 		}, func(id MessageID, message *ProducerMessage, e error) {
 			if e != nil {
@@ -2291,5 +2291,8 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 			}
 		})
 	}
-	producer.Close()
+	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp.pendingQueue.Put(&pendingItem{})
+	testProducer.Close()
+	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
 }
