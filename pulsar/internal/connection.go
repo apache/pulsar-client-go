@@ -823,6 +823,11 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 		return
 	}
 
+	// Brokers expect authData to be not nil
+	if authData == nil {
+		authData = []byte{}
+	}
+
 	cmdAuthResponse := &pb.CommandAuthResponse{
 		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
 		ClientVersion:   proto.String(ClientVersionString),
