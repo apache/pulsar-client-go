@@ -102,6 +102,10 @@ type ReaderOptions struct {
 	// AutoAckIncompleteChunk sets whether reader auto acknowledges incomplete chunked message when it should
 	// be removed (e.g.the chunked message pending queue is full). (default: false)
 	AutoAckIncompleteChunk bool
+
+	// SubscriptionMode specifies the subscription mode to be used when subscribing to a topic.
+	// Default is nil (`NonDurable`)
+	SubscriptionMode *SubscriptionMode
 }
 
 // Reader can be used to scan through all the messages currently available in a topic.

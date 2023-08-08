@@ -98,6 +98,12 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		options.ExpireTimeOfIncompleteChunk = time.Minute
 	}
 
+	// by default keep subscription mode as non-durable
+	subscriptionMode := NonDurable
+	if options.SubscriptionMode != nil {
+		subscriptionMode = *options.SubscriptionMode
+	}
+
 	consumerOptions := &partitionConsumerOpts{
 		topic:                       options.Topic,
 		consumerName:                options.Name,
@@ -106,7 +112,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		receiverQueueSize:           receiverQueueSize,
 		startMessageID:              startMessageID,
 		startMessageIDInclusive:     options.StartMessageIDInclusive,
-		subscriptionMode:            NonDurable,
+		subscriptionMode:            subscriptionMode,
 		readCompacted:               options.ReadCompacted,
 		metadata:                    options.Properties,
 		nackRedeliveryDelay:         defaultNackRedeliveryDelay,
