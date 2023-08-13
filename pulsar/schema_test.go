@@ -22,7 +22,7 @@ import (
 	"log"
 	"testing"
 
-	pb "github.com/apache/pulsar-client-go/integration-tests/pb"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/integration_tests/pb"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -45,7 +45,7 @@ var (
 
 func createClient() Client {
 	// create client
-	lookupURL := "pulsar://localhost:6650"
+	lookupURL := serviceURL()
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -79,7 +79,7 @@ func TestJsonSchema(t *testing.T) {
 	}
 	producer1.Close()
 
-	//create consumer
+	// create consumer
 	var s testJSON
 
 	consumerJS, err := NewJSONSchemaWithValidation(exampleSchemaDef, nil)
@@ -127,7 +127,7 @@ func TestProtoSchema(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	//create consumer
+	// create consumer
 	unobj := pb.Test{}
 	psConsumer := NewProtoSchema(protoSchemaDef, nil)
 	consumer, err := client.Subscribe(ConsumerOptions{
@@ -184,7 +184,7 @@ func TestProtoNativeSchema(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	//create consumer
+	// create consumer
 	unobj := pb.Test{}
 	psConsumer := NewProtoNativeSchemaWithMessage(&pb.Test{}, nil)
 	consumer, err := client.Subscribe(ConsumerOptions{
@@ -233,7 +233,7 @@ func TestAvroSchema(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	//create consumer
+	// create consumer
 	unobj := testAvro{}
 
 	asConsumer := NewAvroSchema(exampleSchemaDef, nil)

@@ -79,7 +79,8 @@ type lookupService struct {
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
-	tlsEnabled bool, listenerName string, logger log.Logger, metrics *Metrics) LookupService {
+	tlsEnabled bool, listenerName string, logger log.Logger, metrics *Metrics,
+) LookupService {
 	return &lookupService{
 		rpcClient:           rpcClient,
 		serviceNameResolver: serviceNameResolver,
@@ -108,7 +109,8 @@ func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *
 }
 
 func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (logicalAddress *url.URL,
-	physicalAddress *url.URL, err error) {
+	physicalAddress *url.URL, err error,
+) {
 	if ls.tlsEnabled {
 		logicalAddress, err = url.ParseRequestURI(lr.GetBrokerServiceUrlTls())
 	} else {
@@ -204,7 +206,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 }
 
 func (ls *lookupService) GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata,
-	error) {
+	error,
+) {
 	ls.metrics.PartitionedTopicMetadataRequestsCount.Inc()
 	topicName, err := ParseTopicName(topic)
 	if err != nil {
@@ -262,12 +265,14 @@ func (ls *lookupService) GetTopicsOfNamespace(namespace string, mode GetTopicsOf
 
 func (ls *lookupService) Close() {}
 
-const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
-const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
-const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
-const HTTPAdminServiceV2Format string = "/admin/v2/%s/partitions"
-const HTTPTopicUnderNamespaceV1 string = "/admin/namespaces/%s/destinations?mode=%s"
-const HTTPTopicUnderNamespaceV2 string = "/admin/v2/namespaces/%s/topics?mode=%s"
+const (
+	HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
+	HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
+	HTTPAdminServiceV1Format    string = "/admin/%s/partitions"
+	HTTPAdminServiceV2Format    string = "/admin/v2/%s/partitions"
+	HTTPTopicUnderNamespaceV1   string = "/admin/namespaces/%s/destinations?mode=%s"
+	HTTPTopicUnderNamespaceV2   string = "/admin/v2/namespaces/%s/topics?mode=%s"
+)
 
 type httpLookupData struct {
 	BrokerURL    string `json:"brokerUrl"`
@@ -285,7 +290,8 @@ type httpLookupService struct {
 }
 
 func (h *httpLookupService) getBrokerAddress(ld *httpLookupData) (logicalAddress *url.URL,
-	physicalAddress *url.URL, err error) {
+	physicalAddress *url.URL, err error,
+) {
 	if h.tlsEnabled {
 		logicalAddress, err = url.ParseRequestURI(ld.BrokerURLTLS)
 	} else {
@@ -328,11 +334,11 @@ func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
 		LogicalAddr:  logicalAddress,
 		PhysicalAddr: physicalAddress,
 	}, nil
-
 }
 
 func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata,
-	error) {
+	error,
+) {
 	topicName, err := ParseTopicName(topic)
 	if err != nil {
 		return nil, err
@@ -358,7 +364,6 @@ func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*Partitio
 }
 
 func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopicsOfNamespaceMode) ([]string, error) {
-
 	format := HTTPTopicUnderNamespaceV2
 	if !IsV2Namespace(namespace) {
 		format = HTTPTopicUnderNamespaceV1
@@ -381,14 +386,15 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 func (h *httpLookupService) GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error) {
 	return nil, errors.New("GetSchema is not supported by httpLookupService")
 }
+
 func (h *httpLookupService) Close() {
 	h.httpClient.Close()
 }
 
 // NewHTTPLookupService init a http based lookup service struct and return an object of LookupService.
 func NewHTTPLookupService(httpClient HTTPClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
-	tlsEnabled bool, logger log.Logger, metrics *Metrics) LookupService {
-
+	tlsEnabled bool, logger log.Logger, metrics *Metrics,
+) LookupService {
 	return &httpLookupService{
 		httpClient:          httpClient,
 		serviceNameResolver: serviceNameResolver,

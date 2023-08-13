@@ -67,7 +67,7 @@ func TestProducerConnectError(t *testing.T) {
 
 func TestProducerNoTopic(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6650",
+		URL: serviceURL(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -87,7 +87,7 @@ func TestProducerNoTopic(t *testing.T) {
 
 func TestSimpleProducer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -121,7 +121,7 @@ func TestSimpleProducer(t *testing.T) {
 
 func TestProducerAsyncSend(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -182,7 +182,7 @@ func TestProducerAsyncSend(t *testing.T) {
 
 func TestProducerFlushDisableBatching(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -240,7 +240,7 @@ func TestProducerCompression(t *testing.T) {
 		p := provider
 		t.Run(p.name, func(t *testing.T) {
 			client, err := NewClient(ClientOptions{
-				URL: serviceURL,
+				URL: serviceURL(),
 			})
 			assert.NoError(t, err)
 			defer client.Close()
@@ -268,7 +268,7 @@ func TestProducerCompression(t *testing.T) {
 
 func TestProducerLastSequenceID(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -296,7 +296,7 @@ func TestProducerLastSequenceID(t *testing.T) {
 
 func TestEventTime(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -331,7 +331,7 @@ func TestEventTime(t *testing.T) {
 
 func TestFlushInProducer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -450,7 +450,7 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 
 	// creat client connection
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -527,7 +527,7 @@ func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 
 	// creat client connection
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -588,7 +588,7 @@ func TestMessageRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 
 	assert.Nil(t, err)
@@ -630,6 +630,7 @@ func TestMessageRouter(t *testing.T) {
 	assert.NotNil(t, msg)
 	assert.Equal(t, string(msg.Payload()), "hello")
 }
+
 func TestMessageSingleRouter(t *testing.T) {
 	// Create topic with 5 partitions
 	topicAdminURL := "admin/v2/persistent/public/default/my-single-partitioned-topic/partitions"
@@ -639,7 +640,7 @@ func TestMessageSingleRouter(t *testing.T) {
 		t.Fatal(err)
 	}
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 
 	assert.Nil(t, err)
@@ -689,13 +690,12 @@ func TestMessageSingleRouter(t *testing.T) {
 	for _, i := range msgPartitionMap {
 		assert.Equal(t, i, numOfMessages)
 	}
-
 }
 
 func TestNonPersistentTopic(t *testing.T) {
 	topicName := "non-persistent://public/default/testNonPersistentTopic"
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer client.Close()
@@ -717,7 +717,7 @@ func TestNonPersistentTopic(t *testing.T) {
 
 func TestProducerDuplicateNameOnSameTopic(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -908,7 +908,7 @@ func TestBatchDelayMessage(t *testing.T) {
 
 func TestDelayRelative(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -951,7 +951,7 @@ func TestDelayRelative(t *testing.T) {
 
 func TestDelayAbsolute(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -997,7 +997,7 @@ func TestMaxBatchSize(t *testing.T) {
 	batchMaxMessageSize := 512 * 1024
 
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1024,7 +1024,7 @@ func TestMaxBatchSize(t *testing.T) {
 func TestBatchingDisabled(t *testing.T) {
 	defaultMaxMessageSize := 128 * 1024
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1052,7 +1052,7 @@ func TestMaxMessageSize(t *testing.T) {
 	serverMaxMessageSize := 1024 * 1024
 
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1162,7 +1162,7 @@ func TestSendTimeout(t *testing.T) {
 	makeHTTPCall(t, http.MethodPost, quotaURL, fmt.Sprintf(quotaFmt, 10*1024))
 
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1206,7 +1206,7 @@ func TestSendTimeout(t *testing.T) {
 
 func TestProducerWithBackoffPolicy(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1250,7 +1250,7 @@ func TestSendContextExpired(t *testing.T) {
 	makeHTTPCall(t, http.MethodPost, quotaURL, fmt.Sprintf(quotaFmt, 1024))
 
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1521,7 +1521,7 @@ func TestProducerWithInterceptors(t *testing.T) {
 
 func TestProducerSendAfterClose(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1551,7 +1551,7 @@ func TestProducerSendAfterClose(t *testing.T) {
 
 func TestExactlyOnceWithProducerNameSpecified(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1840,7 +1840,7 @@ func TestProducerWithSchemaAndConsumerSchemaNotFound(t *testing.T) {
 
 func TestExclusiveProducer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -1871,7 +1871,7 @@ func TestExclusiveProducer(t *testing.T) {
 
 func TestWaitForExclusiveProducer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 		// Set the request timeout is 200ms
 		OperationTimeout: 200 * time.Millisecond,
 	})
@@ -1912,9 +1912,8 @@ func TestWaitForExclusiveProducer(t *testing.T) {
 }
 
 func TestMemLimitRejectProducerMessages(t *testing.T) {
-
 	c, err := NewClient(ClientOptions{
-		URL:              serviceURL,
+		URL:              serviceURL(),
 		MemoryLimitBytes: 100 * 1024,
 	})
 	assert.NoError(t, err)
@@ -1984,9 +1983,8 @@ func TestMemLimitRejectProducerMessages(t *testing.T) {
 }
 
 func TestMemLimitRejectProducerMessagesWithSchema(t *testing.T) {
-
 	c, err := NewClient(ClientOptions{
-		URL:              serviceURL,
+		URL:              serviceURL(),
 		MemoryLimitBytes: 100 * 6,
 	})
 	assert.NoError(t, err)
@@ -2077,9 +2075,8 @@ func TestMemLimitRejectProducerMessagesWithSchema(t *testing.T) {
 }
 
 func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
-
 	c, err := NewClient(ClientOptions{
-		URL:              serviceURL,
+		URL:              serviceURL(),
 		MemoryLimitBytes: 5 * 1024,
 	})
 	assert.NoError(t, err)
@@ -2143,9 +2140,8 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 }
 
 func TestMemLimitContextCancel(t *testing.T) {
-
 	c, err := NewClient(ClientOptions{
-		URL:              serviceURL,
+		URL:              serviceURL(),
 		MemoryLimitBytes: 100 * 1024,
 	})
 	assert.NoError(t, err)
@@ -2225,11 +2221,13 @@ func testSendMessagesWithMetadata(t *testing.T, disableBatch bool) {
 	})
 	assert.Nil(t, err)
 
-	msg := &ProducerMessage{EventTime: time.Now().Local(),
+	msg := &ProducerMessage{
+		EventTime:   time.Now().Local(),
 		Key:         "my-key",
 		OrderingKey: "my-ordering-key",
 		Properties:  map[string]string{"k1": "v1", "k2": "v2"},
-		Payload:     []byte("msg")}
+		Payload:     []byte("msg"),
+	}
 
 	_, err = producer.Send(context.Background(), msg)
 	assert.Nil(t, err)

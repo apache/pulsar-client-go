@@ -132,7 +132,7 @@ func runWithClientNamespace(fn func(*testing.T, Client, string)) func(*testing.T
 			t.Fatal(err)
 		}
 		c, err := NewClient(ClientOptions{
-			URL: serviceURL,
+			URL: serviceURL(),
 		})
 		if err != nil {
 			t.Fatal(err)

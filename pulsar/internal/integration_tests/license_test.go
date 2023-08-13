@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package license_test
+package integration
 
 import (
 	"os"

@@ -29,23 +29,48 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	integration "github.com/apache/pulsar-client-go/pulsar/internal/integration_tests"
+
 	"github.com/stretchr/testify/assert"
 
 	pkgerrors "github.com/pkg/errors"
 )
 
 const (
-	serviceURL    = "pulsar://localhost:6650"
-	serviceURLTLS = "pulsar+ssl://localhost:6651"
+// serviceURL    = "pulsar://localhost:6650"
+// serviceURLTLS = "pulsar+ssl://localhost:6651"
 
-	webServiceURL    = "http://localhost:8080"
-	webServiceURLTLS = "https://localhost:8443"
+// webServiceURL    = "http://localhost:8080"
+// webServiceURLTLS = "https://localhost:8443"
 
-	caCertsPath       = "../integration-tests/certs/cacert.pem"
-	tlsClientCertPath = "../integration-tests/certs/client-cert.pem"
-	tlsClientKeyPath  = "../integration-tests/certs/client-key.pem"
-	tokenFilePath     = "../integration-tests/tokens/token.txt"
+// caCertsPath       = "../integration-tests/certs/cacert.pem"
+// tlsClientCertPath = "../integration-tests/certs/client-cert.pem"
+// tlsClientKeyPath  = "../integration-tests/certs/client-key.pem"
+// tokenFilePath     = "../integration-tests/tokens/token.txt"
 )
+
+var (
+	caCertsPath       = integration.MustFilePath("certs/cacert.pem")
+	tlsClientCertPath = integration.MustFilePath("certs/client-cert.pem")
+	tlsClientKeyPath  = integration.MustFilePath("certs/client-key.pem")
+	tokenFilePath     = integration.MustFilePath("tokens/token.txt")
+)
+
+func serviceURL() string {
+	return integration.URL("pulsar", "6650")
+}
+
+func serviceURLTLS() string {
+	return integration.URL("pulsar+ssl", "6651")
+}
+
+func webServiceURL() string {
+	return integration.URL("http", "8080")
+}
+
+func webServiceURLTLS() string {
+	return integration.URL("https", "8443")
+}
 
 func newTopicName() string {
 	return fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
@@ -56,7 +81,7 @@ func newAuthTopicName() string {
 }
 
 func testEndpoint(parts ...string) string {
-	return webServiceURL + "/" + path.Join(parts...)
+	return webServiceURL() + "/" + path.Join(parts...)
 }
 
 func jsonHeaders() http.Header {
