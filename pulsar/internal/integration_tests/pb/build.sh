@@ -19,8 +19,8 @@
 #
 
 PROJECT_DIR=$(git rev-parse --show-toplevel)
-SOURCE_PATH="$PROJECT_DIR/integration-tests/pb"
-DEST_PATH="$PROJECT_DIR/integration-tests/pb"
+SOURCE_PATH="$PROJECT_DIR/pulsar/internal/integration_tests/pb"
+DEST_PATH="$PROJECT_DIR/pulsar/internal/integration_tests/pb"
 echo "source_path: $SOURCE_PATH"
 echo "dest_path: $DEST_PATH"
 protoc -I=$SOURCE_PATH --go_out=$DEST_PATH $SOURCE_PATH/*.proto

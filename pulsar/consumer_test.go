@@ -41,8 +41,8 @@ import (
 )
 
 var (
-	adminURL  = "http://localhost:8080"
-	lookupURL = "pulsar://localhost:6650"
+	adminURL  = webServiceURL()
+	lookupURL = serviceURL()
 )
 
 func TestProducerConsumer(t *testing.T) {
@@ -183,7 +183,6 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
-
 	if err != nil {
 		t.Fatal(err)
 		return
@@ -975,7 +974,8 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 	for i := 0; i < N; i++ {
 		wg.Add(1)
 		producer.SendAsync(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("msg-content-%d", i))},
+			Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+		},
 			func(id MessageID, producerMessage *ProducerMessage, e error) {
 				assert.NoError(t, e)
 				wg.Done()
@@ -991,7 +991,8 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 	for i := N; i < 2*N; i++ {
 		wg.Add(1)
 		producer.SendAsync(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("msg-content-%d", i))},
+			Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+		},
 			func(id MessageID, producerMessage *ProducerMessage, e error) {
 				assert.NoError(t, e)
 				wg.Done()
@@ -2688,7 +2689,6 @@ func TestOrderingOfKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 		consumer1.Ack(cm.Message)
 		receivedMessageIndex++
 	}
-
 }
 
 func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
@@ -3017,25 +3017,25 @@ func TestBatchProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
 func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 	// create new client instance for each producer and consumer
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer client.Close()
 
 	clientCryptoConsumer, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer clientCryptoConsumer.Close()
 
 	clientCryptoConsumerInvalidKeyReader, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer clientCryptoConsumerInvalidKeyReader.Close()
 
 	clientcryptoConsumerNoKeyReader, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer clientcryptoConsumerNoKeyReader.Close()
@@ -3149,7 +3149,7 @@ func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 
 func TestRSAEncryptionFailure(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	client.Close()
@@ -3431,7 +3431,7 @@ func readKey(keyName, path string, keyMeta map[string]string) (*crypto.Encryptio
 
 func TestConsumerEncryptionWithoutKeyReader(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer client.Close()
@@ -3555,7 +3555,7 @@ func TestConsumerEncryptionWithoutKeyReader(t *testing.T) {
 // TestEncryptDecryptRedeliveryOnFailure test redelivery failed messages
 func TestEncryptDecryptRedeliveryOnFailure(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 
@@ -3689,7 +3689,7 @@ func TestConsumerSeekByTimeOnPartitionedTopic(t *testing.T) {
 
 func TestAvailablePermitsLeak(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	client.Close()
@@ -3770,7 +3770,7 @@ func TestAvailablePermitsLeak(t *testing.T) {
 
 func TestConsumerWithBackoffPolicy(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.NoError(t, err)
 	defer client.Close()

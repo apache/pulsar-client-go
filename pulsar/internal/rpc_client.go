@@ -29,10 +29,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-var (
-	// ErrRequestTimeOut happens when request not finished in given requestTimeout.
-	ErrRequestTimeOut = errors.New("request timed out")
-)
+// ErrRequestTimeOut happens when request not finished in given requestTimeout.
+var ErrRequestTimeOut = errors.New("request timed out")
 
 type result struct {
 	*RPCResult
@@ -75,7 +73,8 @@ type rpcClient struct {
 }
 
 func NewRPCClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, pool ConnectionPool,
-	requestTimeout time.Duration, logger log.Logger, metrics *Metrics) RPCClient {
+	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
+) RPCClient {
 	return &rpcClient{
 		serviceNameResolver: serviceNameResolver,
 		pool:                pool,
@@ -86,7 +85,8 @@ func NewRPCClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, 
 }
 
 func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
+	message proto.Message,
+) (*RPCResult, error) {
 	var err error
 	var host *url.URL
 	var rpcResult *RPCResult
@@ -115,7 +115,8 @@ func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_
 }
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	cmdType pb.BaseCommand_Type, message proto.Message,
+) (*RPCResult, error) {
 	c.metrics.RPCRequestCount.Inc()
 	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
 	if err != nil {
@@ -151,7 +152,8 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 }
 
 func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
+	message proto.Message,
+) (*RPCResult, error) {
 	c.metrics.RPCRequestCount.Inc()
 
 	ch := make(chan result, 1)

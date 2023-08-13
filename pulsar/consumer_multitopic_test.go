@@ -30,7 +30,7 @@ func TestMultiTopicConsumerReceive(t *testing.T) {
 	topic2 := newTopicName()
 
 	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6650",
+		URL: serviceURL(),
 	})
 	if err != nil {
 		t.Fatal(err)

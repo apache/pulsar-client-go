@@ -26,14 +26,15 @@ import (
 
 	zms "github.com/AthenZ/athenz/libs/go/zmssvctoken"
 	zts "github.com/AthenZ/athenz/libs/go/ztsroletoken"
+	integration "github.com/apache/pulsar-client-go/pulsar/internal/integration_tests"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
 
-const (
-	clientKeyPath  = "../../integration-tests/certs/client-key.pem"
-	clientCertPath = "../../integration-tests/certs/client-cert.pem"
-	caCertPath     = "../../integration-tests/certs/cacert.pem"
+var (
+	clientCertPath = integration.MustFilePath("certs/client-cert.pem")
+	clientKeyPath  = integration.MustFilePath("certs/client-key.pem")
+	caCertPath     = integration.MustFilePath("certs/cacert.pem")
 )
 
 type MockTokenBuilder struct {
@@ -50,12 +51,16 @@ type MockRoleToken struct {
 
 func (m *MockTokenBuilder) SetExpiration(t time.Duration) {
 }
+
 func (m *MockTokenBuilder) SetHostname(h string) {
 }
+
 func (m *MockTokenBuilder) SetIPAddress(ip string) {
 }
+
 func (m *MockTokenBuilder) SetKeyService(keyService string) {
 }
+
 func (m *MockTokenBuilder) Token() zms.Token {
 	result := m.Called()
 	return result.Get(0).(zms.Token)

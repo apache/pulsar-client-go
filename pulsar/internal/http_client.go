@@ -58,7 +58,8 @@ type HTTPClient interface {
 
 func NewHTTPClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, tlsConfig *TLSOptions,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
-	authProvider auth.Provider) (HTTPClient, error) {
+	authProvider auth.Provider,
+) (HTTPClient, error) {
 	h := &httpClient{
 		ServiceNameResolver: serviceNameResolver,
 		requestTimeout:      requestTimeout,
@@ -169,14 +170,15 @@ func (c *httpClient) Get(endpoint string, obj interface{}, params map[string]str
 }
 
 func (c *httpClient) GetWithQueryParams(endpoint string, obj interface{}, params map[string]string,
-	decode bool) ([]byte, error) {
+	decode bool,
+) ([]byte, error) {
 	return c.GetWithOptions(endpoint, obj, params, decode, nil)
 }
 
 //nolint:bodyclose // false positive
 func (c *httpClient) GetWithOptions(endpoint string, obj interface{}, params map[string]string,
-	decode bool, file io.Writer) ([]byte, error) {
-
+	decode bool, file io.Writer,
+) ([]byte, error) {
 	req, err := c.newRequest(http.MethodGet, endpoint)
 	if err != nil {
 		return nil, err

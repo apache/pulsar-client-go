@@ -20,10 +20,12 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	integration "github.com/apache/pulsar-client-go/pulsar/internal/integration_tests"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -678,9 +680,11 @@ func TestReaderLatestInclusiveHasNext(t *testing.T) {
 }
 
 func TestReaderWithMultiHosts(t *testing.T) {
-	// Multi hosts included an unreached port and the actual port for verify retry logic
+	// Multi hosts included an unreached port and the actual port for verify
+	// retry logic
+	urls := integration.URL("pulsar", "6660") + "," + strings.TrimPrefix(serviceURL(), "pulsar://")
 	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6600,localhost:6650",
+		URL: urls,
 	})
 
 	assert.Nil(t, err)
@@ -866,7 +870,7 @@ func (b *testBackoffPolicy) IsExpectedIntervalFrom(startTime time.Time) bool {
 
 func TestReaderWithBackoffPolicy(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer client.Close()

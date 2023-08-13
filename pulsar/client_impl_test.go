@@ -31,6 +31,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	integration "github.com/apache/pulsar-client-go/pulsar/internal/integration_tests"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -44,7 +45,7 @@ func TestClient(t *testing.T) {
 
 func TestTLSConnectionCAError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:              serviceURLTLS,
+		URL:              serviceURLTLS(),
 		OperationTimeout: 5 * time.Second,
 	})
 	assert.NoError(t, err)
@@ -63,7 +64,7 @@ func TestTLSConnectionCAError(t *testing.T) {
 
 func TestTLSInsecureConnection(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                        serviceURLTLS,
+		URL:                        serviceURLTLS(),
 		TLSAllowInsecureConnection: true,
 	})
 	assert.NoError(t, err)
@@ -80,7 +81,7 @@ func TestTLSInsecureConnection(t *testing.T) {
 
 func TestTLSConnection(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
+		URL:                   serviceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 	})
 	assert.NoError(t, err)
@@ -97,7 +98,7 @@ func TestTLSConnection(t *testing.T) {
 
 func TestTLSConnectionHostNameVerification(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
+		URL:                   serviceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		TLSValidateHostname:   true,
 	})
@@ -134,7 +135,7 @@ func TestTLSConnectionHostNameVerificationError(t *testing.T) {
 
 func TestTLSAuthError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
+		URL:                   serviceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 	})
 	assert.NoError(t, err)
@@ -151,7 +152,7 @@ func TestTLSAuthError(t *testing.T) {
 
 func TestTLSAuth(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
+		URL:                   serviceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
 	})
@@ -173,7 +174,7 @@ func TestTLSAuthWithCertSupplier(t *testing.T) {
 		return &cert, err
 	}
 	client, err := NewClient(ClientOptions{
-		URL:                   serviceURLTLS,
+		URL:                   serviceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationFromTLSCertSupplier(supplier),
 	})
@@ -194,7 +195,7 @@ func TestTokenAuth(t *testing.T) {
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
-		URL:            serviceURL,
+		URL:            serviceURL(),
 		Authentication: NewAuthenticationToken(string(token)),
 	})
 	assert.NoError(t, err)
@@ -211,7 +212,7 @@ func TestTokenAuth(t *testing.T) {
 
 func TestTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
 			token, err := os.ReadFile(tokenFilePath)
 			if err != nil {
@@ -235,7 +236,7 @@ func TestTokenAuthWithSupplier(t *testing.T) {
 
 func TestTokenAuthFromFile(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:            serviceURL,
+		URL:            serviceURL(),
 		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
 	})
 	assert.NoError(t, err)
@@ -325,7 +326,7 @@ func TestOAuth2Auth(t *testing.T) {
 
 	oauth := NewAuthenticationOAuth2(params)
 	client, err := NewClient(ClientOptions{
-		URL:            serviceURL,
+		URL:            serviceURL(),
 		Authentication: oauth,
 	})
 	assert.NoError(t, err)
@@ -342,7 +343,7 @@ func TestOAuth2Auth(t *testing.T) {
 
 func TestTopicPartitions(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6650",
+		URL: serviceURL(),
 	})
 
 	assert.Nil(t, err)
@@ -375,7 +376,7 @@ func TestTopicPartitions(t *testing.T) {
 
 func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 	c, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	if err != nil {
 		t.Errorf("failed to create client error: %+v", err)
@@ -393,7 +394,7 @@ func TestNamespaceTopicsNamespaceDoesNotExit(t *testing.T) {
 
 func TestNamespaceTopicsNamespaceDoesNotExitWebURL(t *testing.T) {
 	c, err := NewClient(ClientOptions{
-		URL: webServiceURL,
+		URL: webServiceURL(),
 	})
 	if err != nil {
 		t.Errorf("failed to create client error: %+v", err)
@@ -435,7 +436,7 @@ func TestNamespaceTopics(t *testing.T) {
 	}()
 
 	c, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	if err != nil {
 		t.Errorf("failed to create client error: %+v", err)
@@ -459,7 +460,7 @@ func TestNamespaceTopics(t *testing.T) {
 	// add a non-persistent topic
 	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer client.Close()
@@ -510,7 +511,7 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 	}()
 
 	c, err := NewClient(ClientOptions{
-		URL: webServiceURL,
+		URL: webServiceURL(),
 	})
 	if err != nil {
 		t.Errorf("failed to create client error: %+v", err)
@@ -534,7 +535,7 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 	// add a non-persistent topic
 	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL: serviceURL(),
 	})
 	assert.Nil(t, err)
 	defer client.Close()
@@ -571,9 +572,11 @@ func anonymousNamespacePolicy() map[string]interface{} {
 }
 
 func TestRetryWithMultipleHosts(t *testing.T) {
+	// Multi hosts included an unreached port and the actual port for verify
+	// retry logic
 	// Multi hosts included an unreached port and the actual port for verify retry logic
 	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6600,localhost:6650",
+		URL: fmt.Sprintf("pulsar://localhost:%s,localhost:%s", "6660", integration.ExternalPort("6650")),
 	})
 
 	assert.Nil(t, err)
@@ -595,7 +598,7 @@ func TestRetryWithMultipleHosts(t *testing.T) {
 		if msgID, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
-			assert.Nil(t, err)
+			assert.Nil(t, msgID)
 		} else {
 			assert.NotNil(t, msgID)
 			msgIDs = append(msgIDs, msgID.Serialize())
@@ -622,12 +625,11 @@ func TestRetryWithMultipleHosts(t *testing.T) {
 
 	err = consumer.Unsubscribe()
 	assert.Nil(t, err)
-
 }
 
 func TestHTTPSConnectionCAError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:              webServiceURLTLS,
+		URL:              webServiceURLTLS(),
 		OperationTimeout: 5 * time.Second,
 	})
 	assert.NoError(t, err)
@@ -646,7 +648,7 @@ func TestHTTPSConnectionCAError(t *testing.T) {
 
 func TestHTTPSInsecureConnection(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                        webServiceURLTLS,
+		URL:                        webServiceURLTLS(),
 		TLSAllowInsecureConnection: true,
 	})
 	assert.NoError(t, err)
@@ -663,7 +665,7 @@ func TestHTTPSInsecureConnection(t *testing.T) {
 
 func TestHTTPSConnection(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 	})
 	assert.NoError(t, err)
@@ -680,7 +682,7 @@ func TestHTTPSConnection(t *testing.T) {
 
 func TestHTTPSConnectionHostNameVerification(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		TLSValidateHostname:   true,
 	})
@@ -717,7 +719,7 @@ func TestHTTPSConnectionHostNameVerificationError(t *testing.T) {
 
 func TestHTTPTopicPartitions(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: webServiceURL,
+		URL: webServiceURL(),
 	})
 
 	assert.Nil(t, err)
@@ -749,9 +751,10 @@ func TestHTTPTopicPartitions(t *testing.T) {
 }
 
 func TestRetryWithMultipleHttpHosts(t *testing.T) {
-	// Multi hosts included an unreached port and the actual port for verify retry logic
+	// Multi hosts included an unreached port and the actual port for verify
+	// retry logic
 	client, err := NewClient(ClientOptions{
-		URL: "http://localhost:8081,localhost:8080",
+		URL: fmt.Sprintf("http://localhost:%s,localhost:%s", "8081", integration.ExternalPort("8080")),
 	})
 
 	assert.Nil(t, err)
@@ -773,7 +776,7 @@ func TestRetryWithMultipleHttpHosts(t *testing.T) {
 		if msgID, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}); err != nil {
-			assert.Nil(t, err)
+			assert.Nil(t, msgID)
 		} else {
 			assert.NotNil(t, msgID)
 			msgIDs = append(msgIDs, msgID.Serialize())
@@ -800,12 +803,11 @@ func TestRetryWithMultipleHttpHosts(t *testing.T) {
 
 	err = consumer.Unsubscribe()
 	assert.Nil(t, err)
-
 }
 
 func TestHTTPSAuthError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 	})
 	assert.NoError(t, err)
@@ -822,7 +824,7 @@ func TestHTTPSAuthError(t *testing.T) {
 
 func TestHTTPSAuth(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
 	})
@@ -845,7 +847,7 @@ func TestHTTPSAuthWithCertSupplier(t *testing.T) {
 		return &cert, err
 	}
 	client, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationFromTLSCertSupplier(supplier),
 	})
@@ -867,7 +869,7 @@ func TestHTTPTokenAuth(t *testing.T) {
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
-		URL:            webServiceURL,
+		URL:            webServiceURL(),
 		Authentication: NewAuthenticationToken(string(token)),
 	})
 	assert.NoError(t, err)
@@ -884,7 +886,7 @@ func TestHTTPTokenAuth(t *testing.T) {
 
 func TestHTTPTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: webServiceURL,
+		URL: webServiceURL(),
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
 			token, err := os.ReadFile(tokenFilePath)
 			if err != nil {
@@ -908,7 +910,7 @@ func TestHTTPTokenAuthWithSupplier(t *testing.T) {
 
 func TestHTTPTokenAuthFromFile(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:            serviceURL,
+		URL:            serviceURL(),
 		Authentication: NewAuthenticationTokenFromFile(tokenFilePath),
 	})
 	assert.NoError(t, err)
@@ -925,7 +927,7 @@ func TestHTTPTokenAuthFromFile(t *testing.T) {
 
 func TestHTTPSTokenAuthFromFile(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		TLSValidateHostname:   true,
 		Authentication:        NewAuthenticationTokenFromFile(tokenFilePath),
@@ -961,7 +963,7 @@ func TestHTTPOAuth2Auth(t *testing.T) {
 
 	oauth := NewAuthenticationOAuth2(params)
 	client, err := NewClient(ClientOptions{
-		URL:            webServiceURL,
+		URL:            webServiceURL(),
 		Authentication: oauth,
 	})
 	assert.NoError(t, err)
@@ -995,7 +997,7 @@ func TestHTTPSOAuth2Auth(t *testing.T) {
 
 	oauth := NewAuthenticationOAuth2(params)
 	client, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		TLSValidateHostname:   true,
 		Authentication:        oauth,
@@ -1030,7 +1032,7 @@ func TestHTTPOAuth2AuthFailed(t *testing.T) {
 
 	oauth := NewAuthenticationOAuth2(params)
 	client, err := NewClient(ClientOptions{
-		URL:            webServiceURL,
+		URL:            webServiceURL(),
 		Authentication: oauth,
 	})
 	assert.NoError(t, err)
@@ -1051,7 +1053,7 @@ func TestHTTPBasicAuth(t *testing.T) {
 	require.NotNil(t, basicAuth)
 
 	client, err := NewClient(ClientOptions{
-		URL:            webServiceURL,
+		URL:            webServiceURL(),
 		Authentication: basicAuth,
 	})
 	require.NoError(t, err)
@@ -1073,7 +1075,7 @@ func TestHTTPSBasicAuth(t *testing.T) {
 	require.NotNil(t, basicAuth)
 
 	client, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		TLSValidateHostname:   true,
 		Authentication:        basicAuth,
@@ -1118,23 +1120,23 @@ func testTLSTransportWithBasicAuth(t *testing.T, url string) {
 }
 
 func TestServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
-	testTLSTransportWithBasicAuth(t, serviceURLTLS)
+	testTLSTransportWithBasicAuth(t, serviceURLTLS())
 }
 
 func TestWebServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
-	testTLSTransportWithBasicAuth(t, webServiceURLTLS)
+	testTLSTransportWithBasicAuth(t, webServiceURLTLS())
 }
 
 func TestConfigureConnectionMaxIdleTime(t *testing.T) {
 	_, err := NewClient(ClientOptions{
-		URL:                   serviceURL,
+		URL:                   serviceURL(),
 		ConnectionMaxIdleTime: 1 * time.Second,
 	})
 
 	assert.Error(t, err, "Should be failed when the connectionMaxIdleTime is less than minConnMaxIdleTime")
 
 	cli, err := NewClient(ClientOptions{
-		URL:                   serviceURL,
+		URL:                   serviceURL(),
 		ConnectionMaxIdleTime: -1, // Disabled
 	})
 
@@ -1142,7 +1144,7 @@ func TestConfigureConnectionMaxIdleTime(t *testing.T) {
 	cli.Close()
 
 	cli, err = NewClient(ClientOptions{
-		URL:                   serviceURL,
+		URL:                   serviceURL(),
 		ConnectionMaxIdleTime: 60 * time.Second,
 	})
 
@@ -1179,7 +1181,7 @@ func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer) {
 
 func TestAutoCloseIdleConnection(t *testing.T) {
 	cli, err := NewClient(ClientOptions{
-		URL:                   serviceURL,
+		URL:                   serviceURL(),
 		ConnectionMaxIdleTime: -1, // Disable auto release connections first, we will enable it manually later
 	})
 

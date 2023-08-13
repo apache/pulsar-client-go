@@ -30,25 +30,25 @@ import (
 )
 
 func TestTCClient(t *testing.T) {
-	//1. Prepare: create PulsarClient and init transaction coordinator client.
+	// 1. Prepare: create PulsarClient and init transaction coordinator client.
 	topic := newTopicName()
 	sub := "my-sub"
 	tc, client := createTcClient(t)
-	//2. Prepare: create Topic and Subscription.
+	// 2. Prepare: create Topic and Subscription.
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: sub,
 	})
 	assert.NoError(t, err)
-	//3. Test newTransaction, addSubscriptionToTxn, addPublishPartitionToTxn
-	//Create a transaction1 and add subscription and publish topic to the transaction.
+	// 3. Test newTransaction, addSubscriptionToTxn, addPublishPartitionToTxn
+	// Create a transaction1 and add subscription and publish topic to the transaction.
 	id1, err := tc.newTransaction(3 * time.Minute)
 	assert.NoError(t, err)
 	err = tc.addSubscriptionToTxn(id1, topic, sub)
 	assert.NoError(t, err)
 	err = tc.addPublishPartitionToTxn(id1, []string{topic})
 	assert.NoError(t, err)
-	//4. Verify the transaction1 stats
+	// 4. Verify the transaction1 stats
 	stats, err := transactionStats(id1)
 	assert.NoError(t, err)
 	assert.Equal(t, "OPEN", stats["status"])
@@ -61,18 +61,18 @@ func TestTCClient(t *testing.T) {
 	subscriptions := temp.(map[string]interface{})
 	_, ok = subscriptions[sub]
 	assert.True(t, ok)
-	//5. Test End transaction
-	//Create transaction2 and Commit the transaction.
+	// 5. Test End transaction
+	// Create transaction2 and Commit the transaction.
 	id2, err := tc.newTransaction(3 * time.Minute)
 	assert.NoError(t, err)
-	//6. Verify the transaction2 stats
+	// 6. Verify the transaction2 stats
 	stats2, err := transactionStats(id2)
 	assert.NoError(t, err)
 	assert.Equal(t, "OPEN", stats2["status"])
 	err = tc.endTxn(id2, pb.TxnAction_COMMIT)
 	assert.NoError(t, err)
 	stats2, err = transactionStats(id2)
-	//The transaction will be removed from txnMeta. Therefore, it is expected that stats2 is zero
+	// The transaction will be removed from txnMeta. Therefore, it is expected that stats2 is zero
 	if err == nil {
 		assert.Equal(t, "COMMITTED", stats2["status"])
 	} else {
@@ -83,7 +83,7 @@ func TestTCClient(t *testing.T) {
 	defer client.Close()
 }
 
-//Test points:
+// Test points:
 //	1. Abort and commit txn.
 //		1. Do nothing, just open a transaction and then commit it or abort it.
 //		The operations of committing/aborting txn should success at the first time and fail at the second time.
@@ -99,8 +99,8 @@ func TestTCClient(t *testing.T) {
 // TestTxnImplCommitOrAbort Test abort and commit txn
 func TestTxnImplCommitOrAbort(t *testing.T) {
 	tc, _ := createTcClient(t)
-	//1. Open a transaction and then commit it.
-	//The operations of committing txn1 should success at the first time and fail at the second time.
+	// 1. Open a transaction and then commit it.
+	// The operations of committing txn1 should success at the first time and fail at the second time.
 	txn1 := createTxn(tc, t)
 	err := txn1.Commit(context.Background())
 	require.Nil(t, err, fmt.Sprintf("Failed to commit the transaction %d:%d\n", txn1.txnID.MostSigBits,
@@ -110,8 +110,8 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	err = txn1.Commit(context.Background())
 	assert.Equal(t, err.(*Error).Result(), TransactionNoFoundError)
 	assert.Equal(t, txn1.GetState(), TxnError)
-	//2. Open a transaction and then abort it.
-	//The operations of aborting txn2 should success at the first time and fail at the second time.
+	// 2. Open a transaction and then abort it.
+	// The operations of aborting txn2 should success at the first time and fail at the second time.
 	id2, err := tc.newTransaction(time.Hour)
 	require.Nil(t, err, "Failed to new a transaction")
 	txn2 := newTransaction(*id2, tc, time.Hour)
@@ -132,18 +132,18 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 // TestRegisterOpAndEndOp Test the internal API including the registerSendOrAckOp and endSendOrAckOp.
 func TestRegisterOpAndEndOp(t *testing.T) {
 	tc, _ := createTcClient(t)
-	//1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
+	// 1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
 	res := registerOpAndEndOp(t, tc, 4, 3, nil, true)
 	assert.Equal(t, res.(*Error).Result(), TimeoutError)
 	res = registerOpAndEndOp(t, tc, 4, 3, nil, false)
 	assert.Equal(t, res.(*Error).Result(), TimeoutError)
 
-	//2. Register 3 operation and end 3 operation the transaction can be committed and aborted.
+	// 2. Register 3 operation and end 3 operation the transaction can be committed and aborted.
 	res = registerOpAndEndOp(t, tc, 3, 3, nil, true)
 	assert.Nil(t, res)
 	res = registerOpAndEndOp(t, tc, 3, 3, nil, false)
 	assert.Nil(t, res)
-	//3. Register an operation and end the operation with an error,
+	// 3. Register an operation and end the operation with an error,
 	// and then the state of the transaction should be replaced to errored.
 	res = registerOpAndEndOp(t, tc, 4, 4, errors.New(""), true)
 	assert.Equal(t, res.(*Error).Result(), InvalidStatus)
@@ -153,23 +153,23 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 
 // TestRegisterTopic Test the internal API, registerAckTopic and registerProducerTopic
 func TestRegisterTopic(t *testing.T) {
-	//1. Prepare: create PulsarClient and init transaction coordinator client.
+	// 1. Prepare: create PulsarClient and init transaction coordinator client.
 	topic := newTopicName()
 	sub := "my-sub"
 	tc, client := createTcClient(t)
-	//2. Prepare: create Topic and Subscription.
+	// 2. Prepare: create Topic and Subscription.
 	_, err := client.Subscribe(ConsumerOptions{
 		Topic:            topic,
 		SubscriptionName: sub,
 	})
 	assert.NoError(t, err)
 	txn := createTxn(tc, t)
-	//3. Create a topic and register topic and subscription.
+	// 3. Create a topic and register topic and subscription.
 	err = txn.registerAckTopic(topic, sub)
 	require.Nil(t, err, "Failed to register ack topic.")
 	err = txn.registerProducerTopic(topic)
 	require.Nil(t, err, "Failed to register ack topic.")
-	//4. Call http request to get the stats of the transaction to do verification.
+	// 4. Call http request to get the stats of the transaction to do verification.
 	stats2, err := transactionStats(&txn.txnID)
 	assert.NoError(t, err)
 	topics := stats2["producedPartitions"].(map[string]interface{})
@@ -206,7 +206,7 @@ func createTxn(tc *transactionCoordinatorClient, t *testing.T) *transaction {
 // createTcClient Create a transaction coordinator client to send request
 func createTcClient(t *testing.T) (*transactionCoordinatorClient, *client) {
 	c, err := NewClient(ClientOptions{
-		URL:                   webServiceURLTLS,
+		URL:                   webServiceURLTLS(),
 		TLSTrustCertsFilePath: caCertsPath,
 		Authentication:        NewAuthenticationTLS(tlsClientCertPath, tlsClientKeyPath),
 		EnableTransaction:     true,
