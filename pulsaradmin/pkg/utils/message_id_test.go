@@ -24,15 +24,15 @@ import (
 func TestParseMessageId(t *testing.T) {
 	id, err := ParseMessageID("1:1")
 	assert.Nil(t, err)
-	assert.Equal(t, MessageID{LedgerID: 1, EntryID: 1, PartitionedIndex: -1, BatchIndex: -1}, *id)
+	assert.Equal(t, MessageID{LedgerID: 1, EntryID: 1, PartitionIndex: -1, BatchIndex: -1}, *id)
 
 	id, err = ParseMessageID("1:2:3")
 	assert.Nil(t, err)
-	assert.Equal(t, MessageID{LedgerID: 1, EntryID: 2, PartitionedIndex: 3, BatchIndex: -1}, *id)
+	assert.Equal(t, MessageID{LedgerID: 1, EntryID: 2, PartitionIndex: 3, BatchIndex: -1}, *id)
 
 	id, err = ParseMessageID("1:2:3:4")
 	assert.Nil(t, err)
-	assert.Equal(t, MessageID{LedgerID: 1, EntryID: 2, PartitionedIndex: 3, BatchIndex: 4}, *id)
+	assert.Equal(t, MessageID{LedgerID: 1, EntryID: 2, PartitionIndex: 3, BatchIndex: 4}, *id)
 }
 
 func TestParseMessageIdErrors(t *testing.T) {

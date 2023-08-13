@@ -23,10 +23,10 @@ import (
 )
 
 type MessageID struct {
-	LedgerID         int64 `json:"ledgerId"`
-	EntryID          int64 `json:"entryId"`
-	PartitionedIndex int   `json:"partitionedIndex"`
-	BatchIndex       int   `json:"-"`
+	LedgerID       int64 `json:"ledgerId"`
+	EntryID        int64 `json:"entryId"`
+	PartitionIndex int   `json:"partitionIndex"`
+	BatchIndex     int   `json:"-"`
 }
 
 var Latest = MessageID{0x7fffffffffffffff, 0x7fffffffffffffff, -1, -1}
@@ -58,7 +58,7 @@ func ParseMessageID(str string) (*MessageID, error) {
 		if err != nil {
 			return nil, errors.Errorf("invalid partition index. %s", str)
 		}
-		m.PartitionedIndex = pi
+		m.PartitionIndex = pi
 	}
 
 	if len(s) == 4 {
@@ -75,6 +75,6 @@ func ParseMessageID(str string) (*MessageID, error) {
 func (m MessageID) String() string {
 	return strconv.FormatInt(m.LedgerID, 10) + ":" +
 		strconv.FormatInt(m.EntryID, 10) + ":" +
-		strconv.Itoa(m.PartitionedIndex) + ":" +
+		strconv.Itoa(m.PartitionIndex) + ":" +
 		strconv.Itoa(m.BatchIndex)
 }
