@@ -15,26 +15,11 @@
 # specific language governing permissions and limitations
 # under the License.
 
-# Explicit version of Pulsar and Golang images should be
-# set via the Makefile or CLI
-ARG PULSAR_IMAGE=apachepulsar/pulsar:latest
-ARG GOLANG_IMAGE=golang:latest
+headerPath = "Apache-2.0-ASF.txt"
 
-FROM $PULSAR_IMAGE as pulsar
-FROM $GOLANG_IMAGE
+excludes = [
+    "*.txt",
+]
 
-RUN apt-get update && apt-get install -y openjdk-17-jre ca-certificates
-
-COPY --from=pulsar /pulsar /pulsar
-
-### Add pulsar config
-COPY integration-tests/certs /pulsar/certs
-COPY integration-tests/tokens /pulsar/tokens
-COPY integration-tests/conf/.htpasswd \
-     integration-tests/conf/client.conf \
-     integration-tests/conf/standalone.conf \
-     /pulsar/conf/
-
-COPY . /pulsar/pulsar-client-go
-
-ENV PULSAR_EXTRA_OPTS="-Dpulsar.auth.basic.conf=/pulsar/conf/.htpasswd"
+[mapping.DOUBLESLASH_STYLE]
+extensions = ["go"]

@@ -29,7 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      - run: make lint
+      - name: Check license header
+        run: docker run --rm -v $(pwd):/github/workspace ghcr.io/korandoru/hawkeye-native:v3 check
+      - name: Run golangci-lint
+        run: make lint
 
   integration-tests:
     runs-on: ubuntu-latest
