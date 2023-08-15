@@ -22,8 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/auth"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/auth"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 )
 
 func TestPulsarClientEndpointEscapes(t *testing.T) {

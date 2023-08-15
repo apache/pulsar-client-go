@@ -21,10 +21,10 @@ import (
 	"path"
 	"time"
 
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/auth"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
-	"github.com/streamnative/pulsar-admin-go/pkg/rest"
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/auth"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 const (

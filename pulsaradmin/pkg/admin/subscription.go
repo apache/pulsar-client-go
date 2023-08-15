@@ -26,7 +26,7 @@ import (
 
 	"github.com/golang/protobuf/proto" //nolint:staticcheck
 
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Subscriptions is admin interface for subscriptions management

@@ -1,43 +1,23 @@
-<!--
-	
-	  Copyright 2023 StreamNative, Inc.
-
-    Licensed under the Apache License, Version 2.0 (the "License");
-    you may not use this file except in compliance
-    with the License.  You may obtain a copy of the License at
-
-      http://www.apache.org/licenses/LICENSE-2.0
-
-    Unless required by applicable law or agreed to in writing,
-    software distributed under the License is distributed on an
-    "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
-    KIND, either express or implied.  See the License for the
-    specific language governing permissions and limitations
-    under the License.
-
--->
-
 # Contributing guidelines
 
 ## Project structure
+
 The overall project structure is illustrated below:
 
-```shell
+```text
 ├── pkg/
-│   ├── admin/
-│   │   ├── auth/
-│   │   ├── config/
-│   ├── rest/
-│   └── utils/
-├── alias.go
-├── go.mod
-└── go.sum
+│   ├── admin/
+│   │   ├── auth/
+│   │   ├── config/
+│   ├── rest/
+│   └── utils/
+└── alias.go
 ```
 
-- The `alias.go` file in the root defines `pulsaradmin` package scope, which contains shortcuts of some types and functions from the `pkg`. 
+- The `alias.go` file in the root defines `pulsaradmin` package scope, which contains shortcuts of some types and functions from the `pkg`.
 - The `pkg/admin` package contains all operations for pulsar admin resources. *Note: We should add a new file here if we wanna support a new resource.*
   - The `pkg/admin/config` package contains configuration options for constructing a pulsar admin client.
-  - The `pkg/admin/auth` package contains auth providers which work in transport layer. 
+  - The `pkg/admin/auth` package contains auth providers which work in transport layer.
 - The `pkg/rest` package contains a wrapped HTTP client for requesting pulsar REST API.
 - The `pkg/utils` package contains common data structures and functions.
 
@@ -67,10 +47,10 @@ Please read through below conventions before contributions.
   - Please consider package name when selecting an interface name, and avoid redundancy. For example, `storage.Interface` is better than `storage.StorageInterface`.
   - Do not use uppercase characters, underscores, or dashes in package names.
   - Please consider parent directory name when choosing a package name. For example, `pkg/controllers/autoscaler/foo.go` should say `package autoscaler` not `package autoscalercontroller`.
-      - Unless there's a good reason, the `package foo` line should match the name of the directory in which the `.go` file exists.
-      - Importers can use a different name if they need to disambiguate.
+    - Unless there's a good reason, the `package foo` line should match the name of the directory in which the `.go` file exists.
+    - Importers can use a different name if they need to disambiguate.
   - Locks should be called `lock` and should never be embedded (always `lock sync.Mutex`). When multiple locks are present, give each lock a distinct name following Go conventions: `stateLock`, `mapLock` etc.
-  
+
 ### Folder and file conventions
 
 - All filenames should be lowercase.
