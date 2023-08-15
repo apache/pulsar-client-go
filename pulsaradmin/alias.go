@@ -16,8 +16,8 @@
 package pulsaradmin
 
 import (
-	"github.com/streamnative/pulsar-admin-go/pkg/admin"
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 )
 
 // Client contains all admin interfaces for operating pulsar resources

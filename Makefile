@@ -29,6 +29,7 @@ GOROOT ?= $(shell go env GOROOT)
 
 build:
 	go build ./pulsar
+	go build ./pulsaradmin
 	go build -o bin/pulsar-perf ./perf
 
 lint: bin/golangci-lint

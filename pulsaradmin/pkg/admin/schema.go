@@ -19,7 +19,7 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Schema is admin interface for schema management

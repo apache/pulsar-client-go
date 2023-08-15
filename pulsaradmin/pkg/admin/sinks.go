@@ -26,7 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Sinks is admin interface for sinks management

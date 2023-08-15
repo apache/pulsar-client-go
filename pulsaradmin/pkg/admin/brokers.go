@@ -20,7 +20,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/streamnative/pulsar-admin-go/pkg/utils"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Brokers is admin interface for brokers management

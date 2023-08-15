@@ -20,7 +20,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/oauth2"
 
-	"github.com/streamnative/pulsar-admin-go/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 )
 
 // Provider provide a general method to add auth message
