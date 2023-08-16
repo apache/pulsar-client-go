@@ -40,7 +40,7 @@ github:
     # disable merge button:
     merge:   false
     # disable rebase button:
-    rebase:  true
+    rebase:  false
 
 
 notifications:
