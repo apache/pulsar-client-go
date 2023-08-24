@@ -1644,6 +1644,13 @@ func (pc *partitionConsumer) reconnectToBroker() {
 		pc.log.Info("Reconnecting to broker in ", delayReconnectTime)
 		time.Sleep(delayReconnectTime)
 
+		// double check
+		if pc.getConsumerState() != consumerReady {
+			// Consumer is already closing
+			pc.log.Info("consumer state not ready, exit reconnect")
+			return
+		}
+
 		err := pc.grabConn()
 		if err == nil {
 			// Successfully reconnected
