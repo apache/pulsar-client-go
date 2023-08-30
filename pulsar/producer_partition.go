@@ -1286,6 +1286,8 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 		return
 	}
 
+	defer close(p.dataChan)
+	defer close(p.cmdChan)
 	p.log.Info("Closing producer")
 
 	id := p.client.rpcClient.NewRequestID()
@@ -1299,6 +1301,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	} else {
 		p.log.Info("Closed producer")
 	}
+	p.failPendingMessages()
 
 	if p.batchBuilder != nil {
 		if err = p.batchBuilder.Close(); err != nil {
@@ -1309,6 +1312,63 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.setProducerState(producerClosed)
 	p._getConn().UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
+}
+
+func (p *partitionProducer) failPendingMessages() {
+	curViewItems := p.pendingQueue.ReadableSlice()
+	viewSize := len(curViewItems)
+	if viewSize <= 0 {
+		return
+	}
+	p.log.Infof("Failing %d messages on closing producer", viewSize)
+	lastViewItem := curViewItems[viewSize-1].(*pendingItem)
+
+	// iterate at most viewSize items
+	for i := 0; i < viewSize; i++ {
+		item := p.pendingQueue.CompareAndPoll(
+			func(m interface{}) bool {
+				return m != nil
+			})
+
+		if item == nil {
+			return
+		}
+
+		pi := item.(*pendingItem)
+		pi.Lock()
+
+		for _, i := range pi.sendRequests {
+			sr := i.(*sendRequest)
+			if sr.msg != nil {
+				size := len(sr.msg.Payload)
+				p.releaseSemaphoreAndMem(sr.reservedMem)
+				p.metrics.MessagesPending.Dec()
+				p.metrics.BytesPending.Sub(float64(size))
+				p.log.WithError(errProducerClosed).
+					WithField("size", size).
+					WithField("properties", sr.msg.Properties)
+			}
+
+			if sr.callback != nil {
+				sr.callbackOnce.Do(func() {
+					runCallback(sr.callback, nil, sr.msg, errProducerClosed)
+				})
+			}
+			if sr.transaction != nil {
+				sr.transaction.endSendOrAckOp(nil)
+			}
+		}
+
+		// flag the sending has completed with error, flush make no effect
+		pi.Complete(errProducerClosed)
+		pi.Unlock()
+
+		// finally reached the last view item, current iteration ends
+		if pi == lastViewItem {
+			p.log.Infof("%d messages complete failed", viewSize)
+			return
+		}
+	}
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
