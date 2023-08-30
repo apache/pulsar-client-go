@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package config
+package pulsaradmin
 
 import (
 	"testing"
@@ -24,9 +24,9 @@ import (
 )
 
 func TestApiVersion_String(t *testing.T) {
-	assert.Equal(t, "", V1.String())
-	assert.Equal(t, "v2", V2.String())
-	assert.Equal(t, "v3", V3.String())
+	assert.Equal(t, "", APIV1.String())
+	assert.Equal(t, "v2", APIV2.String())
+	assert.Equal(t, "v3", APIV3.String())
 	var undefinedAPIVersion APIVersion
 	assert.Equal(t, DefaultAPIVersion, undefinedAPIVersion.String())
 }

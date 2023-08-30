@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 type AuthPolicies struct {
 	NamespaceAuth         map[string][]AuthAction            `json:"namespace_auth"`

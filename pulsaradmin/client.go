@@ -15,30 +15,26 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package pulsaradmin
 
 import (
+	"fmt"
 	"net/http"
 	"net/url"
 	"path"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/auth"
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/apache/pulsar-client-go/pulsaradmin/internal/rest"
 )
 
 const (
 	DefaultWebServiceURL       = "http://localhost:8080"
+	DefaultBKWebServiceURL     = "pulsar://localhost:6650"
 	DefaultHTTPTimeOutDuration = 5 * time.Minute
+	Product                    = "pulsar-admin-go"
 	ReleaseVersion             = "None"
+	adminBasePath              = `/admin`
 )
-
-type TLSOptions struct {
-	TrustCertsFilePath      string
-	AllowInsecureConnection bool
-}
 
 // Client provides a client to the Pulsar Restful API
 type Client interface {
@@ -60,55 +56,58 @@ type Client interface {
 }
 
 type pulsarClient struct {
-	Client     *rest.Client
-	APIVersion config.APIVersion
+	restClient *rest.Client
+	apiProfile APIProfile
 }
 
-// New returns a new client
-func New(config *config.Config) (Client, error) {
-	authProvider, err := auth.GetAuthProvider(config)
-	if err != nil {
-		return nil, err
-	}
-	return NewPulsarClientWithAuthProvider(config, authProvider)
-}
-
-// NewWithAuthProvider creates a client with auth provider.
-// Deprecated: Use NewPulsarClientWithAuthProvider instead.
-func NewWithAuthProvider(config *config.Config, authProvider auth.Provider) Client {
-	client, err := NewPulsarClientWithAuthProvider(config, authProvider)
-	if err != nil {
-		panic(err)
-	}
-	return client
-}
-
-// NewPulsarClientWithAuthProvider create a client with auth provider.
-func NewPulsarClientWithAuthProvider(config *config.Config, authProvider auth.Provider) (Client, error) {
-	if len(config.WebServiceURL) == 0 {
+// NewClient returns a new client
+func NewClient(config ClientConfig) (Client, error) {
+	if config.WebServiceURL == "" {
 		config.WebServiceURL = DefaultWebServiceURL
+	}
+	if config.BKWebServiceURL == "" {
+		config.BKWebServiceURL = DefaultBKWebServiceURL
+	}
+	if config.APIProfile == nil {
+		config.APIProfile = defaultAPIProfile()
+	}
+
+	baseTransport := config.CustomTransport
+	if baseTransport == nil {
+		defaultTransport, err := defaultTransport(config)
+		if err != nil {
+			return nil, fmt.Errorf("initializing default transport: %w", err)
+		}
+		baseTransport = defaultTransport
+	}
+
+	clientTransport := http.RoundTripper(baseTransport)
+
+	if config.AuthProvider != nil {
+		authTransport, err := config.AuthProvider(baseTransport)
+		if err != nil {
+			return nil, fmt.Errorf("auth provider: %w", err)
+		}
+		if authTransport != nil {
+			clientTransport = authTransport
+		}
 	}
 
 	return &pulsarClient{
-		APIVersion: config.PulsarAPIVersion,
-		Client: &rest.Client{
-			ServiceURL:  config.WebServiceURL,
-			VersionInfo: ReleaseVersion,
-			HTTPClient: &http.Client{
-				Timeout:   DefaultHTTPTimeOutDuration,
-				Transport: authProvider,
-			},
-		},
+		restClient: rest.NewClient(clientTransport, config.WebServiceURL, Product+`/`+ReleaseVersion),
+		apiProfile: *config.APIProfile,
 	}, nil
 }
 
-func (c *pulsarClient) endpoint(componentPath string, parts ...string) string {
+func (c *pulsarClient) endpoint(apiVersion APIVersion, componentPath string, parts ...string) string {
 	escapedParts := make([]string, len(parts))
 	for i, part := range parts {
 		escapedParts[i] = url.PathEscape(part)
 	}
 	return path.Join(
-		utils.MakeHTTPPath(c.APIVersion.String(), componentPath),
+		adminBasePath,
+		apiVersion.String(),
+		componentPath,
 		path.Join(escapedParts...),
 	)
 }

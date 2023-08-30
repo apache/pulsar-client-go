@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 // var TopicsMap map[string]map[string]map[string]TopicStats
 

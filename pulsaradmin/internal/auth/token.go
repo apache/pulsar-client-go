@@ -18,80 +18,63 @@
 package auth
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"strings"
 
 	"github.com/pkg/errors"
+
+	"github.com/apache/pulsar-client-go/pulsaradmin/internal/httptools"
 )
 
 const (
-	tokenPrefix         = "token:"
-	filePrefix          = "file:"
-	TokenPluginName     = "org.apache.pulsar.client.impl.auth.AuthenticationToken"
-	TokePluginShortName = "token"
+	tokenPrefix = "token:"
+	filePrefix  = "file:"
 )
 
-type Token struct {
-	Token string `json:"token"`
-}
-
-type TokenAuthProvider struct {
+type TokenTransport struct {
+	Token string
 	T     http.RoundTripper
-	token string
 }
 
-// NewAuthenticationToken return a interface of Provider with a string token.
-func NewAuthenticationToken(token string, transport http.RoundTripper) (*TokenAuthProvider, error) {
-	if len(token) == 0 {
-		return nil, errors.New("No token provided")
+func NewTokenTransport(tokenData string, transport *http.Transport) (*TokenTransport, error) {
+	tokenData = strings.TrimSpace(tokenData)
+	if len(tokenData) == 0 {
+		return nil, errors.New("empty token")
 	}
-	return &TokenAuthProvider{token: token, T: transport}, nil
+	return &TokenTransport{
+		Token: tokenData,
+		T:     transport,
+	}, nil
 }
 
-// NewAuthenticationTokenFromFile return a interface of a Provider with a string token file path.
-func NewAuthenticationTokenFromFile(tokenFilePath string, transport http.RoundTripper) (*TokenAuthProvider, error) {
-	data, err := os.ReadFile(tokenFilePath)
-	if err != nil {
-		return nil, err
+func NewTokenTransportFromKV(paramString string, transport *http.Transport) (*TokenTransport, error) {
+	switch {
+	case strings.HasPrefix(paramString, tokenPrefix):
+		token := paramString[len(tokenPrefix):]
+		return NewTokenTransport(token, transport)
+	case strings.HasPrefix(paramString, filePrefix):
+		tokenFile := paramString[len(filePrefix):]
+		return NewTokenTransportFromFile(tokenFile, transport)
+	default:
+		return NewTokenTransport(paramString, transport)
 	}
-	token := strings.Trim(string(data), " \n")
-	return NewAuthenticationToken(token, transport)
 }
 
-func NewAuthenticationTokenFromAuthParams(encodedAuthParam string,
-	transport http.RoundTripper) (*TokenAuthProvider, error) {
-	var tokenAuthProvider *TokenAuthProvider
-	var err error
-
-	var tokenJSON Token
-	err = json.Unmarshal([]byte(encodedAuthParam), &tokenJSON)
+func NewTokenTransportFromFile(tokenPath string, transport *http.Transport) (*TokenTransport, error) {
+	fileContents, err := os.ReadFile(tokenPath)
 	if err != nil {
-		switch {
-		case strings.HasPrefix(encodedAuthParam, tokenPrefix):
-			tokenAuthProvider, err = NewAuthenticationToken(strings.TrimPrefix(encodedAuthParam, tokenPrefix), transport)
-		case strings.HasPrefix(encodedAuthParam, filePrefix):
-			tokenAuthProvider, err = NewAuthenticationTokenFromFile(strings.TrimPrefix(encodedAuthParam, filePrefix), transport)
-		default:
-			tokenAuthProvider, err = NewAuthenticationToken(encodedAuthParam, transport)
+		if os.IsNotExist(err) {
+			return nil, errors.New("token file not found")
 		}
-	} else {
-		tokenAuthProvider, err = NewAuthenticationToken(tokenJSON.Token, transport)
+		return nil, fmt.Errorf("unable to open token file: %v", err)
 	}
-	return tokenAuthProvider, err
+	return NewTokenTransport(string(fileContents), transport)
 }
 
-func (p *TokenAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", p.token))
+func (p *TokenTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	req = httptools.CloneReq(req)
+	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", p.Token))
 	return p.T.RoundTrip(req)
-}
-
-func (p *TokenAuthProvider) Transport() http.RoundTripper {
-	return p.T
-}
-
-func (p *TokenAuthProvider) WithTransport(tripper http.RoundTripper) {
-	p.T = tripper
 }

@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 type Resources struct {
 	CPU  float64 `json:"cpu"`

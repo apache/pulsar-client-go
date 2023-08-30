@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 type SourceConfig struct {
 	Tenant    string `json:"tenant,omitempty" yaml:"tenant"`

@@ -15,72 +15,70 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
-
-import (
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-)
+package pulsaradmin
 
 type ResourceQuotas interface {
 	// Get default resource quota for new resource bundles.
-	GetDefaultResourceQuota() (*utils.ResourceQuota, error)
+	GetDefaultResourceQuota() (*ResourceQuota, error)
 
 	// Set default resource quota for new namespace bundles.
-	SetDefaultResourceQuota(quota utils.ResourceQuota) error
+	SetDefaultResourceQuota(quota ResourceQuota) error
 
 	// Get resource quota of a namespace bundle.
-	GetNamespaceBundleResourceQuota(namespace, bundle string) (*utils.ResourceQuota, error)
+	GetNamespaceBundleResourceQuota(namespace, bundle string) (*ResourceQuota, error)
 
 	// Set resource quota for a namespace bundle.
-	SetNamespaceBundleResourceQuota(namespace, bundle string, quota utils.ResourceQuota) error
+	SetNamespaceBundleResourceQuota(namespace, bundle string, quota ResourceQuota) error
 
 	// Reset resource quota for a namespace bundle to default value.
 	ResetNamespaceBundleResourceQuota(namespace, bundle string) error
 }
 
 type resource struct {
-	pulsar   *pulsarClient
-	basePath string
+	pulsar     *pulsarClient
+	basePath   string
+	apiVersion APIVersion
 }
 
 func (c *pulsarClient) ResourceQuotas() ResourceQuotas {
 	return &resource{
-		pulsar:   c,
-		basePath: "/resource-quotas",
+		pulsar:     c,
+		basePath:   "/resource-quotas",
+		apiVersion: c.apiProfile.ResourceQuotas,
 	}
 }
 
-func (r *resource) GetDefaultResourceQuota() (*utils.ResourceQuota, error) {
-	endpoint := r.pulsar.endpoint(r.basePath)
-	var quota utils.ResourceQuota
-	err := r.pulsar.Client.Get(endpoint, &quota)
+func (r *resource) GetDefaultResourceQuota() (*ResourceQuota, error) {
+	endpoint := r.pulsar.endpoint(r.apiVersion, r.basePath)
+	var quota ResourceQuota
+	err := r.pulsar.restClient.Get(endpoint, &quota)
 	if err != nil {
 		return nil, err
 	}
 	return &quota, nil
 }
 
-func (r *resource) SetDefaultResourceQuota(quota utils.ResourceQuota) error {
-	endpoint := r.pulsar.endpoint(r.basePath)
-	return r.pulsar.Client.Post(endpoint, &quota)
+func (r *resource) SetDefaultResourceQuota(quota ResourceQuota) error {
+	endpoint := r.pulsar.endpoint(r.apiVersion, r.basePath)
+	return r.pulsar.restClient.Post(endpoint, &quota)
 }
 
-func (r *resource) GetNamespaceBundleResourceQuota(namespace, bundle string) (*utils.ResourceQuota, error) {
-	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
-	var quota utils.ResourceQuota
-	err := r.pulsar.Client.Get(endpoint, &quota)
+func (r *resource) GetNamespaceBundleResourceQuota(namespace, bundle string) (*ResourceQuota, error) {
+	endpoint := r.pulsar.endpoint(r.apiVersion, r.basePath, namespace, bundle)
+	var quota ResourceQuota
+	err := r.pulsar.restClient.Get(endpoint, &quota)
 	if err != nil {
 		return nil, err
 	}
 	return &quota, nil
 }
 
-func (r *resource) SetNamespaceBundleResourceQuota(namespace, bundle string, quota utils.ResourceQuota) error {
-	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
-	return r.pulsar.Client.Post(endpoint, &quota)
+func (r *resource) SetNamespaceBundleResourceQuota(namespace, bundle string, quota ResourceQuota) error {
+	endpoint := r.pulsar.endpoint(r.apiVersion, r.basePath, namespace, bundle)
+	return r.pulsar.restClient.Post(endpoint, &quota)
 }
 
 func (r *resource) ResetNamespaceBundleResourceQuota(namespace, bundle string) error {
-	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
-	return r.pulsar.Client.Delete(endpoint)
+	endpoint := r.pulsar.endpoint(r.apiVersion, r.basePath, namespace, bundle)
+	return r.pulsar.restClient.Delete(endpoint)
 }

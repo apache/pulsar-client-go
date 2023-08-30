@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 type Metrics struct {
 	Metrics    map[string]interface{} `json:"metrics"`

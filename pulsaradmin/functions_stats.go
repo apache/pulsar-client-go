@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 type FunctionStats struct {
 	// Overall total number of records function received from source

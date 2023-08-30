@@ -19,90 +19,61 @@ package auth
 
 import (
 	"crypto/tls"
-	"encoding/json"
+	"fmt"
 	"net/http"
 	"strings"
+
+	"github.com/pkg/errors"
 )
 
-const (
-	TLSPluginName      = "org.apache.pulsar.client.impl.auth.AuthenticationTls"
-	TLSPluginShortName = "tls"
-)
-
-type TLS struct {
-	TLSCertFile string `json:"tlsCertFile"`
-	TLSKeyFile  string `json:"tlsKeyFile"`
+type TLSTransport struct {
+	T http.RoundTripper
 }
 
-type TLSAuthProvider struct {
-	certificatePath string
-	privateKeyPath  string
-	T               http.RoundTripper
-}
-
-// NewAuthenticationTLS initialize the authentication provider
-func NewAuthenticationTLS(certificatePath string, privateKeyPath string,
-	transport http.RoundTripper) (*TLSAuthProvider, error) {
-	provider := &TLSAuthProvider{
-		certificatePath: certificatePath,
-		privateKeyPath:  privateKeyPath,
-		T:               transport,
+// NewTLSTransport initialize the authentication provider
+func NewTLSTransport(certificatePath string, privateKeyPath string, transport *http.Transport) (*TLSTransport, error) {
+	switch {
+	case certificatePath == "":
+		return nil, errors.New("certificate path required")
+	case privateKeyPath == "":
+		return nil, errors.New("private key path required")
 	}
-	if err := provider.configTLS(); err != nil {
-		return nil, err
-	}
-	return provider, nil
-}
 
-func NewAuthenticationTLSFromAuthParams(encodedAuthParams string,
-	transport http.RoundTripper) (*TLSAuthProvider, error) {
-	var certificatePath string
-	var privateKeyPath string
-
-	var tlsJSON TLS
-	err := json.Unmarshal([]byte(encodedAuthParams), &tlsJSON)
+	cert, err := tls.LoadX509KeyPair(certificatePath, privateKeyPath)
 	if err != nil {
-		parts := strings.Split(encodedAuthParams, ",")
-		for _, part := range parts {
-			kv := strings.Split(part, ":")
-			switch kv[0] {
-			case "tlsCertFile":
-				certificatePath = kv[1]
-			case "tlsKeyFile":
-				privateKeyPath = kv[1]
-			}
+		return nil, fmt.Errorf("loading TLS certificates: %w", err)
+	}
+
+	newTransport := transport.Clone()
+	newTransport.TLSClientConfig.Certificates = append([]tls.Certificate{cert},
+		newTransport.TLSClientConfig.Certificates...)
+
+	return &TLSTransport{
+		T: newTransport,
+	}, nil
+}
+
+func NewTLSTransportFromKV(paramString string, transport *http.Transport) (*TLSTransport, error) {
+	var (
+		certificatePath string
+		privateKeyPath  string
+	)
+	parts := strings.Split(paramString, ",")
+	for _, part := range parts {
+		kv := strings.Split(part, ":")
+		switch kv[0] {
+		case "tlsCertFile":
+			certificatePath = kv[1]
+		case "tlsKeyFile":
+			privateKeyPath = kv[1]
 		}
-	} else {
-		certificatePath = tlsJSON.TLSCertFile
-		privateKeyPath = tlsJSON.TLSKeyFile
 	}
-
-	return NewAuthenticationTLS(certificatePath, privateKeyPath, transport)
+	if certificatePath == "" && privateKeyPath == "" {
+		return nil, errors.New(`TLS auth params must be in the form of "tlsCertFile:<path>,tlsKeyFile:<path>"`)
+	}
+	return NewTLSTransport(certificatePath, privateKeyPath, transport)
 }
 
-func (p *TLSAuthProvider) GetTLSCertificate() (*tls.Certificate, error) {
-	cert, err := tls.LoadX509KeyPair(p.certificatePath, p.privateKeyPath)
-	return &cert, err
-}
-
-func (p *TLSAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+func (p *TLSTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return p.T.RoundTrip(req)
-}
-
-func (p *TLSAuthProvider) Transport() http.RoundTripper {
-	return p.T
-}
-
-func (p *TLSAuthProvider) configTLS() error {
-	cert, err := p.GetTLSCertificate()
-	if err != nil {
-		return err
-	}
-	transport := p.T.(*http.Transport)
-	transport.TLSClientConfig.Certificates = []tls.Certificate{*cert}
-	return nil
-}
-
-func (p *TLSAuthProvider) WithTransport(tripper http.RoundTripper) {
-	p.T = tripper
 }

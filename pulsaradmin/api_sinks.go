@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package pulsaradmin
 
 import (
 	"bytes"
@@ -27,8 +27,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Sinks is admin interface for sinks management
@@ -37,28 +35,28 @@ type Sinks interface {
 	ListSinks(tenant, namespace string) ([]string, error)
 
 	// GetSink returns the configuration for the specified sink
-	GetSink(tenant, namespace, Sink string) (utils.SinkConfig, error)
+	GetSink(tenant, namespace, Sink string) (SinkConfig, error)
 
 	// CreateSink creates a new sink
-	CreateSink(config *utils.SinkConfig, fileName string) error
+	CreateSink(config *SinkConfig, fileName string) error
 
 	// CreateSinkWithURL creates a new sink by providing url from which fun-pkg can be downloaded. supported url: http/file
-	CreateSinkWithURL(config *utils.SinkConfig, pkgURL string) error
+	CreateSinkWithURL(config *SinkConfig, pkgURL string) error
 
 	// UpdateSink updates the configuration for a sink.
-	UpdateSink(config *utils.SinkConfig, fileName string, options *utils.UpdateOptions) error
+	UpdateSink(config *SinkConfig, fileName string, options *UpdateOptions) error
 
 	// UpdateSinkWithURL updates a sink by providing url from which fun-pkg can be downloaded. supported url: http/file
-	UpdateSinkWithURL(config *utils.SinkConfig, pkgURL string, options *utils.UpdateOptions) error
+	UpdateSinkWithURL(config *SinkConfig, pkgURL string, options *UpdateOptions) error
 
 	// DeleteSink deletes an existing sink
 	DeleteSink(tenant, namespace, Sink string) error
 
 	// GetSinkStatus returns the current status of a sink.
-	GetSinkStatus(tenant, namespace, Sink string) (utils.SinkStatus, error)
+	GetSinkStatus(tenant, namespace, Sink string) (SinkStatus, error)
 
 	// GetSinkStatusWithID returns the current status of a sink instance.
-	GetSinkStatusWithID(tenant, namespace, Sink string, id int) (utils.SinkInstanceStatusData, error)
+	GetSinkStatusWithID(tenant, namespace, Sink string, id int) (SinkInstanceStatusData, error)
 
 	// RestartSink restarts all sink instances
 	RestartSink(tenant, namespace, Sink string) error
@@ -79,22 +77,24 @@ type Sinks interface {
 	StartSinkWithID(tenant, namespace, Sink string, id int) error
 
 	// GetBuiltInSinks fetches a list of supported Pulsar IO sinks currently running in cluster mode
-	GetBuiltInSinks() ([]*utils.ConnectorDefinition, error)
+	GetBuiltInSinks() ([]*ConnectorDefinition, error)
 
 	// ReloadBuiltInSinks reload the available built-in connectors, include Source and Sink
 	ReloadBuiltInSinks() error
 }
 
 type sinks struct {
-	pulsar   *pulsarClient
-	basePath string
+	pulsar     *pulsarClient
+	basePath   string
+	apiVersion APIVersion
 }
 
 // Sinks is used to access the sinks endpoints
 func (c *pulsarClient) Sinks() Sinks {
 	return &sinks{
-		pulsar:   c,
-		basePath: "/sinks",
+		pulsar:     c,
+		basePath:   "/sinks",
+		apiVersion: c.apiProfile.Sinks,
 	}
 }
 
@@ -114,20 +114,20 @@ func (s *sinks) createTextFromFiled(w *multipart.Writer, value string) (io.Write
 
 func (s *sinks) ListSinks(tenant, namespace string) ([]string, error) {
 	var sinks []string
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace)
-	err := s.pulsar.Client.Get(endpoint, &sinks)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace)
+	err := s.pulsar.restClient.Get(endpoint, &sinks)
 	return sinks, err
 }
 
-func (s *sinks) GetSink(tenant, namespace, sink string) (utils.SinkConfig, error) {
-	var sinkConfig utils.SinkConfig
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink)
-	err := s.pulsar.Client.Get(endpoint, &sinkConfig)
+func (s *sinks) GetSink(tenant, namespace, sink string) (SinkConfig, error) {
+	var sinkConfig SinkConfig
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink)
+	err := s.pulsar.restClient.Get(endpoint, &sinkConfig)
 	return sinkConfig, err
 }
 
-func (s *sinks) CreateSink(config *utils.SinkConfig, fileName string) error {
-	endpoint := s.pulsar.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
+func (s *sinks) CreateSink(config *SinkConfig, fileName string) error {
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, config.Tenant, config.Namespace, config.Name)
 
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -157,7 +157,6 @@ func (s *sinks) CreateSink(config *utils.SinkConfig, fileName string) error {
 		defer file.Close()
 
 		part, err := multiPartWriter.CreateFormFile("data", filepath.Base(file.Name()))
-
 		if err != nil {
 			return err
 		}
@@ -176,7 +175,7 @@ func (s *sinks) CreateSink(config *utils.SinkConfig, fileName string) error {
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PostWithMultiPart(endpoint, nil, bodyBuf, contentType)
+	err = s.pulsar.restClient.PostWithMultiPart(endpoint, nil, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -184,8 +183,8 @@ func (s *sinks) CreateSink(config *utils.SinkConfig, fileName string) error {
 	return nil
 }
 
-func (s *sinks) CreateSinkWithURL(config *utils.SinkConfig, pkgURL string) error {
-	endpoint := s.pulsar.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
+func (s *sinks) CreateSinkWithURL(config *SinkConfig, pkgURL string) error {
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, config.Tenant, config.Namespace, config.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
 
@@ -221,7 +220,7 @@ func (s *sinks) CreateSinkWithURL(config *utils.SinkConfig, pkgURL string) error
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PostWithMultiPart(endpoint, nil, bodyBuf, contentType)
+	err = s.pulsar.restClient.PostWithMultiPart(endpoint, nil, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -229,8 +228,8 @@ func (s *sinks) CreateSinkWithURL(config *utils.SinkConfig, pkgURL string) error
 	return nil
 }
 
-func (s *sinks) UpdateSink(config *utils.SinkConfig, fileName string, updateOptions *utils.UpdateOptions) error {
-	endpoint := s.pulsar.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
+func (s *sinks) UpdateSink(config *SinkConfig, fileName string, updateOptions *UpdateOptions) error {
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, config.Tenant, config.Namespace, config.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
 
@@ -277,7 +276,6 @@ func (s *sinks) UpdateSink(config *utils.SinkConfig, fileName string, updateOpti
 		defer file.Close()
 
 		part, err := multiPartWriter.CreateFormFile("data", filepath.Base(file.Name()))
-
 		if err != nil {
 			return err
 		}
@@ -296,7 +294,7 @@ func (s *sinks) UpdateSink(config *utils.SinkConfig, fileName string, updateOpti
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PutWithMultiPart(endpoint, bodyBuf, contentType)
+	err = s.pulsar.restClient.PutWithMultiPart(endpoint, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -304,8 +302,8 @@ func (s *sinks) UpdateSink(config *utils.SinkConfig, fileName string, updateOpti
 	return nil
 }
 
-func (s *sinks) UpdateSinkWithURL(config *utils.SinkConfig, pkgURL string, updateOptions *utils.UpdateOptions) error {
-	endpoint := s.pulsar.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
+func (s *sinks) UpdateSinkWithURL(config *SinkConfig, pkgURL string, updateOptions *UpdateOptions) error {
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, config.Tenant, config.Namespace, config.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
 
@@ -360,7 +358,7 @@ func (s *sinks) UpdateSinkWithURL(config *utils.SinkConfig, pkgURL string, updat
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PutWithMultiPart(endpoint, bodyBuf, contentType)
+	err = s.pulsar.restClient.PutWithMultiPart(endpoint, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -369,69 +367,69 @@ func (s *sinks) UpdateSinkWithURL(config *utils.SinkConfig, pkgURL string, updat
 }
 
 func (s *sinks) DeleteSink(tenant, namespace, sink string) error {
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink)
-	return s.pulsar.Client.Delete(endpoint)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink)
+	return s.pulsar.restClient.Delete(endpoint)
 }
 
-func (s *sinks) GetSinkStatus(tenant, namespace, sink string) (utils.SinkStatus, error) {
-	var sinkStatus utils.SinkStatus
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink)
-	err := s.pulsar.Client.Get(endpoint+"/status", &sinkStatus)
+func (s *sinks) GetSinkStatus(tenant, namespace, sink string) (SinkStatus, error) {
+	var sinkStatus SinkStatus
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink)
+	err := s.pulsar.restClient.Get(endpoint+"/status", &sinkStatus)
 	return sinkStatus, err
 }
 
-func (s *sinks) GetSinkStatusWithID(tenant, namespace, sink string, id int) (utils.SinkInstanceStatusData, error) {
-	var sinkInstanceStatusData utils.SinkInstanceStatusData
+func (s *sinks) GetSinkStatusWithID(tenant, namespace, sink string, id int) (SinkInstanceStatusData, error) {
+	var sinkInstanceStatusData SinkInstanceStatusData
 	instanceID := fmt.Sprintf("%d", id)
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink, instanceID)
-	err := s.pulsar.Client.Get(endpoint+"/status", &sinkInstanceStatusData)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink, instanceID)
+	err := s.pulsar.restClient.Get(endpoint+"/status", &sinkInstanceStatusData)
 	return sinkInstanceStatusData, err
 }
 
 func (s *sinks) RestartSink(tenant, namespace, sink string) error {
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink)
-	return s.pulsar.Client.Post(endpoint+"/restart", nil)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink)
+	return s.pulsar.restClient.Post(endpoint+"/restart", nil)
 }
 
 func (s *sinks) RestartSinkWithID(tenant, namespace, sink string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink, id)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink, id)
 
-	return s.pulsar.Client.Post(endpoint+"/restart", nil)
+	return s.pulsar.restClient.Post(endpoint+"/restart", nil)
 }
 
 func (s *sinks) StopSink(tenant, namespace, sink string) error {
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink)
-	return s.pulsar.Client.Post(endpoint+"/stop", nil)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink)
+	return s.pulsar.restClient.Post(endpoint+"/stop", nil)
 }
 
 func (s *sinks) StopSinkWithID(tenant, namespace, sink string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink, id)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink, id)
 
-	return s.pulsar.Client.Post(endpoint+"/stop", nil)
+	return s.pulsar.restClient.Post(endpoint+"/stop", nil)
 }
 
 func (s *sinks) StartSink(tenant, namespace, sink string) error {
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink)
-	return s.pulsar.Client.Post(endpoint+"/start", nil)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink)
+	return s.pulsar.restClient.Post(endpoint+"/start", nil)
 }
 
 func (s *sinks) StartSinkWithID(tenant, namespace, sink string, instanceID int) error {
 	id := fmt.Sprintf("%d", instanceID)
-	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, sink, id)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, tenant, namespace, sink, id)
 
-	return s.pulsar.Client.Post(endpoint+"/start", nil)
+	return s.pulsar.restClient.Post(endpoint+"/start", nil)
 }
 
-func (s *sinks) GetBuiltInSinks() ([]*utils.ConnectorDefinition, error) {
-	var connectorDefinition []*utils.ConnectorDefinition
-	endpoint := s.pulsar.endpoint(s.basePath, "builtinsinks")
-	err := s.pulsar.Client.Get(endpoint, &connectorDefinition)
+func (s *sinks) GetBuiltInSinks() ([]*ConnectorDefinition, error) {
+	var connectorDefinition []*ConnectorDefinition
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, "builtinsinks")
+	err := s.pulsar.restClient.Get(endpoint, &connectorDefinition)
 	return connectorDefinition, err
 }
 
 func (s *sinks) ReloadBuiltInSinks() error {
-	endpoint := s.pulsar.endpoint(s.basePath, "reloadBuiltInSinks")
-	return s.pulsar.Client.Post(endpoint, nil)
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, "reloadBuiltInSinks")
+	return s.pulsar.restClient.Post(endpoint, nil)
 }

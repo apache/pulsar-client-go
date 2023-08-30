@@ -15,35 +15,35 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 import "github.com/pkg/errors"
 
 type AuthAction string
 
 const (
-	produce       AuthAction = "produce"
-	consume       AuthAction = "consume"
-	functionsAuth AuthAction = "functions"
-	packages      AuthAction = "packages"
-	sinks         AuthAction = "sinks"
-	sources       AuthAction = "sources"
+	authProduce   AuthAction = "produce"
+	authConsume   AuthAction = "consume"
+	authFunctions AuthAction = "functions"
+	authPackages  AuthAction = "packages"
+	authSinks     AuthAction = "sinks"
+	authSources   AuthAction = "sources"
 )
 
 func ParseAuthAction(action string) (AuthAction, error) {
 	switch action {
 	case "produce":
-		return produce, nil
+		return authProduce, nil
 	case "consume":
-		return consume, nil
+		return authConsume, nil
 	case "functions":
-		return functionsAuth, nil
+		return authFunctions, nil
 	case "packages":
-		return packages, nil
+		return authPackages, nil
 	case "sinks":
-		return sinks, nil
+		return authSinks, nil
 	case "sources":
-		return sources, nil
+		return authSources, nil
 	default:
 		return "", errors.Errorf("The auth action only can be specified as 'produce', "+
 			"'consume', 'sources', 'sinks', 'packages', or 'functions'. Invalid auth action '%s'", action)

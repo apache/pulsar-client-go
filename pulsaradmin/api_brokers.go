@@ -15,14 +15,12 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package pulsaradmin
 
 import (
 	"fmt"
 	"net/url"
 	"strings"
-
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Brokers is admin interface for brokers management
@@ -34,7 +32,7 @@ type Brokers interface {
 	GetDynamicConfigurationNames() ([]string, error)
 
 	// GetOwnedNamespaces returns the map of owned namespaces and their status from a single broker in the cluster
-	GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils.NamespaceOwnershipStatus, error)
+	GetOwnedNamespaces(cluster, brokerURL string) (map[string]NamespaceOwnershipStatus, error)
 
 	// UpdateDynamicConfiguration updates dynamic configuration value in to Zk that triggers watch on
 	// brokers and all brokers can update {@link ServiceConfiguration} value locally
@@ -48,7 +46,7 @@ type Brokers interface {
 	GetRuntimeConfigurations() (map[string]string, error)
 
 	// GetInternalConfigurationData returns the internal configuration data
-	GetInternalConfigurationData() (*utils.InternalConfigurationData, error)
+	GetInternalConfigurationData() (*InternalConfigurationData, error)
 
 	// GetAllDynamicConfigurations returns values of all overridden dynamic-configs
 	GetAllDynamicConfigurations() (map[string]string, error)
@@ -58,22 +56,24 @@ type Brokers interface {
 }
 
 type broker struct {
-	pulsar   *pulsarClient
-	basePath string
+	pulsar     *pulsarClient
+	basePath   string
+	apiVersion APIVersion
 }
 
 // Brokers is used to access the brokers endpoints
 func (c *pulsarClient) Brokers() Brokers {
 	return &broker{
-		pulsar:   c,
-		basePath: "/brokers",
+		pulsar:     c,
+		basePath:   "/brokers",
+		apiVersion: c.apiProfile.Brokers,
 	}
 }
 
 func (b *broker) GetActiveBrokers(cluster string) ([]string, error) {
-	endpoint := b.pulsar.endpoint(b.basePath, cluster)
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, cluster)
 	var res []string
-	err := b.pulsar.Client.Get(endpoint, &res)
+	err := b.pulsar.restClient.Get(endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -81,19 +81,19 @@ func (b *broker) GetActiveBrokers(cluster string) ([]string, error) {
 }
 
 func (b *broker) GetDynamicConfigurationNames() ([]string, error) {
-	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/")
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, "/configuration/")
 	var res []string
-	err := b.pulsar.Client.Get(endpoint, &res)
+	err := b.pulsar.restClient.Get(endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils.NamespaceOwnershipStatus, error) {
-	endpoint := b.pulsar.endpoint(b.basePath, cluster, brokerURL, "ownedNamespaces")
-	var res map[string]utils.NamespaceOwnershipStatus
-	err := b.pulsar.Client.Get(endpoint, &res)
+func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]NamespaceOwnershipStatus, error) {
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, cluster, brokerURL, "ownedNamespaces")
+	var res map[string]NamespaceOwnershipStatus
+	err := b.pulsar.restClient.Get(endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -102,29 +102,29 @@ func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils
 
 func (b *broker) UpdateDynamicConfiguration(configName, configValue string) error {
 	value := url.QueryEscape(configValue)
-	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", configName, value)
-	return b.pulsar.Client.Post(endpoint, nil)
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, "/configuration/", configName, value)
+	return b.pulsar.restClient.Post(endpoint, nil)
 }
 
 func (b *broker) DeleteDynamicConfiguration(configName string) error {
-	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", configName)
-	return b.pulsar.Client.Delete(endpoint)
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, "/configuration/", configName)
+	return b.pulsar.restClient.Delete(endpoint)
 }
 
 func (b *broker) GetRuntimeConfigurations() (map[string]string, error) {
-	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", "runtime")
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, "/configuration/", "runtime")
 	var res map[string]string
-	err := b.pulsar.Client.Get(endpoint, &res)
+	err := b.pulsar.restClient.Get(endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
 	return res, nil
 }
 
-func (b *broker) GetInternalConfigurationData() (*utils.InternalConfigurationData, error) {
-	endpoint := b.pulsar.endpoint(b.basePath, "/internal-configuration")
-	var res utils.InternalConfigurationData
-	err := b.pulsar.Client.Get(endpoint, &res)
+func (b *broker) GetInternalConfigurationData() (*InternalConfigurationData, error) {
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, "/internal-configuration")
+	var res InternalConfigurationData
+	err := b.pulsar.restClient.Get(endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -132,9 +132,9 @@ func (b *broker) GetInternalConfigurationData() (*utils.InternalConfigurationDat
 }
 
 func (b *broker) GetAllDynamicConfigurations() (map[string]string, error) {
-	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", "values")
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, "/configuration/", "values")
 	var res map[string]string
-	err := b.pulsar.Client.Get(endpoint, &res)
+	err := b.pulsar.restClient.Get(endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -142,9 +142,9 @@ func (b *broker) GetAllDynamicConfigurations() (map[string]string, error) {
 }
 
 func (b *broker) HealthCheck() error {
-	endpoint := b.pulsar.endpoint(b.basePath, "/health")
+	endpoint := b.pulsar.endpoint(b.apiVersion, b.basePath, "/health")
 
-	buf, err := b.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
+	buf, err := b.pulsar.restClient.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return err
 	}

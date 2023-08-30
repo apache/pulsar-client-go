@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 type SinkConfig struct {
 	TopicsPattern *string    `json:"topicsPattern,omitempty" yaml:"topicsPattern"`

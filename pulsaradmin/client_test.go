@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package pulsaradmin
 
 import (
 	"net/http"
@@ -23,87 +23,89 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/auth"
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 )
 
 func TestPulsarClientEndpointEscapes(t *testing.T) {
-	client := pulsarClient{Client: nil, APIVersion: config.V2}
-	actual := client.endpoint("/myendpoint", "abc%? /def", "ghi")
+	client := pulsarClient{restClient: nil}
+	actual := client.endpoint(APIV2, "/myendpoint", "abc%? /def", "ghi")
 	expected := "/admin/v2/myendpoint/abc%25%3F%20%2Fdef/ghi"
 	assert.Equal(t, expected, actual)
 }
 
 func TestNew(t *testing.T) {
-	config := &config.Config{}
-	admin, err := New(config)
+	config := ClientConfig{}
+	admin, err := NewClient(config)
 	require.NoError(t, err)
 	require.NotNil(t, admin)
 }
 
-func TestNewWithAuthProvider(t *testing.T) {
-	config := &config.Config{}
+func TestNewClientWithAuthProvider(t *testing.T) {
+	provider := AuthProviderToken("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9." +
+		"eyJzdWIiOiJhZG1pbiIsImlhdCI6MTUxNjIzOTAyMn0.sVt6cyu3HKd89LcQvZVMNbqT0DTl3FvG9oYbj8hBDqU")
 
-	tokenAuth, err := auth.NewAuthenticationToken("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9."+
-		"eyJzdWIiOiJhZG1pbiIsImlhdCI6MTUxNjIzOTAyMn0.sVt6cyu3HKd89LcQvZVMNbqT0DTl3FvG9oYbj8hBDqU", nil)
+	transport, err := provider(&http.Transport{})
 	require.NoError(t, err)
-	require.NotNil(t, tokenAuth)
+	require.NotNil(t, transport)
 
-	admin, err := NewPulsarClientWithAuthProvider(config, tokenAuth)
+	client, err := NewClient(ClientConfig{
+		AuthProvider: provider,
+	})
 	require.NoError(t, err)
-	require.NotNil(t, admin)
+	require.NotNil(t, client)
 }
 
-type customAuthProvider struct {
-	transport http.RoundTripper
+type customAuthTransport struct {
+	T http.RoundTripper
 }
 
-var _ auth.Provider = &customAuthProvider{}
-
-func (c *customAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+func (c *customAuthTransport) RoundTrip(req *http.Request) (*http.Response, error) {
 	panic("implement me")
 }
 
-func (c *customAuthProvider) Transport() http.RoundTripper {
-	return c.transport
-}
-
-func (c *customAuthProvider) WithTransport(transport http.RoundTripper) {
-	c.transport = transport
+func customAuthProvider(t *http.Transport) (http.RoundTripper, error) {
+	return &customAuthTransport{t}, nil
 }
 
 func TestNewWithCustomAuthProviderWithTransport(t *testing.T) {
-	config := &config.Config{}
-	defaultTransport, err := auth.NewDefaultTransport(config)
-	require.NoError(t, err)
-
-	customAuthProvider := &customAuthProvider{
-		transport: defaultTransport,
+	config := ClientConfig{
+		AuthProvider: customAuthProvider,
+		APIProfile:   &APIProfile{},
 	}
-
-	admin, err := NewPulsarClientWithAuthProvider(config, customAuthProvider)
+	defaultTransport, err := defaultTransport(config)
 	require.NoError(t, err)
-	require.NotNil(t, admin)
 
-	// Expected the customAuthProvider will not be overwritten.
-	require.Equal(t, customAuthProvider, admin.(*pulsarClient).Client.HTTPClient.Transport)
+	config.CustomTransport = defaultTransport
+
+	client, err := NewClient(config)
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	underlyingClient, ok := client.(*pulsarClient)
+	require.True(t, ok)
+	require.NotNil(t, underlyingClient)
+	require.NotNil(t, underlyingClient.restClient)
+	require.NotNil(t, underlyingClient.restClient.HTTPClient)
+	require.NotNil(t, underlyingClient.restClient.HTTPClient.Transport)
+	require.IsType(t, &customAuthTransport{}, underlyingClient.restClient.HTTPClient.Transport)
+	// Expected the custom transport will be retained
+	require.Equal(t, defaultTransport, underlyingClient.restClient.HTTPClient.Transport.(*customAuthTransport).T)
 }
 
 func TestNewWithTlsAllowInsecure(t *testing.T) {
-	config := &config.Config{
-		TLSAllowInsecureConnection: true,
-	}
-	admin, err := New(config)
+	client, err := NewClient(ClientConfig{
+		TLSConfig: TLSConfig{
+			AllowInsecureConnection: true,
+		},
+	})
 	require.NoError(t, err)
-	require.NotNil(t, admin)
+	require.NotNil(t, client)
 
-	pulsarClientS := admin.(*pulsarClient)
-	require.NotNil(t, pulsarClientS.Client.HTTPClient.Transport)
-
-	ap := pulsarClientS.Client.HTTPClient.Transport.(*auth.DefaultProvider)
-	tr := ap.Transport().(*http.Transport)
-	require.NotNil(t, tr)
+	underlyingClient, ok := client.(*pulsarClient)
+	require.True(t, ok)
+	require.NotNil(t, underlyingClient)
+	require.NotNil(t, underlyingClient.restClient.HTTPClient.Transport)
+	tr, ok := underlyingClient.restClient.HTTPClient.Transport.(*http.Transport)
+	require.True(t, ok)
 	require.NotNil(t, tr.TLSClientConfig)
 	require.True(t, tr.TLSClientConfig.InsecureSkipVerify)
 }

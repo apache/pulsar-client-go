@@ -15,47 +15,45 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
-
-import (
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-)
+package pulsaradmin
 
 // BrokerStats is admin interface for broker stats management
 type BrokerStats interface {
 	// GetMetrics returns Monitoring metrics
-	GetMetrics() ([]utils.Metrics, error)
+	GetMetrics() ([]Metrics, error)
 
 	// GetMBeans requests JSON string server mbean dump
-	GetMBeans() ([]utils.Metrics, error)
+	GetMBeans() ([]Metrics, error)
 
 	// GetTopics returns JSON string topics stats
 	GetTopics() (string, error)
 
 	// GetLoadReport returns load report of broker
-	GetLoadReport() (*utils.LocalBrokerData, error)
+	GetLoadReport() (*LocalBrokerData, error)
 
 	// GetAllocatorStats returns stats from broker
-	GetAllocatorStats(allocatorName string) (*utils.AllocatorStats, error)
+	GetAllocatorStats(allocatorName string) (*AllocatorStats, error)
 }
 
 type brokerStats struct {
-	pulsar   *pulsarClient
-	basePath string
+	pulsar     *pulsarClient
+	basePath   string
+	apiVersion APIVersion
 }
 
 // BrokerStats is used to access the broker stats endpoints
 func (c *pulsarClient) BrokerStats() BrokerStats {
 	return &brokerStats{
-		pulsar:   c,
-		basePath: "/broker-stats",
+		pulsar:     c,
+		basePath:   "/broker-stats",
+		apiVersion: c.apiProfile.BrokerStats,
 	}
 }
 
-func (bs *brokerStats) GetMetrics() ([]utils.Metrics, error) {
-	endpoint := bs.pulsar.endpoint(bs.basePath, "/metrics")
-	var response []utils.Metrics
-	err := bs.pulsar.Client.Get(endpoint, &response)
+func (bs *brokerStats) GetMetrics() ([]Metrics, error) {
+	endpoint := bs.pulsar.endpoint(bs.apiVersion, bs.basePath, "/metrics")
+	var response []Metrics
+	err := bs.pulsar.restClient.Get(endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -63,10 +61,10 @@ func (bs *brokerStats) GetMetrics() ([]utils.Metrics, error) {
 	return response, nil
 }
 
-func (bs *brokerStats) GetMBeans() ([]utils.Metrics, error) {
-	endpoint := bs.pulsar.endpoint(bs.basePath, "/mbeans")
-	var response []utils.Metrics
-	err := bs.pulsar.Client.Get(endpoint, &response)
+func (bs *brokerStats) GetMBeans() ([]Metrics, error) {
+	endpoint := bs.pulsar.endpoint(bs.apiVersion, bs.basePath, "/mbeans")
+	var response []Metrics
+	err := bs.pulsar.restClient.Get(endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -75,8 +73,8 @@ func (bs *brokerStats) GetMBeans() ([]utils.Metrics, error) {
 }
 
 func (bs *brokerStats) GetTopics() (string, error) {
-	endpoint := bs.pulsar.endpoint(bs.basePath, "/topics")
-	buf, err := bs.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
+	endpoint := bs.pulsar.endpoint(bs.apiVersion, bs.basePath, "/topics")
+	buf, err := bs.pulsar.restClient.GetWithQueryParams(endpoint, nil, nil, false)
 	if err != nil {
 		return "", err
 	}
@@ -84,20 +82,20 @@ func (bs *brokerStats) GetTopics() (string, error) {
 	return string(buf), nil
 }
 
-func (bs *brokerStats) GetLoadReport() (*utils.LocalBrokerData, error) {
-	endpoint := bs.pulsar.endpoint(bs.basePath, "/load-report")
-	response := utils.NewLocalBrokerData()
-	err := bs.pulsar.Client.Get(endpoint, &response)
+func (bs *brokerStats) GetLoadReport() (*LocalBrokerData, error) {
+	endpoint := bs.pulsar.endpoint(bs.apiVersion, bs.basePath, "/load-report")
+	response := NewLocalBrokerData()
+	err := bs.pulsar.restClient.Get(endpoint, &response)
 	if err != nil {
 		return nil, nil
 	}
 	return &response, nil
 }
 
-func (bs *brokerStats) GetAllocatorStats(allocatorName string) (*utils.AllocatorStats, error) {
-	endpoint := bs.pulsar.endpoint(bs.basePath, "/allocator-stats", allocatorName)
-	var allocatorStats utils.AllocatorStats
-	err := bs.pulsar.Client.Get(endpoint, &allocatorStats)
+func (bs *brokerStats) GetAllocatorStats(allocatorName string) (*AllocatorStats, error) {
+	endpoint := bs.pulsar.endpoint(bs.apiVersion, bs.basePath, "/allocator-stats", allocatorName)
+	var allocatorStats AllocatorStats
+	err := bs.pulsar.restClient.Get(endpoint, &allocatorStats)
 	if err != nil {
 		return nil, err
 	}

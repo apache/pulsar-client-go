@@ -15,24 +15,20 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
-
-import (
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-)
+package pulsaradmin
 
 type FunctionsWorker interface {
 	// Get all functions stats on a worker
-	GetFunctionsStats() ([]*utils.WorkerFunctionInstanceStats, error)
+	GetFunctionsStats() ([]*WorkerFunctionInstanceStats, error)
 
 	// Get worker metrics
-	GetMetrics() ([]*utils.Metrics, error)
+	GetMetrics() ([]*Metrics, error)
 
 	// Get List of all workers belonging to this cluster
-	GetCluster() ([]*utils.WorkerInfo, error)
+	GetCluster() ([]*WorkerInfo, error)
 
 	// Get the worker who is the leader of the clusterv
-	GetClusterLeader() (*utils.WorkerInfo, error)
+	GetClusterLeader() (*WorkerInfo, error)
 
 	// Get the function assignment among the cluster
 	GetAssignments() (map[string][]string, error)
@@ -42,6 +38,7 @@ type worker struct {
 	pulsar          *pulsarClient
 	workerPath      string
 	workerStatsPath string
+	apiVersion      APIVersion
 }
 
 func (c *pulsarClient) FunctionsWorker() FunctionsWorker {
@@ -49,43 +46,44 @@ func (c *pulsarClient) FunctionsWorker() FunctionsWorker {
 		pulsar:          c,
 		workerPath:      "/worker",
 		workerStatsPath: "/worker-stats",
+		apiVersion:      c.apiProfile.FunctionsWorker,
 	}
 }
 
-func (w *worker) GetFunctionsStats() ([]*utils.WorkerFunctionInstanceStats, error) {
-	endpoint := w.pulsar.endpoint(w.workerStatsPath, "functionsmetrics")
-	var workerStats []*utils.WorkerFunctionInstanceStats
-	err := w.pulsar.Client.Get(endpoint, &workerStats)
+func (w *worker) GetFunctionsStats() ([]*WorkerFunctionInstanceStats, error) {
+	endpoint := w.pulsar.endpoint(w.apiVersion, w.workerStatsPath, "functionsmetrics")
+	var workerStats []*WorkerFunctionInstanceStats
+	err := w.pulsar.restClient.Get(endpoint, &workerStats)
 	if err != nil {
 		return nil, err
 	}
 	return workerStats, nil
 }
 
-func (w *worker) GetMetrics() ([]*utils.Metrics, error) {
-	endpoint := w.pulsar.endpoint(w.workerStatsPath, "metrics")
-	var metrics []*utils.Metrics
-	err := w.pulsar.Client.Get(endpoint, &metrics)
+func (w *worker) GetMetrics() ([]*Metrics, error) {
+	endpoint := w.pulsar.endpoint(w.apiVersion, w.workerStatsPath, "metrics")
+	var metrics []*Metrics
+	err := w.pulsar.restClient.Get(endpoint, &metrics)
 	if err != nil {
 		return nil, err
 	}
 	return metrics, nil
 }
 
-func (w *worker) GetCluster() ([]*utils.WorkerInfo, error) {
-	endpoint := w.pulsar.endpoint(w.workerPath, "cluster")
-	var workersInfo []*utils.WorkerInfo
-	err := w.pulsar.Client.Get(endpoint, &workersInfo)
+func (w *worker) GetCluster() ([]*WorkerInfo, error) {
+	endpoint := w.pulsar.endpoint(w.apiVersion, w.workerPath, "cluster")
+	var workersInfo []*WorkerInfo
+	err := w.pulsar.restClient.Get(endpoint, &workersInfo)
 	if err != nil {
 		return nil, err
 	}
 	return workersInfo, nil
 }
 
-func (w *worker) GetClusterLeader() (*utils.WorkerInfo, error) {
-	endpoint := w.pulsar.endpoint(w.workerPath, "cluster", "leader")
-	var workerInfo utils.WorkerInfo
-	err := w.pulsar.Client.Get(endpoint, &workerInfo)
+func (w *worker) GetClusterLeader() (*WorkerInfo, error) {
+	endpoint := w.pulsar.endpoint(w.apiVersion, w.workerPath, "cluster", "leader")
+	var workerInfo WorkerInfo
+	err := w.pulsar.restClient.Get(endpoint, &workerInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -93,9 +91,9 @@ func (w *worker) GetClusterLeader() (*utils.WorkerInfo, error) {
 }
 
 func (w *worker) GetAssignments() (map[string][]string, error) {
-	endpoint := w.pulsar.endpoint(w.workerPath, "assignments")
+	endpoint := w.pulsar.endpoint(w.apiVersion, w.workerPath, "assignments")
 	var assignments map[string][]string
-	err := w.pulsar.Client.Get(endpoint, &assignments)
+	err := w.pulsar.restClient.Get(endpoint, &assignments)
 	if err != nil {
 		return nil, err
 	}

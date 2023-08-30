@@ -15,16 +15,9 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package data
 
-import (
-	"fmt"
-	"reflect"
-)
-
-func MakeHTTPPath(apiVersion string, componentPath string) string {
-	return fmt.Sprintf("/admin/%s%s", apiVersion, componentPath)
-}
+import "reflect"
 
 func IsNilFixed(i interface{}) bool {
 	if i == nil {

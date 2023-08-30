@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package pulsaradmin
 
 import (
 	"bytes"
@@ -30,8 +30,6 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
-
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Packages is admin interface for functions management
@@ -66,15 +64,16 @@ type Packages interface {
 	Delete(packageURL string) error
 
 	// GetMetadata get a package metadata information
-	GetMetadata(packageURL string) (utils.PackageMetadata, error)
+	GetMetadata(packageURL string) (PackageMetadata, error)
 
 	// UpdateMetadata update a package metadata information
 	UpdateMetadata(packageURL, description, contact string, properties map[string]string) error
 }
 
 type packages struct {
-	pulsar   *pulsarClient
-	basePath string
+	pulsar     *pulsarClient
+	basePath   string
+	apiVersion APIVersion
 }
 
 func (p *packages) createStringFromField(w *multipart.Writer, value string) (io.Writer, error) {
@@ -87,22 +86,23 @@ func (p *packages) createStringFromField(w *multipart.Writer, value string) (io.
 // Packages is used to access the functions endpoints
 func (c *pulsarClient) Packages() Packages {
 	return &packages{
-		pulsar:   c,
-		basePath: "/packages",
+		pulsar:     c,
+		basePath:   "/packages",
+		apiVersion: c.apiProfile.Packages,
 	}
 }
 
 func (p packages) Download(packageURL, destinationFile string) error {
-	packageName, err := utils.GetPackageName(packageURL)
+	packageName, err := GetPackageName(packageURL)
 	if err != nil {
 		return err
 	}
-	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
+	endpoint := p.pulsar.endpoint(p.apiVersion, p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion())
 
 	parent := path.Dir(destinationFile)
 	if parent != "." {
-		err = os.MkdirAll(parent, 0755)
+		err = os.MkdirAll(parent, 0o755)
 		if err != nil {
 			return fmt.Errorf("failed to create parent directory %s: %w", parent, err)
 		}
@@ -120,7 +120,7 @@ func (p packages) Download(packageURL, destinationFile string) error {
 		return err
 	}
 
-	_, err = p.pulsar.Client.GetWithOptions(endpoint, nil, nil, false, file)
+	_, err = p.pulsar.restClient.GetWithOptions(endpoint, nil, nil, false, file)
 	if err != nil {
 		return err
 	}
@@ -134,13 +134,13 @@ func (p packages) Upload(packageURL, filePath, description, contact string, prop
 	if strings.TrimSpace(packageURL) == "" {
 		return errors.New("package URL is empty")
 	}
-	packageName, err := utils.GetPackageName(packageURL)
+	packageName, err := GetPackageName(packageURL)
 	if err != nil {
 		return err
 	}
-	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
+	endpoint := p.pulsar.endpoint(p.apiVersion, p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion())
-	metadata := utils.PackageMetadata{
+	metadata := PackageMetadata{
 		Description: description,
 		Contact:     contact,
 		Properties:  properties,
@@ -172,7 +172,6 @@ func (p packages) Upload(packageURL, filePath, description, contact string, prop
 	defer file.Close()
 
 	part, err := multiPartWriter.CreateFormFile("file", filepath.Base(file.Name()))
-
 	if err != nil {
 		return err
 	}
@@ -188,7 +187,7 @@ func (p packages) Upload(packageURL, filePath, description, contact string, prop
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = p.pulsar.Client.PostWithMultiPart(endpoint, nil, bodyBuf, contentType)
+	err = p.pulsar.restClient.PostWithMultiPart(endpoint, nil, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -198,58 +197,58 @@ func (p packages) Upload(packageURL, filePath, description, contact string, prop
 
 func (p packages) List(typeName, namespace string) ([]string, error) {
 	var packageList []string
-	endpoint := p.pulsar.endpoint(p.basePath, typeName, namespace)
-	err := p.pulsar.Client.Get(endpoint, &packageList)
+	endpoint := p.pulsar.endpoint(p.apiVersion, p.basePath, typeName, namespace)
+	err := p.pulsar.restClient.Get(endpoint, &packageList)
 	return packageList, err
 }
 
 func (p packages) ListVersions(packageURL string) ([]string, error) {
 	var versionList []string
-	packageName, err := utils.GetPackageName(packageURL)
+	packageName, err := GetPackageName(packageURL)
 	if err != nil {
 		return versionList, err
 	}
-	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
+	endpoint := p.pulsar.endpoint(p.apiVersion, p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName())
-	err = p.pulsar.Client.Get(endpoint, &versionList)
+	err = p.pulsar.restClient.Get(endpoint, &versionList)
 	return versionList, err
 }
 
 func (p packages) Delete(packageURL string) error {
-	packageName, err := utils.GetPackageName(packageURL)
+	packageName, err := GetPackageName(packageURL)
 	if err != nil {
 		return err
 	}
-	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
+	endpoint := p.pulsar.endpoint(p.apiVersion, p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion())
 
-	return p.pulsar.Client.Delete(endpoint)
+	return p.pulsar.restClient.Delete(endpoint)
 }
 
-func (p packages) GetMetadata(packageURL string) (utils.PackageMetadata, error) {
-	var metadata utils.PackageMetadata
-	packageName, err := utils.GetPackageName(packageURL)
+func (p packages) GetMetadata(packageURL string) (PackageMetadata, error) {
+	var metadata PackageMetadata
+	packageName, err := GetPackageName(packageURL)
 	if err != nil {
 		return metadata, err
 	}
-	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
+	endpoint := p.pulsar.endpoint(p.apiVersion, p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion(), "metadata")
-	err = p.pulsar.Client.Get(endpoint, &metadata)
+	err = p.pulsar.restClient.Get(endpoint, &metadata)
 	return metadata, err
 }
 
 func (p packages) UpdateMetadata(packageURL, description, contact string, properties map[string]string) error {
-	metadata := utils.PackageMetadata{
+	metadata := PackageMetadata{
 		Description: description,
 		Contact:     contact,
 		Properties:  properties,
 	}
-	packageName, err := utils.GetPackageName(packageURL)
+	packageName, err := GetPackageName(packageURL)
 	if err != nil {
 		return err
 	}
-	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
+	endpoint := p.pulsar.endpoint(p.apiVersion, p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion(), "metadata")
 
-	return p.pulsar.Client.Put(endpoint, &metadata)
+	return p.pulsar.restClient.Put(endpoint, &metadata)
 }

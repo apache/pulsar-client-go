@@ -15,65 +15,66 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
-
-import (
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-)
+package pulsaradmin
 
 type NsIsolationPolicy interface {
 	// Create a namespace isolation policy for a cluster
-	CreateNamespaceIsolationPolicy(cluster, policyName string, namespaceIsolationData utils.NamespaceIsolationData) error
+	CreateNamespaceIsolationPolicy(cluster, policyName string, namespaceIsolationData NamespaceIsolationData) error
 
 	// Delete a namespace isolation policy for a cluster
 	DeleteNamespaceIsolationPolicy(cluster, policyName string) error
 
 	// Get a single namespace isolation policy for a cluster
-	GetNamespaceIsolationPolicy(cluster, policyName string) (*utils.NamespaceIsolationData, error)
+	GetNamespaceIsolationPolicy(cluster, policyName string) (*NamespaceIsolationData, error)
 
 	// Get the namespace isolation policies of a cluster
-	GetNamespaceIsolationPolicies(cluster string) (map[string]utils.NamespaceIsolationData, error)
+	GetNamespaceIsolationPolicies(cluster string) (map[string]NamespaceIsolationData, error)
 
 	// Returns list of active brokers with namespace-isolation policies attached to it.
-	GetBrokersWithNamespaceIsolationPolicy(cluster string) ([]utils.BrokerNamespaceIsolationData, error)
+	GetBrokersWithNamespaceIsolationPolicy(cluster string) ([]BrokerNamespaceIsolationData, error)
 
 	// Returns active broker with namespace-isolation policies attached to it.
-	GetBrokerWithNamespaceIsolationPolicy(cluster, broker string) (*utils.BrokerNamespaceIsolationData, error)
+	GetBrokerWithNamespaceIsolationPolicy(cluster, broker string) (*BrokerNamespaceIsolationData, error)
 }
 
 type nsIsolationPolicy struct {
-	pulsar   *pulsarClient
-	basePath string
+	pulsar     *pulsarClient
+	basePath   string
+	apiVersion APIVersion
 }
 
 func (c *pulsarClient) NsIsolationPolicy() NsIsolationPolicy {
 	return &nsIsolationPolicy{
-		pulsar:   c,
-		basePath: "/clusters",
+		pulsar:     c,
+		basePath:   "/clusters",
+		apiVersion: c.apiProfile.NsIsolationPolicy,
 	}
 }
 
 func (n *nsIsolationPolicy) CreateNamespaceIsolationPolicy(cluster, policyName string,
-	namespaceIsolationData utils.NamespaceIsolationData) error {
+	namespaceIsolationData NamespaceIsolationData,
+) error {
 	return n.setNamespaceIsolationPolicy(cluster, policyName, namespaceIsolationData)
 }
 
 func (n *nsIsolationPolicy) setNamespaceIsolationPolicy(cluster, policyName string,
-	namespaceIsolationData utils.NamespaceIsolationData) error {
-	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", policyName)
-	return n.pulsar.Client.Post(endpoint, &namespaceIsolationData)
+	namespaceIsolationData NamespaceIsolationData,
+) error {
+	endpoint := n.pulsar.endpoint(n.apiVersion, n.basePath, cluster, "namespaceIsolationPolicies", policyName)
+	return n.pulsar.restClient.Post(endpoint, &namespaceIsolationData)
 }
 
 func (n *nsIsolationPolicy) DeleteNamespaceIsolationPolicy(cluster, policyName string) error {
-	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", policyName)
-	return n.pulsar.Client.Delete(endpoint)
+	endpoint := n.pulsar.endpoint(n.apiVersion, n.basePath, cluster, "namespaceIsolationPolicies", policyName)
+	return n.pulsar.restClient.Delete(endpoint)
 }
 
 func (n *nsIsolationPolicy) GetNamespaceIsolationPolicy(cluster, policyName string) (
-	*utils.NamespaceIsolationData, error) {
-	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", policyName)
-	var nsIsolationData utils.NamespaceIsolationData
-	err := n.pulsar.Client.Get(endpoint, &nsIsolationData)
+	*NamespaceIsolationData, error,
+) {
+	endpoint := n.pulsar.endpoint(n.apiVersion, n.basePath, cluster, "namespaceIsolationPolicies", policyName)
+	var nsIsolationData NamespaceIsolationData
+	err := n.pulsar.restClient.Get(endpoint, &nsIsolationData)
 	if err != nil {
 		return nil, err
 	}
@@ -81,10 +82,11 @@ func (n *nsIsolationPolicy) GetNamespaceIsolationPolicy(cluster, policyName stri
 }
 
 func (n *nsIsolationPolicy) GetNamespaceIsolationPolicies(cluster string) (
-	map[string]utils.NamespaceIsolationData, error) {
-	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies")
-	var tmpMap map[string]utils.NamespaceIsolationData
-	err := n.pulsar.Client.Get(endpoint, &tmpMap)
+	map[string]NamespaceIsolationData, error,
+) {
+	endpoint := n.pulsar.endpoint(n.apiVersion, n.basePath, cluster, "namespaceIsolationPolicies")
+	var tmpMap map[string]NamespaceIsolationData
+	err := n.pulsar.restClient.Get(endpoint, &tmpMap)
 	if err != nil {
 		return nil, err
 	}
@@ -92,10 +94,11 @@ func (n *nsIsolationPolicy) GetNamespaceIsolationPolicies(cluster string) (
 }
 
 func (n *nsIsolationPolicy) GetBrokersWithNamespaceIsolationPolicy(cluster string) (
-	[]utils.BrokerNamespaceIsolationData, error) {
-	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", "brokers")
-	var res []utils.BrokerNamespaceIsolationData
-	err := n.pulsar.Client.Get(endpoint, &res)
+	[]BrokerNamespaceIsolationData, error,
+) {
+	endpoint := n.pulsar.endpoint(n.apiVersion, n.basePath, cluster, "namespaceIsolationPolicies", "brokers")
+	var res []BrokerNamespaceIsolationData
+	err := n.pulsar.restClient.Get(endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -103,10 +106,11 @@ func (n *nsIsolationPolicy) GetBrokersWithNamespaceIsolationPolicy(cluster strin
 }
 
 func (n *nsIsolationPolicy) GetBrokerWithNamespaceIsolationPolicy(cluster,
-	broker string) (*utils.BrokerNamespaceIsolationData, error) {
-	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", "brokers", broker)
-	var brokerNamespaceIsolationData utils.BrokerNamespaceIsolationData
-	err := n.pulsar.Client.Get(endpoint, &brokerNamespaceIsolationData)
+	broker string,
+) (*BrokerNamespaceIsolationData, error) {
+	endpoint := n.pulsar.endpoint(n.apiVersion, n.basePath, cluster, "namespaceIsolationPolicies", "brokers", broker)
+	var brokerNamespaceIsolationData BrokerNamespaceIsolationData
+	err := n.pulsar.restClient.Get(endpoint, &brokerNamespaceIsolationData)
 	if err != nil {
 		return nil, err
 	}

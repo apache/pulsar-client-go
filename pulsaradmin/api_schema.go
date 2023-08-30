@@ -15,124 +15,125 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package admin
+package pulsaradmin
 
 import (
 	"fmt"
 	"strconv"
-
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Schema is admin interface for schema management
 type Schema interface {
 	// GetSchemaInfo retrieves the latest schema of a topic
-	GetSchemaInfo(topic string) (*utils.SchemaInfo, error)
+	GetSchemaInfo(topic string) (*SchemaInfo, error)
 
 	// GetSchemaInfoWithVersion retrieves the latest schema with version of a topic
-	GetSchemaInfoWithVersion(topic string) (*utils.SchemaInfoWithVersion, error)
+	GetSchemaInfoWithVersion(topic string) (*SchemaInfoWithVersion, error)
 
 	// GetSchemaInfoByVersion retrieves the schema of a topic at a given <tt>version</tt>
-	GetSchemaInfoByVersion(topic string, version int64) (*utils.SchemaInfo, error)
+	GetSchemaInfoByVersion(topic string, version int64) (*SchemaInfo, error)
 
 	// DeleteSchema deletes the schema associated with a given <tt>topic</tt>
 	DeleteSchema(topic string) error
 
 	// CreateSchemaByPayload creates a schema for a given <tt>topic</tt>
-	CreateSchemaByPayload(topic string, schemaPayload utils.PostSchemaPayload) error
+	CreateSchemaByPayload(topic string, schemaPayload PostSchemaPayload) error
 }
 
 type schemas struct {
-	pulsar   *pulsarClient
-	basePath string
+	pulsar     *pulsarClient
+	basePath   string
+	apiVersion APIVersion
 }
 
 // Schemas is used to access the schemas endpoints
 func (c *pulsarClient) Schemas() Schema {
 	return &schemas{
-		pulsar:   c,
-		basePath: "/schemas",
+		pulsar:     c,
+		basePath:   "/schemas",
+		apiVersion: c.apiProfile.Schemas,
 	}
 }
 
-func (s *schemas) GetSchemaInfo(topic string) (*utils.SchemaInfo, error) {
-	topicName, err := utils.GetTopicName(topic)
+func (s *schemas) GetSchemaInfo(topic string) (*SchemaInfo, error) {
+	topicName, err := GetTopicName(topic)
 	if err != nil {
 		return nil, err
 	}
-	var response utils.GetSchemaResponse
-	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
+	var response GetSchemaResponse
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schema")
 
-	err = s.pulsar.Client.Get(endpoint, &response)
+	err = s.pulsar.restClient.Get(endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
 
-	info := utils.ConvertGetSchemaResponseToSchemaInfo(topicName, response)
+	info := ConvertGetSchemaResponseToSchemaInfo(topicName, response)
 	return info, nil
 }
 
-func (s *schemas) GetSchemaInfoWithVersion(topic string) (*utils.SchemaInfoWithVersion, error) {
-	topicName, err := utils.GetTopicName(topic)
+func (s *schemas) GetSchemaInfoWithVersion(topic string) (*SchemaInfoWithVersion, error) {
+	topicName, err := GetTopicName(topic)
 	if err != nil {
 		return nil, err
 	}
-	var response utils.GetSchemaResponse
-	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
+	var response GetSchemaResponse
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schema")
 
-	err = s.pulsar.Client.Get(endpoint, &response)
+	err = s.pulsar.restClient.Get(endpoint, &response)
 	if err != nil {
 		fmt.Println("err:", err.Error())
 		return nil, err
 	}
 
-	info := utils.ConvertGetSchemaResponseToSchemaInfoWithVersion(topicName, response)
+	info := ConvertGetSchemaResponseToSchemaInfoWithVersion(topicName, response)
 	return info, nil
 }
 
-func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*utils.SchemaInfo, error) {
-	topicName, err := utils.GetTopicName(topic)
+func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*SchemaInfo, error) {
+	topicName, err := GetTopicName(topic)
 	if err != nil {
 		return nil, err
 	}
 
-	var response utils.GetSchemaResponse
-	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(), topicName.GetLocalName(),
+	var response GetSchemaResponse
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
+		topicName.GetLocalName(),
 		"schema", strconv.FormatInt(version, 10))
 
-	err = s.pulsar.Client.Get(endpoint, &response)
+	err = s.pulsar.restClient.Get(endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
 
-	info := utils.ConvertGetSchemaResponseToSchemaInfo(topicName, response)
+	info := ConvertGetSchemaResponseToSchemaInfo(topicName, response)
 	return info, nil
 }
 
 func (s *schemas) DeleteSchema(topic string) error {
-	topicName, err := utils.GetTopicName(topic)
+	topicName, err := GetTopicName(topic)
 	if err != nil {
 		return err
 	}
 
-	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schema")
 
 	fmt.Println(endpoint)
 
-	return s.pulsar.Client.Delete(endpoint)
+	return s.pulsar.restClient.Delete(endpoint)
 }
 
-func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload utils.PostSchemaPayload) error {
-	topicName, err := utils.GetTopicName(topic)
+func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload PostSchemaPayload) error {
+	topicName, err := GetTopicName(topic)
 	if err != nil {
 		return err
 	}
 
-	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
+	endpoint := s.pulsar.endpoint(s.apiVersion, s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schema")
 
-	return s.pulsar.Client.Post(endpoint, &schemaPayload)
+	return s.pulsar.restClient.Post(endpoint, &schemaPayload)
 }

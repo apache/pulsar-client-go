@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package pulsaradmin
 
 // Basic information about a Pulsar connector
 type ConnectorDefinition struct {

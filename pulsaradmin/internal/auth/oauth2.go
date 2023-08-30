@@ -18,43 +18,69 @@
 package auth
 
 import (
-	"encoding/json"
 	"net/http"
 	"path/filepath"
 
 	"github.com/99designs/keyring"
+	"github.com/pkg/errors"
+	xoauth2 "golang.org/x/oauth2"
+
 	"github.com/apache/pulsar-client-go/oauth2"
 	"github.com/apache/pulsar-client-go/oauth2/cache"
 	clock2 "github.com/apache/pulsar-client-go/oauth2/clock"
 	"github.com/apache/pulsar-client-go/oauth2/store"
-	"github.com/pkg/errors"
-	xoauth2 "golang.org/x/oauth2"
+	"github.com/apache/pulsar-client-go/pulsaradmin/internal/httptools"
 )
 
-const (
-	OAuth2PluginName      = "org.apache.pulsar.client.impl.auth.oauth2.AuthenticationOAuth2"
-	OAuth2PluginShortName = "oauth2"
-)
-
-type OAuth2ClientCredentials struct {
-	IssuerURL  string `json:"issuerUrl,omitempty"`
-	Audience   string `json:"audience,omitempty"`
-	Scope      string `json:"scope,omitempty"`
-	PrivateKey string `json:"privateKey,omitempty"`
-	ClientID   string `json:"clientId,omitempty"`
-}
-
-type OAuth2Provider struct {
+type Oauth2Transport struct {
 	clock            clock2.RealClock
 	issuer           oauth2.Issuer
 	store            store.Store
 	source           cache.CachingTokenSource
 	defaultTransport http.RoundTripper
-	tokenTransport   *transport
+	tokenTransport   *oa2Transport
 }
 
-func NewAuthenticationOAuth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Provider, error) {
-	p := &OAuth2Provider{
+func NewOauth2Provider(
+	issuerEndpoint,
+	clientID,
+	audience,
+	scope,
+	privateKey string,
+	transport *http.Transport,
+) (*Oauth2Transport, error) {
+	issuer := oauth2.Issuer{
+		IssuerEndpoint: issuerEndpoint,
+		ClientID:       clientID,
+		Audience:       audience,
+	}
+	// TODO: is it an error here if private key comes in with scope?
+	if privateKey != "" {
+		return oAuth2WithDefaultFlow(issuer, privateKey)
+	}
+
+	keyringStore, err := makeKeyringStore()
+	if err != nil {
+		return nil, err
+	}
+
+	p := &Oauth2Transport{
+		clock:            clock2.RealClock{},
+		issuer:           issuer,
+		store:            keyringStore,
+		defaultTransport: transport,
+	}
+
+	err = p.loadGrant()
+	if err != nil {
+		return nil, err
+	}
+
+	return p, nil
+}
+
+func NewAuthenticationOAuth2(issuer oauth2.Issuer, store store.Store) (*Oauth2Transport, error) {
+	p := &Oauth2Transport{
 		clock:  clock2.RealClock{},
 		issuer: issuer,
 		store:  store,
@@ -68,8 +94,8 @@ func NewAuthenticationOAuth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Pr
 	return p, nil
 }
 
-// NewAuthenticationOAuth2WithDefaultFlow uses memory to save the grant
-func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string) (Provider, error) {
+// oAuth2WithDefaultFlow uses memory to save the grant
+func oAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string) (*Oauth2Transport, error) {
 	st := store.NewMemoryStore()
 	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
 		KeyFile: keyFile,
@@ -88,50 +114,10 @@ func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string
 		return nil, err
 	}
 
-	p := &OAuth2Provider{
+	p := &Oauth2Transport{
 		clock:  clock2.RealClock{},
 		issuer: issuer,
 		store:  st,
-	}
-
-	return p, p.loadGrant()
-}
-
-func NewAuthenticationOAuth2FromAuthParams(encodedAuthParam string,
-	transport http.RoundTripper) (*OAuth2Provider, error) {
-
-	var paramsJSON OAuth2ClientCredentials
-	err := json.Unmarshal([]byte(encodedAuthParam), &paramsJSON)
-	if err != nil {
-		return nil, err
-	}
-	return NewAuthenticationOAuth2WithParams(paramsJSON.IssuerURL, paramsJSON.ClientID, paramsJSON.Audience,
-		paramsJSON.Scope, transport)
-}
-
-func NewAuthenticationOAuth2WithParams(
-	issuerEndpoint,
-	clientID,
-	audience string,
-	scope string,
-	transport http.RoundTripper) (*OAuth2Provider, error) {
-
-	issuer := oauth2.Issuer{
-		IssuerEndpoint: issuerEndpoint,
-		ClientID:       clientID,
-		Audience:       audience,
-	}
-
-	keyringStore, err := MakeKeyringStore()
-	if err != nil {
-		return nil, err
-	}
-
-	p := &OAuth2Provider{
-		clock:            clock2.RealClock{},
-		issuer:           issuer,
-		store:            keyringStore,
-		defaultTransport: transport,
 	}
 
 	err = p.loadGrant()
@@ -142,7 +128,7 @@ func NewAuthenticationOAuth2WithParams(
 	return p, nil
 }
 
-func (o *OAuth2Provider) loadGrant() error {
+func (o *Oauth2Transport) loadGrant() error {
 	grant, err := o.store.LoadGrant(o.issuer.Audience)
 	if err != nil {
 		if err == store.ErrNoAuthenticationData {
@@ -153,7 +139,7 @@ func (o *OAuth2Provider) loadGrant() error {
 	return o.initCache(grant)
 }
 
-func (o *OAuth2Provider) initCache(grant *oauth2.AuthorizationGrant) error {
+func (o *Oauth2Transport) initCache(grant *oauth2.AuthorizationGrant) error {
 	refresher, err := o.getRefresher(grant.Type)
 	if err != nil {
 		return err
@@ -164,7 +150,7 @@ func (o *OAuth2Provider) initCache(grant *oauth2.AuthorizationGrant) error {
 		return err
 	}
 	o.source = source
-	o.tokenTransport = &transport{
+	o.tokenTransport = &oa2Transport{
 		source: o.source,
 		wrapped: &xoauth2.Transport{
 			Source: o.source,
@@ -174,19 +160,11 @@ func (o *OAuth2Provider) initCache(grant *oauth2.AuthorizationGrant) error {
 	return nil
 }
 
-func (o *OAuth2Provider) RoundTrip(req *http.Request) (*http.Response, error) {
-	return o.tokenTransport.RoundTrip(req)
+func (o *Oauth2Transport) RoundTrip(req *http.Request) (*http.Response, error) {
+	return o.tokenTransport.RoundTrip(httptools.CloneReq(req))
 }
 
-func (o *OAuth2Provider) WithTransport(tripper http.RoundTripper) {
-	o.defaultTransport = tripper
-}
-
-func (o *OAuth2Provider) Transport() http.RoundTripper {
-	return o.tokenTransport
-}
-
-func (o *OAuth2Provider) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
+func (o *Oauth2Transport) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
 	switch t {
 	case oauth2.GrantTypeClientCredentials:
 		return oauth2.NewDefaultClientCredentialsGrantRefresher(o.clock)
@@ -197,12 +175,12 @@ func (o *OAuth2Provider) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.A
 	}
 }
 
-type transport struct {
+type oa2Transport struct {
 	source  cache.CachingTokenSource
 	wrapped *xoauth2.Transport
 }
 
-func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
+func (t *oa2Transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	if len(req.Header.Get("Authorization")) != 0 {
 		return t.wrapped.Base.RoundTrip(req)
 	}
@@ -222,14 +200,12 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 	return res, nil
 }
 
-func (t *transport) WrappedRoundTripper() http.RoundTripper { return t.wrapped.Base }
-
 const (
 	serviceName  = "pulsar"
-	keyChainName = "pulsarctl"
+	keyChainName = "pulsar-admin-go"
 )
 
-func MakeKeyringStore() (store.Store, error) {
+func makeKeyringStore() (store.Store, error) {
 	kr, err := makeKeyring()
 	if err != nil {
 		return nil, err
@@ -248,6 +224,6 @@ func makeKeyring() (keyring.Keyring, error) {
 	})
 }
 
-func keyringPrompt(prompt string) (string, error) {
+func keyringPrompt(_ string) (string, error) {
 	return "", nil
 }
