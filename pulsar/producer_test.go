@@ -2268,3 +2268,33 @@ func TestProducerSendWithContext(t *testing.T) {
 	//  producer.Send should fail and return err context.Canceled
 	assert.True(t, errors.Is(err, context.Canceled))
 }
+
+func TestFailPendingMessageWithClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+	testProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   newTopicName(),
+		DisableBlockIfQueueFull: false,
+		BatchingMaxPublishDelay: 100000,
+		BatchingMaxMessages:     1000,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, testProducer)
+	for i := 0; i < 3; i++ {
+		testProducer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {
+			if e != nil {
+				assert.Equal(t, errProducerClosed, e)
+			}
+		})
+	}
+	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp.pendingQueue.Put(&pendingItem{})
+	testProducer.Close()
+	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
+}
