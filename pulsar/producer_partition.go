@@ -1371,6 +1371,7 @@ func (p *partitionProducer) failPendingMessages() {
 	if viewSize <= 0 {
 		return
 	}
+
 	p.log.Infof("Failing %d messages on closing producer", viewSize)
 	lastViewItem := curViewItems[viewSize-1].(*pendingItem)
 
@@ -1389,24 +1390,9 @@ func (p *partitionProducer) failPendingMessages() {
 		pi.Lock()
 
 		for _, i := range pi.sendRequests {
-			sr := i.(*sendRequest)
-			if sr.msg != nil {
-				size := len(sr.msg.Payload)
-				p.releaseSemaphoreAndMem(sr.reservedMem)
-				p.metrics.MessagesPending.Dec()
-				p.metrics.BytesPending.Sub(float64(size))
-				p.log.WithError(errProducerClosed).
-					WithField("size", size).
-					WithField("properties", sr.msg.Properties)
-			}
-
-			if sr.callback != nil {
-				sr.callbackOnce.Do(func() {
-					runCallback(sr.callback, nil, sr.msg, errProducerClosed)
-				})
-			}
-			if sr.transaction != nil {
-				sr.transaction.endSendOrAckOp(nil)
+			sr, ok := i.(*sendRequest)
+			if ok {
+				sr.done(nil, errProducerClosed)
 			}
 		}
 
@@ -1502,11 +1488,14 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		sr.producer.metrics.BytesPublished.Add(float64(sr.reservedMem))
 	}
 
-	if err == errSendTimeout {
-		sr.producer.metrics.PublishErrorsTimeout.Inc()
+	if err != nil {
 		sr.producer.log.WithError(err).
 			WithField("size", sr.reservedMem).
 			WithField("properties", sr.msg.Properties)
+	}
+
+	if err == errSendTimeout {
+		sr.producer.metrics.PublishErrorsTimeout.Inc()
 	}
 
 	if err == errMessageTooLarge {
