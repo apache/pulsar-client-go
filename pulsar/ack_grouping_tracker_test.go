@@ -25,8 +25,9 @@ import (
 	"testing"
 	"time"
 
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
+
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 func TestNoCacheTracker(t *testing.T) {

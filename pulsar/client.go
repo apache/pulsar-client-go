@@ -21,9 +21,10 @@ import (
 	"crypto/tls"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+
 	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	"github.com/prometheus/client_golang/prometheus"
 )
 
 // NewClient Creates a pulsar client instance

@@ -66,12 +66,12 @@ type ProducerMessage struct {
 	//     types, the messages will still be delivered immediately.
 	DeliverAt time.Time
 
-	//Schema assign to the current message
-	//Note: messages may have a different schema from producer schema, use it instead of producer schema when assigned
+	// Schema assign to the current message
+	// Note: messages may have a different schema from producer schema, use it instead of producer schema when assigned
 	Schema Schema
 
-	//Transaction assign to the current message
-	//Note: The message is not visible before the transaction is committed.
+	// Transaction assign to the current message
+	// Note: The message is not visible before the transaction is committed.
 	Transaction Transaction
 }
 
@@ -126,7 +126,7 @@ type Message interface {
 	// GetSchemaValue returns the de-serialized value of the message, according to the configuration.
 	GetSchemaValue(v interface{}) error
 
-	//SchemaVersion get the schema version of the message, if any
+	// SchemaVersion get the schema version of the message, if any
 	SchemaVersion() []byte
 
 	// GetEncryptionContext returns the ecryption context of the message.

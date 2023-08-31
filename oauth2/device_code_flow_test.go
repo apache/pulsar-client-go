@@ -21,9 +21,10 @@ import (
 	"errors"
 	"time"
 
+	"golang.org/x/oauth2"
+
 	"github.com/apache/pulsar-client-go/oauth2/clock"
 	"github.com/apache/pulsar-client-go/oauth2/clock/testing"
-	"golang.org/x/oauth2"
 
 	. "github.com/onsi/ginkgo"
 	. "github.com/onsi/gomega"

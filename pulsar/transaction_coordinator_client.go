@@ -23,10 +23,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	"google.golang.org/protobuf/proto"
 )
 
 type transactionCoordinatorClient struct {
@@ -59,7 +60,7 @@ func (tc *transactionCoordinatorClient) start() error {
 	}
 	tc.cons = make([]internal.Connection, r.Partitions)
 
-	//Get connections with all transaction_impl coordinators which is synchronized
+	// Get connections with all transaction_impl coordinators which is synchronized
 	for i := 0; i < r.Partitions; i++ {
 		err := tc.grabConn(uint64(i))
 		if err != nil {

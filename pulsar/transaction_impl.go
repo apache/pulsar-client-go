@@ -69,10 +69,10 @@ func newTransaction(id TxnID, tcClient *transactionCoordinatorClient, timeout ti
 		opTimeout:                5 * time.Second,
 		tcClient:                 tcClient,
 	}
-	//This means there are not pending requests with this transaction. The transaction can be committed or aborted.
+	// This means there are not pending requests with this transaction. The transaction can be committed or aborted.
 	transaction.opsFlow <- true
 	go func() {
-		//Set the state of the transaction to timeout after timeout
+		// Set the state of the transaction to timeout after timeout
 		<-time.After(timeout)
 		atomic.CompareAndSwapInt32((*int32)(&transaction.state), int32(TxnOpen), int32(TxnTimeout))
 	}()
@@ -90,13 +90,13 @@ func (txn *transaction) Commit(ctx context.Context) error {
 		return newError(InvalidStatus, "Expect transaction state is TxnOpen but "+txn.state.string())
 	}
 
-	//Wait for all operations to complete
+	// Wait for all operations to complete
 	select {
 	case <-txn.opsFlow:
 	case <-time.After(txn.opTimeout):
 		return newError(TimeoutError, "There are some operations that are not completed after the timeout.")
 	}
-	//Send commit transaction command to transaction coordinator
+	// Send commit transaction command to transaction coordinator
 	err := txn.tcClient.endTxn(&txn.txnID, pb.TxnAction_COMMIT)
 	if err == nil {
 		atomic.StoreInt32((*int32)(&txn.state), int32(TxnCommitted))
@@ -116,13 +116,13 @@ func (txn *transaction) Abort(ctx context.Context) error {
 		return newError(InvalidStatus, "Expect transaction state is TxnOpen but "+txn.state.string())
 	}
 
-	//Wait for all operations to complete
+	// Wait for all operations to complete
 	select {
 	case <-txn.opsFlow:
 	case <-time.After(txn.opTimeout):
 		return newError(TimeoutError, "There are some operations that are not completed after the timeout.")
 	}
-	//Send abort transaction command to transaction coordinator
+	// Send abort transaction command to transaction coordinator
 	err := txn.tcClient.endTxn(&txn.txnID, pb.TxnAction_ABORT)
 	if err == nil {
 		atomic.StoreInt32((*int32)(&txn.state), int32(TxnAborted))
@@ -138,7 +138,7 @@ func (txn *transaction) Abort(ctx context.Context) error {
 
 func (txn *transaction) registerSendOrAckOp() error {
 	if atomic.AddInt32(&txn.opsCount, 1) == 1 {
-		//There are new operations that not completed
+		// There are new operations that not completed
 		select {
 		case <-txn.opsFlow:
 			return nil
@@ -157,7 +157,7 @@ func (txn *transaction) endSendOrAckOp(err error) {
 		atomic.StoreInt32((*int32)(&txn.state), int32(TxnError))
 	}
 	if atomic.AddInt32(&txn.opsCount, -1) == 0 {
-		//This means there are not pending send/ack requests
+		// This means there are not pending send/ack requests
 		txn.opsFlow <- true
 	}
 }

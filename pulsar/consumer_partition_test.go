@@ -21,10 +21,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 )
 
 func TestSingleMessageIDNoAckTracker(t *testing.T) {

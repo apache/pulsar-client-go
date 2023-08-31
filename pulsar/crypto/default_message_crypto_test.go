@@ -20,9 +20,10 @@ package crypto
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestAddPublicKeyCipher(t *testing.T) {

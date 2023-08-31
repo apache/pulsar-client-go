@@ -22,8 +22,9 @@ import (
 	"log"
 	"testing"
 
-	pb "github.com/apache/pulsar-client-go/integration-tests/pb"
 	"github.com/stretchr/testify/assert"
+
+	pb "github.com/apache/pulsar-client-go/integration-tests/pb"
 )
 
 type testJSON struct {
@@ -79,7 +80,7 @@ func TestJsonSchema(t *testing.T) {
 	}
 	producer1.Close()
 
-	//create consumer
+	// create consumer
 	var s testJSON
 
 	consumerJS, err := NewJSONSchemaWithValidation(exampleSchemaDef, nil)
@@ -127,7 +128,7 @@ func TestProtoSchema(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	//create consumer
+	// create consumer
 	unobj := pb.Test{}
 	psConsumer := NewProtoSchema(protoSchemaDef, nil)
 	consumer, err := client.Subscribe(ConsumerOptions{
@@ -184,7 +185,7 @@ func TestProtoNativeSchema(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	//create consumer
+	// create consumer
 	unobj := pb.Test{}
 	psConsumer := NewProtoNativeSchemaWithMessage(&pb.Test{}, nil)
 	consumer, err := client.Subscribe(ConsumerOptions{
@@ -233,7 +234,7 @@ func TestAvroSchema(t *testing.T) {
 		log.Fatal(err)
 	}
 
-	//create consumer
+	// create consumer
 	unobj := testAvro{}
 
 	asConsumer := NewAvroSchema(exampleSchemaDef, nil)

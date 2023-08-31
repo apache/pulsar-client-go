@@ -109,15 +109,15 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 
 	// note: ints here mirror MetricsCardinality in client.go to avoid import cycle
 	switch metricsCardinality {
-	case 1: //MetricsCardinalityNone
+	case 1: // MetricsCardinalityNone
 		metricsLevelLabels = []string{}
-	case 2: //MetricsCardinalityTenant
+	case 2: // MetricsCardinalityTenant
 		metricsLevelLabels = []string{"pulsar_tenant"}
-	case 3: //MetricsCardinalityNamespace
+	case 3: // MetricsCardinalityNamespace
 		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace"}
-	case 4: //MetricsCardinalityTopic
+	case 4: // MetricsCardinalityTopic
 		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace", "topic"}
-	default: //Anything else is namespace
+	default: // Anything else is namespace
 		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace"}
 	}
 

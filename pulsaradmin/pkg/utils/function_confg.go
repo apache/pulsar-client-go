@@ -87,7 +87,7 @@ type FunctionConfig struct {
 	Secrets map[string]interface{} `json:"secrets,omitempty" yaml:"secrets"`
 
 	MaxPendingAsyncRequests int `json:"maxPendingAsyncRequests,omitempty" yaml:"maxPendingAsyncRequests"`
-	//nolint
+	// nolint
 	ExposePulsarAdminClientEnabled bool   `json:"exposePulsarAdminClientEnabled" yaml:"exposePulsarAdminClientEnabled"`
 	SkipToLatest                   bool   `json:"skipToLatest" yaml:"skipToLatest"`
 	SubscriptionPosition           string `json:"subscriptionPosition,omitempty" yaml:"subscriptionPosition"`

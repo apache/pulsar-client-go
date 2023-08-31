@@ -22,8 +22,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/bits-and-blooms/bitset"
+
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 type ackGroupingTracker interface {

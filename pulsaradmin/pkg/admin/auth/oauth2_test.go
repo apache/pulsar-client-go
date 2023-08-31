@@ -24,10 +24,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/oauth2"
-	"github.com/apache/pulsar-client-go/oauth2/store"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/oauth2"
+	"github.com/apache/pulsar-client-go/oauth2/store"
 )
 
 // mockOAuthServer will mock a oauth service for the tests

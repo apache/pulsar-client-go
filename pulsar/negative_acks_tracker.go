@@ -21,7 +21,7 @@ import (
 	"sync"
 	"time"
 
-	log "github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 type redeliveryConsumer interface {

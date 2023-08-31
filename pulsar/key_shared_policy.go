@@ -34,9 +34,9 @@ const (
 
 // KeySharedPolicy for KeyShared subscription
 type KeySharedPolicy struct {
-	//KeySharedPolicyMode
+	// KeySharedPolicyMode
 	Mode KeySharedPolicyMode
-	//HashRanges value pair list
+	// HashRanges value pair list
 	HashRanges []int
 	// If enabled, it will relax the ordering requirement, allowing the broker to send out-of-order messages in case of
 	// failures. This will make it faster for new consumers to join without being stalled by an existing slow consumer.
@@ -83,14 +83,14 @@ func validateHashRanges(hashRanges []int) error {
 		return fmt.Errorf("ranges must not be empty or not in value pairs")
 	}
 	var x1, x2, y1, y2 int
-	//check that the ranges are well-formed
+	// check that the ranges are well-formed
 	for i := 0; i < sz; i += 2 {
 		x1, x2 = hashRanges[i], hashRanges[i+1]
 		if x1 >= x2 || x1 < 0 || x2 > 65535 {
 			return fmt.Errorf("ranges must be in [0, 65535], but provided range is, %d - %d", x1, x2)
 		}
 	}
-	//loop again for checking range overlap
+	// loop again for checking range overlap
 	for i := 0; i < sz; i += 2 {
 		x1, x2 = hashRanges[i], hashRanges[i+1]
 		for j := 0; j < sz; j += 2 {

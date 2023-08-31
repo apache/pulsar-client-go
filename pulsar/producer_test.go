@@ -29,12 +29,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
-	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -1659,7 +1661,7 @@ func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
 	}
 	producer.Flush()
 
-	//// create consumer
+	// // create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "my-sub2",
@@ -1750,7 +1752,7 @@ func TestMultipleSchemaProducerConsumer(t *testing.T) {
 	}
 	producer.Flush()
 
-	//// create consumer
+	// // create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "my-sub2",

@@ -35,7 +35,7 @@ const (
 	InvalidConfiguration
 	// TimeoutError means operation timed out
 	TimeoutError
-	//LookupError means broker lookup failed
+	// LookupError means broker lookup failed
 	LookupError
 	// ConnectError means failed to connect to broker
 	ConnectError

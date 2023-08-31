@@ -18,8 +18,9 @@
 package pulsartracing
 
 import (
-	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/opentracing/opentracing-go"
+
+	"github.com/apache/pulsar-client-go/pulsar"
 )
 
 func enrichConsumerSpan(message *pulsar.ConsumerMessage, span opentracing.Span) {

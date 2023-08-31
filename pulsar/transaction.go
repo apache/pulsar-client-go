@@ -57,13 +57,13 @@ type TxnID struct {
 
 // Transaction used to guarantee exactly-once
 type Transaction interface {
-	//Commit You can commit the transaction after all the sending/acknowledging operations with the transaction success.
+	// Commit You can commit the transaction after all the sending/acknowledging operations with the transaction success.
 	Commit(context.Context) error
-	//Abort You can abort the transaction when you want to abort all the sending/acknowledging operations
+	// Abort You can abort the transaction when you want to abort all the sending/acknowledging operations
 	// with the transaction.
 	Abort(context.Context) error
-	//GetState Get the state of the transaction.
+	// GetState Get the state of the transaction.
 	GetState() TxnState
-	//GetTxnID Get the identified ID of the transaction.
+	// GetTxnID Get the identified ID of the transaction.
 	GetTxnID() TxnID
 }

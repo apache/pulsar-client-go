@@ -19,7 +19,7 @@ package utils
 
 type ProducerConfig struct {
 	MaxPendingMessages int `json:"maxPendingMessages" yaml:"maxPendingMessages"`
-	//nolint
+	// nolint
 	MaxPendingMessagesAcrossPartitions int `json:"maxPendingMessagesAcrossPartitions" yaml:"maxPendingMessagesAcrossPartitions"`
 
 	UseThreadLocalProducers bool          `json:"useThreadLocalProducers" yaml:"useThreadLocalProducers"`

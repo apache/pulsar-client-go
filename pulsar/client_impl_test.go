@@ -29,10 +29,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/auth"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/apache/pulsar-client-go/pulsar/auth"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 func TestClient(t *testing.T) {

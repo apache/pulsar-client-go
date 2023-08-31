@@ -29,13 +29,14 @@ import (
 
 	"google.golang.org/protobuf/proto"
 
+	"github.com/bits-and-blooms/bitset"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	cryptointernal "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-	"github.com/bits-and-blooms/bitset"
 
 	uAtomic "go.uber.org/atomic"
 )
@@ -166,7 +167,7 @@ type partitionConsumer struct {
 	dlq         *dlqRouter
 
 	log                  log.Logger
-	compressionProviders sync.Map //map[pb.CompressionType]compression.Provider
+	compressionProviders sync.Map // map[pb.CompressionType]compression.Provider
 	metrics              *internal.LeveledMetrics
 	decryptor            cryptointernal.Decryptor
 	schemaInfoCache      *schemaInfoCache
