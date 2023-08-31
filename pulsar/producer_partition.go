@@ -1146,6 +1146,7 @@ func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 			// of that only a part of the chunks acquire succeed
 			sr.semaphore = p.publishSemaphore
 			sr.reservedSemaphore++
+			p.metrics.MessagesPending.Inc()
 		} else {
 			if !p.publishSemaphore.Acquire(sr.ctx) {
 				return errContextExpired
@@ -1155,10 +1156,10 @@ func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 			// of that only a part of the chunks acquire succeed
 			sr.semaphore = p.publishSemaphore
 			sr.reservedSemaphore++
+			p.metrics.MessagesPending.Inc()
 		}
 	}
 
-	p.metrics.MessagesPending.Add(float64(sr.totalChunks))
 	return nil
 }
 
@@ -1514,7 +1515,7 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		for i := 0; i < sr.reservedSemaphore; i++ {
 			sr.semaphore.Release()
 		}
-		sr.producer.metrics.MessagesPending.Dec()
+		sr.producer.metrics.MessagesPending.Sub(float64(sr.reservedSemaphore))
 	}
 
 	if sr.memLimit != nil {
