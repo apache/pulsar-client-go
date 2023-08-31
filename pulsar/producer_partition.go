@@ -1141,16 +1141,24 @@ func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 			if !p.publishSemaphore.TryAcquire() {
 				return errSendQueueIsFull
 			}
+
+			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
+			// of that only a part of the chunks acquire succeed
+			sr.semaphore = p.publishSemaphore
+			sr.reservedSemaphore++
 		} else {
 			if !p.publishSemaphore.Acquire(sr.ctx) {
 				return errContextExpired
 			}
+
+			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
+			// of that only a part of the chunks acquire succeed
+			sr.semaphore = p.publishSemaphore
+			sr.reservedSemaphore++
 		}
 	}
 
 	p.metrics.MessagesPending.Add(float64(sr.totalChunks))
-	sr.semaphore = p.publishSemaphore
-	sr.reservedSemaphore = sr.totalChunks
 	return nil
 }
 
