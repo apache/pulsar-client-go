@@ -134,4 +134,7 @@ type Reader interface {
 	//            the message publish time where to reposition the subscription
 	//
 	SeekByTime(time time.Time) error
+
+	// GetLastMSgID get the last message id available for consume.
+	GetLastMSgID() (MessageID, error)
 }
