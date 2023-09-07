@@ -20,9 +20,10 @@ package auth
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"net/http"
 	"path/filepath"
+
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 
 	"github.com/99designs/keyring"
 	"github.com/apache/pulsar-client-go/oauth2"
