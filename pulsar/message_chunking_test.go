@@ -568,8 +568,6 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int, whol
 	mm.ChunkId = proto.Int32(int32(chunkID))
 	producerImpl.updateMetadataSeqID(mm, msg)
 
-	// only the last chunk will trigger the callback, can't wait here
-	// doneCh := make(chan struct{})
 	producerImpl.internalSingleSend(
 		mm,
 		msg.Payload,
@@ -578,8 +576,6 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int, whol
 			ctx:      context.Background(),
 			msg:      msg,
 			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {
-				// only the last chunk will trigger the callback, can't wait here
-				// close(doneCh)
 			},
 			callbackOnce:        callbackOnce,
 			flushImmediately:    true,
@@ -606,7 +602,4 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int, whol
 		},
 		uint32(internal.MaxMessageSize),
 	)
-
-	// only the last chunk will trigger the callback, can't wait here
-	// <-doneCh
 }
