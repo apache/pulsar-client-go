@@ -19,6 +19,8 @@ package auth
 
 import (
 	"encoding/json"
+	"fmt"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"net/http"
 	"path/filepath"
 
@@ -243,8 +245,9 @@ func makeKeyring() (keyring.Keyring, error) {
 		ServiceName:              serviceName,
 		KeychainName:             keyChainName,
 		KeychainTrustApplication: true,
-		FileDir:                  filepath.Join("~/.config/pulsar", "credentials"),
-		FilePasswordFunc:         keyringPrompt,
+		FileDir: filepath.Join(fmt.Sprintf(
+			"%s/.config/pulsar", utils.GetConfigPath()), "credentials"),
+		FilePasswordFunc: keyringPrompt,
 	})
 }
 
