@@ -19,6 +19,7 @@ package utils
 
 import (
 	"fmt"
+	"os"
 	"reflect"
 )
 
@@ -35,4 +36,13 @@ func IsNilFixed(i interface{}) bool {
 		return reflect.ValueOf(i).IsNil()
 	}
 	return false
+}
+
+func GetConfigPath() string {
+	// pulsar client config dir path, for example: PULSAR_CLIENT_CONF_PATH: /home/pulsar
+	// configuration file path is: /home/pulsar/.config/pulsar
+	if envConf, ok := os.LookupEnv("PULSAR_CLIENT_CONF_PATH"); ok {
+		return envConf
+	}
+	return HomeDir()
 }
