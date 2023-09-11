@@ -153,7 +153,7 @@ type ClientOptions struct {
 	MetricsRegisterer prometheus.Registerer
 
 	// Release the connection if it is not used for more than ConnectionMaxIdleTime.
-	// Default is 60 seconds, negative such as -1 to disable.
+	// Default is 180 seconds, minimum is 60 seconds. Negative such as -1 to disable.
 	ConnectionMaxIdleTime time.Duration
 
 	EnableTransaction bool
