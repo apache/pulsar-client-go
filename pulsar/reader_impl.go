@@ -244,3 +244,7 @@ func (r *reader) SeekByTime(time time.Time) error {
 
 	return r.pc.SeekByTime(time)
 }
+
+func (r *reader) GetLastMessageID() (MessageID, error) {
+	return r.pc.getLastMessageID()
+}

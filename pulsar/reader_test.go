@@ -901,3 +901,45 @@ func TestReaderWithBackoffPolicy(t *testing.T) {
 	partitionConsumerImp.reconnectToBroker()
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }
+
+func TestReaderGetLastMessageID(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	topic := newTopicName()
+	ctx := context.Background()
+	schema := NewStringSchema(nil)
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+		Schema:          schema,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	var lastMsgID MessageID
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, msgID)
+		lastMsgID = msgID
+	}
+
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	getLastMessageID, err := reader.GetLastMessageID()
+	if err != nil {
+		return
+	}
+
+	assert.Equal(t, lastMsgID.LedgerID(), getLastMessageID.LedgerID())
+	assert.Equal(t, lastMsgID.EntryID(), getLastMessageID.EntryID())
+}
