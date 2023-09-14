@@ -1185,7 +1185,8 @@ func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *Producer
 		closeBlockChOnce: &sync.Once{},
 		transaction:      txn,
 	}
-	p.options.Interceptors.BeforeSend(p, msg)
+	// call interceptor with context parameter
+	p.options.Interceptors.BeforeSend(ctx, p, msg)
 
 	p.dataChan <- sr
 
