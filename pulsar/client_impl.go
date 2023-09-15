@@ -31,7 +31,6 @@ import (
 )
 
 const (
-	defaultConnectionTimeout           = 10 * time.Second
 	defaultOperationTimeout            = 30 * time.Second
 	defaultKeepAliveInterval           = 30 * time.Second
 	defaultMemoryLimitBytes            = 64 * 1024 * 1024
@@ -117,10 +116,10 @@ func newClient(options ClientOptions) (Client, error) {
 		return nil, err
 	}
 
+	// the default timeout respects Go's default timeout which is no timeout
+	// Missing user specified timeout renders 0 values that matches
+	// net.Dailer's default if time.Duration value is not initialized
 	connectionTimeout := options.ConnectionTimeout
-	if connectionTimeout.Nanoseconds() == 0 {
-		connectionTimeout = defaultConnectionTimeout
-	}
 
 	operationTimeout := options.OperationTimeout
 	if operationTimeout.Nanoseconds() == 0 {
