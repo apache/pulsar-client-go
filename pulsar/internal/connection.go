@@ -256,7 +256,11 @@ func (c *connection) connect() bool {
 
 	if c.tlsOptions == nil {
 		// Clear text connection
-		cnx, err = net.DialTimeout("tcp", c.physicalAddr.Host, c.connectionTimeout)
+		if c.connectionTimeout.Nanoseconds() > 0 {
+			cnx, err = net.DialTimeout("tcp", c.physicalAddr.Host, c.connectionTimeout)
+		} else {
+			cnx, err = net.Dial("tcp", c.physicalAddr.Host)
+		}
 	} else {
 		// TLS connection
 		tlsConfig, err = c.getTLSConfig()
@@ -265,6 +269,8 @@ func (c *connection) connect() bool {
 			return false
 		}
 
+		// time.Duration is initialized to 0 by default, net.Dialer's default timeout is no timeout
+		// therefore if c.connectionTimeout is 0, it means no timeout
 		d := &net.Dialer{Timeout: c.connectionTimeout}
 		cnx, err = tls.DialWithDialer(d, "tcp", c.physicalAddr.Host, tlsConfig)
 	}
