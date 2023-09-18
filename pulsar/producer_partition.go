@@ -457,7 +457,9 @@ func (p *partitionProducer) runEventsLoop() {
 			p.log.Info("runEventsLoop will reconnect in producer")
 			p.reconnectToBroker()
 		case <-p.batchFlushTicker.C:
-			p.internalFlushCurrentBatch()
+			if !p.options.DisableBatching {
+				p.internalFlushCurrentBatch()
+			}
 		}
 	}
 }
