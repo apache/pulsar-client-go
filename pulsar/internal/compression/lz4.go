@@ -96,7 +96,8 @@ func (lz4Provider) Decompress(dst, src []byte, originalSize int) ([]byte, error)
 	return dst, err
 }
 
-func (lz4Provider) Close() error {
+func (l *lz4Provider) Close() error {
+	l.hashTable = l.hashTable[:0]
 	return nil
 }
 
