@@ -78,7 +78,8 @@ func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string
 	})
 }
 
-func NewAuthenticationOAuth2WithFlow(issuer oauth2.Issuer, flowOptions oauth2.ClientCredentialsFlowOptions) (Provider, error) {
+func NewAuthenticationOAuth2WithFlow(
+	issuer oauth2.Issuer, flowOptions oauth2.ClientCredentialsFlowOptions) (Provider, error) {
 	st := store.NewMemoryStore()
 	flow, err := oauth2.NewDefaultClientCredentialsFlow(flowOptions)
 	if err != nil {
