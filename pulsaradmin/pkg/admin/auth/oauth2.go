@@ -73,10 +73,15 @@ func NewAuthenticationOAuth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Pr
 
 // NewAuthenticationOAuth2WithDefaultFlow uses memory to save the grant
 func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string) (Provider, error) {
-	st := store.NewMemoryStore()
-	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
+	return NewAuthenticationOAuth2WithFlow(issuer, oauth2.ClientCredentialsFlowOptions{
 		KeyFile: keyFile,
 	})
+}
+
+func NewAuthenticationOAuth2WithFlow(
+	issuer oauth2.Issuer, flowOptions oauth2.ClientCredentialsFlowOptions) (Provider, error) {
+	st := store.NewMemoryStore()
+	flow, err := oauth2.NewDefaultClientCredentialsFlow(flowOptions)
 	if err != nil {
 		return nil, err
 	}
