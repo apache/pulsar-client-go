@@ -869,7 +869,8 @@ type pendingItem struct {
 func (p *partitionProducer) internalFlushCurrentBatch() {
 	if p.batchBuilder == nil {
 		// batch is not enabled
-		// the batch flush ticker should be stopped but it might still called once depends on when stop() is called concurrently
+		// the batch flush ticker should be stopped but it might still called once
+		// depends on when stop() is called concurrently
 		// so we add check to prevent the flow continues on a nil batchBuilder
 		return
 	}
