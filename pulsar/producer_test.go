@@ -30,7 +30,9 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
@@ -2297,4 +2299,94 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 	partitionProducerImp.pendingQueue.Put(&pendingItem{})
 	testProducer.Close()
 	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
+}
+
+type pendingQueueWrapper struct {
+	pendingQueue   internal.BlockingQueue
+	writtenBuffers *[]internal.Buffer
+}
+
+func (pqw *pendingQueueWrapper) Put(item interface{}) {
+	pi := item.(*pendingItem)
+	writerIdx := pi.buffer.WriterIndex()
+	buf := internal.NewBuffer(int(writerIdx))
+	buf.Write(pi.buffer.Get(0, writerIdx))
+	*pqw.writtenBuffers = append(*pqw.writtenBuffers, buf)
+	pqw.pendingQueue.Put(item)
+}
+
+func (pqw *pendingQueueWrapper) Take() interface{} {
+	return pqw.pendingQueue.Take()
+}
+
+func (pqw *pendingQueueWrapper) Poll() interface{} {
+	return pqw.pendingQueue.Poll()
+}
+
+func (pqw *pendingQueueWrapper) CompareAndPoll(compare func(interface{}) bool) interface{} {
+	return pqw.pendingQueue.CompareAndPoll(compare)
+}
+
+func (pqw *pendingQueueWrapper) Peek() interface{} {
+	return pqw.pendingQueue.Peek()
+}
+
+func (pqw *pendingQueueWrapper) PeekLast() interface{} {
+	return pqw.pendingQueue.PeekLast()
+}
+
+func (pqw *pendingQueueWrapper) Size() int {
+	return pqw.pendingQueue.Size()
+}
+
+func (pqw *pendingQueueWrapper) ReadableSlice() []interface{} {
+	return pqw.pendingQueue.ReadableSlice()
+}
+
+func TestDisableReplication(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	testProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, testProducer)
+	defer testProducer.Close()
+
+	writtenBuffers := make([]internal.Buffer, 0)
+	pqw := &pendingQueueWrapper{
+		pendingQueue:   internal.NewBlockingQueue(1000),
+		writtenBuffers: &writtenBuffers,
+	}
+
+	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp.pendingQueue = pqw
+
+	ID, err := testProducer.Send(context.Background(), &ProducerMessage{
+		Payload:            []byte("disable-replication"),
+		DisableReplication: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, ID)
+
+	assert.Equal(t, 1, len(writtenBuffers))
+	buf := writtenBuffers[0]
+
+	buf.Skip(4)                        // TOTAL_SIZE
+	cmdSize := buf.ReadUint32()        // CMD_SIZE
+	buf.Skip(cmdSize)                  // CMD
+	buf.Skip(2)                        // MAGIC_NUMBER
+	buf.Skip(4)                        // CHECKSUM
+	metadataSize := buf.ReadUint32()   // METADATA_SIZE
+	metadata := buf.Read(metadataSize) // METADATA
+
+	var msgMetadata pb.MessageMetadata
+	err = proto.Unmarshal(metadata, &msgMetadata)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"__local__"}, msgMetadata.GetReplicateTo())
 }

@@ -551,12 +551,12 @@ func (p *partitionProducer) internalSend(request *sendRequest) {
 		deliverAt = time.Now().Add(msg.DeliverAfter)
 	}
 
-	mm := p.genMetadata(msg, uncompressedSize, deliverAt)
-
 	// set default ReplicationClusters when DisableReplication
 	if msg.DisableReplication {
 		msg.ReplicationClusters = []string{"__local__"}
 	}
+
+	mm := p.genMetadata(msg, uncompressedSize, deliverAt)
 
 	sendAsBatch := !p.options.DisableBatching &&
 		msg.ReplicationClusters == nil &&
