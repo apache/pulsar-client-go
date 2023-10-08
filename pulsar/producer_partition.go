@@ -1039,12 +1039,12 @@ func (p *partitionProducer) updateMetaData(sr *sendRequest) {
 		deliverAt = time.Now().Add(sr.msg.DeliverAfter)
 	}
 
-	sr.mm = p.genMetadata(sr.msg, int(sr.uncompressedSize), deliverAt)
-
 	// set default ReplicationClusters when DisableReplication
 	if sr.msg.DisableReplication {
 		sr.msg.ReplicationClusters = []string{"__local__"}
 	}
+
+	sr.mm = p.genMetadata(sr.msg, int(sr.uncompressedSize), deliverAt)
 
 	sr.sendAsBatch = !p.options.DisableBatching &&
 		sr.msg.ReplicationClusters == nil &&
