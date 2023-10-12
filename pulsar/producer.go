@@ -142,7 +142,7 @@ type ProducerOptions struct {
 	// broker, leading to better throughput, especially when publishing small messages. If compression is enabled,
 	// messages will be compressed at the batch level, leading to a much better compression ratio for similar headers or
 	// contents.
-	// When enabled default batch delay is set to 1 ms and default batch size is 1000 messages
+	// When enabled default batch delay is set to 10 ms and default batch size is 1000 messages
 	// Setting `DisableBatching: true` will make the producer to send messages individually
 	DisableBatching bool
 
