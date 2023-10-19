@@ -1381,6 +1381,11 @@ func (p *partitionProducer) LastSequenceID() int64 {
 }
 
 func (p *partitionProducer) Flush() error {
+	if p.getProducerState() != producerReady {
+		// Producer is closing
+		return errProducerClosed
+	}
+
 	flushReq := &flushRequest{
 		doneCh: make(chan struct{}),
 		err:    nil,
