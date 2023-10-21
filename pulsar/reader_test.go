@@ -1048,8 +1048,8 @@ func TestMultiReaderInterceptors(t *testing.T) {
 		StartMessageID:     EarliestMessageID(),
 	})
 
-	assert.NoError(t, err)
 	assert.NotNil(t, r)
+	assert.NoError(t, err)
 	defer r.Close()
 
 	for {
