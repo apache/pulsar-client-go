@@ -114,7 +114,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		decryption:                  options.Decryption,
 		schema:                      options.Schema,
 		backoffPolicy:               options.BackoffPolicy,
-		interceptors:               transformReaderInterceptors(options.ReaderInterceptors),
+		interceptors:                transformReaderInterceptors(options.ReaderInterceptors),
 		maxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
 		expireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
 		autoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
