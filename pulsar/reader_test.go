@@ -945,14 +945,19 @@ func TestReaderGetLastMessageID(t *testing.T) {
 	assert.Equal(t, lastMsgID.EntryID(), getLastMessageID.EntryID())
 }
 
-var _ ReaderInterceptor = (*CounterReaderInterceptor)(nil)
+var _ ReaderInterceptor = (*counterReaderInterceptor)(nil)
 
-type CounterReaderInterceptor struct {
-	counter atomic.Int32
+type counterReaderInterceptor struct {
+	v *int32
 }
 
-func (c *CounterReaderInterceptor) BeforeRead(_ ConsumerMessage) {
-	c.counter.Add(1)
+func newInterceptor() *counterReaderInterceptor {
+	var v = int32(0)
+	return &counterReaderInterceptor{v: &v}
+}
+
+func (c *counterReaderInterceptor) BeforeRead(_ ConsumerMessage) {
+	atomic.AddInt32(c.v, int32(1))
 }
 
 func TestSingleReaderInterceptor(t *testing.T) {
@@ -983,7 +988,7 @@ func TestSingleReaderInterceptor(t *testing.T) {
 		assert.NotNil(t, msgID)
 	}
 
-	interceptor := &CounterReaderInterceptor{}
+	interceptor := newInterceptor()
 	r, err := client.CreateReader(ReaderOptions{
 		Topic:              topic,
 		ReaderInterceptors: []ReaderInterceptor{interceptor},
@@ -1003,7 +1008,7 @@ func TestSingleReaderInterceptor(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, interceptor.counter.Load(), int32(10))
+	assert.Equal(t, atomic.LoadInt32(interceptor.v), int32(10))
 }
 
 func TestMultiReaderInterceptors(t *testing.T) {
@@ -1034,9 +1039,9 @@ func TestMultiReaderInterceptors(t *testing.T) {
 		assert.NotNil(t, msgID)
 	}
 
-	interceptor0 := &CounterReaderInterceptor{}
-	interceptor1 := &CounterReaderInterceptor{}
-	interceptor2 := &CounterReaderInterceptor{}
+	interceptor0 := newInterceptor()
+	interceptor1 := newInterceptor()
+	interceptor2 := newInterceptor()
 	r, err := client.CreateReader(ReaderOptions{
 		Topic:              topic,
 		ReaderInterceptors: []ReaderInterceptor{interceptor0, interceptor1, interceptor2},
@@ -1056,7 +1061,7 @@ func TestMultiReaderInterceptors(t *testing.T) {
 		}
 	}
 
-	assert.Equal(t, interceptor0.counter.Load(), int32(10))
-	assert.Equal(t, interceptor1.counter.Load(), int32(10))
-	assert.Equal(t, interceptor2.counter.Load(), int32(10))
+	assert.Equal(t, atomic.LoadInt32(interceptor0.v), int32(10))
+	assert.Equal(t, atomic.LoadInt32(interceptor1.v), int32(10))
+	assert.Equal(t, atomic.LoadInt32(interceptor2.v), int32(10))
 }
