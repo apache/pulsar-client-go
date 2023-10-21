@@ -80,6 +80,20 @@ type DLQPolicy struct {
 	RetryLetterTopic string
 }
 
+// AckGroupingOptions controls how to group ACK requests
+// If maxSize is 0 or 1, any ACK request will be sent immediately.
+// Otherwise, the ACK requests will be cached until one of the following conditions meets:
+// 1. There are `MaxSize` pending ACK requests.
+// 2. `MaxTime` is greater than 1 microsecond and ACK requests have been cached for `maxTime`.
+// Specially, for cumulative acknowledgment, only the latest ACK is cached and it will only be sent after `MaxTime`.
+type AckGroupingOptions struct {
+	// The maximum number of ACK requests to cache
+	MaxSize uint32
+
+	// The maximum time to cache ACK requests
+	MaxTime time.Duration
+}
+
 // ConsumerOptions is used to configure and create instances of Consumer.
 type ConsumerOptions struct {
 	// Topic specifies the topic this consumer will subscribe on.
@@ -145,6 +159,12 @@ type ConsumerOptions struct {
 	// throughput at the expense of bigger memory utilization.
 	// Default value is `1000` messages and should be good for most use cases.
 	ReceiverQueueSize int
+
+	// EnableAutoScaledReceiverQueueSize, if enabled, the consumer receive queue will be auto-scaled
+	// by the consumer actual throughput. The ReceiverQueueSize will be the maximum size which consumer
+	// receive queue can be scaled.
+	// Default is false.
+	EnableAutoScaledReceiverQueueSize bool
 
 	// NackRedeliveryDelay specifies the delay after which to redeliver the messages that failed to be
 	// processed. Default is 1 min. (See `Consumer.Nack()`)
@@ -215,6 +235,17 @@ type ConsumerOptions struct {
 	// Enable or disable batch index acknowledgment. To enable this feature, ensure batch index acknowledgment
 	// is enabled on the broker side. (default: false)
 	EnableBatchIndexAcknowledgment bool
+
+	// Controls how to group ACK requests, the default value is nil, which means:
+	// MaxSize: 1000
+	// MaxTime: 100*time.Millisecond
+	// NOTE: This option does not work if AckWithResponse is true
+	//	because there are only synchronous APIs for acknowledgment
+	AckGroupingOptions *AckGroupingOptions
+
+	// SubscriptionMode specifies the subscription mode to be used when subscribing to a topic.
+	// Default is `Durable`
+	SubscriptionMode SubscriptionMode
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
@@ -237,6 +268,9 @@ type Consumer interface {
 
 	// AckID the consumption of a single message, identified by its MessageID
 	AckID(MessageID) error
+
+	// AckWithTxn the consumption of a single message with a transaction
+	AckWithTxn(Message, Transaction) error
 
 	// AckCumulative the reception of all the messages in the stream up to (and including)
 	// the provided message.

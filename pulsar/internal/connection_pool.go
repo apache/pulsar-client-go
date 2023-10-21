@@ -47,6 +47,7 @@ type connectionPool struct {
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
 	keepAliveInterval     time.Duration
+	closeCh               chan struct{}
 
 	metrics *Metrics
 	log     log.Logger
@@ -60,8 +61,9 @@ func NewConnectionPool(
 	keepAliveInterval time.Duration,
 	maxConnectionsPerHost int,
 	logger log.Logger,
-	metrics *Metrics) ConnectionPool {
-	return &connectionPool{
+	metrics *Metrics,
+	connectionMaxIdleTime time.Duration) ConnectionPool {
+	p := &connectionPool{
 		connections:           make(map[string]*connection),
 		tlsOptions:            tlsOptions,
 		auth:                  auth,
@@ -70,7 +72,10 @@ func NewConnectionPool(
 		keepAliveInterval:     keepAliveInterval,
 		log:                   logger,
 		metrics:               metrics,
+		closeCh:               make(chan struct{}),
 	}
+	go p.checkAndCleanIdleConnections(connectionMaxIdleTime)
+	return p
 }
 
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
@@ -109,6 +114,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		p.Unlock()
 		conn.start()
 	} else {
+		conn.ResetLastActive()
 		// we already have a connection
 		p.Unlock()
 	}
@@ -119,6 +125,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 
 func (p *connectionPool) Close() {
 	p.Lock()
+	close(p.closeCh)
 	for k, c := range p.connections {
 		delete(p.connections, k)
 		c.Close()
@@ -133,4 +140,27 @@ func (p *connectionPool) getMapKey(addr *url.URL) string {
 	}
 	idx := cnt % p.maxConnectionsPerHost
 	return fmt.Sprint(addr.Host, '-', idx)
+}
+
+func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration) {
+	if maxIdleTime < 0 {
+		return
+	}
+	for {
+		select {
+		case <-p.closeCh:
+			return
+		case <-time.After(maxIdleTime):
+			p.Lock()
+			for k, c := range p.connections {
+				if c.CheckIdle(maxIdleTime) {
+					p.log.Debugf("Closed connection from pool due to inactivity. logical_addr=%+v physical_addr=%+v",
+						c.logicalAddr, c.physicalAddr)
+					delete(p.connections, k)
+					c.Close()
+				}
+			}
+			p.Unlock()
+		}
+	}
 }

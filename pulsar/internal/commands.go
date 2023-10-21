@@ -22,11 +22,10 @@ import (
 	"errors"
 	"fmt"
 
-	"google.golang.org/protobuf/proto"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -218,6 +217,17 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.GetOrCreateSchema = msg.(*pb.CommandGetOrCreateSchema)
 	case pb.BaseCommand_GET_SCHEMA:
 		cmd.GetSchema = msg.(*pb.CommandGetSchema)
+	case pb.BaseCommand_TC_CLIENT_CONNECT_REQUEST:
+		cmd.TcClientConnectRequest = msg.(*pb.CommandTcClientConnectRequest)
+	case pb.BaseCommand_NEW_TXN:
+		cmd.NewTxn = msg.(*pb.CommandNewTxn)
+	case pb.BaseCommand_ADD_PARTITION_TO_TXN:
+		cmd.AddPartitionToTxn = msg.(*pb.CommandAddPartitionToTxn)
+	case pb.BaseCommand_ADD_SUBSCRIPTION_TO_TXN:
+		cmd.AddSubscriptionToTxn = msg.(*pb.CommandAddSubscriptionToTxn)
+	case pb.BaseCommand_END_TXN:
+		cmd.EndTxn = msg.(*pb.CommandEndTxn)
+
 	default:
 		panic(fmt.Sprintf("Missing command type: %v", cmdType))
 	}
@@ -321,7 +331,10 @@ func SingleSend(wb Buffer,
 	msgMetadata *pb.MessageMetadata,
 	compressedPayload Buffer,
 	encryptor crypto.Encryptor,
-	maxMassageSize uint32) error {
+	maxMassageSize uint32,
+	useTxn bool,
+	mostSigBits uint64,
+	leastSigBits uint64) error {
 	cmdSend := baseCommand(
 		pb.BaseCommand_SEND,
 		&pb.CommandSend{
@@ -332,6 +345,10 @@ func SingleSend(wb Buffer,
 	if msgMetadata.GetTotalChunkMsgSize() > 1 {
 		isChunk := true
 		cmdSend.Send.IsChunk = &isChunk
+	}
+	if useTxn {
+		cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
+		cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
 	}
 	// payload has been compressed so compressionProvider can be nil
 	return serializeMessage(wb, cmdSend, msgMetadata, compressedPayload,

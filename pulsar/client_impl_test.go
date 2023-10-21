@@ -21,9 +21,11 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -425,7 +427,7 @@ func TestNamespaceTopics(t *testing.T) {
 		t.Fatal(err)
 	}
 	topic2 := fmt.Sprintf("%s/topic-2", namespace)
-	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+	if err := httpPut("admin/v2/persistent/"+topic2, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -446,7 +448,13 @@ func TestNamespaceTopics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount := 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 
 	// add a non-persistent topic
 	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
@@ -467,7 +475,13 @@ func TestNamespaceTopics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount = 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 }
 
 func TestNamespaceTopicsWebURL(t *testing.T) {
@@ -488,7 +502,7 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	topic2 := fmt.Sprintf("%s/topic-2", namespace)
-	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+	if err := httpPut("admin/v2/persistent/"+topic2, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -509,7 +523,13 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount := 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 
 	// add a non-persistent topic
 	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
@@ -530,7 +550,13 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount = 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 }
 
 func anonymousNamespacePolicy() map[string]interface{} {
@@ -1097,4 +1123,125 @@ func TestServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
 
 func TestWebServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
 	testTLSTransportWithBasicAuth(t, webServiceURLTLS)
+}
+
+func TestConfigureConnectionMaxIdleTime(t *testing.T) {
+	_, err := NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: 1 * time.Second,
+	})
+
+	assert.Error(t, err, "Should be failed when the connectionMaxIdleTime is less than minConnMaxIdleTime")
+
+	cli, err := NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: -1, // Disabled
+	})
+
+	assert.Nil(t, err)
+	cli.Close()
+
+	cli, err = NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: 60 * time.Second,
+	})
+
+	assert.Nil(t, err)
+	cli.Close()
+}
+
+func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer) {
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		// ack message
+		err = consumer.Ack(msg)
+		if err != nil {
+			return
+		}
+	}
+}
+
+func TestAutoCloseIdleConnection(t *testing.T) {
+	cli, err := NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: -1, // Disable auto release connections first, we will enable it manually later
+	})
+
+	assert.Nil(t, err)
+
+	topic := "TestAutoCloseIdleConnection"
+
+	// create consumer
+	consumer1, err := cli.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+
+	// create producer
+	producer1, err := cli.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	testSendAndReceive(t, producer1, consumer1)
+
+	pool := cli.(*client).cnxPool
+
+	producer1.Close()
+	consumer1.Close()
+
+	assert.NotEqual(t, 0, internal.GetConnectionsCount(&pool))
+
+	internal.StartCleanConnectionsTask(&pool, 2*time.Second) // Enable auto idle connections release manually
+
+	time.Sleep(6 * time.Second) // Need to wait at least 3 * ConnectionMaxIdleTime
+
+	assert.Equal(t, 0, internal.GetConnectionsCount(&pool))
+
+	// create consumer
+	consumer2, err := cli.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+
+	// create producer
+	producer2, err := cli.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	// Ensure the client still works
+	testSendAndReceive(t, producer2, consumer2)
+
+	producer2.Close()
+	consumer2.Close()
+
+	cli.Close()
+}
+
+func TestMultipleCloseClient(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	assert.Nil(t, err)
+	client.Close()
+	client.Close()
 }

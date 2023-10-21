@@ -129,14 +129,24 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 			Cnx:      cnx,
 			Response: response,
 		}, err}
-		close(ch)
 	})
 
-	select {
-	case res := <-ch:
-		return res.RPCResult, res.error
-	case <-time.After(c.requestTimeout):
-		return nil, ErrRequestTimeOut
+	timeoutCh := time.After(c.requestTimeout)
+	for {
+		select {
+		case res := <-ch:
+			// Ignoring producer not ready response.
+			// Continue to wait for the producer to create successfully
+			if res.error == nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
+				if !res.RPCResult.Response.ProducerSuccess.GetProducerReady() {
+					timeoutCh = nil
+					break
+				}
+			}
+			return res.RPCResult, res.error
+		case <-timeoutCh:
+			return nil, ErrRequestTimeOut
+		}
 	}
 }
 

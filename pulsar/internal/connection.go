@@ -50,6 +50,9 @@ type TLSOptions struct {
 	AllowInsecureConnection bool
 	ValidateHostname        bool
 	ServerName              string
+	CipherSuites            []uint16
+	MinVersion              uint16
+	MaxVersion              uint16
 }
 
 var (
@@ -170,6 +173,8 @@ type connection struct {
 	metrics        *Metrics
 
 	keepAliveInterval time.Duration
+
+	lastActive time.Time
 }
 
 // connectionOptions defines configurations for creating connection.
@@ -251,7 +256,11 @@ func (c *connection) connect() bool {
 
 	if c.tlsOptions == nil {
 		// Clear text connection
-		cnx, err = net.DialTimeout("tcp", c.physicalAddr.Host, c.connectionTimeout)
+		if c.connectionTimeout.Nanoseconds() > 0 {
+			cnx, err = net.DialTimeout("tcp", c.physicalAddr.Host, c.connectionTimeout)
+		} else {
+			cnx, err = net.Dial("tcp", c.physicalAddr.Host)
+		}
 	} else {
 		// TLS connection
 		tlsConfig, err = c.getTLSConfig()
@@ -260,6 +269,8 @@ func (c *connection) connect() bool {
 			return false
 		}
 
+		// time.Duration is initialized to 0 by default, net.Dialer's default timeout is no timeout
+		// therefore if c.connectionTimeout is 0, it means no timeout
 		d := &net.Dialer{Timeout: c.connectionTimeout}
 		cnx, err = tls.DialWithDialer(d, "tcp", c.physicalAddr.Host, tlsConfig)
 	}
@@ -523,8 +534,14 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handleResponse(cmd.Success.GetRequestId(), cmd)
 
 	case pb.BaseCommand_PRODUCER_SUCCESS:
-		c.handleResponse(cmd.ProducerSuccess.GetRequestId(), cmd)
-
+		if !cmd.ProducerSuccess.GetProducerReady() {
+			request, ok := c.findPendingRequest(cmd.ProducerSuccess.GetRequestId())
+			if ok {
+				request.callback(cmd, nil)
+			}
+		} else {
+			c.handleResponse(cmd.ProducerSuccess.GetRequestId(), cmd)
+		}
 	case pb.BaseCommand_PARTITIONED_METADATA_RESPONSE:
 		c.checkServerError(cmd.PartitionMetadataResponse.Error)
 		c.handleResponse(cmd.PartitionMetadataResponse.GetRequestId(), cmd)
@@ -577,7 +594,16 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 		c.handlePing()
 	case pb.BaseCommand_PONG:
 		c.handlePong()
-
+	case pb.BaseCommand_TC_CLIENT_CONNECT_RESPONSE:
+		c.handleResponse(cmd.TcClientConnectResponse.GetRequestId(), cmd)
+	case pb.BaseCommand_NEW_TXN_RESPONSE:
+		c.handleResponse(cmd.NewTxnResponse.GetRequestId(), cmd)
+	case pb.BaseCommand_ADD_PARTITION_TO_TXN_RESPONSE:
+		c.handleResponse(cmd.AddPartitionToTxnResponse.GetRequestId(), cmd)
+	case pb.BaseCommand_ADD_SUBSCRIPTION_TO_TXN_RESPONSE:
+		c.handleResponse(cmd.AddSubscriptionToTxnResponse.GetRequestId(), cmd)
+	case pb.BaseCommand_END_TXN_RESPONSE:
+		c.handleResponse(cmd.EndTxnResponse.GetRequestId(), cmd)
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
 		c.handleActiveConsumerChange(cmd.GetActiveConsumerChange())
 
@@ -748,6 +774,13 @@ func (c *connection) deletePendingRequest(requestID uint64) (*request, bool) {
 	return request, ok
 }
 
+func (c *connection) findPendingRequest(requestID uint64) (*request, bool) {
+	c.pendingLock.Lock()
+	defer c.pendingLock.Unlock()
+	request, ok := c.pendingReqs[requestID]
+	return request, ok
+}
+
 func (c *connection) failPendingRequests(err error) bool {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
@@ -794,6 +827,11 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 		c.log.WithError(err).Warn("Failed to load auth credentials")
 		c.Close()
 		return
+	}
+
+	// Brokers expect authData to be not nil
+	if authData == nil {
+		authData = []byte{}
 	}
 
 	cmdAuthResponse := &pb.CommandAuthResponse{
@@ -905,6 +943,52 @@ func (c *connection) UnregisterListener(id uint64) {
 	delete(c.listeners, id)
 }
 
+func (c *connection) ResetLastActive() {
+	c.Lock()
+	defer c.Unlock()
+	c.lastActive = time.Now()
+}
+
+func (c *connection) isIdle() bool {
+	{
+		c.pendingLock.Lock()
+		defer c.pendingLock.Unlock()
+		if len(c.pendingReqs) != 0 {
+			return false
+		}
+	}
+
+	{
+		c.listenersLock.RLock()
+		defer c.listenersLock.RUnlock()
+		if len(c.listeners) != 0 {
+			return false
+		}
+	}
+
+	{
+		c.consumerHandlersLock.Lock()
+		defer c.consumerHandlersLock.Unlock()
+		if len(c.consumerHandlers) != 0 {
+			return false
+		}
+	}
+
+	if len(c.incomingRequestsCh) != 0 || len(c.writeRequestsCh) != 0 {
+		return false
+	}
+	return true
+}
+
+func (c *connection) CheckIdle(maxIdleTime time.Duration) bool {
+	// We don't need to lock here because this method should only be
+	// called in a single goroutine of the connectionPool
+	if !c.isIdle() {
+		c.lastActive = time.Now()
+	}
+	return time.Since(c.lastActive) > maxIdleTime
+}
+
 // Close closes the connection by
 // closing underlying socket connection and closeCh.
 // This also triggers callbacks to the ConnectionClosed listeners.
@@ -976,6 +1060,9 @@ func (c *connection) closed() bool {
 func (c *connection) getTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: c.tlsOptions.AllowInsecureConnection,
+		CipherSuites:       c.tlsOptions.CipherSuites,
+		MinVersion:         c.tlsOptions.MinVersion,
+		MaxVersion:         c.tlsOptions.MaxVersion,
 	}
 
 	if c.tlsOptions.TrustCertsFilePath != "" {

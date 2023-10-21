@@ -38,6 +38,7 @@ type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
 	AckID(id MessageID) error
 	AckIDWithResponse(id MessageID) error
+	AckIDWithTxn(msgID MessageID, txn Transaction) error
 	AckIDCumulative(msgID MessageID) error
 	AckIDWithResponseCumulative(msgID MessageID) error
 	NackID(id MessageID)
@@ -383,8 +384,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				metadata:                    metadata,
 				subProperties:               subProperties,
 				replicateSubscriptionState:  c.options.ReplicateSubscriptionState,
-				startMessageID:              trackingMessageID{},
-				subscriptionMode:            durable,
+				startMessageID:              nil,
+				subscriptionMode:            c.options.SubscriptionMode,
 				readCompacted:               c.options.ReadCompacted,
 				interceptors:                c.options.Interceptors,
 				maxReconnectToBroker:        c.options.MaxReconnectToBroker,
@@ -398,6 +399,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				autoAckIncompleteChunk:      c.options.AutoAckIncompleteChunk,
 				consumerEventListener:       c.options.EventListener,
 				enableBatchIndexAck:         c.options.EnableBatchIndexAcknowledgment,
+				ackGroupingOptions:          c.options.AckGroupingOptions,
+				autoReceiverQueueSize:       c.options.EnableAutoScaledReceiverQueueSize,
 			}
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
@@ -476,6 +479,15 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	}
 }
 
+func (c *consumer) AckWithTxn(msg Message, txn Transaction) error {
+	msgID := msg.ID()
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+
+	return c.consumers[msgID.PartitionIdx()].AckIDWithTxn(msgID, txn)
+}
+
 // Chan return the message chan to users
 func (c *consumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh
@@ -530,10 +542,17 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 	if delay < 0 {
 		delay = 0
 	}
-	msgID, ok := c.messageID(msg.ID())
-	if !ok {
+
+	if !checkMessageIDType(msg.ID()) {
+		c.log.Warnf("invalid message id type %T", msg.ID())
 		return
 	}
+
+	msgID := c.messageID(msg.ID())
+	if msgID == nil {
+		return
+	}
+
 	props := make(map[string]string)
 	for k, v := range msg.Properties() {
 		props[k] = v
@@ -579,14 +598,18 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 }
 
 func (c *consumer) Nack(msg Message) {
+	if !checkMessageIDType(msg.ID()) {
+		c.log.Warnf("invalid message id type %T", msg.ID())
+		return
+	}
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
-		mid, ok := c.messageID(msg.ID())
-		if !ok {
+		mid := c.messageID(msg.ID())
+		if mid == nil {
 			return
 		}
 
 		if mid.consumer != nil {
-			mid.consumer.NackID(msg.ID())
+			mid.NackByMsg(msg)
 			return
 		}
 		c.consumers[mid.partitionIdx].NackMsg(msg)
@@ -742,22 +765,18 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 	return pb.CommandSubscribe_Latest
 }
 
-func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
-		c.log.Warnf("invalid message id type %T", msgID)
-		return trackingMessageID{}, false
-	}
+func (c *consumer) messageID(msgID MessageID) *trackingMessageID {
+	mid := toTrackingMessageID(msgID)
 
 	partition := int(mid.partitionIdx)
 	// did we receive a valid partition index?
 	if partition < 0 || partition >= len(c.consumers) {
 		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
-		return trackingMessageID{}, false
+		return nil
 	}
 
-	return mid, true
+	return mid
 }
 
 func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {

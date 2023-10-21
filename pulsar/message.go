@@ -69,6 +69,10 @@ type ProducerMessage struct {
 	//Schema assign to the current message
 	//Note: messages may have a different schema from producer schema, use it instead of producer schema when assigned
 	Schema Schema
+
+	//Transaction assign to the current message
+	//Note: The message is not visible before the transaction is committed.
+	Transaction Transaction
 }
 
 // Message abstraction used in Pulsar
@@ -180,4 +184,35 @@ func EarliestMessageID() MessageID {
 // LatestMessageID returns a messageID that points to the latest message
 func LatestMessageID() MessageID {
 	return latestMessageID
+}
+
+func messageIDCompare(lhs MessageID, rhs MessageID) int {
+	if lhs.LedgerID() < rhs.LedgerID() {
+		return -1
+	} else if lhs.LedgerID() > rhs.LedgerID() {
+		return 1
+	}
+	if lhs.EntryID() < rhs.EntryID() {
+		return -1
+	} else if lhs.EntryID() > rhs.EntryID() {
+		return 1
+	}
+	// When performing batch index ACK on a batched message whose batch size is N,
+	// the ACK order should be:
+	//   (ledger, entry, 0) -> (ledger, entry, 1) -> ... -> (ledger, entry, N-1) -> (ledger, entry)
+	// So we have to treat any MessageID with the batch index precedes the MessageID without the batch index
+	// if they are in the same entry.
+	if lhs.BatchIdx() < 0 && rhs.BatchIdx() < 0 {
+		return 0
+	} else if lhs.BatchIdx() >= 0 && rhs.BatchIdx() < 0 {
+		return -1
+	} else if lhs.BatchIdx() < 0 && rhs.BatchIdx() >= 0 {
+		return 1
+	}
+	if lhs.BatchIdx() < rhs.BatchIdx() {
+		return -1
+	} else if lhs.BatchIdx() > rhs.BatchIdx() {
+		return 1
+	}
+	return 0
 }

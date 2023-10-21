@@ -32,28 +32,33 @@ import (
 )
 
 const (
-	minExpire            = 2 * time.Hour
-	maxExpire            = 24 * time.Hour
-	AthenzRoleAuthHeader = "Athenz-Role-Auth"
+	minExpire         = 2 * time.Hour
+	maxExpire         = 24 * time.Hour
+	defaultKeyID      = "0"
+	defaultRoleHeader = "Athenz-Role-Auth"
 )
 
 type athenzAuthProvider struct {
-	providerDomain     string
-	tenantDomain       string
-	tenantService      string
-	privateKey         string
-	keyID              string
-	principalHeader    string
-	ztsURL             string
-	tokenBuilder       zms.TokenBuilder
-	roleToken          zts.RoleToken
-	zmsNewTokenBuilder func(domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error)
-	ztsNewRoleToken    func(tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken
+	providerDomain          string
+	tenantDomain            string
+	tenantService           string
+	privateKey              string
+	keyID                   string
+	x509CertChain           string
+	caCert                  string
+	principalHeader         string
+	roleHeader              string
+	ztsURL                  string
+	tokenBuilder            zms.TokenBuilder
+	roleToken               zts.RoleToken
+	zmsNewTokenBuilder      func(domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error)
+	ztsNewRoleToken         func(tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken
+	ztsNewRoleTokenFromCert func(certFile, keyFile, domain string, opts zts.RoleTokenOptions) zts.RoleToken
 
 	T http.RoundTripper
 }
 
-type privateKeyURI struct {
+type parsedURI struct {
 	Scheme                   string
 	MediaTypeAndEncodingType string
 	Data                     string
@@ -67,7 +72,10 @@ func NewAuthenticationAthenzWithParams(params map[string]string) (Provider, erro
 		params["tenantService"],
 		params["privateKey"],
 		params["keyId"],
+		params["x509CertChain"],
+		params["caCert"],
 		params["principalHeader"],
+		params["roleHeader"],
 		params["ztsUrl"],
 	), nil
 }
@@ -78,68 +86,97 @@ func NewAuthenticationAthenz(
 	tenantService string,
 	privateKey string,
 	keyID string,
+	x509CertChain string,
+	caCert string,
 	principalHeader string,
+	roleHeader string,
 	ztsURL string) Provider {
-	var fixedKeyID string
-	if keyID == "" {
-		fixedKeyID = "0"
-	} else {
+	fixedKeyID := defaultKeyID
+	if keyID != "" {
 		fixedKeyID = keyID
 	}
+
+	fixedRoleHeader := defaultRoleHeader
+	if roleHeader != "" {
+		fixedRoleHeader = roleHeader
+	}
+
 	ztsNewRoleToken := func(tok zms.Token, domain string, opts zts.RoleTokenOptions) zts.RoleToken {
 		return zts.RoleToken(zts.NewRoleToken(tok, domain, opts))
 	}
 
+	ztsNewRoleTokenFromCert := func(certFile, keyFile, domain string, opts zts.RoleTokenOptions) zts.RoleToken {
+		return zts.RoleToken(zts.NewRoleTokenFromCert(certFile, keyFile, domain, opts))
+	}
+
 	return &athenzAuthProvider{
-		providerDomain:     providerDomain,
-		tenantDomain:       tenantDomain,
-		tenantService:      tenantService,
-		privateKey:         privateKey,
-		keyID:              fixedKeyID,
-		principalHeader:    principalHeader,
-		ztsURL:             strings.TrimSuffix(ztsURL, "/"),
-		zmsNewTokenBuilder: zms.NewTokenBuilder,
-		ztsNewRoleToken:    ztsNewRoleToken,
+		providerDomain:          providerDomain,
+		tenantDomain:            tenantDomain,
+		tenantService:           tenantService,
+		privateKey:              privateKey,
+		keyID:                   fixedKeyID,
+		x509CertChain:           x509CertChain,
+		caCert:                  caCert,
+		principalHeader:         principalHeader,
+		roleHeader:              fixedRoleHeader,
+		ztsURL:                  strings.TrimSuffix(ztsURL, "/"),
+		zmsNewTokenBuilder:      zms.NewTokenBuilder,
+		ztsNewRoleToken:         ztsNewRoleToken,
+		ztsNewRoleTokenFromCert: ztsNewRoleTokenFromCert,
 	}
 }
 
 func (p *athenzAuthProvider) Init() error {
-	uriSt := parseURI(p.privateKey)
-	var keyData []byte
-
-	if uriSt.Scheme == "data" {
-		if uriSt.MediaTypeAndEncodingType != "application/x-pem-file;base64" {
-			return errors.New("Unsupported mediaType or encodingType: " + uriSt.MediaTypeAndEncodingType)
-		}
-		key, err := base64.StdEncoding.DecodeString(uriSt.Data)
-		if err != nil {
-			return err
-		}
-		keyData = key
-	} else if uriSt.Scheme == "file" {
-		key, err := os.ReadFile(uriSt.Path)
-		if err != nil {
-			return err
-		}
-		keyData = key
-	} else {
-		return errors.New("Unsupported URI Scheme: " + uriSt.Scheme)
+	if p.providerDomain == "" || p.privateKey == "" || p.ztsURL == "" {
+		return errors.New("missing required parameters")
 	}
 
-	tb, err := p.zmsNewTokenBuilder(p.tenantDomain, p.tenantService, keyData, p.keyID)
-	if err != nil {
-		return err
-	}
-	p.tokenBuilder = tb
-
-	roleToken := p.ztsNewRoleToken(p.tokenBuilder.Token(), p.providerDomain, zts.RoleTokenOptions{
+	var roleToken zts.RoleToken
+	opts := zts.RoleTokenOptions{
 		BaseZTSURL: p.ztsURL + "/zts/v1",
 		MinExpire:  minExpire,
 		MaxExpire:  maxExpire,
 		AuthHeader: p.principalHeader,
-	})
-	p.roleToken = roleToken
+	}
 
+	if p.x509CertChain != "" {
+		// use Copper Argos
+		certURISt := parseURI(p.x509CertChain)
+		keyURISt := parseURI(p.privateKey)
+
+		if certURISt.Scheme != "file" || keyURISt.Scheme != "file" {
+			return errors.New("x509CertChain and privateKey must be specified as file paths")
+		}
+
+		if p.caCert != "" {
+			caCertData, err := loadPEM(p.caCert)
+			if err != nil {
+				return err
+			}
+			opts.CACert = caCertData
+		}
+
+		roleToken = p.ztsNewRoleTokenFromCert(certURISt.Path, keyURISt.Path, p.providerDomain, opts)
+	} else {
+		if p.tenantDomain == "" || p.tenantService == "" {
+			return errors.New("missing required parameters")
+		}
+
+		keyData, err := loadPEM(p.privateKey)
+		if err != nil {
+			return err
+		}
+
+		tb, err := p.zmsNewTokenBuilder(p.tenantDomain, p.tenantService, keyData, p.keyID)
+		if err != nil {
+			return err
+		}
+		p.tokenBuilder = tb
+
+		roleToken = p.ztsNewRoleToken(p.tokenBuilder.Token(), p.providerDomain, opts)
+	}
+
+	p.roleToken = roleToken
 	return nil
 }
 
@@ -164,8 +201,8 @@ func (p *athenzAuthProvider) Close() error {
 	return nil
 }
 
-func parseURI(uri string) privateKeyURI {
-	var uriSt privateKeyURI
+func parseURI(uri string) parsedURI {
+	var uriSt parsedURI
 	// scheme mediatype[;base64] path file
 	const expression = `^(?:([^:/?#]+):)(?:([;/\\\-\w]*),)?(?:/{0,2}((?:[^?#/]*/)*))?([^?#]*)`
 
@@ -177,9 +214,39 @@ func parseURI(uri string) privateKeyURI {
 		uriSt.MediaTypeAndEncodingType = groups[2]
 		uriSt.Data = groups[4]
 		uriSt.Path = groups[3] + groups[4]
+	} else {
+		// consider a file path specified instead of a URI
+		uriSt.Scheme = "file"
+		uriSt.Path = uri
 	}
 
 	return uriSt
+}
+
+func loadPEM(uri string) ([]byte, error) {
+	uriSt := parseURI(uri)
+	var pemData []byte
+
+	if uriSt.Scheme == "data" {
+		if uriSt.MediaTypeAndEncodingType != "application/x-pem-file;base64" {
+			return nil, errors.New("Unsupported mediaType or encodingType: " + uriSt.MediaTypeAndEncodingType)
+		}
+		pem, err := base64.StdEncoding.DecodeString(uriSt.Data)
+		if err != nil {
+			return nil, err
+		}
+		pemData = pem
+	} else if uriSt.Scheme == "file" {
+		pem, err := os.ReadFile(uriSt.Path)
+		if err != nil {
+			return nil, err
+		}
+		pemData = pem
+	} else {
+		return nil, errors.New("Unsupported URI Scheme: " + uriSt.Scheme)
+	}
+
+	return pemData, nil
 }
 
 func (p *athenzAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -187,7 +254,7 @@ func (p *athenzAuthProvider) RoundTrip(req *http.Request) (*http.Response, error
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Add(AthenzRoleAuthHeader, tok)
+	req.Header.Add(p.roleHeader, tok)
 	return p.T.RoundTrip(req)
 }
 

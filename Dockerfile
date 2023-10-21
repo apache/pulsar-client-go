@@ -1,4 +1,3 @@
-#
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,7 +14,6 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
 
 # Explicit version of Pulsar and Golang images should be
 # set via the Makefile or CLI
@@ -25,7 +23,7 @@ ARG GOLANG_IMAGE=golang:latest
 FROM $PULSAR_IMAGE as pulsar
 FROM $GOLANG_IMAGE
 
-RUN apt-get update && apt-get install -y openjdk-11-jre-headless ca-certificates
+RUN apt-get update && apt-get install -y openjdk-17-jre ca-certificates
 
 COPY --from=pulsar /pulsar /pulsar
 

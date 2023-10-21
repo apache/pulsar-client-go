@@ -22,10 +22,14 @@ import (
 	"errors"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"strings"
-	"sync"
 	"testing"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+
+	"google.golang.org/protobuf/proto"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -147,8 +151,6 @@ func TestLargeMessage(t *testing.T) {
 }
 
 func TestMaxPendingChunkMessages(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -156,83 +158,52 @@ func TestMaxPendingChunkMessages(t *testing.T) {
 	defer client.Close()
 
 	topic := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		DisableBatching:     true,
+		EnableChunking:      true,
+		ChunkMaxMessageSize: 10,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
 
-	totalProducers := 5
-	producers := make([]Producer, 0, 20)
-	defer func() {
-		for _, p := range producers {
-			p.Close()
-		}
-	}()
-
-	clients := make([]Client, 0, 20)
-	defer func() {
-		for _, c := range clients {
-			c.Close()
-		}
-	}()
-
-	for j := 0; j < totalProducers; j++ {
-		pc, err := NewClient(ClientOptions{
-			URL: lookupURL,
-		})
-		assert.Nil(t, err)
-		clients = append(clients, pc)
-		producer, err := pc.CreateProducer(ProducerOptions{
-			Topic:               topic,
-			DisableBatching:     true,
-			EnableChunking:      true,
-			ChunkMaxMessageSize: 10,
-		})
-		assert.NoError(t, err)
-		assert.NotNil(t, producer)
-		producers = append(producers, producer)
-	}
-
-	consumer, err := client.Subscribe(ConsumerOptions{
+	c, err := client.Subscribe(ConsumerOptions{
 		Topic:                    topic,
 		Type:                     Exclusive,
 		SubscriptionName:         "chunk-subscriber",
 		MaxPendingChunkedMessage: 1,
 	})
 	assert.NoError(t, err)
-	assert.NotNil(t, consumer)
-	defer consumer.Close()
+	assert.NotNil(t, c)
+	defer c.Close()
+	pc := c.(*consumer).consumers[0]
 
-	totalMsgs := 40
-	wg := sync.WaitGroup{}
-	wg.Add(totalMsgs * totalProducers)
-	for i := 0; i < totalMsgs; i++ {
-		for j := 0; j < totalProducers; j++ {
-			p := producers[j]
-			go func() {
-				ID, err := p.Send(context.Background(), &ProducerMessage{
-					Payload: createTestMessagePayload(50),
-				})
-				assert.NoError(t, err)
-				assert.NotNil(t, ID)
-				wg.Done()
-			}()
-		}
-	}
-	wg.Wait()
+	sendSingleChunk(producer, "0", 0, 2)
+	// MaxPendingChunkedMessage is 1, the chunked message with uuid 0 will be discarded
+	sendSingleChunk(producer, "1", 0, 2)
 
-	received := 0
-	for i := 0; i < totalMsgs*totalProducers; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), time.Second*10)
-		msg, err := consumer.Receive(ctx)
-		cancel()
-		if msg == nil || (err != nil && errors.Is(err, context.DeadlineExceeded)) {
-			break
-		}
+	// chunkedMsgCtx with uuid 0 should be discarded
+	retryAssert(t, 3, 200, func() {}, func(t assert.TestingT) bool {
+		pc.chunkedMsgCtxMap.mu.Lock()
+		defer pc.chunkedMsgCtxMap.mu.Unlock()
+		return assert.Equal(t, 1, len(pc.chunkedMsgCtxMap.chunkedMsgCtxs))
+	})
 
-		received++
+	sendSingleChunk(producer, "1", 1, 2)
 
-		err = consumer.Ack(msg)
-		assert.NoError(t, err)
-	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err := c.Receive(ctx)
+	cancel()
 
-	assert.NotEqual(t, totalMsgs*totalProducers, received)
+	assert.NoError(t, err)
+	assert.Equal(t, "chunk-1-0|chunk-1-1|", string(msg.Payload()))
+
+	// Ensure that the chunked message of uuid 0 is discarded.
+	sendSingleChunk(producer, "0", 1, 2)
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err = c.Receive(ctx)
+	cancel()
+	assert.True(t, errors.Is(err, context.DeadlineExceeded))
 }
 
 func TestExpireIncompleteChunks(t *testing.T) {
@@ -290,6 +261,13 @@ func TestChunksEnqueueFailed(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 	defer producer.Close()
+
+	// Reduce publish rate to prevent the producer sending messages too fast
+	url := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/publishRate"
+	makeHTTPCall(t, http.MethodPost, url, "{\"publishThrottlingRateInMsg\": 1,\"publishThrottlingRateInByte\": 1000}")
+
+	// Need to wait some time to let the rate limiter take effect
+	time.Sleep(2 * time.Second)
 
 	ID, err := producer.Send(context.Background(), &ProducerMessage{
 		Payload: createTestMessagePayload(1000),
@@ -454,10 +432,10 @@ func TestChunkSize(t *testing.T) {
 		})
 		assert.NoError(t, err)
 		if size <= payloadChunkSize {
-			_, ok := msgID.(messageID)
+			_, ok := msgID.(*messageID)
 			assert.Equal(t, true, ok)
 		} else {
-			_, ok := msgID.(chunkMessageID)
+			_, ok := msgID.(*chunkMessageID)
 			assert.Equal(t, true, ok)
 		}
 	}
@@ -567,4 +545,33 @@ func createTestMessagePayload(size int) []byte {
 		payload[i] = byte(rand.Intn(100))
 	}
 	return payload
+}
+
+//nolint:all
+func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
+	msg := &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("chunk-%s-%d|", uuid, chunkID)),
+	}
+	producerImpl := p.(*producer).producers[0].(*partitionProducer)
+	mm := producerImpl.genMetadata(msg, len(msg.Payload), time.Now())
+	mm.Uuid = proto.String(uuid)
+	mm.NumChunksFromMsg = proto.Int32(int32(totalChunks))
+	mm.TotalChunkMsgSize = proto.Int32(int32(len(msg.Payload)))
+	mm.ChunkId = proto.Int32(int32(chunkID))
+	producerImpl.updateMetadataSeqID(mm, msg)
+
+	doneCh := make(chan struct{})
+	producerImpl.internalSingleSend(
+		mm,
+		msg.Payload,
+		&sendRequest{
+			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {
+				close(doneCh)
+			},
+			msg: msg,
+		},
+		uint32(internal.MaxMessageSize),
+	)
+
+	<-doneCh
 }

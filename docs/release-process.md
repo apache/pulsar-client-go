@@ -13,7 +13,7 @@ In general, you need to perform the following steps:
 9. Announce the release.
 
 ### Requirements
-- [GPG keys to sign release artifacts](https://github.com/apache/pulsar/wiki/Create-GPG-keys-to-sign-release-artifacts)
+- [Creating GPG keys to sign release artifacts](https://pulsar.apache.org/contribute/create-gpg-keys/)
 
 ## Steps in detail
 
@@ -128,7 +128,7 @@ https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go-0.X.0-candidate-1
 
 The tag to be voted upon:
 v0.X.0
-https://github.com/apache/pulsar-client-node/releases/tag/v0.X.0
+https://github.com/apache/pulsar-client-go/tree/v0.X.0-candidate-1
 
 SHA-512 checksums:
 97bb1000f70011e9a585186590e0688586590e09  apache-pulsar-client-go-0.X.0-src.tar.gz

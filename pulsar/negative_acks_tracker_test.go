@@ -42,10 +42,11 @@ func newNackMockedConsumer(nackBackoffPolicy NackBackoffPolicy) *nackMockedConsu
 	go func() {
 		// since the client ticks at an interval of delay / 3
 		// wait another interval to ensure we get all messages
+		// And we wait another 100 milliseconds to reduce the flaky
 		if nackBackoffPolicy == nil {
-			time.Sleep(testNackDelay + 101*time.Millisecond)
+			time.Sleep(testNackDelay + 200*time.Millisecond)
 		} else {
-			time.Sleep(nackBackoffPolicy.Next(1) + 101*time.Millisecond)
+			time.Sleep(nackBackoffPolicy.Next(1) + 200*time.Millisecond)
 		}
 		t.lock.Lock()
 		defer t.lock.Unlock()
@@ -81,13 +82,13 @@ func TestNacksTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(nil)
 	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
@@ -114,25 +115,25 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(nil)
 	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 2,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 3,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
@@ -194,7 +195,7 @@ func (msg *mockMessage1) Payload() []byte {
 }
 
 func (msg *mockMessage1) ID() MessageID {
-	return messageID{
+	return &messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
@@ -270,7 +271,7 @@ func (msg *mockMessage2) Payload() []byte {
 }
 
 func (msg *mockMessage2) ID() MessageID {
-	return messageID{
+	return &messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,

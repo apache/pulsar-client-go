@@ -15,35 +15,18 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsar
+package utils
 
-import (
-	"testing"
-)
-
-var (
-	usedByProducer messageID
-	usedByConsumer trackingMessageID
-)
-
-func producerCall(id messageID) messageID {
-	id.entryID++
-	return id
+type AuthPolicies struct {
+	NamespaceAuth         map[string][]AuthAction            `json:"namespace_auth"`
+	DestinationAuth       map[string]map[string][]AuthAction `json:"destination_auth"`
+	SubscriptionAuthRoles map[string][]string                `json:"subscription_auth_roles"`
 }
 
-func consumerCall(id trackingMessageID) trackingMessageID {
-	id.entryID++
-	return id
-}
-
-func BenchmarkProducerCall(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		usedByProducer = producerCall(usedByProducer)
-	}
-}
-
-func BenchmarkConsumerCall(b *testing.B) {
-	for i := 0; i < b.N; i++ {
-		usedByConsumer = consumerCall(usedByConsumer)
+func NewAuthPolicies() *AuthPolicies {
+	return &AuthPolicies{
+		NamespaceAuth:         make(map[string][]AuthAction),
+		DestinationAuth:       make(map[string]map[string][]AuthAction),
+		SubscriptionAuthRoles: make(map[string][]string),
 	}
 }

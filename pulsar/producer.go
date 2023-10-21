@@ -64,6 +64,9 @@ const (
 	// ProducerAccessModeExclusive is required exclusive access for producer.
 	// Fail immediately if there's already a producer connected.
 	ProducerAccessModeExclusive
+
+	// ProducerAccessModeWaitForExclusive is pending until producer can acquire exclusive access.
+	ProducerAccessModeWaitForExclusive
 )
 
 // TopicMetadata represents a topic metadata.
@@ -221,8 +224,7 @@ type Producer interface {
 	Send(context.Context, *ProducerMessage) (MessageID, error)
 
 	// SendAsync a message in asynchronous mode
-	// This call is blocked when the `event channel` becomes full (default: 10) or the
-	// `maxPendingMessages` becomes full (default: 1000)
+	// This call is blocked when the `maxPendingMessages` becomes full (default: 1000)
 	// The callback will report back the message being published and
 	// the eventual error in publishing
 	SendAsync(context.Context, *ProducerMessage, func(MessageID, *ProducerMessage, error))

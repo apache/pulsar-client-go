@@ -26,8 +26,11 @@ require (
 	go.uber.org/atomic v1.7.0
 	golang.org/x/mod v0.5.1
 	golang.org/x/oauth2 v0.0.0-20210402161424-2e8d93401602
-	google.golang.org/protobuf v1.26.0
+	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
+	google.golang.org/protobuf v1.30.0
 )
+
+require github.com/golang/protobuf v1.5.2
 
 require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
@@ -38,7 +41,6 @@ require (
 	github.com/dvsekhvalnov/jose2go v1.5.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
-	github.com/golang/protobuf v1.5.2 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect

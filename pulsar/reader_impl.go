@@ -37,7 +37,7 @@ type reader struct {
 	client              *client
 	pc                  *partitionConsumer
 	messageCh           chan ConsumerMessage
-	lastMessageInBroker trackingMessageID
+	lastMessageInBroker *trackingMessageID
 	log                 log.Logger
 	metrics             *internal.LeveledMetrics
 }
@@ -51,8 +51,8 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(InvalidConfiguration, "StartMessageID is required")
 	}
 
-	startMessageID, ok := toTrackingMessageID(options.StartMessageID)
-	if !ok {
+	var startMessageID *trackingMessageID
+	if !checkMessageIDType(options.StartMessageID) {
 		// a custom type satisfying MessageID may not be a messageID or trackingMessageID
 		// so re-create messageID using its data
 		deserMsgID, err := deserializeMessageID(options.StartMessageID.Serialize())
@@ -60,10 +60,9 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 			return nil, err
 		}
 		// de-serialized MessageID is a messageID
-		startMessageID = trackingMessageID{
-			messageID:    deserMsgID.(messageID),
-			receivedTime: time.Now(),
-		}
+		startMessageID = toTrackingMessageID(deserMsgID)
+	} else {
+		startMessageID = toTrackingMessageID(options.StartMessageID)
 	}
 
 	subscriptionName := options.SubscriptionName
@@ -91,23 +90,34 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		options.Decryption.MessageCrypto = messageCrypto
 	}
 
+	if options.MaxPendingChunkedMessage == 0 {
+		options.MaxPendingChunkedMessage = 100
+	}
+
+	if options.ExpireTimeOfIncompleteChunk == 0 {
+		options.ExpireTimeOfIncompleteChunk = time.Minute
+	}
+
 	consumerOptions := &partitionConsumerOpts{
-		topic:                      options.Topic,
-		consumerName:               options.Name,
-		subscription:               subscriptionName,
-		subscriptionType:           Exclusive,
-		receiverQueueSize:          receiverQueueSize,
-		startMessageID:             startMessageID,
-		startMessageIDInclusive:    options.StartMessageIDInclusive,
-		subscriptionMode:           nonDurable,
-		readCompacted:              options.ReadCompacted,
-		metadata:                   options.Properties,
-		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
-		replicateSubscriptionState: false,
-		decryption:                 options.Decryption,
-		schema:                     options.Schema,
-		backoffPolicy:              options.BackoffPolicy,
+		topic:                       options.Topic,
+		consumerName:                options.Name,
+		subscription:                subscriptionName,
+		subscriptionType:            Exclusive,
+		receiverQueueSize:           receiverQueueSize,
+		startMessageID:              startMessageID,
+		startMessageIDInclusive:     options.StartMessageIDInclusive,
+		subscriptionMode:            NonDurable,
+		readCompacted:               options.ReadCompacted,
+		metadata:                    options.Properties,
+		nackRedeliveryDelay:         defaultNackRedeliveryDelay,
+		replicateSubscriptionState:  false,
+		decryption:                  options.Decryption,
+		schema:                      options.Schema,
+		backoffPolicy:               options.BackoffPolicy,
 		interceptors:               transformReaderInterceptors(options.ReaderInterceptors),
+		maxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
+		expireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
+		autoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
 	}
 
 	reader := &reader{
@@ -149,12 +159,10 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
 			msgID := cm.Message.ID()
-			if mid, ok := toTrackingMessageID(msgID); ok {
-				r.pc.lastDequeuedMsg = mid
-				r.pc.AckID(mid)
-				return cm.Message, nil
-			}
-			return nil, newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
+			mid := toTrackingMessageID(msgID)
+			r.pc.lastDequeuedMsg = mid
+			r.pc.AckID(mid)
+			return cm.Message, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -162,7 +170,7 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 }
 
 func (r *reader) HasNext() bool {
-	if !r.lastMessageInBroker.Undefined() && r.hasMoreMessages() {
+	if r.lastMessageInBroker != nil && r.hasMoreMessages() {
 		return true
 	}
 
@@ -181,7 +189,7 @@ func (r *reader) HasNext() bool {
 }
 
 func (r *reader) hasMoreMessages() bool {
-	if !r.pc.lastDequeuedMsg.Undefined() {
+	if r.pc.lastDequeuedMsg != nil {
 		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg.messageID)
 	}
 
@@ -201,29 +209,30 @@ func (r *reader) Close() {
 	r.metrics.ReadersClosed.Inc()
 }
 
-func (r *reader) messageID(msgID MessageID) (trackingMessageID, bool) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
-		r.log.Warnf("invalid message id type %T", msgID)
-		return trackingMessageID{}, false
-	}
+func (r *reader) messageID(msgID MessageID) *trackingMessageID {
+	mid := toTrackingMessageID(msgID)
 
 	partition := int(mid.partitionIdx)
 	// did we receive a valid partition index?
 	if partition < 0 {
 		r.log.Warnf("invalid partition index %d expected", partition)
-		return trackingMessageID{}, false
+		return nil
 	}
 
-	return mid, true
+	return mid
 }
 
 func (r *reader) Seek(msgID MessageID) error {
 	r.Lock()
 	defer r.Unlock()
 
-	mid, ok := r.messageID(msgID)
-	if !ok {
+	if !checkMessageIDType(msgID) {
+		r.log.Warnf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
+
+	mid := r.messageID(msgID)
+	if mid == nil {
 		return nil
 	}
 
@@ -235,4 +244,8 @@ func (r *reader) SeekByTime(time time.Time) error {
 	defer r.Unlock()
 
 	return r.pc.SeekByTime(time)
+}
+
+func (r *reader) GetLastMessageID() (MessageID, error) {
+	return r.pc.getLastMessageID()
 }
