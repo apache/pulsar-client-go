@@ -448,7 +448,7 @@ func (ss *StringSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (ss *StringSchema) Validate(message []byte) error {
-	return ss.Decode(message, nil)
+	return nil
 }
 
 func (ss *StringSchema) GetSchemaInfo() *SchemaInfo {
