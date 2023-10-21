@@ -180,7 +180,7 @@ func (js *JSONSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (js *JSONSchema) Validate(message []byte) error {
-	return js.Decode(message, nil)
+	return nil
 }
 
 func (js *JSONSchema) GetSchemaInfo() *SchemaInfo {
@@ -229,7 +229,7 @@ func (ps *ProtoSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (ps *ProtoSchema) Validate(message []byte) error {
-	return ps.Decode(message, nil)
+	return nil
 }
 
 func (ps *ProtoSchema) GetSchemaInfo() *SchemaInfo {
@@ -307,7 +307,7 @@ func (ps *ProtoNativeSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (ps *ProtoNativeSchema) Validate(message []byte) error {
-	return ps.Decode(message, nil)
+	return nil
 }
 
 func (ps *ProtoNativeSchema) GetSchemaInfo() *SchemaInfo {
@@ -379,7 +379,7 @@ func (as *AvroSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (as *AvroSchema) Validate(message []byte) error {
-	return as.Decode(message, nil)
+	return nil
 }
 
 func (as *AvroSchema) GetSchemaInfo() *SchemaInfo {
@@ -478,7 +478,7 @@ func (bs *BytesSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (bs *BytesSchema) Validate(message []byte) error {
-	return bs.Decode(message, nil)
+	return nil
 }
 
 func (bs *BytesSchema) GetSchemaInfo() *SchemaInfo {
