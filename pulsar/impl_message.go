@@ -357,7 +357,13 @@ func (msg *message) GetSchemaValue(v interface{}) error {
 		if err != nil {
 			return err
 		}
+		if err := schema.Validate(msg.payLoad); err != nil {
+			return err
+		}
 		return schema.Decode(msg.payLoad, v)
+	}
+	if err := msg.schema.Validate(msg.payLoad); err != nil {
+		return err
 	}
 	return msg.schema.Decode(msg.payLoad, v)
 }
