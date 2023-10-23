@@ -54,7 +54,7 @@ const (
 	_                             //
 	_                             //
 	KeyValue                      //A Schema that contains Key Schema and Value Schema.
-	BYTES       = -1              //A bytes array.
+	BYTES       = 0               //A bytes array.
 	AUTO        = -2              //
 	AutoConsume = -3              //Auto Consume Type.
 	AutoPublish = -4              // Auto Publish Type.
