@@ -1151,6 +1151,7 @@ func (p *partitionProducer) internalSendAsync(
 		callbackOnce:     &sync.Once{},
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
+		chunkID:          -1,
 	}
 
 	if err := p.prepareTransaction(sr); err != nil {
@@ -1428,6 +1429,12 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		sr.producer.metrics.PublishLatency.Observe(float64(time.Now().UnixNano()-sr.publishTime.UnixNano()) / 1.0e9)
 		sr.producer.metrics.MessagesPublished.Inc()
 		sr.producer.metrics.BytesPublished.Add(float64(sr.reservedMem))
+
+		if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
+			if sr.producer.options.Interceptors != nil {
+				sr.producer.options.Interceptors.OnSendAcknowledgement(sr.producer, sr.msg, msgID)
+			}
+		}
 	}
 
 	if err != nil {
@@ -1456,17 +1463,14 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		sr.producer.metrics.BytesPending.Sub(float64(sr.reservedMem))
 	}
 
-	if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
+	// sr.chunkID == -1 means a chunked message is not yet prepared, so that we should fail it immediately
+	if sr.totalChunks <= 1 || sr.chunkID == -1 || sr.chunkID == sr.totalChunks-1 {
 		sr.callbackOnce.Do(func() {
 			runCallback(sr.callback, msgID, sr.msg, err)
 		})
 
 		if sr.transaction != nil {
 			sr.transaction.endSendOrAckOp(err)
-		}
-
-		if sr.producer.options.Interceptors != nil {
-			sr.producer.options.Interceptors.OnSendAcknowledgement(sr.producer, sr.msg, msgID)
 		}
 	}
 }
