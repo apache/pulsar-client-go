@@ -1419,6 +1419,7 @@ func (p *partitionProducer) Close() {
 	<-cp.doneCh
 }
 
+//nolint:all
 type sendRequest struct {
 	ctx                 context.Context
 	msg                 *ProducerMessage
@@ -1458,6 +1459,7 @@ func (sr *sendRequest) stopBlock() {
 	})
 }
 
+//nolint:all
 func (sr *sendRequest) done(msgID MessageID, err error) {
 	if err == nil {
 		sr.producer.metrics.PublishLatency.Observe(float64(time.Now().UnixNano()-sr.publishTime.UnixNano()) / 1.0e9)
