@@ -1123,76 +1123,71 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) internalSendAsync(ctx context.Context, msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error), flushImmediately bool) {
-	if msg == nil {
-		p.log.Error("Message is nil")
-		runCallback(callback, nil, msg, newError(InvalidMessage, "Message is nil"))
+	err := p.validateMsg(msg)
+	if err != nil {
+		p.log.Error(err)
+		runCallback(callback, nil, msg, err)
 		return
 	}
 
-	if msg.Value != nil && msg.Payload != nil {
-		p.log.Error("Can not set Value and Payload both")
-		runCallback(callback, nil, msg, newError(InvalidMessage, "Can not set Value and Payload both"))
-		return
-	}
-
-	// Register transaction operation to transaction and the transaction coordinator.
-	var newCallback func(MessageID, *ProducerMessage, error)
-	var txn *transaction
-	if msg.Transaction != nil {
-		transactionImpl := (msg.Transaction).(*transaction)
-		txn = transactionImpl
-		if transactionImpl.state != TxnOpen {
-			p.log.WithField("state", transactionImpl.state).Error("Failed to send message" +
-				" by a non-open transaction.")
-			runCallback(callback, nil, msg, newError(InvalidStatus, "Failed to send message by a non-open transaction."))
-			return
-		}
-
-		if err := transactionImpl.registerProducerTopic(p.topic); err != nil {
-			runCallback(callback, nil, msg, err)
-			return
-		}
-		if err := transactionImpl.registerSendOrAckOp(); err != nil {
-			runCallback(callback, nil, msg, err)
-			return
-		}
-		newCallback = func(id MessageID, producerMessage *ProducerMessage, err error) {
-			runCallback(callback, id, producerMessage, err)
-			transactionImpl.endSendOrAckOp(err)
-		}
-	} else {
-		newCallback = callback
-	}
 	if p.getProducerState() != producerReady {
 		// Producer is closing
-		runCallback(newCallback, nil, msg, errProducerClosed)
+		runCallback(callback, nil, msg, errProducerClosed)
 		return
 	}
 
-	// bc only works when DisableBlockIfQueueFull is false
-	bc := make(chan struct{})
-
-	// callbackOnce make sure the callback is only invoked once in chunking
-	callbackOnce := &sync.Once{}
-	sr := &sendRequest{
-		ctx:              ctx,
-		msg:              msg,
-		callback:         newCallback,
-		callbackOnce:     callbackOnce,
-		flushImmediately: flushImmediately,
-		publishTime:      time.Now(),
-		blockCh:          bc,
-		closeBlockChOnce: &sync.Once{},
-		transaction:      txn,
-	}
+	// run interceptors before encoding/compressing
 	p.options.Interceptors.BeforeSend(p, msg)
 
-	p.dataChan <- sr
-
-	if !p.options.DisableBlockIfQueueFull {
-		// block if queue full
-		<-bc
+	sr := &sendRequest{
+		producer:         p,
+		ctx:              ctx,
+		msg:              msg,
+		callback:         callback,
+		callbackOnce:     &sync.Once{},
+		publishTime:      time.Now(),
+		flushImmediately: flushImmediately,
 	}
+
+	err = p.updateSchema(sr)
+	if err != nil {
+		p.log.Error(err)
+		sr.done(nil, err)
+		return
+	}
+
+	err = p.updateUncompressedPayload(sr)
+	if err != nil {
+		p.log.Error(err)
+		sr.done(nil, err)
+		return
+	}
+
+	p.updateMetaData(sr)
+
+	err = p.updateChunkInfo(sr)
+	if err != nil {
+		p.log.Error(err)
+		sr.done(nil, err)
+		return
+	}
+
+	err = p.prepareTransaction(sr)
+	if err != nil {
+		p.log.Error(err)
+		sr.done(nil, err)
+		return
+	}
+
+	// everything is OK, reserve required semaphore and memory
+	err = p.reserveResources(sr)
+	if err != nil {
+		p.log.Error(err)
+		sr.done(nil, err)
+		return
+	}
+
+	p.dataChan <- sr
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
