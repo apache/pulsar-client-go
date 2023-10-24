@@ -1154,8 +1154,9 @@ func (p *partitionProducer) prepareTransaction(sr *sendRequest) error {
 	}
 
 	sr.transaction = txn
+	callback := sr.callback
 	sr.callback = func(id MessageID, producerMessage *ProducerMessage, err error) {
-		runCallback(sr.callback, id, producerMessage, err)
+		runCallback(callback, id, producerMessage, err)
 		txn.endSendOrAckOp(err)
 	}
 
