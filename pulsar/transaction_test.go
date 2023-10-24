@@ -458,7 +458,6 @@ func TestAckChunkMessage(t *testing.T) {
 	// Create transaction and register the send operation.
 	txn, err := client.NewTransaction(time.Hour)
 	require.Nil(t, err)
-	txn.(*transaction).registerSendOrAckOp()
 
 	// Create a producer with chunking enabled to send a large message that will be split into chunks.
 	producer, err := client.CreateProducer(ProducerOptions{
