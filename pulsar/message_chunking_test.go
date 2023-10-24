@@ -568,28 +568,38 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int, whol
 	mm.ChunkId = proto.Int32(int32(chunkID))
 	producerImpl.updateMetadataSeqID(mm, msg)
 
-	doneCh := make(chan struct{})
 	producerImpl.internalSingleSend(
 		mm,
 		msg.Payload,
 		&sendRequest{
 			producer: producerImpl,
 			ctx:      context.Background(),
+			msg:      msg,
 			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {
-				close(doneCh)
 			},
-			msg:              msg,
-			callbackOnce:     callbackOnce,
-			flushImmediately: true,
-			totalChunks:      totalChunks,
-			chunkID:          chunkID,
-			uuid:             uuid,
-			chunkRecorder:    cr,
-			transaction:      nil,
-			reservedMem:      0,
+			callbackOnce:        callbackOnce,
+			flushImmediately:    true,
+			totalChunks:         totalChunks,
+			chunkID:             chunkID,
+			uuid:                uuid,
+			chunkRecorder:       cr,
+			transaction:         nil,
+			memLimit:            nil,
+			reservedMem:         0,
+			semaphore:           nil,
+			reservedSemaphore:   0,
+			sendAsBatch:         false,
+			schema:              nil,
+			schemaVersion:       nil,
+			uncompressedPayload: []byte(wholePayload),
+			uncompressedSize:    int64(len(wholePayload)),
+			compressedPayload:   []byte(wholePayload),
+			compressedSize:      len(wholePayload),
+			payloadChunkSize:    internal.MaxMessageSize - proto.Size(mm),
+			mm:                  mm,
+			deliverAt:           time.Now(),
+			maxMessageSize:      internal.MaxMessageSize,
 		},
 		uint32(internal.MaxMessageSize),
 	)
-
-	<-doneCh
 }
