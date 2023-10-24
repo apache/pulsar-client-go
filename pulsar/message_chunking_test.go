@@ -560,14 +560,11 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 	mm.TotalChunkMsgSize = proto.Int32(int32(len(wholePayload)))
 	mm.ChunkId = proto.Int32(int32(chunkID))
 	producerImpl.updateMetadataSeqID(mm, msg)
-
-	doneCh := make(chan struct{})
 	producerImpl.internalSingleSend(
 		mm,
 		msg.Payload,
 		&sendRequest{
 			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {
-				close(doneCh)
 			},
 			ctx:                 context.Background(),
 			msg:                 msg,
@@ -592,6 +589,4 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 		},
 		uint32(internal.MaxMessageSize),
 	)
-
-	<-doneCh
 }
