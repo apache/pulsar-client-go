@@ -552,11 +552,12 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 	msg := &ProducerMessage{
 		Payload: []byte(fmt.Sprintf("chunk-%s-%d|", uuid, chunkID)),
 	}
+	wholePayload := msg.Payload
 	producerImpl := p.(*producer).producers[0].(*partitionProducer)
-	mm := producerImpl.genMetadata(msg, len(msg.Payload), time.Now())
+	mm := producerImpl.genMetadata(msg, len(wholePayload), time.Now())
 	mm.Uuid = proto.String(uuid)
 	mm.NumChunksFromMsg = proto.Int32(int32(totalChunks))
-	mm.TotalChunkMsgSize = proto.Int32(int32(len(msg.Payload)))
+	mm.TotalChunkMsgSize = proto.Int32(int32(len(wholePayload)))
 	mm.ChunkId = proto.Int32(int32(chunkID))
 	producerImpl.updateMetadataSeqID(mm, msg)
 
@@ -568,7 +569,26 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {
 				close(doneCh)
 			},
-			msg: msg,
+			ctx:                 context.Background(),
+			msg:                 msg,
+			flushImmediately:    true,
+			totalChunks:         totalChunks,
+			chunkID:             chunkID,
+			uuid:                uuid,
+			chunkRecorder:       newChunkRecorder(),
+			transaction:         nil,
+			reservedMem:         0,
+			sendAsBatch:         false,
+			schema:              nil,
+			schemaVersion:       nil,
+			uncompressedPayload: wholePayload,
+			uncompressedSize:    int64(len(wholePayload)),
+			compressedPayload:   wholePayload,
+			compressedSize:      len(wholePayload),
+			payloadChunkSize:    internal.MaxMessageSize - proto.Size(mm),
+			mm:                  mm,
+			deliverAt:           time.Now(),
+			maxMessageSize:      internal.MaxMessageSize,
 		},
 		uint32(internal.MaxMessageSize),
 	)
