@@ -1574,47 +1574,6 @@ func (p *partitionProducer) _getConn() internal.Connection {
 	return p.conn.Load().(internal.Connection)
 }
 
-func (p *partitionProducer) releaseSemaphoreAndMem(size int64) { //nolint:unused
-	p.publishSemaphore.Release()
-	p.client.memLimit.ReleaseMemory(size)
-}
-
-func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool { //nolint:unused
-	if p.options.DisableBlockIfQueueFull {
-		if !p.publishSemaphore.TryAcquire() {
-			runCallback(sr.callback, nil, sr.msg, errSendQueueIsFull)
-			return false
-		}
-	} else {
-		if !p.publishSemaphore.Acquire(sr.ctx) {
-			runCallback(sr.callback, nil, sr.msg, errContextExpired)
-			return false
-		}
-	}
-	p.metrics.MessagesPending.Inc()
-	return true
-}
-
-func (p *partitionProducer) canReserveMem(sr *sendRequest, size int64) bool { //nolint:unused
-	if p.options.DisableBlockIfQueueFull {
-		if !p.client.memLimit.TryReserveMemory(size) {
-			p.publishSemaphore.Release()
-			runCallback(sr.callback, nil, sr.msg, errMemoryBufferIsFull)
-			return false
-		}
-
-	} else {
-		if !p.client.memLimit.ReserveMemory(sr.ctx, size) {
-			p.publishSemaphore.Release()
-			runCallback(sr.callback, nil, sr.msg, errContextExpired)
-			return false
-		}
-	}
-	sr.reservedMem += size
-	p.metrics.BytesPending.Add(float64(size))
-	return true
-}
-
 type chunkRecorder struct {
 	chunkedMsgID chunkMessageID
 }
