@@ -2079,7 +2079,6 @@ func TestMemLimitRejectProducerMessagesWithSchema(t *testing.T) {
 }
 
 func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
-
 	c, err := NewClient(ClientOptions{
 		URL:              serviceURL,
 		MemoryLimitBytes: 5 * 1024,

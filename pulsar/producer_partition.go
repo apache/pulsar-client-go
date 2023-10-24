@@ -565,12 +565,14 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 		// the permit of first chunk has acquired
 		if chunkID != 0 {
 			if err := p.reserveSemaphore(sr); err != nil {
-				sr.done(nil, err)
+				// force run callback and txn close
+				nsr.chunkID = -1
+				nsr.done(nil, err)
 				return
 			}
 		}
 
-		p.internalSingleSend(sr.mm, sr.compressedPayload[lhs:rhs], nsr, uint32(sr.maxMessageSize))
+		p.internalSingleSend(nsr.mm, nsr.compressedPayload[lhs:rhs], nsr, uint32(nsr.maxMessageSize))
 	}
 }
 
