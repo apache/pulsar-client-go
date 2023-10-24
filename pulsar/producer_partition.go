@@ -1121,6 +1121,7 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	p.internalSendAsync(ctx, msg, callback, false)
 }
 
+//nolint:unused
 func (p *partitionProducer) validateMsg(msg *ProducerMessage) error {
 	if msg == nil {
 		return newError(InvalidMessage, "Message is nil")
@@ -1141,6 +1142,7 @@ func (p *partitionProducer) validateMsg(msg *ProducerMessage) error {
 	return nil
 }
 
+//nolint:unused
 func (p *partitionProducer) updateSchema(sr *sendRequest) error {
 	var schema Schema
 	var schemaVersion []byte
@@ -1170,6 +1172,7 @@ func (p *partitionProducer) updateSchema(sr *sendRequest) error {
 	return nil
 }
 
+//nolint:unused
 func (p *partitionProducer) updateUncompressedPayload(sr *sendRequest) error {
 	// read payload from message
 	sr.uncompressedPayload = sr.msg.Payload
@@ -1195,6 +1198,7 @@ func (p *partitionProducer) updateUncompressedPayload(sr *sendRequest) error {
 	return nil
 }
 
+//nolint:unused
 func (p *partitionProducer) updateMetaData(sr *sendRequest) {
 	deliverAt := sr.msg.DeliverAt
 	if sr.msg.DeliverAfter.Nanoseconds() > 0 {
@@ -1221,6 +1225,7 @@ func (p *partitionProducer) updateMetaData(sr *sendRequest) {
 	sr.deliverAt = deliverAt
 }
 
+//nolint:unused
 func (p *partitionProducer) updateChunkInfo(sr *sendRequest) error {
 	checkSize := sr.uncompressedSize
 	if !sr.sendAsBatch {
@@ -1273,6 +1278,7 @@ func (p *partitionProducer) updateChunkInfo(sr *sendRequest) error {
 	return nil
 }
 
+//nolint:unused
 func (p *partitionProducer) prepareTransaction(sr *sendRequest) error {
 	if sr.msg.Transaction == nil {
 		return nil
@@ -1297,6 +1303,7 @@ func (p *partitionProducer) prepareTransaction(sr *sendRequest) error {
 	return nil
 }
 
+//nolint:unused
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 	for i := 0; i < sr.totalChunks; i++ {
 		if p.options.DisableBlockIfQueueFull {
@@ -1325,6 +1332,7 @@ func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 	return nil
 }
 
+//nolint:unused
 func (p *partitionProducer) reserveMem(sr *sendRequest) error {
 	requiredMem := sr.uncompressedSize
 	if !sr.sendAsBatch {
@@ -1348,6 +1356,7 @@ func (p *partitionProducer) reserveMem(sr *sendRequest) error {
 	return nil
 }
 
+//nolint:unused
 func (p *partitionProducer) reserveResources(sr *sendRequest) error {
 	if err := p.reserveSemaphore(sr); err != nil {
 		return err
