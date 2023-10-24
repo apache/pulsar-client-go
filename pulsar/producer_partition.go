@@ -481,6 +481,11 @@ func runCallback(cb func(MessageID, *ProducerMessage, error), id MessageID, msg 
 func (p *partitionProducer) internalSend(sr *sendRequest) {
 	p.log.Debug("Received send request: ", *sr.msg)
 
+	if err := p.reserveSemaphore(sr); err != nil {
+		sr.done(nil, err)
+		return
+	}
+
 	if sr.sendAsBatch {
 		smm := p.genSingleMessageMetadataInBatch(sr.msg, int(sr.uncompressedSize))
 		multiSchemaEnabled := !p.options.DisableMultiSchema
@@ -556,6 +561,15 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 			deliverAt:           sr.deliverAt,
 			maxMessageSize:      sr.maxMessageSize,
 		}
+
+		// the permit of first chunk has acquired
+		if chunkID != 0 {
+			if err := p.reserveSemaphore(sr); err != nil {
+				sr.done(nil, err)
+				return
+			}
+		}
+
 		p.internalSingleSend(sr.mm, sr.compressedPayload[lhs:rhs], nsr, uint32(sr.maxMessageSize))
 	}
 }
@@ -1186,8 +1200,7 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
-	// everything is OK, reserve required semaphore and memory
-	if err := p.reserveResources(sr); err != nil {
+	if err := p.reserveMem(sr); err != nil {
 		p.log.Error(err)
 		sr.done(nil, err)
 		return
@@ -1476,28 +1489,26 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 }
 
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
-	for i := 0; i < sr.totalChunks; i++ {
-		if p.options.DisableBlockIfQueueFull {
-			if !p.publishSemaphore.TryAcquire() {
-				return errSendQueueIsFull
-			}
-
-			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
-			// of that only a part of the chunks acquire succeed
-			sr.semaphore = p.publishSemaphore
-			sr.reservedSemaphore++
-			p.metrics.MessagesPending.Inc()
-		} else {
-			if !p.publishSemaphore.Acquire(sr.ctx) {
-				return errContextExpired
-			}
-
-			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
-			// of that only a part of the chunks acquire succeed
-			sr.semaphore = p.publishSemaphore
-			sr.reservedSemaphore++
-			p.metrics.MessagesPending.Inc()
+	if p.options.DisableBlockIfQueueFull {
+		if !p.publishSemaphore.TryAcquire() {
+			return errSendQueueIsFull
 		}
+
+		// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
+		// of that only a part of the chunks acquire succeed
+		sr.semaphore = p.publishSemaphore
+		sr.reservedSemaphore++
+		p.metrics.MessagesPending.Inc()
+	} else {
+		if !p.publishSemaphore.Acquire(sr.ctx) {
+			return errContextExpired
+		}
+
+		// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
+		// of that only a part of the chunks acquire succeed
+		sr.semaphore = p.publishSemaphore
+		sr.reservedSemaphore++
+		p.metrics.MessagesPending.Inc()
 	}
 
 	return nil
@@ -1523,16 +1534,6 @@ func (p *partitionProducer) reserveMem(sr *sendRequest) error {
 	sr.memLimit = p.client.memLimit
 	sr.reservedMem += requiredMem
 	p.metrics.BytesPending.Add(float64(requiredMem))
-	return nil
-}
-
-func (p *partitionProducer) reserveResources(sr *sendRequest) error {
-	if err := p.reserveSemaphore(sr); err != nil {
-		return err
-	}
-	if err := p.reserveMem(sr); err != nil {
-		return err
-	}
 	return nil
 }
 

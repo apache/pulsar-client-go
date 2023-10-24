@@ -511,8 +511,6 @@ func TestChunkMultiTopicConsumerReceive(t *testing.T) {
 }
 
 func TestChunkBlockIfQueueFull(t *testing.T) {
-	t.Skip("Currently we require preserve full resources for chunked messages.")
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
