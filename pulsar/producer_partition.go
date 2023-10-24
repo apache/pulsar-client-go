@@ -251,7 +251,7 @@ func (p *partitionProducer) grabCnx() error {
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
-		if err == internal.ErrRequestTimeOut {
+		if errors.Is(err, internal.ErrRequestTimeOut) {
 			id := p.client.rpcClient.NewRequestID()
 			_, _ = p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_CLOSE_PRODUCER,
 				&pb.CommandCloseProducer{
@@ -1448,19 +1448,29 @@ func (p *partitionProducer) Close() {
 }
 
 type sendRequest struct {
-	ctx                 context.Context
-	msg                 *ProducerMessage
-	callback            func(MessageID, *ProducerMessage, error)
-	callbackOnce        *sync.Once
-	publishTime         time.Time
-	flushImmediately    bool
-	totalChunks         int
-	chunkID             int
-	uuid                string
-	chunkRecorder       *chunkRecorder
-	transaction         *transaction
-	reservedMem         int64
+	ctx              context.Context
+	msg              *ProducerMessage
+	producer         *partitionProducer
+	callback         func(MessageID, *ProducerMessage, error)
+	callbackOnce     *sync.Once
+	publishTime      time.Time
+	flushImmediately bool
+	totalChunks      int
+	chunkID          int
+	uuid             string
+	chunkRecorder    *chunkRecorder
+
+	/// resource management
+
+	memLimit          internal.MemoryLimitController
+	reservedMem       int64
+	semaphore         internal.Semaphore
+	reservedSemaphore int
+
+	/// convey settable state
+
 	sendAsBatch         bool
+	transaction         *transaction
 	schema              Schema
 	schemaVersion       []byte
 	uncompressedPayload []byte
@@ -1471,6 +1481,115 @@ type sendRequest struct {
 	mm                  *pb.MessageMetadata
 	deliverAt           time.Time
 	maxMessageSize      int32
+}
+
+func (sr *sendRequest) done(msgID MessageID, err error) {
+	if err == nil {
+		sr.producer.metrics.PublishLatency.Observe(float64(time.Now().UnixNano()-sr.publishTime.UnixNano()) / 1.0e9)
+		sr.producer.metrics.MessagesPublished.Inc()
+		sr.producer.metrics.BytesPublished.Add(float64(sr.reservedMem))
+	}
+
+	if err != nil {
+		sr.producer.log.WithError(err).
+			WithField("size", sr.reservedMem).
+			WithField("properties", sr.msg.Properties)
+	}
+
+	if errors.Is(err, errSendTimeout) {
+		sr.producer.metrics.PublishErrorsTimeout.Inc()
+	}
+
+	if errors.Is(err, errMessageTooLarge) {
+		sr.producer.metrics.PublishErrorsMsgTooLarge.Inc()
+	}
+
+	if sr.semaphore != nil {
+		for i := 0; i < sr.reservedSemaphore; i++ {
+			sr.semaphore.Release()
+		}
+		sr.producer.metrics.MessagesPending.Sub(float64(sr.reservedSemaphore))
+	}
+
+	if sr.memLimit != nil {
+		sr.memLimit.ReleaseMemory(sr.reservedMem)
+		sr.producer.metrics.BytesPending.Sub(float64(sr.reservedMem))
+	}
+
+	if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
+		sr.callbackOnce.Do(func() {
+			runCallback(sr.callback, msgID, sr.msg, err)
+		})
+
+		if sr.transaction != nil {
+			sr.transaction.endSendOrAckOp(err)
+		}
+
+		if sr.producer.options.Interceptors != nil {
+			sr.producer.options.Interceptors.OnSendAcknowledgement(sr.producer, sr.msg, msgID)
+		}
+	}
+}
+
+func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
+	for i := 0; i < sr.totalChunks; i++ {
+		if p.options.DisableBlockIfQueueFull {
+			if !p.publishSemaphore.TryAcquire() {
+				return errSendQueueIsFull
+			}
+
+			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
+			// of that only a part of the chunks acquire succeed
+			sr.semaphore = p.publishSemaphore
+			sr.reservedSemaphore++
+			p.metrics.MessagesPending.Inc()
+		} else {
+			if !p.publishSemaphore.Acquire(sr.ctx) {
+				return errContextExpired
+			}
+
+			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
+			// of that only a part of the chunks acquire succeed
+			sr.semaphore = p.publishSemaphore
+			sr.reservedSemaphore++
+			p.metrics.MessagesPending.Inc()
+		}
+	}
+
+	return nil
+}
+
+func (p *partitionProducer) reserveMem(sr *sendRequest) error {
+	requiredMem := sr.uncompressedSize
+	if !sr.sendAsBatch {
+		requiredMem = int64(sr.compressedSize)
+	}
+
+	if p.options.DisableBlockIfQueueFull {
+		if !p.client.memLimit.TryReserveMemory(requiredMem) {
+			return errMemoryBufferIsFull
+		}
+
+	} else {
+		if !p.client.memLimit.ReserveMemory(sr.ctx, requiredMem) {
+			return errContextExpired
+		}
+	}
+
+	sr.memLimit = p.client.memLimit
+	sr.reservedMem += requiredMem
+	p.metrics.BytesPending.Add(float64(requiredMem))
+	return nil
+}
+
+func (p *partitionProducer) reserveResources(sr *sendRequest) error {
+	if err := p.reserveSemaphore(sr); err != nil {
+		return err
+	}
+	if err := p.reserveMem(sr); err != nil {
+		return err
+	}
+	return nil
 }
 
 type closeProducer struct {
@@ -1502,51 +1621,10 @@ func (p *partitionProducer) _setConn(conn internal.Connection) {
 // _getConn returns internal connection field of this partition producer atomically.
 // Note: should only be called by this partition producer before attempting to use the connection
 func (p *partitionProducer) _getConn() internal.Connection {
-	// Invariant: The conn must be non-nil for the lifetime of the partitionProducer.
+	// Invariant: p.conn must be non-nil for the lifetime of the partitionProducer.
 	//            For this reason we leave this cast unchecked and panic() if the
 	//            invariant is broken
 	return p.conn.Load().(internal.Connection)
-}
-
-func (p *partitionProducer) releaseSemaphoreAndMem(size int64) {
-	p.publishSemaphore.Release()
-	p.client.memLimit.ReleaseMemory(size)
-}
-
-func (p *partitionProducer) canAddToQueue(sr *sendRequest) bool {
-	if p.options.DisableBlockIfQueueFull {
-		if !p.publishSemaphore.TryAcquire() {
-			runCallback(sr.callback, nil, sr.msg, errSendQueueIsFull)
-			return false
-		}
-	} else {
-		if !p.publishSemaphore.Acquire(sr.ctx) {
-			runCallback(sr.callback, nil, sr.msg, errContextExpired)
-			return false
-		}
-	}
-	p.metrics.MessagesPending.Inc()
-	return true
-}
-
-func (p *partitionProducer) canReserveMem(sr *sendRequest, size int64) bool {
-	if p.options.DisableBlockIfQueueFull {
-		if !p.client.memLimit.TryReserveMemory(size) {
-			p.publishSemaphore.Release()
-			runCallback(sr.callback, nil, sr.msg, errMemoryBufferIsFull)
-			return false
-		}
-
-	} else {
-		if !p.client.memLimit.ReserveMemory(sr.ctx, size) {
-			p.publishSemaphore.Release()
-			runCallback(sr.callback, nil, sr.msg, errContextExpired)
-			return false
-		}
-	}
-	sr.reservedMem += size
-	p.metrics.BytesPending.Add(float64(size))
-	return true
 }
 
 type chunkRecorder struct {
