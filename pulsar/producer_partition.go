@@ -841,8 +841,7 @@ func (p *partitionProducer) internalSingleSend(mm *pb.MessageMetadata,
 	)
 
 	if err != nil {
-		runCallback(request.callback, nil, request.msg, err)
-		p.releaseSemaphoreAndMem(request.reservedMem)
+		request.done(nil, err)
 		p.log.WithError(err).Errorf("Single message serialize failed %s", msg.Value)
 		return
 	}
@@ -882,13 +881,12 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 	if err != nil {
 		for _, cb := range callbacks {
 			if sr, ok := cb.(*sendRequest); ok {
-				runCallback(sr.callback, nil, sr.msg, err)
+				sr.done(nil, err)
 			}
 		}
 		if errors.Is(err, internal.ErrExceedMaxMessageSize) {
 			p.log.WithError(errMessageTooLarge).
 				Errorf("internal err: %s", err)
-			p.metrics.PublishErrorsMsgTooLarge.Inc()
 			return
 		}
 		return
@@ -979,25 +977,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 
 			for _, i := range pi.sendRequests {
 				sr := i.(*sendRequest)
-				if sr.msg != nil {
-					size := len(sr.msg.Payload)
-					p.releaseSemaphoreAndMem(sr.reservedMem)
-					p.metrics.MessagesPending.Dec()
-					p.metrics.BytesPending.Sub(float64(size))
-					p.metrics.PublishErrorsTimeout.Inc()
-					p.log.WithError(errSendTimeout).
-						WithField("size", size).
-						WithField("properties", sr.msg.Properties)
-				}
-
-				if sr.callback != nil {
-					sr.callbackOnce.Do(func() {
-						runCallback(sr.callback, nil, sr.msg, errSendTimeout)
-					})
-				}
-				if sr.transaction != nil {
-					sr.transaction.endSendOrAckOp(nil)
-				}
+				sr.done(nil, errSendTimeout)
 			}
 
 			// flag the sending has completed with error, flush make no effect
@@ -1025,13 +1005,12 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 		if errs[i] != nil {
 			for _, cb := range callbacks[i] {
 				if sr, ok := cb.(*sendRequest); ok {
-					runCallback(sr.callback, nil, sr.msg, errs[i])
+					sr.done(nil, errs[i])
 				}
 			}
 			if errors.Is(errs[i], internal.ErrExceedMaxMessageSize) {
 				p.log.WithError(errMessageTooLarge).
 					Errorf("internal err: %s", errs[i])
-				p.metrics.PublishErrorsMsgTooLarge.Inc()
 				return
 			}
 			continue
@@ -1229,55 +1208,40 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		for idx, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
 			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
-			p.releaseSemaphoreAndMem(sr.reservedMem)
-			p.metrics.PublishLatency.Observe(float64(now-sr.publishTime.UnixNano()) / 1.0e9)
-			p.metrics.MessagesPublished.Inc()
-			p.metrics.MessagesPending.Dec()
-			payloadSize := float64(len(sr.msg.Payload))
-			p.metrics.BytesPublished.Add(payloadSize)
-			p.metrics.BytesPending.Sub(payloadSize)
 
-			if sr.callback != nil || len(p.options.Interceptors) > 0 {
-				msgID := newMessageID(
-					int64(response.MessageId.GetLedgerId()),
-					int64(response.MessageId.GetEntryId()),
-					int32(idx),
-					p.partitionIdx,
-					batchSize,
-				)
+			msgID := newMessageID(
+				int64(response.MessageId.GetLedgerId()),
+				int64(response.MessageId.GetEntryId()),
+				int32(idx),
+				p.partitionIdx,
+				batchSize,
+			)
 
-				if sr.totalChunks > 1 {
-					if sr.chunkID == 0 {
-						sr.chunkRecorder.setFirstChunkID(
-							&messageID{
-								int64(response.MessageId.GetLedgerId()),
-								int64(response.MessageId.GetEntryId()),
-								-1,
-								p.partitionIdx,
-								0,
-							})
-					} else if sr.chunkID == sr.totalChunks-1 {
-						sr.chunkRecorder.setLastChunkID(
-							&messageID{
-								int64(response.MessageId.GetLedgerId()),
-								int64(response.MessageId.GetEntryId()),
-								-1,
-								p.partitionIdx,
-								0,
-							})
-						// use chunkMsgID to set msgID
-						msgID = &sr.chunkRecorder.chunkedMsgID
-					}
-				}
-
-				if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
-					runCallback(sr.callback, msgID, sr.msg, nil)
-					p.options.Interceptors.OnSendAcknowledgement(p, sr.msg, msgID)
+			if sr.totalChunks > 1 {
+				if sr.chunkID == 0 {
+					sr.chunkRecorder.setFirstChunkID(
+						&messageID{
+							int64(response.MessageId.GetLedgerId()),
+							int64(response.MessageId.GetEntryId()),
+							-1,
+							p.partitionIdx,
+							0,
+						})
+				} else if sr.chunkID == sr.totalChunks-1 {
+					sr.chunkRecorder.setLastChunkID(
+						&messageID{
+							int64(response.MessageId.GetLedgerId()),
+							int64(response.MessageId.GetEntryId()),
+							-1,
+							p.partitionIdx,
+							0,
+						})
+					// use chunkMsgID to set msgID
+					msgID = &sr.chunkRecorder.chunkedMsgID
 				}
 			}
-			if sr.transaction != nil {
-				sr.transaction.endSendOrAckOp(nil)
-			}
+
+			sr.done(msgID, nil)
 		}
 
 		// Mark this pending item as done
@@ -1343,24 +1307,9 @@ func (p *partitionProducer) failPendingMessages() {
 		pi.Lock()
 
 		for _, i := range pi.sendRequests {
-			sr := i.(*sendRequest)
-			if sr.msg != nil {
-				size := len(sr.msg.Payload)
-				p.releaseSemaphoreAndMem(sr.reservedMem)
-				p.metrics.MessagesPending.Dec()
-				p.metrics.BytesPending.Sub(float64(size))
-				p.log.WithError(errProducerClosed).
-					WithField("size", size).
-					WithField("properties", sr.msg.Properties)
-			}
-
-			if sr.callback != nil {
-				sr.callbackOnce.Do(func() {
-					runCallback(sr.callback, nil, sr.msg, errProducerClosed)
-				})
-			}
-			if sr.transaction != nil {
-				sr.transaction.endSendOrAckOp(nil)
+			sr, ok := i.(*sendRequest)
+			if ok {
+				sr.done(nil, errProducerClosed)
 			}
 		}
 
