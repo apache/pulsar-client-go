@@ -24,6 +24,7 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -566,6 +567,7 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 		&sendRequest{
 			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {
 			},
+			callbackOnce:        &sync.Once{},
 			ctx:                 context.Background(),
 			msg:                 msg,
 			producer:            producerImpl,
