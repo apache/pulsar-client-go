@@ -2079,7 +2079,6 @@ func TestMemLimitRejectProducerMessagesWithSchema(t *testing.T) {
 }
 
 func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
-
 	c, err := NewClient(ClientOptions{
 		URL:              serviceURL,
 		MemoryLimitBytes: 5 * 1024,
@@ -2136,12 +2135,11 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 		SendTimeout:             2 * time.Second,
 	})
 
-	// producer2 will reserve 2*1024 bytes and then release 1024 byte (release the second chunk)
-	// because it reaches MaxPendingMessages in chunking
+	// producer3 cannot reserve 2*1024 bytes because it reaches MaxPendingMessages in chunking
 	_, _ = producer3.Send(context.Background(), &ProducerMessage{
 		Payload: make([]byte, 2*1024),
 	})
-	assert.Equal(t, int64(1024), c.(*client).memLimit.CurrentUsage())
+	assert.Zero(t, c.(*client).memLimit.CurrentUsage())
 }
 
 func TestMemLimitContextCancel(t *testing.T) {
