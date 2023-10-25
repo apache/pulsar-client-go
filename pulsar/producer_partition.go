@@ -556,12 +556,6 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 			maxMessageSize:      sr.maxMessageSize,
 		}
 
-		if err := p.reserveSemaphore(nsr); err != nil {
-			nsr.chunkID = -1 // force run callback and close txn
-			nsr.done(nil, err)
-			return
-		}
-
 		p.internalSingleSend(nsr.mm, nsr.compressedPayload[lhs:rhs], nsr, uint32(nsr.maxMessageSize))
 	}
 }
@@ -1192,7 +1186,7 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
-	if err := p.reserveMem(sr); err != nil {
+	if err := p.reserveResources(sr); err != nil {
 		p.log.Error(err)
 		sr.done(nil, err)
 		return
@@ -1408,9 +1402,10 @@ type sendRequest struct {
 
 	/// resource management
 
-	memLimit    internal.MemoryLimitController
-	reservedMem int64
-	semaphore   internal.Semaphore
+	memLimit          internal.MemoryLimitController
+	reservedMem       int64
+	semaphore         internal.Semaphore
+	reservedSemaphore int
 
 	/// convey settable state
 
@@ -1478,20 +1473,28 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 }
 
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
-	if p.options.DisableBlockIfQueueFull {
-		if !p.publishSemaphore.TryAcquire() {
-			return errSendQueueIsFull
-		}
+	for i := 0; i < sr.totalChunks; i++ {
+		if p.options.DisableBlockIfQueueFull {
+			if !p.publishSemaphore.TryAcquire() {
+				return errSendQueueIsFull
+			}
 
-		sr.semaphore = p.publishSemaphore
-		p.metrics.MessagesPending.Inc()
-	} else {
-		if !p.publishSemaphore.Acquire(sr.ctx) {
-			return errContextExpired
-		}
+			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
+			// of that only a part of the chunks acquire succeed
+			sr.semaphore = p.publishSemaphore
+			sr.reservedSemaphore++
+			p.metrics.MessagesPending.Inc()
+		} else {
+			if !p.publishSemaphore.Acquire(sr.ctx) {
+				return errContextExpired
+			}
 
-		sr.semaphore = p.publishSemaphore
-		p.metrics.MessagesPending.Inc()
+			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
+			// of that only a part of the chunks acquire succeed
+			sr.semaphore = p.publishSemaphore
+			sr.reservedSemaphore++
+			p.metrics.MessagesPending.Inc()
+		}
 	}
 
 	return nil
@@ -1517,6 +1520,16 @@ func (p *partitionProducer) reserveMem(sr *sendRequest) error {
 	sr.memLimit = p.client.memLimit
 	sr.reservedMem += requiredMem
 	p.metrics.BytesPending.Add(float64(requiredMem))
+	return nil
+}
+
+func (p *partitionProducer) reserveResources(sr *sendRequest) error {
+	if err := p.reserveSemaphore(sr); err != nil {
+		return err
+	}
+	if err := p.reserveMem(sr); err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -532,12 +532,13 @@ func TestChunkBlockIfQueueFull(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	// Large messages will be split into 11 chunks, exceeding the length of pending queue
-	ID, err := producer.Send(context.Background(), &ProducerMessage{
+	_, err = producer.Send(ctx, &ProducerMessage{
 		Payload: createTestMessagePayload(100),
 	})
-	assert.NoError(t, err)
-	assert.NotNil(t, ID)
+	assert.Error(t, err)
 }
 
 func createTestMessagePayload(size int) []byte {
