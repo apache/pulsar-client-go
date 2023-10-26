@@ -1479,9 +1479,9 @@ func (p *partitionProducer) blockIfQueueFull() bool {
 
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 	for i := 0; i < sr.totalChunks; i++ {
-		if !p.blockIfQueueFull() {
-			if !p.publishSemaphore.TryAcquire() {
-				return errSendQueueIsFull
+		if p.blockIfQueueFull() {
+			if !p.publishSemaphore.Acquire(sr.ctx) {
+				return errContextExpired
 			}
 
 			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
@@ -1490,8 +1490,8 @@ func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 			sr.reservedSemaphore++
 			p.metrics.MessagesPending.Inc()
 		} else {
-			if !p.publishSemaphore.Acquire(sr.ctx) {
-				return errContextExpired
+			if !p.publishSemaphore.TryAcquire() {
+				return errSendQueueIsFull
 			}
 
 			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
@@ -1511,14 +1511,13 @@ func (p *partitionProducer) reserveMem(sr *sendRequest) error {
 		requiredMem = int64(sr.compressedSize)
 	}
 
-	if !p.blockIfQueueFull() {
-		if !p.client.memLimit.TryReserveMemory(requiredMem) {
-			return errMemoryBufferIsFull
-		}
-
-	} else {
+	if p.blockIfQueueFull() {
 		if !p.client.memLimit.ReserveMemory(sr.ctx, requiredMem) {
 			return errContextExpired
+		}
+	} else {
+		if !p.client.memLimit.TryReserveMemory(requiredMem) {
+			return errMemoryBufferIsFull
 		}
 	}
 
