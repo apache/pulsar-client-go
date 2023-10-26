@@ -1472,9 +1472,14 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 	}
 }
 
+func (p *partitionProducer) blockIfQueueFull() bool {
+	//DisableBlockIfQueueFull == false means enable block
+	return !p.options.DisableBlockIfQueueFull
+}
+
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 	for i := 0; i < sr.totalChunks; i++ {
-		if p.options.DisableBlockIfQueueFull {
+		if !p.blockIfQueueFull() {
 			if !p.publishSemaphore.TryAcquire() {
 				return errSendQueueIsFull
 			}
@@ -1506,7 +1511,7 @@ func (p *partitionProducer) reserveMem(sr *sendRequest) error {
 		requiredMem = int64(sr.compressedSize)
 	}
 
-	if p.options.DisableBlockIfQueueFull {
+	if !p.blockIfQueueFull() {
 		if !p.client.memLimit.TryReserveMemory(requiredMem) {
 			return errMemoryBufferIsFull
 		}
