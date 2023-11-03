@@ -396,17 +396,17 @@ func (p *partitionProducer) reconnectToBroker() {
 		maxRetry = int(*p.options.MaxReconnectToBroker)
 	}
 
+	var (
+		delayReconnectTime time.Duration
+		defaultBackoff     = internal.DefaultBackoff{}
+	)
+
 	for maxRetry != 0 {
 		if p.getProducerState() != producerReady {
 			// Producer is already closing
 			p.log.Info("producer state not ready, exit reconnect")
 			return
 		}
-
-		var (
-			delayReconnectTime time.Duration
-			defaultBackoff     = internal.DefaultBackoff{}
-		)
 
 		if p.options.BackoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
