@@ -60,10 +60,19 @@ var (
 	errProducerClosed     = newError(ProducerClosed, "producer already been closed")
 	errMemoryBufferIsFull = newError(ClientMemoryBufferIsFull, "client memory buffer is full")
 
-	buffersPool sync.Pool
+	buffersPool     sync.Pool
+	sendRequestPool *sync.Pool
 )
 
 var errTopicNotFount = "TopicNotFound"
+
+func init() {
+	sendRequestPool = &sync.Pool{
+		New: func() interface{} {
+			return &sendRequest{}
+		},
+	}
+}
 
 type partitionProducer struct {
 	state  uAtomic.Int32
@@ -527,7 +536,9 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 		}
 		// update chunk id
 		sr.mm.ChunkId = proto.Int32(int32(chunkID))
-		nsr := &sendRequest{
+		nsr := sendRequestPool.Get().(*sendRequest)
+		*nsr = sendRequest{
+			pool:                sendRequestPool,
 			ctx:                 sr.ctx,
 			msg:                 sr.msg,
 			producer:            sr.producer,
@@ -1150,7 +1161,9 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
-	sr := &sendRequest{
+	sr := sendRequestPool.Get().(*sendRequest)
+	*sr = sendRequest{
+		pool:             sendRequestPool,
 		ctx:              ctx,
 		msg:              msg,
 		producer:         p,
@@ -1395,6 +1408,7 @@ func (p *partitionProducer) Close() {
 }
 
 type sendRequest struct {
+	pool             *sync.Pool
 	ctx              context.Context
 	msg              *ProducerMessage
 	producer         *partitionProducer
@@ -1476,6 +1490,17 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		if sr.transaction != nil {
 			sr.transaction.endSendOrAckOp(err)
 		}
+	}
+
+	sr.reset()
+}
+
+func (sr *sendRequest) reset() {
+	pool := sr.pool
+	// reset all the fields
+	*sr = sendRequest{}
+	if pool != nil {
+		pool.Put(sr)
 	}
 }
 
