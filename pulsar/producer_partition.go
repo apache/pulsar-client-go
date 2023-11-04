@@ -1497,9 +1497,9 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 
 func (sr *sendRequest) reset() {
 	pool := sr.pool
-	// reset all the fields
-	*sr = sendRequest{}
 	if pool != nil {
+		// reset all the fields
+		*sr = sendRequest{}
 		pool.Put(sr)
 	}
 }
