@@ -1492,10 +1492,6 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		}
 	}
 
-	sr.reset()
-}
-
-func (sr *sendRequest) reset() {
 	pool := sr.pool
 	if pool != nil {
 		// reset all the fields
