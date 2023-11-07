@@ -114,7 +114,7 @@ It fixes the following issues:
 https://github.com/apache/pulsar-client-go/milestone/1?closed=1
 
 Pulsar Client Go's KEYS file contains PGP keys we used to sign this release:
-https://dist.apache.org/repos/dist/dev/pulsar/KEYS
+https://downloads.apache.org/pulsar/KEYS
 
 Please download these packages and review this release candidate:
 - Review release notes
