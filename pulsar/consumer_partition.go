@@ -1320,7 +1320,7 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 	return &encCtx
 }
 
-func (pc *partitionConsumer) ConnectionClosed() {
+func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
 	pc.connectClosedCh <- connectionClosed{}

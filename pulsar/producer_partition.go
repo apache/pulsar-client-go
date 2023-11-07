@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -176,7 +177,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	} else {
 		p.userProvidedProducerName = false
 	}
-	err := p.grabCnx()
+	err := p.grabCnx(nil)
 	if err != nil {
 		p.batchFlushTicker.Stop()
 		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
@@ -200,14 +201,21 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	return p, nil
 }
 
-func (p *partitionProducer) grabCnx() error {
-	lr, err := p.client.lookupService.Lookup(p.topic)
-	if err != nil {
-		p.log.WithError(err).Warn("Failed to lookup topic")
-		return err
-	}
+func (p *partitionProducer) grabCnx(connectionClosed *connectionClosed) error {
+	var logicalAddr *url.URL
+	var physicalAddr *url.URL
+	if connectionClosed == nil {
+		lr, err := p.client.lookupService.Lookup(p.topic)
+		if err != nil {
+			p.log.WithError(err).Warn("Failed to lookup topic")
+			return err
+		}
 
-	p.log.Debug("Lookup result: ", lr)
+		p.log.Debug("Lookup result: ", lr)
+		logicalAddr = lr.LogicalAddr
+		physicalAddr = lr.PhysicalAddr
+	} else {
+	}
 	id := p.client.rpcClient.NewRequestID()
 
 	// set schema info for producer
@@ -248,12 +256,12 @@ func (p *partitionProducer) grabCnx() error {
 	if len(p.options.Properties) > 0 {
 		cmdProducer.Metadata = toKeyValues(p.options.Properties)
 	}
-	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	res, err := p.client.rpcClient.Request(logicalAddr, physicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		if errors.Is(err, internal.ErrRequestTimeOut) {
 			id := p.client.rpcClient.NewRequestID()
-			_, _ = p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_CLOSE_PRODUCER,
+			_, _ = p.client.rpcClient.Request(logicalAddr, physicalAddr, id, pb.BaseCommand_CLOSE_PRODUCER,
 				&pb.CommandCloseProducer{
 					ProducerId: &p.producerID,
 					RequestId:  &id,
@@ -352,7 +360,7 @@ func (p *partitionProducer) GetBuffer() internal.Buffer {
 	return b
 }
 
-func (p *partitionProducer) ConnectionClosed() {
+func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProducer) {
 	// Trigger reconnection in the produce goroutine
 	p.log.WithField("cnx", p._getConn().ID()).Warn("Connection was closed")
 	p.connectClosedCh <- connectionClosed{}
@@ -388,7 +396,7 @@ func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVer
 	return res.Response.GetOrCreateSchemaResponse.SchemaVersion, nil
 }
 
-func (p *partitionProducer) reconnectToBroker() {
+func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed) {
 	var maxRetry int
 	if p.options.MaxReconnectToBroker == nil {
 		maxRetry = -1
@@ -408,7 +416,10 @@ func (p *partitionProducer) reconnectToBroker() {
 			return
 		}
 
-		if p.options.BackoffPolicy == nil {
+		if connectionClosed != nil {
+			delayReconnectTime = 0
+			connectionClosed = nil
+		} else if p.options.BackoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
 		} else {
 			delayReconnectTime = p.options.BackoffPolicy.Next()
@@ -416,7 +427,7 @@ func (p *partitionProducer) reconnectToBroker() {
 		p.log.Info("Reconnecting to broker in ", delayReconnectTime)
 		time.Sleep(delayReconnectTime)
 		atomic.AddUint64(&p.epoch, 1)
-		err := p.grabCnx()
+		err := p.grabCnx(connectionClosed)
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
@@ -453,9 +464,9 @@ func (p *partitionProducer) runEventsLoop() {
 				p.internalClose(v)
 				return
 			}
-		case <-p.connectClosedCh:
+		case connectionClose := <-p.connectClosedCh:
 			p.log.Info("runEventsLoop will reconnect in producer")
-			p.reconnectToBroker()
+			p.reconnectToBroker(&connectionClose)
 		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
 		}
