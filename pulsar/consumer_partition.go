@@ -368,7 +368,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, options.nackBackoffPolicy, pc.log)
 
-	err := pc.grabConn()
+	err := pc.grabConn("", "")
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
 		pc.nackTracker.Close()
@@ -1638,7 +1638,15 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return
 		}
 
-		if pc.options.backoffPolicy == nil {
+		var assignedBrokerUrl string
+		var assignedBrokerUrlTls string
+
+		if connectionClosed == nil {
+			delayReconnectTime = 0
+			assignedBrokerUrl = connectionClosed.assignedBrokerUrl
+			assignedBrokerUrlTls = connectionClosed.assignedBrokerUrlTls
+			connectionClosed = nil
+		} else if pc.options.backoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
 		} else {
 			delayReconnectTime = pc.options.backoffPolicy.Next()
@@ -1654,7 +1662,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return
 		}
 
-		err := pc.grabConn()
+		err := pc.grabConn(assignedBrokerUrl, assignedBrokerUrlTls)
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
@@ -1678,13 +1686,30 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 	}
 }
 
-func (pc *partitionConsumer) grabConn() error {
-	lr, err := pc.client.lookupService.Lookup(pc.topic)
+func (p *partitionConsumer) lookupTopic(brokerUrl string, brokerUrlTls string) (*internal.LookupResult, error) {
+	if len(brokerUrl) == 0 && len(brokerUrlTls) == 0 {
+		lr, err := p.client.lookupService.Lookup(p.topic)
+		if err != nil {
+			p.log.WithError(err).Warn("Failed to lookup topic")
+			return nil, err
+		}
+
+		p.log.Debug("Lookup result: ", lr)
+		return lr, err
+	} else {
+		lr, err := p.client.lookupService.GetBrokerAddress(brokerUrl, brokerUrlTls, false)
+		if err != nil {
+			return nil, err
+		}
+		return lr, err
+	}
+}
+
+func (pc *partitionConsumer) grabConn(assignedBrokerUrl string, assignedBrokerUrlTls string) error {
+	lr, err := pc.lookupTopic(assignedBrokerUrl, assignedBrokerUrlTls)
 	if err != nil {
-		pc.log.WithError(err).Warn("Failed to lookup topic")
 		return err
 	}
-	pc.log.Debugf("Lookup result: %+v", lr)
 
 	subType := toProtoSubType(pc.options.subscriptionType)
 	initialPosition := toProtoInitialPosition(pc.options.subscriptionInitPos)
