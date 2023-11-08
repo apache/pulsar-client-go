@@ -158,7 +158,7 @@ type partitionConsumer struct {
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
-	connectClosedCh chan connectionClosed
+	connectClosedCh chan *connectionClosed
 	closeCh         chan struct{}
 	clearQueueCh    chan func(id *trackingMessageID)
 
@@ -324,7 +324,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
-		connectClosedCh:      make(chan connectionClosed, 10),
+		connectClosedCh:      make(chan *connectionClosed, 10),
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id *trackingMessageID)),
 		compressionProviders: sync.Map{},
@@ -1323,7 +1323,10 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
-	pc.connectClosedCh <- connectionClosed{}
+	pc.connectClosedCh <- &connectionClosed{
+		assignedBrokerUrl:    closeConsumer.GetAssignedBrokerServiceUrl(),
+		assignedBrokerUrlTls: closeConsumer.GetAssignedBrokerServiceUrlTls(),
+	}
 }
 
 // Flow command gives additional permits to send messages to the consumer.
@@ -1528,9 +1531,9 @@ func (pc *partitionConsumer) runEventsLoop() {
 			case <-pc.closeCh:
 				pc.log.Info("close consumer, exit reconnect")
 				return
-			case <-pc.connectClosedCh:
+			case connectionClosed := <-pc.connectClosedCh:
 				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker()
+				pc.reconnectToBroker(connectionClosed)
 			}
 		}
 	}()
@@ -1614,7 +1617,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	close(pc.closeCh)
 }
 
-func (pc *partitionConsumer) reconnectToBroker() {
+func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {
 	var maxRetry int
 
 	if pc.options.maxReconnectToBroker == nil {
