@@ -1227,22 +1227,22 @@ func TestProducerWithBackoffPolicy(t *testing.T) {
 	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
 	// 1 s
 	startTime := time.Now()
-	partitionProducerImp.reconnectToBroker()
+	partitionProducerImp.reconnectToBroker(nil)
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 2 s
 	startTime = time.Now()
-	partitionProducerImp.reconnectToBroker()
+	partitionProducerImp.reconnectToBroker(nil)
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
-	partitionProducerImp.reconnectToBroker()
+	partitionProducerImp.reconnectToBroker(nil)
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
-	partitionProducerImp.reconnectToBroker()
+	partitionProducerImp.reconnectToBroker(nil)
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }
 

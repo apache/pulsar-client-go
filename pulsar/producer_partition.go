@@ -22,7 +22,6 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -87,7 +86,7 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	dataChan        chan *sendRequest
 	cmdChan         chan interface{}
-	connectClosedCh chan connectionClosed
+	connectClosedCh chan *connectionClosed
 
 	publishSemaphore internal.Semaphore
 	pendingQueue     internal.BlockingQueue
@@ -148,7 +147,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		producerID:       client.rpcClient.NewProducerID(),
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
 		cmdChan:          make(chan interface{}, 10),
-		connectClosedCh:  make(chan connectionClosed, 10),
+		connectClosedCh:  make(chan *connectionClosed, 10),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
 			compression.Level(options.CompressionLevel)),
@@ -177,7 +176,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	} else {
 		p.userProvidedProducerName = false
 	}
-	err := p.grabCnx(nil)
+	err := p.grabCnx("", "")
 	if err != nil {
 		p.batchFlushTicker.Stop()
 		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
@@ -201,20 +200,29 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	return p, nil
 }
 
-func (p *partitionProducer) grabCnx(connectionClosed *connectionClosed) error {
-	var logicalAddr *url.URL
-	var physicalAddr *url.URL
-	if connectionClosed == nil {
+func (p *partitionProducer) lookupTopic(brokerUrl string, brokerUrlTls string) (*internal.LookupResult, error) {
+	if len(brokerUrl) == 0 && len(brokerUrlTls) == 0 {
 		lr, err := p.client.lookupService.Lookup(p.topic)
 		if err != nil {
 			p.log.WithError(err).Warn("Failed to lookup topic")
-			return err
+			return nil, err
 		}
 
 		p.log.Debug("Lookup result: ", lr)
-		logicalAddr = lr.LogicalAddr
-		physicalAddr = lr.PhysicalAddr
+		return lr, err
 	} else {
+		lr, err := p.client.lookupService.GetBrokerAddress(brokerUrl, brokerUrlTls, false)
+		if err != nil {
+			return nil, err
+		}
+		return lr, err
+	}
+}
+
+func (p *partitionProducer) grabCnx(brokerUrl string, brokerUrlTls string) error {
+	lr, err := p.lookupTopic(brokerUrl, brokerUrlTls)
+	if err != nil {
+		return err
 	}
 	id := p.client.rpcClient.NewRequestID()
 
@@ -256,12 +264,12 @@ func (p *partitionProducer) grabCnx(connectionClosed *connectionClosed) error {
 	if len(p.options.Properties) > 0 {
 		cmdProducer.Metadata = toKeyValues(p.options.Properties)
 	}
-	res, err := p.client.rpcClient.Request(logicalAddr, physicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		if errors.Is(err, internal.ErrRequestTimeOut) {
 			id := p.client.rpcClient.NewRequestID()
-			_, _ = p.client.rpcClient.Request(logicalAddr, physicalAddr, id, pb.BaseCommand_CLOSE_PRODUCER,
+			_, _ = p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_CLOSE_PRODUCER,
 				&pb.CommandCloseProducer{
 					ProducerId: &p.producerID,
 					RequestId:  &id,
@@ -350,7 +358,10 @@ func (p *partitionProducer) grabCnx(connectionClosed *connectionClosed) error {
 	return nil
 }
 
-type connectionClosed struct{}
+type connectionClosed struct {
+	assignedBrokerUrl    string
+	assignedBrokerUrlTls string
+}
 
 func (p *partitionProducer) GetBuffer() internal.Buffer {
 	b, ok := buffersPool.Get().(internal.Buffer)
@@ -363,7 +374,10 @@ func (p *partitionProducer) GetBuffer() internal.Buffer {
 func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProducer) {
 	// Trigger reconnection in the produce goroutine
 	p.log.WithField("cnx", p._getConn().ID()).Warn("Connection was closed")
-	p.connectClosedCh <- connectionClosed{}
+	p.connectClosedCh <- &connectionClosed{
+		assignedBrokerUrl:    closeProducer.GetAssignedBrokerServiceUrl(),
+		assignedBrokerUrlTls: closeProducer.GetAssignedBrokerServiceUrlTls(),
+	}
 }
 
 func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVersion []byte, err error) {
@@ -416,9 +430,13 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			return
 		}
 
+		var brokerUrl string
+		var brokerUrlTls string
 		if connectionClosed != nil {
 			delayReconnectTime = 0
-			connectionClosed = nil
+			brokerUrl = connectionClosed.assignedBrokerUrl
+			brokerUrlTls = connectionClosed.assignedBrokerUrlTls
+			connectionClosed = nil // Only attempt once
 		} else if p.options.BackoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
 		} else {
@@ -427,7 +445,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		p.log.Info("Reconnecting to broker in ", delayReconnectTime)
 		time.Sleep(delayReconnectTime)
 		atomic.AddUint64(&p.epoch, 1)
-		err := p.grabCnx(connectionClosed)
+		err := p.grabCnx(brokerUrl, brokerUrlTls)
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
@@ -464,9 +482,9 @@ func (p *partitionProducer) runEventsLoop() {
 				p.internalClose(v)
 				return
 			}
-		case connectionClose := <-p.connectClosedCh:
+		case connectionClosed := <-p.connectClosedCh:
 			p.log.Info("runEventsLoop will reconnect in producer")
-			p.reconnectToBroker(&connectionClose)
+			p.reconnectToBroker(connectionClosed)
 		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
 		}
