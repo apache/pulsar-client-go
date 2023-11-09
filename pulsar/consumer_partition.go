@@ -1641,7 +1641,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		var assignedBrokerURL string
 		var assignedBrokerURLTLS string
 
-		if connectionClosed == nil {
+		if connectionClosed != nil {
 			delayReconnectTime = 0
 			assignedBrokerURL = connectionClosed.assignedBrokerURL
 			assignedBrokerURLTLS = connectionClosed.assignedBrokerURLTLS
