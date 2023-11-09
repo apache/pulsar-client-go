@@ -64,7 +64,7 @@ type LookupService interface {
 	// GetSchema returns schema for a given version.
 	GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error)
 
-	GetBrokerAddress(brokerServiceUrl string, brokerServiceUrlTls string, proxyThroughServiceUrl bool) (*LookupResult, error)
+	GetBrokerAddress(brokerServiceURL, brokerServiceURLTLS string, proxyThroughServiceURL bool) (*LookupResult, error)
 
 	// Closable Allow Lookup Service's internal client to be able to closed
 	Closable
@@ -109,8 +109,9 @@ func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *
 	return res.Response.GetSchemaResponse.Schema, nil
 }
 
-func (ls *lookupService) GetBrokerAddress(brokerServiceUrl string, brokerServiceUrlTls string, proxyThroughServiceUrl bool) (*LookupResult, error) {
-	logicalAddr, physicalAddr, err := ls.getBrokerAddress(brokerServiceUrl, brokerServiceUrlTls, proxyThroughServiceUrl)
+func (ls *lookupService) GetBrokerAddress(brokerServiceURL, brokerServiceURLTLS string,
+	proxyThroughServiceURL bool) (*LookupResult, error) {
+	logicalAddr, physicalAddr, err := ls.getBrokerAddress(brokerServiceURL, brokerServiceURLTLS, proxyThroughServiceURL)
 	if err != nil {
 		return nil, err
 	}
@@ -120,12 +121,13 @@ func (ls *lookupService) GetBrokerAddress(brokerServiceUrl string, brokerService
 	}, nil
 }
 
-func (ls *lookupService) getBrokerAddress(brokerServiceUrl string, brokerServiceUrlTls string, proxyThroughServiceUrl bool) (logicalAddress *url.URL,
+func (ls *lookupService) getBrokerAddress(brokerServiceURL string, brokerServiceURLTLS string,
+	proxyThroughServiceURL bool) (logicalAddress *url.URL,
 	physicalAddress *url.URL, err error) {
 	if ls.tlsEnabled {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceUrlTls)
+		logicalAddress, err = url.ParseRequestURI(brokerServiceURLTLS)
 	} else {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceUrl)
+		logicalAddress, err = url.ParseRequestURI(brokerServiceURL)
 	}
 
 	if err != nil {
@@ -133,7 +135,7 @@ func (ls *lookupService) getBrokerAddress(brokerServiceUrl string, brokerService
 	}
 
 	var physicalAddr *url.URL
-	if proxyThroughServiceUrl {
+	if proxyThroughServiceURL {
 		physicalAddr, err = ls.serviceNameResolver.ResolveHost()
 		if err != nil {
 			return nil, nil, err
@@ -299,8 +301,9 @@ type httpLookupService struct {
 	metrics             *Metrics
 }
 
-func (h *httpLookupService) GetBrokerAddress(brokerServiceUrl string, brokerServiceUrlTls string, proxyThroughServiceUrl bool) (*LookupResult, error) {
-	logicalAddr, physicalAddr, err := h.getBrokerAddress(brokerServiceUrl, brokerServiceUrlTls)
+func (h *httpLookupService) GetBrokerAddress(brokerServiceURL, brokerServiceURLTls string,
+	proxyThroughServiceURL bool) (*LookupResult, error) {
+	logicalAddr, physicalAddr, err := h.getBrokerAddress(brokerServiceURL, brokerServiceURLTls)
 	if err != nil {
 		return nil, err
 	}
@@ -310,12 +313,12 @@ func (h *httpLookupService) GetBrokerAddress(brokerServiceUrl string, brokerServ
 	}, nil
 }
 
-func (h *httpLookupService) getBrokerAddress(brokerServiceUrl string, brokerServiceUrlTls string) (logicalAddress *url.URL,
+func (h *httpLookupService) getBrokerAddress(brokerServiceURL, brokerServiceURLTLS string) (logicalAddress *url.URL,
 	physicalAddress *url.URL, err error) {
 	if h.tlsEnabled {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceUrlTls)
+		logicalAddress, err = url.ParseRequestURI(brokerServiceURLTLS)
 	} else {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceUrl)
+		logicalAddress, err = url.ParseRequestURI(brokerServiceURL)
 	}
 
 	if err != nil {

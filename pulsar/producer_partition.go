@@ -200,8 +200,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	return p, nil
 }
 
-func (p *partitionProducer) lookupTopic(brokerUrl string, brokerUrlTls string) (*internal.LookupResult, error) {
-	if len(brokerUrl) == 0 && len(brokerUrlTls) == 0 {
+func (p *partitionProducer) lookupTopic(brokerURL, brokerURLTLS string) (*internal.LookupResult, error) {
+	if len(brokerURL) == 0 && len(brokerURLTLS) == 0 {
 		lr, err := p.client.lookupService.Lookup(p.topic)
 		if err != nil {
 			p.log.WithError(err).Warn("Failed to lookup topic")
@@ -210,17 +210,16 @@ func (p *partitionProducer) lookupTopic(brokerUrl string, brokerUrlTls string) (
 
 		p.log.Debug("Lookup result: ", lr)
 		return lr, err
-	} else {
-		lr, err := p.client.lookupService.GetBrokerAddress(brokerUrl, brokerUrlTls, false)
-		if err != nil {
-			return nil, err
-		}
-		return lr, err
 	}
+	lr, err := p.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, false)
+	if err != nil {
+		return nil, err
+	}
+	return lr, err
 }
 
-func (p *partitionProducer) grabCnx(brokerUrl string, brokerUrlTls string) error {
-	lr, err := p.lookupTopic(brokerUrl, brokerUrlTls)
+func (p *partitionProducer) grabCnx(assignedBrokerURL, assignedBrokerURLTLS string) error {
+	lr, err := p.lookupTopic(assignedBrokerURL, assignedBrokerURLTLS)
 	if err != nil {
 		return err
 	}
@@ -359,8 +358,8 @@ func (p *partitionProducer) grabCnx(brokerUrl string, brokerUrlTls string) error
 }
 
 type connectionClosed struct {
-	assignedBrokerUrl    string
-	assignedBrokerUrlTls string
+	assignedBrokerURL    string
+	assignedBrokerURLTLS string
 }
 
 func (p *partitionProducer) GetBuffer() internal.Buffer {
@@ -375,8 +374,8 @@ func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProdu
 	// Trigger reconnection in the produce goroutine
 	p.log.WithField("cnx", p._getConn().ID()).Warn("Connection was closed")
 	p.connectClosedCh <- &connectionClosed{
-		assignedBrokerUrl:    closeProducer.GetAssignedBrokerServiceUrl(),
-		assignedBrokerUrlTls: closeProducer.GetAssignedBrokerServiceUrlTls(),
+		assignedBrokerURL:    closeProducer.GetAssignedBrokerServiceUrl(),
+		assignedBrokerURLTLS: closeProducer.GetAssignedBrokerServiceUrlTls(),
 	}
 }
 
@@ -430,12 +429,12 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			return
 		}
 
-		var brokerUrl string
-		var brokerUrlTls string
+		var assignedBrokerURL string
+		var assignedBrokerURLTLS string
 		if connectionClosed != nil {
 			delayReconnectTime = 0
-			brokerUrl = connectionClosed.assignedBrokerUrl
-			brokerUrlTls = connectionClosed.assignedBrokerUrlTls
+			assignedBrokerURL = connectionClosed.assignedBrokerURL
+			assignedBrokerURLTLS = connectionClosed.assignedBrokerURLTLS
 			connectionClosed = nil // Only attempt once
 		} else if p.options.BackoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
@@ -445,7 +444,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		p.log.Info("Reconnecting to broker in ", delayReconnectTime)
 		time.Sleep(delayReconnectTime)
 		atomic.AddUint64(&p.epoch, 1)
-		err := p.grabCnx(brokerUrl, brokerUrlTls)
+		err := p.grabCnx(assignedBrokerURL, assignedBrokerURLTLS)
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")

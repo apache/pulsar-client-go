@@ -1324,8 +1324,8 @@ func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseCons
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
 	pc.connectClosedCh <- &connectionClosed{
-		assignedBrokerUrl:    closeConsumer.GetAssignedBrokerServiceUrl(),
-		assignedBrokerUrlTls: closeConsumer.GetAssignedBrokerServiceUrlTls(),
+		assignedBrokerURL:    closeConsumer.GetAssignedBrokerServiceUrl(),
+		assignedBrokerURLTLS: closeConsumer.GetAssignedBrokerServiceUrlTls(),
 	}
 }
 
@@ -1638,13 +1638,13 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return
 		}
 
-		var assignedBrokerUrl string
-		var assignedBrokerUrlTls string
+		var assignedBrokerURL string
+		var assignedBrokerURLTLS string
 
 		if connectionClosed == nil {
 			delayReconnectTime = 0
-			assignedBrokerUrl = connectionClosed.assignedBrokerUrl
-			assignedBrokerUrlTls = connectionClosed.assignedBrokerUrlTls
+			assignedBrokerURL = connectionClosed.assignedBrokerURL
+			assignedBrokerURLTLS = connectionClosed.assignedBrokerURLTLS
 			connectionClosed = nil
 		} else if pc.options.backoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
@@ -1662,7 +1662,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return
 		}
 
-		err := pc.grabConn(assignedBrokerUrl, assignedBrokerUrlTls)
+		err := pc.grabConn(assignedBrokerURL, assignedBrokerURLTLS)
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
@@ -1686,27 +1686,26 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 	}
 }
 
-func (p *partitionConsumer) lookupTopic(brokerUrl string, brokerUrlTls string) (*internal.LookupResult, error) {
-	if len(brokerUrl) == 0 && len(brokerUrlTls) == 0 {
-		lr, err := p.client.lookupService.Lookup(p.topic)
+func (pc *partitionConsumer) lookupTopic(brokerURL, brokerURLTLS string) (*internal.LookupResult, error) {
+	if len(brokerURL) == 0 && len(brokerURLTLS) == 0 {
+		lr, err := pc.client.lookupService.Lookup(pc.topic)
 		if err != nil {
-			p.log.WithError(err).Warn("Failed to lookup topic")
+			pc.log.WithError(err).Warn("Failed to lookup topic")
 			return nil, err
 		}
 
-		p.log.Debug("Lookup result: ", lr)
-		return lr, err
-	} else {
-		lr, err := p.client.lookupService.GetBrokerAddress(brokerUrl, brokerUrlTls, false)
-		if err != nil {
-			return nil, err
-		}
+		pc.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
+	lr, err := pc.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, false)
+	if err != nil {
+		return nil, err
+	}
+	return lr, err
 }
 
-func (pc *partitionConsumer) grabConn(assignedBrokerUrl string, assignedBrokerUrlTls string) error {
-	lr, err := pc.lookupTopic(assignedBrokerUrl, assignedBrokerUrlTls)
+func (pc *partitionConsumer) grabConn(assignedBrokerURL, assignedBrokerURLTLS string) error {
+	lr, err := pc.lookupTopic(assignedBrokerURL, assignedBrokerURLTLS)
 	if err != nil {
 		return err
 	}
