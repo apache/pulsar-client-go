@@ -251,7 +251,7 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 	} else {
 		payload = reflect.Indirect(reflect.New(tv.options.SchemaValueType)).Interface()
 		if err := msg.GetSchemaValue(&payload); err != nil {
-			tv.logger.Errorf("msg.GetSchemaValue() failed with %w; msg is %v", msg, err)
+			tv.logger.Errorf("msg.GetSchemaValue() failed with %w; msg is %v", err, msg)
 		}
 		tv.data[msg.Key()] = payload
 	}
