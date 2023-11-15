@@ -424,6 +424,14 @@ func (p *partitionProducer) reconnectToBroker() {
 		}
 		p.log.Info("Reconnecting to broker in ", delayReconnectTime)
 		time.Sleep(delayReconnectTime)
+
+		// double check
+		if p.getProducerState() != producerReady {
+			// Producer is already closing
+			p.log.Info("producer state not ready, exit reconnect")
+			return
+		}
+
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
 		if err == nil {
