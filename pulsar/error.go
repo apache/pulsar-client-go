@@ -114,6 +114,12 @@ const (
 	TransactionNoFoundError
 	// ClientMemoryBufferIsFull client limit buffer is full
 	ClientMemoryBufferIsFull
+	// ProducerFenced When a producer asks and fail to get exclusive producer access,
+	// or loses the exclusive status after a reconnection, the broker will
+	// use this error to indicate that this producer is now permanently
+	// fenced. Applications are now supposed to close it and create a
+	// new producer
+	ProducerFenced
 )
 
 // Error implement error interface, composed of two parts: msg and result.

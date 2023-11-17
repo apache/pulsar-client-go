@@ -64,7 +64,12 @@ var (
 	sendRequestPool *sync.Pool
 )
 
-var errTopicNotFount = "TopicNotFound"
+const (
+	errMsgTopicNotFound                         = "TopicNotFound"
+	errMsgTopicTerminated                       = "TopicTerminatedError"
+	errMsgProducerBlockedQuotaExceededException = "ProducerBlockedQuotaExceededException"
+	errMsgProducerFenced                        = "ProducerFenced"
+)
 
 func init() {
 	sendRequestPool = &sync.Pool{
@@ -441,30 +446,33 @@ func (p *partitionProducer) reconnectToBroker() {
 		}
 		p.log.WithError(err).Error("Failed to create producer at reconnect")
 		errMsg := err.Error()
-		if strings.Contains(errMsg, errTopicNotFount) {
+		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
-			p.log.Warn("Topic Not Found.")
+			p.log.Warn("Topic not found, stop reconnecting")
 			break
 		}
 
-		if strings.Contains(errMsg, "TopicTerminatedError") {
-			p.log.Info("Topic was terminated, failing pending messages, will not reconnect")
-			pendingItems := p.pendingQueue.ReadableSlice()
-			for _, item := range pendingItems {
-				pi := item.(*pendingItem)
-				if pi != nil {
-					pi.Lock()
-					requests := pi.sendRequests
-					for _, req := range requests {
-						sr := req.(*sendRequest)
-						if sr != nil {
-							sr.done(nil, newError(TopicTerminated, err.Error()))
-						}
-					}
-					pi.Unlock()
-				}
-			}
-			p.setProducerState(producerClosing)
+		if strings.Contains(errMsg, errMsgTopicTerminated) {
+			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting")
+			p.failPendingMessages(newError(TopicTerminated, err.Error()))
+			// can not set to producerClosing , or it will fail when we call internalClose()
+			// there is a Terminated state in JAVA client, maybe we should add a producerTerminated state ?
+			// p.setProducerState(producerClosing)
+			break
+		}
+
+		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
+			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
+			p.failPendingMessages(newError(ProducerBlockedQuotaExceededException, err.Error()))
+			break
+		}
+
+		if strings.Contains(errMsg, errMsgProducerFenced) {
+			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
+			p.failPendingMessages(newError(ProducerFenced, err.Error()))
+			// can not set to producerClosing , or it will fail when we call internalClose()
+			// there is a ProducerFenced state in JAVA client, maybe we should add a producerFenced state ?
+			// p.setProducerState(producerClosing)
 			break
 		}
 
@@ -1340,7 +1348,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	} else {
 		p.log.Info("Closed producer")
 	}
-	p.failPendingMessages()
+	p.failPendingMessages(errProducerClosed)
 
 	if p.batchBuilder != nil {
 		if err = p.batchBuilder.Close(); err != nil {
@@ -1353,7 +1361,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.batchFlushTicker.Stop()
 }
 
-func (p *partitionProducer) failPendingMessages() {
+func (p *partitionProducer) failPendingMessages(err error) {
 	curViewItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(curViewItems)
 	if viewSize <= 0 {
@@ -1378,11 +1386,11 @@ func (p *partitionProducer) failPendingMessages() {
 
 		for _, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
-			sr.done(nil, errProducerClosed)
+			sr.done(nil, err)
 		}
 
 		// flag the sending has completed with error, flush make no effect
-		pi.done(errProducerClosed)
+		pi.done(err)
 		pi.Unlock()
 
 		// finally reached the last view item, current iteration ends
