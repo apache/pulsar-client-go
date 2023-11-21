@@ -1449,9 +1449,10 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	if prodOpt != nil {
 		dlqPolicy.ProducerOptions = *prodOpt
 	}
+	sub := "my-sub"
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:               topic,
-		SubscriptionName:    "my-sub",
+		SubscriptionName:    sub,
 		NackRedeliveryDelay: 1 * time.Second,
 		Type:                Shared,
 		DLQ:                 &dlqPolicy,
@@ -1505,6 +1506,9 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 
 		expectMsg := fmt.Sprintf("hello-%d", expectedMsgIdx)
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+		// check dql produceName
+		assert.Equal(t, msg.ProducerName(), fmt.Sprintf("%s-%s-DLQ", topic, sub))
 
 		// check original messageId
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
