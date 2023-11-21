@@ -29,14 +29,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+
+	log "github.com/sirupsen/logrus"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
-	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -1168,7 +1170,7 @@ func TestTopicTermination(t *testing.T) {
 	topicName := newTopicName()
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
-		SubscriptionName: "send_timeout_sub",
+		SubscriptionName: "topic_terminated_sub",
 	})
 	assert.Nil(t, err)
 	defer consumer.Close() // subscribe but do nothing
@@ -1213,6 +1215,120 @@ func TestTopicTermination(t *testing.T) {
 		}
 	}
 }
+
+func TestTopicNotFound(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "topic_not_found_sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close() // subscribe but do nothing
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:       topicName,
+		SendTimeout: 2 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	afterCh := time.After(5 * time.Second)
+	topicNotFoundChan := make(chan bool)
+	go func() {
+		for {
+			_, err := producer.Send(context.Background(), &ProducerMessage{
+				Payload: make([]byte, 1024),
+			})
+			if err != nil {
+				e := err.(*Error)
+				if e.result == TopicNotFound {
+					topicNotFoundChan <- true
+				} else {
+					topicNotFoundChan <- false
+				}
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	deleteURL := adminURL + "/admin/v2/persistent/public/default/" + topicName + "/deleteTopic"
+	log.Info(deleteURL)
+	makeHTTPCall(t, http.MethodDelete, deleteURL, "")
+
+	for {
+		select {
+		case d := <-topicNotFoundChan:
+			assert.Equal(t, d, true)
+			return
+		case <-afterCh:
+			assert.Fail(t, "Time is up. Topic should have been deleted by now")
+		}
+	}
+}
+
+/*
+func TestProducerFenced(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "producer_fenced_sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close() // subscribe but do nothing
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:       topicName,
+		SendTimeout: 2 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	afterCh := time.After(5 * time.Second)
+	producerFencedChan := make(chan bool)
+	go func() {
+		for {
+			_, err := producer.Send(context.Background(), &ProducerMessage{
+				Payload: make([]byte, 1024),
+			})
+			if err != nil {
+				e := err.(*Error)
+				if e.result == ProducerFenced {
+					producerFencedChan <- true
+				} else {
+					producerFencedChan <- false
+				}
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	fenceURL := adminURL + "/admin/v2/persistent/public/default/" + topicName + "/terminate"
+	log.Info(fenceURL)
+	makeHTTPCall(t, http.MethodPost, fenceURL, "")
+
+	for {
+		select {
+		case d := <-producerFencedChan:
+			assert.Equal(t, d, true)
+			return
+		case <-afterCh:
+			assert.Fail(t, "Time is up. Producer should have been fenced by now")
+		}
+	}
+}
+*/
 
 func TestSendTimeout(t *testing.T) {
 	quotaURL := adminURL + "/admin/v2/namespaces/public/default/backlogQuota"
