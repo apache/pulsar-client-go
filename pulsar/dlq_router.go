@@ -37,7 +37,8 @@ type dlqRouter struct {
 	log              log.Logger
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy, topicName, subscriptionName string, logger log.Logger) (*dlqRouter, error) {
+func newDlqRouter(client Client, policy *DLQPolicy, topicName, subscriptionName string,
+	logger log.Logger) (*dlqRouter, error) {
 	r := &dlqRouter{
 		client:           client,
 		policy:           policy,
