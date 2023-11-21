@@ -3366,8 +3366,8 @@ func (x *CommandLookupTopicResponse) GetProxyThroughServiceUrl() bool {
 	return Default_CommandLookupTopicResponse_ProxyThroughServiceUrl
 }
 
-// / Create a new Producer on a topic, assigning the given producer_id,
-// / all messages sent with this producer_id will be persisted on the topic
+/// Create a new Producer on a topic, assigning the given producer_id,
+/// all messages sent with this producer_id will be persisted on the topic
 type CommandProducer struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -4617,7 +4617,7 @@ func (x *CommandSuccess) GetSchema() *Schema {
 	return nil
 }
 
-// / Response from CommandProducer
+/// Response from CommandProducer
 type CommandProducerSuccess struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
