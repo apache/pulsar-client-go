@@ -493,10 +493,18 @@ func (p *partitionProducer) reconnectToBroker() {
 func (p *partitionProducer) runEventsLoop() {
 	for {
 		select {
-		case data := <-p.dataChan:
+		case data, ok := <-p.dataChan:
+			// when doClose() is call, p.dataChan will be closed, data will nil, we need to ignore it, or it will panic
+			if !ok {
+				continue
+			}
 			p.internalSend(data)
-		case i := <-p.cmdChan:
-			switch v := i.(type) {
+		case cmd, ok := <-p.cmdChan:
+			// when doClose() is call, p.dataChan will be closed, cmd will nil, we need to ignore it, or it will panic
+			if !ok {
+				continue
+			}
+			switch v := cmd.(type) {
 			case *flushRequest:
 				p.internalFlush(v)
 			case *closeProducer:
