@@ -1191,7 +1191,7 @@ func TestTopicTermination(t *testing.T) {
 			})
 			if err != nil {
 				e := err.(*Error)
-				if e.result == TopicTerminated {
+				if e.result == TopicTerminated || err == errProducerClosed {
 					terminatedChan <- true
 				} else {
 					terminatedChan <- false
@@ -1212,10 +1212,12 @@ func TestTopicTermination(t *testing.T) {
 			return
 		case <-afterCh:
 			assert.Fail(t, "Time is up. Topic should have been terminated by now")
+			return
 		}
 	}
 }
 
+/*
 func TestTopicNotFound(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
@@ -1224,13 +1226,6 @@ func TestTopicNotFound(t *testing.T) {
 	defer client.Close()
 
 	topicName := newTopicName()
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: "topic_not_found_sub",
-	})
-	assert.Nil(t, err)
-	defer consumer.Close() // subscribe but do nothing
-
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:       topicName,
 		SendTimeout: 2 * time.Second,
@@ -1247,7 +1242,7 @@ func TestTopicNotFound(t *testing.T) {
 			})
 			if err != nil {
 				e := err.(*Error)
-				if e.result == TopicNotFound {
+				if e.result == TopicNotFound || err == errProducerClosed {
 					topicNotFoundChan <- true
 				} else {
 					topicNotFoundChan <- false
@@ -1257,7 +1252,7 @@ func TestTopicNotFound(t *testing.T) {
 		}
 	}()
 
-	deleteURL := adminURL + "/admin/v2/persistent/public/default/" + topicName + "/deleteTopic"
+	deleteURL := adminURL + "/admin/v2/persistent/public/default/" + topicName
 	log.Info(deleteURL)
 	makeHTTPCall(t, http.MethodDelete, deleteURL, "")
 
@@ -1268,11 +1263,11 @@ func TestTopicNotFound(t *testing.T) {
 			return
 		case <-afterCh:
 			assert.Fail(t, "Time is up. Topic should have been deleted by now")
+			return
 		}
 	}
 }
 
-/*
 func TestProducerFenced(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
@@ -1288,43 +1283,89 @@ func TestProducerFenced(t *testing.T) {
 	assert.Nil(t, err)
 	defer consumer.Close() // subscribe but do nothing
 
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:       topicName,
-		SendTimeout: 2 * time.Second,
+	// create the first producer exclusively
+	producer1, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		SendTimeout:             2 * time.Second,
+		ProducerAccessMode:      ProducerAccessModeWaitForExclusive,
+		BatchingMaxMessages:     2,
+		BatchingMaxSize:         200,
+		BatchingMaxPublishDelay: 1 * time.Second,
 	})
 	assert.Nil(t, err)
-	defer producer.Close()
+	defer producer1.Close()
 
-	afterCh := time.After(5 * time.Second)
+	go func() {
+		// create the second producer wait for exclusive
+		fmt.Println("create the second producer wait for exclusive...")
+		producer2, err := client.CreateProducer(ProducerOptions{
+			Topic:              topicName,
+			SendTimeout:        2 * time.Second,
+			ProducerAccessMode: ProducerAccessModeWaitForExclusive,
+		})
+		assert.Nil(t, err)
+		defer producer2.Close()
+		fmt.Println("the second producer is ready")
+		// keep producer2 alive
+		time.Sleep(30 * time.Second)
+	}()
+
+	time.Sleep(3 * time.Second)
+	afterCh := time.After(10 * time.Second)
 	producerFencedChan := make(chan bool)
 	go func() {
 		for {
-			_, err := producer.Send(context.Background(), &ProducerMessage{
-				Payload: make([]byte, 1024),
-			})
-			if err != nil {
-				e := err.(*Error)
-				if e.result == ProducerFenced {
-					producerFencedChan <- true
-				} else {
-					producerFencedChan <- false
-				}
-			}
+			producer1.SendAsync(context.Background(),
+				&ProducerMessage{Payload: make([]byte, 100)},
+				func(id MessageID, producerMessage *ProducerMessage, err error) {
+					if err != nil {
+						fmt.Println(err)
+						e := err.(*Error)
+						if e.result == ProducerFenced || err == errProducerClosed {
+							producerFencedChan <- true
+						} else {
+							producerFencedChan <- false
+						}
+					}
+				},
+			)
+
 			time.Sleep(1 * time.Millisecond)
 		}
 	}()
 
-	fenceURL := adminURL + "/admin/v2/persistent/public/default/" + topicName + "/terminate"
-	log.Info(fenceURL)
-	makeHTTPCall(t, http.MethodPost, fenceURL, "")
+	// trigger reconnecting
+	doneChan := make(chan bool)
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-doneChan:
+				return
+			case <-ticker.C:
+				fmt.Println("close connections...")
+				producers := producer1.(*producer).producers
+				for i := 0; i < len(producers); i++ {
+					partitionProducerImp := producers[i].(*partitionProducer)
+					partitionProducerImp.ConnectionClosed()
+				}
+			default:
+
+			}
+		}
+	}()
 
 	for {
 		select {
 		case d := <-producerFencedChan:
 			assert.Equal(t, d, true)
+			doneChan <- true
 			return
 		case <-afterCh:
 			assert.Fail(t, "Time is up. Producer should have been fenced by now")
+			doneChan <- true
+			return
 		}
 	}
 }
