@@ -487,14 +487,12 @@ func (p *partitionProducer) runEventsLoop() {
 		case data, ok := <-p.dataChan:
 			// when doClose() is call, p.dataChan will be closed, data will be nil
 			if !ok {
-				p.batchFlushTicker.Stop()
 				return
 			}
 			p.internalSend(data)
 		case cmd, ok := <-p.cmdChan:
 			// when doClose() is call, p.dataChan will be closed, cmd will be nil
 			if !ok {
-				p.batchFlushTicker.Stop()
 				return
 			}
 			switch v := cmd.(type) {
