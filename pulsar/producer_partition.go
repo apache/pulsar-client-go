@@ -449,18 +449,12 @@ func (p *partitionProducer) reconnectToBroker() {
 		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic not found, stop reconnecting, close the producer")
-			// in JAVA client, when topic not found, closeAsync() will be called, see
-			// nolint: lll
-			// https://github.com/apache/pulsar/blob/master/pulsar-client/src/main/java/org/apache/pulsar/client/impl/ProducerImpl.java#L1792-L1799
 			p.doClose(newError(TopicNotFound, err.Error()))
 			break
 		}
 
 		if strings.Contains(errMsg, errMsgTopicTerminated) {
 			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
-			// in JAVA client, producer will be set to `Terminated` state and close, see
-			// nolint: lll
-			// https://github.com/apache/pulsar/blob/master/pulsar-client/src/main/java/org/apache/pulsar/client/impl/ProducerImpl.java#L1822-L1828
 			p.doClose(newError(TopicTerminated, err.Error()))
 			break
 		}
@@ -473,9 +467,6 @@ func (p *partitionProducer) reconnectToBroker() {
 
 		if strings.Contains(errMsg, errMsgProducerFenced) {
 			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
-			// in JAVA client, producer will be set to `Fenced` state and close, see
-			// nolint: lll
-			// https://github.com/apache/pulsar/blob/master/pulsar-client/src/main/java/org/apache/pulsar/client/impl/ProducerImpl.java#L1830-L1836
 			p.doClose(newError(ProducerFenced, err.Error()))
 			break
 		}
@@ -494,15 +485,17 @@ func (p *partitionProducer) runEventsLoop() {
 	for {
 		select {
 		case data, ok := <-p.dataChan:
-			// when doClose() is call, p.dataChan will be closed, data will nil, we need to ignore it, or it will panic
+			// when doClose() is call, p.dataChan will be closed, data will be nil
 			if !ok {
-				continue
+				p.batchFlushTicker.Stop()
+				return
 			}
 			p.internalSend(data)
 		case cmd, ok := <-p.cmdChan:
-			// when doClose() is call, p.dataChan will be closed, cmd will nil, we need to ignore it, or it will panic
+			// when doClose() is call, p.dataChan will be closed, cmd will be nil
 			if !ok {
-				continue
+				p.batchFlushTicker.Stop()
+				return
 			}
 			switch v := cmd.(type) {
 			case *flushRequest:
