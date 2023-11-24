@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -26,19 +27,24 @@ import (
 )
 
 type dlqRouter struct {
-	client    Client
-	producer  Producer
-	policy    *DLQPolicy
-	messageCh chan ConsumerMessage
-	closeCh   chan interface{}
-	log       log.Logger
+	client           Client
+	producer         Producer
+	policy           *DLQPolicy
+	messageCh        chan ConsumerMessage
+	closeCh          chan interface{}
+	topicName        string
+	subscriptionName string
+	log              log.Logger
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger) (*dlqRouter, error) {
+func newDlqRouter(client Client, policy *DLQPolicy, topicName, subscriptionName string,
+	logger log.Logger) (*dlqRouter, error) {
 	r := &dlqRouter{
-		client: client,
-		policy: policy,
-		log:    logger,
+		client:           client,
+		policy:           policy,
+		topicName:        topicName,
+		subscriptionName: subscriptionName,
+		log:              logger,
 	}
 
 	if policy != nil {
@@ -152,6 +158,9 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.DeadLetterTopic
 		opt.Schema = schema
+		if opt.Name == "" {
+			opt.Name = fmt.Sprintf("%s-%s-DLQ", r.topicName, r.subscriptionName)
+		}
 
 		// the origin code sets to LZ4 compression with no options
 		// so the new design allows compression type to be overwritten but still set lz4 by default
