@@ -76,8 +76,8 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 		pattern:   pattern,
 
 		consumers:     make(map[string]Consumer),
-		subscribeCh:   make(chan []string, 1),
-		unsubscribeCh: make(chan []string, 1),
+		subscribeCh:   make(chan []string),
+		unsubscribeCh: make(chan []string),
 
 		closeCh: make(chan struct{}),
 
@@ -163,12 +163,11 @@ func (c *regexConsumer) Ack(msg Message) error {
 	return c.AckID(msg.ID())
 }
 
-func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
+func (c *regexConsumer) ReconsumeLater(_ Message, _ time.Duration) {
 	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
 }
 
-func (c *regexConsumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string,
-	delay time.Duration) {
+func (c *regexConsumer) ReconsumeLaterWithCustomProperties(_ Message, _ map[string]string, _ time.Duration) {
 	c.log.Warnf("regexp consumer not support ReconsumeLaterWithCustomProperties yet.")
 }
 
@@ -297,11 +296,11 @@ func (c *regexConsumer) Close() {
 	})
 }
 
-func (c *regexConsumer) Seek(msgID MessageID) error {
+func (c *regexConsumer) Seek(_ MessageID) error {
 	return newError(SeekFailed, "seek command not allowed for regex consumer")
 }
 
-func (c *regexConsumer) SeekByTime(time time.Time) error {
+func (c *regexConsumer) SeekByTime(_ time.Time) error {
 	return newError(SeekFailed, "seek command not allowed for regex consumer")
 }
 
@@ -320,6 +319,25 @@ func (c *regexConsumer) closed() bool {
 }
 
 func (c *regexConsumer) monitor() {
+	defer close(c.subscribeCh)
+	defer close(c.unsubscribeCh)
+
+	go func() {
+		for topics := range c.subscribeCh {
+			if len(topics) > 0 && !c.closed() {
+				c.subscribe(topics, c.dlq, c.rlq)
+			}
+		}
+	}()
+
+	go func() {
+		for topics := range c.unsubscribeCh {
+			if len(topics) > 0 && !c.closed() {
+				c.unsubscribe(topics)
+			}
+		}
+	}()
+
 	for {
 		select {
 		case <-c.closeCh:
@@ -328,14 +346,6 @@ func (c *regexConsumer) monitor() {
 			c.log.Debug("Auto discovering topics")
 			if !c.closed() {
 				c.discover()
-			}
-		case topics := <-c.subscribeCh:
-			if len(topics) > 0 && !c.closed() {
-				c.subscribe(topics, c.dlq, c.rlq)
-			}
-		case topics := <-c.unsubscribeCh:
-			if len(topics) > 0 && !c.closed() {
-				c.unsubscribe(topics)
 			}
 		}
 	}
