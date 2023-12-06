@@ -50,8 +50,6 @@ type regexConsumer struct {
 
 	consumersLock sync.Mutex
 	consumers     map[string]Consumer
-	subscribeCh   chan []string
-	unsubscribeCh chan []string
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
@@ -75,9 +73,7 @@ func newRegexConsumer(c *client, opts ConsumerOptions, tn *internal.TopicName, p
 		namespace: tn.Namespace,
 		pattern:   pattern,
 
-		consumers:     make(map[string]Consumer),
-		subscribeCh:   make(chan []string),
-		unsubscribeCh: make(chan []string),
+		consumers: make(map[string]Consumer),
 
 		closeCh: make(chan struct{}),
 
@@ -319,25 +315,6 @@ func (c *regexConsumer) closed() bool {
 }
 
 func (c *regexConsumer) monitor() {
-	defer close(c.subscribeCh)
-	defer close(c.unsubscribeCh)
-
-	go func() {
-		for topics := range c.subscribeCh {
-			if len(topics) > 0 && !c.closed() {
-				c.subscribe(topics, c.dlq, c.rlq)
-			}
-		}
-	}()
-
-	go func() {
-		for topics := range c.unsubscribeCh {
-			if len(topics) > 0 && !c.closed() {
-				c.unsubscribe(topics)
-			}
-		}
-	}()
-
 	for {
 		select {
 		case <-c.closeCh:
@@ -368,8 +345,12 @@ func (c *regexConsumer) discover() {
 		}).
 		Debug("discover topics")
 
-	c.unsubscribeCh <- staleTopics
-	c.subscribeCh <- newTopics
+	if len(staleTopics) > 0 {
+		c.unsubscribe(staleTopics)
+	}
+	if len(newTopics) > 0 {
+		c.subscribe(newTopics, c.dlq, c.rlq)
+	}
 }
 
 func (c *regexConsumer) knownTopics() []string {
