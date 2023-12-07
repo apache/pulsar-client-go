@@ -1332,17 +1332,18 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer close(req.doneCh)
-	if !p.casProducerState(producerReady, producerClosing) {
-		return
-	}
 
 	p.doClose(errProducerClosed)
 }
 
 func (p *partitionProducer) doClose(reason error) {
+	if !p.casProducerState(producerReady, producerClosing) {
+		return
+	}
+
+	p.log.Info("Closing producer")
 	defer close(p.dataChan)
 	defer close(p.cmdChan)
-	p.log.Info("Closing producer")
 
 	id := p.client.rpcClient.NewRequestID()
 	_, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
