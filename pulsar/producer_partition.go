@@ -64,7 +64,12 @@ var (
 	sendRequestPool *sync.Pool
 )
 
-var errTopicNotFount = "TopicNotFound"
+const (
+	errMsgTopicNotFound                         = "TopicNotFound"
+	errMsgTopicTerminated                       = "TopicTerminatedError"
+	errMsgProducerBlockedQuotaExceededException = "ProducerBlockedQuotaExceededException"
+	errMsgProducerFenced                        = "ProducerFenced"
+)
 
 func init() {
 	sendRequestPool = &sync.Pool{
@@ -441,30 +446,28 @@ func (p *partitionProducer) reconnectToBroker() {
 		}
 		p.log.WithError(err).Error("Failed to create producer at reconnect")
 		errMsg := err.Error()
-		if strings.Contains(errMsg, errTopicNotFount) {
+		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
-			p.log.Warn("Topic Not Found.")
+			p.log.Warn("Topic not found, stop reconnecting, close the producer")
+			p.doClose(newError(TopicNotFound, err.Error()))
 			break
 		}
 
-		if strings.Contains(errMsg, "TopicTerminatedError") {
-			p.log.Info("Topic was terminated, failing pending messages, will not reconnect")
-			pendingItems := p.pendingQueue.ReadableSlice()
-			for _, item := range pendingItems {
-				pi := item.(*pendingItem)
-				if pi != nil {
-					pi.Lock()
-					requests := pi.sendRequests
-					for _, req := range requests {
-						sr := req.(*sendRequest)
-						if sr != nil {
-							sr.done(nil, newError(TopicTerminated, err.Error()))
-						}
-					}
-					pi.Unlock()
-				}
-			}
-			p.setProducerState(producerClosing)
+		if strings.Contains(errMsg, errMsgTopicTerminated) {
+			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
+			p.doClose(newError(TopicTerminated, err.Error()))
+			break
+		}
+
+		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
+			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
+			p.failPendingMessages(newError(ProducerBlockedQuotaExceededException, err.Error()))
+			break
+		}
+
+		if strings.Contains(errMsg, errMsgProducerFenced) {
+			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
+			p.doClose(newError(ProducerFenced, err.Error()))
 			break
 		}
 
@@ -481,10 +484,18 @@ func (p *partitionProducer) reconnectToBroker() {
 func (p *partitionProducer) runEventsLoop() {
 	for {
 		select {
-		case data := <-p.dataChan:
+		case data, ok := <-p.dataChan:
+			// when doClose() is call, p.dataChan will be closed, data will be nil
+			if !ok {
+				return
+			}
 			p.internalSend(data)
-		case i := <-p.cmdChan:
-			switch v := i.(type) {
+		case cmd, ok := <-p.cmdChan:
+			// when doClose() is call, p.dataChan will be closed, cmd will be nil
+			if !ok {
+				return
+			}
+			switch v := cmd.(type) {
 			case *flushRequest:
 				p.internalFlush(v)
 			case *closeProducer:
@@ -1321,13 +1332,18 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer close(req.doneCh)
+
+	p.doClose(errProducerClosed)
+}
+
+func (p *partitionProducer) doClose(reason error) {
 	if !p.casProducerState(producerReady, producerClosing) {
 		return
 	}
 
+	p.log.Info("Closing producer")
 	defer close(p.dataChan)
 	defer close(p.cmdChan)
-	p.log.Info("Closing producer")
 
 	id := p.client.rpcClient.NewRequestID()
 	_, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
@@ -1340,7 +1356,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	} else {
 		p.log.Info("Closed producer")
 	}
-	p.failPendingMessages()
+	p.failPendingMessages(reason)
 
 	if p.batchBuilder != nil {
 		if err = p.batchBuilder.Close(); err != nil {
@@ -1353,7 +1369,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 	p.batchFlushTicker.Stop()
 }
 
-func (p *partitionProducer) failPendingMessages() {
+func (p *partitionProducer) failPendingMessages(err error) {
 	curViewItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(curViewItems)
 	if viewSize <= 0 {
@@ -1378,11 +1394,11 @@ func (p *partitionProducer) failPendingMessages() {
 
 		for _, i := range pi.sendRequests {
 			sr := i.(*sendRequest)
-			sr.done(nil, errProducerClosed)
+			sr.done(nil, err)
 		}
 
 		// flag the sending has completed with error, flush make no effect
-		pi.done(errProducerClosed)
+		pi.done(err)
 		pi.Unlock()
 
 		// finally reached the last view item, current iteration ends

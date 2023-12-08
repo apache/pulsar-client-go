@@ -29,14 +29,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+
+	log "github.com/sirupsen/logrus"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
-	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -1168,7 +1170,7 @@ func TestTopicTermination(t *testing.T) {
 	topicName := newTopicName()
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
-		SubscriptionName: "send_timeout_sub",
+		SubscriptionName: "topic_terminated_sub",
 	})
 	assert.Nil(t, err)
 	defer consumer.Close() // subscribe but do nothing
@@ -1189,7 +1191,7 @@ func TestTopicTermination(t *testing.T) {
 			})
 			if err != nil {
 				e := err.(*Error)
-				if e.result == TopicTerminated {
+				if e.result == TopicTerminated || err == errProducerClosed {
 					terminatedChan <- true
 				} else {
 					terminatedChan <- false
@@ -1210,6 +1212,7 @@ func TestTopicTermination(t *testing.T) {
 			return
 		case <-afterCh:
 			assert.Fail(t, "Time is up. Topic should have been terminated by now")
+			return
 		}
 	}
 }
