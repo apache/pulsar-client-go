@@ -1061,8 +1061,8 @@ func TestMaxMessageSize(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	// Need to set BatchingMaxSize > serverMaxMessageSize to avoid errMessageTooLarge
-	// being masked by an earlier errFailAddToBatch
+	// Need to set BatchingMaxSize > serverMaxMessageSize to avoid ErrMessageTooLarge
+	// being masked by an earlier ErrFailAddToBatch
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           newTopicName(),
 		BatchingMaxSize: uint(2 * serverMaxMessageSize),
@@ -1088,7 +1088,7 @@ func TestMaxMessageSize(t *testing.T) {
 	// So when bias <= 0, the uncompressed payload will not exceed maxMessageSize,
 	// but encryptedPayloadSize exceeds maxMessageSize, Send() will return an internal error.
 	// When bias = 1, the first check of maxMessageSize (for uncompressed payload) is valid,
-	// Send() will return errMessageTooLarge
+	// Send() will return ErrMessageTooLarge
 	for bias := -1; bias <= 1; bias++ {
 		payload := make([]byte, serverMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
@@ -1098,7 +1098,7 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
 			assert.Nil(t, ID)
 		} else {
-			assert.Equal(t, errMessageTooLarge, err)
+			assert.Equal(t, ErrMessageTooLarge, err)
 		}
 	}
 
@@ -1111,7 +1111,7 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
 			assert.Nil(t, ID)
 		} else {
-			assert.Equal(t, errMessageTooLarge, err)
+			assert.Equal(t, ErrMessageTooLarge, err)
 		}
 	}
 }
@@ -1191,7 +1191,7 @@ func TestTopicTermination(t *testing.T) {
 			})
 			if err != nil {
 				e := err.(*Error)
-				if e.result == TopicTerminated || err == errProducerClosed {
+				if e.result == TopicTerminated || err == ErrProducerClosed {
 					terminatedChan <- true
 				} else {
 					terminatedChan <- false
@@ -2348,7 +2348,7 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 			Payload: make([]byte, 1024),
 		}, func(id MessageID, message *ProducerMessage, e error) {
 			if e != nil {
-				assert.Equal(t, errProducerClosed, e)
+				assert.Equal(t, ErrProducerClosed, e)
 			}
 		})
 	}

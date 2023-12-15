@@ -4299,7 +4299,7 @@ func TestConsumerMemoryLimit(t *testing.T) {
 		Payload: createTestMessagePayload(1),
 	})
 	// Producer can't send message
-	assert.Equal(t, true, errors.Is(err, errMemoryBufferIsFull))
+	assert.Equal(t, true, errors.Is(err, ErrMemoryBufferIsFull))
 }
 
 func TestMultiConsumerMemoryLimit(t *testing.T) {

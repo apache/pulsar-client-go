@@ -51,14 +51,21 @@ const (
 )
 
 var (
-	errFailAddToBatch     = newError(AddToBatchFailed, "message add to batch failed")
-	errSendTimeout        = newError(TimeoutError, "message send timeout")
-	errSendQueueIsFull    = newError(ProducerQueueIsFull, "producer send queue is full")
-	errContextExpired     = newError(TimeoutError, "message send context expired")
-	errMessageTooLarge    = newError(MessageTooBig, "message size exceeds MaxMessageSize")
-	errMetaTooLarge       = newError(InvalidMessage, "message metadata size exceeds MaxMessageSize")
-	errProducerClosed     = newError(ProducerClosed, "producer already been closed")
-	errMemoryBufferIsFull = newError(ClientMemoryBufferIsFull, "client memory buffer is full")
+	ErrFailAddToBatch     = newError(AddToBatchFailed, "message add to batch failed")
+	ErrSendTimeout        = newError(TimeoutError, "message send timeout")
+	ErrSendQueueIsFull    = newError(ProducerQueueIsFull, "producer send queue is full")
+	ErrContextExpired     = newError(TimeoutError, "message send context expired")
+	ErrMessageTooLarge    = newError(MessageTooBig, "message size exceeds MaxMessageSize")
+	ErrMetaTooLarge       = newError(InvalidMessage, "message metadata size exceeds MaxMessageSize")
+	ErrProducerClosed     = newError(ProducerClosed, "producer already been closed")
+	ErrMemoryBufferIsFull = newError(ClientMemoryBufferIsFull, "client memory buffer is full")
+	ErrGetSchemaVerFailed = newError(SchemaFailure, "get schema version fail")
+	ErrTransaction        = newError(TransactionNoFoundError, "transaction error")
+	ErrInvalidMessage     = newError(InvalidMessage, "invalid message")
+	ErrTopicNotfound      = newError(TopicNotFound, "topic not found")
+	ErrTopicTerminated    = newError(TopicTerminated, "topic terminated")
+	ErrProducerBlocked    = newError(ProducerBlockedQuotaExceededException, "producer blocked")
+	ErrProducerFenced     = newError(ProducerFenced, "producer fenced")
 
 	buffersPool     sync.Pool
 	sendRequestPool *sync.Pool
@@ -449,25 +456,25 @@ func (p *partitionProducer) reconnectToBroker() {
 		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic not found, stop reconnecting, close the producer")
-			p.doClose(newError(TopicNotFound, err.Error()))
+			p.doClose(errors.Join(ErrTopicNotfound, err))
 			break
 		}
 
 		if strings.Contains(errMsg, errMsgTopicTerminated) {
 			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
-			p.doClose(newError(TopicTerminated, err.Error()))
+			p.doClose(errors.Join(ErrTopicTerminated, err))
 			break
 		}
 
 		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
 			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
-			p.failPendingMessages(newError(ProducerBlockedQuotaExceededException, err.Error()))
+			p.failPendingMessages(errors.Join(ErrProducerBlocked, err))
 			break
 		}
 
 		if strings.Contains(errMsg, errMsgProducerFenced) {
 			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
-			p.doClose(newError(ProducerFenced, err.Error()))
+			p.doClose(errors.Join(ErrProducerFenced, err))
 			break
 		}
 
@@ -547,7 +554,7 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 				p.log.WithField("size", sr.uncompressedSize).
 					WithField("properties", sr.msg.Properties).
 					Error("unable to add message to batch")
-				sr.done(nil, errFailAddToBatch)
+				sr.done(nil, ErrFailAddToBatch)
 				return
 			}
 		}
@@ -802,7 +809,7 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 		}
 
 		if errors.Is(err, internal.ErrExceedMaxMessageSize) {
-			p.log.WithError(errMessageTooLarge).Errorf("internal err: %s", err)
+			p.log.WithError(ErrMessageTooLarge).Errorf("internal err: %s", err)
 		}
 
 		return
@@ -893,11 +900,11 @@ func (p *partitionProducer) failTimeoutMessages() {
 
 			for _, i := range pi.sendRequests {
 				sr := i.(*sendRequest)
-				sr.done(nil, errSendTimeout)
+				sr.done(nil, ErrSendTimeout)
 			}
 
 			// flag the sending has completed with error, flush make no effect
-			pi.done(errSendTimeout)
+			pi.done(ErrSendTimeout)
 			pi.Unlock()
 
 			// finally reached the last view item, current iteration ends
@@ -926,7 +933,7 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 			}
 
 			if errors.Is(errs[i], internal.ErrExceedMaxMessageSize) {
-				p.log.WithError(errMessageTooLarge).Errorf("internal err: %s", errs[i])
+				p.log.WithError(ErrMessageTooLarge).Errorf("internal err: %s", errs[i])
 				return
 			}
 
@@ -1019,18 +1026,18 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) validateMsg(msg *ProducerMessage) error {
 	if msg == nil {
-		return newError(InvalidMessage, "Message is nil")
+		return errors.Join(ErrInvalidMessage, fmt.Errorf("message is nil"))
 	}
 
 	if msg.Value != nil && msg.Payload != nil {
-		return newError(InvalidMessage, "Can not set Value and Payload both")
+		return errors.Join(ErrInvalidMessage, fmt.Errorf("can not set Value and Payload both"))
 	}
 
 	if p.options.DisableMultiSchema {
 		if msg.Schema != nil && p.options.Schema != nil &&
 			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
 			p.log.Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
-			return fmt.Errorf("msg schema can not match with producer schema")
+			return errors.Join(ErrInvalidMessage, fmt.Errorf("msg schema can not match with producer schema"))
 		}
 	}
 
@@ -1046,15 +1053,16 @@ func (p *partitionProducer) prepareTransaction(sr *sendRequest) error {
 	if txn.state != TxnOpen {
 		p.log.WithField("state", txn.state).Error("Failed to send message" +
 			" by a non-open transaction.")
-		return newError(InvalidStatus, "Failed to send message by a non-open transaction.")
+		return errors.Join(ErrTransaction,
+			fmt.Errorf("failed to send message by a non-open transaction"))
 	}
 
 	if err := txn.registerProducerTopic(p.topic); err != nil {
-		return err
+		return errors.Join(ErrTransaction, err)
 	}
 
 	if err := txn.registerSendOrAckOp(); err != nil {
-		return err
+		return errors.Join(ErrTransaction, err)
 	}
 
 	sr.transaction = txn
@@ -1080,7 +1088,7 @@ func (p *partitionProducer) updateSchema(sr *sendRequest) error {
 	if schemaVersion == nil {
 		schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
 		if err != nil {
-			return fmt.Errorf("get schema version fail, err: %w", err)
+			return errors.Join(ErrGetSchemaVerFailed, err)
 		}
 		p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
 	}
@@ -1160,11 +1168,11 @@ func (p *partitionProducer) updateChunkInfo(sr *sendRequest) error {
 
 	// if msg is too large and chunking is disabled
 	if checkSize > int64(sr.maxMessageSize) && !p.options.EnableChunking {
-		p.log.WithError(errMessageTooLarge).
+		p.log.WithError(ErrMessageTooLarge).
 			WithField("size", checkSize).
 			WithField("properties", sr.msg.Properties).
 			Errorf("MaxMessageSize %d", sr.maxMessageSize)
-		return errMessageTooLarge
+		return ErrMessageTooLarge
 	}
 
 	if sr.sendAsBatch || !p.options.EnableChunking {
@@ -1173,11 +1181,11 @@ func (p *partitionProducer) updateChunkInfo(sr *sendRequest) error {
 	} else {
 		sr.payloadChunkSize = int(sr.maxMessageSize) - proto.Size(sr.mm)
 		if sr.payloadChunkSize <= 0 {
-			p.log.WithError(errMetaTooLarge).
+			p.log.WithError(ErrMetaTooLarge).
 				WithField("metadata size", proto.Size(sr.mm)).
 				WithField("properties", sr.msg.Properties).
 				Errorf("MaxMessageSize %d", int(p._getConn().GetMaxMessageSize()))
-			return errMetaTooLarge
+			return ErrMetaTooLarge
 		}
 		// set ChunkMaxMessageSize
 		if p.options.ChunkMaxMessageSize != 0 {
@@ -1220,7 +1228,7 @@ func (p *partitionProducer) internalSendAsync(
 	}
 
 	if p.getProducerState() != producerReady {
-		sr.done(nil, errProducerClosed)
+		sr.done(nil, ErrProducerClosed)
 		return
 	}
 
@@ -1333,7 +1341,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer close(req.doneCh)
 
-	p.doClose(errProducerClosed)
+	p.doClose(ErrProducerClosed)
 }
 
 func (p *partitionProducer) doClose(reason error) {
@@ -1508,11 +1516,11 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 			WithField("properties", sr.msg.Properties)
 	}
 
-	if errors.Is(err, errSendTimeout) {
+	if errors.Is(err, ErrSendTimeout) {
 		sr.producer.metrics.PublishErrorsTimeout.Inc()
 	}
 
-	if errors.Is(err, errMessageTooLarge) {
+	if errors.Is(err, ErrMessageTooLarge) {
 		sr.producer.metrics.PublishErrorsMsgTooLarge.Inc()
 	}
 
@@ -1554,7 +1562,7 @@ func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 	for i := 0; i < sr.totalChunks; i++ {
 		if p.blockIfQueueFull() {
 			if !p.publishSemaphore.Acquire(sr.ctx) {
-				return errContextExpired
+				return ErrContextExpired
 			}
 
 			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
@@ -1564,7 +1572,7 @@ func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 			p.metrics.MessagesPending.Inc()
 		} else {
 			if !p.publishSemaphore.TryAcquire() {
-				return errSendQueueIsFull
+				return ErrSendQueueIsFull
 			}
 
 			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
@@ -1586,11 +1594,11 @@ func (p *partitionProducer) reserveMem(sr *sendRequest) error {
 
 	if p.blockIfQueueFull() {
 		if !p.client.memLimit.ReserveMemory(sr.ctx, requiredMem) {
-			return errContextExpired
+			return ErrContextExpired
 		}
 	} else {
 		if !p.client.memLimit.TryReserveMemory(requiredMem) {
-			return errMemoryBufferIsFull
+			return ErrMemoryBufferIsFull
 		}
 	}
 
