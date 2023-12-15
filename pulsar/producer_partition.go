@@ -59,7 +59,7 @@ var (
 	ErrMetaTooLarge       = newError(InvalidMessage, "message metadata size exceeds MaxMessageSize")
 	ErrProducerClosed     = newError(ProducerClosed, "producer already been closed")
 	ErrMemoryBufferIsFull = newError(ClientMemoryBufferIsFull, "client memory buffer is full")
-	ErrGetSchemaVerFailed = newError(SchemaFailure, "get schema version fail")
+	ErrSchema             = newError(SchemaFailure, "schema error")
 	ErrTransaction        = newError(TransactionNoFoundError, "transaction error")
 	ErrInvalidMessage     = newError(InvalidMessage, "invalid message")
 	ErrTopicNotfound      = newError(TopicNotFound, "topic not found")
@@ -1088,7 +1088,7 @@ func (p *partitionProducer) updateSchema(sr *sendRequest) error {
 	if schemaVersion == nil {
 		schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
 		if err != nil {
-			return errors.Join(ErrGetSchemaVerFailed, err)
+			return errors.Join(ErrSchema, err)
 		}
 		p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
 	}
@@ -1105,7 +1105,7 @@ func (p *partitionProducer) updateUncompressedPayload(sr *sendRequest) error {
 	if sr.msg.Value != nil {
 		if sr.schema == nil {
 			p.log.Errorf("Schema encode message failed %s", sr.msg.Value)
-			return newError(SchemaFailure, "set schema value without setting schema")
+			return errors.Join(ErrSchema, fmt.Errorf("set schema value without setting schema"))
 		}
 
 		// payload and schema are mutually exclusive
@@ -1113,7 +1113,7 @@ func (p *partitionProducer) updateUncompressedPayload(sr *sendRequest) error {
 		schemaPayload, err := sr.schema.Encode(sr.msg.Value)
 		if err != nil {
 			p.log.WithError(err).Errorf("Schema encode message failed %s", sr.msg.Value)
-			return newError(SchemaFailure, err.Error())
+			return errors.Join(ErrSchema, err)
 		}
 
 		sr.uncompressedPayload = schemaPayload
