@@ -101,7 +101,7 @@ func (txn *transaction) Commit(ctx context.Context) error {
 	if err == nil {
 		atomic.StoreInt32((*int32)(&txn.state), int32(TxnCommitted))
 	} else {
-		if err.(*Error).Result() == TransactionNoFoundError || err.(*Error).Result() == InvalidStatus {
+		if e, ok := err.(*Error); ok && (e.Result() == TransactionNoFoundError || e.Result() == InvalidStatus) {
 			atomic.StoreInt32((*int32)(&txn.state), int32(TxnError))
 			return err
 		}
@@ -127,7 +127,7 @@ func (txn *transaction) Abort(ctx context.Context) error {
 	if err == nil {
 		atomic.StoreInt32((*int32)(&txn.state), int32(TxnAborted))
 	} else {
-		if err.(*Error).Result() == TransactionNoFoundError || err.(*Error).Result() == InvalidStatus {
+		if e, ok := err.(*Error); ok && (e.Result() == TransactionNoFoundError || e.Result() == InvalidStatus) {
 			atomic.StoreInt32((*int32)(&txn.state), int32(TxnError))
 		} else {
 			txn.opsFlow <- true
