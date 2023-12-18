@@ -1098,7 +1098,7 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
 			assert.Nil(t, ID)
 		} else {
-			assert.Equal(t, ErrMessageTooLarge, err)
+			assert.True(t, errors.Is(err, ErrMessageTooLarge))
 		}
 	}
 
@@ -1111,7 +1111,7 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
 			assert.Nil(t, ID)
 		} else {
-			assert.Equal(t, ErrMessageTooLarge, err)
+			assert.True(t, errors.Is(err, ErrMessageTooLarge))
 		}
 	}
 }
@@ -1191,7 +1191,7 @@ func TestTopicTermination(t *testing.T) {
 			})
 			if err != nil {
 				e := err.(*Error)
-				if e.result == TopicTerminated || err == ErrProducerClosed {
+				if e.result == TopicTerminated || errors.Is(err, ErrProducerClosed) {
 					terminatedChan <- true
 				} else {
 					terminatedChan <- false
@@ -2348,7 +2348,7 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 			Payload: make([]byte, 1024),
 		}, func(id MessageID, message *ProducerMessage, e error) {
 			if e != nil {
-				assert.Equal(t, ErrProducerClosed, e)
+				assert.True(t, errors.Is(e, ErrProducerClosed))
 			}
 		})
 	}
