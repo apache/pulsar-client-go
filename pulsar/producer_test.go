@@ -1479,23 +1479,43 @@ func TestProducuerSendFailOnInvalidKey(t *testing.T) {
 
 type noopProduceInterceptor struct{}
 
-func (noopProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {}
-
-func (noopProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
+func (noopProduceInterceptor) BeforeSend(ctx context.Context, _ Producer, _ *ProducerMessage) context.Context {
+	return ctx
 }
 
-// copyPropertyIntercepotr copy all keys in message properties map and add a suffix
-type metricProduceInterceptor struct {
-	sendn int
-	ackn  int
+func (noopProduceInterceptor) OnSendAcknowledgement(_ context.Context, _ Producer, _ *ProducerMessage, _ MessageID) {
 }
 
-func (x *metricProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {
-	x.sendn++
+type trackingProduceInterceptor struct {
+	sendn       int
+	ackn        int
+	maxDuration time.Duration
 }
 
-func (x *metricProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
-	x.ackn++
+type beforeSendCtxKey struct{}
+
+func (i *trackingProduceInterceptor) BeforeSend(ctx context.Context, _ Producer, msg *ProducerMessage) context.Context {
+	i.sendn++
+	ctx = context.WithValue(ctx, beforeSendCtxKey{}, time.Now())
+	return ctx
+}
+
+func (i *trackingProduceInterceptor) OnSendAcknowledgement(
+	ctx context.Context,
+	_ Producer,
+	_ *ProducerMessage,
+	_ MessageID,
+) {
+	var dur time.Duration
+	if v := ctx.Value(beforeSendCtxKey{}); v != nil {
+		dur = time.Since(v.(time.Time))
+	}
+
+	if dur > i.maxDuration {
+		i.maxDuration = dur
+	}
+
+	i.ackn++
 }
 
 func TestProducerWithInterceptors(t *testing.T) {
@@ -1518,14 +1538,14 @@ func TestProducerWithInterceptors(t *testing.T) {
 	assert.Nil(t, err)
 	defer consumer.Close()
 
-	metric := &metricProduceInterceptor{}
+	interceptor := &trackingProduceInterceptor{}
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
 		DisableBatching: false,
 		Interceptors: ProducerInterceptors{
 			noopProduceInterceptor{},
-			metric,
+			interceptor,
 		},
 	})
 	assert.Nil(t, err)
@@ -1575,8 +1595,9 @@ func TestProducerWithInterceptors(t *testing.T) {
 		consumer.Ack(msg)
 	}
 
-	assert.Equal(t, 10, metric.sendn)
-	assert.Equal(t, 10, metric.ackn)
+	assert.Equal(t, 10, interceptor.sendn)
+	assert.Equal(t, 10, interceptor.ackn)
+	assert.NotZero(t, interceptor.maxDuration)
 }
 
 func TestProducerSendAfterClose(t *testing.T) {
@@ -1719,7 +1740,7 @@ func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
 	}
 	producer.Flush()
 
-	//// create consumer
+	// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "my-sub2",
@@ -1810,7 +1831,7 @@ func TestMultipleSchemaProducerConsumer(t *testing.T) {
 	}
 	producer.Flush()
 
-	//// create consumer
+	// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            "my-sub2",

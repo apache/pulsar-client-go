@@ -29,13 +29,20 @@ const toPrefix = "To__"
 type ProducerInterceptor struct {
 }
 
-func (t *ProducerInterceptor) BeforeSend(producer pulsar.Producer, message *pulsar.ProducerMessage) {
+func (t *ProducerInterceptor) BeforeSend(
+	ctx context.Context,
+	producer pulsar.Producer,
+	message *pulsar.ProducerMessage,
+) context.Context {
 	buildAndInjectSpan(message, producer).Finish()
+	return ctx
 }
 
-func (t *ProducerInterceptor) OnSendAcknowledgement(producer pulsar.Producer,
-	message *pulsar.ProducerMessage,
-	msgID pulsar.MessageID) {
+func (t *ProducerInterceptor) OnSendAcknowledgement(
+	_ context.Context,
+	_ pulsar.Producer,
+	_ *pulsar.ProducerMessage,
+	_ pulsar.MessageID) {
 }
 
 func buildAndInjectSpan(message *pulsar.ProducerMessage, producer pulsar.Producer) opentracing.Span {

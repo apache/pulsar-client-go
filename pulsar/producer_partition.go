@@ -1001,7 +1001,7 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	isDone := uAtomic.NewBool(false)
 	doneCh := make(chan struct{})
 
-	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
+	ctx = p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
 		if isDone.CAS(false, true) {
 			err = e
 			msgID = ID
@@ -1202,11 +1202,11 @@ func (p *partitionProducer) internalSendAsync(
 	msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error),
 	flushImmediately bool,
-) {
+) context.Context {
 	if err := p.validateMsg(msg); err != nil {
 		p.log.Error(err)
 		runCallback(callback, nil, msg, err)
-		return
+		return ctx
 	}
 
 	sr := sendRequestPool.Get().(*sendRequest)
@@ -1224,26 +1224,27 @@ func (p *partitionProducer) internalSendAsync(
 
 	if err := p.prepareTransaction(sr); err != nil {
 		sr.done(nil, err)
-		return
+		return ctx
 	}
 
 	if p.getProducerState() != producerReady {
 		sr.done(nil, ErrProducerClosed)
-		return
+		return ctx
 	}
 
-	p.options.Interceptors.BeforeSend(p, msg)
+	ctx = p.options.Interceptors.BeforeSend(ctx, p, msg)
+	sr.ctx = ctx
 
 	if err := p.updateSchema(sr); err != nil {
 		p.log.Error(err)
 		sr.done(nil, err)
-		return
+		return ctx
 	}
 
 	if err := p.updateUncompressedPayload(sr); err != nil {
 		p.log.Error(err)
 		sr.done(nil, err)
-		return
+		return ctx
 	}
 
 	p.updateMetaData(sr)
@@ -1251,16 +1252,18 @@ func (p *partitionProducer) internalSendAsync(
 	if err := p.updateChunkInfo(sr); err != nil {
 		p.log.Error(err)
 		sr.done(nil, err)
-		return
+		return ctx
 	}
 
 	if err := p.reserveResources(sr); err != nil {
 		p.log.Error(err)
 		sr.done(nil, err)
-		return
+		return ctx
 	}
 
 	p.dataChan <- sr
+
+	return ctx
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -1505,7 +1508,7 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 
 		if sr.totalChunks <= 1 || sr.chunkID == sr.totalChunks-1 {
 			if sr.producer.options.Interceptors != nil {
-				sr.producer.options.Interceptors.OnSendAcknowledgement(sr.producer, sr.msg, msgID)
+				sr.producer.options.Interceptors.OnSendAcknowledgement(sr.ctx, sr.producer, sr.msg, msgID)
 			}
 		}
 	}
