@@ -254,6 +254,12 @@ type Consumer interface {
 	Subscription() string
 
 	// Unsubscribe the consumer
+	//
+	// Unsubscribing will cause the subscription to be deleted,
+	// and all the retained data can potentially be deleted based on message retention and ttl policy.
+	//
+	// This operation will fail when performed on a shared subscription
+	// where more than one consumer are currently connected.
 	Unsubscribe() error
 
 	// Receive a single message.
