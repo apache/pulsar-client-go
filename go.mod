@@ -1,6 +1,6 @@
 module github.com/apache/pulsar-client-go
 
-go 1.20
+go 1.18
 
 require (
 	github.com/99designs/keyring v1.2.1
