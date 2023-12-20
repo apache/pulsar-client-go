@@ -20,7 +20,7 @@
 IMAGE_NAME = pulsar-client-go-test:latest
 PULSAR_VERSION ?= 2.10.3
 PULSAR_IMAGE = apachepulsar/pulsar:$(PULSAR_VERSION)
-GO_VERSION ?= 1.20
+GO_VERSION ?= 1.18
 GOLANG_IMAGE = golang:$(GO_VERSION)
 
 # Golang standard bin directory.
