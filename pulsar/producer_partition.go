@@ -60,7 +60,7 @@ var (
 	ErrProducerClosed     = newError(ProducerClosed, "producer already been closed")
 	ErrMemoryBufferIsFull = newError(ClientMemoryBufferIsFull, "client memory buffer is full")
 	ErrSchema             = newError(SchemaFailure, "schema error")
-	ErrTransaction        = newError(TransactionNoFoundError, "transaction error")
+	ErrTransaction        = errors.New("transaction error")
 	ErrInvalidMessage     = newError(InvalidMessage, "invalid message")
 	ErrTopicNotfound      = newError(TopicNotFound, "topic not found")
 	ErrTopicTerminated    = newError(TopicTerminated, "topic terminated")
