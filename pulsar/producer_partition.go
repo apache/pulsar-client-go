@@ -1037,7 +1037,7 @@ func (p *partitionProducer) validateMsg(msg *ProducerMessage) error {
 		if msg.Schema != nil && p.options.Schema != nil &&
 			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
 			p.log.Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
-			return joinErrors(ErrInvalidMessage, fmt.Errorf("msg schema can not match with producer schema"))
+			return joinErrors(ErrSchema, fmt.Errorf("msg schema can not match with producer schema"))
 		}
 	}
 
@@ -1088,7 +1088,7 @@ func (p *partitionProducer) updateSchema(sr *sendRequest) error {
 	if schemaVersion == nil {
 		schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
 		if err != nil {
-			return joinErrors(ErrSchema, err)
+			return joinErrors(ErrSchema, fmt.Errorf("get schema version fail, err: %w", err))
 		}
 		p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
 	}
