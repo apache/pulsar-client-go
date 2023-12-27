@@ -338,6 +338,7 @@ func (c *connection) doHandshake() bool {
 		c.maxMessageSize = MaxMessageSize
 	}
 	c.log.Info("Connection is ready")
+	c.setLastDataReceived(time.Now())
 	c.changeState(connectionReady)
 	return true
 }
