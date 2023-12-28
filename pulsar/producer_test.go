@@ -1190,8 +1190,7 @@ func TestTopicTermination(t *testing.T) {
 				Payload: make([]byte, 1024),
 			})
 			if err != nil {
-				e := err.(*Error)
-				if e.result == TopicTerminated || errors.Is(err, ErrProducerClosed) {
+				if errors.Is(err, ErrTopicTerminated) || errors.Is(err, ErrProducerClosed) {
 					terminatedChan <- true
 				} else {
 					terminatedChan <- false
