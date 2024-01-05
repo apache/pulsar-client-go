@@ -63,7 +63,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] cannot be null when the type is partitioned.",
 		},
 		{
-			name:      "Set partitioned type topic auto creation with partitions <= 1",
+			name:      "Set partitioned type topic auto creation with partitions < 1",
 			namespace: "public/default",
 			config: utils.TopicAutoCreationConfig{
 				Allow:      true,
