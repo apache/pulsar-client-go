@@ -18,9 +18,10 @@
 package admin
 
 import (
+	"testing"
+
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-	"testing"
 )
 
 func TestCreateTopic(t *testing.T) {
