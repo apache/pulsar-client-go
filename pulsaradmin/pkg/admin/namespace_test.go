@@ -60,7 +60,8 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.Partitioned,
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] cannot be null when the type is partitioned.",
+			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
+				"cannot be null when the type is partitioned.",
 		},
 		{
 			name:      "Set partitioned type topic auto creation with partitions < 1",
@@ -70,7 +71,8 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Type:       utils.Partitioned,
 				Partitions: ptr(-1),
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] cannot be less than 1 for partition type.",
+			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
+				"cannot be less than 1 for partition type.",
 		},
 		{
 			name:      "Set non-partitioned type topic auto creation",
@@ -89,7 +91,8 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Type:       utils.NonPartitioned,
 				Partitions: ptr(3),
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] is not allowed to be set when the type is non-partition.",
+			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] is " +
+				"not allowed to be set when the type is non-partition.",
 		},
 		{
 			name:      "Disable topic auto creation",
@@ -115,7 +118,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.NonPartitioned,
 			},
-			errReason: "Namespace does not exist",
+			errReason: "Tenant does not exist",
 		},
 	}
 	for _, tt := range tests {
