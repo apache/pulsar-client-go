@@ -20,5 +20,5 @@ package utils
 type TopicAutoCreationConfig struct {
 	Allow      bool      `json:"allowAutoTopicCreation"`
 	Type       TopicType `json:"topicType"`
-	Partitions int       `json:"defaultNumPartitions"`
+	Partitions *int      `json:"defaultNumPartitions"`
 }
