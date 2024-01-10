@@ -30,7 +30,10 @@ require (
 	google.golang.org/protobuf v1.30.0
 )
 
-require github.com/golang/protobuf v1.5.2
+require (
+	github.com/golang/protobuf v1.5.2
+	github.com/hashicorp/go-multierror v1.1.1
+)
 
 require (
 	github.com/99designs/go-keychain v0.0.0-20191008050251-8e49817e8af4 // indirect
@@ -38,13 +41,12 @@ require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.1 // indirect
 	github.com/danieljoos/wincred v1.1.2 // indirect
-	github.com/dvsekhvalnov/jose2go v1.5.0 // indirect
+	github.com/dvsekhvalnov/jose2go v1.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
 	github.com/golang/snappy v0.0.1 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
-	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.3 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
