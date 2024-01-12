@@ -223,13 +223,13 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		}
 		p.log.WithError(err).Error("Failed to create producer at newPartitionProducer")
 		errMsg := err.Error()
-		if strings.Contains(errMsg, errTopicNotFount) {
+		if errors.Is(err, ErrTopicNotfound)
 			// when topic is not found, do not attempt to reconnect
 			p.log.Warn("Failed to create producer due to Topic Not Found")
 			break
 		}
 
-		if strings.Contains(errMsg, "TopicTerminatedError") {
+		if errors.Is(err, ErrTopicTerminated)
 			p.log.Info("Topic was terminated, failing pending messages, will not create producer")
 			break
 		}
