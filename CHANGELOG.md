@@ -86,6 +86,8 @@ All notable changes to this project will be documented in this file.
 * Added test for admin topic creation by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1152
 * Implemented GetTopicAutoCreation by @jiangpengcheng in https://github.com/apache/pulsar-client-go/pull/1151
 * Bumped github.com/dvsekhvalnov/jose2go from 1.5.0 to 1.6.0 by @dependabot in https://github.com/apache/pulsar-client-go/pull/1150
+* Bump golang.org/x/net from 0.0.0-20220225172249-27dd8689420f to 0.17.0 by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/1155
+* Fix DLQ producer name conflicts when multiples consumers send messages to DLQ by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1156
 
 ## New Contributors
 * @jffp113 made their first contribution in https://github.com/apache/pulsar-client-go/pull/1062
