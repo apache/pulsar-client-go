@@ -34,16 +34,18 @@ type dlqRouter struct {
 	closeCh          chan interface{}
 	topicName        string
 	subscriptionName string
+	consumerName     string
 	log              log.Logger
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy, topicName, subscriptionName string,
+func newDlqRouter(client Client, policy *DLQPolicy, topicName, subscriptionName, consumerName string,
 	logger log.Logger) (*dlqRouter, error) {
 	r := &dlqRouter{
 		client:           client,
 		policy:           policy,
 		topicName:        topicName,
 		subscriptionName: subscriptionName,
+		consumerName:     consumerName,
 		log:              logger,
 	}
 
@@ -159,7 +161,7 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 		opt.Topic = r.policy.DeadLetterTopic
 		opt.Schema = schema
 		if opt.Name == "" {
-			opt.Name = fmt.Sprintf("%s-%s-DLQ", r.topicName, r.subscriptionName)
+			opt.Name = fmt.Sprintf("%s-%s-%s-DLQ", r.topicName, r.subscriptionName, r.consumerName)
 		}
 
 		// the origin code sets to LZ4 compression with no options
