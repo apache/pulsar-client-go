@@ -236,7 +236,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		if maxRetry > 0 {
 			maxRetry--
 		}
-		logger.WithError(err).Error("Failed to create producer at newPartitionProducer retry to create producer", delayReconnectTime)
+		logger.WithError(err).
+			Error("Failed to create producer at newPartitionProducer retry to create producer")
 		time.Sleep(delayReconnectTime)
 	}
 	if err != nil {
