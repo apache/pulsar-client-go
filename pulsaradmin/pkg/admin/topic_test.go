@@ -15,10 +15,41 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package utils
+package admin
 
-type TopicAutoCreationConfig struct {
-	Allow      bool      `json:"allowAutoTopicCreation"`
-	Type       TopicType `json:"topicType"`
-	Partitions *int      `json:"defaultNumPartitions"`
+import (
+	"testing"
+
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+)
+
+func TestCreateTopic(t *testing.T) {
+	checkError := func(err error) {
+		if err != nil {
+			t.Error(err)
+		}
+	}
+
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	checkError(err)
+
+	topic := "persistent://public/default/testCreateTopic"
+
+	topicName, err := utils.GetTopicName(topic)
+	checkError(err)
+
+	err = admin.Topics().Create(*topicName, 0)
+	checkError(err)
+
+	topicLists, err := admin.Namespaces().GetTopics("public/default")
+	checkError(err)
+
+	for _, t := range topicLists {
+		if t == topic {
+			return
+		}
+	}
+	t.Error("Couldn't find topic: " + topic)
 }

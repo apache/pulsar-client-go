@@ -21,6 +21,7 @@ import (
 	"fmt"
 
 	proto "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/hashicorp/go-multierror"
 )
 
 // Result used to represent pulsar processing is an alias of type int.
@@ -114,6 +115,12 @@ const (
 	TransactionNoFoundError
 	// ClientMemoryBufferIsFull client limit buffer is full
 	ClientMemoryBufferIsFull
+	// ProducerFenced When a producer asks and fail to get exclusive producer access,
+	// or loses the exclusive status after a reconnection, the broker will
+	// use this error to indicate that this producer is now permanently
+	// fenced. Applications are now supposed to close it and create a
+	// new producer
+	ProducerFenced
 )
 
 // Error implement error interface, composed of two parts: msg and result.
@@ -238,4 +245,11 @@ func getErrorFromServerError(serverError *proto.ServerError) error {
 	default:
 		return newError(UnknownError, serverError.String())
 	}
+}
+
+// joinErrors can join multiple errors into one error, and the returned error can be tested by errors.Is()
+// we use github.com/hashicorp/go-multierror instead of errors.Join() of Go 1.20 so that we can compile pulsar
+// go client with go versions that newer than go 1.13
+func joinErrors(errs ...error) error {
+	return multierror.Append(nil, errs...)
 }

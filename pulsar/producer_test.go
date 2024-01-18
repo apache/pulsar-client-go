@@ -29,14 +29,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+
+	log "github.com/sirupsen/logrus"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
-	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -1059,8 +1061,8 @@ func TestMaxMessageSize(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	// Need to set BatchingMaxSize > serverMaxMessageSize to avoid errMessageTooLarge
-	// being masked by an earlier errFailAddToBatch
+	// Need to set BatchingMaxSize > serverMaxMessageSize to avoid ErrMessageTooLarge
+	// being masked by an earlier ErrFailAddToBatch
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           newTopicName(),
 		BatchingMaxSize: uint(2 * serverMaxMessageSize),
@@ -1086,7 +1088,7 @@ func TestMaxMessageSize(t *testing.T) {
 	// So when bias <= 0, the uncompressed payload will not exceed maxMessageSize,
 	// but encryptedPayloadSize exceeds maxMessageSize, Send() will return an internal error.
 	// When bias = 1, the first check of maxMessageSize (for uncompressed payload) is valid,
-	// Send() will return errMessageTooLarge
+	// Send() will return ErrMessageTooLarge
 	for bias := -1; bias <= 1; bias++ {
 		payload := make([]byte, serverMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
@@ -1096,7 +1098,7 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
 			assert.Nil(t, ID)
 		} else {
-			assert.Equal(t, errMessageTooLarge, err)
+			assert.True(t, errors.Is(err, ErrMessageTooLarge))
 		}
 	}
 
@@ -1109,7 +1111,7 @@ func TestMaxMessageSize(t *testing.T) {
 			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
 			assert.Nil(t, ID)
 		} else {
-			assert.Equal(t, errMessageTooLarge, err)
+			assert.True(t, errors.Is(err, ErrMessageTooLarge))
 		}
 	}
 }
@@ -1156,6 +1158,62 @@ func TestFailedSchemaEncode(t *testing.T) {
 		wg.Done()
 	})
 	wg.Wait()
+}
+
+func TestTopicTermination(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "topic_terminated_sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close() // subscribe but do nothing
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:       topicName,
+		SendTimeout: 2 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	afterCh := time.After(5 * time.Second)
+	terminatedChan := make(chan bool)
+	go func() {
+		for {
+			_, err := producer.Send(context.Background(), &ProducerMessage{
+				Payload: make([]byte, 1024),
+			})
+			if err != nil {
+				if errors.Is(err, ErrTopicTerminated) || errors.Is(err, ErrProducerClosed) {
+					terminatedChan <- true
+				} else {
+					terminatedChan <- false
+				}
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	terminateURL := adminURL + "/admin/v2/persistent/public/default/" + topicName + "/terminate"
+	log.Info(terminateURL)
+	makeHTTPCall(t, http.MethodPost, terminateURL, "")
+
+	for {
+		select {
+		case d := <-terminatedChan:
+			assert.Equal(t, d, true)
+			return
+		case <-afterCh:
+			assert.Fail(t, "Time is up. Topic should have been terminated by now")
+			return
+		}
+	}
 }
 
 func TestSendTimeout(t *testing.T) {
@@ -2289,7 +2347,7 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 			Payload: make([]byte, 1024),
 		}, func(id MessageID, message *ProducerMessage, e error) {
 			if e != nil {
-				assert.Equal(t, errProducerClosed, e)
+				assert.True(t, errors.Is(e, ErrProducerClosed))
 			}
 		})
 	}

@@ -1449,12 +1449,15 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	if prodOpt != nil {
 		dlqPolicy.ProducerOptions = *prodOpt
 	}
+	sub, consumerName := "my-sub", "my-consumer"
+
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:               topic,
-		SubscriptionName:    "my-sub",
+		SubscriptionName:    sub,
 		NackRedeliveryDelay: 1 * time.Second,
 		Type:                Shared,
 		DLQ:                 &dlqPolicy,
+		Name:                consumerName,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -1505,6 +1508,9 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 
 		expectMsg := fmt.Sprintf("hello-%d", expectedMsgIdx)
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+		// check dql produceName
+		assert.Equal(t, msg.ProducerName(), fmt.Sprintf("%s-%s-%s-DLQ", topic, sub, consumerName))
 
 		// check original messageId
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
@@ -4295,7 +4301,7 @@ func TestConsumerMemoryLimit(t *testing.T) {
 		Payload: createTestMessagePayload(1),
 	})
 	// Producer can't send message
-	assert.Equal(t, true, errors.Is(err, errMemoryBufferIsFull))
+	assert.Equal(t, true, errors.Is(err, ErrMemoryBufferIsFull))
 }
 
 func TestMultiConsumerMemoryLimit(t *testing.T) {
