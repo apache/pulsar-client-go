@@ -35,9 +35,7 @@ cd pulsar-client-go
 git checkout -b branch-0.X.0 origin/master
 ```
 
-2. Update the version and tag of a package.
-
-Update the information of the new release to the `VERSION` file and `stable.txt` file and send a PR for requesting the changes.
+2. Create a tag for the release candidate.
 
 During the release process, you can create a "candidate" tag which will get promoted to the "real" final tag after verification and approval.
 
