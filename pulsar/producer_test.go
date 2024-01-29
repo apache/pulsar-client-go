@@ -2357,6 +2357,36 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
 }
 
+func TestProducerSendDuplicatedMessages(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+	testProducer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, testProducer)
+	_, err = testProducer.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.NoError(t, err)
+	for i := 0; i < 3; i++ {
+		var seqId int64 = 0
+		msgId, err := testProducer.Send(context.Background(), &ProducerMessage{
+			Payload:    make([]byte, 1024),
+			SequenceID: &seqId,
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, msgId)
+		assert.Equal(t, int64(-1), msgId.LedgerID())
+		assert.Equal(t, int64(-1), msgId.EntryID())
+	}
+	testProducer.Close()
+}
+
 type pendingQueueWrapper struct {
 	pendingQueue   internal.BlockingQueue
 	writtenBuffers *[]internal.Buffer
