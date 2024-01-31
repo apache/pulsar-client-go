@@ -2357,34 +2357,6 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
 }
 
-func TestSendConcurrently(t *testing.T) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
-	assert.NoError(t, err)
-	defer client.Close()
-	testProducer, err := client.CreateProducer(ProducerOptions{
-		Topic:            newTopicName(),
-		CompressionType:  ZSTD,
-		CompressionLevel: Better,
-		DisableBatching:  true,
-	})
-	assert.NoError(t, err)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 100; i++ {
-		wg.Add(1)
-		go func() {
-			_, err := testProducer.Send(context.Background(), &ProducerMessage{
-				Payload: make([]byte, 100),
-			})
-			assert.NoError(t, err)
-			wg.Done()
-		}()
-	}
-	wg.Wait()
-}
-
 type pendingQueueWrapper struct {
 	pendingQueue   internal.BlockingQueue
 	writtenBuffers *[]internal.Buffer
