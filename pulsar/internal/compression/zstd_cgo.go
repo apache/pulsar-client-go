@@ -25,6 +25,8 @@
 package compression
 
 import (
+	"sync"
+
 	"github.com/DataDog/zstd"
 	log "github.com/sirupsen/logrus"
 )
@@ -33,6 +35,7 @@ type zstdCGoProvider struct {
 	ctx       zstd.Ctx
 	level     Level
 	zstdLevel int
+	mu        sync.Mutex
 }
 
 func newCGoZStdProvider(level Level) Provider {
@@ -61,6 +64,8 @@ func (z *zstdCGoProvider) CompressMaxSize(originalSize int) int {
 }
 
 func (z *zstdCGoProvider) Compress(dst, src []byte) []byte {
+	z.mu.Lock()
+	defer z.mu.Unlock()
 	out, err := z.ctx.CompressLevel(dst, src, z.zstdLevel)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to compress")
