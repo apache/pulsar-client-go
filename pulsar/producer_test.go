@@ -2374,10 +2374,10 @@ func TestProducerSendDuplicatedMessages(t *testing.T) {
 	})
 	assert.NoError(t, err)
 	for i := 0; i < 3; i++ {
-		var seqId int64
+		var seqID int64
 		msgID, err := testProducer.Send(context.Background(), &ProducerMessage{
 			Payload:    make([]byte, 1024),
-			SequenceID: &seqId,
+			SequenceID: &seqID,
 		})
 		assert.NoError(t, err)
 		assert.NotNil(t, msgID)
