@@ -159,7 +159,7 @@ func TestProducerAsyncSend(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 
 	wg.Wait()
@@ -220,7 +220,7 @@ func TestProducerFlushDisableBatching(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 
 	wg.Wait()
@@ -387,7 +387,7 @@ func TestFlushInProducer(t *testing.T) {
 		})
 		assert.Nil(t, err)
 	}
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 	wg.Wait()
 
@@ -429,7 +429,7 @@ func TestFlushInProducer(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 	wg.Wait()
 
@@ -500,7 +500,7 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	}
 
 	// After flush, should be able to consume.
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 
 	wg.Wait()
@@ -1717,7 +1717,7 @@ func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
 		}
 
 	}
-	producer.Flush()
+	producer.FlushWithCtx(context.Background())
 
 	//// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
@@ -1808,7 +1808,7 @@ func TestMultipleSchemaProducerConsumer(t *testing.T) {
 			assert.NotNil(t, id)
 		})
 	}
-	producer.Flush()
+	producer.FlushWithCtx(context.Background())
 
 	//// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
@@ -2027,9 +2027,9 @@ func TestMemLimitRejectProducerMessages(t *testing.T) {
 	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
 
 	// flush pending msg
-	err = producer1.Flush()
+	err = producer1.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
-	err = producer2.Flush()
+	err = producer2.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
 
@@ -2118,9 +2118,9 @@ func TestMemLimitRejectProducerMessagesWithSchema(t *testing.T) {
 	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
 
 	// flush pending msg
-	err = producer1.Flush()
+	err = producer1.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
-	err = producer2.Flush()
+	err = producer2.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
 
@@ -2244,7 +2244,7 @@ func TestMemLimitContextCancel(t *testing.T) {
 	cancel()
 	wg.Wait()
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
 	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
 
