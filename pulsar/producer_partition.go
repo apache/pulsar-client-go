@@ -1274,14 +1274,18 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	if pi.sequenceID < response.GetSequenceId() {
 		// Force connection closing so that messages can be re-transmitted in a new connection
-		p.log.Warnf("Received ack for ledgerId:%d entryId:%d on sequenceId %v - expected: %v, local < remote, closing connection",
-			int64(*response.GetMessageId().LedgerId), int64(*response.GetMessageId().EntryId), response.GetSequenceId(), pi.sequenceID)
+		p.log.Warnf("Received ack for ledgerId:%d entryId:%d on sequenceId %v - expected: %v, local < remote, "+
+			"closing connection",
+			int64(*response.GetMessageId().LedgerId), int64(*response.GetMessageId().EntryId), response.GetSequenceId(),
+			pi.sequenceID)
 		p._getConn().Close()
 		return
 	} else if pi.sequenceID > response.GetSequenceId() {
 		// Ignoring the ack since it's referring to a message that has already timed out.
-		p.log.Warnf("Received ack for ledgerId:%d entryId:%d on sequenceId %v - expected: %v, local > remote, ignore it",
-			int64(*response.GetMessageId().LedgerId), int64(*response.GetMessageId().EntryId), response.GetSequenceId(), pi.sequenceID)
+		p.log.Warnf("Received ack for ledgerId:%d entryId:%d on sequenceId %v - expected: %v, local > remote, "+
+			"ignore it",
+			int64(*response.GetMessageId().LedgerId), int64(*response.GetMessageId().EntryId), response.GetSequenceId(),
+			pi.sequenceID)
 		return
 	} else {
 		// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
