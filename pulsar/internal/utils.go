@@ -39,7 +39,12 @@ func TimestampMillis(t time.Time) uint64 {
 
 // GetAndAdd perform atomic read and update
 func GetAndAdd(n *uint64, diff uint64) uint64 {
-	return atomic.AddUint64(n, diff)
+	for {
+		v := atomic.LoadUint64(n)
+		if atomic.CompareAndSwapUint64(n, v, v+diff) {
+			return v
+		}
+	}
 }
 
 func ParseRelativeTimeInSeconds(relativeTime string) (time.Duration, error) {
