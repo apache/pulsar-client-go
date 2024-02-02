@@ -334,11 +334,15 @@ func (p *producer) LastSequenceID() int64 {
 }
 
 func (p *producer) Flush() error {
+	return p.FlushWithCtx(context.Background())
+}
+
+func (p *producer) FlushWithCtx(ctx context.Context) error {
 	p.RLock()
 	defer p.RUnlock()
 
 	for _, pp := range p.producers {
-		if err := pp.Flush(); err != nil {
+		if err := pp.FlushWithCtx(ctx); err != nil {
 			return err
 		}
 
