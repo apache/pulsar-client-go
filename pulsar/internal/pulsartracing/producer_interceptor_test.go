@@ -67,4 +67,8 @@ func (p *mockProducer) Flush() error {
 	return nil
 }
 
+func (p *mockProducer) FlushWithCtx(ctx context.Context) error {
+	return nil
+}
+
 func (p *mockProducer) Close() {}

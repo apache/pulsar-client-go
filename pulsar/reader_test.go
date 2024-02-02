@@ -277,7 +277,7 @@ func TestReaderOnSpecificMessageWithBatching(t *testing.T) {
 		})
 	}
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
 
 	// create reader on 5th message (not included)
@@ -353,7 +353,7 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 		})
 	}
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
 
 	// create reader on 5th message (not included)
@@ -592,7 +592,7 @@ func TestReaderSeek(t *testing.T) {
 			seekID = id
 		}
 	}
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
 
 	for i := 0; i < N; i++ {
