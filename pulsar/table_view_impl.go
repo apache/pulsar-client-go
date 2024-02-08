@@ -41,6 +41,9 @@ type TableViewImpl struct {
 	dataMu sync.Mutex
 	data   map[string]interface{}
 
+	messageMu sync.Mutex
+	message   map[string]Message
+
 	readersMu    sync.Mutex
 	cancelRaders map[string]cancelReader
 
@@ -183,6 +186,12 @@ func (tv *TableViewImpl) Get(key string) interface{} {
 	return tv.data[key]
 }
 
+func (tv *TableViewImpl) GetMessage(key string) Message {
+	tv.messageMu.Lock()
+	defer tv.messageMu.Unlock()
+	return tv.message[key]
+}
+
 func (tv *TableViewImpl) Entries() map[string]interface{} {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
@@ -216,7 +225,13 @@ func (tv *TableViewImpl) ForEach(action func(string, interface{}) error) error {
 	return nil
 }
 
+var ErrTableViewImplNoSchema = errors.New("called function relying on Schema without loaded Schema")
+
 func (tv *TableViewImpl) ForEachAndListen(action func(string, interface{}) error) error {
+	if tv.options.Schema == nil {
+		return ErrTableViewImplNoSchema
+	}
+
 	tv.listenersMu.Lock()
 	defer tv.listenersMu.Unlock()
 
@@ -244,18 +259,26 @@ func (tv *TableViewImpl) Close() {
 func (tv *TableViewImpl) handleMessage(msg Message) {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
+	tv.messageMu.Lock()
+	defer tv.messageMu.Unlock()
 
 	payload := reflect.New(tv.options.SchemaValueType)
 	if len(msg.Payload()) == 0 {
 		delete(tv.data, msg.Key())
+		delete(tv.message, msg.Key())
 	} else {
-		if err := msg.GetSchemaValue(payload.Interface()); err != nil {
-			tv.logger.Errorf("msg.GetSchemaValue() failed with %v; msg is %v", err, msg)
+		tv.message[msg.Key()] = msg
+
+		if tv.options.Schema != nil {
+			if err := msg.GetSchemaValue(payload.Interface()); err != nil {
+				tv.logger.Errorf("msg.GetSchemaValue() failed with %v; msg is %v", err, msg)
+			}
+			tv.data[msg.Key()] = reflect.Indirect(payload).Interface()
 		}
-		tv.data[msg.Key()] = reflect.Indirect(payload).Interface()
 	}
 
 	for _, listener := range tv.listeners {
+		// This will only be populated by successful calls to ForEachAndListen
 		if err := listener(msg.Key(), reflect.Indirect(payload).Interface()); err != nil {
 			tv.logger.Errorf("table view listener failed for %v: %w", msg, err)
 		}

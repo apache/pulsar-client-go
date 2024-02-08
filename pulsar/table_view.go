@@ -59,6 +59,10 @@ type TableView interface {
 	// Get returns the value to which the specified key is mapped, or nil if this map contains no mapping for the key.
 	Get(key string) interface{}
 
+	// GetMessage returns the Message to which the specified key is mapped,
+	// or nil if this map contains no mapping for the key.
+	GetMessage(key string) Message
+
 	// Entries returns a map view of the mappings contained in this TableView.
 	Entries() map[string]interface{}
 
