@@ -19,11 +19,14 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"testing"
+	"time"
 
 	pb "github.com/apache/pulsar-client-go/integration-tests/pb"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 type testJSON struct {
@@ -53,6 +56,67 @@ func createClient() Client {
 		log.Fatal(err)
 	}
 	return client
+}
+
+func TestBytesSchema(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	topic := newTopicName()
+
+	properties := make(map[string]string)
+	properties["pulsar"] = "hello"
+	producerSchemaBytes := NewBytesSchema(properties)
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: producerSchemaBytes,
+	})
+	assert.NoError(t, err)
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Value: []byte(`{"key": "value"}`),
+	})
+	require.NoError(t, err)
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Value: []byte(`something else`),
+	})
+	require.NoError(t, err)
+	producer.Close()
+
+	// Create consumer
+	consumerSchemaBytes := NewBytesSchema(nil)
+	assert.NotNil(t, consumerSchemaBytes)
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "sub-1",
+		Schema:                      consumerSchemaBytes,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	// Receive first message
+	var out1 []byte
+	msg1, err := consumer.Receive(ctx)
+	assert.NoError(t, err)
+	err = msg1.GetSchemaValue(&out1)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte(`{"key": "value"}`), out1)
+	consumer.Ack(msg1)
+	require.NoError(t, err)
+
+	// Receive second message
+	var out2 []byte
+	msg2, err := consumer.Receive(ctx)
+	fmt.Println(string(msg2.Payload()))
+	assert.NoError(t, err)
+	err = msg2.GetSchemaValue(&out2)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte(`something else`), out2)
+
+	defer consumer.Close()
 }
 
 func TestJsonSchema(t *testing.T) {
