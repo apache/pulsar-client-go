@@ -39,7 +39,7 @@ type TableViewImpl struct {
 	options TableViewOptions
 
 	dataMu sync.Mutex
-	data   map[string]interface{}
+	data   map[string]Message
 
 	readersMu    sync.Mutex
 	cancelRaders map[string]cancelReader
@@ -75,7 +75,7 @@ func newTableView(client *client, options TableViewOptions) (TableView, error) {
 	tv := TableViewImpl{
 		client:       client,
 		options:      options,
-		data:         make(map[string]interface{}),
+		data:         make(map[string]Message),
 		cancelRaders: make(map[string]cancelReader),
 		logger:       logger,
 		closedCh:     make(chan struct{}),
@@ -180,16 +180,46 @@ func (tv *TableViewImpl) ContainsKey(key string) bool {
 func (tv *TableViewImpl) Get(key string) interface{} {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
+	msg, ok := tv.data[key]
+	if !ok {
+		return nil
+	}
+
+	v, err := tv.schemaValueFromMessage(msg)
+	if err != nil {
+		tv.logger.Errorf("getting value for message, %w; msg is %v", err, msg)
+		return nil
+	}
+
+	return v
+}
+
+func (tv *TableViewImpl) Message(key string) Message {
+	tv.dataMu.Lock()
+	defer tv.dataMu.Unlock()
 	return tv.data[key]
 }
 
 func (tv *TableViewImpl) Entries() map[string]interface{} {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
+
 	data := make(map[string]interface{}, len(tv.data))
-	for k, v := range tv.data {
+	for k, msg := range tv.data {
+		v, err := tv.schemaValueFromMessage(msg)
+		if err != nil {
+			tv.logger.Errorf("getting value for message, %w; msg is %v", len(tv.listeners), err, msg)
+			continue
+		}
 		data[k] = v
 	}
+
+	return data
+}
+
+func (tv *TableViewImpl) Messages() map[string]Message {
+	tv.dataMu.Lock()
+	defer tv.dataMu.Unlock()
 	return tv.data
 }
 
@@ -245,21 +275,30 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
 
-	payload := reflect.New(tv.options.SchemaValueType)
 	if len(msg.Payload()) == 0 {
 		delete(tv.data, msg.Key())
 	} else {
-		if err := msg.GetSchemaValue(payload.Interface()); err != nil {
-			tv.logger.Errorf("msg.GetSchemaValue() failed with %v; msg is %v", err, msg)
-		}
-		tv.data[msg.Key()] = reflect.Indirect(payload).Interface()
+		tv.data[msg.Key()] = msg
 	}
 
+	v, err := tv.schemaValueFromMessage(msg)
+	if err != nil {
+		tv.logger.Errorf("will not action %d listeners, getting value for message, %w; msg is %v", len(tv.listeners), err, msg)
+		return
+	}
 	for _, listener := range tv.listeners {
-		if err := listener(msg.Key(), reflect.Indirect(payload).Interface()); err != nil {
+		if err := listener(msg.Key(), v); err != nil {
 			tv.logger.Errorf("table view listener failed for %v: %w", msg, err)
 		}
 	}
+}
+
+func (tv *TableViewImpl) schemaValueFromMessage(msg Message) (interface{}, error) {
+	payload := reflect.New(tv.options.SchemaValueType)
+	if err := msg.GetSchemaValue(payload.Interface()); err != nil {
+		return nil, fmt.Errorf("msg.GetSchemaValue() failed: %w", err)
+	}
+	return reflect.Indirect(payload).Interface(), nil
 }
 
 func (tv *TableViewImpl) watchReaderForNewMessages(ctx context.Context, reader Reader) {

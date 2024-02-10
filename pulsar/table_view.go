@@ -56,11 +56,17 @@ type TableView interface {
 	// ContainsKey returns true if this TableView contains a mapping for the specified key.
 	ContainsKey(key string) bool
 
-	// Get returns the value to which the specified key is mapped, or nil if this map contains no mapping for the key.
+	// Get returns the value to which the specified key is mapped, or nil if this map contains no mapping for the key or the Message cannot be encoded to the SchemaValueType
 	Get(key string) interface{}
 
-	// Entries returns a map view of the mappings contained in this TableView.
+	// Message returns the Message to which the specified key is mapped, or nil if this map contains no mapping for the key.
+	Message(key string) Message
+
+	// Entries returns a map view of the mappings contained in this TableView, with values encoded into SchemaValueType.
 	Entries() map[string]interface{}
+
+	// Messages returns a map view of the Message mappings contained in this TableView.
+	Messages() map[string]Message
 
 	// Keys returns a slice of the keys contained in this TableView.
 	Keys() []string
