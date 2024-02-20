@@ -20,6 +20,7 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -942,4 +943,125 @@ func TestReaderGetLastMessageID(t *testing.T) {
 
 	assert.Equal(t, lastMsgID.LedgerID(), getLastMessageID.LedgerID())
 	assert.Equal(t, lastMsgID.EntryID(), getLastMessageID.EntryID())
+}
+
+var _ ReaderInterceptor = (*counterReaderInterceptor)(nil)
+
+type counterReaderInterceptor struct {
+	v *int32
+}
+
+func newInterceptor() *counterReaderInterceptor {
+	var v = int32(0)
+	return &counterReaderInterceptor{v: &v}
+}
+
+func (c *counterReaderInterceptor) BeforeRead(_ ConsumerMessage) {
+	atomic.AddInt32(c.v, int32(1))
+}
+
+func TestSingleReaderInterceptor(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+	schema := NewStringSchema(nil)
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+		Schema:          schema,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, msgID)
+	}
+
+	interceptor := newInterceptor()
+	r, err := client.CreateReader(ReaderOptions{
+		Topic:              topic,
+		ReaderInterceptors: []ReaderInterceptor{interceptor},
+		StartMessageID:     EarliestMessageID(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, r)
+	defer r.Close()
+
+	for {
+		if r.HasNext() {
+			_, err := r.Next(ctx)
+			assert.NoError(t, err)
+		} else {
+			break
+		}
+	}
+
+	assert.Equal(t, atomic.LoadInt32(interceptor.v), int32(10))
+}
+
+func TestMultiReaderInterceptors(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+	schema := NewStringSchema(nil)
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+		Schema:          schema,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, msgID)
+	}
+
+	interceptor0 := newInterceptor()
+	interceptor1 := newInterceptor()
+	interceptor2 := newInterceptor()
+	r, err := client.CreateReader(ReaderOptions{
+		Topic:              topic,
+		ReaderInterceptors: []ReaderInterceptor{interceptor0, interceptor1, interceptor2},
+		StartMessageID:     EarliestMessageID(),
+	})
+
+	assert.NotNil(t, r)
+	assert.NoError(t, err)
+	defer r.Close()
+
+	for {
+		if r.HasNext() {
+			_, err := r.Next(ctx)
+			assert.NoError(t, err)
+		} else {
+			break
+		}
+	}
+
+	assert.Equal(t, atomic.LoadInt32(interceptor0.v), int32(10))
+	assert.Equal(t, atomic.LoadInt32(interceptor1.v), int32(10))
+	assert.Equal(t, atomic.LoadInt32(interceptor2.v), int32(10))
 }

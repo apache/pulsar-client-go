@@ -93,6 +93,9 @@ type ReaderOptions struct {
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
 	BackoffPolicy internal.BackoffPolicy
 
+	// ReaderInterceptors call before messages consumed.
+	ReaderInterceptors []ReaderInterceptor
+
 	// MaxPendingChunkedMessage sets the maximum pending chunked messages. (default: 100)
 	MaxPendingChunkedMessage int
 
