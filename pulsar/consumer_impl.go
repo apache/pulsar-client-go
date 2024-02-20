@@ -23,6 +23,7 @@ import (
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
@@ -384,7 +385,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				metadata:                    metadata,
 				subProperties:               subProperties,
 				replicateSubscriptionState:  c.options.ReplicateSubscriptionState,
-				startMessageID:              nil,
+				startMessageID:              c.options.startMessageID,
+				startMessageIDInclusive:     c.options.StartMessageIDInclusive,
 				subscriptionMode:            c.options.SubscriptionMode,
 				readCompacted:               c.options.ReadCompacted,
 				interceptors:                c.options.Interceptors,
@@ -705,6 +707,26 @@ func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
 			partition, len(c.consumers))
 	}
 	return nil
+}
+
+func (c *consumer) hasNext() bool {
+	var wg sync.WaitGroup
+
+	wg.Add(len(c.consumers))
+
+	var hasNext atomic.Bool
+	for _, pc := range c.consumers {
+		pc := pc
+		go func() {
+			defer wg.Done()
+			if pc.hasNext() {
+				hasNext.Store(true)
+			}
+		}()
+	}
+
+	wg.Wait()
+	return hasNext.Load()
 }
 
 var r = &random{
