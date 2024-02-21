@@ -90,10 +90,10 @@ func TestReaderConfigChunk(t *testing.T) {
 	defer r1.Close()
 
 	// verify specified chunk options
-	pcOpts := r1.(*reader).pc.options
-	assert.Equal(t, 50, pcOpts.maxPendingChunkedMessage)
-	assert.Equal(t, 30*time.Second, pcOpts.expireTimeOfIncompleteChunk)
-	assert.True(t, pcOpts.autoAckIncompleteChunk)
+	pcOpts := r1.(*reader).c.options
+	assert.Equal(t, 50, pcOpts.MaxPendingChunkedMessage)
+	assert.Equal(t, 30*time.Second, pcOpts.ExpireTimeOfIncompleteChunk)
+	assert.True(t, pcOpts.AutoAckIncompleteChunk)
 
 	r2, err := client.CreateReader(ReaderOptions{
 		Topic:          "my-topic2",
@@ -103,10 +103,10 @@ func TestReaderConfigChunk(t *testing.T) {
 	defer r2.Close()
 
 	// verify default chunk options
-	pcOpts = r2.(*reader).pc.options
-	assert.Equal(t, 100, pcOpts.maxPendingChunkedMessage)
-	assert.Equal(t, time.Minute, pcOpts.expireTimeOfIncompleteChunk)
-	assert.False(t, pcOpts.autoAckIncompleteChunk)
+	pcOpts = r2.(*reader).c.options
+	assert.Equal(t, 100, pcOpts.MaxPendingChunkedMessage)
+	assert.Equal(t, time.Minute, pcOpts.ExpireTimeOfIncompleteChunk)
+	assert.False(t, pcOpts.AutoAckIncompleteChunk)
 }
 
 func TestReader(t *testing.T) {
@@ -880,7 +880,7 @@ func TestReaderWithBackoffPolicy(t *testing.T) {
 	assert.NotNil(t, _reader)
 	assert.Nil(t, err)
 
-	partitionConsumerImp := _reader.(*reader).pc
+	partitionConsumerImp := _reader.(*reader).c.consumers[0]
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker()

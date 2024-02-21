@@ -35,7 +35,6 @@ const (
 type reader struct {
 	sync.Mutex
 	client    *client
-	pc        *partitionConsumer
 	messageCh chan ConsumerMessage
 	log       log.Logger
 	metrics   *internal.LeveledMetrics
