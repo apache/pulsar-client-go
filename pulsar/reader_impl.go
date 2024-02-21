@@ -131,8 +131,13 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Provide dummy rlq router with not dlq policy
+	rlq, err := newRetryRouter(client, nil, false, client.log)
+	if err != nil {
+		return nil, err
+	}
 
-	c, err := newInternalConsumer(client, *co, options.Topic, reader.messageCh, dlq, nil, false)
+	c, err := newInternalConsumer(client, *co, options.Topic, reader.messageCh, dlq, rlq, false)
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err

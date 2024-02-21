@@ -20,7 +20,6 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	uAtomic "go.uber.org/atomic"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -31,6 +30,7 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	pkgerrors "github.com/pkg/errors"
+	uAtomic "go.uber.org/atomic"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
