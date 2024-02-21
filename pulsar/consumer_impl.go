@@ -20,10 +20,10 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	uAtomic "go.uber.org/atomic"
 	"math/rand"
 	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
@@ -714,7 +714,7 @@ func (c *consumer) hasNext() bool {
 
 	wg.Add(len(c.consumers))
 
-	var hasNext atomic.Bool
+	var hasNext uAtomic.Bool
 	for _, pc := range c.consumers {
 		pc := pc
 		go func() {
