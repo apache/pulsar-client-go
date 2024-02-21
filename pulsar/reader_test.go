@@ -422,7 +422,6 @@ func TestReaderHasNext(t *testing.T) {
 		assert.NotNil(t, msgID)
 	}
 
-	// create reader on 5th message (not included)
 	reader, err := client.CreateReader(ReaderOptions{
 		Topic:          topic,
 		StartMessageID: EarliestMessageID(),

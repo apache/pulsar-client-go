@@ -729,6 +729,14 @@ func (c *consumer) hasNext() bool {
 	return hasNext.Load()
 }
 
+func (c *consumer) setLastDequeuedMsg(msgID MessageID) error {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+	c.consumers[msgID.PartitionIdx()].lastDequeuedMsg = toTrackingMessageID(msgID)
+	return nil
+}
+
 var r = &random{
 	R: rand.New(rand.NewSource(time.Now().UnixNano())),
 }

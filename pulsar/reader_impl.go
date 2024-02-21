@@ -154,7 +154,7 @@ func (r *reader) Topic() string {
 func (r *reader) Next(ctx context.Context) (Message, error) {
 	for {
 		select {
-		case cm, ok := <-r.c.messageCh:
+		case cm, ok := <-r.messageCh:
 			if !ok {
 				return nil, newError(ConsumerClosed, "consumer closed")
 			}
@@ -162,7 +162,11 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
 			msgID := cm.Message.ID()
-			err := r.c.AckID(msgID)
+			err := r.c.setLastDequeuedMsg(msgID)
+			if err != nil {
+				return nil, err
+			}
+			err = r.c.AckID(msgID)
 			if err != nil {
 				return nil, err
 			}
