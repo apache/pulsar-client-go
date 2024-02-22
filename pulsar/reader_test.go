@@ -156,7 +156,7 @@ func TestReader(t *testing.T) {
 	}
 }
 
-func TestPartitionedReader(t *testing.T) {
+func TestReaderOnPartitionedTopic(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -165,15 +165,8 @@ func TestPartitionedReader(t *testing.T) {
 	defer client.Close()
 
 	topic := newTopicName()
-	admin, err := pulsaradmin.NewClient(&config.Config{})
-	assert.Nil(t, err)
+	assert.Nil(t, createPartitionedTopic(topic, 3))
 	ctx := context.Background()
-
-	topicName, err := utils.GetTopicName(topic)
-	assert.Nil(t, err)
-	err = admin.Topics().Create(*topicName, 3)
-	assert.Nil(t, err)
-
 	// create reader
 	reader, err := client.CreateReader(ReaderOptions{
 		Topic:          topic,
@@ -995,4 +988,38 @@ func TestReaderGetLastMessageID(t *testing.T) {
 
 	assert.Equal(t, lastMsgID.LedgerID(), getLastMessageID.LedgerID())
 	assert.Equal(t, lastMsgID.EntryID(), getLastMessageID.EntryID())
+}
+
+func TestReaderGetLastMessageIDOnMultiTopics(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	topic := newTopicName()
+	assert.Nil(t, createPartitionedTopic(topic, 3))
+
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	_, err = reader.GetLastMessageID()
+	assert.NotNil(t, err)
+}
+
+func createPartitionedTopic(topic string, n int) error {
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	if err != nil {
+		return err
+	}
+
+	topicName, err := utils.GetTopicName(topic)
+	if err != nil {
+		return err
+	}
+	err = admin.Topics().Create(*topicName, n)
+	if err != nil {
+		return err
+	}
+	return nil
 }

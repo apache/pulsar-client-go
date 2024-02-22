@@ -136,6 +136,6 @@ type Reader interface {
 	SeekByTime(time time.Time) error
 
 	// GetLastMessageID get the last message id available for consume.
-	// It only works for single topic reader
+	// It only works for single topic reader. It will return an error when the reader is the multi-topic reader.
 	GetLastMessageID() (MessageID, error)
 }

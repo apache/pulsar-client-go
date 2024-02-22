@@ -97,7 +97,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		options.ExpireTimeOfIncompleteChunk = time.Minute
 	}
 
-	co := &ConsumerOptions{
+	consumerOptions := &ConsumerOptions{
 		Topic:                       options.Topic,
 		Name:                        options.Name,
 		SubscriptionName:            subscriptionName,
@@ -136,7 +136,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, err
 	}
 
-	c, err := newInternalConsumer(client, *co, options.Topic, reader.messageCh, dlq, rlq, false)
+	c, err := newInternalConsumer(client, *consumerOptions, options.Topic, reader.messageCh, dlq, rlq, false)
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err

@@ -247,8 +247,8 @@ type ConsumerOptions struct {
 	// Default is `Durable`
 	SubscriptionMode SubscriptionMode
 
-	// StartMessageIDInclusive, if true, the reader will start at the `StartMessageID`, included.
-	// Default is `false` and the reader will start from the "next" message
+	// StartMessageIDInclusive, if true, the consumer will start at the `StartMessageID`, included.
+	// Default is `false` and the consumer will start from the "next" message
 	StartMessageIDInclusive bool
 
 	// startMessageID specifies the message id to start from. Currently, it's only used for the reader internally.
