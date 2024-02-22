@@ -20,6 +20,9 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"github.com/apache/pulsar-client-go/pulsaradmin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"testing"
 	"time"
 
@@ -119,6 +122,57 @@ func TestReader(t *testing.T) {
 
 	topic := newTopicName()
 	ctx := context.Background()
+
+	// create reader
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.NoError(t, err)
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := reader.Next(context.Background())
+		assert.NoError(t, err)
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+	}
+}
+
+func TestPartitionedReader(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+	ctx := context.Background()
+
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	err = admin.Topics().Create(*topicName, 3)
+	assert.Nil(t, err)
 
 	// create reader
 	reader, err := client.CreateReader(ReaderOptions{
