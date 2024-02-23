@@ -246,6 +246,13 @@ type ConsumerOptions struct {
 	// SubscriptionMode specifies the subscription mode to be used when subscribing to a topic.
 	// Default is `Durable`
 	SubscriptionMode SubscriptionMode
+
+	// StartMessageIDInclusive, if true, the consumer will start at the `StartMessageID`, included.
+	// Default is `false` and the consumer will start from the "next" message
+	StartMessageIDInclusive bool
+
+	// startMessageID specifies the message id to start from. Currently, it's only used for the reader internally.
+	startMessageID *trackingMessageID
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
