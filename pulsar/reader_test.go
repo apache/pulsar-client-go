@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 )
@@ -942,4 +943,59 @@ func TestReaderGetLastMessageID(t *testing.T) {
 
 	assert.Equal(t, lastMsgID.LedgerID(), getLastMessageID.LedgerID())
 	assert.Equal(t, lastMsgID.EntryID(), getLastMessageID.EntryID())
+}
+
+func TestReaderHasNextFailed(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	topic := newTopicName()
+	r, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	r.(*reader).pc.state.Store(consumerClosing)
+	assert.False(t, r.HasNext())
+}
+
+func TestReaderHasNextRetryFailed(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	topic := newTopicName()
+	r, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+		// Retry the connection 10 seconds after it's disconnected.
+		BackoffPolicy: newTestBackoffPolicy(10*time.Second, 10*time.Second),
+	})
+	assert.Nil(t, err)
+
+	// Disconnect the connection
+	r.(*reader).pc.conn.Load().(internal.Connection).Close()
+	minTimer := time.NewTimer(10 * time.Second) // Timer to check if r.HasNext() blocked for at least 10s
+	maxTimer := time.NewTimer(20 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 20s
+
+	done := make(chan bool)
+	go func() {
+		assert.False(t, r.HasNext())
+		done <- true
+	}()
+
+	select {
+	case <-maxTimer.C:
+		t.Fatal("r.HasNext() blocked for more than 20s")
+	case <-done:
+
+		if minTimer.Stop() {
+			t.Fatal("r.HasNext() did not block for at least 10s")
+		}
+		if !maxTimer.Stop() {
+			t.Fatal("r.HasNext() blocked for more than 20s")
+		}
+	}
+
 }

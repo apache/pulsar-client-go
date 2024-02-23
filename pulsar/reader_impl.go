@@ -173,16 +173,11 @@ func (r *reader) HasNext() bool {
 		return true
 	}
 
-	for {
-		lastMsgID, err := r.pc.getLastMessageID()
-		if err != nil {
-			r.log.WithError(err).Error("Failed to get last message id from broker")
-			continue
-		} else {
-			r.lastMessageInBroker = lastMsgID
-			break
-		}
+	lastMsgID, err := r.pc.getLastMessageID()
+	if err != nil {
+		return false
 	}
+	r.lastMessageInBroker = lastMsgID
 
 	return r.hasMoreMessages()
 }

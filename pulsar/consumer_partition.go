@@ -568,15 +568,31 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 
 func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
-		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
-		return nil, errors.New("failed to redeliver closing or closed consumer")
+		pc.log.WithField("state", state).Error("Failed to getLastMessageID for the closing or closed consumer")
+		return nil, errors.New("failed to getLastMessageID for the closing or closed consumer")
 	}
-	req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
-	pc.eventsCh <- req
+	backoff := &internal.DefaultBackoff{}
+	request := func() (*trackingMessageID, error) {
+		req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
+		pc.eventsCh <- req
 
-	// wait for the request to complete
-	<-req.doneCh
-	return req.msgID, req.err
+		// wait for the request to complete
+		<-req.doneCh
+		return req.msgID, req.err
+	}
+	for {
+		msgID, err := request()
+		if err == nil {
+			return msgID, nil
+		}
+		pc.log.Info("RETRY !!!")
+		nextDelay := backoff.Next()
+		if backoff.IsMaxBackoffReached() {
+			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
+		}
+		pc.log.WithError(err).Errorf("Failed to get last message id from broker, retrying in %v...", nextDelay)
+		time.Sleep(nextDelay)
+	}
 }
 
 func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) {
