@@ -1102,6 +1102,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 		if ackSet != nil && !ackSet.Test(uint(i)) {
 			pc.log.Debugf("Ignoring message from %vth message, which has been acknowledged", i)
+			pc.availablePermits.inc()
 			continue
 		}
 
@@ -1120,6 +1121,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 		if pc.messageShouldBeDiscarded(trackingMsgID) {
 			pc.AckID(trackingMsgID)
+			pc.availablePermits.inc()
 			continue
 		}
 
@@ -1144,6 +1146,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 
 		if pc.ackGroupingTracker.isDuplicate(msgID) {
+			pc.availablePermits.inc()
 			continue
 		}
 
