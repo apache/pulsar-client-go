@@ -1093,7 +1093,10 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
 	pc.metrics.PrefetchedMessages.Add(float64(numMsgs))
 
-	var bytesReceived int
+	var (
+		bytesReceived   int
+		skippedMessages int32
+	)
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
 		if err != nil || payload == nil {
@@ -1102,6 +1105,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 		if ackSet != nil && !ackSet.Test(uint(i)) {
 			pc.log.Debugf("Ignoring message from %vth message, which has been acknowledged", i)
+			skippedMessages++
 			continue
 		}
 
@@ -1120,6 +1124,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 		if pc.messageShouldBeDiscarded(trackingMsgID) {
 			pc.AckID(trackingMsgID)
+			skippedMessages++
 			continue
 		}
 
@@ -1144,6 +1149,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 
 		if pc.ackGroupingTracker.isDuplicate(msgID) {
+			skippedMessages++
 			continue
 		}
 
@@ -1216,6 +1222,10 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		pc.client.memLimit.ForceReserveMemory(int64(bytesReceived))
 		pc.incomingMessages.Add(int32(len(messages)))
 		pc.markScaleIfNeed()
+	}
+
+	if skippedMessages > 0 {
+		pc.availablePermits.add(skippedMessages)
 	}
 
 	// send messages to the dispatcher
