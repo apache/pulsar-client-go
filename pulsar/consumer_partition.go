@@ -174,6 +174,8 @@ type partitionConsumer struct {
 	chunkedMsgCtxMap   *chunkedMsgCtxMap
 	unAckChunksTracker *unAckChunksTracker
 	ackGroupingTracker ackGroupingTracker
+
+	lastMessageInBroker *trackingMessageID
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -585,7 +587,6 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		if err == nil {
 			return msgID, nil
 		}
-		pc.log.Info("RETRY !!!")
 		nextDelay := backoff.Next()
 		if backoff.IsMaxBackoffReached() {
 			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
@@ -1984,6 +1985,35 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 		pc.log.Error("Connection was closed when request ack cmd")
 	}
 	pc.availablePermits.inc()
+}
+
+func (pc *partitionConsumer) hasNext() bool {
+	if pc.lastMessageInBroker != nil && pc.hasMoreMessages() {
+		return true
+	}
+
+	lastMsgID, err := pc.getLastMessageID()
+	if err != nil {
+		return false
+	}
+	pc.lastMessageInBroker = lastMsgID
+
+	return pc.hasMoreMessages()
+}
+
+func (pc *partitionConsumer) hasMoreMessages() bool {
+	if pc.lastDequeuedMsg != nil {
+		return pc.lastMessageInBroker.isEntryIDValid() && pc.lastMessageInBroker.greater(pc.lastDequeuedMsg.messageID)
+	}
+
+	if pc.options.startMessageIDInclusive {
+		return pc.lastMessageInBroker.isEntryIDValid() &&
+			pc.lastMessageInBroker.greaterEqual(pc.startMessageID.get().messageID)
+	}
+
+	// Non-inclusive
+	return pc.lastMessageInBroker.isEntryIDValid() &&
+		pc.lastMessageInBroker.greater(pc.startMessageID.get().messageID)
 }
 
 // _setConn sets the internal connection field of this partition consumer atomically.

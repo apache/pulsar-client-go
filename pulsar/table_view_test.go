@@ -91,6 +91,13 @@ func TestTableViewSchemas(t *testing.T) {
 		valueCheck    func(t *testing.T, got interface{}) // Overrides expValueOut for more complex checks
 	}{
 		{
+			name:          "BytesSchema",
+			schema:        NewBytesSchema(nil),
+			schemaType:    []byte(`any`),
+			producerValue: []byte(`hello pulsar`),
+			expValueOut:   []byte(`hello pulsar`),
+		},
+		{
 			name:          "StringSchema",
 			schema:        NewStringSchema(nil),
 			schemaType:    strPointer("hello pulsar"),
