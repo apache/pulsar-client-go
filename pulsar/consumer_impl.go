@@ -30,7 +30,6 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	pkgerrors "github.com/pkg/errors"
-	uAtomic "go.uber.org/atomic"
 )
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
@@ -710,23 +709,39 @@ func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
 }
 
 func (c *consumer) hasNext() bool {
-	var wg sync.WaitGroup
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Make sure all paths cancel the context to avoid context leak
 
+	var wg sync.WaitGroup
 	wg.Add(len(c.consumers))
 
-	var hasNext uAtomic.Bool
+	hasNext := make(chan bool)
 	for _, pc := range c.consumers {
 		pc := pc
 		go func() {
 			defer wg.Done()
 			if pc.hasNext() {
-				hasNext.Store(true)
+				select {
+				case hasNext <- true:
+				case <-ctx.Done():
+				}
 			}
 		}()
 	}
 
-	wg.Wait()
-	return hasNext.Load()
+	go func() {
+		wg.Wait()
+		close(hasNext) // Close the channel after all goroutines have finished
+	}()
+
+	// Wait for either a 'true' result or for all goroutines to finish
+	for hn := range hasNext {
+		if hn {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (c *consumer) setLastDequeuedMsg(msgID MessageID) error {
