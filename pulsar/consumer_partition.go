@@ -206,12 +206,6 @@ func (p *availablePermits) add(delta int32) {
 	p.flowIfNeed()
 }
 
-func (p *availablePermits) incN(delta int32) {
-	for ; delta > 0; delta-- {
-		p.inc()
-	}
-}
-
 func (p *availablePermits) reset() {
 	p.permits.Store(0)
 }
@@ -1231,7 +1225,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	}
 
 	if skippedMessages > 0 {
-		pc.availablePermits.incN(skippedMessages)
+		pc.availablePermits.add(skippedMessages)
 	}
 
 	// send messages to the dispatcher
