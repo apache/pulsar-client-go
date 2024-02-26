@@ -1049,15 +1049,15 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 	r, err := client.CreateReader(ReaderOptions{
 		Topic:          topic,
 		StartMessageID: EarliestMessageID(),
-		// Retry the connection 10 seconds after it's disconnected.
-		BackoffPolicy: newTestBackoffPolicy(10*time.Second, 10*time.Second),
+		// Retry the connection 1 second after it's disconnected.
+		BackoffPolicy: newTestBackoffPolicy(1*time.Second, 1*time.Second),
 	})
 	assert.Nil(t, err)
 
 	// Disconnect the connection
 	r.(*reader).c.consumers[0].conn.Load().(internal.Connection).Close()
-	minTimer := time.NewTimer(10 * time.Second) // Timer to check if r.HasNext() blocked for at least 10s
-	maxTimer := time.NewTimer(20 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 20s
+	minTimer := time.NewTimer(1 * time.Second) // Timer to check if r.HasNext() blocked for at least 1s
+	maxTimer := time.NewTimer(2 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 2s
 
 	done := make(chan bool)
 	go func() {
