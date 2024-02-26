@@ -22,5 +22,5 @@ type FunctionState struct {
 	StringValue string `json:"stringValue,omitempty"`
 	ByteValue   []byte `json:"byteValue,omitempty"`
 	NumValue    int64  `json:"numberValue,omitempty"`
-	Version     int64  `json:"version"`
+	Version     int64  `json:"version,omitempty"`
 }
