@@ -1043,7 +1043,7 @@ func TestReaderHasNextFailed(t *testing.T) {
 func TestReaderHasNextRetryFailed(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL:              serviceURL,
-		OperationTimeout: 1 * time.Second,
+		OperationTimeout: 2 * time.Second,
 	})
 	assert.Nil(t, err)
 	topic := newTopicName()
@@ -1055,7 +1055,13 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 
 	c := make(chan interface{})
 	defer close(c)
-	r.(*reader).c.consumers[0].eventsCh = c
+
+	// Close the consumer events loop and assign a mock eventsCh
+	pc := r.(*reader).c.consumers[0]
+	pc.Close()
+	pc.state.Store(consumerReady)
+	pc.eventsCh = c
+
 	go func() {
 		for e := range c {
 			req, ok := e.(*getLastMsgIDRequest)
@@ -1065,8 +1071,7 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 		}
 	}()
 	minTimer := time.NewTimer(1 * time.Second) // Timer to check if r.HasNext() blocked for at least 1s
-	maxTimer := time.NewTimer(2 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 2s
-
+	maxTimer := time.NewTimer(3 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 3s
 	done := make(chan bool)
 	go func() {
 		assert.False(t, r.HasNext())
@@ -1075,15 +1080,10 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 
 	select {
 	case <-maxTimer.C:
-		t.Fatal("r.HasNext() blocked for more than 2s")
+		t.Fatal("r.HasNext() blocked for more than 3s")
 	case <-done:
-
-		if minTimer.Stop() {
-			t.Fatal("r.HasNext() did not block for at least 1s")
-		}
-		if !maxTimer.Stop() {
-			t.Fatal("r.HasNext() blocked for more than 2s")
-		}
+		assert.False(t, minTimer.Stop(), "r.HasNext() did not block for at least 1s")
+		assert.True(t, maxTimer.Stop())
 	}
 
 }
