@@ -594,6 +594,7 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 			return msgID, nil
 		}
 		if remainTime <= 0 {
+			pc.log.WithError(err).Error("Failed to getLastMessageID")
 			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
 		}
 		nextDelay := backoff.Next()
