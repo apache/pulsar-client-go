@@ -573,7 +573,13 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		pc.log.WithField("state", state).Error("Failed to getLastMessageID for the closing or closed consumer")
 		return nil, errors.New("failed to getLastMessageID for the closing or closed consumer")
 	}
-	backoff := &internal.DefaultBackoff{}
+	remainTime := pc.client.operationTimeout
+	var backoff internal.BackoffPolicy
+	if pc.options.backoffPolicy != nil {
+		backoff = pc.options.backoffPolicy
+	} else {
+		backoff = &internal.DefaultBackoff{}
+	}
 	request := func() (*trackingMessageID, error) {
 		req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
 		pc.eventsCh <- req
@@ -587,10 +593,14 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		if err == nil {
 			return msgID, nil
 		}
-		nextDelay := backoff.Next()
-		if backoff.IsMaxBackoffReached() {
+		if remainTime <= 0 {
 			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
 		}
+		nextDelay := backoff.Next()
+		if nextDelay > remainTime {
+			nextDelay = remainTime
+		}
+		remainTime -= nextDelay
 		pc.log.WithError(err).Errorf("Failed to get last message id from broker, retrying in %v...", nextDelay)
 		time.Sleep(nextDelay)
 	}

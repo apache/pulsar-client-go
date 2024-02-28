@@ -24,11 +24,11 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -1043,20 +1043,28 @@ func TestReaderHasNextFailed(t *testing.T) {
 
 func TestReaderHasNextRetryFailed(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL:              serviceURL,
+		OperationTimeout: 1 * time.Second,
 	})
 	assert.Nil(t, err)
 	topic := newTopicName()
 	r, err := client.CreateReader(ReaderOptions{
 		Topic:          topic,
 		StartMessageID: EarliestMessageID(),
-		// Retry the connection 1 second after it's disconnected.
-		BackoffPolicy: newTestBackoffPolicy(1*time.Second, 1*time.Second),
 	})
 	assert.Nil(t, err)
 
-	// Disconnect the connection
-	r.(*reader).c.consumers[0].conn.Load().(internal.Connection).Close()
+	c := make(chan interface{})
+	defer close(c)
+	r.(*reader).c.consumers[0].eventsCh = c
+	go func() {
+		for e := range c {
+			req, ok := e.(*getLastMsgIDRequest)
+			assert.True(t, ok, "unexpected event type")
+			req.err = errors.New("expected error")
+			close(req.doneCh)
+		}
+	}()
 	minTimer := time.NewTimer(1 * time.Second) // Timer to check if r.HasNext() blocked for at least 1s
 	maxTimer := time.NewTimer(2 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 2s
 
@@ -1068,14 +1076,14 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 
 	select {
 	case <-maxTimer.C:
-		t.Fatal("r.HasNext() blocked for more than 20s")
+		t.Fatal("r.HasNext() blocked for more than 2s")
 	case <-done:
 
 		if minTimer.Stop() {
-			t.Fatal("r.HasNext() did not block for at least 10s")
+			t.Fatal("r.HasNext() did not block for at least 1s")
 		}
 		if !maxTimer.Stop() {
-			t.Fatal("r.HasNext() blocked for more than 20s")
+			t.Fatal("r.HasNext() blocked for more than 2s")
 		}
 	}
 
