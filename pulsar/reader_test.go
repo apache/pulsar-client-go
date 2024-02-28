@@ -28,6 +28,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/google/uuid"
+	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -1022,4 +1023,67 @@ func createPartitionedTopic(topic string, n int) error {
 		return err
 	}
 	return nil
+}
+
+func TestReaderHasNextFailed(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	topic := newTopicName()
+	r, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	r.(*reader).c.consumers[0].state.Store(consumerClosing)
+	assert.False(t, r.HasNext())
+}
+
+func TestReaderHasNextRetryFailed(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		OperationTimeout: 2 * time.Second,
+	})
+	assert.Nil(t, err)
+	topic := newTopicName()
+	r, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+
+	c := make(chan interface{})
+	defer close(c)
+
+	// Close the consumer events loop and assign a mock eventsCh
+	pc := r.(*reader).c.consumers[0]
+	pc.Close()
+	pc.state.Store(consumerReady)
+	pc.eventsCh = c
+
+	go func() {
+		for e := range c {
+			req, ok := e.(*getLastMsgIDRequest)
+			assert.True(t, ok, "unexpected event type")
+			req.err = errors.New("expected error")
+			close(req.doneCh)
+		}
+	}()
+	minTimer := time.NewTimer(1 * time.Second) // Timer to check if r.HasNext() blocked for at least 1s
+	maxTimer := time.NewTimer(3 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 3s
+	done := make(chan bool)
+	go func() {
+		assert.False(t, r.HasNext())
+		done <- true
+	}()
+
+	select {
+	case <-maxTimer.C:
+		t.Fatal("r.HasNext() blocked for more than 3s")
+	case <-done:
+		assert.False(t, minTimer.Stop(), "r.HasNext() did not block for at least 1s")
+		assert.True(t, maxTimer.Stop())
+	}
+
 }

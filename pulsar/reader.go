@@ -113,6 +113,7 @@ type Reader interface {
 	Next(context.Context) (Message, error)
 
 	// HasNext checks if there is any message available to read from the current position
+	// If there is any errors, it will return false
 	HasNext() bool
 
 	// Close the reader and stop the broker to push more messages
