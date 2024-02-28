@@ -570,15 +570,41 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 
 func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
-		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
-		return nil, errors.New("failed to redeliver closing or closed consumer")
+		pc.log.WithField("state", state).Error("Failed to getLastMessageID for the closing or closed consumer")
+		return nil, errors.New("failed to getLastMessageID for the closing or closed consumer")
 	}
-	req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
-	pc.eventsCh <- req
+	remainTime := pc.client.operationTimeout
+	var backoff internal.BackoffPolicy
+	if pc.options.backoffPolicy != nil {
+		backoff = pc.options.backoffPolicy
+	} else {
+		backoff = &internal.DefaultBackoff{}
+	}
+	request := func() (*trackingMessageID, error) {
+		req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
+		pc.eventsCh <- req
 
-	// wait for the request to complete
-	<-req.doneCh
-	return req.msgID, req.err
+		// wait for the request to complete
+		<-req.doneCh
+		return req.msgID, req.err
+	}
+	for {
+		msgID, err := request()
+		if err == nil {
+			return msgID, nil
+		}
+		if remainTime <= 0 {
+			pc.log.WithError(err).Error("Failed to getLastMessageID")
+			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
+		}
+		nextDelay := backoff.Next()
+		if nextDelay > remainTime {
+			nextDelay = remainTime
+		}
+		remainTime -= nextDelay
+		pc.log.WithError(err).Errorf("Failed to get last message id from broker, retrying in %v...", nextDelay)
+		time.Sleep(nextDelay)
+	}
 }
 
 func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) {
@@ -1987,16 +2013,11 @@ func (pc *partitionConsumer) hasNext() bool {
 		return true
 	}
 
-	for {
-		lastMsgID, err := pc.getLastMessageID()
-		if err != nil {
-			pc.log.WithError(err).Error("Failed to get last message id from broker")
-			continue
-		} else {
-			pc.lastMessageInBroker = lastMsgID
-			break
-		}
+	lastMsgID, err := pc.getLastMessageID()
+	if err != nil {
+		return false
 	}
+	pc.lastMessageInBroker = lastMsgID
 
 	return pc.hasMoreMessages()
 }

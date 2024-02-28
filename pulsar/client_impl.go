@@ -40,14 +40,15 @@ const (
 )
 
 type client struct {
-	cnxPool       internal.ConnectionPool
-	rpcClient     internal.RPCClient
-	handlers      internal.ClientHandlers
-	lookupService internal.LookupService
-	metrics       *internal.Metrics
-	tcClient      *transactionCoordinatorClient
-	memLimit      internal.MemoryLimitController
-	closeOnce     sync.Once
+	cnxPool          internal.ConnectionPool
+	rpcClient        internal.RPCClient
+	handlers         internal.ClientHandlers
+	lookupService    internal.LookupService
+	metrics          *internal.Metrics
+	tcClient         *transactionCoordinatorClient
+	memLimit         internal.MemoryLimitController
+	closeOnce        sync.Once
+	operationTimeout time.Duration
 
 	log log.Logger
 }
@@ -161,9 +162,10 @@ func newClient(options ClientOptions) (Client, error) {
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval,
 			maxConnectionsPerHost, logger, metrics, connectionMaxIdleTime),
-		log:      logger,
-		metrics:  metrics,
-		memLimit: internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
+		log:              logger,
+		metrics:          metrics,
+		memLimit:         internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
+		operationTimeout: operationTimeout,
 	}
 	serviceNameResolver := internal.NewPulsarServiceNameResolver(url)
 
