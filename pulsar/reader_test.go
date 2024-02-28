@@ -874,7 +874,6 @@ func TestReaderWithSchema(t *testing.T) {
 	assert.Equal(t, *res, value)
 }
 
-//nolint:unparam
 func newTestBackoffPolicy(minBackoff, maxBackoff time.Duration) *testBackoffPolicy {
 	return &testBackoffPolicy{
 		curBackoff: 0,
