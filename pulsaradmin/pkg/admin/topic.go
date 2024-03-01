@@ -431,7 +431,8 @@ func (t *topics) GetPartitionedStats(topic utils.TopicName, perPartition bool) (
 	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &stats, params, true)
 	return stats, err
 }
-func (t *topics) GetPartitionedStatsWithOption(topic utils.TopicName, perPartition bool, option utils.GetStatsOptions) (utils.PartitionedTopicStats, error) {
+func (t *topics) GetPartitionedStatsWithOption(topic utils.TopicName, perPartition bool,
+	option utils.GetStatsOptions) (utils.PartitionedTopicStats, error) {
 	var stats utils.PartitionedTopicStats
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitioned-stats")
 	params := map[string]string{
