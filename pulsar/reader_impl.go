@@ -136,7 +136,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, err
 	}
 
-	c, err := newInternalConsumer(client, *consumerOptions, options.Topic, reader.messageCh, dlq, rlq, false)
+	c, err := newInternalConsumer(client, *consumerOptions, options.Topic, reader.messageCh, dlq, rlq, false, new(sync.Once))
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err

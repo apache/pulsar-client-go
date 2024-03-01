@@ -351,7 +351,7 @@ func (c *regexConsumer) discover() {
 		c.unsubscribe(staleTopics)
 	}
 	if len(newTopics) > 0 {
-		c.subscribe(newTopics, c.dlq, c.rlq)
+		c.subscribe(newTopics, c.dlq, c.rlq, c.closeMsgChOnce)
 	}
 }
 
