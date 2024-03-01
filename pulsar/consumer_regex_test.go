@@ -158,7 +158,8 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 
 	dlq, _ := newDlqRouter(c.(*client), nil, tn.Topic, "regex-sub", "regex-consumer", log.DefaultNopLogger())
 	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
-	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq, new(sync.Once))
+	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq,
+		rlq, new(sync.Once))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -197,7 +198,8 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 
 	dlq, _ := newDlqRouter(c.(*client), nil, tn.Topic, "regex-sub", "regex-consumer", log.DefaultNopLogger())
 	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
-	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq, new(sync.Once))
+	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq,
+		rlq, new(sync.Once))
 	if err != nil {
 		t.Fatal(err)
 	}

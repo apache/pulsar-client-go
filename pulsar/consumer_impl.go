@@ -238,7 +238,8 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 }
 
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool, closeMsgChOnce *sync.Once) (*consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool,
+	closeMsgChOnce *sync.Once) (*consumer, error) {
 
 	consumer := &consumer{
 		topic:                     topic,
