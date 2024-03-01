@@ -75,12 +75,18 @@ type Topics interface {
 	// All the rates are computed over a 1 minute window and are relative the last completed 1 minute period
 	GetStats(utils.TopicName) (utils.TopicStats, error)
 
+	// GetStatsWithOption returns the stats for the topic
+	GetStatsWithOption(utils.TopicName, utils.GetStatsOptions) (utils.TopicStats, error)
+
 	// GetInternalStats returns the internal stats for the topic.
 	GetInternalStats(utils.TopicName) (utils.PersistentTopicInternalStats, error)
 
 	// GetPartitionedStats returns the stats for the partitioned topic
 	// All the rates are computed over a 1 minute window and are relative the last completed 1 minute period
 	GetPartitionedStats(utils.TopicName, bool) (utils.PartitionedTopicStats, error)
+
+	// GetPartitionedStatsWithOption returns the stats for the partitioned topic
+	GetPartitionedStatsWithOption(utils.TopicName, bool, utils.GetStatsOptions) (utils.PartitionedTopicStats, error)
 
 	// Terminate the topic and prevent any more messages being published on it
 	Terminate(utils.TopicName) (utils.MessageID, error)
@@ -395,6 +401,19 @@ func (t *topics) GetStats(topic utils.TopicName) (utils.TopicStats, error) {
 	err := t.pulsar.Client.Get(endpoint, &stats)
 	return stats, err
 }
+func (t *topics) GetStatsWithOption(topic utils.TopicName, option utils.GetStatsOptions) (utils.TopicStats, error) {
+	var stats utils.TopicStats
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "stats")
+	params := map[string]string{
+		"getPreciseBacklog":        strconv.FormatBool(option.GetPreciseBacklog),
+		"subscriptionBacklogSize":  strconv.FormatBool(option.SubscriptionBacklogSize),
+		"getEarliestTimeInBacklog": strconv.FormatBool(option.GetEarliestTimeInBacklog),
+		"excludePublishers":        strconv.FormatBool(option.ExcludePublishers),
+		"excludeConsumers":         strconv.FormatBool(option.ExcludeConsumers),
+	}
+	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &stats, params, true)
+	return stats, err
+}
 
 func (t *topics) GetInternalStats(topic utils.TopicName) (utils.PersistentTopicInternalStats, error) {
 	var stats utils.PersistentTopicInternalStats
@@ -408,6 +427,20 @@ func (t *topics) GetPartitionedStats(topic utils.TopicName, perPartition bool) (
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitioned-stats")
 	params := map[string]string{
 		"perPartition": strconv.FormatBool(perPartition),
+	}
+	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &stats, params, true)
+	return stats, err
+}
+func (t *topics) GetPartitionedStatsWithOption(topic utils.TopicName, perPartition bool, option utils.GetStatsOptions) (utils.PartitionedTopicStats, error) {
+	var stats utils.PartitionedTopicStats
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitioned-stats")
+	params := map[string]string{
+		"perPartition":             strconv.FormatBool(perPartition),
+		"getPreciseBacklog":        strconv.FormatBool(option.GetPreciseBacklog),
+		"subscriptionBacklogSize":  strconv.FormatBool(option.SubscriptionBacklogSize),
+		"getEarliestTimeInBacklog": strconv.FormatBool(option.GetEarliestTimeInBacklog),
+		"excludePublishers":        strconv.FormatBool(option.ExcludePublishers),
+		"excludeConsumers":         strconv.FormatBool(option.ExcludeConsumers),
 	}
 	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &stats, params, true)
 	return stats, err
