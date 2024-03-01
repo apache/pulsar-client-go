@@ -245,13 +245,18 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
 
-	payload := reflect.Indirect(reflect.New(tv.options.SchemaValueType)).Interface()
-	if err := msg.GetSchemaValue(&payload); err != nil {
-		tv.logger.Errorf("msg.GetSchemaValue() failed with %w; msg is %v", msg, err)
+	payload := reflect.New(tv.options.SchemaValueType)
+	if len(msg.Payload()) == 0 {
+		delete(tv.data, msg.Key())
+	} else {
+		if err := msg.GetSchemaValue(payload.Interface()); err != nil {
+			tv.logger.Errorf("msg.GetSchemaValue() failed with %v; msg is %v", err, msg)
+		}
+		tv.data[msg.Key()] = reflect.Indirect(payload).Interface()
 	}
-	tv.data[msg.Key()] = payload
+
 	for _, listener := range tv.listeners {
-		if err := listener(msg.Key(), payload); err != nil {
+		if err := listener(msg.Key(), reflect.Indirect(payload).Interface()); err != nil {
 			tv.logger.Errorf("table view listener failed for %v: %w", msg, err)
 		}
 	}

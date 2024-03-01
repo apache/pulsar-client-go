@@ -23,6 +23,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -33,9 +34,12 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		metrics:              newTestMetrics(),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
+	pc.availablePermits = &availablePermits{pc: &pc}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -45,17 +49,21 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	// ensure the tracker was set on the message id
 	messages := <-pc.queueCh
 	for _, m := range messages {
-		assert.Nil(t, m.ID().(trackingMessageID).tracker)
+		assert.Nil(t, m.ID().(*trackingMessageID).tracker)
 	}
 
 	// ack the message id
-	pc.AckID(messages[0].msgID.(trackingMessageID))
+	pc.AckID(messages[0].msgID.(*trackingMessageID))
 
 	select {
 	case <-eventsCh:
 	default:
 		t.Error("Expected an ack request to be triggered!")
 	}
+}
+
+func newTestMetrics() *internal.LeveledMetrics {
+	return internal.NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer).GetLeveledMetrics("topic")
 }
 
 func TestBatchMessageIDNoAckTracker(t *testing.T) {
@@ -65,9 +73,12 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		metrics:              newTestMetrics(),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
+	pc.availablePermits = &availablePermits{pc: &pc}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -77,11 +88,12 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	// ensure the tracker was set on the message id
 	messages := <-pc.queueCh
 	for _, m := range messages {
-		assert.Nil(t, m.ID().(trackingMessageID).tracker)
+		assert.Nil(t, m.ID().(*trackingMessageID).tracker)
 	}
 
 	// ack the message id
-	pc.AckID(messages[0].msgID.(trackingMessageID))
+	err := pc.AckID(messages[0].msgID.(*trackingMessageID))
+	assert.Nil(t, err)
 
 	select {
 	case <-eventsCh:
@@ -97,9 +109,12 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
-		metrics:              internal.NewMetricsProvider(4, map[string]string{}).GetLeveledMetrics("topic"),
+		metrics:              newTestMetrics(),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
+	pc.availablePermits = &availablePermits{pc: &pc}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -109,12 +124,13 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	// ensure the tracker was set on the message id
 	messages := <-pc.queueCh
 	for _, m := range messages {
-		assert.NotNil(t, m.ID().(trackingMessageID).tracker)
+		assert.NotNil(t, m.ID().(*trackingMessageID).tracker)
 	}
 
 	// ack all message ids except the last one
 	for i := 0; i < 9; i++ {
-		pc.AckID(messages[i].msgID.(trackingMessageID))
+		err := pc.AckID(messages[i].msgID.(*trackingMessageID))
+		assert.Nil(t, err)
 	}
 
 	select {
@@ -124,7 +140,8 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	}
 
 	// ack last message
-	pc.AckID(messages[9].msgID.(trackingMessageID))
+	err := pc.AckID(messages[9].msgID.(*trackingMessageID))
+	assert.Nil(t, err)
 
 	select {
 	case <-eventsCh:

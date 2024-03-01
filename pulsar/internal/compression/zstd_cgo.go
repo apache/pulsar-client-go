@@ -25,19 +25,23 @@
 package compression
 
 import (
+	"sync"
+
 	"github.com/DataDog/zstd"
 	log "github.com/sirupsen/logrus"
 )
 
 type zstdCGoProvider struct {
-	ctx       zstd.Ctx
+	ctxPool   sync.Pool
 	level     Level
 	zstdLevel int
 }
 
 func newCGoZStdProvider(level Level) Provider {
 	z := &zstdCGoProvider{
-		ctx: zstd.NewCtx(),
+		ctxPool: sync.Pool{New: func() any {
+			return zstd.NewCtx()
+		}},
 	}
 
 	switch level {
@@ -61,7 +65,9 @@ func (z *zstdCGoProvider) CompressMaxSize(originalSize int) int {
 }
 
 func (z *zstdCGoProvider) Compress(dst, src []byte) []byte {
-	out, err := z.ctx.CompressLevel(dst, src, z.zstdLevel)
+	ctx := z.ctxPool.Get().(zstd.Ctx)
+	defer z.ctxPool.Put(ctx)
+	out, err := ctx.CompressLevel(dst, src, z.zstdLevel)
 	if err != nil {
 		log.WithError(err).Fatal("Failed to compress")
 	}
@@ -70,7 +76,9 @@ func (z *zstdCGoProvider) Compress(dst, src []byte) []byte {
 }
 
 func (z *zstdCGoProvider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
-	return z.ctx.Decompress(dst, src)
+	ctx := z.ctxPool.Get().(zstd.Ctx)
+	defer z.ctxPool.Put(ctx)
+	return ctx.Decompress(dst, src)
 }
 
 func (z *zstdCGoProvider) Close() error {

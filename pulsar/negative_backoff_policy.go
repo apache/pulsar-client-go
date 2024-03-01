@@ -17,7 +17,10 @@
 
 package pulsar
 
-import "math"
+import (
+	"math"
+	"time"
+)
 
 // NackBackoffPolicy is a interface for custom message negativeAcked policy, users can specify a NackBackoffPolicy
 // for a consumer.
@@ -26,21 +29,21 @@ import "math"
 // > NackBackoffPolicy, which means the message might get redelivered earlier than the delay time
 // > from the backoff.
 type NackBackoffPolicy interface {
-	// The redeliveryCount indicates the number of times the message was redelivered.
+	// Next param redeliveryCount indicates the number of times the message was redelivered.
 	// We can get the redeliveryCount from the CommandMessage.
-	Next(redeliveryCount uint32) int64
+	Next(redeliveryCount uint32) time.Duration
 }
 
 // defaultNackBackoffPolicy is default impl for NackBackoffPolicy.
 type defaultNackBackoffPolicy struct{}
 
-func (nbp *defaultNackBackoffPolicy) Next(redeliveryCount uint32) int64 {
-	minNackTimeMs := int64(1000 * 30) // 30sec
-	maxNackTimeMs := 1000 * 60 * 10   // 10min
+func (nbp *defaultNackBackoffPolicy) Next(redeliveryCount uint32) time.Duration {
+	minNackTime := 1 * time.Second  // 1sec
+	maxNackTime := 10 * time.Minute // 10min
 
 	if redeliveryCount < 0 {
-		return minNackTimeMs
+		return minNackTime
 	}
 
-	return int64(math.Min(math.Abs(float64(minNackTimeMs<<redeliveryCount)), float64(maxNackTimeMs)))
+	return time.Duration(math.Min(math.Abs(float64(minNackTime<<redeliveryCount)), float64(maxNackTime)))
 }

@@ -24,7 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
+	"github.com/apache/pulsar-client-go/pulsar/auth"
+
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -45,9 +46,11 @@ type connectionPool struct {
 	auth                  auth.Provider
 	maxConnectionsPerHost int32
 	roundRobinCnt         int32
-	metrics               *Metrics
+	keepAliveInterval     time.Duration
+	closeCh               chan struct{}
 
-	log log.Logger
+	metrics *Metrics
+	log     log.Logger
 }
 
 // NewConnectionPool init connection pool.
@@ -55,18 +58,24 @@ func NewConnectionPool(
 	tlsOptions *TLSOptions,
 	auth auth.Provider,
 	connectionTimeout time.Duration,
+	keepAliveInterval time.Duration,
 	maxConnectionsPerHost int,
 	logger log.Logger,
-	metrics *Metrics) ConnectionPool {
-	return &connectionPool{
+	metrics *Metrics,
+	connectionMaxIdleTime time.Duration) ConnectionPool {
+	p := &connectionPool{
 		connections:           make(map[string]*connection),
 		tlsOptions:            tlsOptions,
 		auth:                  auth,
 		connectionTimeout:     connectionTimeout,
 		maxConnectionsPerHost: int32(maxConnectionsPerHost),
+		keepAliveInterval:     keepAliveInterval,
 		log:                   logger,
 		metrics:               metrics,
+		closeCh:               make(chan struct{}),
 	}
+	go p.checkAndCleanIdleConnections(connectionMaxIdleTime)
+	return p
 }
 
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
@@ -97,6 +106,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 			tls:               p.tlsOptions,
 			connectionTimeout: p.connectionTimeout,
 			auth:              p.auth,
+			keepAliveInterval: p.keepAliveInterval,
 			logger:            p.log,
 			metrics:           p.metrics,
 		})
@@ -104,6 +114,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 		p.Unlock()
 		conn.start()
 	} else {
+		conn.ResetLastActive()
 		// we already have a connection
 		p.Unlock()
 	}
@@ -114,6 +125,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 
 func (p *connectionPool) Close() {
 	p.Lock()
+	close(p.closeCh)
 	for k, c := range p.connections {
 		delete(p.connections, k)
 		c.Close()
@@ -128,4 +140,27 @@ func (p *connectionPool) getMapKey(addr *url.URL) string {
 	}
 	idx := cnt % p.maxConnectionsPerHost
 	return fmt.Sprint(addr.Host, '-', idx)
+}
+
+func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration) {
+	if maxIdleTime < 0 {
+		return
+	}
+	for {
+		select {
+		case <-p.closeCh:
+			return
+		case <-time.After(maxIdleTime):
+			p.Lock()
+			for k, c := range p.connections {
+				if c.CheckIdle(maxIdleTime) {
+					p.log.Debugf("Closed connection from pool due to inactivity. logical_addr=%+v physical_addr=%+v",
+						c.logicalAddr, c.physicalAddr)
+					delete(p.connections, k)
+					c.Close()
+				}
+			}
+			p.Unlock()
+		}
+	}
 }

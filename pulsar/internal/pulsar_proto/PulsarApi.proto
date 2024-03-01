@@ -1,4 +1,4 @@
-/**
+/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -16,10 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 syntax = "proto2";
 
 package pulsar.proto;
 option java_package = "org.apache.pulsar.common.api.proto";
+option go_package = "./proto";
 option optimize_for = LITE_RUNTIME;
 
 message Schema {
@@ -61,6 +63,9 @@ message MessageIdData {
     optional int32 batch_index = 4 [default = -1];
     repeated int64 ack_set = 5;
     optional int32 batch_size = 6;
+
+    // For the chunk message id, we need to specify the first chunk message id.
+    optional MessageIdData first_chunk_message_id = 7;
 }
 
 message KeyValue {
@@ -96,6 +101,7 @@ enum ProducerAccessMode {
     Shared = 0; // By default multiple producers can publish on a topic
     Exclusive = 1; // Require exclusive access for producer. Fail immediately if there's already a producer connected.
     WaitForExclusive = 2; // Producer creation is pending until it can acquire exclusive access
+    ExclusiveWithFencing = 3; // Require exclusive access for producer. Fence out old producer.
 }
 
 message MessageMetadata {
@@ -194,7 +200,7 @@ enum ServerError {
     AuthorizationError  = 4; // Not authorized to use resource
 
     ConsumerBusy        = 5; // Unable to subscribe/unsubscribe because
-    // other consumers are connected
+                             // other consumers are connected
     ServiceNotReady     = 6; // Any error that requires client retry operation with a fresh lookup
     ProducerBlockedQuotaExceededError = 7; // Unable to create producer because backlog quota exceeded
     ProducerBlockedQuotaExceededException = 8; // Exception while creating producer because quota exceeded
@@ -220,10 +226,10 @@ enum ServerError {
     TransactionNotFound = 24; // Transaction not found
 
     ProducerFenced = 25; // When a producer asks and fail to get exclusive producer access,
-    // or loses the eclusive status after a reconnection, the broker will
-    // use this error to indicate that this producer is now permanently
-    // fenced. Applications are now supposed to close it and create a
-    // new producer
+                         // or loses the eclusive status after a reconnection, the broker will
+                         // use this error to indicate that this producer is now permanently
+                         // fenced. Applications are now supposed to close it and create a
+                         // new producer
 }
 
 enum AuthMethod {
@@ -248,11 +254,11 @@ enum ProtocolVersion {
     v10 = 10;// Added proxy to broker
     v11 = 11;// C++ consumers before this version are not correctly handling the checksum field
     v12 = 12;// Added get topic's last messageId from broker
-    // Added CommandActiveConsumerChange
-    // Added CommandGetTopicsOfNamespace
+             // Added CommandActiveConsumerChange
+             // Added CommandGetTopicsOfNamespace
     v13 = 13; // Schema-registry : added avro schema format for json
     v14 = 14; // Add CommandAuthChallenge and CommandAuthResponse for mutual auth
-    // Added Key_Shared subscription
+              // Added Key_Shared subscription
     v15 = 15; // Add CommandGetOrCreateSchema and CommandGetOrCreateSchemaResponse
     v16 = 16; // Add support for broker entry metadata
     v17 = 17; // Added support ack receipt
@@ -287,14 +293,17 @@ message CommandConnect {
 }
 
 message FeatureFlags {
-    optional bool supports_auth_refresh = 1 [default = false];
-    optional bool supports_broker_entry_metadata = 2 [default = false];
+  optional bool supports_auth_refresh = 1 [default = false];
+  optional bool supports_broker_entry_metadata = 2 [default = false];
+  optional bool supports_partial_producer = 3 [default = false];
+  optional bool supports_topic_watchers = 4 [default = false];
 }
 
 message CommandConnected {
     required string server_version = 1;
     optional int32 protocol_version = 2 [default = 0];
     optional int32 max_message_size = 3;
+    optional FeatureFlags feature_flags = 4;
 }
 
 message CommandAuthResponse {
@@ -384,6 +393,9 @@ message CommandSubscribe {
     optional KeySharedMeta keySharedMeta = 17;
 
     repeated KeyValue subscription_properties = 18;
+
+    // The consumer epoch, when exclusive and failover consumer redeliver unack message will increase the epoch
+    optional uint64 consumer_epoch = 19;
 }
 
 message CommandPartitionedTopicMetadata {
@@ -487,6 +499,12 @@ message CommandProducer {
     optional uint64 topic_epoch = 11;
 
     optional bool txn_enabled = 12 [default = false];
+
+    // Name of the initial subscription of the topic.
+    // If this field is not set, the initial subscription will not be created.
+    // If this field is set but the broker's `allowAutoSubscriptionCreation`
+    // is disabled, the producer will fail to be created.
+    optional string initial_subscription_name = 13;
 }
 
 message CommandSend {
@@ -502,6 +520,9 @@ message CommandSend {
 
     // Specify if the message being published is a Pulsar marker or not
     optional bool marker = 8 [default = false];
+
+    // Message id of this message, currently is used in replicator for shadow topic.
+    optional MessageIdData message_id = 9;
 }
 
 message CommandSendReceipt {
@@ -523,6 +544,7 @@ message CommandMessage {
     required MessageIdData message_id = 2;
     optional uint32 redelivery_count  = 3 [default = 0];
     repeated int64 ack_set = 4;
+    optional uint64 consumer_epoch = 5;
 }
 
 message CommandAck {
@@ -567,8 +589,8 @@ message CommandAckResponse {
 
 // changes on active consumer
 message CommandActiveConsumerChange {
-    required uint64 consumer_id    = 1;
-    optional bool is_active     = 2 [default = false];
+        required uint64 consumer_id    = 1;
+        optional bool is_active     = 2 [default = false];
 }
 
 message CommandFlow {
@@ -613,6 +635,7 @@ message CommandCloseConsumer {
 message CommandRedeliverUnacknowledgedMessages {
     required uint64 consumer_id = 1;
     repeated MessageIdData message_ids = 2;
+    optional uint64 consumer_epoch = 3;
 }
 
 message CommandSuccess {
@@ -655,52 +678,55 @@ message CommandPong {
 }
 
 message CommandConsumerStats {
-    required uint64 request_id         = 1;
-    // required string topic_name         = 2;
-    // required string subscription_name  = 3;
-    required uint64 consumer_id        = 4;
+        required uint64 request_id         = 1;
+        // required string topic_name         = 2;
+        // required string subscription_name  = 3;
+        required uint64 consumer_id        = 4;
 }
 
 message CommandConsumerStatsResponse {
-    required uint64 request_id              = 1;
-    optional ServerError error_code         = 2;
-    optional string error_message           = 3;
+        required uint64 request_id              = 1;
+        optional ServerError error_code         = 2;
+        optional string error_message           = 3;
 
-    /// Total rate of messages delivered to the consumer. msg/s
-    optional double msgRateOut                  = 4;
+        /// Total rate of messages delivered to the consumer. msg/s
+        optional double msgRateOut                  = 4;
 
-    /// Total throughput delivered to the consumer. bytes/s
-    optional double msgThroughputOut            = 5;
+        /// Total throughput delivered to the consumer. bytes/s
+        optional double msgThroughputOut            = 5;
 
-    /// Total rate of messages redelivered by this consumer. msg/s
-    optional double msgRateRedeliver            = 6;
+        /// Total rate of messages redelivered by this consumer. msg/s
+        optional double msgRateRedeliver            = 6;
 
-    /// Name of the consumer
-    optional string consumerName                = 7;
+        /// Name of the consumer
+        optional string consumerName                = 7;
 
-    /// Number of available message permits for the consumer
-    optional uint64 availablePermits            = 8;
+        /// Number of available message permits for the consumer
+        optional uint64 availablePermits            = 8;
 
-    /// Number of unacknowledged messages for the consumer
-    optional uint64 unackedMessages             = 9;
+        /// Number of unacknowledged messages for the consumer
+        optional uint64 unackedMessages             = 9;
 
-    /// Flag to verify if consumer is blocked due to reaching threshold of unacked messages
-    optional bool blockedConsumerOnUnackedMsgs  = 10;
+        /// Flag to verify if consumer is blocked due to reaching threshold of unacked messages
+        optional bool blockedConsumerOnUnackedMsgs  = 10;
 
-    /// Address of this consumer
-    optional string address                     = 11;
+        /// Address of this consumer
+        optional string address                     = 11;
 
-    /// Timestamp of connection
-    optional string connectedSince              = 12;
+        /// Timestamp of connection
+        optional string connectedSince              = 12;
 
-    /// Whether this subscription is Exclusive or Shared or Failover
-    optional string type                        = 13;
+        /// Whether this subscription is Exclusive or Shared or Failover
+        optional string type                        = 13;
 
-    /// Total rate of messages expired on this subscription. msg/s
-    optional double msgRateExpired              = 14;
+        /// Total rate of messages expired on this subscription. msg/s
+        optional double msgRateExpired              = 14;
 
-    /// Number of messages in the subscription backlog
-    optional uint64 msgBacklog                  = 15;
+        /// Number of messages in the subscription backlog
+        optional uint64 msgBacklog                  = 15;
+
+        /// Total rate of messages ack. msg/s
+        optional double messageAckRate              = 16;
 }
 
 message CommandGetLastMessageId {
@@ -723,11 +749,47 @@ message CommandGetTopicsOfNamespace {
     required uint64 request_id    = 1;
     required string namespace    = 2;
     optional Mode mode = 3 [default = PERSISTENT];
+    optional string topics_pattern = 4;
+    optional string topics_hash    = 5;
 }
 
 message CommandGetTopicsOfNamespaceResponse {
     required uint64 request_id    = 1;
     repeated string topics         = 2;
+    // true iff the topic list was filtered by the pattern supplied by the client
+    optional bool   filtered       = 3 [default = false];
+    // hash computed from the names of matching topics
+    optional string topics_hash    = 4;
+    // if false, topics is empty and the list of matching topics has not changed
+    optional bool   changed        = 5 [default = true];
+}
+
+message CommandWatchTopicList {
+    required uint64 request_id     = 1;
+    required uint64 watcher_id     = 2;
+    required string namespace      = 3;
+    required string topics_pattern = 4;
+    // Only present when the client reconnects:
+    optional string topics_hash    = 5;
+}
+
+message CommandWatchTopicListSuccess {
+    required uint64 request_id     = 1;
+    required uint64 watcher_id     = 2;
+    repeated string topic          = 3;
+    required string topics_hash    = 4;
+}
+
+message CommandWatchTopicUpdate {
+    required uint64 watcher_id     = 1;
+    repeated string new_topics     = 2;
+    repeated string deleted_topics = 3;
+    required string topics_hash    = 4;
+}
+
+message CommandWatchTopicListClose {
+    required uint64 request_id     = 1;
+    required uint64 watcher_id     = 2;
 }
 
 message CommandGetSchema {
@@ -960,6 +1022,11 @@ message BaseCommand {
         TC_CLIENT_CONNECT_REQUEST = 62;
         TC_CLIENT_CONNECT_RESPONSE = 63;
 
+        WATCH_TOPIC_LIST = 64;
+        WATCH_TOPIC_LIST_SUCCESS = 65;
+        WATCH_TOPIC_UPDATE = 66;
+        WATCH_TOPIC_LIST_CLOSE = 67;
+
     }
 
 
@@ -1036,4 +1103,9 @@ message BaseCommand {
     optional CommandEndTxnOnSubscriptionResponse endTxnOnSubscriptionResponse = 61;
     optional CommandTcClientConnectRequest tcClientConnectRequest = 62;
     optional CommandTcClientConnectResponse tcClientConnectResponse = 63;
+
+    optional CommandWatchTopicList watchTopicList = 64;
+    optional CommandWatchTopicListSuccess watchTopicListSuccess = 65;
+    optional CommandWatchTopicUpdate watchTopicUpdate = 66;
+    optional CommandWatchTopicListClose watchTopicListClose = 67;
 }

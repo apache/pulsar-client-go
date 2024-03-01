@@ -20,6 +20,8 @@ package pulsar
 import (
 	"context"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 type HashingScheme int
@@ -51,6 +53,20 @@ const (
 
 	// Higher compression rate, but slower
 	Better
+)
+
+type ProducerAccessMode int
+
+const (
+	// ProducerAccessModeShared is default multiple producers can publish on a topic.
+	ProducerAccessModeShared ProducerAccessMode = iota
+
+	// ProducerAccessModeExclusive is required exclusive access for producer.
+	// Fail immediately if there's already a producer connected.
+	ProducerAccessModeExclusive
+
+	// ProducerAccessModeWaitForExclusive is pending until producer can acquire exclusive access.
+	ProducerAccessModeWaitForExclusive
 )
 
 // TopicMetadata represents a topic metadata.
@@ -155,6 +171,10 @@ type ProducerOptions struct {
 	// MaxReconnectToBroker specifies the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
+	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
+	BackoffPolicy internal.BackoffPolicy
+
 	// BatcherBuilderType sets the batch builder type (default DefaultBatchBuilder)
 	// This will be used to create batch container when batching is enabled.
 	// Options:
@@ -172,6 +192,21 @@ type ProducerOptions struct {
 
 	// Encryption specifies the fields required to encrypt a message
 	Encryption *ProducerEncryptionInfo
+
+	// EnableChunking controls whether automatic chunking of messages is enabled for the producer. By default, chunking
+	// is disabled.
+	// Chunking can not be enabled when batching is enabled.
+	EnableChunking bool
+
+	// ChunkMaxMessageSize is the max size of single chunk payload.
+	// It will actually only take effect if it is smaller than the maxMessageSize from the broker.
+	ChunkMaxMessageSize uint
+
+	// The type of access to the topic that the producer requires. (default ProducerAccessModeShared)
+	// Options:
+	// - ProducerAccessModeShared
+	// - ProducerAccessModeExclusive
+	ProducerAccessMode
 }
 
 // Producer is used to publish messages on a topic
@@ -189,8 +224,7 @@ type Producer interface {
 	Send(context.Context, *ProducerMessage) (MessageID, error)
 
 	// SendAsync a message in asynchronous mode
-	// This call is blocked when the `event channel` becomes full (default: 10) or the
-	// `maxPendingMessages` becomes full (default: 1000)
+	// This call is blocked when the `maxPendingMessages` becomes full (default: 1000)
 	// The callback will report back the message being published and
 	// the eventual error in publishing
 	SendAsync(context.Context, *ProducerMessage, func(MessageID, *ProducerMessage, error))
@@ -203,9 +237,12 @@ type Producer interface {
 	// return the last sequence id published by this producer.
 	LastSequenceID() int64
 
-	// Flush all the messages buffered in the client and wait until all messages have been successfully
-	// persisted.
+	// Deprecated: Use `FlushWithCtx()` instead.
 	Flush() error
+
+	// Flush all the messages buffered in the client and wait until all messageshave been successfully
+	// persisted.
+	FlushWithCtx(ctx context.Context) error
 
 	// Close the producer and releases resources allocated
 	// No more writes will be accepted from this producer. Waits until all pending write request are persisted. In case

@@ -18,7 +18,7 @@
 package compression
 
 import (
-	"io/ioutil"
+	"os"
 	"testing"
 )
 
@@ -27,7 +27,7 @@ const (
 )
 
 func testCompression(b *testing.B, provider Provider) {
-	data, err := ioutil.ReadFile(dataSampleFile)
+	data, err := os.ReadFile(dataSampleFile)
 	if err != nil {
 		b.Error(err)
 	}
@@ -45,7 +45,7 @@ func testCompression(b *testing.B, provider Provider) {
 
 func testDecompression(b *testing.B, provider Provider) {
 	// Read data sample file
-	data, err := ioutil.ReadFile(dataSampleFile)
+	data, err := os.ReadFile(dataSampleFile)
 	if err != nil {
 		b.Error(err)
 	}
@@ -97,7 +97,7 @@ func BenchmarkDecompression(b *testing.B) {
 func BenchmarkCompressionParallel(b *testing.B) {
 	b.ReportAllocs()
 
-	data, err := ioutil.ReadFile(dataSampleFile)
+	data, err := os.ReadFile(dataSampleFile)
 	if err != nil {
 		b.Error(err)
 	}

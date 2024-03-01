@@ -153,9 +153,10 @@ func runRegexConsumerDiscoverPatternAll(t *testing.T, c Client, namespace string
 	opts := ConsumerOptions{
 		SubscriptionName:    "regex-sub",
 		AutoDiscoveryPeriod: 5 * time.Minute,
+		Name:                "regex-consumer",
 	}
 
-	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
+	dlq, _ := newDlqRouter(c.(*client), nil, tn.Topic, "regex-sub", "regex-consumer", log.DefaultNopLogger())
 	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
 	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq, new(sync.Once))
 	if err != nil {
@@ -191,9 +192,10 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 	opts := ConsumerOptions{
 		SubscriptionName:    "regex-sub",
 		AutoDiscoveryPeriod: 5 * time.Minute,
+		Name:                "regex-consumer",
 	}
 
-	dlq, _ := newDlqRouter(c.(*client), nil, log.DefaultNopLogger())
+	dlq, _ := newDlqRouter(c.(*client), nil, tn.Topic, "regex-sub", "regex-consumer", log.DefaultNopLogger())
 	rlq, _ := newRetryRouter(c.(*client), nil, false, log.DefaultNopLogger())
 	consumer, err := newRegexConsumer(c.(*client), opts, tn, pattern, make(chan ConsumerMessage, 1), dlq, rlq, new(sync.Once))
 	if err != nil {
@@ -242,6 +244,7 @@ func runRegexConsumerDiscoverPatternFoo(t *testing.T, c Client, namespace string
 func TestRegexConsumer(t *testing.T) {
 	t.Run("MatchOneTopic", runWithClientNamespace(runRegexConsumerMatchOneTopic))
 	t.Run("AddTopic", runWithClientNamespace(runRegexConsumerAddMatchingTopic))
+	t.Run("AutoDiscoverTopics", runWithClientNamespace(runRegexConsumerAutoDiscoverTopics))
 }
 
 func runRegexConsumerMatchOneTopic(t *testing.T, c Client, namespace string) {
@@ -337,6 +340,68 @@ func runRegexConsumerAddMatchingTopic(t *testing.T, c Client, namespace string) 
 
 	ctx := context.Background()
 	for i := 0; i < 5; i++ {
+		m, err := consumer.Receive(ctx)
+		if err != nil {
+			t.Errorf("failed to receive message error: %+v", err)
+		} else {
+			assert.Truef(t, strings.HasPrefix(string(m.Payload()), "foo-"),
+				"message does not start with foo: %s", string(m.Payload()))
+		}
+	}
+}
+
+func runRegexConsumerAutoDiscoverTopics(t *testing.T, c Client, namespace string) {
+	topicsPattern := fmt.Sprintf("persistent://%s/foo.*", namespace)
+	opts := ConsumerOptions{
+		TopicsPattern:    topicsPattern,
+		SubscriptionName: "regex-sub",
+		// this is purposefully short to test parallelism between discover and subscribe calls
+		AutoDiscoveryPeriod: 1 * time.Nanosecond,
+	}
+	consumer, err := c.Subscribe(opts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	topicInRegex1 := namespace + "/foo-topic-1"
+	p1, err := c.CreateProducer(ProducerOptions{
+		Topic:           topicInRegex1,
+		DisableBatching: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p1.Close()
+
+	topicInRegex2 := namespace + "/foo-topic-2"
+	p2, err := c.CreateProducer(ProducerOptions{
+		Topic:           topicInRegex2,
+		DisableBatching: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer p2.Close()
+
+	time.Sleep(100 * time.Millisecond)
+
+	err = genMessages(p1, 5, func(idx int) string {
+		return fmt.Sprintf("foo-message-%d", idx)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = genMessages(p2, 5, func(idx int) string {
+		return fmt.Sprintf("foo-message-%d", idx)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
 		m, err := consumer.Receive(ctx)
 		if err != nil {
 			t.Errorf("failed to receive message error: %+v", err)

@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -26,19 +27,26 @@ import (
 )
 
 type dlqRouter struct {
-	client    Client
-	producer  Producer
-	policy    *DLQPolicy
-	messageCh chan ConsumerMessage
-	closeCh   chan interface{}
-	log       log.Logger
+	client           Client
+	producer         Producer
+	policy           *DLQPolicy
+	messageCh        chan ConsumerMessage
+	closeCh          chan interface{}
+	topicName        string
+	subscriptionName string
+	consumerName     string
+	log              log.Logger
 }
 
-func newDlqRouter(client Client, policy *DLQPolicy, logger log.Logger) (*dlqRouter, error) {
+func newDlqRouter(client Client, policy *DLQPolicy, topicName, subscriptionName, consumerName string,
+	logger log.Logger) (*dlqRouter, error) {
 	r := &dlqRouter{
-		client: client,
-		policy: policy,
-		log:    logger,
+		client:           client,
+		policy:           policy,
+		topicName:        topicName,
+		subscriptionName: subscriptionName,
+		consumerName:     consumerName,
+		log:              logger,
 	}
 
 	if policy != nil {
@@ -92,20 +100,34 @@ func (r *dlqRouter) run() {
 			producer := r.getProducer(cm.Consumer.(*consumer).options.Schema)
 			msg := cm.Message.(*message)
 			msgID := msg.ID()
+
+			// properties associated with original message
+			properties := msg.Properties()
+
+			// include orinal message id in string format in properties
+			properties[PropertyOriginMessageID] = msgID.String()
+
+			// include original topic name of the message in properties
+			properties[SysPropertyRealTopic] = msg.Topic()
+
 			producer.SendAsync(context.Background(), &ProducerMessage{
 				Payload:             msg.Payload(),
 				Key:                 msg.Key(),
 				OrderingKey:         msg.OrderingKey(),
-				Properties:          msg.Properties(),
+				Properties:          properties,
 				EventTime:           msg.EventTime(),
 				ReplicationClusters: msg.replicationClusters,
-			}, func(MessageID, *ProducerMessage, error) {
-				r.log.WithField("msgID", msgID).Debug("Sent message to DLQ")
-
-				// The Producer ack might be coming from the connection go-routine that
-				// is also used by the consumer. In that case we would get a dead-lock
-				// if we'd try to ack.
-				go cm.Consumer.AckID(msgID)
+			}, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+				if err == nil {
+					r.log.WithField("msgID", msgID).Debug("Succeed to send message to DLQ")
+					// The Producer ack might be coming from the connection go-routine that
+					// is also used by the consumer. In that case we would get a dead-lock
+					// if we'd try to ack.
+					go cm.Consumer.AckID(msgID)
+				} else {
+					r.log.WithError(err).WithField("msgID", msgID).Debug("Failed to send message to DLQ")
+					go cm.Consumer.Nack(cm)
+				}
 			})
 
 		case <-r.closeCh:
@@ -133,14 +155,21 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.Backoff{}
+	backoff := &internal.DefaultBackoff{}
 	for {
-		producer, err := r.client.CreateProducer(ProducerOptions{
-			Topic:                   r.policy.DeadLetterTopic,
-			CompressionType:         LZ4,
-			BatchingMaxPublishDelay: 100 * time.Millisecond,
-			Schema:                  schema,
-		})
+		opt := r.policy.ProducerOptions
+		opt.Topic = r.policy.DeadLetterTopic
+		opt.Schema = schema
+		if opt.Name == "" {
+			opt.Name = fmt.Sprintf("%s-%s-%s-DLQ", r.topicName, r.subscriptionName, r.consumerName)
+		}
+
+		// the origin code sets to LZ4 compression with no options
+		// so the new design allows compression type to be overwritten but still set lz4 by default
+		if r.policy.ProducerOptions.CompressionType == NoCompression {
+			opt.CompressionType = LZ4
+		}
+		producer, err := r.client.CreateProducer(opt)
 
 		if err != nil {
 			r.log.WithError(err).Error("Failed to create DLQ producer")

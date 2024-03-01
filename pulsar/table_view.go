@@ -65,12 +65,12 @@ type TableView interface {
 	// Keys returns a slice of the keys contained in this TableView.
 	Keys() []string
 
-	// ForEach performs the give action for each entry in this map until all entries have been processed or the action
+	// ForEach performs the given action for each entry in this map until all entries have been processed or the action
 	// returns an error.
 	ForEach(func(string, interface{}) error) error
 
-	// ForEachAndListen performs the give action for each entry in this map until all entries have been processed or
-	// the action returns an error.
+	// ForEachAndListen performs the given action for each entry in this map until all entries have been processed or
+	// the action returns an error.  The given action will then be performed on each new entry in this map.
 	ForEachAndListen(func(string, interface{}) error) error
 
 	// Close closes the table view and releases resources allocated.

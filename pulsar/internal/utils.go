@@ -23,18 +23,24 @@ import (
 	"sync/atomic"
 	"time"
 
+	"google.golang.org/protobuf/proto"
+
 	"github.com/pkg/errors"
 )
 
 // TimestampMillis return a time unix nano.
 func TimestampMillis(t time.Time) uint64 {
+	// calling UnixNano on the zero Time is undefined
+	if t.IsZero() {
+		return 0
+	}
 	return uint64(t.UnixNano()) / uint64(time.Millisecond)
 }
 
 // GetAndAdd perform atomic read and update
 func GetAndAdd(n *uint64, diff uint64) uint64 {
 	for {
-		v := *n
+		v := atomic.LoadUint64(n)
 		if atomic.CompareAndSwapUint64(n, v, v+diff) {
 			return v
 		}
@@ -69,4 +75,13 @@ func ParseRelativeTimeInSeconds(relativeTime string) (time.Duration, error) {
 	default:
 		return -1, errors.Errorf("invalid time unit '%s'", unitTime)
 	}
+}
+
+func MarshalToSizedBuffer(m proto.Message, out []byte) error {
+	b, err := proto.Marshal(m)
+	if err != nil {
+		return err
+	}
+	copy(out, b[:len(out)])
+	return nil
 }

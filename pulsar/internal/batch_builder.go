@@ -21,7 +21,7 @@ import (
 	"bytes"
 	"time"
 
-	"github.com/gogo/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
@@ -35,7 +35,7 @@ type BuffersPool interface {
 
 // BatcherBuilderProvider defines func which returns the BatchBuilder.
 type BatcherBuilderProvider func(
-	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error)
@@ -51,6 +51,9 @@ type BatchBuilder interface {
 		payload []byte,
 		callback interface{}, replicateTo []string, deliverAt time.Time,
 		schemaVersion []byte, multiSchemaEnabled bool,
+		useTxn bool,
+		mostSigBits uint64,
+		leastSigBits uint64,
 	) bool
 
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
@@ -85,6 +88,8 @@ type batchContainer struct {
 	// without needing costly re-allocations.
 	maxBatchSize uint
 
+	maxMessageSize uint32
+
 	producerName string
 	producerID   uint64
 
@@ -102,18 +107,19 @@ type batchContainer struct {
 
 // newBatchContainer init a batchContainer
 func newBatchContainer(
-	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) batchContainer {
 
 	bc := batchContainer{
-		buffer:       NewBuffer(4096),
-		numMessages:  0,
-		maxMessages:  maxMessages,
-		maxBatchSize: maxBatchSize,
-		producerName: producerName,
-		producerID:   producerID,
+		buffer:         NewBuffer(4096),
+		numMessages:    0,
+		maxMessages:    maxMessages,
+		maxBatchSize:   maxBatchSize,
+		maxMessageSize: maxMessageSize,
+		producerName:   producerName,
+		producerID:     producerID,
 		cmdSend: baseCommand(
 			pb.BaseCommand_SEND,
 			&pb.CommandSend{
@@ -124,7 +130,7 @@ func newBatchContainer(
 			ProducerName: &producerName,
 		},
 		callbacks:           []interface{}{},
-		compressionProvider: getCompressionProvider(compressionType, level),
+		compressionProvider: GetCompressionProvider(compressionType, level),
 		buffersPool:         bufferPool,
 		log:                 logger,
 		encryptor:           encryptor,
@@ -139,13 +145,13 @@ func newBatchContainer(
 
 // NewBatchBuilder init batch builder and return BatchBuilder pointer. Build a new batch message container.
 func NewBatchBuilder(
-	maxMessages uint, maxBatchSize uint, producerName string, producerID uint64,
+	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
-		maxMessages, maxBatchSize, producerName, producerID, compressionType,
+		maxMessages, maxBatchSize, maxMessageSize, producerName, producerID, compressionType,
 		level, bufferPool, logger, encryptor,
 	)
 
@@ -164,7 +170,9 @@ func (bc *batchContainer) hasSpace(payload []byte) bool {
 		return true
 	}
 	msgSize := uint32(len(payload))
-	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize)
+	expectedSize := bc.buffer.ReadableBytes() + msgSize
+	return bc.numMessages+1 <= bc.maxMessages &&
+		expectedSize <= uint32(bc.maxBatchSize) && expectedSize <= bc.maxMessageSize
 }
 
 func (bc *batchContainer) hasSameSchema(schemaVersion []byte) bool {
@@ -180,6 +188,7 @@ func (bc *batchContainer) Add(
 	payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time,
 	schemaVersion []byte, multiSchemaEnabled bool,
+	useTxn bool, mostSigBits uint64, leastSigBits uint64,
 ) bool {
 
 	if replicateTo != nil && bc.numMessages != 0 {
@@ -218,6 +227,10 @@ func (bc *batchContainer) Add(
 		}
 
 		bc.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
+		if useTxn {
+			bc.cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
+			bc.cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
+		}
 	}
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
 
@@ -258,8 +271,9 @@ func (bc *batchContainer) Flush() (
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
 
-	if err = serializeBatch(
-		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider, bc.encryptor,
+	if err = serializeMessage(
+		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
+		bc.encryptor, bc.maxMessageSize, true,
 	); err == nil { // no error in serializing Batch
 		sequenceID = bc.cmdSend.Send.GetSequenceId()
 	}
@@ -285,7 +299,7 @@ func (bc *batchContainer) Close() error {
 	return bc.compressionProvider.Close()
 }
 
-func getCompressionProvider(
+func GetCompressionProvider(
 	compressionType pb.CompressionType,
 	level compression.Level,
 ) compression.Provider {

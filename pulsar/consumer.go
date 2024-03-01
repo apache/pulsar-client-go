@@ -20,6 +20,8 @@ package pulsar
 import (
 	"context"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 )
 
 // ConsumerMessage represents a pair of a Consumer and Message.
@@ -71,8 +73,25 @@ type DLQPolicy struct {
 	// DeadLetterTopic specifies the name of the topic where the failing messages will be sent.
 	DeadLetterTopic string
 
+	// ProducerOptions is the producer options to produce messages to the DLQ and RLQ topic
+	ProducerOptions ProducerOptions
+
 	// RetryLetterTopic specifies the name of the topic where the retry messages will be sent.
 	RetryLetterTopic string
+}
+
+// AckGroupingOptions controls how to group ACK requests
+// If maxSize is 0 or 1, any ACK request will be sent immediately.
+// Otherwise, the ACK requests will be cached until one of the following conditions meets:
+// 1. There are `MaxSize` pending ACK requests.
+// 2. `MaxTime` is greater than 1 microsecond and ACK requests have been cached for `maxTime`.
+// Specially, for cumulative acknowledgment, only the latest ACK is cached and it will only be sent after `MaxTime`.
+type AckGroupingOptions struct {
+	// The maximum number of ACK requests to cache
+	MaxSize uint32
+
+	// The maximum time to cache ACK requests
+	MaxTime time.Duration
 }
 
 // ConsumerOptions is used to configure and create instances of Consumer.
@@ -115,6 +134,9 @@ type ConsumerOptions struct {
 	// Default is `Latest`
 	SubscriptionInitialPosition
 
+	// EventListener will be called when active consumer changed (in failover subscription type)
+	EventListener ConsumerEventListener
+
 	// DLQ represents the configuration for Dead Letter Queue consumer policy.
 	// eg. route the message to topic X after N failed attempts at processing it
 	// By default is nil and there's no DLQ
@@ -137,6 +159,12 @@ type ConsumerOptions struct {
 	// throughput at the expense of bigger memory utilization.
 	// Default value is `1000` messages and should be good for most use cases.
 	ReceiverQueueSize int
+
+	// EnableAutoScaledReceiverQueueSize, if enabled, the consumer receive queue will be auto-scaled
+	// by the consumer actual throughput. The ReceiverQueueSize will be the maximum size which consumer
+	// receive queue can be scaled.
+	// Default is false.
+	EnableAutoScaledReceiverQueueSize bool
 
 	// NackRedeliveryDelay specifies the delay after which to redeliver the messages that failed to be
 	// processed. Default is 1 min. (See `Consumer.Nack()`)
@@ -168,6 +196,10 @@ type ConsumerOptions struct {
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
+	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
+	BackoffPolicy internal.BackoffPolicy
+
 	// Decryption represents the encryption related fields required by the consumer to decrypt a message.
 	Decryption *MessageDecryptionInfo
 
@@ -189,6 +221,38 @@ type ConsumerOptions struct {
 	// error information of the Ack method only contains errors that may occur in the Go SDK's own processing.
 	// Default: false
 	AckWithResponse bool
+
+	// MaxPendingChunkedMessage sets the maximum pending chunked messages. (default: 100)
+	MaxPendingChunkedMessage int
+
+	// ExpireTimeOfIncompleteChunk sets the expiry time of discarding incomplete chunked message. (default: 60 seconds)
+	ExpireTimeOfIncompleteChunk time.Duration
+
+	// AutoAckIncompleteChunk sets whether consumer auto acknowledges incomplete chunked message when it should
+	// be removed (e.g.the chunked message pending queue is full). (default: false)
+	AutoAckIncompleteChunk bool
+
+	// Enable or disable batch index acknowledgment. To enable this feature, ensure batch index acknowledgment
+	// is enabled on the broker side. (default: false)
+	EnableBatchIndexAcknowledgment bool
+
+	// Controls how to group ACK requests, the default value is nil, which means:
+	// MaxSize: 1000
+	// MaxTime: 100*time.Millisecond
+	// NOTE: This option does not work if AckWithResponse is true
+	//	because there are only synchronous APIs for acknowledgment
+	AckGroupingOptions *AckGroupingOptions
+
+	// SubscriptionMode specifies the subscription mode to be used when subscribing to a topic.
+	// Default is `Durable`
+	SubscriptionMode SubscriptionMode
+
+	// StartMessageIDInclusive, if true, the consumer will start at the `StartMessageID`, included.
+	// Default is `false` and the consumer will start from the "next" message
+	StartMessageIDInclusive bool
+
+	// startMessageID specifies the message id to start from. Currently, it's only used for the reader internally.
+	startMessageID *trackingMessageID
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
@@ -197,6 +261,12 @@ type Consumer interface {
 	Subscription() string
 
 	// Unsubscribe the consumer
+	//
+	// Unsubscribing will cause the subscription to be deleted,
+	// and all the retained data can potentially be deleted based on message retention and ttl policy.
+	//
+	// This operation will fail when performed on a shared subscription
+	// where more than one consumer are currently connected.
 	Unsubscribe() error
 
 	// Receive a single message.
@@ -212,14 +282,28 @@ type Consumer interface {
 	// AckID the consumption of a single message, identified by its MessageID
 	AckID(MessageID) error
 
+	// AckWithTxn the consumption of a single message with a transaction
+	AckWithTxn(Message, Transaction) error
+
+	// AckCumulative the reception of all the messages in the stream up to (and including)
+	// the provided message.
+	AckCumulative(msg Message) error
+
+	// AckIDCumulative the reception of all the messages in the stream up to (and including)
+	// the provided message, identified by its MessageID
+	AckIDCumulative(msgID MessageID) error
+
 	// ReconsumeLater mark a message for redelivery after custom delay
 	ReconsumeLater(msg Message, delay time.Duration)
+
+	// ReconsumeLaterWithCustomProperties mark a message for redelivery after custom delay with custom properties
+	ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string, delay time.Duration)
 
 	// Nack acknowledges the failure to process a single message.
 	//
 	// When a message is "negatively acked" it will be marked for redelivery after
 	// some fixed delay. The delay is configurable when constructing the consumer
-	// with ConsumerOptions.NAckRedeliveryDelay .
+	// with ConsumerOptions.NackRedeliveryDelay .
 	//
 	// This call is not blocking.
 	Nack(Message)
@@ -244,9 +328,6 @@ type Consumer interface {
 	Seek(MessageID) error
 
 	// SeekByTime resets the subscription associated with this consumer to a specific message publish time.
-	//
-	// Note: this operation can only be done on non-partitioned topics. For these, one can rather perform the seek() on
-	// the individual partitions.
 	//
 	// @param time
 	//            the message publish time when to reposition the subscription
