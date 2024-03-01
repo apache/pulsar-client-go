@@ -371,6 +371,13 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			} else {
 				nackRedeliveryDelay = c.options.NackRedeliveryDelay
 			}
+			var schemaCreator SchemaCreator
+			if c.options.SchemaCreator == nil {
+				schemaCreator = NewSchema
+			} else {
+				schemaCreator = c.options.SchemaCreator
+			}
+
 			opts := &partitionConsumerOpts{
 				topic:                       pt,
 				consumerName:                c.consumerName,
@@ -393,6 +400,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				backoffPolicy:               c.options.BackoffPolicy,
 				keySharedPolicy:             c.options.KeySharedPolicy,
 				schema:                      c.options.Schema,
+				schemaCreator:               schemaCreator,
 				decryption:                  c.options.Decryption,
 				ackWithResponse:             c.options.AckWithResponse,
 				maxPendingChunkedMessage:    c.options.MaxPendingChunkedMessage,

@@ -301,7 +301,7 @@ type message struct {
 	redeliveryCount     uint32
 	schema              Schema
 	schemaVersion       []byte
-	schemaInfoCache     *schemaInfoCache
+	schemaRegistry      SchemaRegistry
 	encryptionContext   *EncryptionContext
 	index               *uint64
 	brokerPublishTime   *time.Time
@@ -353,7 +353,7 @@ func (msg *message) GetReplicatedFrom() string {
 
 func (msg *message) GetSchemaValue(v interface{}) error {
 	if msg.schemaVersion != nil {
-		schema, err := msg.schemaInfoCache.Get(msg.schemaVersion)
+		schema, err := msg.schemaRegistry.Get(msg.schemaVersion)
 		if err != nil {
 			return err
 		}

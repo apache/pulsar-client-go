@@ -89,6 +89,12 @@ type Schema interface {
 	GetSchemaInfo() *SchemaInfo
 }
 
+type SchemaRegistry interface {
+	Get(schemaVersion []byte) (schema Schema, err error)
+}
+
+type SchemaCreator func(schemaType SchemaType, schemaData []byte, properties map[string]string) (Schema, error)
+
 func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]string) (schema Schema, err error) {
 	var schemaDef = string(schemaData)
 	var s Schema
