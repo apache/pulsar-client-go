@@ -1652,7 +1652,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			delayReconnectTime = pc.options.backoffPolicy.Next()
 		}
 
-		pc.log.Info("Reconnecting to broker in ", delayReconnectTime)
+		pc.log.WithField("assignedBrokerUrl", assignedBrokerURL).WithField("assignedBrokerUrlTls", assignedBrokerURLTLS).Info("Reconnecting to broker in ", delayReconnectTime)
 		time.Sleep(delayReconnectTime)
 
 		// double check
