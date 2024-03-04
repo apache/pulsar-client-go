@@ -174,6 +174,8 @@ type partitionConsumer struct {
 	chunkedMsgCtxMap   *chunkedMsgCtxMap
 	unAckChunksTracker *unAckChunksTracker
 	ackGroupingTracker ackGroupingTracker
+
+	lastMessageInBroker *trackingMessageID
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -568,15 +570,41 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 
 func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
-		pc.log.WithField("state", state).Error("Failed to redeliver closing or closed consumer")
-		return nil, errors.New("failed to redeliver closing or closed consumer")
+		pc.log.WithField("state", state).Error("Failed to getLastMessageID for the closing or closed consumer")
+		return nil, errors.New("failed to getLastMessageID for the closing or closed consumer")
 	}
-	req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
-	pc.eventsCh <- req
+	remainTime := pc.client.operationTimeout
+	var backoff internal.BackoffPolicy
+	if pc.options.backoffPolicy != nil {
+		backoff = pc.options.backoffPolicy
+	} else {
+		backoff = &internal.DefaultBackoff{}
+	}
+	request := func() (*trackingMessageID, error) {
+		req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
+		pc.eventsCh <- req
 
-	// wait for the request to complete
-	<-req.doneCh
-	return req.msgID, req.err
+		// wait for the request to complete
+		<-req.doneCh
+		return req.msgID, req.err
+	}
+	for {
+		msgID, err := request()
+		if err == nil {
+			return msgID, nil
+		}
+		if remainTime <= 0 {
+			pc.log.WithError(err).Error("Failed to getLastMessageID")
+			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
+		}
+		nextDelay := backoff.Next()
+		if nextDelay > remainTime {
+			nextDelay = remainTime
+		}
+		remainTime -= nextDelay
+		pc.log.WithError(err).Errorf("Failed to get last message id from broker, retrying in %v...", nextDelay)
+		time.Sleep(nextDelay)
+	}
 }
 
 func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) {
@@ -1091,7 +1119,10 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
 	pc.metrics.PrefetchedMessages.Add(float64(numMsgs))
 
-	var bytesReceived int
+	var (
+		bytesReceived   int
+		skippedMessages int32
+	)
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
 		if err != nil || payload == nil {
@@ -1100,6 +1131,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 		if ackSet != nil && !ackSet.Test(uint(i)) {
 			pc.log.Debugf("Ignoring message from %vth message, which has been acknowledged", i)
+			skippedMessages++
 			continue
 		}
 
@@ -1118,6 +1150,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 		if pc.messageShouldBeDiscarded(trackingMsgID) {
 			pc.AckID(trackingMsgID)
+			skippedMessages++
 			continue
 		}
 
@@ -1142,6 +1175,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 
 		if pc.ackGroupingTracker.isDuplicate(msgID) {
+			skippedMessages++
 			continue
 		}
 
@@ -1214,6 +1248,10 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		pc.client.memLimit.ForceReserveMemory(int64(bytesReceived))
 		pc.incomingMessages.Add(int32(len(messages)))
 		pc.markScaleIfNeed()
+	}
+
+	if skippedMessages > 0 {
+		pc.availablePermits.add(skippedMessages)
 	}
 
 	// send messages to the dispatcher
@@ -1995,6 +2033,35 @@ func (pc *partitionConsumer) discardCorruptedMessage(msgID *pb.MessageIdData,
 		pc.log.Error("Connection was closed when request ack cmd")
 	}
 	pc.availablePermits.inc()
+}
+
+func (pc *partitionConsumer) hasNext() bool {
+	if pc.lastMessageInBroker != nil && pc.hasMoreMessages() {
+		return true
+	}
+
+	lastMsgID, err := pc.getLastMessageID()
+	if err != nil {
+		return false
+	}
+	pc.lastMessageInBroker = lastMsgID
+
+	return pc.hasMoreMessages()
+}
+
+func (pc *partitionConsumer) hasMoreMessages() bool {
+	if pc.lastDequeuedMsg != nil {
+		return pc.lastMessageInBroker.isEntryIDValid() && pc.lastMessageInBroker.greater(pc.lastDequeuedMsg.messageID)
+	}
+
+	if pc.options.startMessageIDInclusive {
+		return pc.lastMessageInBroker.isEntryIDValid() &&
+			pc.lastMessageInBroker.greaterEqual(pc.startMessageID.get().messageID)
+	}
+
+	// Non-inclusive
+	return pc.lastMessageInBroker.isEntryIDValid() &&
+		pc.lastMessageInBroker.greater(pc.startMessageID.get().messageID)
 }
 
 // _setConn sets the internal connection field of this partition consumer atomically.

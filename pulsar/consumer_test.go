@@ -983,7 +983,7 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 	}
 	wg.Wait()
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
 
 	// send another batch
@@ -1218,7 +1218,7 @@ func TestConsumerCompressionWithBatches(t *testing.T) {
 		}, nil)
 	}
 
-	producer.Flush()
+	producer.FlushWithCtx(context.Background())
 
 	for i := 0; i < N; i++ {
 		msg, err := consumer.Receive(ctx)
@@ -3932,7 +3932,7 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 			log.Printf("Sent to %v:%d:%d", id, id.BatchIdx(), id.BatchSize())
 		})
 	}
-	assert.Nil(t, producer.Flush())
+	assert.Nil(t, producer.FlushWithCtx(context.Background()))
 
 	msgIds := make([]MessageID, BatchingMaxSize)
 	for i := 0; i < BatchingMaxSize; i++ {
