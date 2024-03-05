@@ -465,3 +465,11 @@ type CompactedLedger struct {
 	Offloaded       bool  `json:"offloaded"`
 	UnderReplicated bool  `json:"underReplicated"`
 }
+
+type GetStatsOptions struct {
+	GetPreciseBacklog        bool `json:"get_precise_backlog"`
+	SubscriptionBacklogSize  bool `json:"subscription_backlog_size"`
+	GetEarliestTimeInBacklog bool `json:"get_earliest_time_in_backlog"`
+	ExcludePublishers        bool `json:"exclude_publishers"`
+	ExcludeConsumers         bool `json:"exclude_consumers"`
+}
