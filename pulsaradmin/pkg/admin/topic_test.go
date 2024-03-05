@@ -20,11 +20,12 @@ package admin
 import (
 	"context"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/stretchr/testify/assert"
 	"log"
 	"testing"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/stretchr/testify/assert"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
