@@ -149,7 +149,7 @@ func TestNonPartitionState(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, admin)
 
-	// Create partition topic
+	// Create non-partition topic
 	topicName, err := utils.GetTopicName(topic)
 	assert.NoError(t, err)
 	err = admin.Topics().Create(*topicName, 0)
