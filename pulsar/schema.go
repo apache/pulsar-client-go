@@ -93,6 +93,8 @@ func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]s
 	var schemaDef = string(schemaData)
 	var s Schema
 	switch schemaType {
+	case BYTES:
+		s = NewBytesSchema(properties)
 	case STRING:
 		s = NewStringSchema(properties)
 	case JSON:
