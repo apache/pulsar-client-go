@@ -167,7 +167,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 	}
 
-	dlq, err := newDlqRouter(client, options.DLQ, options.Topic, options.SubscriptionName, client.log)
+	dlq, err := newDlqRouter(client, options.DLQ, options.Topic, options.SubscriptionName, options.Name, client.log)
 	if err != nil {
 		return nil, err
 	}
@@ -384,7 +384,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 				metadata:                    metadata,
 				subProperties:               subProperties,
 				replicateSubscriptionState:  c.options.ReplicateSubscriptionState,
-				startMessageID:              nil,
+				startMessageID:              c.options.startMessageID,
+				startMessageIDInclusive:     c.options.StartMessageIDInclusive,
 				subscriptionMode:            c.options.SubscriptionMode,
 				readCompacted:               c.options.ReadCompacted,
 				interceptors:                c.options.Interceptors,
@@ -704,6 +705,50 @@ func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
 		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
 	}
+	return nil
+}
+
+func (c *consumer) hasNext() bool {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Make sure all paths cancel the context to avoid context leak
+
+	var wg sync.WaitGroup
+	wg.Add(len(c.consumers))
+
+	hasNext := make(chan bool)
+	for _, pc := range c.consumers {
+		pc := pc
+		go func() {
+			defer wg.Done()
+			if pc.hasNext() {
+				select {
+				case hasNext <- true:
+				case <-ctx.Done():
+				}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(hasNext) // Close the channel after all goroutines have finished
+	}()
+
+	// Wait for either a 'true' result or for all goroutines to finish
+	for hn := range hasNext {
+		if hn {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (c *consumer) setLastDequeuedMsg(msgID MessageID) error {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+	c.consumers[msgID.PartitionIdx()].lastDequeuedMsg = toTrackingMessageID(msgID)
 	return nil
 }
 

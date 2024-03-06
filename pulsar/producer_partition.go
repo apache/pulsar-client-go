@@ -1426,15 +1426,27 @@ func (p *partitionProducer) LastSequenceID() int64 {
 }
 
 func (p *partitionProducer) Flush() error {
+	return p.FlushWithCtx(context.Background())
+}
+
+func (p *partitionProducer) FlushWithCtx(ctx context.Context) error {
 	flushReq := &flushRequest{
 		doneCh: make(chan struct{}),
 		err:    nil,
 	}
-	p.cmdChan <- flushReq
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case p.cmdChan <- flushReq:
+	}
 
 	// wait for the flush request to complete
-	<-flushReq.doneCh
-	return flushReq.err
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-flushReq.doneCh:
+		return flushReq.err
+	}
 }
 
 func (p *partitionProducer) getProducerState() producerState {

@@ -19,8 +19,8 @@ package utils
 
 type FunctionState struct {
 	Key         string `json:"key"`
-	StringValue string `json:"stringValue"`
-	ByteValue   []byte `json:"byteValue"`
-	NumValue    int64  `json:"numberValue"`
-	Version     int64  `json:"version"`
+	StringValue string `json:"stringValue,omitempty"`
+	ByteValue   []byte `json:"byteValue,omitempty"`
+	NumValue    int64  `json:"numberValue,omitempty"`
+	Version     int64  `json:"version,omitempty"`
 }

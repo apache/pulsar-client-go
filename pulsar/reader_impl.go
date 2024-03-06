@@ -34,12 +34,11 @@ const (
 
 type reader struct {
 	sync.Mutex
-	client              *client
-	pc                  *partitionConsumer
-	messageCh           chan ConsumerMessage
-	lastMessageInBroker *trackingMessageID
-	log                 log.Logger
-	metrics             *internal.LeveledMetrics
+	client    *client
+	messageCh chan ConsumerMessage
+	log       log.Logger
+	metrics   *internal.LeveledMetrics
+	c         *consumer
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -98,25 +97,25 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		options.ExpireTimeOfIncompleteChunk = time.Minute
 	}
 
-	consumerOptions := &partitionConsumerOpts{
-		topic:                       options.Topic,
-		consumerName:                options.Name,
-		subscription:                subscriptionName,
-		subscriptionType:            Exclusive,
-		receiverQueueSize:           receiverQueueSize,
+	consumerOptions := &ConsumerOptions{
+		Topic:                       options.Topic,
+		Name:                        options.Name,
+		SubscriptionName:            subscriptionName,
+		Type:                        Exclusive,
+		ReceiverQueueSize:           receiverQueueSize,
+		SubscriptionMode:            NonDurable,
+		ReadCompacted:               options.ReadCompacted,
+		Properties:                  options.Properties,
+		NackRedeliveryDelay:         defaultNackRedeliveryDelay,
+		ReplicateSubscriptionState:  false,
+		Decryption:                  options.Decryption,
+		Schema:                      options.Schema,
+		BackoffPolicy:               options.BackoffPolicy,
+		MaxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
+		ExpireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
+		AutoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
 		startMessageID:              startMessageID,
-		startMessageIDInclusive:     options.StartMessageIDInclusive,
-		subscriptionMode:            NonDurable,
-		readCompacted:               options.ReadCompacted,
-		metadata:                    options.Properties,
-		nackRedeliveryDelay:         defaultNackRedeliveryDelay,
-		replicateSubscriptionState:  false,
-		decryption:                  options.Decryption,
-		schema:                      options.Schema,
-		backoffPolicy:               options.BackoffPolicy,
-		maxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
-		expireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
-		autoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
+		StartMessageIDInclusive:     options.StartMessageIDInclusive,
 	}
 
 	reader := &reader{
@@ -127,24 +126,29 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	}
 
 	// Provide dummy dlq router with not dlq policy
-	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, client.log)
+	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, options.Name, client.log)
+	if err != nil {
+		return nil, err
+	}
+	// Provide dummy rlq router with not dlq policy
+	rlq, err := newRetryRouter(client, nil, false, client.log)
 	if err != nil {
 		return nil, err
 	}
 
-	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq, reader.metrics)
+	c, err := newInternalConsumer(client, *consumerOptions, options.Topic, reader.messageCh, dlq, rlq, false)
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err
 	}
+	reader.c = c
 
-	reader.pc = pc
 	reader.metrics.ReadersOpened.Inc()
 	return reader, nil
 }
 
 func (r *reader) Topic() string {
-	return r.pc.topic
+	return r.c.topic
 }
 
 func (r *reader) Next(ctx context.Context) (Message, error) {
@@ -158,9 +162,14 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
 			msgID := cm.Message.ID()
-			mid := toTrackingMessageID(msgID)
-			r.pc.lastDequeuedMsg = mid
-			r.pc.AckID(mid)
+			err := r.c.setLastDequeuedMsg(msgID)
+			if err != nil {
+				return nil, err
+			}
+			err = r.c.AckID(msgID)
+			if err != nil {
+				return nil, err
+			}
 			return cm.Message, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -169,41 +178,11 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 }
 
 func (r *reader) HasNext() bool {
-	if r.lastMessageInBroker != nil && r.hasMoreMessages() {
-		return true
-	}
-
-	for {
-		lastMsgID, err := r.pc.getLastMessageID()
-		if err != nil {
-			r.log.WithError(err).Error("Failed to get last message id from broker")
-			continue
-		} else {
-			r.lastMessageInBroker = lastMsgID
-			break
-		}
-	}
-
-	return r.hasMoreMessages()
-}
-
-func (r *reader) hasMoreMessages() bool {
-	if r.pc.lastDequeuedMsg != nil {
-		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg.messageID)
-	}
-
-	if r.pc.options.startMessageIDInclusive {
-		return r.lastMessageInBroker.isEntryIDValid() &&
-			r.lastMessageInBroker.greaterEqual(r.pc.startMessageID.get().messageID)
-	}
-
-	// Non-inclusive
-	return r.lastMessageInBroker.isEntryIDValid() &&
-		r.lastMessageInBroker.greater(r.pc.startMessageID.get().messageID)
+	return r.c.hasNext()
 }
 
 func (r *reader) Close() {
-	r.pc.Close()
+	r.c.Close()
 	r.client.handlers.Del(r)
 	r.metrics.ReadersClosed.Inc()
 }
@@ -235,16 +214,19 @@ func (r *reader) Seek(msgID MessageID) error {
 		return nil
 	}
 
-	return r.pc.Seek(mid)
+	return r.c.Seek(mid)
 }
 
 func (r *reader) SeekByTime(time time.Time) error {
 	r.Lock()
 	defer r.Unlock()
 
-	return r.pc.SeekByTime(time)
+	return r.c.SeekByTime(time)
 }
 
 func (r *reader) GetLastMessageID() (MessageID, error) {
-	return r.pc.getLastMessageID()
+	if len(r.c.consumers) > 1 {
+		return nil, fmt.Errorf("GetLastMessageID is not supported for multi-topics reader")
+	}
+	return r.c.consumers[0].getLastMessageID()
 }
