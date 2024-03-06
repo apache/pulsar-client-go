@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-#
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -16,8 +15,11 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
 
-pkg=pb
-protoc --go_out=import_path=${pkg}:. hello.proto
 
+PROJECT_DIR=$(git rev-parse --show-toplevel)
+SOURCE_PATH="$PROJECT_DIR/integration-tests/pb"
+DEST_PATH="$PROJECT_DIR/integration-tests/pb"
+echo "source_path: $SOURCE_PATH"
+echo "dest_path: $DEST_PATH"
+protoc -I=$SOURCE_PATH --go_out=$DEST_PATH $SOURCE_PATH/*.proto

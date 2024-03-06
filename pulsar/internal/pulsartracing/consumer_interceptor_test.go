@@ -52,6 +52,10 @@ func (c *mockConsumer) Subscription() string {
 	return ""
 }
 
+func (c *mockConsumer) AckWithTxn(msg pulsar.Message, txn pulsar.Transaction) error {
+	return nil
+}
+
 func (c *mockConsumer) Unsubscribe() error {
 	return nil
 }
@@ -64,11 +68,27 @@ func (c *mockConsumer) Chan() <-chan pulsar.ConsumerMessage {
 	return nil
 }
 
-func (c *mockConsumer) Ack(msg pulsar.Message) {}
+func (c *mockConsumer) Ack(msg pulsar.Message) error {
+	return nil
+}
 
-func (c *mockConsumer) AckID(msgID pulsar.MessageID) {}
+func (c *mockConsumer) AckID(msgID pulsar.MessageID) error {
+	return nil
+}
+
+func (c *mockConsumer) AckCumulative(msg pulsar.Message) error {
+	return nil
+}
+
+func (c *mockConsumer) AckIDCumulative(msgID pulsar.MessageID) error {
+	return nil
+}
 
 func (c *mockConsumer) ReconsumeLater(msg pulsar.Message, delay time.Duration) {}
+
+func (c *mockConsumer) ReconsumeLaterWithCustomProperties(msg pulsar.Message, customProperties map[string]string,
+	delay time.Duration) {
+}
 
 func (c *mockConsumer) Nack(msg pulsar.Message) {}
 

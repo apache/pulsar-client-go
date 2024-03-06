@@ -17,7 +17,12 @@
 
 package pulsar
 
-import "fmt"
+import (
+	"fmt"
+
+	proto "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"github.com/hashicorp/go-multierror"
+)
 
 // Result used to represent pulsar processing is an alias of type int.
 type Result int
@@ -101,6 +106,21 @@ const (
 	SeekFailed
 	// ProducerClosed means producer already been closed
 	ProducerClosed
+	// SchemaFailure means the payload could not be encoded using the Schema
+	SchemaFailure
+	// InvalidStatus means the component status is not as expected.
+	InvalidStatus
+	// TransactionNoFoundError The transaction is not exist in the transaction coordinator, It may be an error txn
+	// or already ended.
+	TransactionNoFoundError
+	// ClientMemoryBufferIsFull client limit buffer is full
+	ClientMemoryBufferIsFull
+	// ProducerFenced When a producer asks and fail to get exclusive producer access,
+	// or loses the exclusive status after a reconnection, the broker will
+	// use this error to indicate that this producer is now permanently
+	// fenced. Applications are now supposed to close it and create a
+	// new producer
+	ProducerFenced
 )
 
 // Error implement error interface, composed of two parts: msg and result.
@@ -205,7 +225,31 @@ func getResultStr(r Result) string {
 		return "SeekFailed"
 	case ProducerClosed:
 		return "ProducerClosed"
+	case SchemaFailure:
+		return "SchemaFailure"
+	case ClientMemoryBufferIsFull:
+		return "ClientMemoryBufferIsFull"
+	case TransactionNoFoundError:
+		return "TransactionNoFoundError"
 	default:
 		return fmt.Sprintf("Result(%d)", r)
 	}
+}
+
+func getErrorFromServerError(serverError *proto.ServerError) error {
+	switch *serverError {
+	case proto.ServerError_TransactionNotFound:
+		return newError(TransactionNoFoundError, serverError.String())
+	case proto.ServerError_InvalidTxnStatus:
+		return newError(InvalidStatus, serverError.String())
+	default:
+		return newError(UnknownError, serverError.String())
+	}
+}
+
+// joinErrors can join multiple errors into one error, and the returned error can be tested by errors.Is()
+// we use github.com/hashicorp/go-multierror instead of errors.Join() of Go 1.20 so that we can compile pulsar
+// go client with go versions that newer than go 1.13
+func joinErrors(errs ...error) error {
+	return multierror.Append(nil, errs...)
 }

@@ -34,12 +34,11 @@ const (
 
 type reader struct {
 	sync.Mutex
-	client              *client
-	pc                  *partitionConsumer
-	messageCh           chan ConsumerMessage
-	lastMessageInBroker trackingMessageID
-	log                 log.Logger
-	metrics             *internal.LeveledMetrics
+	client    *client
+	messageCh chan ConsumerMessage
+	log       log.Logger
+	metrics   *internal.LeveledMetrics
+	c         *consumer
 }
 
 func newReader(client *client, options ReaderOptions) (Reader, error) {
@@ -51,8 +50,8 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		return nil, newError(InvalidConfiguration, "StartMessageID is required")
 	}
 
-	startMessageID, ok := toTrackingMessageID(options.StartMessageID)
-	if !ok {
+	var startMessageID *trackingMessageID
+	if !checkMessageIDType(options.StartMessageID) {
 		// a custom type satisfying MessageID may not be a messageID or trackingMessageID
 		// so re-create messageID using its data
 		deserMsgID, err := deserializeMessageID(options.StartMessageID.Serialize())
@@ -60,17 +59,19 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 			return nil, err
 		}
 		// de-serialized MessageID is a messageID
-		startMessageID = trackingMessageID{
-			messageID:    deserMsgID.(messageID),
-			receivedTime: time.Now(),
-		}
+		startMessageID = toTrackingMessageID(deserMsgID)
+	} else {
+		startMessageID = toTrackingMessageID(options.StartMessageID)
 	}
 
-	subscriptionName := options.SubscriptionRolePrefix
+	subscriptionName := options.SubscriptionName
 	if subscriptionName == "" {
-		subscriptionName = "reader"
+		subscriptionName = options.SubscriptionRolePrefix
+		if subscriptionName == "" {
+			subscriptionName = "reader"
+		}
+		subscriptionName += "-" + generateRandomName()
 	}
-	subscriptionName += "-" + generateRandomName()
 
 	receiverQueueSize := options.ReceiverQueueSize
 	if receiverQueueSize <= 0 {
@@ -88,21 +89,33 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		options.Decryption.MessageCrypto = messageCrypto
 	}
 
-	consumerOptions := &partitionConsumerOpts{
-		topic:                      options.Topic,
-		consumerName:               options.Name,
-		subscription:               subscriptionName,
-		subscriptionType:           Exclusive,
-		receiverQueueSize:          receiverQueueSize,
-		startMessageID:             startMessageID,
-		startMessageIDInclusive:    options.StartMessageIDInclusive,
-		subscriptionMode:           nonDurable,
-		readCompacted:              options.ReadCompacted,
-		metadata:                   options.Properties,
-		nackRedeliveryDelay:        defaultNackRedeliveryDelay,
-		replicateSubscriptionState: false,
-		decryption:                 options.Decryption,
-		schema:                     options.Schema,
+	if options.MaxPendingChunkedMessage == 0 {
+		options.MaxPendingChunkedMessage = 100
+	}
+
+	if options.ExpireTimeOfIncompleteChunk == 0 {
+		options.ExpireTimeOfIncompleteChunk = time.Minute
+	}
+
+	consumerOptions := &ConsumerOptions{
+		Topic:                       options.Topic,
+		Name:                        options.Name,
+		SubscriptionName:            subscriptionName,
+		Type:                        Exclusive,
+		ReceiverQueueSize:           receiverQueueSize,
+		SubscriptionMode:            NonDurable,
+		ReadCompacted:               options.ReadCompacted,
+		Properties:                  options.Properties,
+		NackRedeliveryDelay:         defaultNackRedeliveryDelay,
+		ReplicateSubscriptionState:  false,
+		Decryption:                  options.Decryption,
+		Schema:                      options.Schema,
+		BackoffPolicy:               options.BackoffPolicy,
+		MaxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
+		ExpireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
+		AutoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
+		startMessageID:              startMessageID,
+		StartMessageIDInclusive:     options.StartMessageIDInclusive,
 	}
 
 	reader := &reader{
@@ -113,24 +126,29 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	}
 
 	// Provide dummy dlq router with not dlq policy
-	dlq, err := newDlqRouter(client, nil, client.log)
+	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, options.Name, client.log)
+	if err != nil {
+		return nil, err
+	}
+	// Provide dummy rlq router with not dlq policy
+	rlq, err := newRetryRouter(client, nil, false, client.log)
 	if err != nil {
 		return nil, err
 	}
 
-	pc, err := newPartitionConsumer(nil, client, consumerOptions, reader.messageCh, dlq, reader.metrics)
+	c, err := newInternalConsumer(client, *consumerOptions, options.Topic, reader.messageCh, dlq, rlq, false)
 	if err != nil {
 		close(reader.messageCh)
 		return nil, err
 	}
+	reader.c = c
 
-	reader.pc = pc
 	reader.metrics.ReadersOpened.Inc()
 	return reader, nil
 }
 
 func (r *reader) Topic() string {
-	return r.pc.topic
+	return r.c.topic
 }
 
 func (r *reader) Next(ctx context.Context) (Message, error) {
@@ -144,12 +162,15 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 			// Acknowledge message immediately because the reader is based on non-durable subscription. When it reconnects,
 			// it will specify the subscription position anyway
 			msgID := cm.Message.ID()
-			if mid, ok := toTrackingMessageID(msgID); ok {
-				r.pc.lastDequeuedMsg = mid
-				r.pc.AckID(mid)
-				return cm.Message, nil
+			err := r.c.setLastDequeuedMsg(msgID)
+			if err != nil {
+				return nil, err
 			}
-			return nil, newError(InvalidMessage, fmt.Sprintf("invalid message id type %T", msgID))
+			err = r.c.AckID(msgID)
+			if err != nil {
+				return nil, err
+			}
+			return cm.Message, nil
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
@@ -157,75 +178,55 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 }
 
 func (r *reader) HasNext() bool {
-	if !r.lastMessageInBroker.Undefined() && r.hasMoreMessages() {
-		return true
-	}
-
-	for {
-		lastMsgID, err := r.pc.getLastMessageID()
-		if err != nil {
-			r.log.WithError(err).Error("Failed to get last message id from broker")
-			continue
-		} else {
-			r.lastMessageInBroker = lastMsgID
-			break
-		}
-	}
-
-	return r.hasMoreMessages()
-}
-
-func (r *reader) hasMoreMessages() bool {
-	if !r.pc.lastDequeuedMsg.Undefined() {
-		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.lastDequeuedMsg.messageID)
-	}
-
-	if r.pc.options.startMessageIDInclusive {
-		return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greaterEqual(r.pc.startMessageID.messageID)
-	}
-
-	// Non-inclusive
-	return r.lastMessageInBroker.isEntryIDValid() && r.lastMessageInBroker.greater(r.pc.startMessageID.messageID)
+	return r.c.hasNext()
 }
 
 func (r *reader) Close() {
-	r.pc.Close()
+	r.c.Close()
 	r.client.handlers.Del(r)
 	r.metrics.ReadersClosed.Inc()
 }
 
-func (r *reader) messageID(msgID MessageID) (trackingMessageID, bool) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
-		r.log.Warnf("invalid message id type %T", msgID)
-		return trackingMessageID{}, false
-	}
+func (r *reader) messageID(msgID MessageID) *trackingMessageID {
+	mid := toTrackingMessageID(msgID)
 
 	partition := int(mid.partitionIdx)
 	// did we receive a valid partition index?
 	if partition < 0 {
 		r.log.Warnf("invalid partition index %d expected", partition)
-		return trackingMessageID{}, false
+		return nil
 	}
 
-	return mid, true
+	return mid
 }
 
 func (r *reader) Seek(msgID MessageID) error {
 	r.Lock()
 	defer r.Unlock()
 
-	mid, ok := r.messageID(msgID)
-	if !ok {
+	if !checkMessageIDType(msgID) {
+		r.log.Warnf("invalid message id type %T", msgID)
+		return fmt.Errorf("invalid message id type %T", msgID)
+	}
+
+	mid := r.messageID(msgID)
+	if mid == nil {
 		return nil
 	}
 
-	return r.pc.Seek(mid)
+	return r.c.Seek(mid)
 }
 
 func (r *reader) SeekByTime(time time.Time) error {
 	r.Lock()
 	defer r.Unlock()
 
-	return r.pc.SeekByTime(time)
+	return r.c.SeekByTime(time)
+}
+
+func (r *reader) GetLastMessageID() (MessageID, error) {
+	if len(r.c.consumers) > 1 {
+		return nil, fmt.Errorf("GetLastMessageID is not supported for multi-topics reader")
+	}
+	return r.c.consumers[0].getLastMessageID()
 }

@@ -23,6 +23,275 @@
 
 All notable changes to this project will be documented in this file.
 
+[0.12.0] 2024-01-10
+
+## What's Changed
+* Improved the performance of schema and schema cache by @gunli in https://github.com/apache/pulsar-client-go/pull/1033
+* Fixed return when registerSendOrAckOp() failed by @gunli in https://github.com/apache/pulsar-client-go/pull/1045
+* Fixed the incorrect link in the release process by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1050
+* Fixed Producer by checking if message is nil by @gunli in https://github.com/apache/pulsar-client-go/pull/1047
+* Added 0.11.0 change log by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1048
+* Fixed 0.11.0 change log by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1054
+* Fixed issue 877 where ctx in partitionProducer.Send() was not performing as expected by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/1053
+* Fixed Producer by stopping block request even if Value and Payload are both set by @gunli in https://github.com/apache/pulsar-client-go/pull/1052
+* Improved Producer by simplifying the flush logic by @gunli in https://github.com/apache/pulsar-client-go/pull/1049
+* Fixed issue 1051: inaccurate producer memory limit in chunking and schema by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/1055
+* Fixed issue by sending Close Command on Producer/Consumer create timeout by @michaeljmarshall in https://github.com/apache/pulsar-client-go/pull/1061
+* Fixed issue 1057: producer flush operation is not guaranteed to flush all messages by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/1058
+* Fixed issue 1064: panic when trying to flush in DisableBatching=true by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/1065
+* Fixed transaction acknowledgement and send logic for chunk message by @liangyepianzhou in https://github.com/apache/pulsar-client-go/pull/1069
+* Fixed issue by closing consumer resources if creation fails by @michaeljmarshall in https://github.com/apache/pulsar-client-go/pull/1070
+* Fixed issue where client reconnected every authenticationRefreshCheckSeconds when using TLS authentication by @jffp113 in https://github.com/apache/pulsar-client-go/pull/1062
+* Corrected the SendAsync() description by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/1066
+* CI: replaced license header checker and formatter by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1077
+* Chore: allowed rebase and merge by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1080
+* Adopted pulsar-admin-go sources by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1079
+* Reverted: allowed rebase and merge by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1081
+* Fixed producer by failing all messages that are pending requests when closing like Java by @graysonzeng in https://github.com/apache/pulsar-client-go/pull/1059
+* Supported load config from env by @tuteng in https://github.com/apache/pulsar-client-go/pull/1089
+* Fixed issue where multiple calls to client.Close causes panic by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1046
+* Improved client by implementing GetLastMSgID for Reader by @liangyepianzhou in https://github.com/apache/pulsar-client-go/pull/1087
+* Fixed comment for ConnectionMaxIdleTime by @massakam in https://github.com/apache/pulsar-client-go/pull/1091
+* Issue 1094: connectionTimeout respects net.Dialer default timeout by @zzzming in https://github.com/apache/pulsar-client-go/pull/1095
+* Supported OAuth2 with scope field by @labuladong in https://github.com/apache/pulsar-client-go/pull/1097
+* Fixed issue where DisableReplication flag does not work by @massakam in https://github.com/apache/pulsar-client-go/pull/1100
+* Double-checked before consumer reconnect by @zccold in https://github.com/apache/pulsar-client-go/pull/1084
+* Fixed schema error by @leizhiyuan in https://github.com/apache/pulsar-client-go/pull/823
+* PR-1071-1: renamed pendingItem.Complete() to pendingItem.done() by @gunli in https://github.com/apache/pulsar-client-go/pull/1109
+* PR-1071-2: added sendRequest.done() to release resource together by @gunli in https://github.com/apache/pulsar-client-go/pull/1110
+* Refactor: factored out validateMsg by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1117
+* Refactor: factored out prepareTransaction by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1118
+* Completed comment on ProducerInterceptor interface BeforeSend method by @ojcm in https://github.com/apache/pulsar-client-go/pull/1119
+* Refactor: prepared sendrequest and moved to internalSendAsync by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1120
+* Fix: normalized all send request resource release into sr.done by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1121
+* Improvement: added func blockIfQueueFull() to encapsulate DisableBlockIfQue… by @gunli in https://github.com/apache/pulsar-client-go/pull/1122
+* Improved debug log clarity in ReceivedSendReceipt() by @gunli in https://github.com/apache/pulsar-client-go/pull/1123
+* Fixed issue 1098 by checking batchBuilder in case batch is disabled by @zzzming in https://github.com/apache/pulsar-client-go/pull/1099
+* Fixed Producer by fixing reconnection backoff logic by @gunli in https://github.com/apache/pulsar-client-go/pull/1125
+* Added 0.11.1 change log by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1092
+* Fixed dead link to the KEYS file in the release process by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1127
+* Improved performance by pooling sendRequest by @gunli in https://github.com/apache/pulsar-client-go/pull/1126
+* Fixed argument order to Errorf in TableView message handling by @ojcm in https://github.com/apache/pulsar-client-go/pull/1130
+* Fixed Producer by double-checking before reconnect by @gunli in https://github.com/apache/pulsar-client-go/pull/1131
+* Fixed issue where client must not retry connecting to broker when topic is terminated by @pkumar-singh in https://github.com/apache/pulsar-client-go/pull/1128
+* Issue 1132: Fixed JSONSchema unmarshalling in TableView by @ojcm in https://github.com/apache/pulsar-client-go/pull/1133
+* Improved by setting dlq producerName by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1137
+* Fixed channel deadlock in regexp consumer by @goncalo-rodrigues in https://github.com/apache/pulsar-client-go/pull/1141
+* Fixed Producer: handled TopicNotFound/TopicTerminated/ProducerBlockedQuotaExceededException/ProducerFenced when reconnecting by @gunli in https://github.com/apache/pulsar-client-go/pull/1134
+* Transaction: Avoided a panic when using transaction by @Gilthoniel in https://github.com/apache/pulsar-client-go/pull/1144
+* Improved by updating connection.lastDataReceivedTime when connection is ready by @gunli in https://github.com/apache/pulsar-client-go/pull/1145
+* Improved Producer by normalizing and exporting the errors by @gunli in https://github.com/apache/pulsar-client-go/pull/1143
+* Updated Unsubscribe() interface comment by @geniusjoe in https://github.com/apache/pulsar-client-go/pull/1146
+* Issue 1105: Fixed AutoTopicCreation for type non-partitioned by @tomjo in https://github.com/apache/pulsar-client-go/pull/1107
+* Added test for admin topic creation by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1152
+* Implemented GetTopicAutoCreation by @jiangpengcheng in https://github.com/apache/pulsar-client-go/pull/1151
+* Bumped github.com/dvsekhvalnov/jose2go from 1.5.0 to 1.6.0 by @dependabot in https://github.com/apache/pulsar-client-go/pull/1150
+* Bump golang.org/x/net from 0.0.0-20220225172249-27dd8689420f to 0.17.0 by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/1155
+* Fix DLQ producer name conflicts when multiples consumers send messages to DLQ by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1156
+
+## New Contributors
+* @jffp113 made their first contribution in https://github.com/apache/pulsar-client-go/pull/1062
+* @tuteng made their first contribution in https://github.com/apache/pulsar-client-go/pull/1089
+* @zccold made their first contribution in https://github.com/apache/pulsar-client-go/pull/1084
+* @ojcm made their first contribution in https://github.com/apache/pulsar-client-go/pull/1119
+* @pkumar-singh made their first contribution in https://github.com/apache/pulsar-client-go/pull/1128
+* @goncalo-rodrigues made their first contribution in https://github.com/apache/pulsar-client-go/pull/1141
+* @Gilthoniel made their first contribution in https://github.com/apache/pulsar-client-go/pull/1144
+* @geniusjoe made their first contribution in https://github.com/apache/pulsar-client-go/pull/1146
+* @tomjo made their first contribution in https://github.com/apache/pulsar-client-go/pull/1107
+* @jiangpengcheng made their first contribution in https://github.com/apache/pulsar-client-go/pull/1151
+* @dependabot made their first contribution in https://github.com/apache/pulsar-client-go/pull/1150
+
+[0.11.1] 2023-09-11
+
+- Close consumer resources if the creation fails by @michaeljmarshall in [#1070](https://github.com/apache/pulsar-client-go/pull/1070)
+- Fix the transaction acknowledgement and send logic for chunked message by @liangyepianzhou in [#1069](https://github.com/apache/pulsar-client-go/pull/1069)
+- Correct the `SendAsync()` description by @Gleiphir2769 in [#1066](https://github.com/apache/pulsar-client-go/pull/1066)
+- Fix the panic when try to flush in `DisableBatching=true` by @Gleiphir2769 in [#1065](https://github.com/apache/pulsar-client-go/pull/1065)
+- Fix client reconnected every authenticationRefreshCheckSeconds when using tls authentication by @jffp113 in [#1062](https://github.com/apache/pulsar-client-go/pull/1062)
+- Send Close Command on Producer/Consumer create timeout by @michaeljmarshall in [#1061](https://github.com/apache/pulsar-client-go/pull/1061)
+- Fail all messages that are pending requests when closing by @graysonzeng in [#1059](https://github.com/apache/pulsar-client-go/pull/1059)
+- Fix the producer flush opertion is not guarantee to flush all messages by @Gleiphir2769 in [#1058](https://github.com/apache/pulsar-client-go/pull/1058)
+- Fix inaccurate producer mem limit in chunking and schema by @Gleiphir2769 in [#1055](https://github.com/apache/pulsar-client-go/pull/1055)
+- Fix ctx in `partitionProducer.Send()` is not performing as expected by @Gleiphir2769 in [#1053](https://github.com/apache/pulsar-client-go/pull/1053)
+- Stop block request even if Value and Payload are both set by @gunli in [#1052](https://github.com/apache/pulsar-client-go/pull/1052)
+- Simplify the flush logic by @gunli in [#1049](https://github.com/apache/pulsar-client-go/pull/1049)
+- Check if message is nil by @gunli in [#1047](https://github.com/apache/pulsar-client-go/pull/1047)
+- Return when registerSendOrAckOp() failed by @gunli in [#1045](https://github.com/apache/pulsar-client-go/pull/1045)
+
+**Full Changelog**: https://github.com/apache/pulsar-client-go/compare/v0.11.0...v0.11.1-candidate-1
+
+[0.11.0] 2023-07-04
+
+## Features
+* Support the schema type ProtoNativeSchema by @gaoran10 in https://github.com/apache/pulsar-client-go/pull/1006
+* Implement transactional consumer/producer API by @liangyepianzhou in https://github.com/apache/pulsar-client-go/pull/1002
+* Support NonDurable subscriptions by @dinghram in https://github.com/apache/pulsar-client-go/pull/992
+* Allow user to specify TLS ciphers an min/max TLS version by @dinghram in https://github.com/apache/pulsar-client-go/pull/1041
+* Add single partition router by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/999
+
+## Improve
+* Fix missing link in the release process by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1000
+* Stablize golangci-lint task in CI by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1007
+* Fix reconnection backoff logic by @wolfstudy in https://github.com/apache/pulsar-client-go/pull/1008
+* Change token name to `GITHUB_TOKEN` in CI by @labuladong in https://github.com/apache/pulsar-client-go/pull/910
+* Add links to client docs and feature matrix in README.md by @momo-jun in https://github.com/apache/pulsar-client-go/pull/1014
+* Fix flaky test `TestMaxPendingChunkMessages` by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/1003
+* Fix flaky test in `negative_acks_tracker_test.go` by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1017
+* Fix event time not being set when batching is disabled by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1015
+* Use maphash instead of crypto/sha256 for hash function of hashmap in Schema.hash() by @bpereto in https://github.com/apache/pulsar-client-go/pull/1022
+* Improve logs on failTimeoutMessages by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1025
+* Delete LICENSE-go-rate.txt by @tisonkun in https://github.com/apache/pulsar-client-go/pull/1028
+* Fix broken master by upgrading JRE to 17 by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/1030
+* Split sendRequest and make reconnectToBroker and other operation in the same coroutine by @zengguan in https://github.com/apache/pulsar-client-go/pull/1029
+* Install openjdk-17 in Dockerfile by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1037
+* Fix ordering key not being set and parsed when batching is disabled by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1034
+* Check if callback is nil before calling it by @gunli in https://github.com/apache/pulsar-client-go/pull/1036
+* Refactor duplicated code lines and fix typo errors by @gunli in https://github.com/apache/pulsar-client-go/pull/1039
+
+## New Contributors
+* @gaoran10 made their first contribution in https://github.com/apache/pulsar-client-go/pull/1006
+* @momo-jun made their first contribution in https://github.com/apache/pulsar-client-go/pull/1014
+* @bpereto made their first contribution in https://github.com/apache/pulsar-client-go/pull/1022
+* @zengguan made their first contribution in https://github.com/apache/pulsar-client-go/pull/1029
+* @gunli made their first contribution in https://github.com/apache/pulsar-client-go/pull/1036
+
+**Full Changelog**: https://github.com/apache/pulsar-client-go/compare/v0.10.0...v0.11.0-candidate-1
+
+[0.10.0] 2023-03-27
+
+## Feature
+* Support chunking for big messages by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/805
+* Add BackoffPolicy to `reader` and improve test case by @labuladong in https://github.com/apache/pulsar-client-go/pull/889
+* Support cumulative acknowledgment by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/903
+* Support consumer event listener by @labuladong in https://github.com/apache/pulsar-client-go/pull/904
+* Allow CustomProperties when sending messages for retry by @ngoyal16 in https://github.com/apache/pulsar-client-go/pull/916
+* Support batch index ACK by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/938
+* Support Exclusive Producer access mode by @shibd in https://github.com/apache/pulsar-client-go/pull/944
+* Add transactionCoordinatorClient by @liangyepianzhou in https://github.com/apache/pulsar-client-go/pull/953
+* Support memory limit for the producer by @shibd in https://github.com/apache/pulsar-client-go/pull/955
+* Support grouping ACK requests by time and size by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/957
+* Support WaitForExclusive producer access mode by @shibd in https://github.com/apache/pulsar-client-go/pull/958
+* Support Copper Argos in the Athenz auth provider by @massakam in https://github.com/apache/pulsar-client-go/pull/960
+* Support auto-release idle connections by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/963
+* Support batch index ACK and  set max number of messages in batch for the perf tool by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/967
+* Support auto-scaled consumer receiver queue by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/976
+* Implement transactionImpl by @liangyepianzhou in https://github.com/apache/pulsar-client-go/pull/984
+* Expose the chunk config of the consumer to the reader by @CrazyCollin in https://github.com/apache/pulsar-client-go/pull/987
+* Support consumer client memory limit by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/991
+
+
+## Improve
+* Nack the message in dlqrouter when sending errors by @leizhiyuan in https://github.com/apache/pulsar-client-go/pull/592
+* Fix TLS certificates that do not include IP SANS, save hostname before switching to a physical address by @dinghram in https://github.com/apache/pulsar-client-go/pull/812
+* Fix the availablePermits leak that could cause the consumer stuck by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/835
+* Read module version info from golang runtime by @pgier in https://github.com/apache/pulsar-client-go/pull/856
+* Fix typo in `consumer.go` by @sekfung in https://github.com/apache/pulsar-client-go/pull/857
+* Fix marshalling `time.Time{}` to `uint64` by @aymkhalil in https://github.com/apache/pulsar-client-go/pull/865
+* Use the `DATA` constant as the prefix in OAuth2 KeyFileProvider by @Niennienzz in https://github.com/apache/pulsar-client-go/pull/866
+* Fix bot cannot get the pr link by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/868
+* Fix PR template by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/869
+* Add go test flag '-v' for more clearly CI log by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/871
+* Fix the dispatcher() stuck caused by availablePermitsCh by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/875
+* Fix the Send() stuck caused by callback() not being called by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/880
+* Fix the data race of ackReq.err by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/881
+* Add data URL format to read the key file by @nodece in https://github.com/apache/pulsar-client-go/pull/883
+* Prevent consumer panic on de-serializing message if schema not found by @GPrabhudas in https://github.com/apache/pulsar-client-go/pull/886
+* Fix the conditions of loading TLS certificates by @nodece in https://github.com/apache/pulsar-client-go/pull/888
+* Fix default retry and dlq topic name as per the doc by @ngoyal16 in https://github.com/apache/pulsar-client-go/pull/891
+* Add NewMessageID() method by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/893
+* Use protocolbuffers instead of gogo by @nodece in https://github.com/apache/pulsar-client-go/pull/895
+* Fix the compression broken when batching is disabled by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/902
+* Add messageId and topic as props of DLQ message by @GPrabhudas in https://github.com/apache/pulsar-client-go/pull/907
+* Update go version to 1.18 by @pgier in https://github.com/apache/pulsar-client-go/pull/911
+* Move out the auth package from internal by @nodece in https://github.com/apache/pulsar-client-go/pull/914
+* Remove the `clearMessageQueuesCh` in `partitionConsumer.dispatcher()` by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/921
+* Remove the outdated interface description of `SeekByTime` by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/924
+* Handle nil value message correctly in table-view by @Demogorgon314 in https://github.com/apache/pulsar-client-go/pull/930
+* Migrate from the deprecated io/ioutil package by @reugn in https://github.com/apache/pulsar-client-go/pull/942
+* Update the Cobra library to significantly reduce the dependency tree by @reugn in https://github.com/apache/pulsar-client-go/pull/943
+* Remove go1.11 code leftovers by @reugn in https://github.com/apache/pulsar-client-go/pull/946
+* Use pkg.go.dev badge in the readme by @reugn in https://github.com/apache/pulsar-client-go/pull/947
+* Improve test script by @nodece in https://github.com/apache/pulsar-client-go/pull/951
+* Optimize the performance by passing MessageID implementations by pointers by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/968
+* Fix flaky Key_Shared subscription-related tests by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/970
+* Refactor the toTrackingMessageID() by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/972
+* Prevent RPC client panic on RPC response if `ProducerReady` is nil by @sekfung in https://github.com/apache/pulsar-client-go/pull/973
+* Fix nack backoff policy logic by @wolfstudy in https://github.com/apache/pulsar-client-go/pull/974
+* Fix license information for go-rate by @tisonkun in https://github.com/apache/pulsar-client-go/pull/975
+* Fix the data race in checkAndCleanIdleConnections by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/981
+* Setup rate limiter for TestChunksEnqueueFailed to reduce flaky by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/982
+* Fix the message is blocked on the AckGroupingTracker.isDuplicate method by @shibd in https://github.com/apache/pulsar-client-go/pull/986
+* Optimize batch index ACK performance by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/988
+* Add more precise producer rate limiter by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/989
+* Fix batched messages not ACKed correctly when batch index ACK is disabled by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/994
+* Fix panic caused by retryAssert() by @Gleiphir2769 in https://github.com/apache/pulsar-client-go/pull/996
+
+## New Contributors
+* @sekfung made their first contribution in https://github.com/apache/pulsar-client-go/pull/857
+* @Gleiphir2769 made their first contribution in https://github.com/apache/pulsar-client-go/pull/835
+* @michaeljmarshall made their first contribution in https://github.com/apache/pulsar-client-go/pull/861
+* @aymkhalil made their first contribution in https://github.com/apache/pulsar-client-go/pull/865
+* @RobertIndie made their first contribution in https://github.com/apache/pulsar-client-go/pull/868
+* @dinghram made their first contribution in https://github.com/apache/pulsar-client-go/pull/812
+* @labuladong made their first contribution in https://github.com/apache/pulsar-client-go/pull/889
+* @Niennienzz made their first contribution in https://github.com/apache/pulsar-client-go/pull/866
+* @crossoverJie made their first contribution in https://github.com/apache/pulsar-client-go/pull/893
+* @ngoyal16 made their first contribution in https://github.com/apache/pulsar-client-go/pull/891
+* @Demogorgon314 made their first contribution in https://github.com/apache/pulsar-client-go/pull/930
+* @shibd made their first contribution in https://github.com/apache/pulsar-client-go/pull/944
+* @liangyepianzhou made their first contribution in https://github.com/apache/pulsar-client-go/pull/953
+* @tisonkun made their first contribution in https://github.com/apache/pulsar-client-go/pull/975
+* @CrazyCollin made their first contribution in https://github.com/apache/pulsar-client-go/pull/987
+
+[0.9.0] 2022-07-07
+
+## Feature
+* Add TableView support, see [PR-743](https://github.com/apache/pulsar-client-go/pull/743)
+* Support ack response for Go SDK, see [PR-776](https://github.com/apache/pulsar-client-go/pull/776)
+* Add basic authentication, see [PR-778](https://github.com/apache/pulsar-client-go/pull/778)
+* Support multiple schema version for producer and consumer, see [PR-611](https://github.com/apache/pulsar-client-go/pull/611)
+* Add schema support to Reader, see [PR-741](https://github.com/apache/pulsar-client-go/pull/741)
+
+## Improve
+* Add consumer seek by time on partitioned topic, see [PR-782](https://github.com/apache/pulsar-client-go/pull/782)
+* Fix using closed connection in consumer, see [PR-785](https://github.com/apache/pulsar-client-go/pull/785)
+* Add go 1.18 to the test matrix, see [PR-790](https://github.com/apache/pulsar-client-go/pull/790)
+* Schema creation and validation functions without panic, see [PR-794](https://github.com/apache/pulsar-client-go/pull/794)
+* Fix ack request not set requestId when enable AckWithResponse option, see [PR-780](https://github.com/apache/pulsar-client-go/pull/780)
+* Fix nil pointer dereference in TopicNameWithoutPartitionPart, see [PR-734](https://github.com/apache/pulsar-client-go/pull/734)
+* Add error response for Ack func, see [PR-775](https://github.com/apache/pulsar-client-go/pull/775)
+* Fix sequenceID is not equal to cause the connection to be closed incorrectly, see [PR-774](https://github.com/apache/pulsar-client-go/pull/774)
+* Add consumer state check when request commands, see [PR-772](https://github.com/apache/pulsar-client-go/pull/772)
+* Fix panic caused by flushing current batch with an incorrect internal function, see [PR-750](https://github.com/apache/pulsar-client-go/pull/750)
+* Fix deadlock in Producer Send when message fails to encode, see [PR-762](https://github.com/apache/pulsar-client-go/pull/762)
+* Add `-c/--max-connections` parameter to pulsar-perf-go and set it to 1 by default, see [PR-765](https://github.com/apache/pulsar-client-go/pull/765)
+* Fix producer unable register when cnx closed, see [PR-761](https://github.com/apache/pulsar-client-go/pull/761)
+* Fix annotation typo in `consumer.go`, see [PR-758](https://github.com/apache/pulsar-client-go/pull/758)
+* Dlq producer on topic with schema, see [PR-723](https://github.com/apache/pulsar-client-go/pull/723)
+* Add service not ready check, see [PR-757](https://github.com/apache/pulsar-client-go/pull/757)
+* Fix ack timeout cause reconnect, see [PR-756](https://github.com/apache/pulsar-client-go/pull/756)
+* Cleanup topics after unit tests, see [PR-755](https://github.com/apache/pulsar-client-go/pull/755)
+* Allow config reader subscription name, see [PR-754](https://github.com/apache/pulsar-client-go/pull/754)
+* Exposing broker metadata, see [PR-745](https://github.com/apache/pulsar-client-go/pull/745)
+* Make go version consistent, see [PR-751](https://github.com/apache/pulsar-client-go/pull/751)
+* Temporarily point ci to pulsar 2.8.2, see [PR-747](https://github.com/apache/pulsar-client-go/pull/747)
+* Upgrade klauspost/compress to v1.14.4, see [PR-740](https://github.com/apache/pulsar-client-go/pull/740)
+* Stop ticker when create producer failed, see [PR-730](https://github.com/apache/pulsar-client-go/pull/730)
+
+## New Contributors
+* @NaraLuwan made their first contribution in https://github.com/apache/pulsar-client-go/pull/730
+* @shubham1172 made their first contribution in https://github.com/apache/pulsar-client-go/pull/735
+* @nicoloboschi made their first contribution in https://github.com/apache/pulsar-client-go/pull/738
+* @ZiyaoWei made their first contribution in https://github.com/apache/pulsar-client-go/pull/741
+* @nodece made their first contribution in https://github.com/apache/pulsar-client-go/pull/757
+* @lhotari made their first contribution in https://github.com/apache/pulsar-client-go/pull/765
+* @samuelhewitt made their first contribution in https://github.com/apache/pulsar-client-go/pull/762
+* @shileiyu made their first contribution in https://github.com/apache/pulsar-client-go/pull/750
+* @hantmac made their first contribution in https://github.com/apache/pulsar-client-go/pull/734
+* @liushengzhong0927 made their first contribution in https://github.com/apache/pulsar-client-go/pull/780
+* @oryx2 made their first contribution in https://github.com/apache/pulsar-client-go/pull/611
+
 [0.8.1] 2022-03-08
 
 ## What's Changed

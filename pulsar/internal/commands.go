@@ -22,11 +22,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/gogo/protobuf/proto"
-
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	"google.golang.org/protobuf/proto"
 )
 
 const (
@@ -50,6 +49,8 @@ var ErrEOM = errors.New("EOF")
 
 var ErrConnectionClosed = errors.New("connection closed")
 
+var ErrExceedMaxMessageSize = errors.New("encryptedPayload exceeds MaxMessageSize")
+
 func NewMessageReader(headersAndPayload Buffer) *MessageReader {
 	return &MessageReader{
 		buffer: headersAndPayload,
@@ -70,7 +71,6 @@ func NewMessageReaderFromArray(headersAndPayload []byte) *MessageReader {
 // Batch format
 // [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [METADATA_SIZE][METADATA][PAYLOAD]
 // [METADATA_SIZE][METADATA][PAYLOAD]
-//
 type MessageReader struct {
 	buffer Buffer
 	// true if we are parsing a batched message - set after parsing the message metadata
@@ -213,6 +213,21 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 		cmd.GetLastMessageId = msg.(*pb.CommandGetLastMessageId)
 	case pb.BaseCommand_AUTH_RESPONSE:
 		cmd.AuthResponse = msg.(*pb.CommandAuthResponse)
+	case pb.BaseCommand_GET_OR_CREATE_SCHEMA:
+		cmd.GetOrCreateSchema = msg.(*pb.CommandGetOrCreateSchema)
+	case pb.BaseCommand_GET_SCHEMA:
+		cmd.GetSchema = msg.(*pb.CommandGetSchema)
+	case pb.BaseCommand_TC_CLIENT_CONNECT_REQUEST:
+		cmd.TcClientConnectRequest = msg.(*pb.CommandTcClientConnectRequest)
+	case pb.BaseCommand_NEW_TXN:
+		cmd.NewTxn = msg.(*pb.CommandNewTxn)
+	case pb.BaseCommand_ADD_PARTITION_TO_TXN:
+		cmd.AddPartitionToTxn = msg.(*pb.CommandAddPartitionToTxn)
+	case pb.BaseCommand_ADD_SUBSCRIPTION_TO_TXN:
+		cmd.AddSubscriptionToTxn = msg.(*pb.CommandAddSubscriptionToTxn)
+	case pb.BaseCommand_END_TXN:
+		cmd.EndTxn = msg.(*pb.CommandEndTxn)
+
 	default:
 		panic(fmt.Sprintf("Missing command type: %v", cmdType))
 	}
@@ -221,11 +236,11 @@ func baseCommand(cmdType pb.BaseCommand_Type, msg proto.Message) *pb.BaseCommand
 }
 
 func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload []byte) {
-	metadataSize := uint32(smm.Size())
+	metadataSize := uint32(proto.Size(smm))
 	wb.WriteUint32(metadataSize)
 
 	wb.ResizeIfNeeded(metadataSize)
-	_, err := smm.MarshalToSizedBuffer(wb.WritableSlice()[:metadataSize])
+	err := MarshalToSizedBuffer(smm, wb.WritableSlice()[:metadataSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf serialization error: %v", err))
 	}
@@ -234,17 +249,24 @@ func addSingleMessageToBatch(wb Buffer, smm *pb.SingleMessageMetadata, payload [
 	wb.Write(payload)
 }
 
-func serializeBatch(wb Buffer,
+func serializeMessage(wb Buffer,
 	cmdSend *pb.BaseCommand,
 	msgMetadata *pb.MessageMetadata,
-	uncompressedPayload Buffer,
+	payload Buffer,
 	compressionProvider compression.Provider,
-	encryptor crypto.Encryptor) error {
+	encryptor crypto.Encryptor,
+	maxMessageSize uint32,
+	doCompress bool) error {
 	// Wire format
 	// [TOTAL_SIZE] [CMD_SIZE][CMD] [MAGIC_NUMBER][CHECKSUM] [METADATA_SIZE][METADATA] [PAYLOAD]
 
 	// compress the payload
-	compressedPayload := compressionProvider.Compress(nil, uncompressedPayload.ReadableSlice())
+	var compressedPayload []byte
+	if doCompress {
+		compressedPayload = compressionProvider.Compress(nil, payload.ReadableSlice())
+	} else {
+		compressedPayload = payload.ReadableSlice()
+	}
 
 	// encrypt the compressed payload
 	encryptedPayload, err := encryptor.Encrypt(compressedPayload, msgMetadata)
@@ -255,6 +277,13 @@ func serializeBatch(wb Buffer,
 
 	cmdSize := uint32(proto.Size(cmdSend))
 	msgMetadataSize := uint32(proto.Size(msgMetadata))
+	msgSize := len(encryptedPayload) + int(msgMetadataSize)
+
+	// the maxMessageSize check of batching message is in here
+	if !(msgMetadata.GetTotalChunkMsgSize() != 0) && msgSize > int(maxMessageSize) {
+		return fmt.Errorf("%w, size: %d, MaxMessageSize: %d",
+			ErrExceedMaxMessageSize, msgSize, maxMessageSize)
+	}
 
 	frameSizeIdx := wb.WriterIndex()
 	wb.WriteUint32(0) // Skip frame size until we now the size
@@ -263,7 +292,7 @@ func serializeBatch(wb Buffer,
 	// Write cmd
 	wb.WriteUint32(cmdSize)
 	wb.ResizeIfNeeded(cmdSize)
-	_, err = cmdSend.MarshalToSizedBuffer(wb.WritableSlice()[:cmdSize])
+	err = MarshalToSizedBuffer(cmdSend, wb.WritableSlice()[:cmdSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing cmdSend: %v", err))
 	}
@@ -278,7 +307,7 @@ func serializeBatch(wb Buffer,
 	metadataStartIdx := wb.WriterIndex()
 	wb.WriteUint32(msgMetadataSize)
 	wb.ResizeIfNeeded(msgMetadataSize)
-	_, err = msgMetadata.MarshalToSizedBuffer(wb.WritableSlice()[:msgMetadataSize])
+	err = MarshalToSizedBuffer(msgMetadata, wb.WritableSlice()[:msgMetadataSize])
 	if err != nil {
 		panic(fmt.Sprintf("Protobuf error when serializing msgMetadata: %v", err))
 	}
@@ -295,6 +324,35 @@ func serializeBatch(wb Buffer,
 	wb.PutUint32(frameEndIdx-frameStartIdx, frameSizeIdx) // External frame
 	wb.PutUint32(checksum, checksumIdx)
 	return nil
+}
+
+func SingleSend(wb Buffer,
+	producerID, sequenceID uint64,
+	msgMetadata *pb.MessageMetadata,
+	compressedPayload Buffer,
+	encryptor crypto.Encryptor,
+	maxMassageSize uint32,
+	useTxn bool,
+	mostSigBits uint64,
+	leastSigBits uint64) error {
+	cmdSend := baseCommand(
+		pb.BaseCommand_SEND,
+		&pb.CommandSend{
+			ProducerId: &producerID,
+		},
+	)
+	cmdSend.Send.SequenceId = &sequenceID
+	if msgMetadata.GetTotalChunkMsgSize() > 1 {
+		isChunk := true
+		cmdSend.Send.IsChunk = &isChunk
+	}
+	if useTxn {
+		cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
+		cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
+	}
+	// payload has been compressed so compressionProvider can be nil
+	return serializeMessage(wb, cmdSend, msgMetadata, compressedPayload,
+		nil, encryptor, maxMassageSize, false)
 }
 
 // ConvertFromStringMap convert a string map to a KeyValue []byte

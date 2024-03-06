@@ -21,17 +21,18 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"io/ioutil"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
-
-	"github.com/apache/pulsar-client-go/pulsar/internal/auth"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClient(t *testing.T) {
@@ -189,7 +190,7 @@ func TestTLSAuthWithCertSupplier(t *testing.T) {
 }
 
 func TestTokenAuth(t *testing.T) {
-	token, err := ioutil.ReadFile(tokenFilePath)
+	token, err := os.ReadFile(tokenFilePath)
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
@@ -212,7 +213,7 @@ func TestTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
-			token, err := ioutil.ReadFile(tokenFilePath)
+			token, err := os.ReadFile(tokenFilePath)
 			if err != nil {
 				return "", err
 			}
@@ -287,7 +288,7 @@ func mockKeyFile(server string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	kf, err := ioutil.TempFile(pwd, "test_oauth2")
+	kf, err := os.CreateTemp(pwd, "test_oauth2")
 	if err != nil {
 		return "", err
 	}
@@ -348,7 +349,9 @@ func TestTopicPartitions(t *testing.T) {
 	defer client.Close()
 
 	// Create topic with 5 partitions
-	err = httpPut("admin/v2/persistent/public/default/TestGetTopicPartitions/partitions", 5)
+	topicAdminURL := "admin/v2/persistent/public/default/TestGetTopicPartitions/partitions"
+	err = httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
 	assert.Nil(t, err)
 
 	partitionedTopic := "persistent://public/default/TestGetTopicPartitions"
@@ -424,7 +427,7 @@ func TestNamespaceTopics(t *testing.T) {
 		t.Fatal(err)
 	}
 	topic2 := fmt.Sprintf("%s/topic-2", namespace)
-	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+	if err := httpPut("admin/v2/persistent/"+topic2, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -445,7 +448,13 @@ func TestNamespaceTopics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount := 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 
 	// add a non-persistent topic
 	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
@@ -466,7 +475,13 @@ func TestNamespaceTopics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount = 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 }
 
 func TestNamespaceTopicsWebURL(t *testing.T) {
@@ -487,7 +502,7 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 		t.Fatal(err)
 	}
 	topic2 := fmt.Sprintf("%s/topic-2", namespace)
-	if err := httpPut("admin/v2/persistent/"+topic2, namespace); err != nil {
+	if err := httpPut("admin/v2/persistent/"+topic2, nil); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
@@ -508,7 +523,13 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount := 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 
 	// add a non-persistent topic
 	topicName := fmt.Sprintf("non-persistent://%s/testNonPersistentTopic", namespace)
@@ -529,7 +550,13 @@ func TestNamespaceTopicsWebURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	assert.Equal(t, 2, len(topics))
+	topicCount = 0
+	for _, value := range topics {
+		if !strings.Contains(value, "__transaction_buffer_snapshot") {
+			topicCount++
+		}
+	}
+	assert.Equal(t, 2, topicCount)
 }
 
 func anonymousNamespacePolicy() map[string]interface{} {
@@ -697,7 +724,9 @@ func TestHTTPTopicPartitions(t *testing.T) {
 	defer client.Close()
 
 	// Create topic with 5 partitions
-	err = httpPut("admin/v2/persistent/public/default/TestHTTPTopicPartitions/partitions", 5)
+	topicAdminURL := "admin/v2/persistent/public/default/TestHTTPTopicPartitions/partitions"
+	err = httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
 	assert.Nil(t, err)
 
 	partitionedTopic := "persistent://public/default/TestHTTPTopicPartitions"
@@ -834,7 +863,7 @@ func TestHTTPSAuthWithCertSupplier(t *testing.T) {
 }
 
 func TestHTTPTokenAuth(t *testing.T) {
-	token, err := ioutil.ReadFile(tokenFilePath)
+	token, err := os.ReadFile(tokenFilePath)
 	assert.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
@@ -857,7 +886,7 @@ func TestHTTPTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: webServiceURL,
 		Authentication: NewAuthenticationTokenFromSupplier(func() (s string, err error) {
-			token, err := ioutil.ReadFile(tokenFilePath)
+			token, err := os.ReadFile(tokenFilePath)
 			if err != nil {
 				return "", err
 			}
@@ -1013,5 +1042,206 @@ func TestHTTPOAuth2AuthFailed(t *testing.T) {
 	assert.Error(t, err)
 	assert.Nil(t, producer)
 
+	client.Close()
+}
+
+func TestHTTPBasicAuth(t *testing.T) {
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:            webServiceURL,
+		Authentication: basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestHTTPSBasicAuth(t *testing.T) {
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:                   webServiceURLTLS,
+		TLSTrustCertsFilePath: caCertsPath,
+		TLSValidateHostname:   true,
+		Authentication:        basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newAuthTopicName(),
+	})
+	require.NoError(t, err)
+	require.NotNil(t, producer)
+
+	client.Close()
+}
+
+func testTLSTransportWithBasicAuth(t *testing.T, url string) {
+	t.Helper()
+
+	basicAuth, err := NewAuthenticationBasic("admin", "123456")
+	require.NoError(t, err)
+	require.NotNil(t, basicAuth)
+
+	client, err := NewClient(ClientOptions{
+		URL:                   url,
+		TLSCertificateFile:    tlsClientCertPath,
+		TLSKeyFilePath:        tlsClientKeyPath,
+		TLSTrustCertsFilePath: caCertsPath,
+		Authentication:        basicAuth,
+	})
+	require.NoError(t, err)
+	require.NotNil(t, client)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	require.NoError(t, err)
+	require.NotNil(t, producer)
+
+	client.Close()
+}
+
+func TestServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
+	testTLSTransportWithBasicAuth(t, serviceURLTLS)
+}
+
+func TestWebServiceUrlTLSWithTLSTransportWithBasicAuth(t *testing.T) {
+	testTLSTransportWithBasicAuth(t, webServiceURLTLS)
+}
+
+func TestConfigureConnectionMaxIdleTime(t *testing.T) {
+	_, err := NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: 1 * time.Second,
+	})
+
+	assert.Error(t, err, "Should be failed when the connectionMaxIdleTime is less than minConnMaxIdleTime")
+
+	cli, err := NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: -1, // Disabled
+	})
+
+	assert.Nil(t, err)
+	cli.Close()
+
+	cli, err = NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: 60 * time.Second,
+	})
+
+	assert.Nil(t, err)
+	cli.Close()
+}
+
+func testSendAndReceive(t *testing.T, producer Producer, consumer Consumer) {
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		// ack message
+		err = consumer.Ack(msg)
+		if err != nil {
+			return
+		}
+	}
+}
+
+func TestAutoCloseIdleConnection(t *testing.T) {
+	cli, err := NewClient(ClientOptions{
+		URL:                   serviceURL,
+		ConnectionMaxIdleTime: -1, // Disable auto release connections first, we will enable it manually later
+	})
+
+	assert.Nil(t, err)
+
+	topic := "TestAutoCloseIdleConnection"
+
+	// create consumer
+	consumer1, err := cli.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+
+	// create producer
+	producer1, err := cli.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	testSendAndReceive(t, producer1, consumer1)
+
+	pool := cli.(*client).cnxPool
+
+	producer1.Close()
+	consumer1.Close()
+
+	assert.NotEqual(t, 0, internal.GetConnectionsCount(&pool))
+
+	internal.StartCleanConnectionsTask(&pool, 2*time.Second) // Enable auto idle connections release manually
+
+	time.Sleep(6 * time.Second) // Need to wait at least 3 * ConnectionMaxIdleTime
+
+	assert.Equal(t, 0, internal.GetConnectionsCount(&pool))
+
+	// create consumer
+	consumer2, err := cli.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+
+	// create producer
+	producer2, err := cli.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	// Ensure the client still works
+	testSendAndReceive(t, producer2, consumer2)
+
+	producer2.Close()
+	consumer2.Close()
+
+	cli.Close()
+}
+
+func TestMultipleCloseClient(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	assert.Nil(t, err)
+	client.Close()
 	client.Close()
 }

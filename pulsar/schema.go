@@ -20,13 +20,19 @@ package pulsar
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"hash/maphash"
 	"reflect"
+	"sync"
 	"unsafe"
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/gogo/protobuf/proto"
 	"github.com/linkedin/goavro/v2"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/reflect/protodesc"
+	"google.golang.org/protobuf/reflect/protoreflect"
+	"google.golang.org/protobuf/types/descriptorpb"
 )
 
 type SchemaType int
@@ -48,10 +54,11 @@ const (
 	_                             //
 	_                             //
 	KeyValue                      //A Schema that contains Key Schema and Value Schema.
-	BYTES       = -1              //A bytes array.
+	BYTES       = 0               //A bytes array.
 	AUTO        = -2              //
 	AutoConsume = -3              //Auto Consume Type.
 	AutoPublish = -4              // Auto Publish Type.
+	ProtoNative = 20              //Protobuf native message encoding and decoding
 )
 
 // Encapsulates data around the schema definition
@@ -60,6 +67,19 @@ type SchemaInfo struct {
 	Schema     string
 	Type       SchemaType
 	Properties map[string]string
+	hashVal    uint64
+	hashOnce   sync.Once
+}
+
+func (s *SchemaInfo) hash() uint64 {
+	s.hashOnce.Do(func() {
+		h := maphash.Hash{}
+		h.SetSeed(seed)
+		h.Write([]byte(s.Schema))
+		s.hashVal = h.Sum64()
+	})
+
+	return s.hashVal
 }
 
 type Schema interface {
@@ -67,6 +87,41 @@ type Schema interface {
 	Decode(data []byte, v interface{}) error
 	Validate(message []byte) error
 	GetSchemaInfo() *SchemaInfo
+}
+
+func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]string) (schema Schema, err error) {
+	var schemaDef = string(schemaData)
+	var s Schema
+	switch schemaType {
+	case BYTES:
+		s = NewBytesSchema(properties)
+	case STRING:
+		s = NewStringSchema(properties)
+	case JSON:
+		s = NewJSONSchema(schemaDef, properties)
+	case PROTOBUF:
+		s = NewProtoSchema(schemaDef, properties)
+	case AVRO:
+		s = NewAvroSchema(schemaDef, properties)
+	case INT8:
+		s = NewInt8Schema(properties)
+	case INT16:
+		s = NewInt16Schema(properties)
+	case INT32:
+		s = NewInt32Schema(properties)
+	case INT64:
+		s = NewInt64Schema(properties)
+	case FLOAT:
+		s = NewFloatSchema(properties)
+	case DOUBLE:
+		s = NewDoubleSchema(properties)
+	case ProtoNative:
+		s = newProtoNativeSchema(schemaDef, properties)
+	default:
+		err = fmt.Errorf("not support schema type of %v", schemaType)
+	}
+	schema = s
+	return
 }
 
 type AvroCodec struct {
@@ -91,18 +146,29 @@ type JSONSchema struct {
 	SchemaInfo
 }
 
+// NewJSONSchema creates a new JSONSchema
+// Note: the function will panic if creation of codec fails
 func NewJSONSchema(jsonAvroSchemaDef string, properties map[string]string) *JSONSchema {
+	js, err := NewJSONSchemaWithValidation(jsonAvroSchemaDef, properties)
+	if err != nil {
+		log.Fatalf("JSONSchema init codec error:%v", err)
+	}
+	return js
+}
+
+// NewJSONSchemaWithValidation creates a new JSONSchema and error to indicate codec failure
+func NewJSONSchemaWithValidation(jsonAvroSchemaDef string, properties map[string]string) (*JSONSchema, error) {
 	js := new(JSONSchema)
 	avroCodec, err := initAvroCodec(jsonAvroSchemaDef)
 	if err != nil {
-		log.Fatalf("init codec error:%v", err)
+		return nil, err
 	}
 	schemaDef := NewSchemaDefinition(avroCodec)
 	js.SchemaInfo.Schema = schemaDef.Codec.Schema()
 	js.SchemaInfo.Type = JSON
 	js.SchemaInfo.Properties = properties
 	js.SchemaInfo.Name = "JSON"
-	return js
+	return js, nil
 }
 
 func (js *JSONSchema) Encode(data interface{}) ([]byte, error) {
@@ -126,11 +192,24 @@ type ProtoSchema struct {
 	SchemaInfo
 }
 
+var seed = maphash.MakeSeed()
+
+// NewProtoSchema creates a new ProtoSchema
+// Note: the function will panic if creation of codec fails
 func NewProtoSchema(protoAvroSchemaDef string, properties map[string]string) *ProtoSchema {
+	ps, err := NewProtoSchemaWithValidation(protoAvroSchemaDef, properties)
+	if err != nil {
+		log.Fatalf("ProtoSchema init codec error:%v", err)
+	}
+	return ps
+}
+
+// NewProtoSchemaWithValidation creates a new ProtoSchema and error to indicate codec failure
+func NewProtoSchemaWithValidation(protoAvroSchemaDef string, properties map[string]string) (*ProtoSchema, error) {
 	ps := new(ProtoSchema)
 	avroCodec, err := initAvroCodec(protoAvroSchemaDef)
 	if err != nil {
-		log.Fatalf("init codec error:%v", err)
+		return nil, err
 	}
 	schemaDef := NewSchemaDefinition(avroCodec)
 	ps.AvroCodec.Codec = schemaDef.Codec
@@ -138,7 +217,7 @@ func NewProtoSchema(protoAvroSchemaDef string, properties map[string]string) *Pr
 	ps.SchemaInfo.Type = PROTOBUF
 	ps.SchemaInfo.Properties = properties
 	ps.SchemaInfo.Name = "Proto"
-	return ps
+	return ps, nil
 }
 
 func (ps *ProtoSchema) Encode(data interface{}) ([]byte, error) {
@@ -157,16 +236,105 @@ func (ps *ProtoSchema) GetSchemaInfo() *SchemaInfo {
 	return &ps.SchemaInfo
 }
 
+type ProtoNativeSchema struct {
+	SchemaInfo
+}
+
+func NewProtoNativeSchemaWithMessage(message proto.Message, properties map[string]string) *ProtoNativeSchema {
+	schemaDef, err := getProtoNativeSchemaInfo(message)
+	if err != nil {
+		log.Fatalf("Get ProtoNative schema info error:%v", err)
+	}
+	return newProtoNativeSchema(schemaDef, properties)
+}
+
+func newProtoNativeSchema(protoNativeSchemaDef string, properties map[string]string) *ProtoNativeSchema {
+	pns := new(ProtoNativeSchema)
+	pns.SchemaInfo.Schema = protoNativeSchemaDef
+	pns.SchemaInfo.Type = ProtoNative
+	pns.SchemaInfo.Properties = properties
+	pns.SchemaInfo.Name = "ProtoNative"
+	return pns
+}
+
+func getProtoNativeSchemaInfo(message proto.Message) (string, error) {
+	fileDesc := message.ProtoReflect().Descriptor().ParentFile()
+	fileProtoMap := make(map[string]*descriptorpb.FileDescriptorProto)
+	getFileProto(fileDesc, fileProtoMap)
+
+	fileDescList := make([]*descriptorpb.FileDescriptorProto, 0, len(fileProtoMap))
+	for _, v := range fileProtoMap {
+		fileDescList = append(fileDescList, v)
+	}
+	fileDescSet := descriptorpb.FileDescriptorSet{
+		File: fileDescList,
+	}
+	bytesData, err := proto.Marshal(&fileDescSet)
+	if err != nil {
+		return "", err
+	}
+	schemaData := ProtoNativeSchemaData{
+		FileDescriptorSet:      bytesData,
+		RootMessageTypeName:    string(message.ProtoReflect().Descriptor().FullName()),
+		RootFileDescriptorName: fileDesc.Path(),
+	}
+	jsonData, err := json.Marshal(schemaData)
+	if err != nil {
+		return "", err
+	}
+	return string(jsonData), nil
+}
+
+type ProtoNativeSchemaData struct {
+	FileDescriptorSet      []byte `json:"fileDescriptorSet"`
+	RootMessageTypeName    string `json:"rootMessageTypeName"`
+	RootFileDescriptorName string `json:"rootFileDescriptorName"`
+}
+
+func getFileProto(fileDesc protoreflect.FileDescriptor, protoMap map[string]*descriptorpb.FileDescriptorProto) {
+	for i := 0; i < fileDesc.Imports().Len(); i++ {
+		getFileProto(fileDesc.Imports().Get(i).ParentFile(), protoMap)
+	}
+	protoMap[fileDesc.Path()] = protodesc.ToFileDescriptorProto(fileDesc)
+}
+
+func (ps *ProtoNativeSchema) Encode(data interface{}) ([]byte, error) {
+	return proto.Marshal(data.(proto.Message))
+}
+
+func (ps *ProtoNativeSchema) Decode(data []byte, v interface{}) error {
+	return proto.Unmarshal(data, v.(proto.Message))
+}
+
+func (ps *ProtoNativeSchema) Validate(message []byte) error {
+	return ps.Decode(message, nil)
+}
+
+func (ps *ProtoNativeSchema) GetSchemaInfo() *SchemaInfo {
+	return &ps.SchemaInfo
+}
+
 type AvroSchema struct {
 	AvroCodec
 	SchemaInfo
 }
 
+// NewAvroSchema creates a new AvroSchema
+// Note: the function will panic if creation of codec fails
 func NewAvroSchema(avroSchemaDef string, properties map[string]string) *AvroSchema {
+	ps, err := NewAvroSchemaWithValidation(avroSchemaDef, properties)
+	if err != nil {
+		log.Fatalf("AvroSchema init codec error:%v", err)
+	}
+	return ps
+}
+
+// NewAvroSchemaWithValidation creates a new AvroSchema and error to indicate codec failure
+func NewAvroSchemaWithValidation(avroSchemaDef string, properties map[string]string) (*AvroSchema, error) {
 	as := new(AvroSchema)
 	avroCodec, err := initAvroCodec(avroSchemaDef)
 	if err != nil {
-		log.Fatalf("init codec error:%v", err)
+		return nil, err
 	}
 	schemaDef := NewSchemaDefinition(avroCodec)
 	as.AvroCodec.Codec = schemaDef.Codec
@@ -174,7 +342,7 @@ func NewAvroSchema(avroSchemaDef string, properties map[string]string) *AvroSche
 	as.SchemaInfo.Type = AVRO
 	as.SchemaInfo.Name = "Avro"
 	as.SchemaInfo.Properties = properties
-	return as
+	return as, nil
 }
 
 func (as *AvroSchema) Encode(data interface{}) ([]byte, error) {
@@ -235,14 +403,10 @@ func (ss *StringSchema) Encode(v interface{}) ([]byte, error) {
 	return []byte(v.(string)), nil
 }
 
+// Decode convert from byte slice to string without allocating a new string
 func (ss *StringSchema) Decode(data []byte, v interface{}) error {
-	bh := (*reflect.SliceHeader)(unsafe.Pointer(&data))
-	sh := reflect.StringHeader{
-		Data: bh.Data,
-		Len:  bh.Len,
-	}
-	shPtr := (*string)(unsafe.Pointer(&sh))
-	reflect.ValueOf(v).Elem().Set(reflect.ValueOf(shPtr))
+	strPtr := (*string)(unsafe.Pointer(&data))
+	reflect.ValueOf(v).Elem().Set(reflect.ValueOf(strPtr))
 	return nil
 }
 
