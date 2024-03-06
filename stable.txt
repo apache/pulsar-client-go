@@ -1,3 +1,0 @@
-// This version number refers to the current stable version, generally is `VERSION - 1`.
-// Please fix the version when release.
-v0.12.0
