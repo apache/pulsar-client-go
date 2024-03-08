@@ -72,8 +72,11 @@ type Subscriptions interface {
 	// PeekMessages peeks messages from a topic subscription
 	PeekMessages(utils.TopicName, string, int) ([]*utils.Message, error)
 
-	// GetMessageByID gets message by its ledgerID and entryID
+	// Deprecated: Use GetMessagesByID() instead
 	GetMessageByID(topic utils.TopicName, ledgerID, entryID int64) (*utils.Message, error)
+
+	// GetMessagesByID gets messages by its ledgerID and entryID
+	GetMessagesByID(topic utils.TopicName, ledgerID, entryID int64) ([]*utils.Message, error)
 }
 
 type subscriptions struct {
@@ -187,6 +190,18 @@ func (s *subscriptions) peekNthMessage(topic utils.TopicName, sName string, pos 
 }
 
 func (s *subscriptions) GetMessageByID(topic utils.TopicName, ledgerID, entryID int64) (*utils.Message, error) {
+	messages, err := s.GetMessagesByID(topic, ledgerID, entryID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(messages) == 0 {
+		return nil, nil
+	}
+	return messages[0], nil
+}
+
+func (s *subscriptions) GetMessagesByID(topic utils.TopicName, ledgerID, entryID int64) ([]*utils.Message, error) {
 	ledgerIDStr := strconv.FormatInt(ledgerID, 10)
 	entryIDStr := strconv.FormatInt(entryID, 10)
 
@@ -201,11 +216,7 @@ func (s *subscriptions) GetMessageByID(topic utils.TopicName, ledgerID, entryID 
 	if err != nil {
 		return nil, err
 	}
-
-	if len(messages) == 0 {
-		return nil, nil
-	}
-	return messages[0], nil
+	return messages, nil
 }
 
 // safeRespClose is used to close a response body
