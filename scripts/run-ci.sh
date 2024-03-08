@@ -26,7 +26,7 @@ export GOCACHE=/tmp/go-cache
 go mod download
 
 # Basic compilation
-go build ./pulsar
+CGO_ENABLED=0 go build ./pulsar
 go build -o bin/pulsar-perf ./perf
 
 scripts/pulsar-test-service-start.sh
