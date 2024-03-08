@@ -19,7 +19,7 @@
 
 set -e -x
 
-export GOPATH=/
+export GOPATH=/pulsar/go
 
 # Install dependencies
 go mod download
