@@ -20,6 +20,7 @@
 set -e -x
 
 export GOPATH=/pulsar/go
+export GOCACHE=/tmp/go-cache
 
 # Install dependencies
 go mod download
