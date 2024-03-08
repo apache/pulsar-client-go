@@ -38,3 +38,4 @@ COPY integration-tests/conf/.htpasswd \
 COPY . /pulsar/pulsar-client-go
 
 ENV PULSAR_EXTRA_OPTS="-Dpulsar.auth.basic.conf=/pulsar/conf/.htpasswd"
+USER root
