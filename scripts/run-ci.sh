@@ -27,7 +27,7 @@ go mod download
 
 # Basic compilation
 CGO_ENABLED=0 go build ./pulsar
-go build -o bin/pulsar-perf ./perf
+go build -buildvcs=false -o bin/pulsar-perf ./perf
 
 scripts/pulsar-test-service-start.sh
 
