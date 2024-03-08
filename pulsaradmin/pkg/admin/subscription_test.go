@@ -69,12 +69,7 @@ func TestGetMessagesByID(t *testing.T) {
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
 			assert.Nil(t, err)
-			v, ok := messageIDMap[id.String()]
-			if ok {
-				messageIDMap[id.String()] = v + 1
-			} else {
-				messageIDMap[id.String()] = 1
-			}
+			messageIDMap[id.String()]++
 			wg.Done()
 		})
 	}
