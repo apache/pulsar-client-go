@@ -75,9 +75,6 @@ This change added tests and can be verified as follows:
 PR in forked repository: <!-- ENTER URL HERE -->
 
 <!--
-After opening this PR, the build in apache/pulsar-client-go will fail and instructions will
-be provided for opening a PR in the PR author's forked repository.
-
 apache/pulsar-client-go pull requests should be first tested in your own fork since the 
 apache/pulsar-client-go CI based on GitHub Actions has constrained resources and quota.
 GitHub Actions provides separate quota for pull requests that are executed in 
