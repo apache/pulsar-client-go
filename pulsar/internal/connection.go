@@ -151,7 +151,6 @@ type connection struct {
 
 	log log.Logger
 
-	incomingRequestsWG sync.WaitGroup
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan interface{}
@@ -363,10 +362,6 @@ func (c *connection) waitUntilReady() error {
 }
 
 func (c *connection) failLeftRequestsWhenClose() {
-	// wait for outstanding incoming requests to complete before draining
-	// and closing the channel
-	c.incomingRequestsWG.Wait()
-
 	ch := c.incomingRequestsCh
 	go func() {
 		// send a nil message to drain instead of
@@ -630,9 +625,6 @@ func (c *connection) Write(data Buffer) {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
-	c.incomingRequestsWG.Add(1)
-	defer c.incomingRequestsWG.Done()
-
 	state := c.getState()
 	if state == connectionClosed || state == connectionClosing {
 		callback(req, ErrConnectionClosed)
@@ -652,9 +644,6 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 }
 
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
-	c.incomingRequestsWG.Add(1)
-	defer c.incomingRequestsWG.Done()
-
 	state := c.getState()
 	if state == connectionClosed || state == connectionClosing {
 		return ErrConnectionClosed
