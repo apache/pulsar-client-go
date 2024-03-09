@@ -41,7 +41,7 @@ func NewDefaultRouter(
 	maxBatchingMessages uint,
 	maxBatchingSize uint,
 	maxBatchingDelay time.Duration,
-	disableBatching bool) func(*ProducerMessage, uint32) int {
+	shouldBatch func() bool) func(*ProducerMessage, uint32) int {
 	state := &defaultRouter{
 		currentPartitionCursor: rand.Uint32(),
 		lastBatchTimestamp:     time.Now().UnixNano(),
@@ -65,7 +65,7 @@ func NewDefaultRouter(
 		}
 
 		// If there's no key, we do round-robin across partition. If no batching go to next partition.
-		if disableBatching {
+		if !shouldBatch() {
 			p := int(state.currentPartitionCursor % numPartitions)
 			atomic.AddUint32(&state.currentPartitionCursor, 1)
 			return p

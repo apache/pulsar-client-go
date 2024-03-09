@@ -28,7 +28,9 @@ import (
 const oneHourPublishMaxDelay = time.Hour
 
 func TestDefaultRouterRoutingBecauseBatchingDisabled(t *testing.T) {
-	router := NewDefaultRouter(internal.JavaStringHash, 20, 100, oneHourPublishMaxDelay, true)
+	router := NewDefaultRouter(internal.JavaStringHash, 20, 100, oneHourPublishMaxDelay, func() bool {
+		return false
+	})
 	const numPartitions = uint32(3)
 	p1 := router(&ProducerMessage{
 		Payload: []byte("message 1"),
@@ -47,7 +49,10 @@ func TestDefaultRouterRoutingBecauseBatchingDisabled(t *testing.T) {
 
 func TestDefaultRouterRoutingBecauseMaxPublishDelayReached(t *testing.T) {
 	maxPublishDelay := time.Nanosecond * 10
-	router := NewDefaultRouter(internal.JavaStringHash, 10, 100, maxPublishDelay, false)
+	router := NewDefaultRouter(internal.JavaStringHash, 10, 100,
+		maxPublishDelay, func() bool {
+			return true
+		})
 	const numPartitions = uint32(3)
 	p1 := router(&ProducerMessage{
 		Payload: []byte("message 1"),
@@ -67,7 +72,9 @@ func TestDefaultRouterRoutingBecauseMaxPublishDelayReached(t *testing.T) {
 }
 
 func TestDefaultRouterRoutingBecauseMaxNumberOfMessagesReached(t *testing.T) {
-	router := NewDefaultRouter(internal.JavaStringHash, 2, 100, oneHourPublishMaxDelay, false)
+	router := NewDefaultRouter(internal.JavaStringHash, 2, 100, oneHourPublishMaxDelay, func() bool {
+		return true
+	})
 	const numPartitions = uint32(3)
 	p1 := router(&ProducerMessage{
 		Payload: []byte("message 1"),
@@ -90,7 +97,11 @@ func TestDefaultRouterRoutingBecauseMaxNumberOfMessagesReached(t *testing.T) {
 }
 
 func TestDefaultRouterRoutingBecauseMaxVolumeReached(t *testing.T) {
-	router := NewDefaultRouter(internal.JavaStringHash, 10, 10, oneHourPublishMaxDelay, false)
+	router := NewDefaultRouter(internal.JavaStringHash,
+		10, 10,
+		oneHourPublishMaxDelay, func() bool {
+			return true
+		})
 	const numPartitions = uint32(3)
 	p1 := router(&ProducerMessage{
 		Payload: []byte("message 1"),
@@ -108,7 +119,10 @@ func TestDefaultRouterRoutingBecauseMaxVolumeReached(t *testing.T) {
 }
 
 func TestDefaultRouterNoRoutingBecausePartitionKeyIsSpecified(t *testing.T) {
-	router := NewDefaultRouter(internal.JavaStringHash, 1, 1, 0, false)
+	router := NewDefaultRouter(internal.JavaStringHash, 1, 1,
+		0, func() bool {
+			return true
+		})
 	p1 := router(&ProducerMessage{
 		Key:     "my-key",
 		Payload: []byte("message 1"),
@@ -124,7 +138,10 @@ func TestDefaultRouterNoRoutingBecausePartitionKeyIsSpecified(t *testing.T) {
 
 func TestDefaultRouterNoRoutingBecauseOnlyOnePartition(t *testing.T) {
 
-	router := NewDefaultRouter(internal.JavaStringHash, 1, 10, oneHourPublishMaxDelay, false)
+	router := NewDefaultRouter(internal.JavaStringHash, 1, 10,
+		oneHourPublishMaxDelay, func() bool {
+			return true
+		})
 
 	// partition index should not change regardless of the batching settings
 	p1 := router(&ProducerMessage{
