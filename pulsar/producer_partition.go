@@ -28,6 +28,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
@@ -410,17 +412,22 @@ func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVer
 }
 
 func (p *partitionProducer) reconnectToBroker() {
-	var maxRetry int
+	var (
+		maxRetry                                    int
+		delayReconnectTime, totalDelayReconnectTime time.Duration
+	)
 	if p.options.MaxReconnectToBroker == nil {
 		maxRetry = -1
 	} else {
 		maxRetry = int(*p.options.MaxReconnectToBroker)
 	}
 
-	var (
-		delayReconnectTime time.Duration
-		defaultBackoff     = internal.DefaultBackoff{}
-	)
+	var bo backoff.Policy
+	if p.options.BackoffPolicy == nil {
+		bo = p.options.BackoffPolicy
+	} else {
+		bo = &backoff.DefaultBackoff{}
+	}
 
 	for maxRetry != 0 {
 		if p.getProducerState() != producerReady {
@@ -429,11 +436,9 @@ func (p *partitionProducer) reconnectToBroker() {
 			return
 		}
 
-		if p.options.BackoffPolicy == nil {
-			delayReconnectTime = defaultBackoff.Next()
-		} else {
-			delayReconnectTime = p.options.BackoffPolicy.Next()
-		}
+		delayReconnectTime = bo.Next()
+		totalDelayReconnectTime += delayReconnectTime
+
 		p.log.Info("Reconnecting to broker in ", delayReconnectTime)
 		time.Sleep(delayReconnectTime)
 
@@ -482,7 +487,7 @@ func (p *partitionProducer) reconnectToBroker() {
 			maxRetry--
 		}
 		p.metrics.ProducersReconnectFailure.Inc()
-		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
+		if maxRetry == 0 || bo.IsMaxBackoffReached(delayReconnectTime, totalDelayReconnectTime) {
 			p.metrics.ProducersReconnectMaxRetry.Inc()
 		}
 	}

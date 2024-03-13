@@ -21,7 +21,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 )
 
 type HashingScheme int
@@ -173,7 +173,7 @@ type ProducerOptions struct {
 
 	// BackoffPolicy parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
-	BackoffPolicy internal.BackoffPolicy
+	BackoffPolicy backoff.Policy
 
 	// BatcherBuilderType sets the batch builder type (default DefaultBatchBuilder)
 	// This will be used to create batch container when batching is enabled.

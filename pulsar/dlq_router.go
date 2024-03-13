@@ -22,7 +22,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -155,7 +156,7 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.DefaultBackoff{}
+	bo := &backoff.DefaultBackoff{}
 	for {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.DeadLetterTopic
@@ -173,7 +174,7 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 
 		if err != nil {
 			r.log.WithError(err).Error("Failed to create DLQ producer")
-			time.Sleep(backoff.Next())
+			time.Sleep(bo.Next())
 			continue
 		} else {
 			r.producer = producer

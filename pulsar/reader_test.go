@@ -899,6 +899,9 @@ func (b *testBackoffPolicy) Next() time.Duration {
 
 	return b.curBackoff
 }
+func (b *testBackoffPolicy) IsMaxBackoffReached(delayReconnectTime, totalDelayReconnectTime time.Duration) bool {
+	return delayReconnectTime >= b.maxBackoff
+}
 
 func (b *testBackoffPolicy) IsExpectedIntervalFrom(startTime time.Time) bool {
 	// Approximately equal to expected interval
