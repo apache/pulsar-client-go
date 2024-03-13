@@ -423,7 +423,7 @@ func (p *partitionProducer) reconnectToBroker() {
 	}
 
 	var bo backoff.Policy
-	if p.options.BackoffPolicy == nil {
+	if p.options.BackoffPolicy != nil {
 		bo = p.options.BackoffPolicy
 	} else {
 		bo = &backoff.DefaultBackoff{}
