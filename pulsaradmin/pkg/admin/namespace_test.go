@@ -172,7 +172,7 @@ func TestGetTopicAutoCreation(t *testing.T) {
 	topicAutoCreation, err = admin.Namespaces().GetTopicAutoCreation(*namespace)
 	assert.Equal(t, nil, err)
 	expected = utils.TopicAutoCreationConfig{
-		Allow: boolPtr(false),
+		Allow: nil,
 		Type:  "",
 	}
 	assert.Equal(t, expected, *topicAutoCreation)
