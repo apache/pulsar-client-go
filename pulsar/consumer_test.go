@@ -2219,6 +2219,12 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
+	// Increase number of partitions to 10
+	makeHTTPCall(t, http.MethodPost, testURL, "10")
+
+	// Wait for the producer/consumers to pick up the change
+	time.Sleep(1 * time.Second)
+
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:               topic,
 		SubscriptionName:    "my-sub",
@@ -2226,12 +2232,6 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
-
-	// Increase number of partitions to 10
-	makeHTTPCall(t, http.MethodPost, testURL, "10")
-
-	// Wait for the producer/consumers to pick up the change
-	time.Sleep(1 * time.Second)
 
 	// Publish messages ensuring that they will go to all the partitions
 	ctx := context.Background()
