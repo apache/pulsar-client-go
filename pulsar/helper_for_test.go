@@ -69,7 +69,7 @@ func jsonHeaders() http.Header {
 func httpDelete(requestPaths ...string) error {
 	var errs error
 	for _, requestPath := range requestPaths {
-		if err := httpDo(http.MethodDelete, requestPath, nil, nil); err != nil {
+		if err := httpDoAndUnmarshal(http.MethodDelete, requestPath, nil, nil); err != nil {
 			errs = pkgerrors.Wrapf(err, "unable to delete url: %s"+requestPath)
 		}
 	}
@@ -77,46 +77,48 @@ func httpDelete(requestPaths ...string) error {
 }
 
 func httpPut(requestPath string, body interface{}) error {
-	return httpDo(http.MethodPut, requestPath, body, nil)
+	return httpDoAndUnmarshal(http.MethodPut, requestPath, body, nil)
 }
 
 func httpGet(requestPath string, out interface{}) error {
-	return httpDo(http.MethodGet, requestPath, nil, out)
+	return httpDoAndUnmarshal(http.MethodGet, requestPath, nil, out)
 }
 
-func httpDo(method string, requestPath string, in interface{}, out interface{}) error {
+func httpDoAndUnmarshal(method string, requestPath string, in interface{}, out interface{}) error {
+	outBytes, err := httpDo(method, requestPath, in)
+	if err != nil {
+		return err
+	}
+	if out != nil {
+		return json.Unmarshal(outBytes, out)
+	}
+	return nil
+}
+
+func httpDo(method string, requestPath string, in interface{}) ([]byte, error) {
 	client := http.DefaultClient
 	endpoint := testEndpoint(requestPath)
 	var body io.Reader
 	inBytes, err := json.Marshal(in)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	body = bytes.NewReader(inBytes)
 	req, err := http.NewRequest(method, endpoint, body)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	req.Header = jsonHeaders()
 	resp, err := client.Do(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode > 299 || resp.StatusCode < 200 {
-		return fmt.Errorf("http error status code: %d", resp.StatusCode)
+		return nil, fmt.Errorf("http error status code: %d", resp.StatusCode)
 	}
-
-	if out != nil {
-		outBytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return err
-		}
-		return json.Unmarshal(outBytes, out)
-	}
-
-	return nil
+	return io.ReadAll(resp.Body)
 }
 
 func makeHTTPCall(t *testing.T, method string, url string, body string) {

@@ -1683,7 +1683,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			delayReconnectTime = 0
 			assignedBrokerURL = connectionClosed.assignedBrokerURL
 			assignedBrokerURLTLS = connectionClosed.assignedBrokerURLTLS
-			connectionClosed = nil
+			connectionClosed = nil // Attempt connecting to the assigned broker just once
 		} else if pc.options.backoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
 		} else {
