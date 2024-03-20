@@ -21,8 +21,9 @@ ARG PULSAR_IMAGE=apachepulsar/pulsar:latest
 FROM $PULSAR_IMAGE
 USER root
 ARG GO_VERSION=1.18
+ARG ARCH=amd64
 
-RUN curl -L https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz -o golang.tar.gz && \
+RUN curl -L https://dl.google.com/go/go${GO_VERSION}.linux-${ARCH}.tar.gz -o golang.tar.gz && \
     mkdir -p /pulsar/go && tar -C /pulsar -xzf golang.tar.gz
 
 ENV PATH /pulsar/go/bin:$PATH

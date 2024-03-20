@@ -21,6 +21,7 @@ IMAGE_NAME = pulsar-client-go-test:latest
 PULSAR_VERSION ?= 3.2.0
 PULSAR_IMAGE = apachepulsar/pulsar:$(PULSAR_VERSION)
 GO_VERSION ?= 1.18
+CONTAINER_ARCH ?= $(shell uname -m)
 
 # Golang standard bin directory.
 GOPATH ?= $(shell go env GOPATH)
@@ -38,8 +39,10 @@ bin/golangci-lint:
 	GOBIN=$(shell pwd)/bin go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
 
 container:
-	docker build -t ${IMAGE_NAME} --build-arg GO_VERSION="${GO_VERSION}" \
-	    --build-arg PULSAR_IMAGE="${PULSAR_IMAGE}" .
+	docker build -t ${IMAGE_NAME} \
+	  --build-arg GO_VERSION="${GO_VERSION}" \
+	  --build-arg PULSAR_IMAGE="${PULSAR_IMAGE}" \
+	  --build-arg ARCH="${CONTAINER_ARCH}" .
 
 test_extensible_load_manager: container
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/extensible-load-manager/docker-compose.yml up -d || true
