@@ -98,7 +98,7 @@ func TestTopicUnloadWithAssignedUrl(t *testing.T) {
 
 	// Signals all goroutines have completed
 	wgRoutines := sync.WaitGroup{}
-	wgRoutines.Add(3)
+	wgRoutines.Add(2)
 
 	// Signals unload has completed
 	wgUnload := sync.WaitGroup{}
@@ -153,18 +153,12 @@ func TestTopicUnloadWithAssignedUrl(t *testing.T) {
 		}
 	}()
 
-	// Unload
-	go func() {
-		defer wgRoutines.Done()
-		defer wgUnload.Done()
-
-		wgSendAndReceiveMessages.Wait()
-
-		// Unload the bundle, triggering the producers and consumers to reconnect to the specified broker.
-		unloadURL := fmt.Sprintf(
-			"/admin/v2/namespaces/%s/%s/%s/unload?destinationBroker=%s", tenant, namespace, bundleRange, dstTopicBrokerURL)
-		makeHTTPCall(t, http.MethodPut, lookupResult.HTTPURL+unloadURL, "")
-	}()
+	// Unload the bundle, triggering the producers and consumers to reconnect to the specified broker.
+	wgSendAndReceiveMessages.Wait()
+	unloadURL := fmt.Sprintf(
+		"/admin/v2/namespaces/%s/%s/%s/unload?destinationBroker=%s", tenant, namespace, bundleRange, dstTopicBrokerURL)
+	makeHTTPCall(t, http.MethodPut, lookupResult.HTTPURL+unloadURL, "")
+	wgUnload.Done()
 
 	wgRoutines.Wait()
 	assertions.Equal(int32(0), lookupRequestCounterMock.count.Load())
