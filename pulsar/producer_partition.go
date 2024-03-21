@@ -91,6 +91,8 @@ type partitionProducer struct {
 	client *client
 	topic  string
 	log    log.Logger
+	cnx    internal.Connection
+	err    error
 
 	conn uAtomic.Value
 
@@ -446,6 +448,10 @@ func (p *partitionProducer) reconnectToBroker() {
 
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx()
+		// In reconnection logic, grabCnx maybe return err, but we did not return the error.
+		// So in partitionProducer struct, we define an err object to make it easier for users to
+		// determine what caused the grabCnx error.
+		p.err = err
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
@@ -1206,6 +1212,10 @@ func (p *partitionProducer) internalSendAsync(
 	if err := p.validateMsg(msg); err != nil {
 		p.log.Error(err)
 		runCallback(callback, nil, msg, err)
+		return
+	}
+	if p.err != nil {
+		callback(nil, msg, p.err)
 		return
 	}
 
