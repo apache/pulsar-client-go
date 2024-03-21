@@ -177,23 +177,24 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrl() {
 }
 
 func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndProxy() {
-	assertions := suite.Assert()
+	req := suite.Require()
 
-	admin, err := pulsaradmin.NewClient(&pulsaradmin.Config{WebServiceURL: "http://proxy:8080"})
-	assertions.Nil(err)
+	adminURL := "http://localhost:8080"
+	admin, err := pulsaradmin.NewClient(&pulsaradmin.Config{WebServiceURL: adminURL})
+	req.NoError(err)
 
 	topicName, err := utils.GetTopicName(newTopicName())
-	assertions.Nil(err)
-	assertions.NotNil(topicName)
+	req.NoError(err)
+	req.NotNil(topicName)
 
 	err = admin.Topics().Create(*topicName, 0)
-	assertions.Nil(err)
+	req.NoError(err)
 
 	lookupResult, err := admin.Topics().Lookup(*topicName)
-	assertions.Nil(err)
-	assertions.NotEmpty(lookupResult.BrokerURL)
+	req.NoError(err)
+	req.NotEmpty(lookupResult.BrokerURL)
 	srcTopicBrokerURL := lookupResult.BrokerURL
-	assertions.Contains([...]string{broker1URL, broker2URL}, srcTopicBrokerURL)
+	req.Contains([...]string{broker1URL, broker2URL}, srcTopicBrokerURL)
 
 	var dstTopicBrokerURL string
 	if srcTopicBrokerURL == broker1URL {
@@ -203,23 +204,23 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 	}
 
 	bundleRange, err := admin.Topics().GetBundleRange(*topicName)
-	assertions.Nil(err)
-	assertions.NotEmpty(bundleRange)
+	req.NoError(err)
+	req.NotEmpty(bundleRange)
 
 	logrusLogger := logrus.New()
 	logrusLogger.SetLevel(logrus.DebugLevel)
 
 	pulsarClient, err := NewClient(ClientOptions{
-		URL:    "pulsar://proxy:6650",
+		URL:    "pulsar://localhost:6650",
 		Logger: log.NewLoggerWithLogrus(logrusLogger),
 	})
-	assertions.Nil(err)
+	req.NoError(err)
 	defer pulsarClient.Close()
 
 	producer, err := pulsarClient.CreateProducer(ProducerOptions{
 		Topic: topicName.String(),
 	})
-	assertions.Nil(err)
+	req.NoError(err)
 	defer producer.Close()
 
 	consumer, err := pulsarClient.Subscribe(ConsumerOptions{
@@ -227,7 +228,7 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 		SubscriptionName:            fmt.Sprintf("my-sub-%v", time.Now().Nanosecond()),
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 	})
-	assertions.Nil(err)
+	req.NoError(err)
 	defer consumer.Close()
 
 	pulsarClientImpl := pulsarClient.(*client)
@@ -235,7 +236,7 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 	pulsarClientImpl.metrics.LookupRequestsCount = &lookupRequestCounterMock
 
 	connectionPool := pulsarClientImpl.cnxPool
-	assertions.Equal(1, internal.GetConnectionsCount(&connectionPool))
+	req.Equal(1, internal.GetConnectionsCount(&connectionPool))
 
 	messageCountBeforeUnload := 1
 	messageCountDuringUnload := 1
@@ -268,8 +269,8 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 
 			pm := ProducerMessage{Payload: []byte(fmt.Sprintf("hello-%d", i))}
 			_, err := producer.Send(ctx, &pm)
-			assertions.Nil(err)
-			assertions.Nil(ctx.Err())
+			suite.NoError(err)
+			suite.NoError(ctx.Err())
 
 			if i == messageCountBeforeUnload {
 				wgSendAndReceiveMessages.Done()
@@ -290,8 +291,8 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 			defer cancel()
 
 			_, err := consumer.Receive(ctx)
-			assertions.Nil(err)
-			assertions.Nil(ctx.Err())
+			suite.NoError(err)
+			suite.NoError(ctx.Err())
 
 			if i == messageCountBeforeUnload {
 				wgSendAndReceiveMessages.Done()
@@ -303,13 +304,13 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 	wgSendAndReceiveMessages.Wait()
 	unloadURL := fmt.Sprintf(
 		"/admin/v2/namespaces/%s/%s/%s/unload?destinationBroker=%s", tenant, namespace, bundleRange, dstTopicBrokerURL)
-	makeHTTPCall(suite.T(), http.MethodPut, lookupResult.HTTPURL+unloadURL, "")
+	makeHTTPCall(suite.T(), http.MethodPut, adminURL+unloadURL, "")
 	wgUnload.Done()
 
 	wgRoutines.Wait()
-	assertions.Equal(int32(0), lookupRequestCounterMock.count.Load())
+	req.Equal(int32(0), lookupRequestCounterMock.count.Load())
 
 	// We are connecting via a proxy, but have direct connectivity to the brokers.
 	// Validate the client stayed connected through the proxy only.
-	assertions.Equal(1, internal.GetConnectionsCount(&connectionPool))
+	req.Equal(1, internal.GetConnectionsCount(&connectionPool))
 }

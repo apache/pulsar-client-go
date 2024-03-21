@@ -49,7 +49,7 @@ test_extensible_load_manager: container
 	until curl http://localhost:8080/metrics > /dev/null 2>&1; do sleep 1; done
 	# go test -race -timeout=1m -tags extensible_load_manager -run TestTopicUnloadWithAssignedUrl -v ./... || true
 	# docker run --network "extensible-load-manager_pulsar" -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-extensible-load-manager.sh"
-	docker run -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-extensible-load-manager.sh"
+	go test -race -timeout=5m -tags extensible_load_manager -v -run TestExtensibleLoadManagerTestSuite ./...
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/extensible-load-manager/docker-compose.yml down
 
 test: container
