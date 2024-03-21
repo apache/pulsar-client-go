@@ -232,11 +232,7 @@ func (p *partitionProducer) lookupTopic(brokerURL, brokerURLTLS string) (*intern
 		p.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	lr, err := p.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, false)
-	if err != nil {
-		return nil, err
-	}
-	return lr, err
+	return p.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, false)
 }
 
 func (p *partitionProducer) grabCnx(assignedBrokerURL, assignedBrokerURLTLS string) error {

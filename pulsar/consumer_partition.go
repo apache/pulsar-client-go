@@ -1735,11 +1735,7 @@ func (pc *partitionConsumer) lookupTopic(brokerURL, brokerURLTLS string) (*inter
 		pc.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	lr, err := pc.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, false)
-	if err != nil {
-		return nil, err
-	}
-	return lr, err
+	return pc.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, false)
 }
 
 func (pc *partitionConsumer) grabConn(assignedBrokerURL, assignedBrokerURLTLS string) error {

@@ -30,8 +30,9 @@ import (
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
 type LookupResult struct {
-	LogicalAddr  *url.URL
-	PhysicalAddr *url.URL
+	IsProxyThroughServiceURL bool
+	LogicalAddr              *url.URL
+	PhysicalAddr             *url.URL
 }
 
 // GetTopicsOfNamespaceMode for CommandGetTopicsOfNamespace_Mode
@@ -111,40 +112,38 @@ func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *
 
 func (ls *lookupService) GetBrokerAddress(brokerServiceURL, brokerServiceURLTLS string,
 	proxyThroughServiceURL bool) (*LookupResult, error) {
-	logicalAddr, physicalAddr, err := ls.getBrokerAddress(brokerServiceURL, brokerServiceURLTLS, proxyThroughServiceURL)
-	if err != nil {
-		return nil, err
-	}
-	return &LookupResult{
-		LogicalAddr:  logicalAddr,
-		PhysicalAddr: physicalAddr,
-	}, nil
+	return ls.getBrokerAddress(brokerServiceURL, brokerServiceURLTLS, proxyThroughServiceURL)
 }
 
 func (ls *lookupService) getBrokerAddress(brokerServiceURL string, brokerServiceURLTLS string,
-	proxyThroughServiceURL bool) (logicalAddress *url.URL,
-	physicalAddress *url.URL, err error) {
+	proxyThroughServiceURL bool) (*LookupResult, error) {
+	var requestURI string
 	if ls.tlsEnabled {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceURLTLS)
+		requestURI = brokerServiceURLTLS
 	} else {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceURL)
+		requestURI = brokerServiceURL
 	}
 
+	logicalAddress, err := url.ParseRequestURI(requestURI)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	var physicalAddr *url.URL
+	var physicalAddress *url.URL
 	if proxyThroughServiceURL {
-		physicalAddr, err = ls.serviceNameResolver.ResolveHost()
+		physicalAddress, err = ls.serviceNameResolver.ResolveHost()
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else {
-		physicalAddr = logicalAddress
+		physicalAddress = logicalAddress
 	}
 
-	return logicalAddress, physicalAddr, nil
+	return &LookupResult{
+		LogicalAddr:              logicalAddress,
+		PhysicalAddr:             physicalAddress,
+		IsProxyThroughServiceURL: proxyThroughServiceURL,
+	}, nil
 }
 
 // Follow brokers redirect up to certain number of times
@@ -169,7 +168,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 		switch *lr.Response {
 
 		case pb.CommandLookupTopicResponse_Redirect:
-			logicalAddress, physicalAddr, err :=
+			lookupResult, err :=
 				ls.getBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 			if err != nil {
 				return nil, err
@@ -179,7 +178,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 				topic, lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
 
 			id := ls.rpcClient.NewRequestID()
-			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
+			res, err = ls.rpcClient.Request(lookupResult.LogicalAddr, lookupResult.PhysicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
 				RequestId:              &id,
 				Topic:                  &topic,
 				Authoritative:          lr.Authoritative,
@@ -196,17 +195,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			ls.log.Debugf("Successfully looked up topic{%s} on broker. %s / %s - Use proxy: %t",
 				topic, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
-			logicalAddress, physicalAddress, err :=
-				ls.getBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
-			if err != nil {
-				return nil, err
-			}
-
-			return &LookupResult{
-				LogicalAddr:  logicalAddress,
-				PhysicalAddr: physicalAddress,
-			}, nil
-
+			return ls.getBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 		case pb.CommandLookupTopicResponse_Failed:
 			ls.log.WithFields(log.Fields{
 				"topic":   topic,
