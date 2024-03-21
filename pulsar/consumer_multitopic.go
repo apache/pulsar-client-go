@@ -49,7 +49,7 @@ type multiTopicConsumer struct {
 }
 
 func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter) (Consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, closeMsgChOnce *sync.Once) (Consumer, error) {
 	mtc := &multiTopicConsumer{
 		client:       client,
 		options:      options,
@@ -63,7 +63,7 @@ func newMultiTopicConsumer(client *client, options ConsumerOptions, topics []str
 	}
 
 	var errs error
-	for ce := range subscriber(client, topics, options, messageCh, dlq, rlq) {
+	for ce := range subscriber(client, topics, options, messageCh, dlq, rlq, closeMsgChOnce) {
 		if ce.err != nil {
 			errs = pkgerrors.Wrapf(ce.err, "unable to subscribe to topic=%s", ce.topic)
 		} else {
