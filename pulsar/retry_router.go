@@ -21,7 +21,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -124,7 +125,7 @@ func (r *retryRouter) getProducer() Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.DefaultBackoff{}
+	bo := &backoff.DefaultBackoff{}
 	for {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.RetryLetterTopic
@@ -138,7 +139,7 @@ func (r *retryRouter) getProducer() Producer {
 
 		if err != nil {
 			r.log.WithError(err).Error("Failed to create RLQ producer")
-			time.Sleep(backoff.Next())
+			time.Sleep(bo.Next())
 			continue
 		} else {
 			r.producer = producer
