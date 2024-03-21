@@ -29,5 +29,5 @@ go build ./pulsar
 go build ./pulsaradmin
 go build -o bin/pulsar-perf ./perf
 
-go test -race -timeout=1m -tags extensible_load_manager -run TestTopicUnloadWithAssignedUrl -v ./...
+go test -race -timeout=5m -tags extensible_load_manager -v -run TestExtensibleLoadManagerTestSuite ./...
 

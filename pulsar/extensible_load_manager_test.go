@@ -13,10 +13,18 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 
 	uAtomic "go.uber.org/atomic"
 )
+
+type ExtensibleLoadManagerTestSuite struct {
+	suite.Suite
+}
+
+func TestExtensibleLoadManagerTestSuite(t *testing.T) {
+	suite.Run(t, new(ExtensibleLoadManagerTestSuite))
+}
 
 const (
 	tenant    = utils.PUBLICTENANT
@@ -39,8 +47,8 @@ func (m *mockCounter) Inc() {
 	m.count.Inc()
 }
 
-func TestTopicUnloadWithAssignedUrl(t *testing.T) {
-	assertions := assert.New(t)
+func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrl() {
+	assertions := suite.Assert()
 
 	admin, err := pulsaradmin.NewClient(&pulsaradmin.Config{WebServiceURL: "http://broker-1:8080"})
 	assertions.Nil(err)
@@ -157,15 +165,15 @@ func TestTopicUnloadWithAssignedUrl(t *testing.T) {
 	wgSendAndReceiveMessages.Wait()
 	unloadURL := fmt.Sprintf(
 		"/admin/v2/namespaces/%s/%s/%s/unload?destinationBroker=%s", tenant, namespace, bundleRange, dstTopicBrokerURL)
-	makeHTTPCall(t, http.MethodPut, lookupResult.HTTPURL+unloadURL, "")
+	makeHTTPCall(suite.T(), http.MethodPut, lookupResult.HTTPURL+unloadURL, "")
 	wgUnload.Done()
 
 	wgRoutines.Wait()
 	assertions.Equal(int32(0), lookupRequestCounterMock.count.Load())
 }
 
-func TestTopicUnloadWithAssignedUrlAndProxy(t *testing.T) {
-	assertions := assert.New(t)
+func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndProxy() {
+	assertions := suite.Assert()
 
 	admin, err := pulsaradmin.NewClient(&pulsaradmin.Config{WebServiceURL: "http://proxy:8080"})
 	assertions.Nil(err)
@@ -282,7 +290,7 @@ func TestTopicUnloadWithAssignedUrlAndProxy(t *testing.T) {
 	wgSendAndReceiveMessages.Wait()
 	unloadURL := fmt.Sprintf(
 		"/admin/v2/namespaces/%s/%s/%s/unload?destinationBroker=%s", tenant, namespace, bundleRange, dstTopicBrokerURL)
-	makeHTTPCall(t, http.MethodPut, lookupResult.HTTPURL+unloadURL, "")
+	makeHTTPCall(suite.T(), http.MethodPut, lookupResult.HTTPURL+unloadURL, "")
 	wgUnload.Done()
 
 	wgRoutines.Wait()
