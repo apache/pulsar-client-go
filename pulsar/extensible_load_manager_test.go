@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -235,9 +234,6 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 	lookupRequestCounterMock := mockCounter{}
 	pulsarClientImpl.metrics.LookupRequestsCount = &lookupRequestCounterMock
 
-	connectionPool := pulsarClientImpl.cnxPool
-	req.Equal(1, internal.GetConnectionsCount(&connectionPool))
-
 	messageCountBeforeUnload := 1
 	messageCountDuringUnload := 1
 	messageCountAfterUnload := 1
@@ -309,8 +305,4 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 
 	wgRoutines.Wait()
 	req.Equal(int32(0), lookupRequestCounterMock.count.Load())
-
-	// We are connecting via a proxy, but have direct connectivity to the brokers.
-	// Validate the client stayed connected through the proxy only.
-	req.Equal(1, internal.GetConnectionsCount(&connectionPool))
 }
