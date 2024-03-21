@@ -89,6 +89,10 @@ type ReaderOptions struct {
 	// Schema represents the schema implementation.
 	Schema Schema
 
+	// SchemaCreator allows to override the default creator of Schema based on schemaType, schemaData and properties
+	// will default to NewSchema if not set
+	SchemaCreator SchemaCreator
+
 	// BackoffPolicy parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
 	BackoffPolicy internal.BackoffPolicy

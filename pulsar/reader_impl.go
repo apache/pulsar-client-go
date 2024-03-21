@@ -110,6 +110,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		ReplicateSubscriptionState:  false,
 		Decryption:                  options.Decryption,
 		Schema:                      options.Schema,
+		SchemaCreator:               options.SchemaCreator,
 		BackoffPolicy:               options.BackoffPolicy,
 		MaxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
 		ExpireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,

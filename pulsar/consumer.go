@@ -193,6 +193,10 @@ type ConsumerOptions struct {
 	// Schema represents the schema implementation.
 	Schema Schema
 
+	// SchemaCreator allows to override the default creator of Schema based on schemaType, schemaData and properties
+	// will default to NewSchema if not set
+	SchemaCreator SchemaCreator
+
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
