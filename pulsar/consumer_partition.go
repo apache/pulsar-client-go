@@ -1735,7 +1735,7 @@ func (pc *partitionConsumer) lookupTopic(brokerURL, brokerURLTLS string) (*inter
 		pc.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	return pc.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, false)
+	return pc.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, pc._getConn().IsProxied())
 }
 
 func (pc *partitionConsumer) grabConn(assignedBrokerURL, assignedBrokerURLTLS string) error {

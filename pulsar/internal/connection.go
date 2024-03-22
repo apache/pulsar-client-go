@@ -84,6 +84,7 @@ type Connection interface {
 	ID() string
 	GetMaxMessageSize() int32
 	Close()
+	IsProxied() bool
 }
 
 type ConsumerHandler interface {
@@ -312,7 +313,7 @@ func (c *connection) doHandshake() bool {
 		},
 	}
 
-	if c.logicalAddr.Host != c.physicalAddr.Host {
+	if c.IsProxied() {
 		cmdConnect.ProxyToBrokerUrl = proto.String(c.logicalAddr.Host)
 	}
 	c.writeCommand(baseCommand(pb.BaseCommand_CONNECT, cmdConnect))
@@ -341,6 +342,10 @@ func (c *connection) doHandshake() bool {
 	c.setLastDataReceived(time.Now())
 	c.changeState(connectionReady)
 	return true
+}
+
+func (c *connection) IsProxied() bool {
+	return c.logicalAddr.Host != c.physicalAddr.Host
 }
 
 func (c *connection) waitUntilReady() error {
