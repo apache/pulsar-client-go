@@ -10,11 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/suite"
 
 	uAtomic "go.uber.org/atomic"
@@ -230,9 +228,9 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 	lookupRequestCounterMock := mockCounter{}
 	pulsarClientImpl.metrics.LookupRequestsCount = &lookupRequestCounterMock
 
-	messageCountBeforeUnload := 1
-	messageCountDuringUnload := 1
-	messageCountAfterUnload := 1
+	messageCountBeforeUnload := 100
+	messageCountDuringUnload := 100
+	messageCountAfterUnload := 100
 	messageCount := messageCountBeforeUnload + messageCountDuringUnload + messageCountAfterUnload
 
 	// Signals all goroutines have completed
