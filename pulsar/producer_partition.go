@@ -232,7 +232,7 @@ func (p *partitionProducer) lookupTopic(brokerURL, brokerURLTLS string) (*intern
 		p.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	return p.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, false)
+	return p.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, p._getConn().IsProxied())
 }
 
 func (p *partitionProducer) grabCnx(assignedBrokerURL, assignedBrokerURLTLS string) error {
@@ -458,7 +458,11 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		} else {
 			delayReconnectTime = p.options.BackoffPolicy.Next()
 		}
-		p.log.Info("Reconnecting to broker in ", delayReconnectTime)
+		p.log.WithFields(log.Fields{
+			"assignedBrokerURL":    assignedBrokerURL,
+			"assignedBrokerURLTLS": assignedBrokerURLTLS,
+			"delayReconnectTime":   delayReconnectTime,
+		}).Info("Reconnecting to broker")
 		time.Sleep(delayReconnectTime)
 
 		// double check
