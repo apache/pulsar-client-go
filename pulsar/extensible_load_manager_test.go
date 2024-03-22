@@ -176,7 +176,7 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrl() {
 func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndProxy() {
 	req := suite.Require()
 
-	adminURL := "http://localhost:8080"
+	adminURL := "http://proxy:8080"
 	admin, err := pulsaradmin.NewClient(&pulsaradmin.Config{WebServiceURL: adminURL})
 	req.NoError(err)
 
@@ -205,7 +205,7 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 	req.NotEmpty(bundleRange)
 
 	pulsarClient, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6650",
+		URL: "pulsar://proxy:6650",
 	})
 	req.NoError(err)
 	defer pulsarClient.Close()
