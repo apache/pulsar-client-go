@@ -206,12 +206,8 @@ func (suite *ExtensibleLoadManagerTestSuite) TestTopicUnloadWithAssignedUrlAndPr
 	req.NoError(err)
 	req.NotEmpty(bundleRange)
 
-	logrusLogger := logrus.New()
-	logrusLogger.SetLevel(logrus.DebugLevel)
-
 	pulsarClient, err := NewClient(ClientOptions{
-		URL:    "pulsar://localhost:6650",
-		Logger: log.NewLoggerWithLogrus(logrusLogger),
+		URL: "pulsar://localhost:6650",
 	})
 	req.NoError(err)
 	defer pulsarClient.Close()
