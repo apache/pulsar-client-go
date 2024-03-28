@@ -1,4 +1,4 @@
-// //go:build extensible_load_manager
+//go:build extensible_load_manager
 
 package pulsar
 
