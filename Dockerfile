@@ -42,3 +42,16 @@ COPY integration-tests/conf/.htpasswd \
 COPY . /pulsar/pulsar-client-go
 
 ENV PULSAR_EXTRA_OPTS="-Dpulsar.auth.basic.conf=/pulsar/conf/.htpasswd"
+
+WORKDIR /pulsar/pulsar-client-go
+
+ENV GOPATH=/pulsar/go
+ENV GOCACHE=/tmp/go-cache
+
+# Install dependencies
+RUN go mod download
+
+# Basic compilation
+RUN go build ./pulsar
+RUN go build ./pulsaradmin
+RUN go build -o bin/pulsar-perf ./perf
