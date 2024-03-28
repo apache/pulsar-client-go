@@ -18,17 +18,6 @@
 
 set -e -x
 
-export GOPATH=/pulsar/go
-export GOCACHE=/tmp/go-cache
-
-# Install dependencies
-go mod download
-
-# Basic compilation
-go build ./pulsar
-go build ./pulsaradmin
-go build -o bin/pulsar-perf ./perf
-
 go test -race -coverprofile=/tmp/coverage -timeout=5m -tags extensible_load_manager -v -run TestExtensibleLoadManagerTestSuite ./pulsar
 go tool cover -html=/tmp/coverage -o coverage.html
 
