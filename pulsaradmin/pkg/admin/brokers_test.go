@@ -20,19 +20,16 @@ package admin
 import (
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/auth"
-
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/stretchr/testify/assert"
 )
 
 func Test_broker_HealthCheckWithTopicVersion(t *testing.T) {
-	cfg := &config.Config{}
-	tokenAuth, err := auth.NewAuthenticationToken("eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9."+
-		"MKSR5Mb2wu_FQlMYACv2i4ubMCn4h4Dj_aIDo1dPsDk", nil)
-	assert.NoError(t, err)
-	admin, err := NewPulsarClientWithAuthProvider(cfg, tokenAuth)
+	cfg := &config.Config{
+		Token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.MKSR5Mb2wu_FQlMYACv2i4ubMCn4h4Dj_aIDo1dPsDk",
+	}
+	admin, err := New(cfg)
 	assert.NoError(t, err)
 	assert.NotNil(t, admin)
 	err = admin.Brokers().HealthCheck()
