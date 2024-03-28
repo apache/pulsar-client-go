@@ -18,6 +18,7 @@
 package admin
 
 import (
+	"os"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
@@ -25,9 +26,11 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_broker_HealthCheckWithTopicVersion(t *testing.T) {
+func TestBrokerHealthCheckWithTopicVersion(t *testing.T) {
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	assert.NoError(t, err)
 	cfg := &config.Config{
-		Token: "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhZG1pbiJ9.MKSR5Mb2wu_FQlMYACv2i4ubMCn4h4Dj_aIDo1dPsDk",
+		Token: string(readFile),
 	}
 	admin, err := New(cfg)
 	assert.NoError(t, err)
