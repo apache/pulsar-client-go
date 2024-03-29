@@ -37,8 +37,8 @@ func TestBrokerHealthCheckWithTopicVersion(t *testing.T) {
 	assert.NotNil(t, admin)
 	err = admin.Brokers().HealthCheck()
 	assert.NoError(t, err)
-	err = admin.Brokers().HealthCheckWithTopicVersion(utils.V1)
+	err = admin.Brokers().HealthCheckWithTopicVersion(utils.TopicVersionV1)
 	assert.NoError(t, err)
-	err = admin.Brokers().HealthCheckWithTopicVersion(utils.V2)
+	err = admin.Brokers().HealthCheckWithTopicVersion(utils.TopicVersionV2)
 	assert.NoError(t, err)
 }

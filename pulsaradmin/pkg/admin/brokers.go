@@ -145,7 +145,7 @@ func (b *broker) GetAllDynamicConfigurations() (map[string]string, error) {
 }
 
 func (b *broker) HealthCheck() error {
-	return b.HealthCheckWithTopicVersion(utils.V1)
+	return b.HealthCheckWithTopicVersion(utils.TopicVersionV1)
 }
 func (b *broker) HealthCheckWithTopicVersion(topicVersion utils.TopicVersion) error {
 	endpoint := b.pulsar.endpoint(b.basePath, "/health")

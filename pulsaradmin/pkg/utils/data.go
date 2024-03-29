@@ -477,8 +477,8 @@ type GetStatsOptions struct {
 type TopicVersion string
 
 const (
-	V1 TopicVersion = "V1"
-	V2 TopicVersion = "V2"
+	TopicVersionV1 TopicVersion = "V1"
+	TopicVersionV2 TopicVersion = "V2"
 )
 
 func (t TopicVersion) String() string {
