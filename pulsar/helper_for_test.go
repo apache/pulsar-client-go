@@ -159,7 +159,7 @@ func topicStats(topic string) (map[string]interface{}, error) {
 
 func transactionStats(id *TxnID) (map[string]interface{}, error) {
 	var metadata map[string]interface{}
-	path := fmt.Sprintf("admin/v3/transactions/transactionMetadata/%d/%d", id.mostSigBits, id.leastSigBits)
+	path := fmt.Sprintf("admin/v3/transactions/transactionMetadata/%d/%d", id.MostSigBits, id.LeastSigBits)
 	err := httpGet(path, &metadata)
 	return metadata, err
 }
@@ -177,9 +177,14 @@ func retryAssert(t assert.TestingT, times int, milliseconds int, update func(), 
 	for i := 0; i < times; i++ {
 		time.Sleep(time.Duration(milliseconds) * time.Millisecond)
 		update()
-		if assert(nil) {
+		if assert(fakeAssertT{}) {
 			break
 		}
 	}
 	assert(t)
+}
+
+type fakeAssertT struct{}
+
+func (fa fakeAssertT) Errorf(format string, args ...interface{}) {
 }

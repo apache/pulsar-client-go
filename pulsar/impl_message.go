@@ -382,6 +382,10 @@ func (msg *message) BrokerPublishTime() *time.Time {
 	return msg.brokerPublishTime
 }
 
+func (msg *message) size() int {
+	return len(msg.payLoad)
+}
+
 func newAckTracker(size uint) *ackTracker {
 	batchIDs := bitset.New(size)
 	for i := uint(0); i < size; i++ {

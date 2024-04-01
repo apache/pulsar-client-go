@@ -50,6 +50,9 @@ type TLSOptions struct {
 	AllowInsecureConnection bool
 	ValidateHostname        bool
 	ServerName              string
+	CipherSuites            []uint16
+	MinVersion              uint16
+	MaxVersion              uint16
 }
 
 var (
@@ -253,7 +256,11 @@ func (c *connection) connect() bool {
 
 	if c.tlsOptions == nil {
 		// Clear text connection
-		cnx, err = net.DialTimeout("tcp", c.physicalAddr.Host, c.connectionTimeout)
+		if c.connectionTimeout.Nanoseconds() > 0 {
+			cnx, err = net.DialTimeout("tcp", c.physicalAddr.Host, c.connectionTimeout)
+		} else {
+			cnx, err = net.Dial("tcp", c.physicalAddr.Host)
+		}
 	} else {
 		// TLS connection
 		tlsConfig, err = c.getTLSConfig()
@@ -262,6 +269,8 @@ func (c *connection) connect() bool {
 			return false
 		}
 
+		// time.Duration is initialized to 0 by default, net.Dialer's default timeout is no timeout
+		// therefore if c.connectionTimeout is 0, it means no timeout
 		d := &net.Dialer{Timeout: c.connectionTimeout}
 		cnx, err = tls.DialWithDialer(d, "tcp", c.physicalAddr.Host, tlsConfig)
 	}
@@ -329,6 +338,7 @@ func (c *connection) doHandshake() bool {
 		c.maxMessageSize = MaxMessageSize
 	}
 	c.log.Info("Connection is ready")
+	c.setLastDataReceived(time.Now())
 	c.changeState(connectionReady)
 	return true
 }
@@ -820,6 +830,11 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 		return
 	}
 
+	// Brokers expect authData to be not nil
+	if authData == nil {
+		authData = []byte{}
+	}
+
 	cmdAuthResponse := &pb.CommandAuthResponse{
 		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
 		ClientVersion:   proto.String(ClientVersionString),
@@ -1046,6 +1061,9 @@ func (c *connection) closed() bool {
 func (c *connection) getTLSConfig() (*tls.Config, error) {
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: c.tlsOptions.AllowInsecureConnection,
+		CipherSuites:       c.tlsOptions.CipherSuites,
+		MinVersion:         c.tlsOptions.MinVersion,
+		MaxVersion:         c.tlsOptions.MaxVersion,
 	}
 
 	if c.tlsOptions.TrustCertsFilePath != "" {

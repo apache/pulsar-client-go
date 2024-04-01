@@ -20,6 +20,7 @@ package pulsar
 import (
 	"fmt"
 	"net/url"
+	"sync"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/auth"
@@ -30,22 +31,24 @@ import (
 )
 
 const (
-	defaultConnectionTimeout = 10 * time.Second
-	defaultOperationTimeout  = 30 * time.Second
-	defaultKeepAliveInterval = 30 * time.Second
-	defaultMemoryLimitBytes  = 64 * 1024 * 1024
-	defaultConnMaxIdleTime   = 180 * time.Second
-	minConnMaxIdleTime       = 60 * time.Second
+	defaultOperationTimeout            = 30 * time.Second
+	defaultKeepAliveInterval           = 30 * time.Second
+	defaultMemoryLimitBytes            = 64 * 1024 * 1024
+	defaultMemoryLimitTriggerThreshold = 0.95
+	defaultConnMaxIdleTime             = 180 * time.Second
+	minConnMaxIdleTime                 = 60 * time.Second
 )
 
 type client struct {
-	cnxPool       internal.ConnectionPool
-	rpcClient     internal.RPCClient
-	handlers      internal.ClientHandlers
-	lookupService internal.LookupService
-	metrics       *internal.Metrics
-	tcClient      *transactionCoordinatorClient
-	memLimit      internal.MemoryLimitController
+	cnxPool          internal.ConnectionPool
+	rpcClient        internal.RPCClient
+	handlers         internal.ClientHandlers
+	lookupService    internal.LookupService
+	metrics          *internal.Metrics
+	tcClient         *transactionCoordinatorClient
+	memLimit         internal.MemoryLimitController
+	closeOnce        sync.Once
+	operationTimeout time.Duration
 
 	log log.Logger
 }
@@ -90,6 +93,9 @@ func newClient(options ClientOptions) (Client, error) {
 			TrustCertsFilePath:      options.TLSTrustCertsFilePath,
 			ValidateHostname:        options.TLSValidateHostname,
 			ServerName:              url.Hostname(),
+			CipherSuites:            options.TLSCipherSuites,
+			MinVersion:              options.TLSMinVersion,
+			MaxVersion:              options.TLSMaxVersion,
 		}
 	default:
 		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
@@ -111,10 +117,10 @@ func newClient(options ClientOptions) (Client, error) {
 		return nil, err
 	}
 
+	// the default timeout respects Go's default timeout which is no timeout
+	// Missing user specified timeout renders 0 values that matches
+	// net.Dailer's default if time.Duration value is not initialized
 	connectionTimeout := options.ConnectionTimeout
-	if connectionTimeout.Nanoseconds() == 0 {
-		connectionTimeout = defaultConnectionTimeout
-	}
 
 	operationTimeout := options.OperationTimeout
 	if operationTimeout.Nanoseconds() == 0 {
@@ -156,9 +162,10 @@ func newClient(options ClientOptions) (Client, error) {
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval,
 			maxConnectionsPerHost, logger, metrics, connectionMaxIdleTime),
-		log:      logger,
-		metrics:  metrics,
-		memLimit: internal.NewMemoryLimitController(memLimitBytes),
+		log:              logger,
+		metrics:          metrics,
+		memLimit:         internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
+		operationTimeout: operationTimeout,
 	}
 	serviceNameResolver := internal.NewPulsarServiceNameResolver(url)
 
@@ -192,6 +199,14 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	return c, nil
+}
+
+func (c *client) NewTransaction(timeout time.Duration) (Transaction, error) {
+	id, err := c.tcClient.newTransaction(timeout)
+	if err != nil {
+		return nil, err
+	}
+	return newTransaction(*id, c.tcClient, timeout), nil
 }
 
 func (c *client) CreateProducer(options ProducerOptions) (Producer, error) {
@@ -254,7 +269,9 @@ func (c *client) TopicPartitions(topic string) ([]string, error) {
 }
 
 func (c *client) Close() {
-	c.handlers.Close()
-	c.cnxPool.Close()
-	c.lookupService.Close()
+	c.closeOnce.Do(func() {
+		c.handlers.Close()
+		c.cnxPool.Close()
+		c.lookupService.Close()
+	})
 }

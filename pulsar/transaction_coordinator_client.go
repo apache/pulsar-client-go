@@ -114,14 +114,16 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*
 		TxnTtlSeconds: proto.Uint64(uint64(timeout.Milliseconds())),
 	}
 
-	cnx, err := tc.client.rpcClient.RequestOnCnx(tc.cons[nextTcID], requestID, pb.BaseCommand_NEW_TXN, cmdNewTxn)
+	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[nextTcID], requestID, pb.BaseCommand_NEW_TXN, cmdNewTxn)
 	tc.semaphore.Release()
 	if err != nil {
 		return nil, err
+	} else if res.Response.NewTxnResponse.Error != nil {
+		return nil, getErrorFromServerError(res.Response.NewTxnResponse.Error)
 	}
 
-	return &TxnID{*cnx.Response.NewTxnResponse.TxnidMostBits,
-		*cnx.Response.NewTxnResponse.TxnidLeastBits}, nil
+	return &TxnID{*res.Response.NewTxnResponse.TxnidMostBits,
+		*res.Response.NewTxnResponse.TxnidLeastBits}, nil
 }
 
 // addPublishPartitionToTxn register the partitions which published messages with the transactionImpl.
@@ -133,14 +135,19 @@ func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id *TxnID, part
 	requestID := tc.client.rpcClient.NewRequestID()
 	cmdAddPartitions := &pb.CommandAddPartitionToTxn{
 		RequestId:      proto.Uint64(requestID),
-		TxnidMostBits:  proto.Uint64(id.mostSigBits),
-		TxnidLeastBits: proto.Uint64(id.leastSigBits),
+		TxnidMostBits:  proto.Uint64(id.MostSigBits),
+		TxnidLeastBits: proto.Uint64(id.LeastSigBits),
 		Partitions:     partitions,
 	}
-	_, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID,
+	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.MostSigBits], requestID,
 		pb.BaseCommand_ADD_PARTITION_TO_TXN, cmdAddPartitions)
 	tc.semaphore.Release()
-	return err
+	if err != nil {
+		return err
+	} else if res.Response.AddPartitionToTxnResponse.Error != nil {
+		return getErrorFromServerError(res.Response.AddPartitionToTxnResponse.Error)
+	}
+	return nil
 }
 
 // addSubscriptionToTxn register the subscription which acked messages with the transactionImpl.
@@ -156,14 +163,19 @@ func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id *TxnID, topic st
 	}
 	cmdAddSubscription := &pb.CommandAddSubscriptionToTxn{
 		RequestId:      proto.Uint64(requestID),
-		TxnidMostBits:  proto.Uint64(id.mostSigBits),
-		TxnidLeastBits: proto.Uint64(id.leastSigBits),
+		TxnidMostBits:  proto.Uint64(id.MostSigBits),
+		TxnidLeastBits: proto.Uint64(id.LeastSigBits),
 		Subscription:   []*pb.Subscription{sub},
 	}
-	_, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID,
+	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.MostSigBits], requestID,
 		pb.BaseCommand_ADD_SUBSCRIPTION_TO_TXN, cmdAddSubscription)
 	tc.semaphore.Release()
-	return err
+	if err != nil {
+		return err
+	} else if res.Response.AddSubscriptionToTxnResponse.Error != nil {
+		return getErrorFromServerError(res.Response.AddSubscriptionToTxnResponse.Error)
+	}
+	return nil
 }
 
 // endTxn commit or abort the transactionImpl.
@@ -175,12 +187,17 @@ func (tc *transactionCoordinatorClient) endTxn(id *TxnID, action pb.TxnAction) e
 	cmdEndTxn := &pb.CommandEndTxn{
 		RequestId:      proto.Uint64(requestID),
 		TxnAction:      &action,
-		TxnidMostBits:  proto.Uint64(id.mostSigBits),
-		TxnidLeastBits: proto.Uint64(id.leastSigBits),
+		TxnidMostBits:  proto.Uint64(id.MostSigBits),
+		TxnidLeastBits: proto.Uint64(id.LeastSigBits),
 	}
-	_, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.mostSigBits], requestID, pb.BaseCommand_END_TXN, cmdEndTxn)
+	res, err := tc.client.rpcClient.RequestOnCnx(tc.cons[id.MostSigBits], requestID, pb.BaseCommand_END_TXN, cmdEndTxn)
 	tc.semaphore.Release()
-	return err
+	if err != nil {
+		return err
+	} else if res.Response.EndTxnResponse.Error != nil {
+		return getErrorFromServerError(res.Response.EndTxnResponse.Error)
+	}
+	return nil
 }
 
 func getTCAssignTopicName(partition uint64) string {

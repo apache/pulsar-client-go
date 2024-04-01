@@ -113,6 +113,7 @@ type Reader interface {
 	Next(context.Context) (Message, error)
 
 	// HasNext checks if there is any message available to read from the current position
+	// If there is any errors, it will return false
 	HasNext() bool
 
 	// Close the reader and stop the broker to push more messages
@@ -134,4 +135,8 @@ type Reader interface {
 	//            the message publish time where to reposition the subscription
 	//
 	SeekByTime(time time.Time) error
+
+	// GetLastMessageID get the last message id available for consume.
+	// It only works for single topic reader. It will return an error when the reader is the multi-topic reader.
+	GetLastMessageID() (MessageID, error)
 }

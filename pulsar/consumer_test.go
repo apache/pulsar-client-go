@@ -983,7 +983,7 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 	}
 	wg.Wait()
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.NoError(t, err)
 
 	// send another batch
@@ -1218,7 +1218,7 @@ func TestConsumerCompressionWithBatches(t *testing.T) {
 		}, nil)
 	}
 
-	producer.Flush()
+	producer.FlushWithCtx(context.Background())
 
 	for i := 0; i < N; i++ {
 		msg, err := consumer.Receive(ctx)
@@ -1449,12 +1449,15 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	if prodOpt != nil {
 		dlqPolicy.ProducerOptions = *prodOpt
 	}
+	sub, consumerName := "my-sub", "my-consumer"
+
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:               topic,
-		SubscriptionName:    "my-sub",
+		SubscriptionName:    sub,
 		NackRedeliveryDelay: 1 * time.Second,
 		Type:                Shared,
 		DLQ:                 &dlqPolicy,
+		Name:                consumerName,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -1505,6 +1508,9 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 
 		expectMsg := fmt.Sprintf("hello-%d", expectedMsgIdx)
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
+
+		// check dql produceName
+		assert.Equal(t, msg.ProducerName(), fmt.Sprintf("%s-%s-%s-DLQ", topic, sub, consumerName))
 
 		// check original messageId
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
@@ -2213,6 +2219,12 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
+	// Increase number of partitions to 10
+	makeHTTPCall(t, http.MethodPost, testURL, "10")
+
+	// Wait for the producer/consumers to pick up the change
+	time.Sleep(1 * time.Second)
+
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:               topic,
 		SubscriptionName:    "my-sub",
@@ -2220,12 +2232,6 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
-
-	// Increase number of partitions to 10
-	makeHTTPCall(t, http.MethodPost, testURL, "10")
-
-	// Wait for the producer/consumers to pick up the change
-	time.Sleep(1 * time.Second)
 
 	// Publish messages ensuring that they will go to all the partitions
 	ctx := context.Background()
@@ -3926,7 +3932,7 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 			log.Printf("Sent to %v:%d:%d", id, id.BatchIdx(), id.BatchSize())
 		})
 	}
-	assert.Nil(t, producer.Flush())
+	assert.Nil(t, producer.FlushWithCtx(context.Background()))
 
 	msgIds := make([]MessageID, BatchingMaxSize)
 	for i := 0; i < BatchingMaxSize; i++ {
@@ -4074,6 +4080,78 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 	})
 }
 
+func TestConsumerNonDurable(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Shared,
+		SubscriptionMode: NonDurable,
+	})
+	assert.Nil(t, err)
+
+	i := 1
+	if _, err := producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+	consumer.Ack(msg)
+
+	consumer.Close()
+
+	i++
+
+	// send a message. Pulsar should delete it as there is no active subscription
+	if _, err := producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	i++
+
+	// Subscribe again
+	consumer, err = client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Shared,
+		SubscriptionMode: NonDurable,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	if _, err := producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("msg-content-%d", i)),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	msg, err = consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
+	consumer.Ack(msg)
+}
+
 func TestConsumerBatchIndexAckDisabled(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -4112,4 +4190,205 @@ func TestConsumerBatchIndexAckDisabled(t *testing.T) {
 	message, err := consumer.Receive(context.Background())
 	assert.Nil(t, err)
 	assert.Equal(t, []byte("done"), message.Payload())
+}
+
+func TestConsumerMemoryLimit(t *testing.T) {
+	// Create client 1 without memory limit
+	cli1, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer cli1.Close()
+
+	// Create client 1 with memory limit
+	cli2, err := NewClient(ClientOptions{
+		URL:              lookupURL,
+		MemoryLimitBytes: 10 * 1024,
+	})
+
+	assert.Nil(t, err)
+	defer cli2.Close()
+
+	topic := newTopicName()
+
+	// Use client 1 to create producer p1
+	p1, err := cli1.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer p1.Close()
+
+	// Use mem-limited client 2 to create consumer c1
+	c1, err := cli2.Subscribe(ConsumerOptions{
+		Topic:                             topic,
+		SubscriptionName:                  "my-sub-1",
+		Type:                              Exclusive,
+		EnableAutoScaledReceiverQueueSize: true,
+	})
+	assert.Nil(t, err)
+	defer c1.Close()
+	pc1 := c1.(*consumer).consumers[0]
+
+	// Fill up the messageCh of c1
+	for i := 0; i < 10; i++ {
+		p1.SendAsync(
+			context.Background(),
+			&ProducerMessage{Payload: createTestMessagePayload(1)},
+			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			},
+		)
+	}
+
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, 10, len(pc1.messageCh))
+	})
+
+	// Get current receiver queue size of c1
+	prevQueueSize := pc1.currentQueueSize.Load()
+
+	// Make the client 1 exceed the memory limit
+	_, err = p1.Send(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(10*1024 + 1),
+	})
+	assert.NoError(t, err)
+
+	// c1 should shrink it's receiver queue size
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, prevQueueSize/2, pc1.currentQueueSize.Load())
+	})
+
+	// Use mem-limited client 2 to create consumer c2
+	c2, err := cli2.Subscribe(ConsumerOptions{
+		Topic:                             topic,
+		SubscriptionName:                  "my-sub-2",
+		Type:                              Exclusive,
+		SubscriptionInitialPosition:       SubscriptionPositionEarliest,
+		EnableAutoScaledReceiverQueueSize: true,
+	})
+	assert.Nil(t, err)
+	defer c2.Close()
+	pc2 := c2.(*consumer).consumers[0]
+
+	// Try to induce c2 receiver queue size expansion
+	for i := 0; i < 10; i++ {
+		p1.SendAsync(
+			context.Background(),
+			&ProducerMessage{Payload: createTestMessagePayload(1)},
+			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			},
+		)
+	}
+
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, 10, len(pc1.messageCh))
+	})
+
+	// c2 receiver queue size should not expansion because client 1 has exceeded the memory limit
+	assert.Equal(t, 1, int(pc2.currentQueueSize.Load()))
+
+	// Use mem-limited client 2 to create producer p2
+	p2, err := cli2.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		DisableBatching:         false,
+		DisableBlockIfQueueFull: true,
+	})
+	assert.Nil(t, err)
+	defer p2.Close()
+
+	_, err = p2.Send(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(1),
+	})
+	// Producer can't send message
+	assert.Equal(t, true, errors.Is(err, ErrMemoryBufferIsFull))
+}
+
+func TestMultiConsumerMemoryLimit(t *testing.T) {
+	// Create client 1 without memory limit
+	cli1, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer cli1.Close()
+
+	// Create client 1 with memory limit
+	cli2, err := NewClient(ClientOptions{
+		URL:              lookupURL,
+		MemoryLimitBytes: 10 * 1024,
+	})
+
+	assert.Nil(t, err)
+	defer cli2.Close()
+
+	topic := newTopicName()
+
+	// Use client 1 to create producer p1
+	p1, err := cli1.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer p1.Close()
+
+	// Use mem-limited client 2 to create consumer c1
+	c1, err := cli2.Subscribe(ConsumerOptions{
+		Topic:                             topic,
+		SubscriptionName:                  "my-sub-1",
+		Type:                              Exclusive,
+		EnableAutoScaledReceiverQueueSize: true,
+	})
+	assert.Nil(t, err)
+	defer c1.Close()
+	pc1 := c1.(*consumer).consumers[0]
+
+	// Use mem-limited client 2 to create consumer c1
+	c2, err := cli2.Subscribe(ConsumerOptions{
+		Topic:                             topic,
+		SubscriptionName:                  "my-sub-2",
+		Type:                              Exclusive,
+		EnableAutoScaledReceiverQueueSize: true,
+	})
+	assert.Nil(t, err)
+	defer c2.Close()
+	pc2 := c2.(*consumer).consumers[0]
+
+	// Fill up the messageCh of c1 nad c2
+	for i := 0; i < 10; i++ {
+		p1.SendAsync(
+			context.Background(),
+			&ProducerMessage{Payload: createTestMessagePayload(1)},
+			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			},
+		)
+	}
+
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, 10, len(pc1.messageCh))
+	})
+
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, 10, len(pc2.messageCh))
+	})
+
+	// Get current receiver queue size of c1 and c2
+	pc1PrevQueueSize := pc1.currentQueueSize.Load()
+	pc2PrevQueueSize := pc2.currentQueueSize.Load()
+
+	// Make the client 1 exceed the memory limit
+	_, err = p1.Send(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(10*1024 + 1),
+	})
+	assert.NoError(t, err)
+
+	// c1 should shrink it's receiver queue size
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, pc1PrevQueueSize/2, pc1.currentQueueSize.Load())
+	})
+
+	// c2 should shrink it's receiver queue size too
+	retryAssert(t, 5, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, pc2PrevQueueSize/2, pc2.currentQueueSize.Load())
+	})
 }

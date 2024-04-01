@@ -224,8 +224,7 @@ type Producer interface {
 	Send(context.Context, *ProducerMessage) (MessageID, error)
 
 	// SendAsync a message in asynchronous mode
-	// This call is blocked when the `event channel` becomes full (default: 10) or the
-	// `maxPendingMessages` becomes full (default: 1000)
+	// This call is blocked when the `maxPendingMessages` becomes full (default: 1000)
 	// The callback will report back the message being published and
 	// the eventual error in publishing
 	SendAsync(context.Context, *ProducerMessage, func(MessageID, *ProducerMessage, error))
@@ -238,9 +237,12 @@ type Producer interface {
 	// return the last sequence id published by this producer.
 	LastSequenceID() int64
 
-	// Flush all the messages buffered in the client and wait until all messages have been successfully
-	// persisted.
+	// Deprecated: Use `FlushWithCtx()` instead.
 	Flush() error
+
+	// Flush all the messages buffered in the client and wait until all messageshave been successfully
+	// persisted.
+	FlushWithCtx(ctx context.Context) error
 
 	// Close the producer and releases resources allocated
 	// No more writes will be accepted from this producer. Waits until all pending write request are persisted. In case

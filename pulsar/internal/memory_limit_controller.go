@@ -31,18 +31,42 @@ type MemoryLimitController interface {
 	CurrentUsage() int64
 	CurrentUsagePercent() float64
 	IsMemoryLimited() bool
+	RegisterTrigger(trigger func())
 }
 
 type memoryLimitController struct {
 	limit        int64
 	chCond       *chCond
 	currentUsage int64
+
+	triggers []*thresholdTrigger
+	// valid range is (0, 1.0)
+	triggerThreshold float64
 }
 
-func NewMemoryLimitController(limit int64) MemoryLimitController {
+type thresholdTrigger struct {
+	triggerFunc    func()
+	triggerRunning int32
+}
+
+func (t *thresholdTrigger) canTryRunning() bool {
+	return atomic.CompareAndSwapInt32(&t.triggerRunning, 0, 1)
+}
+
+func (t *thresholdTrigger) setRunning(isRunning bool) {
+	if isRunning {
+		atomic.StoreInt32(&t.triggerRunning, 1)
+	} else {
+		atomic.StoreInt32(&t.triggerRunning, 0)
+	}
+}
+
+// NewMemoryLimitController threshold valid range is (0, 1.0)
+func NewMemoryLimitController(limit int64, threshold float64) MemoryLimitController {
 	mlc := &memoryLimitController{
-		limit:  limit,
-		chCond: newCond(&sync.Mutex{}),
+		limit:            limit,
+		chCond:           newCond(&sync.Mutex{}),
+		triggerThreshold: threshold,
 	}
 	return mlc
 }
@@ -72,13 +96,16 @@ func (m *memoryLimitController) TryReserveMemory(size int64) bool {
 		}
 
 		if atomic.CompareAndSwapInt64(&m.currentUsage, current, newUsage) {
+			m.checkTrigger(current, newUsage)
 			return true
 		}
 	}
 }
 
 func (m *memoryLimitController) ForceReserveMemory(size int64) {
-	atomic.AddInt64(&m.currentUsage, size)
+	nextUsage := atomic.AddInt64(&m.currentUsage, size)
+	prevUsage := nextUsage - size
+	m.checkTrigger(prevUsage, nextUsage)
 }
 
 func (m *memoryLimitController) ReleaseMemory(size int64) {
@@ -98,4 +125,27 @@ func (m *memoryLimitController) CurrentUsagePercent() float64 {
 
 func (m *memoryLimitController) IsMemoryLimited() bool {
 	return m.limit > 0
+}
+
+func (m *memoryLimitController) RegisterTrigger(trigger func()) {
+	m.chCond.L.Lock()
+	defer m.chCond.L.Unlock()
+	m.triggers = append(m.triggers, &thresholdTrigger{
+		triggerFunc: trigger,
+	})
+}
+
+func (m *memoryLimitController) checkTrigger(prevUsage int64, nextUsage int64) {
+	nextUsagePercent := float64(nextUsage) / float64(m.limit)
+	prevUsagePercent := float64(prevUsage) / float64(m.limit)
+	if nextUsagePercent >= m.triggerThreshold && prevUsagePercent < m.triggerThreshold {
+		for _, trigger := range m.triggers {
+			if trigger.canTryRunning() {
+				go func(trigger *thresholdTrigger) {
+					trigger.triggerFunc()
+					trigger.setRunning(false)
+				}(trigger)
+			}
+		}
+	}
 }
