@@ -36,7 +36,7 @@ func ClientClusteredTestSuite(t *testing.T) {
 }
 
 func (suite *clientClusteredTestSuite) TestRetryWithMultipleHosts() {
-	req := suite.req
+	req := suite.Require()
 	// Multi hosts included an unreached port and the actual port for verify retry logic
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://broker-1:6600,broker-1:6650",
