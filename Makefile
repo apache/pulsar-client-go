@@ -45,6 +45,12 @@ container:
 	  --build-arg ARCH="${CONTAINER_ARCH}" \
 	  .
 
+test_clustered: container
+	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/clustered/docker-compose.yml up -d || true
+	until curl http://localhost:8080/metrics > /dev/null 2>&1; do sleep 1; done
+	docker run --network "clustered_pulsar" -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-clustered.sh"
+	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/clustered/docker-compose.yml down
+
 test_extensible_load_manager: container
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/extensible-load-manager/docker-compose.yml up -d || true
 	until curl http://localhost:8080/metrics > /dev/null 2>&1; do sleep 1; done

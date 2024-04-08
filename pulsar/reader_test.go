@@ -724,58 +724,6 @@ func TestReaderLatestInclusiveHasNext(t *testing.T) {
 	assert.False(t, reader.HasNext())
 }
 
-func TestReaderWithMultiHosts(t *testing.T) {
-	// Multi hosts included an unreached port and the actual port for verify retry logic
-	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6600,localhost:6650",
-	})
-
-	assert.Nil(t, err)
-	defer client.Close()
-
-	topic := newTopicName()
-	ctx := context.Background()
-
-	// create producer
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: true,
-	})
-	assert.Nil(t, err)
-	defer producer.Close()
-
-	// send 10 messages
-	for i := 0; i < 10; i++ {
-		msgID, err := producer.Send(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		})
-		assert.NoError(t, err)
-		assert.NotNil(t, msgID)
-	}
-
-	// create reader on 5th message (not included)
-	reader, err := client.CreateReader(ReaderOptions{
-		Topic:          topic,
-		StartMessageID: EarliestMessageID(),
-	})
-
-	assert.Nil(t, err)
-	defer reader.Close()
-
-	i := 0
-	for reader.HasNext() {
-		msg, err := reader.Next(context.Background())
-		assert.NoError(t, err)
-
-		expectMsg := fmt.Sprintf("hello-%d", i)
-		assert.Equal(t, []byte(expectMsg), msg.Payload())
-
-		i++
-	}
-
-	assert.Equal(t, 10, i)
-}
-
 func TestProducerReaderRSAEncryption(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
