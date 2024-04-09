@@ -213,3 +213,230 @@ func TestNonPartitionState(t *testing.T) {
 func newTopicName() string {
 	return fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
 }
+
+func TestDeleteNonPartitionedTopic(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 0)
+	assert.NoError(t, err)
+	err = admin.Topics().Delete(*topicName, false, true)
+	assert.NoError(t, err)
+	topicList, err := admin.Namespaces().GetTopics("public/default")
+	assert.NoError(t, err)
+	isTopicExist := false
+	for _, topicIterator := range topicList {
+		if topicIterator == topic {
+			isTopicExist = true
+		}
+	}
+	assert.Equal(t, false, isTopicExist)
+}
+
+func TestDeletePartitionedTopic(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 3)
+	assert.NoError(t, err)
+	err = admin.Topics().Delete(*topicName, false, false)
+	assert.NoError(t, err)
+	topicList, err := admin.Namespaces().GetTopics("public/default")
+	assert.NoError(t, err)
+	isTopicExist := false
+	for _, topicIterator := range topicList {
+		if topicIterator == topic {
+			isTopicExist = true
+		}
+	}
+	assert.Equal(t, false, isTopicExist)
+}
+
+func TestUpdateTopicPartitions(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 3)
+	assert.NoError(t, err)
+	topicMetadata, err := admin.Topics().GetMetadata(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, 3, topicMetadata.Partitions)
+
+	err = admin.Topics().Update(*topicName, 4)
+	assert.NoError(t, err)
+	topicMetadata, err = admin.Topics().GetMetadata(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, 4, topicMetadata.Partitions)
+}
+
+func TestGetMessageID(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	topicPartitionZero := topic + "-partition-0"
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	topicPartitionZeroName, err := utils.GetTopicName(topicPartitionZero)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 1)
+	assert.NoError(t, err)
+	ctx := context.Background()
+
+	// create consumer
+	client, err := pulsar.NewClient(pulsar.ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             pulsar.Exclusive,
+	})
+	assert.NoError(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(pulsar.ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+	_, err = producer.Send(ctx, &pulsar.ProducerMessage{
+		Payload: []byte("hello"),
+		Key:     "pulsar",
+		Properties: map[string]string{
+			"key-1": "pulsar-1",
+		},
+	})
+	assert.NoError(t, err)
+
+	// ack message
+	msg, err := consumer.Receive(ctx)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("hello"), msg.Payload())
+	assert.Equal(t, "pulsar", msg.Key())
+	err = consumer.Ack(msg)
+	assert.NoError(t, err)
+
+	messageID, err := admin.Topics().GetMessageID(
+		*topicPartitionZeroName,
+		msg.PublishTime().Unix()*1000-1000,
+	)
+	assert.NoError(t, err)
+	assert.Equal(t, msg.ID().EntryID(), messageID.EntryID)
+	assert.Equal(t, msg.ID().LedgerID(), messageID.LedgerID)
+	assert.Equal(t, int(msg.ID().PartitionIdx()), messageID.PartitionIndex)
+}
+
+func TestMessageTTL(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	messageTTL, err := admin.Topics().GetMessageTTL(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, messageTTL)
+	err = admin.Topics().SetMessageTTL(*topicName, 600)
+	assert.NoError(t, err)
+	//	topic policy is an async operation,
+	//	so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			messageTTL, err = admin.Topics().GetMessageTTL(*topicName)
+			return err == nil && messageTTL == 600
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+	err = admin.Topics().RemoveMessageTTL(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			messageTTL, err = admin.Topics().GetMessageTTL(*topicName)
+			return err == nil && messageTTL == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestRetention(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	topicRetentionPolicy, err := admin.Topics().GetRetention(*topicName, false)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), topicRetentionPolicy.RetentionSizeInMB)
+	assert.Equal(t, 0, topicRetentionPolicy.RetentionTimeInMinutes)
+	err = admin.Topics().SetRetention(*topicName, utils.RetentionPolicies{
+		RetentionSizeInMB:      20480,
+		RetentionTimeInMinutes: 1440,
+	})
+	assert.NoError(t, err)
+	//	topic policy is an async operation,
+	//	so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			topicRetentionPolicy, err = admin.Topics().GetRetention(*topicName, false)
+			return err == nil &&
+				topicRetentionPolicy.RetentionSizeInMB == int64(20480) &&
+				topicRetentionPolicy.RetentionTimeInMinutes == 1440
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+	err = admin.Topics().RemoveRetention(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			topicRetentionPolicy, err = admin.Topics().GetRetention(*topicName, false)
+			return err == nil &&
+				topicRetentionPolicy.RetentionSizeInMB == int64(0) &&
+				topicRetentionPolicy.RetentionTimeInMinutes == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
