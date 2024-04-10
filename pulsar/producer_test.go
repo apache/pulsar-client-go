@@ -2385,6 +2385,36 @@ func TestSendConcurrently(t *testing.T) {
 	wg.Wait()
 }
 
+func TestProducerSendDuplicatedMessages(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+	testProducer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, testProducer)
+	_, err = testProducer.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.NoError(t, err)
+	for i := 0; i < 3; i++ {
+		var seqID int64
+		msgID, err := testProducer.Send(context.Background(), &ProducerMessage{
+			Payload:    make([]byte, 1024),
+			SequenceID: &seqID,
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, msgID)
+		assert.Equal(t, int64(-1), msgID.LedgerID())
+		assert.Equal(t, int64(-1), msgID.EntryID())
+	}
+	testProducer.Close()
+}
+
 type pendingQueueWrapper struct {
 	pendingQueue   internal.BlockingQueue
 	writtenBuffers *[]internal.Buffer
