@@ -31,7 +31,7 @@ type clientClusteredTestSuite struct {
 	suite.Suite
 }
 
-func ClientClusteredTestSuite(t *testing.T) {
+func TestClientClusteredTestSuite(t *testing.T) {
 	suite.Run(t, new(clientClusteredTestSuite))
 }
 
