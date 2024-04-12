@@ -178,12 +178,13 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 				topic, lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
 
 			id := ls.rpcClient.NewRequestID()
-			res, err = ls.rpcClient.Request(lookupResult.LogicalAddr, lookupResult.PhysicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-				RequestId:              &id,
-				Topic:                  &topic,
-				Authoritative:          lr.Authoritative,
-				AdvertisedListenerName: proto.String(ls.listenerName),
-			})
+			res, err = ls.rpcClient.Request(lookupResult.LogicalAddr, lookupResult.PhysicalAddr, id, pb.BaseCommand_LOOKUP,
+				&pb.CommandLookupTopic{
+					RequestId:              &id,
+					Topic:                  &topic,
+					Authoritative:          lr.Authoritative,
+					AdvertisedListenerName: proto.String(ls.listenerName),
+				})
 			if err != nil {
 				return nil, err
 			}
