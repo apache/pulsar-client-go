@@ -1,4 +1,4 @@
-// //go:build clustered
+//go:build clustered
 
 // Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
@@ -27,19 +27,20 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-type readerClusteredTestSuite struct {
+type ReaderClusteredTestSuite struct {
 	suite.Suite
 }
 
-func ReaderClusteredTestSuite(t *testing.T) {
-	suite.Run(t, new(readerClusteredTestSuite))
+func TestReaderClusteredTestSuite(t *testing.T) {
+	suite.Run(t, new(ReaderClusteredTestSuite))
 }
 
-func (suite *readerClusteredTestSuite) TestRetryWithMultipleHosts() {
+func (suite *ReaderClusteredTestSuite) TestRetryWithMultipleHosts() {
 	req := suite.Require()
+
 	// Multi hosts included an unreached port and the actual port for verify retry logic
 	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6600,localhost:6650",
+		URL: "pulsar://broker-1:6600,broker-1:6650",
 	})
 	req.NoError(err)
 	defer client.Close()

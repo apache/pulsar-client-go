@@ -18,6 +18,6 @@
 
 set -e -x
 
-go test -race -coverprofile=/tmp/coverage -timeout=5m -tags clustered -run *Clustered* -v ./...
+go test -race -coverprofile=/tmp/coverage -timeout=5m -tags clustered -v -run 'Test.*ClusteredTestSuite' -v ./pulsar
 go tool cover -html=/tmp/coverage -o coverage.html
 
