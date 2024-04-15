@@ -44,7 +44,11 @@ func TestBrokerHealthCheckWithTopicVersion(t *testing.T) {
 }
 
 func TestGetLeaderBroker(t *testing.T) {
-	cfg := &config.Config{}
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	assert.NoError(t, err)
+	cfg := &config.Config{
+		Token: string(readFile),
+	}
 	admin, err := New(cfg)
 	assert.NoError(t, err)
 	assert.NotNil(t, admin)
