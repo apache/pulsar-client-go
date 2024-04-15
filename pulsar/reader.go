@@ -21,7 +21,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 )
 
 // ReaderMessage packages Reader and Message as a struct to use.
@@ -91,7 +91,7 @@ type ReaderOptions struct {
 
 	// BackoffPolicy parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
-	BackoffPolicy internal.BackoffPolicy
+	BackoffPolicy backoff.Policy
 
 	// MaxPendingChunkedMessage sets the maximum pending chunked messages. (default: 100)
 	MaxPendingChunkedMessage int
