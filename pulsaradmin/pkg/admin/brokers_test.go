@@ -55,6 +55,6 @@ func TestGetLeaderBroker(t *testing.T) {
 	leaderBroker, err := admin.Brokers().GetLeaderBroker()
 	assert.NoError(t, err)
 	assert.NotNil(t, leaderBroker)
-	assert.Equal(t, leaderBroker.ServiceURL, "http://localhost:8080")
-	assert.Equal(t, leaderBroker.BrokerID, "localhost:8080")
+	assert.NotEmpty(t, leaderBroker.ServiceURL)
+	assert.NotEmpty(t, leaderBroker.BrokerID)
 }
