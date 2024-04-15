@@ -42,3 +42,15 @@ func TestBrokerHealthCheckWithTopicVersion(t *testing.T) {
 	err = admin.Brokers().HealthCheckWithTopicVersion(utils.TopicVersionV2)
 	assert.NoError(t, err)
 }
+
+func TestGetLeaderBroker(t *testing.T) {
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	leaderBroker, err := admin.Brokers().GetLeaderBroker()
+	assert.NoError(t, err)
+	assert.NotNil(t, leaderBroker)
+	assert.Equal(t, leaderBroker.ServiceURL, "http://localhost:8080")
+	assert.Equal(t, leaderBroker.BrokerID, "localhost:8080")
+}
