@@ -53,8 +53,11 @@ type Brokers interface {
 	// GetAllDynamicConfigurations returns values of all overridden dynamic-configs
 	GetAllDynamicConfigurations() (map[string]string, error)
 
-	// HealthCheck run a health check on the broker
+	// Deprecated: Use HealthCheckWithTopicVersion instead
 	HealthCheck() error
+
+	// HealthCheckWithTopicVersion run a health check on the broker
+	HealthCheckWithTopicVersion(utils.TopicVersion) error
 }
 
 type broker struct {
@@ -142,9 +145,14 @@ func (b *broker) GetAllDynamicConfigurations() (map[string]string, error) {
 }
 
 func (b *broker) HealthCheck() error {
+	return b.HealthCheckWithTopicVersion(utils.TopicVersionV1)
+}
+func (b *broker) HealthCheckWithTopicVersion(topicVersion utils.TopicVersion) error {
 	endpoint := b.pulsar.endpoint(b.basePath, "/health")
 
-	buf, err := b.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
+	buf, err := b.pulsar.Client.GetWithQueryParams(endpoint, nil, map[string]string{
+		"topicVersion": topicVersion.String(),
+	}, false)
 	if err != nil {
 		return err
 	}

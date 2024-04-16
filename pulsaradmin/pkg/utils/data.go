@@ -473,3 +473,14 @@ type GetStatsOptions struct {
 	ExcludePublishers        bool `json:"exclude_publishers"`
 	ExcludeConsumers         bool `json:"exclude_consumers"`
 }
+
+type TopicVersion string
+
+const (
+	TopicVersionV1 TopicVersion = "V1"
+	TopicVersionV2 TopicVersion = "V2"
+)
+
+func (t TopicVersion) String() string {
+	return string(t)
+}
