@@ -93,6 +93,7 @@ type FunctionData struct {
 	Secrets                      string          `json:"secretsString"`
 	DestinationFile              string          `json:"destinationFile"`
 	Path                         string          `json:"path"`
+	RuntimeFlags                 string          `json:"runtimeFlags,omitempty"`
 	FuncConf                     *FunctionConfig `json:"-"`
 }
 
@@ -138,7 +139,8 @@ type SourceData struct {
 	SourceConf *SourceConfig `json:"-,omitempty"`
 	InstanceID string        `json:"instanceId,omitempty"`
 
-	UpdateAuthData bool `json:"updateAuthData,omitempty"`
+	UpdateAuthData bool   `json:"updateAuthData,omitempty"`
+	RuntimeFlags   string `json:"runtimeFlags,omitempty"`
 }
 
 type SinkData struct {
@@ -177,6 +179,7 @@ type SinkData struct {
 	TransformFunction            string      `json:"transformFunction,omitempty"`
 	TransformFunctionClassName   string      `json:"transformFunctionClassName,omitempty"`
 	TransformFunctionConfig      string      `json:"transformFunctionConfig,omitempty"`
+	RuntimeFlags                 string      `json:"runtimeFlags,omitempty"`
 	SinkConf                     *SinkConfig `json:"-,omitempty"`
 }
 
