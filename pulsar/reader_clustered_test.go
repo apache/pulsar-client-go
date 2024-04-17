@@ -35,7 +35,7 @@ func TestReaderClusteredTestSuite(t *testing.T) {
 	suite.Run(t, new(ReaderClusteredTestSuite))
 }
 
-func (suite *ReaderClusteredTestSuite) TestRetryWithMultipleHosts() {
+func (suite *ReaderClusteredTestSuite) TestReaderWithMultipleHosts() {
 	req := suite.Require()
 
 	// Multi hosts included an unreached port and the actual port for verify retry logic
