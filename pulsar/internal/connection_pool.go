@@ -112,12 +112,10 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 			metrics:           p.metrics,
 		})
 		p.connections[key] = conn
-		p.debugConnections()
 		p.Unlock()
 		conn.start()
 	} else {
 		conn.ResetLastActive()
-		p.debugConnections()
 		// we already have a connection
 		p.Unlock()
 	}
@@ -166,12 +164,4 @@ func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration)
 			p.Unlock()
 		}
 	}
-}
-
-func (p *connectionPool) debugConnections() {
-	keys := make([]string, 0, len(p.connections))
-	for key := range p.connections {
-		keys = append(keys, key)
-	}
-	p.log.WithField("keys", keys).Debug("Connection list")
 }
