@@ -40,7 +40,7 @@ else
                 -p 6651:6651 \
                 ${IMAGE_NAME} \
                 /pulsar/bin/pulsar standalone \
-                --no-functions-worker --no-stream-storage
+                    --no-functions-worker --no-stream-storage
 
     PULSAR_ADMIN="docker exec -it pulsar-client-go-test /pulsar/bin/pulsar-admin"
 fi
