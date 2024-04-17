@@ -140,7 +140,7 @@ func (p *connectionPool) getMapKey(logicalAddr *url.URL, physicalAddr *url.URL) 
 		cnt = -cnt
 	}
 	idx := cnt % p.maxConnectionsPerHost
-	return fmt.Sprint(logicalAddr.Host, '-', physicalAddr.Host, '-', idx)
+	return fmt.Sprint(logicalAddr.Host, "-", physicalAddr.Host, "-", idx)
 }
 
 func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration) {
