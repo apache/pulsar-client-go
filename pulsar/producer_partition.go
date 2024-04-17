@@ -379,6 +379,10 @@ type connectionClosed struct {
 	assignedBrokerURLTLS string
 }
 
+func (cc *connectionClosed) HasURLs() bool {
+	return len(cc.assignedBrokerURL) > 0 || len(cc.assignedBrokerURLTLS) > 0
+}
+
 func (p *partitionProducer) GetBuffer() internal.Buffer {
 	b, ok := buffersPool.Get().(internal.Buffer)
 	if ok {
@@ -448,7 +452,8 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 
 		var assignedBrokerURL string
 		var assignedBrokerURLTLS string
-		if connectionClosed != nil {
+
+		if connectionClosed != nil && connectionClosed.HasURLs() {
 			delayReconnectTime = 0
 			assignedBrokerURL = connectionClosed.assignedBrokerURL
 			assignedBrokerURLTLS = connectionClosed.assignedBrokerURLTLS
@@ -458,6 +463,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		} else {
 			delayReconnectTime = p.options.BackoffPolicy.Next()
 		}
+
 		p.log.WithFields(log.Fields{
 			"assignedBrokerURL":    assignedBrokerURL,
 			"assignedBrokerURLTLS": assignedBrokerURLTLS,
