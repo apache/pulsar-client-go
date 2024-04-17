@@ -42,8 +42,7 @@ container:
 	docker build -t ${IMAGE_NAME} \
 	  --build-arg GO_VERSION="${GO_VERSION}" \
 	  --build-arg PULSAR_IMAGE="${PULSAR_IMAGE}" \
-	  --build-arg ARCH="${CONTAINER_ARCH}" \
-	  .
+	  --build-arg ARCH="${CONTAINER_ARCH}" .
 
 test: container test_standalone test_clustered test_extensible_load_manager
 

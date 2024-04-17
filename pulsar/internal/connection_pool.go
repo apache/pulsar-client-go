@@ -79,7 +79,7 @@ func NewConnectionPool(
 }
 
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
-	p.log.WithField("logicalAddr", logicalAddr).WithField("physicalAddr", physicalAddr).Info("Getting pooled connection")
+	p.log.WithField("logicalAddr", logicalAddr).WithField("physicalAddr", physicalAddr).Debug("Getting pooled connection")
 	key := p.getMapKey(logicalAddr, physicalAddr)
 
 	p.Lock()
