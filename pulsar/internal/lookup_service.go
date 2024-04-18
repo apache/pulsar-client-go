@@ -112,11 +112,6 @@ func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *
 
 func (ls *lookupService) GetBrokerAddress(brokerServiceURL, brokerServiceURLTLS string,
 	proxyThroughServiceURL bool) (*LookupResult, error) {
-	return ls.getBrokerAddress(brokerServiceURL, brokerServiceURLTLS, proxyThroughServiceURL)
-}
-
-func (ls *lookupService) getBrokerAddress(brokerServiceURL string, brokerServiceURLTLS string,
-	proxyThroughServiceURL bool) (*LookupResult, error) {
 	var requestURI string
 	if ls.tlsEnabled {
 		requestURI = brokerServiceURLTLS
@@ -169,7 +164,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 
 		case pb.CommandLookupTopicResponse_Redirect:
 			lookupResult, err :=
-				ls.getBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
+				ls.GetBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 			if err != nil {
 				return nil, err
 			}
@@ -196,7 +191,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			ls.log.Debugf("Successfully looked up topic{%s} on broker. %s / %s - Use proxy: %t",
 				topic, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
-			return ls.getBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
+			return ls.GetBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 		case pb.CommandLookupTopicResponse_Failed:
 			ls.log.WithFields(log.Fields{
 				"topic":   topic,
