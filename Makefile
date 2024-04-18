@@ -44,8 +44,16 @@ container:
 	  --build-arg PULSAR_IMAGE="${PULSAR_IMAGE}" \
 	  --build-arg ARCH="${CONTAINER_ARCH}" .
 
-test: container
+test: container test_standalone test_clustered
+
+test_standalone: container
 	docker run -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci.sh"
+
+test_clustered: container
+	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/clustered/docker-compose.yml up -d || true
+	until curl http://localhost:8080/metrics > /dev/null 2>&1; do sleep 1; done
+	docker run --network "clustered_pulsar" -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-clustered.sh"
+	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/clustered/docker-compose.yml down
 
 clean:
 	docker rmi --force $(IMAGE_NAME) || true
