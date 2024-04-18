@@ -1364,7 +1364,7 @@ func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseCons
 	assignedBrokerURL := pc.client.selectServiceURL(
 		closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
 	pc.connectClosedCh <- &connectionClosed{
-		assignedBrokerURL:    assignedBrokerURL,
+		assignedBrokerURL: assignedBrokerURL,
 	}
 }
 
@@ -1690,8 +1690,8 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		}
 
 		pc.log.WithFields(log.Fields{
-			"assignedBrokerURL":    assignedBrokerURL,
-			"delayReconnectTime":   delayReconnectTime,
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
 		}).Info("Reconnecting to broker")
 		time.Sleep(delayReconnectTime)
 

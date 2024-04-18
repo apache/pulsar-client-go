@@ -375,7 +375,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 }
 
 type connectionClosed struct {
-	assignedBrokerURL    string
+	assignedBrokerURL string
 }
 
 func (cc *connectionClosed) HasURL() bool {
@@ -463,8 +463,8 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		}
 
 		p.log.WithFields(log.Fields{
-			"assignedBrokerURL":    assignedBrokerURL,
-			"delayReconnectTime":   delayReconnectTime,
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
 		}).Info("Reconnecting to broker")
 		time.Sleep(delayReconnectTime)
 
