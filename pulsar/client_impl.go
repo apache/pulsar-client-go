@@ -49,6 +49,7 @@ type client struct {
 	memLimit         internal.MemoryLimitController
 	closeOnce        sync.Once
 	operationTimeout time.Duration
+	tlsEnabled       bool
 
 	log log.Logger
 }
@@ -166,6 +167,7 @@ func newClient(options ClientOptions) (Client, error) {
 		metrics:          metrics,
 		memLimit:         internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
 		operationTimeout: operationTimeout,
+		tlsEnabled:       tlsConfig != nil,
 	}
 	serviceNameResolver := internal.NewPulsarServiceNameResolver(url)
 
@@ -174,7 +176,7 @@ func newClient(options ClientOptions) (Client, error) {
 	switch url.Scheme {
 	case "pulsar", "pulsar+ssl":
 		c.lookupService = internal.NewLookupService(c.rpcClient, url, serviceNameResolver,
-			tlsConfig != nil, options.ListenerName, logger, metrics)
+			c.tlsEnabled, options.ListenerName, logger, metrics)
 	case "http", "https":
 		httpClient, err := internal.NewHTTPClient(url, serviceNameResolver, tlsConfig,
 			operationTimeout, logger, metrics, authProvider)
@@ -183,7 +185,7 @@ func newClient(options ClientOptions) (Client, error) {
 				err.Error()))
 		}
 		c.lookupService = internal.NewHTTPLookupService(httpClient, url, serviceNameResolver,
-			tlsConfig != nil, logger, metrics)
+			c.tlsEnabled, logger, metrics)
 	default:
 		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}
@@ -274,4 +276,11 @@ func (c *client) Close() {
 		c.cnxPool.Close()
 		c.lookupService.Close()
 	})
+}
+
+func (c *client) selectServiceURL(brokerServiceURL, brokerServiceURLTLS string) string {
+	if c.tlsEnabled {
+		return brokerServiceURLTLS
+	}
+	return brokerServiceURL
 }

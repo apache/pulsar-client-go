@@ -65,7 +65,7 @@ type LookupService interface {
 	// GetSchema returns schema for a given version.
 	GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error)
 
-	GetBrokerAddress(brokerServiceURL, brokerServiceURLTLS string, proxyThroughServiceURL bool) (*LookupResult, error)
+	GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error)
 
 	// Closable Allow Lookup Service's internal client to be able to closed
 	Closable
@@ -110,16 +110,8 @@ func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *
 	return res.Response.GetSchemaResponse.Schema, nil
 }
 
-func (ls *lookupService) GetBrokerAddress(brokerServiceURL, brokerServiceURLTLS string,
-	proxyThroughServiceURL bool) (*LookupResult, error) {
-	var requestURI string
-	if ls.tlsEnabled {
-		requestURI = brokerServiceURLTLS
-	} else {
-		requestURI = brokerServiceURL
-	}
-
-	logicalAddress, err := url.ParseRequestURI(requestURI)
+func (ls *lookupService) GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error) {
+	logicalAddress, err := url.ParseRequestURI(brokerServiceURL)
 	if err != nil {
 		return nil, err
 	}
@@ -163,8 +155,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 		switch *lr.Response {
 
 		case pb.CommandLookupTopicResponse_Redirect:
-			lookupResult, err :=
-				ls.GetBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
+			brokerServiceURL := selectServiceURL(ls.tlsEnabled, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls())
+			lookupResult, err := ls.GetBrokerAddress(brokerServiceURL, lr.GetProxyThroughServiceUrl())
 			if err != nil {
 				return nil, err
 			}
@@ -191,7 +183,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			ls.log.Debugf("Successfully looked up topic{%s} on broker. %s / %s - Use proxy: %t",
 				topic, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
-			return ls.GetBrokerAddress(lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
+			brokerServiceURL := selectServiceURL(ls.tlsEnabled, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls())
+			return ls.GetBrokerAddress(brokerServiceURL, lr.GetProxyThroughServiceUrl())
 		case pb.CommandLookupTopicResponse_Failed:
 			ls.log.WithFields(log.Fields{
 				"topic":   topic,
@@ -286,25 +279,15 @@ type httpLookupService struct {
 	metrics             *Metrics
 }
 
-func (h *httpLookupService) GetBrokerAddress(brokerServiceURL, brokerServiceURLTls string,
-	proxyThroughServiceURL bool) (lr *LookupResult, err error) {
-	var logicalAddress *url.URL
-
-	if h.tlsEnabled {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceURLTls)
-	} else {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceURL)
-	}
-
+func (h *httpLookupService) GetBrokerAddress(brokerServiceURL string, _ bool) (*LookupResult, error) {
+	logicalAddress, err := url.ParseRequestURI(brokerServiceURL)
 	if err != nil {
-		lr = nil
-	} else {
-		lr = &LookupResult{
-			LogicalAddr:  logicalAddress,
-			PhysicalAddr: logicalAddress,
-		}
+		return nil, err
 	}
-	return
+	return &LookupResult{
+		LogicalAddr:  logicalAddress,
+		PhysicalAddr: logicalAddress,
+	}, err
 }
 
 func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
@@ -327,7 +310,8 @@ func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
 	h.log.Debugf("Successfully looked up topic{%s} on http broker. %+v",
 		topic, lookupData)
 
-	return h.GetBrokerAddress(lookupData.BrokerURL, lookupData.BrokerURLTLS, false /* ignored */)
+	brokerServiceURL := selectServiceURL(h.tlsEnabled, lookupData.BrokerURL, lookupData.BrokerURLTLS)
+	return h.GetBrokerAddress(brokerServiceURL, false /* ignored */)
 }
 
 func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata,
@@ -395,4 +379,11 @@ func NewHTTPLookupService(httpClient HTTPClient, serviceURL *url.URL, serviceNam
 		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 		metrics:             metrics,
 	}
+}
+
+func selectServiceURL(tlsEnabled bool, brokerServiceURL, brokerServiceURLTLS string) string {
+	if tlsEnabled {
+		return brokerServiceURLTLS
+	}
+	return brokerServiceURL
 }

@@ -370,7 +370,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, options.nackBackoffPolicy, pc.log)
 
-	err := pc.grabConn("", "")
+	err := pc.grabConn("")
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
 		pc.nackTracker.Close()
@@ -1361,9 +1361,10 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
+	assignedBrokerURL := pc.client.selectServiceURL(
+		closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
 	pc.connectClosedCh <- &connectionClosed{
-		assignedBrokerURL:    closeConsumer.GetAssignedBrokerServiceUrl(),
-		assignedBrokerURLTLS: closeConsumer.GetAssignedBrokerServiceUrlTls(),
+		assignedBrokerURL:    assignedBrokerURL,
 	}
 }
 
@@ -1677,12 +1678,10 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		}
 
 		var assignedBrokerURL string
-		var assignedBrokerURLTLS string
 
-		if connectionClosed != nil && connectionClosed.HasURLs() {
+		if connectionClosed != nil && connectionClosed.HasURL() {
 			delayReconnectTime = 0
 			assignedBrokerURL = connectionClosed.assignedBrokerURL
-			assignedBrokerURLTLS = connectionClosed.assignedBrokerURLTLS
 			connectionClosed = nil // Attempt connecting to the assigned broker just once
 		} else if pc.options.backoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
@@ -1692,7 +1691,6 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 
 		pc.log.WithFields(log.Fields{
 			"assignedBrokerURL":    assignedBrokerURL,
-			"assignedBrokerURLTLS": assignedBrokerURLTLS,
 			"delayReconnectTime":   delayReconnectTime,
 		}).Info("Reconnecting to broker")
 		time.Sleep(delayReconnectTime)
@@ -1704,7 +1702,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return
 		}
 
-		err := pc.grabConn(assignedBrokerURL, assignedBrokerURLTLS)
+		err := pc.grabConn(assignedBrokerURL)
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
@@ -1728,8 +1726,8 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 	}
 }
 
-func (pc *partitionConsumer) lookupTopic(brokerURL, brokerURLTLS string) (*internal.LookupResult, error) {
-	if len(brokerURL) == 0 && len(brokerURLTLS) == 0 {
+func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
+	if len(brokerServiceURL) == 0 {
 		lr, err := pc.client.lookupService.Lookup(pc.topic)
 		if err != nil {
 			pc.log.WithError(err).Warn("Failed to lookup topic")
@@ -1739,11 +1737,11 @@ func (pc *partitionConsumer) lookupTopic(brokerURL, brokerURLTLS string) (*inter
 		pc.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	return pc.client.lookupService.GetBrokerAddress(brokerURL, brokerURLTLS, pc._getConn().IsProxied())
+	return pc.client.lookupService.GetBrokerAddress(brokerServiceURL, pc._getConn().IsProxied())
 }
 
-func (pc *partitionConsumer) grabConn(assignedBrokerURL, assignedBrokerURLTLS string) error {
-	lr, err := pc.lookupTopic(assignedBrokerURL, assignedBrokerURLTLS)
+func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
+	lr, err := pc.lookupTopic(assignedBrokerURL)
 	if err != nil {
 		return err
 	}
