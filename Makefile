@@ -44,7 +44,11 @@ container:
 	  --build-arg PULSAR_IMAGE="${PULSAR_IMAGE}" \
 	  --build-arg ARCH="${CONTAINER_ARCH}" .
 
+<<<<<<< HEAD
 test: container test_standalone test_clustered test_extensible_load_manager
+=======
+test: container test_standalone test_clustered
+>>>>>>> origin/master
 
 test_standalone: container
 	docker run -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci.sh"
@@ -55,12 +59,15 @@ test_clustered: container
 	docker run --network "clustered_pulsar" -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-clustered.sh"
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/clustered/docker-compose.yml down
 
+<<<<<<< HEAD
 test_extensible_load_manager: container
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/extensible-load-manager/docker-compose.yml up -d || true
 	until curl http://localhost:8080/metrics > /dev/null 2>&1; do sleep 1; done
 	docker run --network "extensible-load-manager_pulsar" -i ${IMAGE_NAME} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-extensible-load-manager.sh"
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/extensible-load-manager/docker-compose.yml down
 
+=======
+>>>>>>> origin/master
 clean:
 	docker rmi --force $(IMAGE_NAME) || true
 	rm bin/*
