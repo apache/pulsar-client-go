@@ -287,30 +287,24 @@ type httpLookupService struct {
 }
 
 func (h *httpLookupService) GetBrokerAddress(brokerServiceURL, brokerServiceURLTls string,
-	proxyThroughServiceURL bool) (*LookupResult, error) {
-	logicalAddr, physicalAddr, err := h.getBrokerAddress(brokerServiceURL, brokerServiceURLTls)
-	if err != nil {
-		return nil, err
-	}
-	return &LookupResult{
-		LogicalAddr:  logicalAddr,
-		PhysicalAddr: physicalAddr,
-	}, nil
-}
+	proxyThroughServiceURL bool) (lr *LookupResult, err error) {
+	var logicalAddress *url.URL
 
-func (h *httpLookupService) getBrokerAddress(brokerServiceURL, brokerServiceURLTLS string) (logicalAddress *url.URL,
-	physicalAddress *url.URL, err error) {
 	if h.tlsEnabled {
-		logicalAddress, err = url.ParseRequestURI(brokerServiceURLTLS)
+		logicalAddress, err = url.ParseRequestURI(brokerServiceURLTls)
 	} else {
 		logicalAddress, err = url.ParseRequestURI(brokerServiceURL)
 	}
 
 	if err != nil {
-		return nil, nil, err
+		lr = nil
+	} else {
+		lr = &LookupResult{
+			LogicalAddr:  logicalAddress,
+			PhysicalAddr: logicalAddress,
+		}
 	}
-
-	return logicalAddress, logicalAddress, nil
+	return
 }
 
 func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
@@ -333,16 +327,7 @@ func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
 	h.log.Debugf("Successfully looked up topic{%s} on http broker. %+v",
 		topic, lookupData)
 
-	logicalAddress, physicalAddress, err := h.getBrokerAddress(lookupData.BrokerURL, lookupData.BrokerURLTLS)
-	if err != nil {
-		return nil, err
-	}
-
-	return &LookupResult{
-		LogicalAddr:  logicalAddress,
-		PhysicalAddr: physicalAddress,
-	}, nil
-
+	return h.GetBrokerAddress(lookupData.BrokerURL, lookupData.BrokerURLTLS, false /* ignored */)
 }
 
 func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata,
