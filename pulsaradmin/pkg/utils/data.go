@@ -477,6 +477,11 @@ type GetStatsOptions struct {
 	ExcludeConsumers         bool `json:"exclude_consumers"`
 }
 
+type BrokerInfo struct {
+	BrokerID   string `json:"brokerId"`
+	ServiceURL string `json:"serviceUrl"`
+}
+
 type TopicVersion string
 
 const (

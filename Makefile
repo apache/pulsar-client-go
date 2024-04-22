@@ -38,6 +38,12 @@ lint: bin/golangci-lint
 bin/golangci-lint:
 	GOBIN=$(shell pwd)/bin go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.51.2
 
+# an alternative to above `make lint` command
+# use golangCi-lint docker to avoid local golang env issues
+# https://golangci-lint.run/welcome/install/
+lint-docker:
+	docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:v1.51.2 golangci-lint run -v
+
 container:
 	docker build -t ${IMAGE_NAME} \
 	  --build-arg GO_VERSION="${GO_VERSION}" \
