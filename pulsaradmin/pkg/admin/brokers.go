@@ -58,6 +58,9 @@ type Brokers interface {
 
 	// HealthCheckWithTopicVersion run a health check on the broker
 	HealthCheckWithTopicVersion(utils.TopicVersion) error
+
+	// GetLeaderBroker get the information of the leader broker.
+	GetLeaderBroker() (utils.BrokerInfo, error)
 }
 
 type broker struct {
@@ -161,4 +164,13 @@ func (b *broker) HealthCheckWithTopicVersion(topicVersion utils.TopicVersion) er
 		return fmt.Errorf("health check returned unexpected result: %s", string(buf))
 	}
 	return nil
+}
+func (b *broker) GetLeaderBroker() (utils.BrokerInfo, error) {
+	endpoint := b.pulsar.endpoint(b.basePath, "/leaderBroker")
+	var brokerInfo utils.BrokerInfo
+	err := b.pulsar.Client.Get(endpoint, &brokerInfo)
+	if err != nil {
+		return brokerInfo, err
+	}
+	return brokerInfo, nil
 }

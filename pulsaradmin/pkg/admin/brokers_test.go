@@ -42,3 +42,19 @@ func TestBrokerHealthCheckWithTopicVersion(t *testing.T) {
 	err = admin.Brokers().HealthCheckWithTopicVersion(utils.TopicVersionV2)
 	assert.NoError(t, err)
 }
+
+func TestGetLeaderBroker(t *testing.T) {
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	assert.NoError(t, err)
+	cfg := &config.Config{
+		Token: string(readFile),
+	}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	leaderBroker, err := admin.Brokers().GetLeaderBroker()
+	assert.NoError(t, err)
+	assert.NotNil(t, leaderBroker)
+	assert.NotEmpty(t, leaderBroker.ServiceURL)
+	assert.NotEmpty(t, leaderBroker.BrokerID)
+}
