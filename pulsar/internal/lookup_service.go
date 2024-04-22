@@ -30,9 +30,8 @@ import (
 
 // LookupResult encapsulates a struct for lookup a request, containing two parts: LogicalAddr, PhysicalAddr.
 type LookupResult struct {
-	IsProxyThroughServiceURL bool
-	LogicalAddr              *url.URL
-	PhysicalAddr             *url.URL
+	LogicalAddr  *url.URL
+	PhysicalAddr *url.URL
 }
 
 // GetTopicsOfNamespaceMode for CommandGetTopicsOfNamespace_Mode
@@ -127,9 +126,8 @@ func (ls *lookupService) GetBrokerAddress(brokerServiceURL string, proxyThroughS
 	}
 
 	return &LookupResult{
-		LogicalAddr:              logicalAddress,
-		PhysicalAddr:             physicalAddress,
-		IsProxyThroughServiceURL: proxyThroughServiceURL,
+		LogicalAddr:  logicalAddress,
+		PhysicalAddr: physicalAddress,
 	}, nil
 }
 
