@@ -393,8 +393,11 @@ func (p *partitionProducer) GetBuffer() internal.Buffer {
 func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProducer) {
 	// Trigger reconnection in the produce goroutine
 	p.log.WithField("cnx", p._getConn().ID()).Warn("Connection was closed")
-	assignedBrokerURL := p.client.selectServiceURL(
-		closeProducer.GetAssignedBrokerServiceUrl(), closeProducer.GetAssignedBrokerServiceUrlTls())
+	var assignedBrokerURL string
+	if closeProducer != nil {
+		assignedBrokerURL = p.client.selectServiceURL(
+			closeProducer.GetAssignedBrokerServiceUrl(), closeProducer.GetAssignedBrokerServiceUrlTls())
+	}
 	p.connectClosedCh <- &connectionClosed{
 		assignedBrokerURL: assignedBrokerURL,
 	}

@@ -1361,8 +1361,11 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
-	assignedBrokerURL := pc.client.selectServiceURL(
-		closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
+	var assignedBrokerURL string
+	if closeConsumer != nil {
+		assignedBrokerURL = pc.client.selectServiceURL(
+			closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
+	}
 	pc.connectClosedCh <- &connectionClosed{
 		assignedBrokerURL: assignedBrokerURL,
 	}
