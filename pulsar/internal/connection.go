@@ -69,7 +69,7 @@ type ConnectionListener interface {
 	ReceivedSendReceipt(response *pb.CommandSendReceipt)
 
 	// ConnectionClosed close the TCP connection.
-	ConnectionClosed()
+	ConnectionClosed(closeProducer *pb.CommandCloseProducer)
 }
 
 // Connection is a interface of client cnx.
@@ -84,6 +84,7 @@ type Connection interface {
 	ID() string
 	GetMaxMessageSize() int32
 	Close()
+	IsProxied() bool
 }
 
 type ConsumerHandler interface {
@@ -92,7 +93,7 @@ type ConsumerHandler interface {
 	ActiveConsumerChanged(isActive bool)
 
 	// ConnectionClosed close the TCP connection.
-	ConnectionClosed()
+	ConnectionClosed(closeConsumer *pb.CommandCloseConsumer)
 }
 
 type connectionState int32
@@ -312,7 +313,7 @@ func (c *connection) doHandshake() bool {
 		},
 	}
 
-	if c.logicalAddr.Host != c.physicalAddr.Host {
+	if c.IsProxied() {
 		cmdConnect.ProxyToBrokerUrl = proto.String(c.logicalAddr.Host)
 	}
 	c.writeCommand(baseCommand(pb.BaseCommand_CONNECT, cmdConnect))
@@ -341,6 +342,10 @@ func (c *connection) doHandshake() bool {
 	c.setLastDataReceived(time.Now())
 	c.changeState(connectionReady)
 	return true
+}
+
+func (c *connection) IsProxied() bool {
+	return c.logicalAddr.Host != c.physicalAddr.Host
 }
 
 func (c *connection) waitUntilReady() error {
@@ -893,7 +898,7 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
-		consumer.ConnectionClosed()
+		consumer.ConnectionClosed(closeConsumer)
 		c.DeleteConsumeHandler(consumerID)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
@@ -917,7 +922,7 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	producer, ok := c.deletePendingProducers(producerID)
 	// did we find a producer?
 	if ok {
-		producer.ConnectionClosed()
+		producer.ConnectionClosed(closeProducer)
 	} else {
 		c.log.WithField("producerID", producerID).Warn("Producer with ID not found while closing producer")
 	}
@@ -1024,12 +1029,12 @@ func (c *connection) Close() {
 
 		// notify producers connection closed
 		for _, listener := range listeners {
-			listener.ConnectionClosed()
+			listener.ConnectionClosed(nil)
 		}
 
 		// notify consumers connection closed
 		for _, handler := range consumerHandlers {
-			handler.ConnectionClosed()
+			handler.ConnectionClosed(nil)
 		}
 
 		c.metrics.ConnectionsClosed.Inc()

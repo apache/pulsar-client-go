@@ -878,22 +878,22 @@ func TestReaderWithBackoffPolicy(t *testing.T) {
 	partitionConsumerImp := _reader.(*reader).c.consumers[0]
 	// 1 s
 	startTime := time.Now()
-	partitionConsumerImp.reconnectToBroker()
+	partitionConsumerImp.reconnectToBroker(nil)
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 2 s
 	startTime = time.Now()
-	partitionConsumerImp.reconnectToBroker()
+	partitionConsumerImp.reconnectToBroker(nil)
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
-	partitionConsumerImp.reconnectToBroker()
+	partitionConsumerImp.reconnectToBroker(nil)
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
-	partitionConsumerImp.reconnectToBroker()
+	partitionConsumerImp.reconnectToBroker(nil)
 	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }
 

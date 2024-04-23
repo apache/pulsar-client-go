@@ -158,7 +158,7 @@ type partitionConsumer struct {
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
-	connectClosedCh chan connectionClosed
+	connectClosedCh chan *connectionClosed
 	closeCh         chan struct{}
 	clearQueueCh    chan func(id *trackingMessageID)
 
@@ -326,7 +326,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
-		connectClosedCh:      make(chan connectionClosed, 10),
+		connectClosedCh:      make(chan *connectionClosed, 10),
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id *trackingMessageID)),
 		compressionProviders: sync.Map{},
@@ -370,7 +370,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, options.nackBackoffPolicy, pc.log)
 
-	err := pc.grabConn()
+	err := pc.grabConn("")
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
 		pc.nackTracker.Close()
@@ -1358,10 +1358,17 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 	return &encCtx
 }
 
-func (pc *partitionConsumer) ConnectionClosed() {
+func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
-	pc.connectClosedCh <- connectionClosed{}
+	var assignedBrokerURL string
+	if closeConsumer != nil {
+		assignedBrokerURL = pc.client.selectServiceURL(
+			closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
+	}
+	pc.connectClosedCh <- &connectionClosed{
+		assignedBrokerURL: assignedBrokerURL,
+	}
 }
 
 // Flow command gives additional permits to send messages to the consumer.
@@ -1566,9 +1573,9 @@ func (pc *partitionConsumer) runEventsLoop() {
 			case <-pc.closeCh:
 				pc.log.Info("close consumer, exit reconnect")
 				return
-			case <-pc.connectClosedCh:
+			case connectionClosed := <-pc.connectClosedCh:
 				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker()
+				pc.reconnectToBroker(connectionClosed)
 			}
 		}
 	}()
@@ -1652,7 +1659,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	close(pc.closeCh)
 }
 
-func (pc *partitionConsumer) reconnectToBroker() {
+func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {
 	var maxRetry int
 
 	if pc.options.maxReconnectToBroker == nil {
@@ -1673,13 +1680,22 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			return
 		}
 
-		if pc.options.backoffPolicy == nil {
+		var assignedBrokerURL string
+
+		if connectionClosed != nil && connectionClosed.HasURL() {
+			delayReconnectTime = 0
+			assignedBrokerURL = connectionClosed.assignedBrokerURL
+			connectionClosed = nil // Attempt connecting to the assigned broker just once
+		} else if pc.options.backoffPolicy == nil {
 			delayReconnectTime = defaultBackoff.Next()
 		} else {
 			delayReconnectTime = pc.options.backoffPolicy.Next()
 		}
 
-		pc.log.Info("Reconnecting to broker in ", delayReconnectTime)
+		pc.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
+		}).Info("Reconnecting to broker")
 		time.Sleep(delayReconnectTime)
 
 		// double check
@@ -1689,7 +1705,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			return
 		}
 
-		err := pc.grabConn()
+		err := pc.grabConn(assignedBrokerURL)
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
@@ -1713,13 +1729,25 @@ func (pc *partitionConsumer) reconnectToBroker() {
 	}
 }
 
-func (pc *partitionConsumer) grabConn() error {
-	lr, err := pc.client.lookupService.Lookup(pc.topic)
+func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
+	if len(brokerServiceURL) == 0 {
+		lr, err := pc.client.lookupService.Lookup(pc.topic)
+		if err != nil {
+			pc.log.WithError(err).Warn("Failed to lookup topic")
+			return nil, err
+		}
+
+		pc.log.Debug("Lookup result: ", lr)
+		return lr, err
+	}
+	return pc.client.lookupService.GetBrokerAddress(brokerServiceURL, pc._getConn().IsProxied())
+}
+
+func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
+	lr, err := pc.lookupTopic(assignedBrokerURL)
 	if err != nil {
-		pc.log.WithError(err).Warn("Failed to lookup topic")
 		return err
 	}
-	pc.log.Debugf("Lookup result: %+v", lr)
 
 	subType := toProtoSubType(pc.options.subscriptionType)
 	initialPosition := toProtoInitialPosition(pc.options.subscriptionInitPos)
