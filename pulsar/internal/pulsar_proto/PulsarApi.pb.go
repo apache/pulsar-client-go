@@ -381,6 +381,7 @@ const (
 	ProtocolVersion_v17 ProtocolVersion = 17 // Added support ack receipt
 	ProtocolVersion_v18 ProtocolVersion = 18 // Add client support for broker entry metadata
 	ProtocolVersion_v19 ProtocolVersion = 19 // Add CommandTcClientConnectRequest and CommandTcClientConnectResponse
+	ProtocolVersion_v20 ProtocolVersion = 20 // Add client support for topic migration redirection CommandTopicMigrated
 )
 
 // Enum value maps for ProtocolVersion.
@@ -406,6 +407,7 @@ var (
 		17: "v17",
 		18: "v18",
 		19: "v19",
+		20: "v20",
 	}
 	ProtocolVersion_value = map[string]int32{
 		"v0":  0,
@@ -428,6 +430,7 @@ var (
 		"v17": 17,
 		"v18": 18,
 		"v19": 19,
+		"v20": 20,
 	}
 )
 
@@ -1050,6 +1053,62 @@ func (CommandAck_ValidationError) EnumDescriptor() ([]byte, []int) {
 	return file_PulsarApi_proto_rawDescGZIP(), []int{26, 1}
 }
 
+type CommandTopicMigrated_ResourceType int32
+
+const (
+	CommandTopicMigrated_Producer CommandTopicMigrated_ResourceType = 0
+	CommandTopicMigrated_Consumer CommandTopicMigrated_ResourceType = 1
+)
+
+// Enum value maps for CommandTopicMigrated_ResourceType.
+var (
+	CommandTopicMigrated_ResourceType_name = map[int32]string{
+		0: "Producer",
+		1: "Consumer",
+	}
+	CommandTopicMigrated_ResourceType_value = map[string]int32{
+		"Producer": 0,
+		"Consumer": 1,
+	}
+)
+
+func (x CommandTopicMigrated_ResourceType) Enum() *CommandTopicMigrated_ResourceType {
+	p := new(CommandTopicMigrated_ResourceType)
+	*p = x
+	return p
+}
+
+func (x CommandTopicMigrated_ResourceType) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (CommandTopicMigrated_ResourceType) Descriptor() protoreflect.EnumDescriptor {
+	return file_PulsarApi_proto_enumTypes[14].Descriptor()
+}
+
+func (CommandTopicMigrated_ResourceType) Type() protoreflect.EnumType {
+	return &file_PulsarApi_proto_enumTypes[14]
+}
+
+func (x CommandTopicMigrated_ResourceType) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Do not use.
+func (x *CommandTopicMigrated_ResourceType) UnmarshalJSON(b []byte) error {
+	num, err := protoimpl.X.UnmarshalJSONEnum(x.Descriptor(), b)
+	if err != nil {
+		return err
+	}
+	*x = CommandTopicMigrated_ResourceType(num)
+	return nil
+}
+
+// Deprecated: Use CommandTopicMigrated_ResourceType.Descriptor instead.
+func (CommandTopicMigrated_ResourceType) EnumDescriptor() ([]byte, []int) {
+	return file_PulsarApi_proto_rawDescGZIP(), []int{33, 0}
+}
+
 type CommandGetTopicsOfNamespace_Mode int32
 
 const (
@@ -1083,11 +1142,11 @@ func (x CommandGetTopicsOfNamespace_Mode) String() string {
 }
 
 func (CommandGetTopicsOfNamespace_Mode) Descriptor() protoreflect.EnumDescriptor {
-	return file_PulsarApi_proto_enumTypes[14].Descriptor()
+	return file_PulsarApi_proto_enumTypes[15].Descriptor()
 }
 
 func (CommandGetTopicsOfNamespace_Mode) Type() protoreflect.EnumType {
-	return &file_PulsarApi_proto_enumTypes[14]
+	return &file_PulsarApi_proto_enumTypes[15]
 }
 
 func (x CommandGetTopicsOfNamespace_Mode) Number() protoreflect.EnumNumber {
@@ -1106,7 +1165,7 @@ func (x *CommandGetTopicsOfNamespace_Mode) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use CommandGetTopicsOfNamespace_Mode.Descriptor instead.
 func (CommandGetTopicsOfNamespace_Mode) EnumDescriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{45, 0}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{46, 0}
 }
 
 type BaseCommand_Type int32
@@ -1170,6 +1229,7 @@ const (
 	BaseCommand_WATCH_TOPIC_LIST_SUCCESS         BaseCommand_Type = 65
 	BaseCommand_WATCH_TOPIC_UPDATE               BaseCommand_Type = 66
 	BaseCommand_WATCH_TOPIC_LIST_CLOSE           BaseCommand_Type = 67
+	BaseCommand_TOPIC_MIGRATED                   BaseCommand_Type = 68
 )
 
 // Enum value maps for BaseCommand_Type.
@@ -1232,6 +1292,7 @@ var (
 		65: "WATCH_TOPIC_LIST_SUCCESS",
 		66: "WATCH_TOPIC_UPDATE",
 		67: "WATCH_TOPIC_LIST_CLOSE",
+		68: "TOPIC_MIGRATED",
 	}
 	BaseCommand_Type_value = map[string]int32{
 		"CONNECT":                           2,
@@ -1291,6 +1352,7 @@ var (
 		"WATCH_TOPIC_LIST_SUCCESS":          65,
 		"WATCH_TOPIC_UPDATE":                66,
 		"WATCH_TOPIC_LIST_CLOSE":            67,
+		"TOPIC_MIGRATED":                    68,
 	}
 )
 
@@ -1305,11 +1367,11 @@ func (x BaseCommand_Type) String() string {
 }
 
 func (BaseCommand_Type) Descriptor() protoreflect.EnumDescriptor {
-	return file_PulsarApi_proto_enumTypes[15].Descriptor()
+	return file_PulsarApi_proto_enumTypes[16].Descriptor()
 }
 
 func (BaseCommand_Type) Type() protoreflect.EnumType {
-	return &file_PulsarApi_proto_enumTypes[15]
+	return &file_PulsarApi_proto_enumTypes[16]
 }
 
 func (x BaseCommand_Type) Number() protoreflect.EnumNumber {
@@ -1328,7 +1390,7 @@ func (x *BaseCommand_Type) UnmarshalJSON(b []byte) error {
 
 // Deprecated: Use BaseCommand_Type.Descriptor instead.
 func (BaseCommand_Type) EnumDescriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{70, 0}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{71, 0}
 }
 
 type Schema struct {
@@ -4401,6 +4463,77 @@ func (x *CommandReachedEndOfTopic) GetConsumerId() uint64 {
 	return 0
 }
 
+type CommandTopicMigrated struct {
+	state         protoimpl.MessageState
+	sizeCache     protoimpl.SizeCache
+	unknownFields protoimpl.UnknownFields
+
+	ResourceId          *uint64                            `protobuf:"varint,1,req,name=resource_id,json=resourceId" json:"resource_id,omitempty"`
+	ResourceType        *CommandTopicMigrated_ResourceType `protobuf:"varint,2,req,name=resource_type,json=resourceType,enum=pulsar.proto.CommandTopicMigrated_ResourceType" json:"resource_type,omitempty"`
+	BrokerServiceUrl    *string                            `protobuf:"bytes,3,opt,name=brokerServiceUrl" json:"brokerServiceUrl,omitempty"`
+	BrokerServiceUrlTls *string                            `protobuf:"bytes,4,opt,name=brokerServiceUrlTls" json:"brokerServiceUrlTls,omitempty"`
+}
+
+func (x *CommandTopicMigrated) Reset() {
+	*x = CommandTopicMigrated{}
+	if protoimpl.UnsafeEnabled {
+		mi := &file_PulsarApi_proto_msgTypes[33]
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		ms.StoreMessageInfo(mi)
+	}
+}
+
+func (x *CommandTopicMigrated) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CommandTopicMigrated) ProtoMessage() {}
+
+func (x *CommandTopicMigrated) ProtoReflect() protoreflect.Message {
+	mi := &file_PulsarApi_proto_msgTypes[33]
+	if protoimpl.UnsafeEnabled && x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CommandTopicMigrated.ProtoReflect.Descriptor instead.
+func (*CommandTopicMigrated) Descriptor() ([]byte, []int) {
+	return file_PulsarApi_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *CommandTopicMigrated) GetResourceId() uint64 {
+	if x != nil && x.ResourceId != nil {
+		return *x.ResourceId
+	}
+	return 0
+}
+
+func (x *CommandTopicMigrated) GetResourceType() CommandTopicMigrated_ResourceType {
+	if x != nil && x.ResourceType != nil {
+		return *x.ResourceType
+	}
+	return CommandTopicMigrated_Producer
+}
+
+func (x *CommandTopicMigrated) GetBrokerServiceUrl() string {
+	if x != nil && x.BrokerServiceUrl != nil {
+		return *x.BrokerServiceUrl
+	}
+	return ""
+}
+
+func (x *CommandTopicMigrated) GetBrokerServiceUrlTls() string {
+	if x != nil && x.BrokerServiceUrlTls != nil {
+		return *x.BrokerServiceUrlTls
+	}
+	return ""
+}
+
 type CommandCloseProducer struct {
 	state         protoimpl.MessageState
 	sizeCache     protoimpl.SizeCache
@@ -4415,7 +4548,7 @@ type CommandCloseProducer struct {
 func (x *CommandCloseProducer) Reset() {
 	*x = CommandCloseProducer{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[33]
+		mi := &file_PulsarApi_proto_msgTypes[34]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4428,7 +4561,7 @@ func (x *CommandCloseProducer) String() string {
 func (*CommandCloseProducer) ProtoMessage() {}
 
 func (x *CommandCloseProducer) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[33]
+	mi := &file_PulsarApi_proto_msgTypes[34]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4441,7 +4574,7 @@ func (x *CommandCloseProducer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandCloseProducer.ProtoReflect.Descriptor instead.
 func (*CommandCloseProducer) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{33}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{34}
 }
 
 func (x *CommandCloseProducer) GetProducerId() uint64 {
@@ -4486,7 +4619,7 @@ type CommandCloseConsumer struct {
 func (x *CommandCloseConsumer) Reset() {
 	*x = CommandCloseConsumer{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[34]
+		mi := &file_PulsarApi_proto_msgTypes[35]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4499,7 +4632,7 @@ func (x *CommandCloseConsumer) String() string {
 func (*CommandCloseConsumer) ProtoMessage() {}
 
 func (x *CommandCloseConsumer) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[34]
+	mi := &file_PulsarApi_proto_msgTypes[35]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4512,7 +4645,7 @@ func (x *CommandCloseConsumer) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandCloseConsumer.ProtoReflect.Descriptor instead.
 func (*CommandCloseConsumer) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{34}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{35}
 }
 
 func (x *CommandCloseConsumer) GetConsumerId() uint64 {
@@ -4556,7 +4689,7 @@ type CommandRedeliverUnacknowledgedMessages struct {
 func (x *CommandRedeliverUnacknowledgedMessages) Reset() {
 	*x = CommandRedeliverUnacknowledgedMessages{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[35]
+		mi := &file_PulsarApi_proto_msgTypes[36]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4569,7 +4702,7 @@ func (x *CommandRedeliverUnacknowledgedMessages) String() string {
 func (*CommandRedeliverUnacknowledgedMessages) ProtoMessage() {}
 
 func (x *CommandRedeliverUnacknowledgedMessages) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[35]
+	mi := &file_PulsarApi_proto_msgTypes[36]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4582,7 +4715,7 @@ func (x *CommandRedeliverUnacknowledgedMessages) ProtoReflect() protoreflect.Mes
 
 // Deprecated: Use CommandRedeliverUnacknowledgedMessages.ProtoReflect.Descriptor instead.
 func (*CommandRedeliverUnacknowledgedMessages) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{35}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{36}
 }
 
 func (x *CommandRedeliverUnacknowledgedMessages) GetConsumerId() uint64 {
@@ -4618,7 +4751,7 @@ type CommandSuccess struct {
 func (x *CommandSuccess) Reset() {
 	*x = CommandSuccess{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[36]
+		mi := &file_PulsarApi_proto_msgTypes[37]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4631,7 +4764,7 @@ func (x *CommandSuccess) String() string {
 func (*CommandSuccess) ProtoMessage() {}
 
 func (x *CommandSuccess) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[36]
+	mi := &file_PulsarApi_proto_msgTypes[37]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4644,7 +4777,7 @@ func (x *CommandSuccess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandSuccess.ProtoReflect.Descriptor instead.
 func (*CommandSuccess) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{36}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{37}
 }
 
 func (x *CommandSuccess) GetRequestId() uint64 {
@@ -4691,7 +4824,7 @@ const (
 func (x *CommandProducerSuccess) Reset() {
 	*x = CommandProducerSuccess{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[37]
+		mi := &file_PulsarApi_proto_msgTypes[38]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4704,7 +4837,7 @@ func (x *CommandProducerSuccess) String() string {
 func (*CommandProducerSuccess) ProtoMessage() {}
 
 func (x *CommandProducerSuccess) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[37]
+	mi := &file_PulsarApi_proto_msgTypes[38]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4717,7 +4850,7 @@ func (x *CommandProducerSuccess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandProducerSuccess.ProtoReflect.Descriptor instead.
 func (*CommandProducerSuccess) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{37}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{38}
 }
 
 func (x *CommandProducerSuccess) GetRequestId() uint64 {
@@ -4775,7 +4908,7 @@ type CommandError struct {
 func (x *CommandError) Reset() {
 	*x = CommandError{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[38]
+		mi := &file_PulsarApi_proto_msgTypes[39]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4788,7 +4921,7 @@ func (x *CommandError) String() string {
 func (*CommandError) ProtoMessage() {}
 
 func (x *CommandError) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[38]
+	mi := &file_PulsarApi_proto_msgTypes[39]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4801,7 +4934,7 @@ func (x *CommandError) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandError.ProtoReflect.Descriptor instead.
 func (*CommandError) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{38}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{39}
 }
 
 func (x *CommandError) GetRequestId() uint64 {
@@ -4837,7 +4970,7 @@ type CommandPing struct {
 func (x *CommandPing) Reset() {
 	*x = CommandPing{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[39]
+		mi := &file_PulsarApi_proto_msgTypes[40]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4850,7 +4983,7 @@ func (x *CommandPing) String() string {
 func (*CommandPing) ProtoMessage() {}
 
 func (x *CommandPing) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[39]
+	mi := &file_PulsarApi_proto_msgTypes[40]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4863,7 +4996,7 @@ func (x *CommandPing) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandPing.ProtoReflect.Descriptor instead.
 func (*CommandPing) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{39}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{40}
 }
 
 type CommandPong struct {
@@ -4875,7 +5008,7 @@ type CommandPong struct {
 func (x *CommandPong) Reset() {
 	*x = CommandPong{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[40]
+		mi := &file_PulsarApi_proto_msgTypes[41]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4888,7 +5021,7 @@ func (x *CommandPong) String() string {
 func (*CommandPong) ProtoMessage() {}
 
 func (x *CommandPong) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[40]
+	mi := &file_PulsarApi_proto_msgTypes[41]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4901,7 +5034,7 @@ func (x *CommandPong) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandPong.ProtoReflect.Descriptor instead.
 func (*CommandPong) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{40}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{41}
 }
 
 type CommandConsumerStats struct {
@@ -4918,7 +5051,7 @@ type CommandConsumerStats struct {
 func (x *CommandConsumerStats) Reset() {
 	*x = CommandConsumerStats{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[41]
+		mi := &file_PulsarApi_proto_msgTypes[42]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -4931,7 +5064,7 @@ func (x *CommandConsumerStats) String() string {
 func (*CommandConsumerStats) ProtoMessage() {}
 
 func (x *CommandConsumerStats) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[41]
+	mi := &file_PulsarApi_proto_msgTypes[42]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -4944,7 +5077,7 @@ func (x *CommandConsumerStats) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandConsumerStats.ProtoReflect.Descriptor instead.
 func (*CommandConsumerStats) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{41}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{42}
 }
 
 func (x *CommandConsumerStats) GetRequestId() uint64 {
@@ -5000,7 +5133,7 @@ type CommandConsumerStatsResponse struct {
 func (x *CommandConsumerStatsResponse) Reset() {
 	*x = CommandConsumerStatsResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[42]
+		mi := &file_PulsarApi_proto_msgTypes[43]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5013,7 +5146,7 @@ func (x *CommandConsumerStatsResponse) String() string {
 func (*CommandConsumerStatsResponse) ProtoMessage() {}
 
 func (x *CommandConsumerStatsResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[42]
+	mi := &file_PulsarApi_proto_msgTypes[43]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5026,7 +5159,7 @@ func (x *CommandConsumerStatsResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandConsumerStatsResponse.ProtoReflect.Descriptor instead.
 func (*CommandConsumerStatsResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{42}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{43}
 }
 
 func (x *CommandConsumerStatsResponse) GetRequestId() uint64 {
@@ -5153,7 +5286,7 @@ type CommandGetLastMessageId struct {
 func (x *CommandGetLastMessageId) Reset() {
 	*x = CommandGetLastMessageId{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[43]
+		mi := &file_PulsarApi_proto_msgTypes[44]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5166,7 +5299,7 @@ func (x *CommandGetLastMessageId) String() string {
 func (*CommandGetLastMessageId) ProtoMessage() {}
 
 func (x *CommandGetLastMessageId) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[43]
+	mi := &file_PulsarApi_proto_msgTypes[44]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5179,7 +5312,7 @@ func (x *CommandGetLastMessageId) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandGetLastMessageId.ProtoReflect.Descriptor instead.
 func (*CommandGetLastMessageId) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{43}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{44}
 }
 
 func (x *CommandGetLastMessageId) GetConsumerId() uint64 {
@@ -5209,7 +5342,7 @@ type CommandGetLastMessageIdResponse struct {
 func (x *CommandGetLastMessageIdResponse) Reset() {
 	*x = CommandGetLastMessageIdResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[44]
+		mi := &file_PulsarApi_proto_msgTypes[45]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5222,7 +5355,7 @@ func (x *CommandGetLastMessageIdResponse) String() string {
 func (*CommandGetLastMessageIdResponse) ProtoMessage() {}
 
 func (x *CommandGetLastMessageIdResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[44]
+	mi := &file_PulsarApi_proto_msgTypes[45]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5235,7 +5368,7 @@ func (x *CommandGetLastMessageIdResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandGetLastMessageIdResponse.ProtoReflect.Descriptor instead.
 func (*CommandGetLastMessageIdResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{44}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{45}
 }
 
 func (x *CommandGetLastMessageIdResponse) GetLastMessageId() *MessageIdData {
@@ -5279,7 +5412,7 @@ const (
 func (x *CommandGetTopicsOfNamespace) Reset() {
 	*x = CommandGetTopicsOfNamespace{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[45]
+		mi := &file_PulsarApi_proto_msgTypes[46]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5292,7 +5425,7 @@ func (x *CommandGetTopicsOfNamespace) String() string {
 func (*CommandGetTopicsOfNamespace) ProtoMessage() {}
 
 func (x *CommandGetTopicsOfNamespace) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[45]
+	mi := &file_PulsarApi_proto_msgTypes[46]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5305,7 +5438,7 @@ func (x *CommandGetTopicsOfNamespace) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandGetTopicsOfNamespace.ProtoReflect.Descriptor instead.
 func (*CommandGetTopicsOfNamespace) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{45}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{46}
 }
 
 func (x *CommandGetTopicsOfNamespace) GetRequestId() uint64 {
@@ -5367,7 +5500,7 @@ const (
 func (x *CommandGetTopicsOfNamespaceResponse) Reset() {
 	*x = CommandGetTopicsOfNamespaceResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[46]
+		mi := &file_PulsarApi_proto_msgTypes[47]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5380,7 +5513,7 @@ func (x *CommandGetTopicsOfNamespaceResponse) String() string {
 func (*CommandGetTopicsOfNamespaceResponse) ProtoMessage() {}
 
 func (x *CommandGetTopicsOfNamespaceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[46]
+	mi := &file_PulsarApi_proto_msgTypes[47]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5393,7 +5526,7 @@ func (x *CommandGetTopicsOfNamespaceResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CommandGetTopicsOfNamespaceResponse.ProtoReflect.Descriptor instead.
 func (*CommandGetTopicsOfNamespaceResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{46}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{47}
 }
 
 func (x *CommandGetTopicsOfNamespaceResponse) GetRequestId() uint64 {
@@ -5447,7 +5580,7 @@ type CommandWatchTopicList struct {
 func (x *CommandWatchTopicList) Reset() {
 	*x = CommandWatchTopicList{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[47]
+		mi := &file_PulsarApi_proto_msgTypes[48]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5460,7 +5593,7 @@ func (x *CommandWatchTopicList) String() string {
 func (*CommandWatchTopicList) ProtoMessage() {}
 
 func (x *CommandWatchTopicList) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[47]
+	mi := &file_PulsarApi_proto_msgTypes[48]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5473,7 +5606,7 @@ func (x *CommandWatchTopicList) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandWatchTopicList.ProtoReflect.Descriptor instead.
 func (*CommandWatchTopicList) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{47}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{48}
 }
 
 func (x *CommandWatchTopicList) GetRequestId() uint64 {
@@ -5525,7 +5658,7 @@ type CommandWatchTopicListSuccess struct {
 func (x *CommandWatchTopicListSuccess) Reset() {
 	*x = CommandWatchTopicListSuccess{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[48]
+		mi := &file_PulsarApi_proto_msgTypes[49]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5538,7 +5671,7 @@ func (x *CommandWatchTopicListSuccess) String() string {
 func (*CommandWatchTopicListSuccess) ProtoMessage() {}
 
 func (x *CommandWatchTopicListSuccess) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[48]
+	mi := &file_PulsarApi_proto_msgTypes[49]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5551,7 +5684,7 @@ func (x *CommandWatchTopicListSuccess) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandWatchTopicListSuccess.ProtoReflect.Descriptor instead.
 func (*CommandWatchTopicListSuccess) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{48}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{49}
 }
 
 func (x *CommandWatchTopicListSuccess) GetRequestId() uint64 {
@@ -5596,7 +5729,7 @@ type CommandWatchTopicUpdate struct {
 func (x *CommandWatchTopicUpdate) Reset() {
 	*x = CommandWatchTopicUpdate{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[49]
+		mi := &file_PulsarApi_proto_msgTypes[50]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5609,7 +5742,7 @@ func (x *CommandWatchTopicUpdate) String() string {
 func (*CommandWatchTopicUpdate) ProtoMessage() {}
 
 func (x *CommandWatchTopicUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[49]
+	mi := &file_PulsarApi_proto_msgTypes[50]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5622,7 +5755,7 @@ func (x *CommandWatchTopicUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandWatchTopicUpdate.ProtoReflect.Descriptor instead.
 func (*CommandWatchTopicUpdate) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{49}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{50}
 }
 
 func (x *CommandWatchTopicUpdate) GetWatcherId() uint64 {
@@ -5665,7 +5798,7 @@ type CommandWatchTopicListClose struct {
 func (x *CommandWatchTopicListClose) Reset() {
 	*x = CommandWatchTopicListClose{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[50]
+		mi := &file_PulsarApi_proto_msgTypes[51]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5678,7 +5811,7 @@ func (x *CommandWatchTopicListClose) String() string {
 func (*CommandWatchTopicListClose) ProtoMessage() {}
 
 func (x *CommandWatchTopicListClose) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[50]
+	mi := &file_PulsarApi_proto_msgTypes[51]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5691,7 +5824,7 @@ func (x *CommandWatchTopicListClose) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandWatchTopicListClose.ProtoReflect.Descriptor instead.
 func (*CommandWatchTopicListClose) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{50}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{51}
 }
 
 func (x *CommandWatchTopicListClose) GetRequestId() uint64 {
@@ -5721,7 +5854,7 @@ type CommandGetSchema struct {
 func (x *CommandGetSchema) Reset() {
 	*x = CommandGetSchema{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[51]
+		mi := &file_PulsarApi_proto_msgTypes[52]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5734,7 +5867,7 @@ func (x *CommandGetSchema) String() string {
 func (*CommandGetSchema) ProtoMessage() {}
 
 func (x *CommandGetSchema) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[51]
+	mi := &file_PulsarApi_proto_msgTypes[52]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5747,7 +5880,7 @@ func (x *CommandGetSchema) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandGetSchema.ProtoReflect.Descriptor instead.
 func (*CommandGetSchema) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{51}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{52}
 }
 
 func (x *CommandGetSchema) GetRequestId() uint64 {
@@ -5786,7 +5919,7 @@ type CommandGetSchemaResponse struct {
 func (x *CommandGetSchemaResponse) Reset() {
 	*x = CommandGetSchemaResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[52]
+		mi := &file_PulsarApi_proto_msgTypes[53]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5799,7 +5932,7 @@ func (x *CommandGetSchemaResponse) String() string {
 func (*CommandGetSchemaResponse) ProtoMessage() {}
 
 func (x *CommandGetSchemaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[52]
+	mi := &file_PulsarApi_proto_msgTypes[53]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5812,7 +5945,7 @@ func (x *CommandGetSchemaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandGetSchemaResponse.ProtoReflect.Descriptor instead.
 func (*CommandGetSchemaResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{52}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{53}
 }
 
 func (x *CommandGetSchemaResponse) GetRequestId() uint64 {
@@ -5863,7 +5996,7 @@ type CommandGetOrCreateSchema struct {
 func (x *CommandGetOrCreateSchema) Reset() {
 	*x = CommandGetOrCreateSchema{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[53]
+		mi := &file_PulsarApi_proto_msgTypes[54]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5876,7 +6009,7 @@ func (x *CommandGetOrCreateSchema) String() string {
 func (*CommandGetOrCreateSchema) ProtoMessage() {}
 
 func (x *CommandGetOrCreateSchema) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[53]
+	mi := &file_PulsarApi_proto_msgTypes[54]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5889,7 +6022,7 @@ func (x *CommandGetOrCreateSchema) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandGetOrCreateSchema.ProtoReflect.Descriptor instead.
 func (*CommandGetOrCreateSchema) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{53}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{54}
 }
 
 func (x *CommandGetOrCreateSchema) GetRequestId() uint64 {
@@ -5927,7 +6060,7 @@ type CommandGetOrCreateSchemaResponse struct {
 func (x *CommandGetOrCreateSchemaResponse) Reset() {
 	*x = CommandGetOrCreateSchemaResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[54]
+		mi := &file_PulsarApi_proto_msgTypes[55]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -5940,7 +6073,7 @@ func (x *CommandGetOrCreateSchemaResponse) String() string {
 func (*CommandGetOrCreateSchemaResponse) ProtoMessage() {}
 
 func (x *CommandGetOrCreateSchemaResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[54]
+	mi := &file_PulsarApi_proto_msgTypes[55]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -5953,7 +6086,7 @@ func (x *CommandGetOrCreateSchemaResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandGetOrCreateSchemaResponse.ProtoReflect.Descriptor instead.
 func (*CommandGetOrCreateSchemaResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{54}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{55}
 }
 
 func (x *CommandGetOrCreateSchemaResponse) GetRequestId() uint64 {
@@ -6001,7 +6134,7 @@ const (
 func (x *CommandTcClientConnectRequest) Reset() {
 	*x = CommandTcClientConnectRequest{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[55]
+		mi := &file_PulsarApi_proto_msgTypes[56]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6014,7 +6147,7 @@ func (x *CommandTcClientConnectRequest) String() string {
 func (*CommandTcClientConnectRequest) ProtoMessage() {}
 
 func (x *CommandTcClientConnectRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[55]
+	mi := &file_PulsarApi_proto_msgTypes[56]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6027,7 +6160,7 @@ func (x *CommandTcClientConnectRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandTcClientConnectRequest.ProtoReflect.Descriptor instead.
 func (*CommandTcClientConnectRequest) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{55}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{56}
 }
 
 func (x *CommandTcClientConnectRequest) GetRequestId() uint64 {
@@ -6057,7 +6190,7 @@ type CommandTcClientConnectResponse struct {
 func (x *CommandTcClientConnectResponse) Reset() {
 	*x = CommandTcClientConnectResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[56]
+		mi := &file_PulsarApi_proto_msgTypes[57]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6070,7 +6203,7 @@ func (x *CommandTcClientConnectResponse) String() string {
 func (*CommandTcClientConnectResponse) ProtoMessage() {}
 
 func (x *CommandTcClientConnectResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[56]
+	mi := &file_PulsarApi_proto_msgTypes[57]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6083,7 +6216,7 @@ func (x *CommandTcClientConnectResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandTcClientConnectResponse.ProtoReflect.Descriptor instead.
 func (*CommandTcClientConnectResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{56}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{57}
 }
 
 func (x *CommandTcClientConnectResponse) GetRequestId() uint64 {
@@ -6126,7 +6259,7 @@ const (
 func (x *CommandNewTxn) Reset() {
 	*x = CommandNewTxn{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[57]
+		mi := &file_PulsarApi_proto_msgTypes[58]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6139,7 +6272,7 @@ func (x *CommandNewTxn) String() string {
 func (*CommandNewTxn) ProtoMessage() {}
 
 func (x *CommandNewTxn) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[57]
+	mi := &file_PulsarApi_proto_msgTypes[58]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6152,7 +6285,7 @@ func (x *CommandNewTxn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandNewTxn.ProtoReflect.Descriptor instead.
 func (*CommandNewTxn) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{57}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{58}
 }
 
 func (x *CommandNewTxn) GetRequestId() uint64 {
@@ -6197,7 +6330,7 @@ const (
 func (x *CommandNewTxnResponse) Reset() {
 	*x = CommandNewTxnResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[58]
+		mi := &file_PulsarApi_proto_msgTypes[59]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6210,7 +6343,7 @@ func (x *CommandNewTxnResponse) String() string {
 func (*CommandNewTxnResponse) ProtoMessage() {}
 
 func (x *CommandNewTxnResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[58]
+	mi := &file_PulsarApi_proto_msgTypes[59]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6223,7 +6356,7 @@ func (x *CommandNewTxnResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandNewTxnResponse.ProtoReflect.Descriptor instead.
 func (*CommandNewTxnResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{58}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{59}
 }
 
 func (x *CommandNewTxnResponse) GetRequestId() uint64 {
@@ -6281,7 +6414,7 @@ const (
 func (x *CommandAddPartitionToTxn) Reset() {
 	*x = CommandAddPartitionToTxn{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[59]
+		mi := &file_PulsarApi_proto_msgTypes[60]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6294,7 +6427,7 @@ func (x *CommandAddPartitionToTxn) String() string {
 func (*CommandAddPartitionToTxn) ProtoMessage() {}
 
 func (x *CommandAddPartitionToTxn) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[59]
+	mi := &file_PulsarApi_proto_msgTypes[60]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6307,7 +6440,7 @@ func (x *CommandAddPartitionToTxn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandAddPartitionToTxn.ProtoReflect.Descriptor instead.
 func (*CommandAddPartitionToTxn) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{59}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{60}
 }
 
 func (x *CommandAddPartitionToTxn) GetRequestId() uint64 {
@@ -6359,7 +6492,7 @@ const (
 func (x *CommandAddPartitionToTxnResponse) Reset() {
 	*x = CommandAddPartitionToTxnResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[60]
+		mi := &file_PulsarApi_proto_msgTypes[61]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6372,7 +6505,7 @@ func (x *CommandAddPartitionToTxnResponse) String() string {
 func (*CommandAddPartitionToTxnResponse) ProtoMessage() {}
 
 func (x *CommandAddPartitionToTxnResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[60]
+	mi := &file_PulsarApi_proto_msgTypes[61]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6385,7 +6518,7 @@ func (x *CommandAddPartitionToTxnResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandAddPartitionToTxnResponse.ProtoReflect.Descriptor instead.
 func (*CommandAddPartitionToTxnResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{60}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{61}
 }
 
 func (x *CommandAddPartitionToTxnResponse) GetRequestId() uint64 {
@@ -6435,7 +6568,7 @@ type Subscription struct {
 func (x *Subscription) Reset() {
 	*x = Subscription{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[61]
+		mi := &file_PulsarApi_proto_msgTypes[62]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6448,7 +6581,7 @@ func (x *Subscription) String() string {
 func (*Subscription) ProtoMessage() {}
 
 func (x *Subscription) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[61]
+	mi := &file_PulsarApi_proto_msgTypes[62]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6461,7 +6594,7 @@ func (x *Subscription) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Subscription.ProtoReflect.Descriptor instead.
 func (*Subscription) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{61}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{62}
 }
 
 func (x *Subscription) GetTopic() string {
@@ -6498,7 +6631,7 @@ const (
 func (x *CommandAddSubscriptionToTxn) Reset() {
 	*x = CommandAddSubscriptionToTxn{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[62]
+		mi := &file_PulsarApi_proto_msgTypes[63]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6511,7 +6644,7 @@ func (x *CommandAddSubscriptionToTxn) String() string {
 func (*CommandAddSubscriptionToTxn) ProtoMessage() {}
 
 func (x *CommandAddSubscriptionToTxn) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[62]
+	mi := &file_PulsarApi_proto_msgTypes[63]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6524,7 +6657,7 @@ func (x *CommandAddSubscriptionToTxn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandAddSubscriptionToTxn.ProtoReflect.Descriptor instead.
 func (*CommandAddSubscriptionToTxn) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{62}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{63}
 }
 
 func (x *CommandAddSubscriptionToTxn) GetRequestId() uint64 {
@@ -6576,7 +6709,7 @@ const (
 func (x *CommandAddSubscriptionToTxnResponse) Reset() {
 	*x = CommandAddSubscriptionToTxnResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[63]
+		mi := &file_PulsarApi_proto_msgTypes[64]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6589,7 +6722,7 @@ func (x *CommandAddSubscriptionToTxnResponse) String() string {
 func (*CommandAddSubscriptionToTxnResponse) ProtoMessage() {}
 
 func (x *CommandAddSubscriptionToTxnResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[63]
+	mi := &file_PulsarApi_proto_msgTypes[64]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6602,7 +6735,7 @@ func (x *CommandAddSubscriptionToTxnResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CommandAddSubscriptionToTxnResponse.ProtoReflect.Descriptor instead.
 func (*CommandAddSubscriptionToTxnResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{63}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{64}
 }
 
 func (x *CommandAddSubscriptionToTxnResponse) GetRequestId() uint64 {
@@ -6660,7 +6793,7 @@ const (
 func (x *CommandEndTxn) Reset() {
 	*x = CommandEndTxn{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[64]
+		mi := &file_PulsarApi_proto_msgTypes[65]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6673,7 +6806,7 @@ func (x *CommandEndTxn) String() string {
 func (*CommandEndTxn) ProtoMessage() {}
 
 func (x *CommandEndTxn) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[64]
+	mi := &file_PulsarApi_proto_msgTypes[65]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6686,7 +6819,7 @@ func (x *CommandEndTxn) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandEndTxn.ProtoReflect.Descriptor instead.
 func (*CommandEndTxn) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{64}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{65}
 }
 
 func (x *CommandEndTxn) GetRequestId() uint64 {
@@ -6738,7 +6871,7 @@ const (
 func (x *CommandEndTxnResponse) Reset() {
 	*x = CommandEndTxnResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[65]
+		mi := &file_PulsarApi_proto_msgTypes[66]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6751,7 +6884,7 @@ func (x *CommandEndTxnResponse) String() string {
 func (*CommandEndTxnResponse) ProtoMessage() {}
 
 func (x *CommandEndTxnResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[65]
+	mi := &file_PulsarApi_proto_msgTypes[66]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6764,7 +6897,7 @@ func (x *CommandEndTxnResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandEndTxnResponse.ProtoReflect.Descriptor instead.
 func (*CommandEndTxnResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{65}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{66}
 }
 
 func (x *CommandEndTxnResponse) GetRequestId() uint64 {
@@ -6824,7 +6957,7 @@ const (
 func (x *CommandEndTxnOnPartition) Reset() {
 	*x = CommandEndTxnOnPartition{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[66]
+		mi := &file_PulsarApi_proto_msgTypes[67]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6837,7 +6970,7 @@ func (x *CommandEndTxnOnPartition) String() string {
 func (*CommandEndTxnOnPartition) ProtoMessage() {}
 
 func (x *CommandEndTxnOnPartition) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[66]
+	mi := &file_PulsarApi_proto_msgTypes[67]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6850,7 +6983,7 @@ func (x *CommandEndTxnOnPartition) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandEndTxnOnPartition.ProtoReflect.Descriptor instead.
 func (*CommandEndTxnOnPartition) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{66}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{67}
 }
 
 func (x *CommandEndTxnOnPartition) GetRequestId() uint64 {
@@ -6916,7 +7049,7 @@ const (
 func (x *CommandEndTxnOnPartitionResponse) Reset() {
 	*x = CommandEndTxnOnPartitionResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[67]
+		mi := &file_PulsarApi_proto_msgTypes[68]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -6929,7 +7062,7 @@ func (x *CommandEndTxnOnPartitionResponse) String() string {
 func (*CommandEndTxnOnPartitionResponse) ProtoMessage() {}
 
 func (x *CommandEndTxnOnPartitionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[67]
+	mi := &file_PulsarApi_proto_msgTypes[68]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -6942,7 +7075,7 @@ func (x *CommandEndTxnOnPartitionResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandEndTxnOnPartitionResponse.ProtoReflect.Descriptor instead.
 func (*CommandEndTxnOnPartitionResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{67}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{68}
 }
 
 func (x *CommandEndTxnOnPartitionResponse) GetRequestId() uint64 {
@@ -7002,7 +7135,7 @@ const (
 func (x *CommandEndTxnOnSubscription) Reset() {
 	*x = CommandEndTxnOnSubscription{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[68]
+		mi := &file_PulsarApi_proto_msgTypes[69]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -7015,7 +7148,7 @@ func (x *CommandEndTxnOnSubscription) String() string {
 func (*CommandEndTxnOnSubscription) ProtoMessage() {}
 
 func (x *CommandEndTxnOnSubscription) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[68]
+	mi := &file_PulsarApi_proto_msgTypes[69]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7028,7 +7161,7 @@ func (x *CommandEndTxnOnSubscription) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandEndTxnOnSubscription.ProtoReflect.Descriptor instead.
 func (*CommandEndTxnOnSubscription) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{68}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{69}
 }
 
 func (x *CommandEndTxnOnSubscription) GetRequestId() uint64 {
@@ -7094,7 +7227,7 @@ const (
 func (x *CommandEndTxnOnSubscriptionResponse) Reset() {
 	*x = CommandEndTxnOnSubscriptionResponse{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[69]
+		mi := &file_PulsarApi_proto_msgTypes[70]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -7107,7 +7240,7 @@ func (x *CommandEndTxnOnSubscriptionResponse) String() string {
 func (*CommandEndTxnOnSubscriptionResponse) ProtoMessage() {}
 
 func (x *CommandEndTxnOnSubscriptionResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[69]
+	mi := &file_PulsarApi_proto_msgTypes[70]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7120,7 +7253,7 @@ func (x *CommandEndTxnOnSubscriptionResponse) ProtoReflect() protoreflect.Messag
 
 // Deprecated: Use CommandEndTxnOnSubscriptionResponse.ProtoReflect.Descriptor instead.
 func (*CommandEndTxnOnSubscriptionResponse) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{69}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{70}
 }
 
 func (x *CommandEndTxnOnSubscriptionResponse) GetRequestId() uint64 {
@@ -7222,12 +7355,13 @@ type BaseCommand struct {
 	WatchTopicListSuccess        *CommandWatchTopicListSuccess        `protobuf:"bytes,65,opt,name=watchTopicListSuccess" json:"watchTopicListSuccess,omitempty"`
 	WatchTopicUpdate             *CommandWatchTopicUpdate             `protobuf:"bytes,66,opt,name=watchTopicUpdate" json:"watchTopicUpdate,omitempty"`
 	WatchTopicListClose          *CommandWatchTopicListClose          `protobuf:"bytes,67,opt,name=watchTopicListClose" json:"watchTopicListClose,omitempty"`
+	TopicMigrated                *CommandTopicMigrated                `protobuf:"bytes,68,opt,name=topicMigrated" json:"topicMigrated,omitempty"`
 }
 
 func (x *BaseCommand) Reset() {
 	*x = BaseCommand{}
 	if protoimpl.UnsafeEnabled {
-		mi := &file_PulsarApi_proto_msgTypes[70]
+		mi := &file_PulsarApi_proto_msgTypes[71]
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		ms.StoreMessageInfo(mi)
 	}
@@ -7240,7 +7374,7 @@ func (x *BaseCommand) String() string {
 func (*BaseCommand) ProtoMessage() {}
 
 func (x *BaseCommand) ProtoReflect() protoreflect.Message {
-	mi := &file_PulsarApi_proto_msgTypes[70]
+	mi := &file_PulsarApi_proto_msgTypes[71]
 	if protoimpl.UnsafeEnabled && x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -7253,7 +7387,7 @@ func (x *BaseCommand) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BaseCommand.ProtoReflect.Descriptor instead.
 func (*BaseCommand) Descriptor() ([]byte, []int) {
-	return file_PulsarApi_proto_rawDescGZIP(), []int{70}
+	return file_PulsarApi_proto_rawDescGZIP(), []int{71}
 }
 
 func (x *BaseCommand) GetType() BaseCommand_Type {
@@ -7658,6 +7792,13 @@ func (x *BaseCommand) GetWatchTopicUpdate() *CommandWatchTopicUpdate {
 func (x *BaseCommand) GetWatchTopicListClose() *CommandWatchTopicListClose {
 	if x != nil {
 		return x.WatchTopicListClose
+	}
+	return nil
+}
+
+func (x *BaseCommand) GetTopicMigrated() *CommandTopicMigrated {
+	if x != nil {
+		return x.TopicMigrated
 	}
 	return nil
 }
@@ -9177,8 +9318,8 @@ func file_PulsarApi_proto_rawDescGZIP() []byte {
 	return file_PulsarApi_proto_rawDescData
 }
 
-var file_PulsarApi_proto_enumTypes = make([]protoimpl.EnumInfo, 16)
-var file_PulsarApi_proto_msgTypes = make([]protoimpl.MessageInfo, 71)
+var file_PulsarApi_proto_enumTypes = make([]protoimpl.EnumInfo, 17)
+var file_PulsarApi_proto_msgTypes = make([]protoimpl.MessageInfo, 72)
 var file_PulsarApi_proto_goTypes = []interface{}{
 	(CompressionType)(0),                  // 0: pulsar.proto.CompressionType
 	(ProducerAccessMode)(0),               // 1: pulsar.proto.ProducerAccessMode
@@ -9194,206 +9335,210 @@ var file_PulsarApi_proto_goTypes = []interface{}{
 	(CommandLookupTopicResponse_LookupType)(0),              // 11: pulsar.proto.CommandLookupTopicResponse.LookupType
 	(CommandAck_AckType)(0),                                 // 12: pulsar.proto.CommandAck.AckType
 	(CommandAck_ValidationError)(0),                         // 13: pulsar.proto.CommandAck.ValidationError
-	(CommandGetTopicsOfNamespace_Mode)(0),                   // 14: pulsar.proto.CommandGetTopicsOfNamespace.Mode
-	(BaseCommand_Type)(0),                                   // 15: pulsar.proto.BaseCommand.Type
-	(*Schema)(nil),                                          // 16: pulsar.proto.Schema
-	(*MessageIdData)(nil),                                   // 17: pulsar.proto.MessageIdData
-	(*KeyValue)(nil),                                        // 18: pulsar.proto.KeyValue
-	(*KeyLongValue)(nil),                                    // 19: pulsar.proto.KeyLongValue
-	(*IntRange)(nil),                                        // 20: pulsar.proto.IntRange
-	(*EncryptionKeys)(nil),                                  // 21: pulsar.proto.EncryptionKeys
-	(*MessageMetadata)(nil),                                 // 22: pulsar.proto.MessageMetadata
-	(*SingleMessageMetadata)(nil),                           // 23: pulsar.proto.SingleMessageMetadata
-	(*BrokerEntryMetadata)(nil),                             // 24: pulsar.proto.BrokerEntryMetadata
-	(*CommandConnect)(nil),                                  // 25: pulsar.proto.CommandConnect
-	(*FeatureFlags)(nil),                                    // 26: pulsar.proto.FeatureFlags
-	(*CommandConnected)(nil),                                // 27: pulsar.proto.CommandConnected
-	(*CommandAuthResponse)(nil),                             // 28: pulsar.proto.CommandAuthResponse
-	(*CommandAuthChallenge)(nil),                            // 29: pulsar.proto.CommandAuthChallenge
-	(*AuthData)(nil),                                        // 30: pulsar.proto.AuthData
-	(*KeySharedMeta)(nil),                                   // 31: pulsar.proto.KeySharedMeta
-	(*CommandSubscribe)(nil),                                // 32: pulsar.proto.CommandSubscribe
-	(*CommandPartitionedTopicMetadata)(nil),                 // 33: pulsar.proto.CommandPartitionedTopicMetadata
-	(*CommandPartitionedTopicMetadataResponse)(nil),         // 34: pulsar.proto.CommandPartitionedTopicMetadataResponse
-	(*CommandLookupTopic)(nil),                              // 35: pulsar.proto.CommandLookupTopic
-	(*CommandLookupTopicResponse)(nil),                      // 36: pulsar.proto.CommandLookupTopicResponse
-	(*CommandProducer)(nil),                                 // 37: pulsar.proto.CommandProducer
-	(*CommandSend)(nil),                                     // 38: pulsar.proto.CommandSend
-	(*CommandSendReceipt)(nil),                              // 39: pulsar.proto.CommandSendReceipt
-	(*CommandSendError)(nil),                                // 40: pulsar.proto.CommandSendError
-	(*CommandMessage)(nil),                                  // 41: pulsar.proto.CommandMessage
-	(*CommandAck)(nil),                                      // 42: pulsar.proto.CommandAck
-	(*CommandAckResponse)(nil),                              // 43: pulsar.proto.CommandAckResponse
-	(*CommandActiveConsumerChange)(nil),                     // 44: pulsar.proto.CommandActiveConsumerChange
-	(*CommandFlow)(nil),                                     // 45: pulsar.proto.CommandFlow
-	(*CommandUnsubscribe)(nil),                              // 46: pulsar.proto.CommandUnsubscribe
-	(*CommandSeek)(nil),                                     // 47: pulsar.proto.CommandSeek
-	(*CommandReachedEndOfTopic)(nil),                        // 48: pulsar.proto.CommandReachedEndOfTopic
-	(*CommandCloseProducer)(nil),                            // 49: pulsar.proto.CommandCloseProducer
-	(*CommandCloseConsumer)(nil),                            // 50: pulsar.proto.CommandCloseConsumer
-	(*CommandRedeliverUnacknowledgedMessages)(nil),          // 51: pulsar.proto.CommandRedeliverUnacknowledgedMessages
-	(*CommandSuccess)(nil),                                  // 52: pulsar.proto.CommandSuccess
-	(*CommandProducerSuccess)(nil),                          // 53: pulsar.proto.CommandProducerSuccess
-	(*CommandError)(nil),                                    // 54: pulsar.proto.CommandError
-	(*CommandPing)(nil),                                     // 55: pulsar.proto.CommandPing
-	(*CommandPong)(nil),                                     // 56: pulsar.proto.CommandPong
-	(*CommandConsumerStats)(nil),                            // 57: pulsar.proto.CommandConsumerStats
-	(*CommandConsumerStatsResponse)(nil),                    // 58: pulsar.proto.CommandConsumerStatsResponse
-	(*CommandGetLastMessageId)(nil),                         // 59: pulsar.proto.CommandGetLastMessageId
-	(*CommandGetLastMessageIdResponse)(nil),                 // 60: pulsar.proto.CommandGetLastMessageIdResponse
-	(*CommandGetTopicsOfNamespace)(nil),                     // 61: pulsar.proto.CommandGetTopicsOfNamespace
-	(*CommandGetTopicsOfNamespaceResponse)(nil),             // 62: pulsar.proto.CommandGetTopicsOfNamespaceResponse
-	(*CommandWatchTopicList)(nil),                           // 63: pulsar.proto.CommandWatchTopicList
-	(*CommandWatchTopicListSuccess)(nil),                    // 64: pulsar.proto.CommandWatchTopicListSuccess
-	(*CommandWatchTopicUpdate)(nil),                         // 65: pulsar.proto.CommandWatchTopicUpdate
-	(*CommandWatchTopicListClose)(nil),                      // 66: pulsar.proto.CommandWatchTopicListClose
-	(*CommandGetSchema)(nil),                                // 67: pulsar.proto.CommandGetSchema
-	(*CommandGetSchemaResponse)(nil),                        // 68: pulsar.proto.CommandGetSchemaResponse
-	(*CommandGetOrCreateSchema)(nil),                        // 69: pulsar.proto.CommandGetOrCreateSchema
-	(*CommandGetOrCreateSchemaResponse)(nil),                // 70: pulsar.proto.CommandGetOrCreateSchemaResponse
-	(*CommandTcClientConnectRequest)(nil),                   // 71: pulsar.proto.CommandTcClientConnectRequest
-	(*CommandTcClientConnectResponse)(nil),                  // 72: pulsar.proto.CommandTcClientConnectResponse
-	(*CommandNewTxn)(nil),                                   // 73: pulsar.proto.CommandNewTxn
-	(*CommandNewTxnResponse)(nil),                           // 74: pulsar.proto.CommandNewTxnResponse
-	(*CommandAddPartitionToTxn)(nil),                        // 75: pulsar.proto.CommandAddPartitionToTxn
-	(*CommandAddPartitionToTxnResponse)(nil),                // 76: pulsar.proto.CommandAddPartitionToTxnResponse
-	(*Subscription)(nil),                                    // 77: pulsar.proto.Subscription
-	(*CommandAddSubscriptionToTxn)(nil),                     // 78: pulsar.proto.CommandAddSubscriptionToTxn
-	(*CommandAddSubscriptionToTxnResponse)(nil),             // 79: pulsar.proto.CommandAddSubscriptionToTxnResponse
-	(*CommandEndTxn)(nil),                                   // 80: pulsar.proto.CommandEndTxn
-	(*CommandEndTxnResponse)(nil),                           // 81: pulsar.proto.CommandEndTxnResponse
-	(*CommandEndTxnOnPartition)(nil),                        // 82: pulsar.proto.CommandEndTxnOnPartition
-	(*CommandEndTxnOnPartitionResponse)(nil),                // 83: pulsar.proto.CommandEndTxnOnPartitionResponse
-	(*CommandEndTxnOnSubscription)(nil),                     // 84: pulsar.proto.CommandEndTxnOnSubscription
-	(*CommandEndTxnOnSubscriptionResponse)(nil),             // 85: pulsar.proto.CommandEndTxnOnSubscriptionResponse
-	(*BaseCommand)(nil),                                     // 86: pulsar.proto.BaseCommand
+	(CommandTopicMigrated_ResourceType)(0),                  // 14: pulsar.proto.CommandTopicMigrated.ResourceType
+	(CommandGetTopicsOfNamespace_Mode)(0),                   // 15: pulsar.proto.CommandGetTopicsOfNamespace.Mode
+	(BaseCommand_Type)(0),                                   // 16: pulsar.proto.BaseCommand.Type
+	(*Schema)(nil),                                          // 17: pulsar.proto.Schema
+	(*MessageIdData)(nil),                                   // 18: pulsar.proto.MessageIdData
+	(*KeyValue)(nil),                                        // 19: pulsar.proto.KeyValue
+	(*KeyLongValue)(nil),                                    // 20: pulsar.proto.KeyLongValue
+	(*IntRange)(nil),                                        // 21: pulsar.proto.IntRange
+	(*EncryptionKeys)(nil),                                  // 22: pulsar.proto.EncryptionKeys
+	(*MessageMetadata)(nil),                                 // 23: pulsar.proto.MessageMetadata
+	(*SingleMessageMetadata)(nil),                           // 24: pulsar.proto.SingleMessageMetadata
+	(*BrokerEntryMetadata)(nil),                             // 25: pulsar.proto.BrokerEntryMetadata
+	(*CommandConnect)(nil),                                  // 26: pulsar.proto.CommandConnect
+	(*FeatureFlags)(nil),                                    // 27: pulsar.proto.FeatureFlags
+	(*CommandConnected)(nil),                                // 28: pulsar.proto.CommandConnected
+	(*CommandAuthResponse)(nil),                             // 29: pulsar.proto.CommandAuthResponse
+	(*CommandAuthChallenge)(nil),                            // 30: pulsar.proto.CommandAuthChallenge
+	(*AuthData)(nil),                                        // 31: pulsar.proto.AuthData
+	(*KeySharedMeta)(nil),                                   // 32: pulsar.proto.KeySharedMeta
+	(*CommandSubscribe)(nil),                                // 33: pulsar.proto.CommandSubscribe
+	(*CommandPartitionedTopicMetadata)(nil),                 // 34: pulsar.proto.CommandPartitionedTopicMetadata
+	(*CommandPartitionedTopicMetadataResponse)(nil),         // 35: pulsar.proto.CommandPartitionedTopicMetadataResponse
+	(*CommandLookupTopic)(nil),                              // 36: pulsar.proto.CommandLookupTopic
+	(*CommandLookupTopicResponse)(nil),                      // 37: pulsar.proto.CommandLookupTopicResponse
+	(*CommandProducer)(nil),                                 // 38: pulsar.proto.CommandProducer
+	(*CommandSend)(nil),                                     // 39: pulsar.proto.CommandSend
+	(*CommandSendReceipt)(nil),                              // 40: pulsar.proto.CommandSendReceipt
+	(*CommandSendError)(nil),                                // 41: pulsar.proto.CommandSendError
+	(*CommandMessage)(nil),                                  // 42: pulsar.proto.CommandMessage
+	(*CommandAck)(nil),                                      // 43: pulsar.proto.CommandAck
+	(*CommandAckResponse)(nil),                              // 44: pulsar.proto.CommandAckResponse
+	(*CommandActiveConsumerChange)(nil),                     // 45: pulsar.proto.CommandActiveConsumerChange
+	(*CommandFlow)(nil),                                     // 46: pulsar.proto.CommandFlow
+	(*CommandUnsubscribe)(nil),                              // 47: pulsar.proto.CommandUnsubscribe
+	(*CommandSeek)(nil),                                     // 48: pulsar.proto.CommandSeek
+	(*CommandReachedEndOfTopic)(nil),                        // 49: pulsar.proto.CommandReachedEndOfTopic
+	(*CommandTopicMigrated)(nil),                            // 50: pulsar.proto.CommandTopicMigrated
+	(*CommandCloseProducer)(nil),                            // 51: pulsar.proto.CommandCloseProducer
+	(*CommandCloseConsumer)(nil),                            // 52: pulsar.proto.CommandCloseConsumer
+	(*CommandRedeliverUnacknowledgedMessages)(nil),          // 53: pulsar.proto.CommandRedeliverUnacknowledgedMessages
+	(*CommandSuccess)(nil),                                  // 54: pulsar.proto.CommandSuccess
+	(*CommandProducerSuccess)(nil),                          // 55: pulsar.proto.CommandProducerSuccess
+	(*CommandError)(nil),                                    // 56: pulsar.proto.CommandError
+	(*CommandPing)(nil),                                     // 57: pulsar.proto.CommandPing
+	(*CommandPong)(nil),                                     // 58: pulsar.proto.CommandPong
+	(*CommandConsumerStats)(nil),                            // 59: pulsar.proto.CommandConsumerStats
+	(*CommandConsumerStatsResponse)(nil),                    // 60: pulsar.proto.CommandConsumerStatsResponse
+	(*CommandGetLastMessageId)(nil),                         // 61: pulsar.proto.CommandGetLastMessageId
+	(*CommandGetLastMessageIdResponse)(nil),                 // 62: pulsar.proto.CommandGetLastMessageIdResponse
+	(*CommandGetTopicsOfNamespace)(nil),                     // 63: pulsar.proto.CommandGetTopicsOfNamespace
+	(*CommandGetTopicsOfNamespaceResponse)(nil),             // 64: pulsar.proto.CommandGetTopicsOfNamespaceResponse
+	(*CommandWatchTopicList)(nil),                           // 65: pulsar.proto.CommandWatchTopicList
+	(*CommandWatchTopicListSuccess)(nil),                    // 66: pulsar.proto.CommandWatchTopicListSuccess
+	(*CommandWatchTopicUpdate)(nil),                         // 67: pulsar.proto.CommandWatchTopicUpdate
+	(*CommandWatchTopicListClose)(nil),                      // 68: pulsar.proto.CommandWatchTopicListClose
+	(*CommandGetSchema)(nil),                                // 69: pulsar.proto.CommandGetSchema
+	(*CommandGetSchemaResponse)(nil),                        // 70: pulsar.proto.CommandGetSchemaResponse
+	(*CommandGetOrCreateSchema)(nil),                        // 71: pulsar.proto.CommandGetOrCreateSchema
+	(*CommandGetOrCreateSchemaResponse)(nil),                // 72: pulsar.proto.CommandGetOrCreateSchemaResponse
+	(*CommandTcClientConnectRequest)(nil),                   // 73: pulsar.proto.CommandTcClientConnectRequest
+	(*CommandTcClientConnectResponse)(nil),                  // 74: pulsar.proto.CommandTcClientConnectResponse
+	(*CommandNewTxn)(nil),                                   // 75: pulsar.proto.CommandNewTxn
+	(*CommandNewTxnResponse)(nil),                           // 76: pulsar.proto.CommandNewTxnResponse
+	(*CommandAddPartitionToTxn)(nil),                        // 77: pulsar.proto.CommandAddPartitionToTxn
+	(*CommandAddPartitionToTxnResponse)(nil),                // 78: pulsar.proto.CommandAddPartitionToTxnResponse
+	(*Subscription)(nil),                                    // 79: pulsar.proto.Subscription
+	(*CommandAddSubscriptionToTxn)(nil),                     // 80: pulsar.proto.CommandAddSubscriptionToTxn
+	(*CommandAddSubscriptionToTxnResponse)(nil),             // 81: pulsar.proto.CommandAddSubscriptionToTxnResponse
+	(*CommandEndTxn)(nil),                                   // 82: pulsar.proto.CommandEndTxn
+	(*CommandEndTxnResponse)(nil),                           // 83: pulsar.proto.CommandEndTxnResponse
+	(*CommandEndTxnOnPartition)(nil),                        // 84: pulsar.proto.CommandEndTxnOnPartition
+	(*CommandEndTxnOnPartitionResponse)(nil),                // 85: pulsar.proto.CommandEndTxnOnPartitionResponse
+	(*CommandEndTxnOnSubscription)(nil),                     // 86: pulsar.proto.CommandEndTxnOnSubscription
+	(*CommandEndTxnOnSubscriptionResponse)(nil),             // 87: pulsar.proto.CommandEndTxnOnSubscriptionResponse
+	(*BaseCommand)(nil),                                     // 88: pulsar.proto.BaseCommand
 }
 var file_PulsarApi_proto_depIdxs = []int32{
 	7,   // 0: pulsar.proto.Schema.type:type_name -> pulsar.proto.Schema.Type
-	18,  // 1: pulsar.proto.Schema.properties:type_name -> pulsar.proto.KeyValue
-	17,  // 2: pulsar.proto.MessageIdData.first_chunk_message_id:type_name -> pulsar.proto.MessageIdData
-	18,  // 3: pulsar.proto.EncryptionKeys.metadata:type_name -> pulsar.proto.KeyValue
-	18,  // 4: pulsar.proto.MessageMetadata.properties:type_name -> pulsar.proto.KeyValue
+	19,  // 1: pulsar.proto.Schema.properties:type_name -> pulsar.proto.KeyValue
+	18,  // 2: pulsar.proto.MessageIdData.first_chunk_message_id:type_name -> pulsar.proto.MessageIdData
+	19,  // 3: pulsar.proto.EncryptionKeys.metadata:type_name -> pulsar.proto.KeyValue
+	19,  // 4: pulsar.proto.MessageMetadata.properties:type_name -> pulsar.proto.KeyValue
 	0,   // 5: pulsar.proto.MessageMetadata.compression:type_name -> pulsar.proto.CompressionType
-	21,  // 6: pulsar.proto.MessageMetadata.encryption_keys:type_name -> pulsar.proto.EncryptionKeys
-	18,  // 7: pulsar.proto.SingleMessageMetadata.properties:type_name -> pulsar.proto.KeyValue
+	22,  // 6: pulsar.proto.MessageMetadata.encryption_keys:type_name -> pulsar.proto.EncryptionKeys
+	19,  // 7: pulsar.proto.SingleMessageMetadata.properties:type_name -> pulsar.proto.KeyValue
 	3,   // 8: pulsar.proto.CommandConnect.auth_method:type_name -> pulsar.proto.AuthMethod
-	26,  // 9: pulsar.proto.CommandConnect.feature_flags:type_name -> pulsar.proto.FeatureFlags
-	26,  // 10: pulsar.proto.CommandConnected.feature_flags:type_name -> pulsar.proto.FeatureFlags
-	30,  // 11: pulsar.proto.CommandAuthResponse.response:type_name -> pulsar.proto.AuthData
-	30,  // 12: pulsar.proto.CommandAuthChallenge.challenge:type_name -> pulsar.proto.AuthData
+	27,  // 9: pulsar.proto.CommandConnect.feature_flags:type_name -> pulsar.proto.FeatureFlags
+	27,  // 10: pulsar.proto.CommandConnected.feature_flags:type_name -> pulsar.proto.FeatureFlags
+	31,  // 11: pulsar.proto.CommandAuthResponse.response:type_name -> pulsar.proto.AuthData
+	31,  // 12: pulsar.proto.CommandAuthChallenge.challenge:type_name -> pulsar.proto.AuthData
 	5,   // 13: pulsar.proto.KeySharedMeta.keySharedMode:type_name -> pulsar.proto.KeySharedMode
-	20,  // 14: pulsar.proto.KeySharedMeta.hashRanges:type_name -> pulsar.proto.IntRange
+	21,  // 14: pulsar.proto.KeySharedMeta.hashRanges:type_name -> pulsar.proto.IntRange
 	8,   // 15: pulsar.proto.CommandSubscribe.subType:type_name -> pulsar.proto.CommandSubscribe.SubType
-	17,  // 16: pulsar.proto.CommandSubscribe.start_message_id:type_name -> pulsar.proto.MessageIdData
-	18,  // 17: pulsar.proto.CommandSubscribe.metadata:type_name -> pulsar.proto.KeyValue
-	16,  // 18: pulsar.proto.CommandSubscribe.schema:type_name -> pulsar.proto.Schema
+	18,  // 16: pulsar.proto.CommandSubscribe.start_message_id:type_name -> pulsar.proto.MessageIdData
+	19,  // 17: pulsar.proto.CommandSubscribe.metadata:type_name -> pulsar.proto.KeyValue
+	17,  // 18: pulsar.proto.CommandSubscribe.schema:type_name -> pulsar.proto.Schema
 	9,   // 19: pulsar.proto.CommandSubscribe.initialPosition:type_name -> pulsar.proto.CommandSubscribe.InitialPosition
-	31,  // 20: pulsar.proto.CommandSubscribe.keySharedMeta:type_name -> pulsar.proto.KeySharedMeta
-	18,  // 21: pulsar.proto.CommandSubscribe.subscription_properties:type_name -> pulsar.proto.KeyValue
+	32,  // 20: pulsar.proto.CommandSubscribe.keySharedMeta:type_name -> pulsar.proto.KeySharedMeta
+	19,  // 21: pulsar.proto.CommandSubscribe.subscription_properties:type_name -> pulsar.proto.KeyValue
 	10,  // 22: pulsar.proto.CommandPartitionedTopicMetadataResponse.response:type_name -> pulsar.proto.CommandPartitionedTopicMetadataResponse.LookupType
 	2,   // 23: pulsar.proto.CommandPartitionedTopicMetadataResponse.error:type_name -> pulsar.proto.ServerError
 	11,  // 24: pulsar.proto.CommandLookupTopicResponse.response:type_name -> pulsar.proto.CommandLookupTopicResponse.LookupType
 	2,   // 25: pulsar.proto.CommandLookupTopicResponse.error:type_name -> pulsar.proto.ServerError
-	18,  // 26: pulsar.proto.CommandProducer.metadata:type_name -> pulsar.proto.KeyValue
-	16,  // 27: pulsar.proto.CommandProducer.schema:type_name -> pulsar.proto.Schema
+	19,  // 26: pulsar.proto.CommandProducer.metadata:type_name -> pulsar.proto.KeyValue
+	17,  // 27: pulsar.proto.CommandProducer.schema:type_name -> pulsar.proto.Schema
 	1,   // 28: pulsar.proto.CommandProducer.producer_access_mode:type_name -> pulsar.proto.ProducerAccessMode
-	17,  // 29: pulsar.proto.CommandSend.message_id:type_name -> pulsar.proto.MessageIdData
-	17,  // 30: pulsar.proto.CommandSendReceipt.message_id:type_name -> pulsar.proto.MessageIdData
+	18,  // 29: pulsar.proto.CommandSend.message_id:type_name -> pulsar.proto.MessageIdData
+	18,  // 30: pulsar.proto.CommandSendReceipt.message_id:type_name -> pulsar.proto.MessageIdData
 	2,   // 31: pulsar.proto.CommandSendError.error:type_name -> pulsar.proto.ServerError
-	17,  // 32: pulsar.proto.CommandMessage.message_id:type_name -> pulsar.proto.MessageIdData
+	18,  // 32: pulsar.proto.CommandMessage.message_id:type_name -> pulsar.proto.MessageIdData
 	12,  // 33: pulsar.proto.CommandAck.ack_type:type_name -> pulsar.proto.CommandAck.AckType
-	17,  // 34: pulsar.proto.CommandAck.message_id:type_name -> pulsar.proto.MessageIdData
+	18,  // 34: pulsar.proto.CommandAck.message_id:type_name -> pulsar.proto.MessageIdData
 	13,  // 35: pulsar.proto.CommandAck.validation_error:type_name -> pulsar.proto.CommandAck.ValidationError
-	19,  // 36: pulsar.proto.CommandAck.properties:type_name -> pulsar.proto.KeyLongValue
+	20,  // 36: pulsar.proto.CommandAck.properties:type_name -> pulsar.proto.KeyLongValue
 	2,   // 37: pulsar.proto.CommandAckResponse.error:type_name -> pulsar.proto.ServerError
-	17,  // 38: pulsar.proto.CommandSeek.message_id:type_name -> pulsar.proto.MessageIdData
-	17,  // 39: pulsar.proto.CommandRedeliverUnacknowledgedMessages.message_ids:type_name -> pulsar.proto.MessageIdData
-	16,  // 40: pulsar.proto.CommandSuccess.schema:type_name -> pulsar.proto.Schema
-	2,   // 41: pulsar.proto.CommandError.error:type_name -> pulsar.proto.ServerError
-	2,   // 42: pulsar.proto.CommandConsumerStatsResponse.error_code:type_name -> pulsar.proto.ServerError
-	17,  // 43: pulsar.proto.CommandGetLastMessageIdResponse.last_message_id:type_name -> pulsar.proto.MessageIdData
-	17,  // 44: pulsar.proto.CommandGetLastMessageIdResponse.consumer_mark_delete_position:type_name -> pulsar.proto.MessageIdData
-	14,  // 45: pulsar.proto.CommandGetTopicsOfNamespace.mode:type_name -> pulsar.proto.CommandGetTopicsOfNamespace.Mode
-	2,   // 46: pulsar.proto.CommandGetSchemaResponse.error_code:type_name -> pulsar.proto.ServerError
-	16,  // 47: pulsar.proto.CommandGetSchemaResponse.schema:type_name -> pulsar.proto.Schema
-	16,  // 48: pulsar.proto.CommandGetOrCreateSchema.schema:type_name -> pulsar.proto.Schema
-	2,   // 49: pulsar.proto.CommandGetOrCreateSchemaResponse.error_code:type_name -> pulsar.proto.ServerError
-	2,   // 50: pulsar.proto.CommandTcClientConnectResponse.error:type_name -> pulsar.proto.ServerError
-	2,   // 51: pulsar.proto.CommandNewTxnResponse.error:type_name -> pulsar.proto.ServerError
-	2,   // 52: pulsar.proto.CommandAddPartitionToTxnResponse.error:type_name -> pulsar.proto.ServerError
-	77,  // 53: pulsar.proto.CommandAddSubscriptionToTxn.subscription:type_name -> pulsar.proto.Subscription
-	2,   // 54: pulsar.proto.CommandAddSubscriptionToTxnResponse.error:type_name -> pulsar.proto.ServerError
-	6,   // 55: pulsar.proto.CommandEndTxn.txn_action:type_name -> pulsar.proto.TxnAction
-	2,   // 56: pulsar.proto.CommandEndTxnResponse.error:type_name -> pulsar.proto.ServerError
-	6,   // 57: pulsar.proto.CommandEndTxnOnPartition.txn_action:type_name -> pulsar.proto.TxnAction
-	2,   // 58: pulsar.proto.CommandEndTxnOnPartitionResponse.error:type_name -> pulsar.proto.ServerError
-	77,  // 59: pulsar.proto.CommandEndTxnOnSubscription.subscription:type_name -> pulsar.proto.Subscription
-	6,   // 60: pulsar.proto.CommandEndTxnOnSubscription.txn_action:type_name -> pulsar.proto.TxnAction
-	2,   // 61: pulsar.proto.CommandEndTxnOnSubscriptionResponse.error:type_name -> pulsar.proto.ServerError
-	15,  // 62: pulsar.proto.BaseCommand.type:type_name -> pulsar.proto.BaseCommand.Type
-	25,  // 63: pulsar.proto.BaseCommand.connect:type_name -> pulsar.proto.CommandConnect
-	27,  // 64: pulsar.proto.BaseCommand.connected:type_name -> pulsar.proto.CommandConnected
-	32,  // 65: pulsar.proto.BaseCommand.subscribe:type_name -> pulsar.proto.CommandSubscribe
-	37,  // 66: pulsar.proto.BaseCommand.producer:type_name -> pulsar.proto.CommandProducer
-	38,  // 67: pulsar.proto.BaseCommand.send:type_name -> pulsar.proto.CommandSend
-	39,  // 68: pulsar.proto.BaseCommand.send_receipt:type_name -> pulsar.proto.CommandSendReceipt
-	40,  // 69: pulsar.proto.BaseCommand.send_error:type_name -> pulsar.proto.CommandSendError
-	41,  // 70: pulsar.proto.BaseCommand.message:type_name -> pulsar.proto.CommandMessage
-	42,  // 71: pulsar.proto.BaseCommand.ack:type_name -> pulsar.proto.CommandAck
-	45,  // 72: pulsar.proto.BaseCommand.flow:type_name -> pulsar.proto.CommandFlow
-	46,  // 73: pulsar.proto.BaseCommand.unsubscribe:type_name -> pulsar.proto.CommandUnsubscribe
-	52,  // 74: pulsar.proto.BaseCommand.success:type_name -> pulsar.proto.CommandSuccess
-	54,  // 75: pulsar.proto.BaseCommand.error:type_name -> pulsar.proto.CommandError
-	49,  // 76: pulsar.proto.BaseCommand.close_producer:type_name -> pulsar.proto.CommandCloseProducer
-	50,  // 77: pulsar.proto.BaseCommand.close_consumer:type_name -> pulsar.proto.CommandCloseConsumer
-	53,  // 78: pulsar.proto.BaseCommand.producer_success:type_name -> pulsar.proto.CommandProducerSuccess
-	55,  // 79: pulsar.proto.BaseCommand.ping:type_name -> pulsar.proto.CommandPing
-	56,  // 80: pulsar.proto.BaseCommand.pong:type_name -> pulsar.proto.CommandPong
-	51,  // 81: pulsar.proto.BaseCommand.redeliverUnacknowledgedMessages:type_name -> pulsar.proto.CommandRedeliverUnacknowledgedMessages
-	33,  // 82: pulsar.proto.BaseCommand.partitionMetadata:type_name -> pulsar.proto.CommandPartitionedTopicMetadata
-	34,  // 83: pulsar.proto.BaseCommand.partitionMetadataResponse:type_name -> pulsar.proto.CommandPartitionedTopicMetadataResponse
-	35,  // 84: pulsar.proto.BaseCommand.lookupTopic:type_name -> pulsar.proto.CommandLookupTopic
-	36,  // 85: pulsar.proto.BaseCommand.lookupTopicResponse:type_name -> pulsar.proto.CommandLookupTopicResponse
-	57,  // 86: pulsar.proto.BaseCommand.consumerStats:type_name -> pulsar.proto.CommandConsumerStats
-	58,  // 87: pulsar.proto.BaseCommand.consumerStatsResponse:type_name -> pulsar.proto.CommandConsumerStatsResponse
-	48,  // 88: pulsar.proto.BaseCommand.reachedEndOfTopic:type_name -> pulsar.proto.CommandReachedEndOfTopic
-	47,  // 89: pulsar.proto.BaseCommand.seek:type_name -> pulsar.proto.CommandSeek
-	59,  // 90: pulsar.proto.BaseCommand.getLastMessageId:type_name -> pulsar.proto.CommandGetLastMessageId
-	60,  // 91: pulsar.proto.BaseCommand.getLastMessageIdResponse:type_name -> pulsar.proto.CommandGetLastMessageIdResponse
-	44,  // 92: pulsar.proto.BaseCommand.active_consumer_change:type_name -> pulsar.proto.CommandActiveConsumerChange
-	61,  // 93: pulsar.proto.BaseCommand.getTopicsOfNamespace:type_name -> pulsar.proto.CommandGetTopicsOfNamespace
-	62,  // 94: pulsar.proto.BaseCommand.getTopicsOfNamespaceResponse:type_name -> pulsar.proto.CommandGetTopicsOfNamespaceResponse
-	67,  // 95: pulsar.proto.BaseCommand.getSchema:type_name -> pulsar.proto.CommandGetSchema
-	68,  // 96: pulsar.proto.BaseCommand.getSchemaResponse:type_name -> pulsar.proto.CommandGetSchemaResponse
-	29,  // 97: pulsar.proto.BaseCommand.authChallenge:type_name -> pulsar.proto.CommandAuthChallenge
-	28,  // 98: pulsar.proto.BaseCommand.authResponse:type_name -> pulsar.proto.CommandAuthResponse
-	43,  // 99: pulsar.proto.BaseCommand.ackResponse:type_name -> pulsar.proto.CommandAckResponse
-	69,  // 100: pulsar.proto.BaseCommand.getOrCreateSchema:type_name -> pulsar.proto.CommandGetOrCreateSchema
-	70,  // 101: pulsar.proto.BaseCommand.getOrCreateSchemaResponse:type_name -> pulsar.proto.CommandGetOrCreateSchemaResponse
-	73,  // 102: pulsar.proto.BaseCommand.newTxn:type_name -> pulsar.proto.CommandNewTxn
-	74,  // 103: pulsar.proto.BaseCommand.newTxnResponse:type_name -> pulsar.proto.CommandNewTxnResponse
-	75,  // 104: pulsar.proto.BaseCommand.addPartitionToTxn:type_name -> pulsar.proto.CommandAddPartitionToTxn
-	76,  // 105: pulsar.proto.BaseCommand.addPartitionToTxnResponse:type_name -> pulsar.proto.CommandAddPartitionToTxnResponse
-	78,  // 106: pulsar.proto.BaseCommand.addSubscriptionToTxn:type_name -> pulsar.proto.CommandAddSubscriptionToTxn
-	79,  // 107: pulsar.proto.BaseCommand.addSubscriptionToTxnResponse:type_name -> pulsar.proto.CommandAddSubscriptionToTxnResponse
-	80,  // 108: pulsar.proto.BaseCommand.endTxn:type_name -> pulsar.proto.CommandEndTxn
-	81,  // 109: pulsar.proto.BaseCommand.endTxnResponse:type_name -> pulsar.proto.CommandEndTxnResponse
-	82,  // 110: pulsar.proto.BaseCommand.endTxnOnPartition:type_name -> pulsar.proto.CommandEndTxnOnPartition
-	83,  // 111: pulsar.proto.BaseCommand.endTxnOnPartitionResponse:type_name -> pulsar.proto.CommandEndTxnOnPartitionResponse
-	84,  // 112: pulsar.proto.BaseCommand.endTxnOnSubscription:type_name -> pulsar.proto.CommandEndTxnOnSubscription
-	85,  // 113: pulsar.proto.BaseCommand.endTxnOnSubscriptionResponse:type_name -> pulsar.proto.CommandEndTxnOnSubscriptionResponse
-	71,  // 114: pulsar.proto.BaseCommand.tcClientConnectRequest:type_name -> pulsar.proto.CommandTcClientConnectRequest
-	72,  // 115: pulsar.proto.BaseCommand.tcClientConnectResponse:type_name -> pulsar.proto.CommandTcClientConnectResponse
-	63,  // 116: pulsar.proto.BaseCommand.watchTopicList:type_name -> pulsar.proto.CommandWatchTopicList
-	64,  // 117: pulsar.proto.BaseCommand.watchTopicListSuccess:type_name -> pulsar.proto.CommandWatchTopicListSuccess
-	65,  // 118: pulsar.proto.BaseCommand.watchTopicUpdate:type_name -> pulsar.proto.CommandWatchTopicUpdate
-	66,  // 119: pulsar.proto.BaseCommand.watchTopicListClose:type_name -> pulsar.proto.CommandWatchTopicListClose
-	120, // [120:120] is the sub-list for method output_type
-	120, // [120:120] is the sub-list for method input_type
-	120, // [120:120] is the sub-list for extension type_name
-	120, // [120:120] is the sub-list for extension extendee
-	0,   // [0:120] is the sub-list for field type_name
+	18,  // 38: pulsar.proto.CommandSeek.message_id:type_name -> pulsar.proto.MessageIdData
+	14,  // 39: pulsar.proto.CommandTopicMigrated.resource_type:type_name -> pulsar.proto.CommandTopicMigrated.ResourceType
+	18,  // 40: pulsar.proto.CommandRedeliverUnacknowledgedMessages.message_ids:type_name -> pulsar.proto.MessageIdData
+	17,  // 41: pulsar.proto.CommandSuccess.schema:type_name -> pulsar.proto.Schema
+	2,   // 42: pulsar.proto.CommandError.error:type_name -> pulsar.proto.ServerError
+	2,   // 43: pulsar.proto.CommandConsumerStatsResponse.error_code:type_name -> pulsar.proto.ServerError
+	18,  // 44: pulsar.proto.CommandGetLastMessageIdResponse.last_message_id:type_name -> pulsar.proto.MessageIdData
+	18,  // 45: pulsar.proto.CommandGetLastMessageIdResponse.consumer_mark_delete_position:type_name -> pulsar.proto.MessageIdData
+	15,  // 46: pulsar.proto.CommandGetTopicsOfNamespace.mode:type_name -> pulsar.proto.CommandGetTopicsOfNamespace.Mode
+	2,   // 47: pulsar.proto.CommandGetSchemaResponse.error_code:type_name -> pulsar.proto.ServerError
+	17,  // 48: pulsar.proto.CommandGetSchemaResponse.schema:type_name -> pulsar.proto.Schema
+	17,  // 49: pulsar.proto.CommandGetOrCreateSchema.schema:type_name -> pulsar.proto.Schema
+	2,   // 50: pulsar.proto.CommandGetOrCreateSchemaResponse.error_code:type_name -> pulsar.proto.ServerError
+	2,   // 51: pulsar.proto.CommandTcClientConnectResponse.error:type_name -> pulsar.proto.ServerError
+	2,   // 52: pulsar.proto.CommandNewTxnResponse.error:type_name -> pulsar.proto.ServerError
+	2,   // 53: pulsar.proto.CommandAddPartitionToTxnResponse.error:type_name -> pulsar.proto.ServerError
+	79,  // 54: pulsar.proto.CommandAddSubscriptionToTxn.subscription:type_name -> pulsar.proto.Subscription
+	2,   // 55: pulsar.proto.CommandAddSubscriptionToTxnResponse.error:type_name -> pulsar.proto.ServerError
+	6,   // 56: pulsar.proto.CommandEndTxn.txn_action:type_name -> pulsar.proto.TxnAction
+	2,   // 57: pulsar.proto.CommandEndTxnResponse.error:type_name -> pulsar.proto.ServerError
+	6,   // 58: pulsar.proto.CommandEndTxnOnPartition.txn_action:type_name -> pulsar.proto.TxnAction
+	2,   // 59: pulsar.proto.CommandEndTxnOnPartitionResponse.error:type_name -> pulsar.proto.ServerError
+	79,  // 60: pulsar.proto.CommandEndTxnOnSubscription.subscription:type_name -> pulsar.proto.Subscription
+	6,   // 61: pulsar.proto.CommandEndTxnOnSubscription.txn_action:type_name -> pulsar.proto.TxnAction
+	2,   // 62: pulsar.proto.CommandEndTxnOnSubscriptionResponse.error:type_name -> pulsar.proto.ServerError
+	16,  // 63: pulsar.proto.BaseCommand.type:type_name -> pulsar.proto.BaseCommand.Type
+	26,  // 64: pulsar.proto.BaseCommand.connect:type_name -> pulsar.proto.CommandConnect
+	28,  // 65: pulsar.proto.BaseCommand.connected:type_name -> pulsar.proto.CommandConnected
+	33,  // 66: pulsar.proto.BaseCommand.subscribe:type_name -> pulsar.proto.CommandSubscribe
+	38,  // 67: pulsar.proto.BaseCommand.producer:type_name -> pulsar.proto.CommandProducer
+	39,  // 68: pulsar.proto.BaseCommand.send:type_name -> pulsar.proto.CommandSend
+	40,  // 69: pulsar.proto.BaseCommand.send_receipt:type_name -> pulsar.proto.CommandSendReceipt
+	41,  // 70: pulsar.proto.BaseCommand.send_error:type_name -> pulsar.proto.CommandSendError
+	42,  // 71: pulsar.proto.BaseCommand.message:type_name -> pulsar.proto.CommandMessage
+	43,  // 72: pulsar.proto.BaseCommand.ack:type_name -> pulsar.proto.CommandAck
+	46,  // 73: pulsar.proto.BaseCommand.flow:type_name -> pulsar.proto.CommandFlow
+	47,  // 74: pulsar.proto.BaseCommand.unsubscribe:type_name -> pulsar.proto.CommandUnsubscribe
+	54,  // 75: pulsar.proto.BaseCommand.success:type_name -> pulsar.proto.CommandSuccess
+	56,  // 76: pulsar.proto.BaseCommand.error:type_name -> pulsar.proto.CommandError
+	51,  // 77: pulsar.proto.BaseCommand.close_producer:type_name -> pulsar.proto.CommandCloseProducer
+	52,  // 78: pulsar.proto.BaseCommand.close_consumer:type_name -> pulsar.proto.CommandCloseConsumer
+	55,  // 79: pulsar.proto.BaseCommand.producer_success:type_name -> pulsar.proto.CommandProducerSuccess
+	57,  // 80: pulsar.proto.BaseCommand.ping:type_name -> pulsar.proto.CommandPing
+	58,  // 81: pulsar.proto.BaseCommand.pong:type_name -> pulsar.proto.CommandPong
+	53,  // 82: pulsar.proto.BaseCommand.redeliverUnacknowledgedMessages:type_name -> pulsar.proto.CommandRedeliverUnacknowledgedMessages
+	34,  // 83: pulsar.proto.BaseCommand.partitionMetadata:type_name -> pulsar.proto.CommandPartitionedTopicMetadata
+	35,  // 84: pulsar.proto.BaseCommand.partitionMetadataResponse:type_name -> pulsar.proto.CommandPartitionedTopicMetadataResponse
+	36,  // 85: pulsar.proto.BaseCommand.lookupTopic:type_name -> pulsar.proto.CommandLookupTopic
+	37,  // 86: pulsar.proto.BaseCommand.lookupTopicResponse:type_name -> pulsar.proto.CommandLookupTopicResponse
+	59,  // 87: pulsar.proto.BaseCommand.consumerStats:type_name -> pulsar.proto.CommandConsumerStats
+	60,  // 88: pulsar.proto.BaseCommand.consumerStatsResponse:type_name -> pulsar.proto.CommandConsumerStatsResponse
+	49,  // 89: pulsar.proto.BaseCommand.reachedEndOfTopic:type_name -> pulsar.proto.CommandReachedEndOfTopic
+	48,  // 90: pulsar.proto.BaseCommand.seek:type_name -> pulsar.proto.CommandSeek
+	61,  // 91: pulsar.proto.BaseCommand.getLastMessageId:type_name -> pulsar.proto.CommandGetLastMessageId
+	62,  // 92: pulsar.proto.BaseCommand.getLastMessageIdResponse:type_name -> pulsar.proto.CommandGetLastMessageIdResponse
+	45,  // 93: pulsar.proto.BaseCommand.active_consumer_change:type_name -> pulsar.proto.CommandActiveConsumerChange
+	63,  // 94: pulsar.proto.BaseCommand.getTopicsOfNamespace:type_name -> pulsar.proto.CommandGetTopicsOfNamespace
+	64,  // 95: pulsar.proto.BaseCommand.getTopicsOfNamespaceResponse:type_name -> pulsar.proto.CommandGetTopicsOfNamespaceResponse
+	69,  // 96: pulsar.proto.BaseCommand.getSchema:type_name -> pulsar.proto.CommandGetSchema
+	70,  // 97: pulsar.proto.BaseCommand.getSchemaResponse:type_name -> pulsar.proto.CommandGetSchemaResponse
+	30,  // 98: pulsar.proto.BaseCommand.authChallenge:type_name -> pulsar.proto.CommandAuthChallenge
+	29,  // 99: pulsar.proto.BaseCommand.authResponse:type_name -> pulsar.proto.CommandAuthResponse
+	44,  // 100: pulsar.proto.BaseCommand.ackResponse:type_name -> pulsar.proto.CommandAckResponse
+	71,  // 101: pulsar.proto.BaseCommand.getOrCreateSchema:type_name -> pulsar.proto.CommandGetOrCreateSchema
+	72,  // 102: pulsar.proto.BaseCommand.getOrCreateSchemaResponse:type_name -> pulsar.proto.CommandGetOrCreateSchemaResponse
+	75,  // 103: pulsar.proto.BaseCommand.newTxn:type_name -> pulsar.proto.CommandNewTxn
+	76,  // 104: pulsar.proto.BaseCommand.newTxnResponse:type_name -> pulsar.proto.CommandNewTxnResponse
+	77,  // 105: pulsar.proto.BaseCommand.addPartitionToTxn:type_name -> pulsar.proto.CommandAddPartitionToTxn
+	78,  // 106: pulsar.proto.BaseCommand.addPartitionToTxnResponse:type_name -> pulsar.proto.CommandAddPartitionToTxnResponse
+	80,  // 107: pulsar.proto.BaseCommand.addSubscriptionToTxn:type_name -> pulsar.proto.CommandAddSubscriptionToTxn
+	81,  // 108: pulsar.proto.BaseCommand.addSubscriptionToTxnResponse:type_name -> pulsar.proto.CommandAddSubscriptionToTxnResponse
+	82,  // 109: pulsar.proto.BaseCommand.endTxn:type_name -> pulsar.proto.CommandEndTxn
+	83,  // 110: pulsar.proto.BaseCommand.endTxnResponse:type_name -> pulsar.proto.CommandEndTxnResponse
+	84,  // 111: pulsar.proto.BaseCommand.endTxnOnPartition:type_name -> pulsar.proto.CommandEndTxnOnPartition
+	85,  // 112: pulsar.proto.BaseCommand.endTxnOnPartitionResponse:type_name -> pulsar.proto.CommandEndTxnOnPartitionResponse
+	86,  // 113: pulsar.proto.BaseCommand.endTxnOnSubscription:type_name -> pulsar.proto.CommandEndTxnOnSubscription
+	87,  // 114: pulsar.proto.BaseCommand.endTxnOnSubscriptionResponse:type_name -> pulsar.proto.CommandEndTxnOnSubscriptionResponse
+	73,  // 115: pulsar.proto.BaseCommand.tcClientConnectRequest:type_name -> pulsar.proto.CommandTcClientConnectRequest
+	74,  // 116: pulsar.proto.BaseCommand.tcClientConnectResponse:type_name -> pulsar.proto.CommandTcClientConnectResponse
+	65,  // 117: pulsar.proto.BaseCommand.watchTopicList:type_name -> pulsar.proto.CommandWatchTopicList
+	66,  // 118: pulsar.proto.BaseCommand.watchTopicListSuccess:type_name -> pulsar.proto.CommandWatchTopicListSuccess
+	67,  // 119: pulsar.proto.BaseCommand.watchTopicUpdate:type_name -> pulsar.proto.CommandWatchTopicUpdate
+	68,  // 120: pulsar.proto.BaseCommand.watchTopicListClose:type_name -> pulsar.proto.CommandWatchTopicListClose
+	50,  // 121: pulsar.proto.BaseCommand.topicMigrated:type_name -> pulsar.proto.CommandTopicMigrated
+	122, // [122:122] is the sub-list for method output_type
+	122, // [122:122] is the sub-list for method input_type
+	122, // [122:122] is the sub-list for extension type_name
+	122, // [122:122] is the sub-list for extension extendee
+	0,   // [0:122] is the sub-list for field type_name
 }
 
 func init() { file_PulsarApi_proto_init() }
@@ -9799,7 +9944,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[33].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandCloseProducer); i {
+			switch v := v.(*CommandTopicMigrated); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9811,7 +9956,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[34].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandCloseConsumer); i {
+			switch v := v.(*CommandCloseProducer); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9823,7 +9968,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[35].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandRedeliverUnacknowledgedMessages); i {
+			switch v := v.(*CommandCloseConsumer); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9835,7 +9980,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[36].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandSuccess); i {
+			switch v := v.(*CommandRedeliverUnacknowledgedMessages); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9847,7 +9992,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[37].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandProducerSuccess); i {
+			switch v := v.(*CommandSuccess); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9859,7 +10004,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[38].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandError); i {
+			switch v := v.(*CommandProducerSuccess); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9871,7 +10016,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[39].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandPing); i {
+			switch v := v.(*CommandError); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9883,7 +10028,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[40].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandPong); i {
+			switch v := v.(*CommandPing); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9895,7 +10040,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[41].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandConsumerStats); i {
+			switch v := v.(*CommandPong); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9907,7 +10052,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[42].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandConsumerStatsResponse); i {
+			switch v := v.(*CommandConsumerStats); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9919,7 +10064,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[43].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandGetLastMessageId); i {
+			switch v := v.(*CommandConsumerStatsResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9931,7 +10076,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[44].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandGetLastMessageIdResponse); i {
+			switch v := v.(*CommandGetLastMessageId); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9943,7 +10088,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[45].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandGetTopicsOfNamespace); i {
+			switch v := v.(*CommandGetLastMessageIdResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9955,7 +10100,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[46].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandGetTopicsOfNamespaceResponse); i {
+			switch v := v.(*CommandGetTopicsOfNamespace); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9967,7 +10112,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[47].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandWatchTopicList); i {
+			switch v := v.(*CommandGetTopicsOfNamespaceResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9979,7 +10124,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[48].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandWatchTopicListSuccess); i {
+			switch v := v.(*CommandWatchTopicList); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -9991,7 +10136,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[49].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandWatchTopicUpdate); i {
+			switch v := v.(*CommandWatchTopicListSuccess); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10003,7 +10148,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[50].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandWatchTopicListClose); i {
+			switch v := v.(*CommandWatchTopicUpdate); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10015,7 +10160,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[51].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandGetSchema); i {
+			switch v := v.(*CommandWatchTopicListClose); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10027,7 +10172,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[52].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandGetSchemaResponse); i {
+			switch v := v.(*CommandGetSchema); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10039,7 +10184,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[53].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandGetOrCreateSchema); i {
+			switch v := v.(*CommandGetSchemaResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10051,7 +10196,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[54].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandGetOrCreateSchemaResponse); i {
+			switch v := v.(*CommandGetOrCreateSchema); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10063,7 +10208,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[55].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandTcClientConnectRequest); i {
+			switch v := v.(*CommandGetOrCreateSchemaResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10075,7 +10220,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[56].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandTcClientConnectResponse); i {
+			switch v := v.(*CommandTcClientConnectRequest); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10087,7 +10232,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[57].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandNewTxn); i {
+			switch v := v.(*CommandTcClientConnectResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10099,7 +10244,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[58].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandNewTxnResponse); i {
+			switch v := v.(*CommandNewTxn); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10111,7 +10256,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[59].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandAddPartitionToTxn); i {
+			switch v := v.(*CommandNewTxnResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10123,7 +10268,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[60].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandAddPartitionToTxnResponse); i {
+			switch v := v.(*CommandAddPartitionToTxn); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10135,7 +10280,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[61].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*Subscription); i {
+			switch v := v.(*CommandAddPartitionToTxnResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10147,7 +10292,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[62].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandAddSubscriptionToTxn); i {
+			switch v := v.(*Subscription); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10159,7 +10304,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[63].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandAddSubscriptionToTxnResponse); i {
+			switch v := v.(*CommandAddSubscriptionToTxn); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10171,7 +10316,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[64].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandEndTxn); i {
+			switch v := v.(*CommandAddSubscriptionToTxnResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10183,7 +10328,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[65].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandEndTxnResponse); i {
+			switch v := v.(*CommandEndTxn); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10195,7 +10340,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[66].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandEndTxnOnPartition); i {
+			switch v := v.(*CommandEndTxnResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10207,7 +10352,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[67].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandEndTxnOnPartitionResponse); i {
+			switch v := v.(*CommandEndTxnOnPartition); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10219,7 +10364,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[68].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandEndTxnOnSubscription); i {
+			switch v := v.(*CommandEndTxnOnPartitionResponse); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10231,7 +10376,7 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[69].Exporter = func(v interface{}, i int) interface{} {
-			switch v := v.(*CommandEndTxnOnSubscriptionResponse); i {
+			switch v := v.(*CommandEndTxnOnSubscription); i {
 			case 0:
 				return &v.state
 			case 1:
@@ -10243,6 +10388,18 @@ func file_PulsarApi_proto_init() {
 			}
 		}
 		file_PulsarApi_proto_msgTypes[70].Exporter = func(v interface{}, i int) interface{} {
+			switch v := v.(*CommandEndTxnOnSubscriptionResponse); i {
+			case 0:
+				return &v.state
+			case 1:
+				return &v.sizeCache
+			case 2:
+				return &v.unknownFields
+			default:
+				return nil
+			}
+		}
+		file_PulsarApi_proto_msgTypes[71].Exporter = func(v interface{}, i int) interface{} {
 			switch v := v.(*BaseCommand); i {
 			case 0:
 				return &v.state
@@ -10260,8 +10417,8 @@ func file_PulsarApi_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: file_PulsarApi_proto_rawDesc,
-			NumEnums:      16,
-			NumMessages:   71,
+			NumEnums:      17,
+			NumMessages:   72,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
