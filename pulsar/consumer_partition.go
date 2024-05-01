@@ -180,6 +180,7 @@ type partitionConsumer struct {
 	ackGroupingTracker ackGroupingTracker
 
 	lastMessageInBroker *trackingMessageID
+	redirectedClusterURI string
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -1384,6 +1385,12 @@ func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseCons
 	}
 }
 
+func (p *partitionConsumer) SetRedirectedClusterURI(redirectedClusterURI string) {
+	// Trigger reconnection in the produce goroutine
+	p.log.WithField("cnx", p._getConn().ID()).Warnf("Set redirectedClusterURI to %s", redirectedClusterURI)
+	p.redirectedClusterURI = redirectedClusterURI
+}
+
 // Flow command gives additional permits to send messages to the consumer.
 // A typical consumer implementation will use a queue to accumulate these messages
 // before the application is ready to consume them. After the consumer is ready,
@@ -1745,7 +1752,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 
 func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
 	if len(brokerServiceURL) == 0 {
-		lr, err := pc.client.lookupService.Lookup(pc.topic)
+		lr, err := pc.client.rpcClient.LookupService(pc.redirectedClusterURI).Lookup(pc.topic)
 		if err != nil {
 			pc.log.WithError(err).Warn("Failed to lookup topic")
 			return nil, err

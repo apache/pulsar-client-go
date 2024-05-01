@@ -118,6 +118,7 @@ type partitionProducer struct {
 	epoch            uint64
 	schemaCache      *schemaCache
 	topicEpoch       *uint64
+	redirectedClusterURI string
 }
 
 type schemaCache struct {
@@ -223,7 +224,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
 	if len(brokerServiceURL) == 0 {
-		lr, err := p.client.lookupService.Lookup(p.topic)
+		lr, err := p.client.rpcClient.LookupService(p.redirectedClusterURI).Lookup(p.topic)
 		if err != nil {
 			p.log.WithError(err).Warn("Failed to lookup topic")
 			return nil, err
@@ -232,7 +233,7 @@ func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.Look
 		p.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	return p.client.lookupService.GetBrokerAddress(brokerServiceURL, p._getConn().IsProxied())
+	return p.client.rpcClient.LookupService(p.redirectedClusterURI).GetBrokerAddress(brokerServiceURL, p._getConn().IsProxied())
 }
 
 func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
@@ -401,6 +402,12 @@ func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProdu
 	p.connectClosedCh <- &connectionClosed{
 		assignedBrokerURL: assignedBrokerURL,
 	}
+}
+
+func (p *partitionProducer) SetRedirectedClusterURI(redirectedClusterURI string) {
+	// Trigger reconnection in the produce goroutine
+	p.log.WithField("cnx", p._getConn().ID()).Warnf("Set redirectedClusterURI to %s", redirectedClusterURI)
+	p.redirectedClusterURI = redirectedClusterURI
 }
 
 func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVersion []byte, err error) {

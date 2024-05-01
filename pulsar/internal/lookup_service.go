@@ -66,6 +66,8 @@ type LookupService interface {
 
 	GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error)
 
+	ResolveHost()  (*url.URL, error)
+
 	// Closable Allow Lookup Service's internal client to be able to closed
 	Closable
 }
@@ -137,12 +139,18 @@ const lookupResultMaxRedirect = 20
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
-	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-		RequestId:              &id,
-		Topic:                  &topic,
-		Authoritative:          proto.Bool(false),
-		AdvertisedListenerName: proto.String(ls.listenerName),
-	})
+	host, err := ls.serviceNameResolver.ResolveHost()
+	if err != nil {
+		ls.log.WithError(err).Errorf("rpc client failed to resolve host")
+		return nil, err
+	}
+	res, err := ls.rpcClient.RequestToHost(host, id, pb.BaseCommand_LOOKUP,
+		&pb.CommandLookupTopic{
+			RequestId:              &id,
+			Topic:                  &topic,
+			Authoritative:          proto.Bool(false),
+			AdvertisedListenerName: proto.String(ls.listenerName),
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +263,11 @@ func (ls *lookupService) GetTopicsOfNamespace(namespace string, mode GetTopicsOf
 
 func (ls *lookupService) Close() {}
 
+func (ls *lookupService) ResolveHost() (*url.URL, error) {
+	return ls.serviceNameResolver.ResolveHost()
+}
+
+
 const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
 const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
 const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
@@ -362,6 +375,11 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 func (h *httpLookupService) GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error) {
 	return nil, errors.New("GetSchema is not supported by httpLookupService")
 }
+
+func (h *httpLookupService) ResolveHost() (*url.URL, error) {
+	return h.serviceNameResolver.ResolveHost()
+}
+
 func (h *httpLookupService) Close() {
 	h.httpClient.Close()
 }
@@ -385,3 +403,4 @@ func selectServiceURL(tlsEnabled bool, brokerServiceURL, brokerServiceURLTLS str
 	}
 	return brokerServiceURL
 }
+

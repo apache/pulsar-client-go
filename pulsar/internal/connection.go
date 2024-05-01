@@ -70,6 +70,9 @@ type ConnectionListener interface {
 
 	// ConnectionClosed close the TCP connection.
 	ConnectionClosed(closeProducer *pb.CommandCloseProducer)
+
+	// set uri.
+	SetRedirectedClusterURI(redirectedClusterURI string)
 }
 
 // Connection is a interface of client cnx.
@@ -94,6 +97,9 @@ type ConsumerHandler interface {
 
 	// ConnectionClosed close the TCP connection.
 	ConnectionClosed(closeConsumer *pb.CommandCloseConsumer)
+
+	// set uri.
+	SetRedirectedClusterURI(redirectedClusterURI string)
 }
 
 type connectionState int32
@@ -584,6 +590,9 @@ func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayl
 	case pb.BaseCommand_CLOSE_CONSUMER:
 		c.handleCloseConsumer(cmd.GetCloseConsumer())
 
+	case pb.BaseCommand_TOPIC_MIGRATED:
+		c.handleTopicMigrated(cmd.GetTopicMigrated())
+
 	case pb.BaseCommand_AUTH_CHALLENGE:
 		c.handleAuthChallenge(cmd.GetAuthChallenge())
 
@@ -926,6 +935,51 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	} else {
 		c.log.WithField("producerID", producerID).Warn("Producer with ID not found while closing producer")
 	}
+}
+
+func (c *connection) getMigratedBrokerServiceUrl(commandTopicMigrated *pb.CommandTopicMigrated) string {
+	if c.tlsOptions == nil {
+		if commandTopicMigrated.GetBrokerServiceUrl() != "" {
+			return commandTopicMigrated.GetBrokerServiceUrl()
+		}
+	} else if commandTopicMigrated.GetBrokerServiceUrlTls() != "" {
+		return commandTopicMigrated.GetBrokerServiceUrlTls()
+	}
+	return ""
+}
+
+func (c *connection) handleTopicMigrated(commandTopicMigrated *pb.CommandTopicMigrated) {
+	resourceID := commandTopicMigrated.GetResourceId()
+	migratedBrokerServiceUrl := c.getMigratedBrokerServiceUrl(commandTopicMigrated)
+	if migratedBrokerServiceUrl == "" {
+		c.log.Warnf("Failed to find the migrated broker url for resource: %s, migratedBrokerUrl: %s, migratedBrokerUrlTls:%s",
+			resourceID,
+			commandTopicMigrated.GetBrokerServiceUrl(),
+			commandTopicMigrated.GetBrokerServiceUrlTls())
+		return
+	}
+	if commandTopicMigrated.ResourceType.Number() == 0 {
+		c.listenersLock.RLock()
+		producer, ok := c.listeners[resourceID]
+		c.listenersLock.RUnlock()
+		if ok {
+			producer.SetRedirectedClusterURI(migratedBrokerServiceUrl)
+		} else {
+			c.log.
+				WithField("producerID", resourceID).
+				Warn("Failed to SetRedirectedClusterURI")
+		}
+	} else {
+		consumer, ok := c.consumerHandler(resourceID)
+		if ok {
+			consumer.SetRedirectedClusterURI(migratedBrokerServiceUrl)
+		} else {
+			c.log.
+				WithField("consumerID", resourceID).
+				Warn("Failed to SetRedirectedClusterURI")
+		}
+	}
+
 }
 
 func (c *connection) RegisterListener(id uint64, listener ConnectionListener) error {
