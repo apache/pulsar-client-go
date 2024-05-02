@@ -77,7 +77,7 @@ func (c *mockedLookupRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.
 	}, nil
 }
 
-func (c *mockedLookupRPCClient) RequestToHost(host *url.URL, requestID uint64,
+func (c *mockedLookupRPCClient) RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	return c.RequestToAnyBroker(requestID, cmdType, message)
 }
@@ -495,8 +495,8 @@ func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnx(cnx Connection, re
 	return nil, nil
 }
 
-func (c *mockedPartitionedTopicMetadataRPCClient) RequestToHost(host *url.URL, requestID uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (c *mockedPartitionedTopicMetadataRPCClient) RequestToHost(serviceNameResolver *ServiceNameResolver,
+	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	return c.RequestToAnyBroker(requestID, cmdType, message)
 }
 

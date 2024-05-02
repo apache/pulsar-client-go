@@ -139,12 +139,7 @@ const lookupResultMaxRedirect = 20
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
-	host, err := ls.serviceNameResolver.ResolveHost()
-	if err != nil {
-		ls.log.WithError(err).Errorf("rpc client failed to resolve host")
-		return nil, err
-	}
-	res, err := ls.rpcClient.RequestToHost(host, id, pb.BaseCommand_LOOKUP,
+	res, err := ls.rpcClient.RequestToHost(&ls.serviceNameResolver, id, pb.BaseCommand_LOOKUP,
 		&pb.CommandLookupTopic{
 			RequestId:              &id,
 			Topic:                  &topic,

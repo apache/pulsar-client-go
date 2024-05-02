@@ -58,7 +58,7 @@ type RPCClient interface {
 	// Send a request and block until the result is available
 	RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	RequestToHost(host *url.URL, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+	RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
@@ -107,15 +107,21 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 	return &c
 }
 
-func (c *rpcClient) requestToHost(host *url.URL, requestID uint64, cmdType pb.BaseCommand_Type,
+func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
 	var err error
+	var host *url.URL
 	var rpcResult *RPCResult
 	startTime := time.Now()
 	backoff := DefaultBackoff{100 * time.Millisecond}
 	// we can retry these requests because this kind of request is
 	// not specific to any particular broker
 	for time.Since(startTime) < c.requestTimeout {
+		host, err = (*serviceNameResolver).ResolveHost()
+		if err != nil {
+			c.log.WithError(err).Errorf("rpc client failed to resolve host")
+			return nil, err
+		}
 		rpcResult, err = c.Request(host, host, requestID, cmdType, message)
 		// success we got a response
 		if err == nil {
@@ -132,21 +138,12 @@ func (c *rpcClient) requestToHost(host *url.URL, requestID uint64, cmdType pb.Ba
 
 func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
-	var err error
-	var host *url.URL
-
-	host, err = c.serviceNameResolver.ResolveHost()
-	if err != nil {
-		c.log.WithError(err).Errorf("rpc client failed to resolve host")
-		return nil, err
-	}
-
-	return c.requestToHost(host, requestID, cmdType, message)
+	return c.requestToHost(&c.serviceNameResolver, requestID, cmdType, message)
 }
 
-func (c *rpcClient) RequestToHost(host *url.URL, requestID uint64,
+func (c *rpcClient) RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	return c.requestToHost(host, requestID, cmdType, message)
+	return c.requestToHost(serviceNameResolver, requestID, cmdType, message)
 }
 
 
