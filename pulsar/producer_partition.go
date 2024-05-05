@@ -281,6 +281,14 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 	if len(p.options.Properties) > 0 {
 		cmdProducer.Metadata = toKeyValues(p.options.Properties)
 	}
+
+	cnx, err := p.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr)
+	// registering the producer first in case broker sends commands in the middle
+	if err == nil {
+		p._setConn(cnx)
+		err = p._getConn().RegisterListener(p.producerID, p)
+	}
+
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
@@ -318,8 +326,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		p.schemaCache.Put(p.schemaInfo, schemaVersion)
 	}
 
-	p._setConn(res.Cnx)
-	err = p._getConn().RegisterListener(p.producerID, p)
+
 	if err != nil {
 		return err
 	}

@@ -90,13 +90,14 @@ type rpcClient struct {
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics, listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider) RPCClient {
 	c := rpcClient{
-		pool:           pool,
-		requestTimeout: requestTimeout,
-		log:            logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
-		metrics:        metrics,
-		listenerName:   listenerName,
-		tlsConfig:      tlsConfig,
-		authProvider: authProvider,
+		pool:                pool,
+		requestTimeout:      requestTimeout,
+		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		metrics:             metrics,
+		listenerName:        listenerName,
+		tlsConfig:           tlsConfig,
+		authProvider:        authProvider,
+		urlLookupServiceMap: make(map[string]LookupService),
 	}
 	lookupService, err := c.NewLookupService(serviceURL)
 	if err != nil {
@@ -238,9 +239,9 @@ func (c *rpcClient) LookupService(URL string) LookupService {
 		panic(err)
 	}
 
-	lookupService, err2 := c.NewLookupService(serviceUrl)
+	lookupService, err = c.NewLookupService(serviceUrl)
 	if err != nil {
-		panic(err2)
+		panic(err)
 	}
 	c.urlLookupServiceMap[URL] = lookupService
 	return lookupService
