@@ -937,7 +937,7 @@ func (c *connection) handleCloseProducer(closeProducer *pb.CommandCloseProducer)
 	}
 }
 
-func (c *connection) getMigratedBrokerServiceUrl(commandTopicMigrated *pb.CommandTopicMigrated) string {
+func (c *connection) getMigratedBrokerServiceURL(commandTopicMigrated *pb.CommandTopicMigrated) string {
 	if c.tlsOptions == nil {
 		if commandTopicMigrated.GetBrokerServiceUrl() != "" {
 			return commandTopicMigrated.GetBrokerServiceUrl()
@@ -950,8 +950,8 @@ func (c *connection) getMigratedBrokerServiceUrl(commandTopicMigrated *pb.Comman
 
 func (c *connection) handleTopicMigrated(commandTopicMigrated *pb.CommandTopicMigrated) {
 	resourceID := commandTopicMigrated.GetResourceId()
-	migratedBrokerServiceUrl := c.getMigratedBrokerServiceUrl(commandTopicMigrated)
-	if migratedBrokerServiceUrl == "" {
+	migratedBrokerServiceURL := c.getMigratedBrokerServiceURL(commandTopicMigrated)
+	if migratedBrokerServiceURL == "" {
 		c.log.Warnf("Failed to find the migrated broker url for resource: %s, migratedBrokerUrl: %s, migratedBrokerUrlTls:%s",
 			resourceID,
 			commandTopicMigrated.GetBrokerServiceUrl(),
@@ -963,18 +963,18 @@ func (c *connection) handleTopicMigrated(commandTopicMigrated *pb.CommandTopicMi
 		producer, ok := c.listeners[resourceID]
 		c.listenersLock.RUnlock()
 		if ok {
-			producer.SetRedirectedClusterURI(migratedBrokerServiceUrl)
+			producer.SetRedirectedClusterURI(migratedBrokerServiceURL)
 			c.log.Infof("producerID:{%d} migrated to RedirectedClusterURI:{%s}",
-				resourceID, migratedBrokerServiceUrl)
+				resourceID, migratedBrokerServiceURL)
 		} else {
 			c.log.WithField("producerID", resourceID).Warn("Failed to SetRedirectedClusterURI")
 		}
 	} else {
 		consumer, ok := c.consumerHandler(resourceID)
 		if ok {
-			consumer.SetRedirectedClusterURI(migratedBrokerServiceUrl)
+			consumer.SetRedirectedClusterURI(migratedBrokerServiceURL)
 			c.log.Infof("consumerID:{%d} migrated to RedirectedClusterURI:{%s}",
-				resourceID, migratedBrokerServiceUrl)
+				resourceID, migratedBrokerServiceURL)
 		} else {
 			c.log.WithField("consumerID", resourceID).Warn("Failed to SetRedirectedClusterURI")
 		}

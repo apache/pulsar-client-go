@@ -180,6 +180,7 @@ type partitionConsumer struct {
 	ackGroupingTracker ackGroupingTracker
 
 	lastMessageInBroker *trackingMessageID
+
 	redirectedClusterURI string
 }
 
@@ -1385,8 +1386,8 @@ func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseCons
 	}
 }
 
-func (p *partitionConsumer) SetRedirectedClusterURI(redirectedClusterURI string) {
-	p.redirectedClusterURI = redirectedClusterURI
+func (pc *partitionConsumer) SetRedirectedClusterURI(redirectedClusterURI string) {
+	pc.redirectedClusterURI = redirectedClusterURI
 }
 
 // Flow command gives additional permits to send messages to the consumer.

@@ -495,12 +495,12 @@ func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnx(cnx Connection, re
 	return nil, nil
 }
 
-func (c *mockedPartitionedTopicMetadataRPCClient) RequestToHost(serviceNameResolver *ServiceNameResolver,
+func (m *mockedPartitionedTopicMetadataRPCClient) RequestToHost(serviceNameResolver *ServiceNameResolver,
 	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	return c.RequestToAnyBroker(requestID, cmdType, message)
+	return m.RequestToAnyBroker(requestID, cmdType, message)
 }
 
-func (c *mockedPartitionedTopicMetadataRPCClient) LookupService(URL string) LookupService {
+func (m *mockedPartitionedTopicMetadataRPCClient) LookupService(URL string) LookupService {
 	return nil
 }
 

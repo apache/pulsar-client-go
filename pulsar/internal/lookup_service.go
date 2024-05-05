@@ -66,7 +66,7 @@ type LookupService interface {
 
 	GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error)
 
-	ServiceNameResolver()  *ServiceNameResolver
+	ServiceNameResolver() *ServiceNameResolver
 
 	// Closable Allow Lookup Service's internal client to be able to closed
 	Closable
@@ -263,7 +263,6 @@ func (ls *lookupService) ServiceNameResolver() *ServiceNameResolver {
 	return &ls.serviceNameResolver
 }
 
-
 const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
 const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
 const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
@@ -399,4 +398,3 @@ func selectServiceURL(tlsEnabled bool, brokerServiceURL, brokerServiceURLTLS str
 	}
 	return brokerServiceURL
 }
-

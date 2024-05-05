@@ -105,19 +105,18 @@ type partitionProducer struct {
 	compressionProvider      compression.Provider
 
 	// Channel where app is posting messages to be published
-	dataChan        chan *sendRequest
-	cmdChan         chan interface{}
-	connectClosedCh chan *connectionClosed
-
-	publishSemaphore internal.Semaphore
-	pendingQueue     internal.BlockingQueue
-	lastSequenceID   int64
-	schemaInfo       *SchemaInfo
-	partitionIdx     int32
-	metrics          *internal.LeveledMetrics
-	epoch            uint64
-	schemaCache      *schemaCache
-	topicEpoch       *uint64
+	dataChan             chan *sendRequest
+	cmdChan              chan interface{}
+	connectClosedCh      chan *connectionClosed
+	publishSemaphore     internal.Semaphore
+	pendingQueue         internal.BlockingQueue
+	lastSequenceID       int64
+	schemaInfo           *SchemaInfo
+	partitionIdx         int32
+	metrics              *internal.LeveledMetrics
+	epoch                uint64
+	schemaCache          *schemaCache
+	topicEpoch           *uint64
 	redirectedClusterURI string
 }
 
@@ -233,7 +232,8 @@ func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.Look
 		p.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	return p.client.rpcClient.LookupService(p.redirectedClusterURI).GetBrokerAddress(brokerServiceURL, p._getConn().IsProxied())
+	return p.client.rpcClient.LookupService(p.redirectedClusterURI).
+		GetBrokerAddress(brokerServiceURL, p._getConn().IsProxied())
 }
 
 func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
@@ -287,6 +287,9 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 	if err == nil {
 		p._setConn(cnx)
 		err = p._getConn().RegisterListener(p.producerID, p)
+		if err != nil {
+			p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
+		}
 	}
 
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
@@ -325,7 +328,6 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 	if len(schemaVersion) != 0 {
 		p.schemaCache.Put(p.schemaInfo, schemaVersion)
 	}
-
 
 	if err != nil {
 		return err

@@ -20,12 +20,12 @@ package internal
 import (
 	"errors"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -58,7 +58,8 @@ type RPCClient interface {
 	// Send a request and block until the result is available
 	RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+	RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64,
+		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
@@ -71,13 +72,13 @@ type RPCClient interface {
 }
 
 type rpcClient struct {
-	pool                ConnectionPool
-	requestTimeout      time.Duration
-	requestIDGenerator  uint64
-	producerIDGenerator uint64
-	consumerIDGenerator uint64
-	log                 log.Logger
-	metrics             *Metrics
+	pool                    ConnectionPool
+	requestTimeout          time.Duration
+	requestIDGenerator      uint64
+	producerIDGenerator     uint64
+	consumerIDGenerator     uint64
+	log                     log.Logger
+	metrics                 *Metrics
 	tlsConfig               *TLSOptions
 	listenerName            string
 	authProvider            auth.Provider
@@ -87,7 +88,8 @@ type rpcClient struct {
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
-	requestTimeout time.Duration, logger log.Logger, metrics *Metrics, listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider) RPCClient {
+	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
+	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider) RPCClient {
 	c := rpcClient{
 		pool:                pool,
 		requestTimeout:      requestTimeout,
@@ -107,8 +109,8 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 	return &c
 }
 
-func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
+func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
+	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	var err error
 	var host *url.URL
 	var rpcResult *RPCResult
@@ -145,7 +147,6 @@ func (c *rpcClient) RequestToHost(serviceNameResolver *ServiceNameResolver, requ
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	return c.requestToHost(serviceNameResolver, requestID, cmdType, message)
 }
-
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
@@ -233,12 +234,12 @@ func (c *rpcClient) LookupService(URL string) LookupService {
 		return lookupService
 	}
 
-	serviceUrl, err := url.Parse(URL)
+	serviceURL, err := url.Parse(URL)
 	if err != nil {
 		panic(err)
 	}
 
-	lookupService, err = c.NewLookupService(serviceUrl)
+	lookupService, err = c.NewLookupService(serviceURL)
 	if err != nil {
 		panic(err)
 	}
