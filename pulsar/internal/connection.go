@@ -71,7 +71,7 @@ type ConnectionListener interface {
 	// ConnectionClosed close the TCP connection.
 	ConnectionClosed(closeProducer *pb.CommandCloseProducer)
 
-	// set uri.
+	// SetRedirectedClusterURI set the redirected cluster URI for lookups
 	SetRedirectedClusterURI(redirectedClusterURI string)
 }
 
@@ -98,7 +98,7 @@ type ConsumerHandler interface {
 	// ConnectionClosed close the TCP connection.
 	ConnectionClosed(closeConsumer *pb.CommandCloseConsumer)
 
-	// set uri.
+	// SetRedirectedClusterURI set the redirected cluster URI for lookups
 	SetRedirectedClusterURI(redirectedClusterURI string)
 }
 

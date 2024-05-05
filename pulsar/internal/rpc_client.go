@@ -71,7 +71,6 @@ type RPCClient interface {
 }
 
 type rpcClient struct {
-	serviceNameResolver ServiceNameResolver
 	pool                ConnectionPool
 	requestTimeout      time.Duration
 	requestIDGenerator  uint64
@@ -139,7 +138,7 @@ func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver, requ
 
 func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
-	return c.requestToHost(&c.serviceNameResolver, requestID, cmdType, message)
+	return c.requestToHost(c.lookupService.ServiceNameResolver(), requestID, cmdType, message)
 }
 
 func (c *rpcClient) RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64,
@@ -252,19 +251,19 @@ func (c *rpcClient) NewLookupService(url *url.URL) (LookupService, error) {
 
 	switch url.Scheme {
 	case "pulsar", "pulsar+ssl":
-		c.serviceNameResolver = NewPulsarServiceNameResolver(url)
-		return NewLookupService(c, url, c.serviceNameResolver,
+		serviceNameResolver := NewPulsarServiceNameResolver(url)
+		return NewLookupService(c, url, serviceNameResolver,
 			c.tlsConfig != nil, c.listenerName, c.log, c.metrics), nil
 	case "http", "https":
-		c.serviceNameResolver = NewPulsarServiceNameResolver(url)
-		httpClient, err := NewHTTPClient(url, c.serviceNameResolver, c.tlsConfig,
+		serviceNameResolver := NewPulsarServiceNameResolver(url)
+		httpClient, err := NewHTTPClient(url, serviceNameResolver, c.tlsConfig,
 			c.requestTimeout, c.log, c.metrics, c.authProvider)
 		if err != nil {
 			return nil, err
 		}
 
 		return NewHTTPLookupService(
-			httpClient, url, c.serviceNameResolver, c.tlsConfig != nil, c.log, c.metrics), nil
+			httpClient, url, serviceNameResolver, c.tlsConfig != nil, c.log, c.metrics), nil
 	default:
 		panic(fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
 	}

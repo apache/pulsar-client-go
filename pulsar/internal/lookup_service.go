@@ -66,7 +66,7 @@ type LookupService interface {
 
 	GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error)
 
-	ResolveHost()  (*url.URL, error)
+	ServiceNameResolver()  *ServiceNameResolver
 
 	// Closable Allow Lookup Service's internal client to be able to closed
 	Closable
@@ -139,6 +139,7 @@ const lookupResultMaxRedirect = 20
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
+
 	res, err := ls.rpcClient.RequestToHost(&ls.serviceNameResolver, id, pb.BaseCommand_LOOKUP,
 		&pb.CommandLookupTopic{
 			RequestId:              &id,
@@ -258,8 +259,8 @@ func (ls *lookupService) GetTopicsOfNamespace(namespace string, mode GetTopicsOf
 
 func (ls *lookupService) Close() {}
 
-func (ls *lookupService) ResolveHost() (*url.URL, error) {
-	return ls.serviceNameResolver.ResolveHost()
+func (ls *lookupService) ServiceNameResolver() *ServiceNameResolver {
+	return &ls.serviceNameResolver
 }
 
 
@@ -371,8 +372,8 @@ func (h *httpLookupService) GetSchema(topic string, schemaVersion []byte) (schem
 	return nil, errors.New("GetSchema is not supported by httpLookupService")
 }
 
-func (h *httpLookupService) ResolveHost() (*url.URL, error) {
-	return h.serviceNameResolver.ResolveHost()
+func (h *httpLookupService) ServiceNameResolver() *ServiceNameResolver {
+	return &h.serviceNameResolver
 }
 
 func (h *httpLookupService) Close() {
