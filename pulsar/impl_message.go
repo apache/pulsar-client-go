@@ -184,7 +184,7 @@ func (id *messageID) BatchSize() int32 {
 }
 
 func (id *messageID) String() string {
-	return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
+	return fmt.Sprintf("%d:%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx, id.batchIdx)
 }
 
 func deserializeMessageID(data []byte) (MessageID, error) {
