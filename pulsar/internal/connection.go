@@ -967,9 +967,7 @@ func (c *connection) handleTopicMigrated(commandTopicMigrated *pb.CommandTopicMi
 			c.log.Infof("producerID:{%d} migrated to RedirectedClusterURI:{%s}",
 				resourceID, migratedBrokerServiceUrl)
 		} else {
-			c.log.
-				WithField("producerID", resourceID).
-				Warn("Failed to SetRedirectedClusterURI")
+			c.log.WithField("producerID", resourceID).Warn("Failed to SetRedirectedClusterURI")
 		}
 	} else {
 		consumer, ok := c.consumerHandler(resourceID)
@@ -978,9 +976,7 @@ func (c *connection) handleTopicMigrated(commandTopicMigrated *pb.CommandTopicMi
 			c.log.Infof("consumerID:{%d} migrated to RedirectedClusterURI:{%s}",
 				resourceID, migratedBrokerServiceUrl)
 		} else {
-			c.log.
-				WithField("consumerID", resourceID).
-				Warn("Failed to SetRedirectedClusterURI")
+			c.log.WithField("consumerID", resourceID).Warn("Failed to SetRedirectedClusterURI")
 		}
 	}
 
@@ -995,6 +991,7 @@ func (c *connection) RegisterListener(id uint64, listener ConnectionListener) er
 
 	c.listenersLock.Lock()
 	defer c.listenersLock.Unlock()
+
 	c.listeners[id] = listener
 	return nil
 }

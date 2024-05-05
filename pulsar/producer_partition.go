@@ -412,8 +412,6 @@ func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProdu
 }
 
 func (p *partitionProducer) SetRedirectedClusterURI(redirectedClusterURI string) {
-	// Trigger reconnection in the produce goroutine
-	p.log.WithField("cnx", p._getConn().ID()).Warnf("Set redirectedClusterURI to %s", redirectedClusterURI)
 	p.redirectedClusterURI = redirectedClusterURI
 }
 
