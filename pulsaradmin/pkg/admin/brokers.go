@@ -27,6 +27,9 @@ import (
 
 // Brokers is admin interface for brokers management
 type Brokers interface {
+
+	// GetListActiveBrokers Get the list of active brokers in the local cluster.
+	GetListActiveBrokers() ([]string, error)
 	// GetActiveBrokers returns the list of active brokers in the cluster.
 	GetActiveBrokers(cluster string) ([]string, error)
 
@@ -78,6 +81,16 @@ func (c *pulsarClient) Brokers() Brokers {
 
 func (b *broker) GetActiveBrokers(cluster string) ([]string, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, cluster)
+	var res []string
+	err := b.pulsar.Client.Get(endpoint, &res)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (b *broker) GetListActiveBrokers() ([]string, error) {
+	endpoint := b.pulsar.endpoint(b.basePath)
 	var res []string
 	err := b.pulsar.Client.Get(endpoint, &res)
 	if err != nil {
