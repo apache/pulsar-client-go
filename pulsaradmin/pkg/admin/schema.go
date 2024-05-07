@@ -38,6 +38,9 @@ type Schema interface {
 	// DeleteSchema deletes the schema associated with a given <tt>topic</tt>
 	DeleteSchema(topic string) error
 
+	// ForceDeleteSchema force deletes the schema associated with a given <tt>topic</tt>
+	ForceDeleteSchema(topic string) error
+
 	// CreateSchemaByPayload creates a schema for a given <tt>topic</tt>
 	CreateSchemaByPayload(topic string, schemaPayload utils.PostSchemaPayload) error
 }
@@ -112,6 +115,14 @@ func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*utils.Sc
 }
 
 func (s *schemas) DeleteSchema(topic string) error {
+	return s.delete(topic, false)
+}
+
+func (s *schemas) ForceDeleteSchema(topic string) error {
+	return s.delete(topic, true)
+}
+
+func (s *schemas) delete(topic string, force bool) error {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return err
@@ -120,9 +131,10 @@ func (s *schemas) DeleteSchema(topic string) error {
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schema")
 
-	fmt.Println(endpoint)
+	queryParams := make(map[string]string)
+	queryParams["force"] = strconv.FormatBool(force)
 
-	return s.pulsar.Client.Delete(endpoint)
+	return s.pulsar.Client.DeleteWithQueryParams(endpoint, queryParams)
 }
 
 func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload utils.PostSchemaPayload) error {
