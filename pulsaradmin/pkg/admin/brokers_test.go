@@ -58,3 +58,18 @@ func TestGetLeaderBroker(t *testing.T) {
 	assert.NotEmpty(t, leaderBroker.ServiceURL)
 	assert.NotEmpty(t, leaderBroker.BrokerID)
 }
+
+func TestGetAllActiveBrokers(t *testing.T) {
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	assert.NoError(t, err)
+	cfg := &config.Config{
+		Token: string(readFile),
+	}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	brokers, err := admin.Brokers().GetListActiveBrokers()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, brokers)
+}
