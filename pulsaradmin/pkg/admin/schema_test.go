@@ -77,3 +77,48 @@ func TestSchemas_ForceDeleteSchema(t *testing.T) {
 	assert.Errorf(t, err, "Schema not found")
 
 }
+
+func TestSchemas_CreateSchemaBySchemaInfo(t *testing.T) {
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	schemaInfo := utils.SchemaInfo{
+		Schema: []byte(""),
+		Type:   "STRING",
+	}
+	topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
+	err = admin.Schemas().CreateSchemaBySchemaInfo(topic, schemaInfo)
+	assert.NoError(t, err)
+
+	info, err := admin.Schemas().GetSchemaInfo(topic)
+	assert.NoError(t, err)
+	assert.Equal(t, schemaInfo.Type, info.Type)
+
+	version, err := admin.Schemas().GetVersionBySchemaInfo(topic, schemaInfo)
+	assert.NoError(t, err)
+	assert.Equal(t, version, int64(0))
+
+	schemaPayload := utils.ConvertSchemaInfoToPostSchemaPayload(schemaInfo)
+	version, err = admin.Schemas().GetVersionByPayload(topic, schemaPayload)
+	assert.NoError(t, err)
+	assert.Equal(t, version, int64(0))
+
+	compatibility, err := admin.Schemas().TestCompatibilityWithSchemaInfo(topic, schemaInfo)
+	assert.NoError(t, err)
+	assert.Equal(t, compatibility.IsCompatibility, true)
+	assert.Equal(t, compatibility.SchemaCompatibilityStrategy, utils.SchemaCompatibilityStrategy("FULL"))
+
+	compatibility, err = admin.Schemas().TestCompatibilityWithPostSchemaPayload(topic, schemaPayload)
+	assert.NoError(t, err)
+	assert.Equal(t, compatibility.IsCompatibility, true)
+	assert.Equal(t, compatibility.SchemaCompatibilityStrategy, utils.SchemaCompatibilityStrategy("FULL"))
+
+	err = admin.Schemas().ForceDeleteSchema(topic)
+	assert.NoError(t, err)
+
+	_, err = admin.Schemas().GetSchemaInfo(topic)
+	assert.Errorf(t, err, "Schema not found")
+
+}
