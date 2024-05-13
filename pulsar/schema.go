@@ -142,7 +142,6 @@ func initAvroCodec(codec string) (*goavro.Codec, error) {
 }
 
 type JSONSchema struct {
-	AvroCodec
 	SchemaInfo
 }
 
