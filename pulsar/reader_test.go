@@ -1035,3 +1035,27 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 	}
 
 }
+
+func TestReaderNextReturnsOnClosedConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		OperationTimeout: 2 * time.Second,
+	})
+	assert.NoError(t, err)
+	topic := newTopicName()
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+
+	reader.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	var e *Error
+	_, err = reader.Next(ctx)
+	assert.ErrorAs(t, err, &e)
+	assert.Equal(t, ConsumerClosed, e.Result())
+}
