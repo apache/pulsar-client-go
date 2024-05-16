@@ -20,7 +20,6 @@ package pulsar
 import (
 	"container/list"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -36,6 +35,7 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/bits-and-blooms/bitset"
+	"github.com/pkg/errors"
 
 	uAtomic "go.uber.org/atomic"
 )
@@ -48,6 +48,10 @@ const (
 	consumerReady
 	consumerClosing
 	consumerClosed
+)
+
+var (
+	ErrInvalidAck = errors.New("invalid ack")
 )
 
 func (s consumerState) String() string {
@@ -687,10 +691,18 @@ func (pc *partitionConsumer) AckIDWithResponseCumulative(msgID MessageID) error 
 	return pc.internalAckIDCumulative(msgID, true)
 }
 
+func (pc *partitionConsumer) isAllowAckCumulative() bool {
+	return pc.options.subscriptionType != Shared && pc.options.subscriptionType != KeyShared
+}
+
 func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withResponse bool) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")
+	}
+
+	if !pc.isAllowAckCumulative() {
+		return errors.Wrap(ErrInvalidAck, "cumulative ack is not allowed for the Shared/KeyShared subscription type")
 	}
 
 	// chunk message id will be converted to tracking message id

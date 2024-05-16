@@ -4393,6 +4393,41 @@ func TestMultiConsumerMemoryLimit(t *testing.T) {
 	})
 }
 
+func TestConsumerAckCumulativeOnSharedSubShouldFailed(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("hello"),
+	})
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+
+	err = consumer.AckIDCumulative(msg.ID())
+	assert.NotNil(t, err)
+	assert.ErrorIs(t, err, ErrInvalidAck)
+}
+
 func TestConsumerUnSubscribe(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
