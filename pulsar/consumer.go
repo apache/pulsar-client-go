@@ -269,6 +269,15 @@ type Consumer interface {
 	// where more than one consumer are currently connected.
 	Unsubscribe() error
 
+	// UnsubscribeForce the consumer, forcefully unsubscribe by disconnecting connected consumers.
+	//
+	// Unsubscribing will cause the subscription to be deleted,
+	// and all the retained data can potentially be deleted based on message retention and ttl policy.
+	//
+	// This operation will fail when performed on a shared subscription
+	// where more than one consumer are currently connected.
+	UnsubscribeForce() error
+
 	// Receive a single message.
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)

@@ -4392,3 +4392,54 @@ func TestMultiConsumerMemoryLimit(t *testing.T) {
 		return assert.Equal(t, pc2PrevQueueSize/2, pc2.currentQueueSize.Load())
 	})
 }
+
+func TestConsumerUnSubscribe(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "my-topic"
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	err = consumer.Unsubscribe()
+	assert.Nil(t, err)
+
+	err = consumer.Unsubscribe()
+	assert.Error(t, err)
+
+}
+func TestConsumerForceUnSubscribe(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "my-topic"
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Exclusive,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	err = consumer.UnsubscribeForce()
+	assert.Nil(t, err)
+
+	err = consumer.UnsubscribeForce()
+	assert.Error(t, err)
+
+}

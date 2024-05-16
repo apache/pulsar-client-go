@@ -407,13 +407,13 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	return pc, nil
 }
 
-func (pc *partitionConsumer) Unsubscribe() error {
+func (pc *partitionConsumer) unsubscribe(force bool) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to unsubscribe closing or closed consumer")
-		return nil
+		return errors.New("consumer state is closed")
 	}
 
-	req := &unsubscribeRequest{doneCh: make(chan struct{})}
+	req := &unsubscribeRequest{doneCh: make(chan struct{}), force: force}
 	pc.eventsCh <- req
 
 	// wait for the request to complete
@@ -549,6 +549,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	cmdUnsubscribe := &pb.CommandUnsubscribe{
 		RequestId:  proto.Uint64(requestID),
 		ConsumerId: proto.Uint64(pc.consumerID),
+		Force:      proto.Bool(unsub.force),
 	}
 	_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), requestID, pb.BaseCommand_UNSUBSCRIBE, cmdUnsubscribe)
 	if err != nil {
@@ -1532,6 +1533,7 @@ type ackWithTxnRequest struct {
 
 type unsubscribeRequest struct {
 	doneCh chan struct{}
+	force  bool
 	err    error
 }
 

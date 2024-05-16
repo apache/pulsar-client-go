@@ -303,6 +303,11 @@ func runRegexConsumerMatchOneTopic(t *testing.T, c Client, namespace string) {
 				"message does not start with foo: %s", string(m.Payload()))
 		}
 	}
+	err = consumer.Unsubscribe()
+	assert.Nil(t, err)
+
+	err = consumer.Unsubscribe()
+	assert.Error(t, err)
 }
 
 func runRegexConsumerAddMatchingTopic(t *testing.T, c Client, namespace string) {
@@ -347,6 +352,11 @@ func runRegexConsumerAddMatchingTopic(t *testing.T, c Client, namespace string) 
 				"message does not start with foo: %s", string(m.Payload()))
 		}
 	}
+	err = consumer.UnsubscribeForce()
+	assert.Nil(t, err)
+
+	err = consumer.UnsubscribeForce()
+	assert.Error(t, err)
 }
 
 func runRegexConsumerAutoDiscoverTopics(t *testing.T, c Client, namespace string) {
