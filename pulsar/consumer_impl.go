@@ -449,12 +449,20 @@ func (c *consumer) Subscription() string {
 }
 
 func (c *consumer) Unsubscribe() error {
+	return c.unsubscribe(false)
+}
+
+func (c *consumer) UnsubscribeForce() error {
+	return c.unsubscribe(true)
+}
+
+func (c *consumer) unsubscribe(force bool) error {
 	c.Lock()
 	defer c.Unlock()
 
 	var errMsg string
 	for _, consumer := range c.consumers {
-		if err := consumer.Unsubscribe(); err != nil {
+		if err := consumer.unsubscribe(force); err != nil {
 			errMsg += fmt.Sprintf("topic %s, subscription %s: %s", consumer.topic, c.Subscription(), err)
 		}
 	}

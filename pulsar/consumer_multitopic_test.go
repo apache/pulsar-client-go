@@ -84,3 +84,56 @@ func TestMultiTopicConsumerReceive(t *testing.T) {
 	}
 	assert.Equal(t, receivedTopic1, receivedTopic2)
 }
+
+func TestMultiTopicConsumerUnsubscribe(t *testing.T) {
+	topic1 := newTopicName()
+	topic2 := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topics := []string{topic1, topic2}
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topics:           topics,
+		SubscriptionName: "multi-topic-sub",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	err = consumer.Unsubscribe()
+	assert.Nil(t, err)
+
+	err = consumer.Unsubscribe()
+	assert.Error(t, err)
+
+}
+func TestMultiTopicConsumerForceUnsubscribe(t *testing.T) {
+	topic1 := newTopicName()
+	topic2 := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topics := []string{topic1, topic2}
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topics:           topics,
+		SubscriptionName: "multi-topic-sub",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	err = consumer.UnsubscribeForce()
+	assert.Nil(t, err)
+
+	err = consumer.UnsubscribeForce()
+	assert.Error(t, err)
+}

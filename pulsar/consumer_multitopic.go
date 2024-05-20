@@ -97,6 +97,18 @@ func (c *multiTopicConsumer) Unsubscribe() error {
 	return errs
 }
 
+func (c *multiTopicConsumer) UnsubscribeForce() error {
+	var errs error
+	for t, consumer := range c.consumers {
+		if err := consumer.UnsubscribeForce(); err != nil {
+			msg := fmt.Sprintf("unable to force unsubscribe from topic=%s subscription=%s",
+				t, c.Subscription())
+			errs = pkgerrors.Wrap(err, msg)
+		}
+	}
+	return errs
+}
+
 func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {
