@@ -171,6 +171,8 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 				return nil, err
 			}
 			return cm.Message, nil
+		case <-r.c.closeCh:
+			return nil, newError(ConsumerClosed, "consumer closed")
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
