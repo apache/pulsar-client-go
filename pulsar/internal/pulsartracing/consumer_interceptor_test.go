@@ -110,3 +110,8 @@ func (c *mockConsumer) SeekByTime(time time.Time) error {
 func (c *mockConsumer) Name() string {
 	return ""
 }
+
+func (c *mockConsumer) GetLastMessageIDs() ([]pulsar.MessageID, error) {
+	ids := make([]pulsar.MessageID, 0)
+	return ids, nil
+}

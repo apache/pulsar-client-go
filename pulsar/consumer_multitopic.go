@@ -109,6 +109,18 @@ func (c *multiTopicConsumer) UnsubscribeForce() error {
 	return errs
 }
 
+func (c *multiTopicConsumer) GetLastMessageIDs() ([]MessageID, error) {
+	ids := make([]MessageID, 0)
+	for _, c := range c.consumers {
+		id, err := c.GetLastMessageIDs()
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id...)
+	}
+	return ids, nil
+}
+
 func (c *multiTopicConsumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {

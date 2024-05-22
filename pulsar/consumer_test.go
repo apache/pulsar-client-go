@@ -4478,3 +4478,97 @@ func TestConsumerForceUnSubscribe(t *testing.T) {
 	assert.Error(t, err)
 
 }
+
+func TestConsumerGetLastMessageIDs(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	partition := 1
+	topic := "my-topic"
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	// send messages
+	totalMessage := 10
+	for i := 0; i < totalMessage; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			assert.Nil(t, err)
+		}
+	}
+
+	messageIDs, err := consumer.GetLastMessageIDs()
+	assert.Nil(t, err)
+	assert.Equal(t, partition, len(messageIDs))
+
+}
+
+func TestPartitionConsumerGetLastMessageIDs(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	partition := 3
+	err = createPartitionedTopic(topic, partition)
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	ctx := context.Background()
+	totalMessage := 30
+	// send messages
+	for i := 0; i < totalMessage; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			assert.Nil(t, err)
+		}
+	}
+
+	messageIDs, err := consumer.GetLastMessageIDs()
+	assert.Nil(t, err)
+	assert.Equal(t, partition, len(messageIDs))
+	for _, id := range messageIDs {
+		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
+	}
+
+}

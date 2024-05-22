@@ -137,3 +137,52 @@ func TestMultiTopicConsumerForceUnsubscribe(t *testing.T) {
 	err = consumer.UnsubscribeForce()
 	assert.Error(t, err)
 }
+
+func TestMultiTopicGetLastMessageIDs(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic1 := newTopicName()
+	topic2 := newTopicName()
+	topics := []string{topic1, topic2}
+	partition := 1
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topics:           topics,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// produce messages
+	totalMessage := 20
+	for i, topic := range topics {
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:           topic,
+			DisableBatching: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = genMessages(p, totalMessage, func(idx int) string {
+			return fmt.Sprintf("topic-%d-hello-%d", i+1, idx)
+		})
+		p.Close()
+		if err != nil {
+			assert.Nil(t, err)
+		}
+	}
+
+	messageIDs, err := consumer.GetLastMessageIDs()
+	assert.Nil(t, err)
+	assert.Equal(t, len(topics), len(messageIDs))
+	for _, id := range messageIDs {
+		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
+	}
+
+}

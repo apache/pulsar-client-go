@@ -278,6 +278,11 @@ type Consumer interface {
 	// where more than one consumer are currently connected.
 	UnsubscribeForce() error
 
+	// GetLastMessageIDs get all the last message id of the topics the consumer subscribed.
+	//
+	// The list of MessageID instances of all the topics that the consumer subscribed
+	GetLastMessageIDs() ([]MessageID, error)
+
 	// Receive a single message.
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)
