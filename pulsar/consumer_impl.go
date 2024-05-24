@@ -472,14 +472,15 @@ func (c *consumer) unsubscribe(force bool) error {
 	return nil
 }
 
-func (c *consumer) GetLastMessageIDs() ([]MessageID, error) {
-	ids := make([]MessageID, 0)
+func (c *consumer) GetLastMessageIDs() ([]*TopicMessageID, error) {
+	ids := make([]*TopicMessageID, 0)
 	for _, pc := range c.consumers {
 		id, err := pc.getLastMessageID()
+		tm := &TopicMessageID{Topic: pc.topic, MessageID: id}
 		if err != nil {
 			return nil, err
 		}
-		ids = append(ids, id)
+		ids = append(ids, tm)
 	}
 	return ids, nil
 }

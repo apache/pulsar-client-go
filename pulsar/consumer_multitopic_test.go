@@ -146,10 +146,21 @@ func TestMultiTopicGetLastMessageIDs(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
+	topic1Partition, topic2Partition, topic3Partition := 1, 2, 3
+
 	topic1 := newTopicName()
+	err = createPartitionedTopic(topic1, topic1Partition)
+	assert.Nil(t, err)
+
 	topic2 := newTopicName()
-	topics := []string{topic1, topic2}
-	partition := 1
+	err = createPartitionedTopic(topic2, topic2Partition)
+	assert.Nil(t, err)
+
+	topic3 := newTopicName()
+	err = createPartitionedTopic(topic3, topic3Partition)
+	assert.Nil(t, err)
+
+	topics := []string{topic1, topic2, topic3}
 	// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topics:           topics,
@@ -160,7 +171,7 @@ func TestMultiTopicGetLastMessageIDs(t *testing.T) {
 	defer consumer.Close()
 
 	// produce messages
-	totalMessage := 20
+	totalMessage := 30
 	for i, topic := range topics {
 		p, err := client.CreateProducer(ProducerOptions{
 			Topic:           topic,
@@ -178,11 +189,17 @@ func TestMultiTopicGetLastMessageIDs(t *testing.T) {
 		}
 	}
 
-	messageIDs, err := consumer.GetLastMessageIDs()
+	topicMessageIDs, err := consumer.GetLastMessageIDs()
 	assert.Nil(t, err)
-	assert.Equal(t, len(topics), len(messageIDs))
-	for _, id := range messageIDs {
-		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
+	assert.Equal(t, topic1Partition+topic2Partition+topic3Partition, len(topicMessageIDs))
+	for _, id := range topicMessageIDs {
+		if strings.Contains(id.Topic, topic1) {
+			assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/topic1Partition-1)
+		} else if strings.Contains(id.Topic, topic2) {
+			assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/topic2Partition-1)
+		} else if strings.Contains(id.Topic, topic3) {
+			assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/topic3Partition-1)
+		}
 	}
 
 }

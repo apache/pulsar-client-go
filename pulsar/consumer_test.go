@@ -25,6 +25,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -4520,6 +4521,7 @@ func TestConsumerGetLastMessageIDs(t *testing.T) {
 	messageIDs, err := consumer.GetLastMessageIDs()
 	assert.Nil(t, err)
 	assert.Equal(t, partition, len(messageIDs))
+	assert.True(t, strings.HasSuffix(messageIDs[0].Topic, topic))
 
 }
 
@@ -4564,11 +4566,12 @@ func TestPartitionConsumerGetLastMessageIDs(t *testing.T) {
 		}
 	}
 
-	messageIDs, err := consumer.GetLastMessageIDs()
+	topicMessageIDs, err := consumer.GetLastMessageIDs()
 	assert.Nil(t, err)
-	assert.Equal(t, partition, len(messageIDs))
-	for _, id := range messageIDs {
-		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
+	assert.Equal(t, partition, len(topicMessageIDs))
+	for _, id := range topicMessageIDs {
+		assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/partition-1)
+		assert.True(t, strings.Contains(id.Topic, topic))
 	}
 
 }
