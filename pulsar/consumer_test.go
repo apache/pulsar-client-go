@@ -4521,7 +4521,7 @@ func TestConsumerGetLastMessageIDs(t *testing.T) {
 	messageIDs, err := consumer.GetLastMessageIDs()
 	assert.Nil(t, err)
 	assert.Equal(t, partition, len(messageIDs))
-	assert.True(t, strings.HasSuffix(messageIDs[0].Topic, topic))
+	assert.True(t, strings.HasSuffix(messageIDs[0].Topic(), topic))
 
 }
 
@@ -4570,8 +4570,8 @@ func TestPartitionConsumerGetLastMessageIDs(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, partition, len(topicMessageIDs))
 	for _, id := range topicMessageIDs {
-		assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/partition-1)
-		assert.True(t, strings.Contains(id.Topic, topic))
+		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
+		assert.True(t, strings.Contains(id.Topic(), topic))
 	}
 
 }

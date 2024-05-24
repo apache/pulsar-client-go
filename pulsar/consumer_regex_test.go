@@ -495,6 +495,6 @@ func TestRegexTopicGetLastMessageIDs(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, len(topics), len(topicMessageIDs))
 	for _, id := range topicMessageIDs {
-		assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/partition-1)
+		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
 	}
 }

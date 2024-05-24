@@ -109,8 +109,8 @@ func (c *multiTopicConsumer) UnsubscribeForce() error {
 	return errs
 }
 
-func (c *multiTopicConsumer) GetLastMessageIDs() ([]*TopicMessageID, error) {
-	ids := make([]*TopicMessageID, 0)
+func (c *multiTopicConsumer) GetLastMessageIDs() ([]TopicMessageID, error) {
+	ids := make([]TopicMessageID, 0)
 	for _, c := range c.consumers {
 		id, err := c.GetLastMessageIDs()
 		if err != nil {

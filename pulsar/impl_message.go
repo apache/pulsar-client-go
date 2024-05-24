@@ -491,3 +491,40 @@ func (id chunkMessageID) Serialize() []byte {
 	data, _ := proto.Marshal(msgID)
 	return data
 }
+
+type topicMessageID struct {
+	track *trackingMessageID
+	topic string
+}
+
+func (t *topicMessageID) Serialize() []byte {
+	return t.track.Serialize()
+}
+
+func (t *topicMessageID) LedgerID() int64 {
+	return t.track.LedgerID()
+}
+
+func (t *topicMessageID) EntryID() int64 {
+	return t.track.EntryID()
+}
+
+func (t *topicMessageID) BatchIdx() int32 {
+	return t.track.BatchIdx()
+}
+
+func (t *topicMessageID) PartitionIdx() int32 {
+	return t.track.PartitionIdx()
+}
+
+func (t *topicMessageID) BatchSize() int32 {
+	return t.track.BatchSize()
+}
+
+func (t *topicMessageID) String() string {
+	return t.track.String()
+}
+
+func (t *topicMessageID) Topic() string {
+	return t.topic
+}

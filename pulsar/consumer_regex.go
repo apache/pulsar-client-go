@@ -148,8 +148,8 @@ func (c *regexConsumer) UnsubscribeForce() error {
 	return errs
 }
 
-func (c *regexConsumer) GetLastMessageIDs() ([]*TopicMessageID, error) {
-	ids := make([]*TopicMessageID, 0)
+func (c *regexConsumer) GetLastMessageIDs() ([]TopicMessageID, error) {
+	ids := make([]TopicMessageID, 0)
 	for _, c := range c.consumers {
 		id, err := c.GetLastMessageIDs()
 		if err != nil {

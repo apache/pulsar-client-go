@@ -193,12 +193,12 @@ func TestMultiTopicGetLastMessageIDs(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, topic1Partition+topic2Partition+topic3Partition, len(topicMessageIDs))
 	for _, id := range topicMessageIDs {
-		if strings.Contains(id.Topic, topic1) {
-			assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/topic1Partition-1)
-		} else if strings.Contains(id.Topic, topic2) {
-			assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/topic2Partition-1)
-		} else if strings.Contains(id.Topic, topic3) {
-			assert.Equal(t, int(id.MessageID.EntryID()), totalMessage/topic3Partition-1)
+		if strings.Contains(id.Topic(), topic1) {
+			assert.Equal(t, int(id.EntryID()), totalMessage/topic1Partition-1)
+		} else if strings.Contains(id.Topic(), topic2) {
+			assert.Equal(t, int(id.EntryID()), totalMessage/topic2Partition-1)
+		} else if strings.Contains(id.Topic(), topic3) {
+			assert.Equal(t, int(id.EntryID()), totalMessage/topic3Partition-1)
 		}
 	}
 

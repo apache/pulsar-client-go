@@ -111,7 +111,7 @@ func (c *mockConsumer) Name() string {
 	return ""
 }
 
-func (c *mockConsumer) GetLastMessageIDs() ([]*pulsar.TopicMessageID, error) {
-	ids := make([]*pulsar.TopicMessageID, 0)
+func (c *mockConsumer) GetLastMessageIDs() ([]pulsar.TopicMessageID, error) {
+	ids := make([]pulsar.TopicMessageID, 0)
 	return ids, nil
 }

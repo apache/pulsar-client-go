@@ -167,9 +167,9 @@ type MessageID interface {
 }
 
 // TopicMessageID defined the correspondence between topic and MessageID.
-type TopicMessageID struct {
-	Topic     string
-	MessageID MessageID
+type TopicMessageID interface {
+	MessageID
+	Topic() string
 }
 
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation
