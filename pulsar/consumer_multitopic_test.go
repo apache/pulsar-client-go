@@ -22,6 +22,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -189,6 +193,10 @@ func TestMultiTopicGetLastMessageIDs(t *testing.T) {
 		}
 	}
 
+	// create admin
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+
 	topicMessageIDs, err := consumer.GetLastMessageIDs()
 	assert.Nil(t, err)
 	assert.Equal(t, topic1Partition+topic2Partition+topic3Partition, len(topicMessageIDs))
@@ -200,6 +208,13 @@ func TestMultiTopicGetLastMessageIDs(t *testing.T) {
 		} else if strings.Contains(id.Topic(), topic3) {
 			assert.Equal(t, int(id.EntryID()), totalMessage/topic3Partition-1)
 		}
+
+		topicName, err := utils.GetTopicName(id.Topic())
+		assert.Nil(t, err)
+		messages, err := admin.Subscriptions().GetMessagesByID(*topicName, id.LedgerID(), id.EntryID())
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(messages))
+
 	}
 
 }

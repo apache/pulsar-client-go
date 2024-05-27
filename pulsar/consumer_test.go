@@ -25,11 +25,14 @@ import (
 	"net/http"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsaradmin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -4518,10 +4521,20 @@ func TestConsumerGetLastMessageIDs(t *testing.T) {
 		}
 	}
 
+	// create admin
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+
 	messageIDs, err := consumer.GetLastMessageIDs()
 	assert.Nil(t, err)
 	assert.Equal(t, partition, len(messageIDs))
-	assert.True(t, strings.HasSuffix(messageIDs[0].Topic(), topic))
+
+	id := messageIDs[0]
+	topicName, err := utils.GetTopicName(id.Topic())
+	assert.Nil(t, err)
+	messages, err := admin.Subscriptions().GetMessagesByID(*topicName, id.LedgerID(), id.EntryID())
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(messages))
 
 }
 
@@ -4566,12 +4579,22 @@ func TestPartitionConsumerGetLastMessageIDs(t *testing.T) {
 		}
 	}
 
+	// create admin
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+
 	topicMessageIDs, err := consumer.GetLastMessageIDs()
 	assert.Nil(t, err)
 	assert.Equal(t, partition, len(topicMessageIDs))
 	for _, id := range topicMessageIDs {
 		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
-		assert.True(t, strings.Contains(id.Topic(), topic))
+
+		topicName, err := utils.GetTopicName(id.Topic())
+		assert.Nil(t, err)
+		messages, err := admin.Subscriptions().GetMessagesByID(*topicName, id.LedgerID(), id.EntryID())
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(messages))
+
 	}
 
 }
