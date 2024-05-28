@@ -166,6 +166,12 @@ type MessageID interface {
 	String() string
 }
 
+// TopicMessageID defined the correspondence between topic and MessageID.
+type TopicMessageID interface {
+	MessageID
+	Topic() string
+}
+
 // DeserializeMessageID reconstruct a MessageID object from its serialized representation
 func DeserializeMessageID(data []byte) (MessageID, error) {
 	return deserializeMessageID(data)

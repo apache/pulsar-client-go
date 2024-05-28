@@ -25,6 +25,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+
 	"github.com/stretchr/testify/assert"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -442,4 +446,68 @@ func cloneConsumers(rc *regexConsumer) map[string]Consumer {
 		consumers[t] = c
 	}
 	return consumers
+}
+
+func TestRegexTopicGetLastMessageIDs(t *testing.T) {
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	partition := 1
+	topic1 := fmt.Sprintf("regex-topic-%v", time.Now().Nanosecond())
+	topic2 := fmt.Sprintf("regex-topic-%v", time.Now().Nanosecond())
+	err = createPartitionedTopic(topic1, partition)
+	assert.Nil(t, err)
+	err = createPartitionedTopic(topic2, partition)
+	assert.Nil(t, err)
+	topics := []string{topic1, topic2}
+
+	// create consumer
+	topicsPattern := "persistent://public/default/regex-topic-.*"
+	consumer, err := client.Subscribe(ConsumerOptions{
+		TopicsPattern:    topicsPattern,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// produce messages
+	totalMessage := 20
+	for i, topic := range topics {
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:           topic,
+			DisableBatching: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = genMessages(p, totalMessage, func(idx int) string {
+			return fmt.Sprintf("topic-%d-hello-%d", i+1, idx)
+		})
+		p.Close()
+		if err != nil {
+			assert.Nil(t, err)
+		}
+	}
+
+	// create admin
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+
+	topicMessageIDs, err := consumer.GetLastMessageIDs()
+	assert.Nil(t, err)
+	assert.Equal(t, len(topics), len(topicMessageIDs))
+	for _, id := range topicMessageIDs {
+		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
+		topicName, err := utils.GetTopicName(id.Topic())
+		assert.Nil(t, err)
+		messages, err := admin.Subscriptions().GetMessagesByID(*topicName, id.LedgerID(), id.EntryID())
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(messages))
+	}
 }

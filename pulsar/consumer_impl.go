@@ -472,6 +472,19 @@ func (c *consumer) unsubscribe(force bool) error {
 	return nil
 }
 
+func (c *consumer) GetLastMessageIDs() ([]TopicMessageID, error) {
+	ids := make([]TopicMessageID, 0)
+	for _, pc := range c.consumers {
+		id, err := pc.getLastMessageID()
+		tm := &topicMessageID{topic: pc.topic, track: id}
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, tm)
+	}
+	return ids, nil
+}
+
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {
