@@ -958,7 +958,7 @@ func (c *connection) handleTopicMigrated(commandTopicMigrated *pb.CommandTopicMi
 			commandTopicMigrated.GetBrokerServiceUrlTls())
 		return
 	}
-	if commandTopicMigrated.ResourceType.Number() == 0 {
+	if commandTopicMigrated.GetResourceType() == pb.CommandTopicMigrated_Producer {
 		c.listenersLock.RLock()
 		producer, ok := c.listeners[resourceID]
 		c.listenersLock.RUnlock()
