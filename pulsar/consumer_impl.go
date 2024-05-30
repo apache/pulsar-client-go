@@ -81,6 +81,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.ReceiverQueueSize = defaultReceiverQueueSize
 	}
 
+	if options.EnableZeroQueueConsumer {
+		options.ReceiverQueueSize = 0
+	}
+
 	if options.Interceptors == nil {
 		options.Interceptors = defaultConsumerInterceptors
 	}
@@ -236,7 +240,19 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 }
 
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (*consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (Consumer, error) {
+	partitions, err := client.TopicPartitions(topic)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(partitions) > 1 && options.EnableZeroQueueConsumer {
+		return nil, pkgerrors.New("ZeroQueueConsumer is not supported for partitioned topics")
+	}
+
+	if len(partitions) == 1 && options.EnableZeroQueueConsumer {
+		return newZeroConsumer(client, options, topic, messageCh, dlq, rlq, disableForceTopicCreation)
+	}
 
 	consumer := &consumer{
 		topic:                     topic,
@@ -253,7 +269,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		metrics:                   client.metrics.GetLeveledMetrics(topic),
 	}
 
-	err := consumer.internalTopicSubscribeToPartitions()
+	err = consumer.internalTopicSubscribeToPartitions()
 	if err != nil {
 		return nil, err
 	}

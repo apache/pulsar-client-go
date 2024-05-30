@@ -160,6 +160,11 @@ type ConsumerOptions struct {
 	// Default value is `1000` messages and should be good for most use cases.
 	ReceiverQueueSize int
 
+	// EnableZeroQueueConsumer, if enabled, the ReceiverQueueSize will be 0.
+	// Notice: only non-partitioned topic is supported.
+	// Default is false.
+	EnableZeroQueueConsumer bool
+
 	// EnableAutoScaledReceiverQueueSize, if enabled, the consumer receive queue will be auto-scaled
 	// by the consumer actual throughput. The ReceiverQueueSize will be the maximum size which consumer
 	// receive queue can be scaled.
