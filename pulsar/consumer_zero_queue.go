@@ -288,7 +288,6 @@ func (z *zeroQueueConsumer) Close() {
 func (z *zeroQueueConsumer) Seek(msgID MessageID) error {
 	z.Lock()
 	defer z.Unlock()
-	z.pc.availablePermits.inc()
 
 	if err := z.checkMsgIDPartition(msgID); err != nil {
 		return err
