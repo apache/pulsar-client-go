@@ -127,9 +127,10 @@ func TestZeroQueueConsumerGetLastMessageIDs(t *testing.T) {
 	topic := newTopicName()
 	// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topic,
-		SubscriptionName: "my-sub",
-		Type:             Shared,
+		Topic:                   topic,
+		SubscriptionName:        "my-sub",
+		Type:                    Shared,
+		EnableZeroQueueConsumer: true,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -281,11 +282,11 @@ func TestZeroQueueConsumer_Nack(t *testing.T) {
 	defer producer.Close()
 
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:               topicName,
-		SubscriptionName:    "sub-1",
-		Type:                Shared,
-		NackRedeliveryDelay: 1 * time.Second,
-		ReceiverQueueSize:   0,
+		Topic:                   topicName,
+		SubscriptionName:        "sub-1",
+		Type:                    Shared,
+		NackRedeliveryDelay:     1 * time.Second,
+		EnableZeroQueueConsumer: true,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
