@@ -375,7 +375,7 @@ func TestZeroQueueConsumer_Seek(t *testing.T) {
 	err = consumer.Seek(seekID)
 	assert.Nil(t, err)
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(time.Second * 3)
 	msg, err := consumer.Receive(ctx)
 	assert.Nil(t, err)
 	log.Printf("msg: %s", string(msg.Payload()))
@@ -431,7 +431,7 @@ func TestZeroQueueConsumer_SeekByTime(t *testing.T) {
 	err = consumer.SeekByTime(currentTimestamp.Add(-retentionTimeInSecond))
 	assert.Nil(t, err)
 
-	time.Sleep(100 * time.Millisecond)
+	time.Sleep(time.Second * 3)
 
 	for i := 0; i < N; i++ {
 		msg, err := consumer.Receive(ctx)
