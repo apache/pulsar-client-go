@@ -65,6 +65,39 @@ func TestCreateTopic(t *testing.T) {
 	t.Error("Couldn't find topic: " + topic)
 }
 
+func TestTopics_CreateWithProperties(t *testing.T) {
+	topic := newTopicName()
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	// Create non-partition topic
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().CreateWithProperties(*topicName, 0, map[string]string{
+		"key1": "value1",
+	})
+	assert.NoError(t, err)
+
+	properties, err := admin.Topics().GetProperties(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, properties["key1"], "value1")
+
+	// Create partition topic
+	topic = newTopicName()
+	topicName, err = utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().CreateWithProperties(*topicName, 4, map[string]string{
+		"key2": "value2",
+	})
+	assert.NoError(t, err)
+
+	properties, err = admin.Topics().GetProperties(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, properties["key2"], "value2")
+}
+
 func TestPartitionState(t *testing.T) {
 	randomName := newTopicName()
 	topic := "persistent://public/default/" + randomName
