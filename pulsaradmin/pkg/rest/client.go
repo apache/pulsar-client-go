@@ -26,6 +26,17 @@ import (
 	"path"
 )
 
+type MediaType string
+
+const (
+	ApplicationJSON          MediaType = "application/json"
+	PartitionedTopicMetaJSON MediaType = "application/vnd.partitioned-topic-metadata+json"
+)
+
+func (m MediaType) String() string {
+	return string(m)
+}
+
 // Client is a base client that is used to make http request to the ServiceURL
 type Client struct {
 	ServiceURL  string
@@ -65,10 +76,10 @@ func (c *Client) doRequest(r *request) (*http.Response, error) {
 	if r.contentType != "" {
 		req.Header.Set("Content-Type", r.contentType)
 	} else if req.Body != nil {
-		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Content-Type", ApplicationJSON.String())
 	}
 
-	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Accept", ApplicationJSON.String())
 	req.Header.Set("User-Agent", c.useragent())
 	hc := c.HTTPClient
 	if hc == nil {
@@ -160,9 +171,16 @@ func (c *Client) Put(endpoint string, in interface{}) error {
 }
 
 func (c *Client) PutWithQueryParams(endpoint string, in, obj interface{}, params map[string]string) error {
+	return c.PutWithCustomMediaType(endpoint, in, obj, params, "")
+}
+func (c *Client) PutWithCustomMediaType(endpoint string, in, obj interface{}, params map[string]string,
+	mediaType MediaType) error {
 	req, err := c.newRequest(http.MethodPut, endpoint)
 	if err != nil {
 		return err
+	}
+	if mediaType != "" {
+		req.contentType = mediaType.String()
 	}
 	req.obj = in
 
