@@ -66,45 +66,7 @@ func newZeroConsumer(client *client, options ConsumerOptions, topic string,
 		consumerName:              options.Name,
 		metrics:                   client.metrics.GetLeveledMetrics(topic),
 	}
-
-	var nackRedeliveryDelay time.Duration
-	if zc.options.NackRedeliveryDelay == 0 {
-		nackRedeliveryDelay = defaultNackRedeliveryDelay
-	} else {
-		nackRedeliveryDelay = zc.options.NackRedeliveryDelay
-	}
-	opts := &partitionConsumerOpts{
-		topic:                       zc.topic,
-		consumerName:                zc.consumerName,
-		subscription:                zc.options.SubscriptionName,
-		subscriptionType:            zc.options.Type,
-		subscriptionInitPos:         zc.options.SubscriptionInitialPosition,
-		partitionIdx:                0,
-		receiverQueueSize:           zc.options.ReceiverQueueSize,
-		nackRedeliveryDelay:         nackRedeliveryDelay,
-		nackBackoffPolicy:           zc.options.NackBackoffPolicy,
-		metadata:                    zc.options.Properties,
-		subProperties:               zc.options.SubscriptionProperties,
-		replicateSubscriptionState:  zc.options.ReplicateSubscriptionState,
-		startMessageID:              zc.options.startMessageID,
-		startMessageIDInclusive:     zc.options.StartMessageIDInclusive,
-		subscriptionMode:            zc.options.SubscriptionMode,
-		readCompacted:               zc.options.ReadCompacted,
-		interceptors:                zc.options.Interceptors,
-		maxReconnectToBroker:        zc.options.MaxReconnectToBroker,
-		backoffPolicy:               zc.options.BackoffPolicy,
-		keySharedPolicy:             zc.options.KeySharedPolicy,
-		schema:                      zc.options.Schema,
-		decryption:                  zc.options.Decryption,
-		ackWithResponse:             zc.options.AckWithResponse,
-		maxPendingChunkedMessage:    zc.options.MaxPendingChunkedMessage,
-		expireTimeOfIncompleteChunk: zc.options.ExpireTimeOfIncompleteChunk,
-		autoAckIncompleteChunk:      zc.options.AutoAckIncompleteChunk,
-		consumerEventListener:       zc.options.EventListener,
-		enableBatchIndexAck:         zc.options.EnableBatchIndexAcknowledgment,
-		ackGroupingOptions:          zc.options.AckGroupingOptions,
-		autoReceiverQueueSize:       zc.options.EnableAutoScaledReceiverQueueSize,
-	}
+	opts := newPartitionConsumerOpts(zc.topic, zc.consumerName, 0, zc.options)
 	conn, err := newPartitionConsumer(zc, zc.client, opts, zc.messageCh, zc.dlq, zc.metrics)
 	if err != nil {
 		return nil, err
@@ -171,8 +133,7 @@ func (z *zeroQueueConsumer) Receive(ctx context.Context) (Message, error) {
 }
 
 func (z *zeroQueueConsumer) Chan() <-chan ConsumerMessage {
-	z.log.Warnf("zeroQueueConsumer cannot support Chan method")
-	return make(<-chan ConsumerMessage)
+	panic("zeroQueueConsumer cannot support Chan method")
 }
 
 func (z *zeroQueueConsumer) Ack(m Message) error {

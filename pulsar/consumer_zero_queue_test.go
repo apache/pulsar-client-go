@@ -49,6 +49,8 @@ func TestNormalZeroQueueConsumer(t *testing.T) {
 		EnableZeroQueueConsumer: true,
 	})
 	assert.Nil(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
 	defer consumer.Close()
 
 	// create producer
@@ -114,6 +116,27 @@ func TestPartitionZeroQueueConsumer(t *testing.T) {
 	assert.Nil(t, consumer)
 	assert.Error(t, err, "ZeroQueueConsumer is not supported for partitioned topics")
 }
+func TestOnePartitionZeroQueueConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	err = createPartitionedTopic(topic, 1)
+	assert.Nil(t, err)
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                   topic,
+		SubscriptionName:        "my-sub",
+		EnableZeroQueueConsumer: true,
+	})
+	assert.Nil(t, consumer)
+	assert.Error(t, err, "ZeroQueueConsumer is not supported for partitioned topics")
+}
 
 func TestZeroQueueConsumerGetLastMessageIDs(t *testing.T) {
 	client, err := NewClient(ClientOptions{
@@ -132,6 +155,8 @@ func TestZeroQueueConsumerGetLastMessageIDs(t *testing.T) {
 		Type:                    Shared,
 		EnableZeroQueueConsumer: true,
 	})
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
 	assert.Nil(t, err)
 	defer consumer.Close()
 
@@ -191,6 +216,8 @@ func TestZeroQueueConsumer_Chan(t *testing.T) {
 		EnableZeroQueueConsumer: true,
 	})
 	assert.Nil(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
 	defer consumer.Close()
 
 	// create producer
@@ -209,8 +236,20 @@ func TestZeroQueueConsumer_Chan(t *testing.T) {
 		assert.Nil(t, err)
 		log.Printf("send message: %s", msg.String())
 	}
-	assert.Equal(t, 0, len(consumer.Chan()))
+	assertPanic(t, "zeroQueueConsumer cannot support Chan method", func() {
+		consumer.Chan()
+	})
 }
+
+func assertPanic(t *testing.T, panicValue interface{}, f func()) {
+	defer func() {
+		if r := recover(); r != panicValue {
+			t.Errorf("Expected panic %v, but got %v", panicValue, r)
+		}
+	}()
+	f()
+}
+
 func TestZeroQueueConsumer_AckCumulativeConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -229,6 +268,8 @@ func TestZeroQueueConsumer_AckCumulativeConsumer(t *testing.T) {
 		EnableZeroQueueConsumer: true,
 	})
 	assert.Nil(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
 	defer consumer.Close()
 
 	// create producer
@@ -289,6 +330,8 @@ func TestZeroQueueConsumer_Nack(t *testing.T) {
 		EnableZeroQueueConsumer: true,
 	})
 	assert.Nil(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
 	defer consumer.Close()
 
 	const N = 100
@@ -350,6 +393,8 @@ func TestZeroQueueConsumer_Seek(t *testing.T) {
 		SubscriptionName:        "sub-1",
 	})
 	assert.Nil(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
 	defer consumer.Close()
 
 	const N = 10
@@ -406,6 +451,8 @@ func TestZeroQueueConsumer_SeekByTime(t *testing.T) {
 		SubscriptionName:        "my-sub",
 	})
 	assert.Nil(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
 	defer consumer.Close()
 
 	const N = 10
