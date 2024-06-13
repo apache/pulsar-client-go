@@ -21,6 +21,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
+
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
@@ -34,6 +36,20 @@ type Topics interface {
 	//        number of topic partitions,
 	//        when setting to 0, it will create a non-partitioned topic
 	Create(topic utils.TopicName, partitions int) error
+
+	// CreateWithProperties Create a partitioned or non-partitioned topic
+	//
+	// @param topic
+	//        topicName struct
+	// @param partitions
+	//        number of topic partitions,
+	//        when setting to 0, it will create a non-partitioned topic
+	// @param meta
+	//        topic properties
+	CreateWithProperties(topic utils.TopicName, partitions int, meta map[string]string) error
+
+	// GetProperties returns the properties of a topic
+	GetProperties(topic utils.TopicName) (map[string]string, error)
 
 	// Delete a topic, this function can delete both partitioned or non-partitioned topic
 	//
@@ -392,14 +408,29 @@ func (c *pulsarClient) Topics() Topics {
 }
 
 func (t *topics) Create(topic utils.TopicName, partitions int) error {
+	return t.CreateWithProperties(topic, partitions, nil)
+}
+func (t *topics) CreateWithProperties(topic utils.TopicName, partitions int, meta map[string]string) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitions")
-	data := &partitions
 	if partitions == 0 {
 		endpoint = t.pulsar.endpoint(t.basePath, topic.GetRestPath())
-		data = nil
+		return t.pulsar.Client.Put(endpoint, meta)
 	}
+	data := struct {
+		Meta       map[string]string `json:"properties"`
+		Partitions int               `json:"partitions"`
+	}{
+		Meta:       meta,
+		Partitions: partitions,
+	}
+	return t.pulsar.Client.PutWithCustomMediaType(endpoint, &data, nil, nil, rest.PartitionedTopicMetaJSON)
+}
 
-	return t.pulsar.Client.Put(endpoint, data)
+func (t *topics) GetProperties(topic utils.TopicName) (map[string]string, error) {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "properties")
+	var properties map[string]string
+	err := t.pulsar.Client.Get(endpoint, &properties)
+	return properties, err
 }
 
 func (t *topics) Delete(topic utils.TopicName, force bool, nonPartitioned bool) error {

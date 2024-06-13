@@ -66,6 +66,8 @@ type LookupService interface {
 
 	GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error)
 
+	ServiceNameResolver() *ServiceNameResolver
+
 	// Closable Allow Lookup Service's internal client to be able to closed
 	Closable
 }
@@ -137,12 +139,14 @@ const lookupResultMaxRedirect = 20
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
-	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-		RequestId:              &id,
-		Topic:                  &topic,
-		Authoritative:          proto.Bool(false),
-		AdvertisedListenerName: proto.String(ls.listenerName),
-	})
+
+	res, err := ls.rpcClient.RequestToHost(&ls.serviceNameResolver, id, pb.BaseCommand_LOOKUP,
+		&pb.CommandLookupTopic{
+			RequestId:              &id,
+			Topic:                  &topic,
+			Authoritative:          proto.Bool(false),
+			AdvertisedListenerName: proto.String(ls.listenerName),
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -255,6 +259,10 @@ func (ls *lookupService) GetTopicsOfNamespace(namespace string, mode GetTopicsOf
 
 func (ls *lookupService) Close() {}
 
+func (ls *lookupService) ServiceNameResolver() *ServiceNameResolver {
+	return &ls.serviceNameResolver
+}
+
 const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
 const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
 const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
@@ -362,6 +370,11 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 func (h *httpLookupService) GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error) {
 	return nil, errors.New("GetSchema is not supported by httpLookupService")
 }
+
+func (h *httpLookupService) ServiceNameResolver() *ServiceNameResolver {
+	return &h.serviceNameResolver
+}
+
 func (h *httpLookupService) Close() {
 	h.httpClient.Close()
 }
