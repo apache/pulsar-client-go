@@ -253,7 +253,8 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		return nil, pkgerrors.New("ZeroQueueConsumer is not supported for partitioned topics")
 	}
 
-	if len(partitions) == 1 && strings.Contains(partitions[0], utils.PARTITIONEDTOPICSUFFIX) {
+	if len(partitions) == 1 && options.EnableZeroQueueConsumer &&
+		strings.Contains(partitions[0], utils.PARTITIONEDTOPICSUFFIX) {
 		return nil, pkgerrors.New("ZeroQueueConsumer is not supported for partitioned topics")
 	}
 
