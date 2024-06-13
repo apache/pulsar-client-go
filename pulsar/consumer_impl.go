@@ -57,12 +57,13 @@ type consumer struct {
 	// channel used to deliver message to clients
 	messageCh chan ConsumerMessage
 
-	dlq           *dlqRouter
-	rlq           *retryRouter
-	closeOnce     sync.Once
-	closeCh       chan struct{}
-	errorCh       chan error
-	stopDiscovery func()
+	dlq            *dlqRouter
+	rlq            *retryRouter
+	closeOnce      sync.Once
+	closeMsgChOnce *sync.Once
+	closeCh        chan struct{}
+	errorCh        chan error
+	stopDiscovery  func()
 
 	log     log.Logger
 	metrics *internal.LeveledMetrics
@@ -176,6 +177,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		return nil, err
 	}
 
+	closeMsgChOnce := new(sync.Once)
 	// normalize as FQDN topics
 	var tns []*internal.TopicName
 	// single topic consumer
@@ -193,7 +195,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if err != nil {
 			return nil, err
 		}
-		return newInternalConsumer(client, options, topic, messageCh, dlq, rlq, false)
+		return newInternalConsumer(client, options, topic, messageCh, dlq, rlq, false, closeMsgChOnce)
 	}
 
 	if len(options.Topics) > 1 {
@@ -210,7 +212,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq)
+		return newMultiTopicConsumer(client, options, options.Topics, messageCh, dlq, rlq, closeMsgChOnce)
 	}
 
 	if options.TopicsPattern != "" {
@@ -229,14 +231,15 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq)
+		return newRegexConsumer(client, options, tn, pattern, messageCh, dlq, rlq, closeMsgChOnce)
 	}
 
 	return nil, newError(InvalidTopicName, "topic name is required for consumer")
 }
 
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (*consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool,
+	closeMsgChOnce *sync.Once) (*consumer, error) {
 
 	consumer := &consumer{
 		topic:                     topic,
@@ -245,6 +248,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		disableForceTopicCreation: disableForceTopicCreation,
 		messageCh:                 messageCh,
 		closeCh:                   make(chan struct{}),
+		closeMsgChOnce:            closeMsgChOnce,
 		errorCh:                   make(chan error),
 		dlq:                       dlq,
 		rlq:                       rlq,
@@ -666,6 +670,9 @@ func (c *consumer) Close() {
 		}
 		wg.Wait()
 		close(c.closeCh)
+		c.closeMsgChOnce.Do(func() {
+			close(c.messageCh)
+		})
 		c.client.handlers.Del(c)
 		c.dlq.close()
 		c.rlq.close()
