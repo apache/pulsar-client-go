@@ -73,3 +73,21 @@ func TestGetAllActiveBrokers(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, brokers)
 }
+
+func TestUpdateDynamicConfiguration(t *testing.T) {
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	assert.NoError(t, err)
+	cfg := &config.Config{
+		Token: string(readFile),
+	}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	err = admin.Brokers().UpdateDynamicConfiguration("allowAutoSubscriptionCreation", "true")
+	assert.NoError(t, err)
+
+	configurations, err := admin.Brokers().GetDynamicConfigurationNames()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, configurations)
+}
