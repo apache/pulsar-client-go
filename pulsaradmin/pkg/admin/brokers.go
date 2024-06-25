@@ -19,7 +19,6 @@ package admin
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -120,8 +119,8 @@ func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils
 }
 
 func (b *broker) UpdateDynamicConfiguration(configName, configValue string) error {
-	value := url.QueryEscape(configValue)
-	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", configName, value)
+	value := fmt.Sprintf("/configuration/%s/%s", configName, configValue)
+	endpoint := b.pulsar.endpointWithFullPath(b.basePath, value)
 	return b.pulsar.Client.Post(endpoint, nil)
 }
 
