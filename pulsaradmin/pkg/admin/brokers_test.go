@@ -124,9 +124,10 @@ func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
 	encoded := url.QueryEscape(value)
 
 	resp, err := client.MakeRequestWithURL(http.MethodPost, &url.URL{
-		Scheme:  u.Scheme,
-		User:    u.User,
-		Host:    u.Host,
+		Scheme: u.Scheme,
+		User:   u.User,
+		Host:   u.Host,
+		// use this config to test, will restore it later
 		Path:    "/admin/v2/brokers/configuration/allowAutoSubscriptionCreation/" + value,
 		RawPath: "/admin/v2/brokers/configuration/allowAutoSubscriptionCreation/" + encoded,
 	})
@@ -147,4 +148,8 @@ func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
 	err = json.Unmarshal([]byte(configurations["allowAutoSubscriptionCreation"]), &m)
 	assert.NoError(t, err)
 	assert.Equal(t, "https://example.com/", m["key/123"])
+
+	// restore the config
+	err = admin.Brokers().UpdateDynamicConfiguration("allowAutoSubscriptionCreation", "true")
+	assert.NoError(t, err)
 }
