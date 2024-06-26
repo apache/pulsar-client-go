@@ -104,6 +104,20 @@ func (c *Client) MakeRequest(method, endpoint string) (*http.Response, error) {
 	return resp, nil
 }
 
+func (c *Client) MakeRequestWithURL(method string, urlOpt *url.URL) (*http.Response, error) {
+	req := &request{
+		method: method,
+		url:    urlOpt,
+		params: make(url.Values),
+	}
+	resp, err := checkSuccessful(c.doRequest(req))
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+}
+
 func (c *Client) Get(endpoint string, obj interface{}) error {
 	_, err := c.GetWithQueryParams(endpoint, obj, nil, true)
 	return err
