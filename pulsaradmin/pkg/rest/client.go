@@ -67,15 +67,6 @@ func (c *Client) newRequest(method, path string) (*request, error) {
 	return req, nil
 }
 
-func (c *Client) newRequestWithURL(method string, urlOpt *url.URL) *request {
-	req := &request{
-		method: method,
-		url:    urlOpt,
-		params: make(url.Values),
-	}
-	return req
-}
-
 func (c *Client) doRequest(r *request) (*http.Response, error) {
 	req, err := r.toHTTP()
 	if err != nil {
@@ -114,8 +105,11 @@ func (c *Client) MakeRequest(method, endpoint string) (*http.Response, error) {
 }
 
 func (c *Client) MakeRequestWithURL(method string, urlOpt *url.URL) (*http.Response, error) {
-	req := c.newRequestWithURL(method, urlOpt)
-
+	req := &request{
+		method: method,
+		url:    urlOpt,
+		params: make(url.Values),
+	}
 	resp, err := checkSuccessful(c.doRequest(req))
 	if err != nil {
 		return nil, err
