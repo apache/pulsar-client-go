@@ -29,7 +29,6 @@ import (
 	log "github.com/sirupsen/logrus"
 
 	"github.com/hamba/avro/v2"
-	"github.com/linkedin/goavro/v2"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -123,19 +122,6 @@ func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]s
 	}
 	schema = s
 	return
-}
-
-// Deprecated: AvroCodec is no longer in use internally, kept for backward compatibility
-type AvroCodec struct {
-	Codec *goavro.Codec
-}
-
-// Deprecated: AvroCodec is no longer in use internally, kept for backward compatibility
-func NewSchemaDefinition(schema *goavro.Codec) *AvroCodec {
-	schemaDef := &AvroCodec{
-		Codec: schema,
-	}
-	return schemaDef
 }
 
 // initAvroCodec returns a Codec used to translate between a byte slice of either
