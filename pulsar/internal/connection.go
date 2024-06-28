@@ -867,16 +867,11 @@ func (c *connection) handleSendError(sendError *pb.CommandSendError) {
 	producerID := sendError.GetProducerId()
 
 	switch sendError.GetError() {
-	case pb.ServerError_NotAllowedError:
-		_, ok := c.deletePendingProducers(producerID)
-		if !ok {
-			c.log.Warnf("Received unexpected error response for request %d of type %s",
-				producerID, sendError.GetError())
-			return
-		}
-
-		c.log.Warnf("server error: %s: %s", sendError.GetError(), sendError.GetMessage())
 	case pb.ServerError_TopicTerminatedError:
+	case pb.ServerError_NotAllowedError:
+	case pb.ServerError_UnknownError:
+		//	When encountered unrecoverable error, we should close all producers and connections
+		//	So that we can escape from infinite retry loops
 		_, ok := c.deletePendingProducers(producerID)
 		if !ok {
 			c.log.Warnf("Received unexpected error response for producer %d of type %s",
