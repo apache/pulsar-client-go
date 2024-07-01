@@ -856,17 +856,10 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 }
 
 func (c *consumer) messageID(msgID MessageID) *trackingMessageID {
-	mid := toTrackingMessageID(msgID)
-
-	partition := int(mid.partitionIdx)
-	// did we receive a valid partition index?
-	if partition < 0 || partition >= len(c.consumers) {
-		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(c.consumers))
+	if err := c.checkMsgIDPartition(msgID); err != nil {
 		return nil
 	}
-
-	return mid
+	return toTrackingMessageID(msgID)
 }
 
 func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {
