@@ -28,7 +28,7 @@ import (
 
 	log "github.com/sirupsen/logrus"
 
-	"github.com/linkedin/goavro/v2"
+	"github.com/hamba/avro/v2"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -124,21 +124,10 @@ func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]s
 	return
 }
 
-type AvroCodec struct {
-	Codec *goavro.Codec
-}
-
-func NewSchemaDefinition(schema *goavro.Codec) *AvroCodec {
-	schemaDef := &AvroCodec{
-		Codec: schema,
-	}
-	return schemaDef
-}
-
 // initAvroCodec returns a Codec used to translate between a byte slice of either
 // binary or textual Avro data and native Go data.
-func initAvroCodec(codec string) (*goavro.Codec, error) {
-	return goavro.NewCodec(codec)
+func initAvroCodec(schemaDef string) (avro.Schema, error) {
+	return avro.Parse(schemaDef)
 }
 
 type JSONSchema struct {
@@ -162,8 +151,11 @@ func NewJSONSchemaWithValidation(jsonAvroSchemaDef string, properties map[string
 	if err != nil {
 		return nil, err
 	}
-	schemaDef := NewSchemaDefinition(avroCodec)
-	js.SchemaInfo.Schema = schemaDef.Codec.Schema()
+	resolvedSchema, err := json.Marshal(avroCodec)
+	if err != nil {
+		return nil, err
+	}
+	js.SchemaInfo.Schema = string(resolvedSchema)
 	js.SchemaInfo.Type = JSON
 	js.SchemaInfo.Properties = properties
 	js.SchemaInfo.Name = "JSON"
@@ -187,7 +179,6 @@ func (js *JSONSchema) GetSchemaInfo() *SchemaInfo {
 }
 
 type ProtoSchema struct {
-	AvroCodec
 	SchemaInfo
 }
 
@@ -210,9 +201,11 @@ func NewProtoSchemaWithValidation(protoAvroSchemaDef string, properties map[stri
 	if err != nil {
 		return nil, err
 	}
-	schemaDef := NewSchemaDefinition(avroCodec)
-	ps.AvroCodec.Codec = schemaDef.Codec
-	ps.SchemaInfo.Schema = schemaDef.Codec.Schema()
+	resolvedSchema, err := json.Marshal(avroCodec)
+	if err != nil {
+		return nil, err
+	}
+	ps.SchemaInfo.Schema = string(resolvedSchema)
 	ps.SchemaInfo.Type = PROTOBUF
 	ps.SchemaInfo.Properties = properties
 	ps.SchemaInfo.Name = "Proto"
@@ -314,7 +307,7 @@ func (ps *ProtoNativeSchema) GetSchemaInfo() *SchemaInfo {
 }
 
 type AvroSchema struct {
-	AvroCodec
+	Codec avro.Schema
 	SchemaInfo
 }
 
@@ -335,9 +328,12 @@ func NewAvroSchemaWithValidation(avroSchemaDef string, properties map[string]str
 	if err != nil {
 		return nil, err
 	}
-	schemaDef := NewSchemaDefinition(avroCodec)
-	as.AvroCodec.Codec = schemaDef.Codec
-	as.SchemaInfo.Schema = schemaDef.Codec.Schema()
+	as.Codec = avroCodec
+	resolvedSchema, err := json.Marshal(avroCodec)
+	if err != nil {
+		return nil, err
+	}
+	as.SchemaInfo.Schema = string(resolvedSchema)
 	as.SchemaInfo.Type = AVRO
 	as.SchemaInfo.Name = "Avro"
 	as.SchemaInfo.Properties = properties
@@ -345,33 +341,18 @@ func NewAvroSchemaWithValidation(avroSchemaDef string, properties map[string]str
 }
 
 func (as *AvroSchema) Encode(data interface{}) ([]byte, error) {
-	textual, err := json.Marshal(data)
+	bin, err := avro.Marshal(as.Codec, data)
 	if err != nil {
-		log.Errorf("serialize data error:%s", err.Error())
+		log.Errorf("convert Go form to binary Avro data error:%s", err.Error())
 		return nil, err
 	}
-	native, _, err := as.Codec.NativeFromTextual(textual)
-	if err != nil {
-		log.Errorf("convert native Go form to binary Avro data error:%s", err.Error())
-		return nil, err
-	}
-	return as.Codec.BinaryFromNative(nil, native)
+	return bin, nil
 }
 
 func (as *AvroSchema) Decode(data []byte, v interface{}) error {
-	native, _, err := as.Codec.NativeFromBinary(data)
+	err := avro.Unmarshal(as.Codec, data, v)
 	if err != nil {
 		log.Errorf("convert binary Avro data back to native Go form error:%s", err.Error())
-		return err
-	}
-	textual, err := as.Codec.TextualFromNative(nil, native)
-	if err != nil {
-		log.Errorf("convert native Go form to textual Avro data error:%s", err.Error())
-		return err
-	}
-	err = json.Unmarshal(textual, v)
-	if err != nil {
-		log.Errorf("unSerialize textual error:%s", err.Error())
 		return err
 	}
 	return nil
