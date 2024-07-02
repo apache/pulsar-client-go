@@ -38,12 +38,12 @@ func (s *slogWrapper) Info(args ...interface{}) {
 
 func (s *slogWrapper) Error(args ...interface{}) {
 	message := s.tryDetermineMessage(args)
-	s.logger.Error(message, args...)
+	s.logger.Error(message)
 }
 
 func (s *slogWrapper) Warn(args ...interface{}) {
 	message := s.tryDetermineMessage(args)
-	s.logger.Warn(message, args...)
+	s.logger.Warn(message)
 }
 
 func (s *slogWrapper) Debugf(format string, args ...interface{}) {
