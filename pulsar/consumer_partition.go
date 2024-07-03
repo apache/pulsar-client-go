@@ -730,7 +730,7 @@ func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withRespon
 
 	var ackReq *ackRequest
 	if withResponse {
-		ackReq := pc.sendCumulativeAck(msgIDToAck)
+		ackReq = pc.sendCumulativeAck(msgIDToAck)
 		<-ackReq.doneCh
 	} else {
 		pc.ackGroupingTracker.addCumulative(msgIDToAck)

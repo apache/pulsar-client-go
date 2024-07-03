@@ -1010,11 +1010,13 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 
 		if i == N-1 {
 			// cumulative ack the first half of messages
-			c1.AckCumulative(msg)
+			err := c1.AckCumulative(msg)
+			assert.Nil(t, err)
 		} else if i == N {
 			// the N+1 msg is in the second batch
 			// cumulative ack it to test if the first batch can be acked
-			c2.AckCumulative(msg)
+			err := c2.AckCumulative(msg)
+			assert.Nil(t, err)
 		}
 	}
 
@@ -3950,7 +3952,8 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 	// Acknowledge half of the messages
 	if cumulative {
 		msgID := msgIds[BatchingMaxSize/2-1]
-		consumer.AckIDCumulative(msgID)
+		err := consumer.AckIDCumulative(msgID)
+		assert.Nil(t, err)
 		log.Printf("Acknowledge %v:%d cumulatively\n", msgID, msgID.BatchIdx())
 	} else {
 		for i := 0; i < BatchingMaxSize; i++ {
@@ -3985,7 +3988,8 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 	}
 	if cumulative {
 		msgID := msgIds[BatchingMaxSize-1]
-		consumer.AckIDCumulative(msgID)
+		err := consumer.AckIDCumulative(msgID)
+		assert.Nil(t, err)
 		log.Printf("Acknowledge %v:%d cumulatively\n", msgID, msgID.BatchIdx())
 	}
 	consumer.Close()
