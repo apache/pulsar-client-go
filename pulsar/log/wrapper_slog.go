@@ -29,22 +29,22 @@ type slogWrapper struct {
 }
 
 func (s *slogWrapper) Debug(args ...any) {
-	message := s.tryDetermineMessage(args)
+	message := s.tryDetermineMessage(args...)
 	s.logger.Debug(message)
 }
 
 func (s *slogWrapper) Info(args ...any) {
-	message := s.tryDetermineMessage(args)
+	message := s.tryDetermineMessage(args...)
 	s.logger.Info(message)
 }
 
 func (s *slogWrapper) Error(args ...any) {
-	message := s.tryDetermineMessage(args)
+	message := s.tryDetermineMessage(args...)
 	s.logger.Error(message)
 }
 
 func (s *slogWrapper) Warn(args ...any) {
-	message := s.tryDetermineMessage(args)
+	message := s.tryDetermineMessage(args...)
 	s.logger.Warn(message)
 }
 
