@@ -15,7 +15,6 @@
 // specific language governing permissions and limitations
 // under the License.
 
-
 //go:build go1.21
 
 package log
@@ -102,18 +101,5 @@ func pulsarFieldsToKVSlice(f Fields) []any {
 }
 
 func (s *slogWrapper) tryDetermineMessage(value ...any) string {
-	return fmt.Sprint(args...)
-}
-	data, ok := value[0].(string)
-	if ok {
-		return data
-	}
-
-	if _, ok := value[0].([]any); ok {
-		for _, item := range value {
-			return s.tryDetermineMessage(item.([]any)...)
-		}
-	}
-
-	return ""
+	return fmt.Sprint(value...)
 }
