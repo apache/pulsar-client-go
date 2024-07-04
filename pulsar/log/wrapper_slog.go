@@ -104,9 +104,9 @@ func (s *slogWrapper) tryDetermineMessage(value ...any) string {
 		return data
 	}
 
-	if _, ok := value[0].([]interface{}); ok {
+	if _, ok := value[0].([]any); ok {
 		for _, item := range value {
-			return s.tryDetermineMessage(item.([]interface{})...)
+			return s.tryDetermineMessage(item.([]any)...)
 		}
 	}
 
