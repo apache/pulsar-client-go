@@ -99,6 +99,8 @@ func pulsarFieldsToKVSlice(f Fields) []any {
 }
 
 func (s *slogWrapper) tryDetermineMessage(value ...any) string {
+	return fmt.Sprint(args...)
+}
 	data, ok := value[0].(string)
 	if ok {
 		return data
