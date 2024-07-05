@@ -52,14 +52,7 @@ func TestSlogLevels(t *testing.T) {
 			tc.logFunction(pulsarLogger, logMessage)
 
 			logOutputSlog := logBuffer.String()
-			slogLogLines := strings.Split(strings.TrimSpace(logOutputSlog), "\n")
-			var slogLine map[string]interface{}
-			err := json.Unmarshal([]byte(slogLogLines[0]), &slogLine)
-
-			require.Len(t, slogLogLines, 1)
-			require.NoError(t, err)
-			require.Equal(t, tc.level.String(), slogLine[slog.LevelKey])
-			require.Equal(t, logMessage, slogLine[slog.MessageKey])
+			verifyLogOutput(t, logOutputSlog, tc.level.String(), logMessage)
 		})
 	}
 }
@@ -67,29 +60,29 @@ func TestSlogLevels(t *testing.T) {
 func TestSlogPrintMethods(t *testing.T) {
 	testCases := []struct {
 		level       slog.Level
-		logFunction func(logger Logger, format string, args ...interface{})
+		logFunction func(logger Logger, format string, args ...any)
 	}{
 		{
 			level: slog.LevelDebug,
-			logFunction: func(logger Logger, format string, args ...interface{}) {
+			logFunction: func(logger Logger, format string, args ...any) {
 				logger.Debugf(format, args...)
 			},
 		},
 		{
 			level: slog.LevelInfo,
-			logFunction: func(logger Logger, format string, args ...interface{}) {
+			logFunction: func(logger Logger, format string, args ...any) {
 				logger.Infof(format, args...)
 			},
 		},
 		{
 			level: slog.LevelWarn,
-			logFunction: func(logger Logger, format string, args ...interface{}) {
+			logFunction: func(logger Logger, format string, args ...any) {
 				logger.Warnf(format, args...)
 			},
 		},
 		{
 			level: slog.LevelError,
-			logFunction: func(logger Logger, format string, args ...interface{}) {
+			logFunction: func(logger Logger, format string, args ...any) {
 				logger.Errorf(format, args...)
 			},
 		},
@@ -106,14 +99,7 @@ func TestSlogPrintMethods(t *testing.T) {
 			tc.logFunction(pulsarLogger, logMessage, tc.level.String())
 
 			logOutputSlog := logBuffer.String()
-			slogLogLines := strings.Split(strings.TrimSpace(logOutputSlog), "\n")
-			var slogLine map[string]interface{}
-			err := json.Unmarshal([]byte(slogLogLines[0]), &slogLine)
-
-			require.Len(t, slogLogLines, 1)
-			require.NoError(t, err)
-			require.Equal(t, tc.level.String(), slogLine[slog.LevelKey])
-			require.Equal(t, expectedMessage, slogLine[slog.MessageKey])
+			verifyLogOutput(t, logOutputSlog, tc.level.String(), expectedMessage)
 		})
 	}
 }
@@ -175,12 +161,12 @@ func TestSlogWrapperWithMethods(t *testing.T) {
 				t.Errorf("Unsupported log level: %v", tc.level)
 			}
 
-			verifyLogOutputWithFields(t, logBuffer.String(), tc.level.String(), tc.testMessage, tc.expectedFields)
+			verifyLogOutput(t, logBuffer.String(), tc.level.String(), tc.testMessage, tc.expectedFields)
 		})
 	}
 }
 
-func verifyLogOutputWithFields(t *testing.T, logOutput, expectedLevel, expectedMessage string, expectedFields Fields) {
+func verifyLogOutput(t *testing.T, logOutput, expectedLevel, expectedMessage string, expectedFields ...Fields) {
 	logLines := strings.Split(strings.TrimSpace(logOutput), "\n")
 	require.Len(t, logLines, 1, "There should be exactly one log line.")
 
@@ -190,9 +176,11 @@ func verifyLogOutputWithFields(t *testing.T, logOutput, expectedLevel, expectedM
 	require.Equal(t, expectedLevel, logEntry["level"], "Log level should match expected level.")
 	require.Contains(t, logEntry["msg"], expectedMessage, "Log message should contain expected message.")
 
-	for key, expectedValue := range expectedFields {
-		actualValue, ok := logEntry[key]
-		require.True(t, ok, fmt.Sprintf("Expected key '%s' to be present in the log entry", key))
-		require.Equal(t, expectedValue, actualValue, fmt.Sprintf("Value for key '%s' should match the expected value", key))
+	if len(expectedFields) > 0 {
+		for key, expectedValue := range expectedFields[0] {
+			actualValue, ok := logEntry[key]
+			require.True(t, ok, fmt.Sprintf("Expected key '%s' to be present in the log entry", key))
+			require.Equal(t, expectedValue, actualValue, fmt.Sprintf("Value for key '%s' should match the expected value", key))
+		}
 	}
 }
