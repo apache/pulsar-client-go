@@ -19,8 +19,6 @@ package pulsar
 
 import (
 	"context"
-	"github.com/pkg/errors"
-	uAtomic "go.uber.org/atomic"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -29,6 +27,8 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/pkg/errors"
+	uAtomic "go.uber.org/atomic"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -137,7 +137,7 @@ func (t *transactionHandler) runEventsLoop() {
 			case *endTxnOp:
 				t.endTxn(r)
 			}
-		case _ = <-t.connectClosedCh:
+		case <-t.connectClosedCh:
 			t.log.Infof("Transaction handler %d will reconnect to the transaction coordinator", t.partition)
 			t.reconnectToBroker()
 		}
@@ -202,7 +202,7 @@ type newTxnOp struct {
 	// Response
 	done  chan any
 	err   error
-	txnId *TxnID
+	txnID *TxnID
 }
 
 func (t *transactionHandler) newTransaction(op *newTxnOp) {
@@ -224,7 +224,7 @@ func (t *transactionHandler) newTransaction(op *newTxnOp) {
 	} else if res.Response.NewTxnResponse.Error != nil {
 		op.err = getErrorFromServerError(res.Response.NewTxnResponse.Error)
 	} else {
-		op.txnId = &TxnID{*res.Response.NewTxnResponse.TxnidMostBits,
+		op.txnID = &TxnID{*res.Response.NewTxnResponse.TxnidMostBits,
 			*res.Response.NewTxnResponse.TxnidLeastBits}
 	}
 }
@@ -391,7 +391,7 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*
 	if op.err != nil {
 		return nil, op.err
 	}
-	return op.txnId, nil
+	return op.txnID, nil
 }
 
 // addPublishPartitionToTxn register the partitions which published messages with the transactionImpl.
@@ -460,7 +460,8 @@ func getTCAssignTopicName(partition uint64) string {
 
 func (tc *transactionCoordinatorClient) canSendRequest() error {
 	if !tc.semaphore.Acquire(context.Background()) {
-		return newError(UnknownError, "Failed to acquire semaphore") // What? This is not an Unknown Error. We need to fix that!
+		// What? This is not an Unknown Error. We need to fix that!
+		return newError(UnknownError, "Failed to acquire semaphore")
 	}
 	return nil
 }
