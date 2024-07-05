@@ -173,8 +173,8 @@ func verifyLogOutput(t *testing.T, logOutput, expectedLevel, expectedMessage str
 	var logEntry map[string]interface{}
 	err := json.Unmarshal([]byte(logLines[0]), &logEntry)
 	require.NoError(t, err, "Log entry should be valid JSON.")
-	require.Equal(t, expectedLevel, logEntry["level"], "Log level should match expected level.")
-	require.Contains(t, logEntry["msg"], expectedMessage, "Log message should contain expected message.")
+	require.Equal(t, expectedLevel, logEntry[slog.LevelKey], "Log level should match expected level.")
+	require.Equal(t, expectedMessage, logEntry[slog.MessageKey], "Log message should contain expected message.")
 
 	if len(expectedFields) > 0 {
 		for key, expectedValue := range expectedFields[0] {
