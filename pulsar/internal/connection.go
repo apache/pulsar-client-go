@@ -84,6 +84,7 @@ type Connection interface {
 	ID() string
 	GetMaxMessageSize() int32
 	Close()
+	WaitForClose() <-chan interface{}
 	IsProxied() bool
 }
 
@@ -993,6 +994,10 @@ func (c *connection) CheckIdle(maxIdleTime time.Duration) bool {
 		c.lastActive = time.Now()
 	}
 	return time.Since(c.lastActive) > maxIdleTime
+}
+
+func (c *connection) WaitForClose() <-chan interface{} {
+	return c.closeCh
 }
 
 // Close closes the connection by
