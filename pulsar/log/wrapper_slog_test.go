@@ -22,6 +22,8 @@ package log
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"testing"
@@ -29,21 +31,168 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSlog(t *testing.T) {
-	var logBuffer bytes.Buffer
-	logMessage := "info message"
-	loggerSlog := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	pulsarLogger := NewLoggerWithSlog(loggerSlog)
+func TestSlogLevels(t *testing.T) {
+	testCases := []struct {
+		level       slog.Level
+		logFunction func(logger Logger, msg string)
+	}{
+		{slog.LevelDebug, func(logger Logger, msg string) { logger.Debug(msg) }},
+		{slog.LevelInfo, func(logger Logger, msg string) { logger.Info(msg) }},
+		{slog.LevelWarn, func(logger Logger, msg string) { logger.Warn(msg) }},
+		{slog.LevelError, func(logger Logger, msg string) { logger.Error(msg) }},
+	}
 
-	pulsarLogger.Info(logMessage)
+	for _, tc := range testCases {
+		t.Run(tc.level.String(), func(t *testing.T) {
+			var logBuffer bytes.Buffer
+			logMessage := "test message"
+			loggerSlog := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: tc.level}))
+			pulsarLogger := NewLoggerWithSlog(loggerSlog)
 
-	logOutputSlog := logBuffer.String()
-	slogLogLines := strings.Split(strings.TrimSpace(logOutputSlog), "\n")
-	var slogLine map[string]interface{}
-	err := json.Unmarshal([]byte(slogLogLines[0]), &slogLine)
+			tc.logFunction(pulsarLogger, logMessage)
 
-	require.Len(t, slogLogLines, 1)
-	require.NoError(t, err)
-	require.Equal(t, slog.LevelInfo.String(), slogLine[slog.LevelKey])
-	require.Equal(t, logMessage, slogLine[slog.MessageKey])
+			logOutputSlog := logBuffer.String()
+			slogLogLines := strings.Split(strings.TrimSpace(logOutputSlog), "\n")
+			var slogLine map[string]interface{}
+			err := json.Unmarshal([]byte(slogLogLines[0]), &slogLine)
+
+			require.Len(t, slogLogLines, 1)
+			require.NoError(t, err)
+			require.Equal(t, tc.level.String(), slogLine[slog.LevelKey])
+			require.Equal(t, logMessage, slogLine[slog.MessageKey])
+		})
+	}
+}
+
+func TestSlogPrintMethods(t *testing.T) {
+	testCases := []struct {
+		level       slog.Level
+		logFunction func(logger Logger, format string, args ...interface{})
+	}{
+		{
+			level: slog.LevelDebug,
+			logFunction: func(logger Logger, format string, args ...interface{}) {
+				logger.Debugf(format, args...)
+			},
+		},
+		{
+			level: slog.LevelInfo,
+			logFunction: func(logger Logger, format string, args ...interface{}) {
+				logger.Infof(format, args...)
+			},
+		},
+		{
+			level: slog.LevelWarn,
+			logFunction: func(logger Logger, format string, args ...interface{}) {
+				logger.Warnf(format, args...)
+			},
+		},
+		{
+			level: slog.LevelError,
+			logFunction: func(logger Logger, format string, args ...interface{}) {
+				logger.Errorf(format, args...)
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.level.String()+"f", func(t *testing.T) {
+			var logBuffer bytes.Buffer
+			logMessage := "formatted message for %s"
+			expectedMessage := "formatted message for " + tc.level.String()
+			loggerSlog := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: tc.level}))
+			pulsarLogger := NewLoggerWithSlog(loggerSlog)
+
+			tc.logFunction(pulsarLogger, logMessage, tc.level.String())
+
+			logOutputSlog := logBuffer.String()
+			slogLogLines := strings.Split(strings.TrimSpace(logOutputSlog), "\n")
+			var slogLine map[string]interface{}
+			err := json.Unmarshal([]byte(slogLogLines[0]), &slogLine)
+
+			require.Len(t, slogLogLines, 1)
+			require.NoError(t, err)
+			require.Equal(t, tc.level.String(), slogLine[slog.LevelKey])
+			require.Equal(t, expectedMessage, slogLine[slog.MessageKey])
+		})
+	}
+}
+
+func TestSlogWrapperWithMethods(t *testing.T) {
+	testCases := []struct {
+		name           string
+		level          slog.Level
+		testMessage    string
+		setupLogger    func(logger Logger) Entry
+		expectedFields Fields
+	}{
+		{
+			name:        "WithField",
+			level:       slog.LevelInfo,
+			testMessage: "Message with field",
+			setupLogger: func(logger Logger) Entry {
+				return logger.WithField("key", "value")
+			},
+			expectedFields: Fields{"key": "value"},
+		},
+		{
+			name:        "WithFields",
+			level:       slog.LevelInfo,
+			testMessage: "Message with multiple fields",
+			setupLogger: func(logger Logger) Entry {
+				return logger.WithFields(Fields{"key1": "value1", "key2": "value2"})
+			},
+			expectedFields: Fields{"key1": "value1", "key2": "value2"},
+		},
+		{
+			name:        "WithError",
+			level:       slog.LevelInfo,
+			testMessage: "Message with error field",
+			setupLogger: func(logger Logger) Entry {
+				return logger.WithError(errors.New("test error"))
+			},
+			expectedFields: Fields{"error": "test error"},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			var logBuffer bytes.Buffer
+			loggerSlog := slog.New(slog.NewJSONHandler(&logBuffer, &slog.HandlerOptions{Level: tc.level}))
+			pulsarLogger := NewLoggerWithSlog(loggerSlog)
+
+			entry := tc.setupLogger(pulsarLogger)
+			switch tc.level {
+			case slog.LevelDebug:
+				entry.Debug(tc.testMessage)
+			case slog.LevelInfo:
+				entry.Info(tc.testMessage)
+			case slog.LevelWarn:
+				entry.Warn(tc.testMessage)
+			case slog.LevelError:
+				entry.Error(tc.testMessage)
+			default:
+				t.Errorf("Unsupported log level: %v", tc.level)
+			}
+
+			verifyLogOutputWithFields(t, logBuffer.String(), tc.level.String(), tc.testMessage, tc.expectedFields)
+		})
+	}
+}
+
+func verifyLogOutputWithFields(t *testing.T, logOutput, expectedLevel, expectedMessage string, expectedFields Fields) {
+	logLines := strings.Split(strings.TrimSpace(logOutput), "\n")
+	require.Len(t, logLines, 1, "There should be exactly one log line.")
+
+	var logEntry map[string]interface{}
+	err := json.Unmarshal([]byte(logLines[0]), &logEntry)
+	require.NoError(t, err, "Log entry should be valid JSON.")
+	require.Equal(t, expectedLevel, logEntry["level"], "Log level should match expected level.")
+	require.Contains(t, logEntry["msg"], expectedMessage, "Log message should contain expected message.")
+
+	for key, expectedValue := range expectedFields {
+		actualValue, ok := logEntry[key]
+		require.True(t, ok, fmt.Sprintf("Expected key '%s' to be present in the log entry", key))
+		require.Equal(t, expectedValue, actualValue, fmt.Sprintf("Value for key '%s' should match the expected value", key))
+	}
 }
