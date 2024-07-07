@@ -28,8 +28,8 @@ type SinkStatus struct {
 }
 
 type SinkInstanceStatus struct {
-	InstanceID int                      `json:"instanceId"`
-	Status     SourceInstanceStatusData `json:"status"`
+	InstanceID int                    `json:"instanceId"`
+	Status     SinkInstanceStatusData `json:"status"`
 }
 
 type SinkInstanceStatusData struct {

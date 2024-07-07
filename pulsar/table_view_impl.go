@@ -129,7 +129,9 @@ func (tv *TableViewImpl) partitionUpdateCheck() error {
 				if err != nil {
 					tv.logger.Errorf("read next message failed for %s: %w", partition, err)
 				}
-				tv.handleMessage(msg)
+				if msg != nil {
+					tv.handleMessage(msg)
+				}
 			}
 			ctx, cancelFunc := context.WithCancel(context.Background())
 			tv.cancelRaders[partition] = cancelReader{
@@ -268,9 +270,12 @@ func (tv *TableViewImpl) watchReaderForNewMessages(ctx context.Context, reader R
 		if err != nil {
 			tv.logger.Errorf("read next message failed for %s: %w", reader.Topic(), err)
 		}
-		if errors.Is(err, context.Canceled) {
+		var e *Error
+		if (errors.As(err, &e) && e.Result() == ConsumerClosed) || errors.Is(err, context.Canceled) {
 			return
 		}
-		tv.handleMessage(msg)
+		if msg != nil {
+			tv.handleMessage(msg)
+		}
 	}
 }

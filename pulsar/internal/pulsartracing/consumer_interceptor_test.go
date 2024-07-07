@@ -59,6 +59,9 @@ func (c *mockConsumer) AckWithTxn(msg pulsar.Message, txn pulsar.Transaction) er
 func (c *mockConsumer) Unsubscribe() error {
 	return nil
 }
+func (c *mockConsumer) UnsubscribeForce() error {
+	return nil
+}
 
 func (c *mockConsumer) Receive(ctx context.Context) (message pulsar.Message, err error) {
 	return nil, nil
@@ -106,4 +109,9 @@ func (c *mockConsumer) SeekByTime(time time.Time) error {
 
 func (c *mockConsumer) Name() string {
 	return ""
+}
+
+func (c *mockConsumer) GetLastMessageIDs() ([]pulsar.TopicMessageID, error) {
+	ids := make([]pulsar.TopicMessageID, 0)
+	return ids, nil
 }

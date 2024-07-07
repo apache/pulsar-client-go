@@ -16,13 +16,8 @@
 # specific language governing permissions and limitations
 # under the License.
 
-
 set -e -x
 
-scripts/pulsar-test-service-start.sh
-
-go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./...
+go test -race -coverprofile=/tmp/coverage -timeout=5m -tags clustered -v -run 'Test.*ClusteredTestSuite' -v ./pulsar
 go tool cover -html=/tmp/coverage -o coverage.html
-
-scripts/pulsar-test-service-stop.sh
 

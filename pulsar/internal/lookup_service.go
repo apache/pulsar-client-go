@@ -64,6 +64,10 @@ type LookupService interface {
 	// GetSchema returns schema for a given version.
 	GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error)
 
+	GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error)
+
+	ServiceNameResolver() *ServiceNameResolver
+
 	// Closable Allow Lookup Service's internal client to be able to closed
 	Closable
 }
@@ -107,29 +111,26 @@ func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *
 	return res.Response.GetSchemaResponse.Schema, nil
 }
 
-func (ls *lookupService) getBrokerAddress(lr *pb.CommandLookupTopicResponse) (logicalAddress *url.URL,
-	physicalAddress *url.URL, err error) {
-	if ls.tlsEnabled {
-		logicalAddress, err = url.ParseRequestURI(lr.GetBrokerServiceUrlTls())
-	} else {
-		logicalAddress, err = url.ParseRequestURI(lr.GetBrokerServiceUrl())
-	}
-
+func (ls *lookupService) GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error) {
+	logicalAddress, err := url.ParseRequestURI(brokerServiceURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
-	var physicalAddr *url.URL
-	if lr.GetProxyThroughServiceUrl() {
-		physicalAddr, err = ls.serviceNameResolver.ResolveHost()
+	var physicalAddress *url.URL
+	if proxyThroughServiceURL {
+		physicalAddress, err = ls.serviceNameResolver.ResolveHost()
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 	} else {
-		physicalAddr = logicalAddress
+		physicalAddress = logicalAddress
 	}
 
-	return logicalAddress, physicalAddr, nil
+	return &LookupResult{
+		LogicalAddr:  logicalAddress,
+		PhysicalAddr: physicalAddress,
+	}, nil
 }
 
 // Follow brokers redirect up to certain number of times
@@ -138,12 +139,14 @@ const lookupResultMaxRedirect = 20
 func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 	ls.metrics.LookupRequestsCount.Inc()
 	id := ls.rpcClient.NewRequestID()
-	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-		RequestId:              &id,
-		Topic:                  &topic,
-		Authoritative:          proto.Bool(false),
-		AdvertisedListenerName: proto.String(ls.listenerName),
-	})
+
+	res, err := ls.rpcClient.RequestToHost(&ls.serviceNameResolver, id, pb.BaseCommand_LOOKUP,
+		&pb.CommandLookupTopic{
+			RequestId:              &id,
+			Topic:                  &topic,
+			Authoritative:          proto.Bool(false),
+			AdvertisedListenerName: proto.String(ls.listenerName),
+		})
 	if err != nil {
 		return nil, err
 	}
@@ -154,7 +157,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 		switch *lr.Response {
 
 		case pb.CommandLookupTopicResponse_Redirect:
-			logicalAddress, physicalAddr, err := ls.getBrokerAddress(lr)
+			brokerServiceURL := selectServiceURL(ls.tlsEnabled, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls())
+			lookupResult, err := ls.GetBrokerAddress(brokerServiceURL, lr.GetProxyThroughServiceUrl())
 			if err != nil {
 				return nil, err
 			}
@@ -163,12 +167,13 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 				topic, lr.BrokerServiceUrl, lr.BrokerServiceUrlTls, lr.ProxyThroughServiceUrl)
 
 			id := ls.rpcClient.NewRequestID()
-			res, err = ls.rpcClient.Request(logicalAddress, physicalAddr, id, pb.BaseCommand_LOOKUP, &pb.CommandLookupTopic{
-				RequestId:              &id,
-				Topic:                  &topic,
-				Authoritative:          lr.Authoritative,
-				AdvertisedListenerName: proto.String(ls.listenerName),
-			})
+			res, err = ls.rpcClient.Request(lookupResult.LogicalAddr, lookupResult.PhysicalAddr, id, pb.BaseCommand_LOOKUP,
+				&pb.CommandLookupTopic{
+					RequestId:              &id,
+					Topic:                  &topic,
+					Authoritative:          lr.Authoritative,
+					AdvertisedListenerName: proto.String(ls.listenerName),
+				})
 			if err != nil {
 				return nil, err
 			}
@@ -180,16 +185,8 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			ls.log.Debugf("Successfully looked up topic{%s} on broker. %s / %s - Use proxy: %t",
 				topic, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls(), lr.GetProxyThroughServiceUrl())
 
-			logicalAddress, physicalAddress, err := ls.getBrokerAddress(lr)
-			if err != nil {
-				return nil, err
-			}
-
-			return &LookupResult{
-				LogicalAddr:  logicalAddress,
-				PhysicalAddr: physicalAddress,
-			}, nil
-
+			brokerServiceURL := selectServiceURL(ls.tlsEnabled, lr.GetBrokerServiceUrl(), lr.GetBrokerServiceUrlTls())
+			return ls.GetBrokerAddress(brokerServiceURL, lr.GetProxyThroughServiceUrl())
 		case pb.CommandLookupTopicResponse_Failed:
 			ls.log.WithFields(log.Fields{
 				"topic":   topic,
@@ -262,6 +259,10 @@ func (ls *lookupService) GetTopicsOfNamespace(namespace string, mode GetTopicsOf
 
 func (ls *lookupService) Close() {}
 
+func (ls *lookupService) ServiceNameResolver() *ServiceNameResolver {
+	return &ls.serviceNameResolver
+}
+
 const HTTPLookupServiceBasePathV1 string = "/lookup/v2/destination/"
 const HTTPLookupServiceBasePathV2 string = "/lookup/v2/topic/"
 const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
@@ -284,19 +285,15 @@ type httpLookupService struct {
 	metrics             *Metrics
 }
 
-func (h *httpLookupService) getBrokerAddress(ld *httpLookupData) (logicalAddress *url.URL,
-	physicalAddress *url.URL, err error) {
-	if h.tlsEnabled {
-		logicalAddress, err = url.ParseRequestURI(ld.BrokerURLTLS)
-	} else {
-		logicalAddress, err = url.ParseRequestURI(ld.BrokerURL)
-	}
-
+func (h *httpLookupService) GetBrokerAddress(brokerServiceURL string, _ bool) (*LookupResult, error) {
+	logicalAddress, err := url.ParseRequestURI(brokerServiceURL)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
-
-	return logicalAddress, logicalAddress, nil
+	return &LookupResult{
+		LogicalAddr:  logicalAddress,
+		PhysicalAddr: logicalAddress,
+	}, err
 }
 
 func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
@@ -319,16 +316,8 @@ func (h *httpLookupService) Lookup(topic string) (*LookupResult, error) {
 	h.log.Debugf("Successfully looked up topic{%s} on http broker. %+v",
 		topic, lookupData)
 
-	logicalAddress, physicalAddress, err := h.getBrokerAddress(lookupData)
-	if err != nil {
-		return nil, err
-	}
-
-	return &LookupResult{
-		LogicalAddr:  logicalAddress,
-		PhysicalAddr: physicalAddress,
-	}, nil
-
+	brokerServiceURL := selectServiceURL(h.tlsEnabled, lookupData.BrokerURL, lookupData.BrokerURLTLS)
+	return h.GetBrokerAddress(brokerServiceURL, false /* ignored */)
 }
 
 func (h *httpLookupService) GetPartitionedTopicMetadata(topic string) (*PartitionedTopicMetadata,
@@ -381,6 +370,11 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 func (h *httpLookupService) GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error) {
 	return nil, errors.New("GetSchema is not supported by httpLookupService")
 }
+
+func (h *httpLookupService) ServiceNameResolver() *ServiceNameResolver {
+	return &h.serviceNameResolver
+}
+
 func (h *httpLookupService) Close() {
 	h.httpClient.Close()
 }
@@ -396,4 +390,11 @@ func NewHTTPLookupService(httpClient HTTPClient, serviceURL *url.URL, serviceNam
 		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 		metrics:             metrics,
 	}
+}
+
+func selectServiceURL(tlsEnabled bool, brokerServiceURL, brokerServiceURLTLS string) string {
+	if tlsEnabled {
+		return brokerServiceURLTLS
+	}
+	return brokerServiceURL
 }

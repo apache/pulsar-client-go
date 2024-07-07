@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -141,7 +143,11 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		close(reader.messageCh)
 		return nil, err
 	}
-	reader.c = c
+	cs, ok := c.(*consumer)
+	if !ok {
+		return nil, errors.New("invalid consumer type")
+	}
+	reader.c = cs
 
 	reader.metrics.ReadersOpened.Inc()
 	return reader, nil
@@ -171,6 +177,8 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 				return nil, err
 			}
 			return cm.Message, nil
+		case <-r.c.closeCh:
+			return nil, newError(ConsumerClosed, "consumer closed")
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}

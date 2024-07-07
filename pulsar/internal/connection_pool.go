@@ -79,7 +79,8 @@ func NewConnectionPool(
 }
 
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
-	key := p.getMapKey(logicalAddr)
+	p.log.WithField("logicalAddr", logicalAddr).WithField("physicalAddr", physicalAddr).Debug("Getting pooled connection")
+	key := p.getMapKey(logicalAddr, physicalAddr)
 
 	p.Lock()
 	conn, ok := p.connections[key]
@@ -133,13 +134,13 @@ func (p *connectionPool) Close() {
 	p.Unlock()
 }
 
-func (p *connectionPool) getMapKey(addr *url.URL) string {
+func (p *connectionPool) getMapKey(logicalAddr *url.URL, physicalAddr *url.URL) string {
 	cnt := atomic.AddInt32(&p.roundRobinCnt, 1)
 	if cnt < 0 {
 		cnt = -cnt
 	}
 	idx := cnt % p.maxConnectionsPerHost
-	return fmt.Sprint(addr.Host, '-', idx)
+	return fmt.Sprint(logicalAddr.Host, "-", physicalAddr.Host, "-", idx)
 }
 
 func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration) {

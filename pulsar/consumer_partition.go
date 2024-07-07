@@ -20,7 +20,6 @@ package pulsar
 import (
 	"container/list"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"math"
 	"strings"
@@ -38,6 +37,7 @@ import (
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/bits-and-blooms/bitset"
+	"github.com/pkg/errors"
 
 	uAtomic "go.uber.org/atomic"
 )
@@ -50,6 +50,10 @@ const (
 	consumerReady
 	consumerClosing
 	consumerClosed
+)
+
+var (
+	ErrInvalidAck = errors.New("invalid ack")
 )
 
 func (s consumerState) String() string {
@@ -160,7 +164,7 @@ type partitionConsumer struct {
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
-	connectClosedCh chan connectionClosed
+	connectClosedCh chan *connectionClosed
 	closeCh         chan struct{}
 	clearQueueCh    chan func(id *trackingMessageID)
 
@@ -178,6 +182,8 @@ type partitionConsumer struct {
 	ackGroupingTracker ackGroupingTracker
 
 	lastMessageInBroker *trackingMessageID
+
+	redirectedClusterURI string
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -328,7 +334,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
-		connectClosedCh:      make(chan connectionClosed, 10),
+		connectClosedCh:      make(chan *connectionClosed, 10),
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id *trackingMessageID)),
 		compressionProviders: sync.Map{},
@@ -372,7 +378,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, options.nackBackoffPolicy, pc.log)
 
-	err := pc.grabConn()
+	err := pc.grabConn("")
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
 		pc.nackTracker.Close()
@@ -409,13 +415,13 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	return pc, nil
 }
 
-func (pc *partitionConsumer) Unsubscribe() error {
+func (pc *partitionConsumer) unsubscribe(force bool) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to unsubscribe closing or closed consumer")
-		return nil
+		return errors.New("consumer state is closed")
 	}
 
-	req := &unsubscribeRequest{doneCh: make(chan struct{})}
+	req := &unsubscribeRequest{doneCh: make(chan struct{}), force: force}
 	pc.eventsCh <- req
 
 	// wait for the request to complete
@@ -551,6 +557,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	cmdUnsubscribe := &pb.CommandUnsubscribe{
 		RequestId:  proto.Uint64(requestID),
 		ConsumerId: proto.Uint64(pc.consumerID),
+		Force:      proto.Bool(unsub.force),
 	}
 	_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), requestID, pb.BaseCommand_UNSUBSCRIBE, cmdUnsubscribe)
 	if err != nil {
@@ -688,10 +695,18 @@ func (pc *partitionConsumer) AckIDWithResponseCumulative(msgID MessageID) error 
 	return pc.internalAckIDCumulative(msgID, true)
 }
 
+func (pc *partitionConsumer) isAllowAckCumulative() bool {
+	return pc.options.subscriptionType != Shared && pc.options.subscriptionType != KeyShared
+}
+
 func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withResponse bool) error {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return errors.New("consumer state is closed")
+	}
+
+	if !pc.isAllowAckCumulative() {
+		return errors.Wrap(ErrInvalidAck, "cumulative ack is not allowed for the Shared/KeyShared subscription type")
 	}
 
 	// chunk message id will be converted to tracking message id
@@ -717,7 +732,7 @@ func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withRespon
 
 	var ackReq *ackRequest
 	if withResponse {
-		ackReq := pc.sendCumulativeAck(msgIDToAck)
+		ackReq = pc.sendCumulativeAck(msgIDToAck)
 		<-ackReq.doneCh
 	} else {
 		pc.ackGroupingTracker.addCumulative(msgIDToAck)
@@ -1360,10 +1375,21 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 	return &encCtx
 }
 
-func (pc *partitionConsumer) ConnectionClosed() {
+func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
-	pc.connectClosedCh <- connectionClosed{}
+	var assignedBrokerURL string
+	if closeConsumer != nil {
+		assignedBrokerURL = pc.client.selectServiceURL(
+			closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
+	}
+	pc.connectClosedCh <- &connectionClosed{
+		assignedBrokerURL: assignedBrokerURL,
+	}
+}
+
+func (pc *partitionConsumer) SetRedirectedClusterURI(redirectedClusterURI string) {
+	pc.redirectedClusterURI = redirectedClusterURI
 }
 
 // Flow command gives additional permits to send messages to the consumer.
@@ -1527,6 +1553,7 @@ type ackWithTxnRequest struct {
 
 type unsubscribeRequest struct {
 	doneCh chan struct{}
+	force  bool
 	err    error
 }
 
@@ -1568,9 +1595,9 @@ func (pc *partitionConsumer) runEventsLoop() {
 			case <-pc.closeCh:
 				pc.log.Info("close consumer, exit reconnect")
 				return
-			case <-pc.connectClosedCh:
+			case connectionClosed := <-pc.connectClosedCh:
 				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker()
+				pc.reconnectToBroker(connectionClosed)
 			}
 		}
 	}()
@@ -1654,7 +1681,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	close(pc.closeCh)
 }
 
-func (pc *partitionConsumer) reconnectToBroker() {
+func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {
 	var (
 		maxRetry                                    int
 		delayReconnectTime, totalDelayReconnectTime time.Duration
@@ -1680,10 +1707,21 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			return
 		}
 
-		delayReconnectTime = bo.Next()
+		var assignedBrokerURL string
+
+		if connectionClosed != nil && connectionClosed.HasURL() {
+			delayReconnectTime = 0
+			assignedBrokerURL = connectionClosed.assignedBrokerURL
+			connectionClosed = nil // Attempt connecting to the assigned broker just once
+		} else {
+			delayReconnectTime = bo.Next()
+		}
 		totalDelayReconnectTime += delayReconnectTime
 
-		pc.log.Info("Reconnecting to broker in ", delayReconnectTime)
+		pc.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
+		}).Info("Reconnecting to broker")
 		time.Sleep(delayReconnectTime)
 
 		// double check
@@ -1693,7 +1731,7 @@ func (pc *partitionConsumer) reconnectToBroker() {
 			return
 		}
 
-		err := pc.grabConn()
+		err := pc.grabConn(assignedBrokerURL)
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
@@ -1717,13 +1755,25 @@ func (pc *partitionConsumer) reconnectToBroker() {
 	}
 }
 
-func (pc *partitionConsumer) grabConn() error {
-	lr, err := pc.client.lookupService.Lookup(pc.topic)
+func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
+	if len(brokerServiceURL) == 0 {
+		lr, err := pc.client.rpcClient.LookupService(pc.redirectedClusterURI).Lookup(pc.topic)
+		if err != nil {
+			pc.log.WithError(err).Warn("Failed to lookup topic")
+			return nil, err
+		}
+
+		pc.log.Debug("Lookup result: ", lr)
+		return lr, err
+	}
+	return pc.client.lookupService.GetBrokerAddress(brokerServiceURL, pc._getConn().IsProxied())
+}
+
+func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
+	lr, err := pc.lookupTopic(assignedBrokerURL)
 	if err != nil {
-		pc.log.WithError(err).Warn("Failed to lookup topic")
 		return err
 	}
-	pc.log.Debugf("Lookup result: %+v", lr)
 
 	subType := toProtoSubType(pc.options.subscriptionType)
 	initialPosition := toProtoInitialPosition(pc.options.subscriptionInitPos)

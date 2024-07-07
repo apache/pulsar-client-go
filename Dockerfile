@@ -21,8 +21,9 @@ ARG PULSAR_IMAGE=apachepulsar/pulsar:latest
 FROM $PULSAR_IMAGE
 USER root
 ARG GO_VERSION=1.18
+ARG ARCH=amd64
 
-RUN curl -L https://dl.google.com/go/go${GO_VERSION}.linux-amd64.tar.gz -o golang.tar.gz && \
+RUN curl -L https://dl.google.com/go/go${GO_VERSION}.linux-${ARCH}.tar.gz -o golang.tar.gz && \
     mkdir -p /pulsar/go && tar -C /pulsar -xzf golang.tar.gz
 
 ENV PATH /pulsar/go/bin:$PATH
@@ -41,3 +42,16 @@ COPY integration-tests/conf/.htpasswd \
 COPY . /pulsar/pulsar-client-go
 
 ENV PULSAR_EXTRA_OPTS="-Dpulsar.auth.basic.conf=/pulsar/conf/.htpasswd"
+
+WORKDIR /pulsar/pulsar-client-go
+
+ENV GOPATH=/pulsar/go
+ENV GOCACHE=/tmp/go-cache
+
+# Install dependencies
+RUN go mod download
+
+# Basic compilation
+RUN go build ./pulsar
+RUN go build ./pulsaradmin
+RUN go build -o bin/pulsar-perf ./perf

@@ -133,6 +133,33 @@ func (c *regexConsumer) Unsubscribe() error {
 	return errs
 }
 
+func (c *regexConsumer) UnsubscribeForce() error {
+	var errs error
+	c.consumersLock.Lock()
+	defer c.consumersLock.Unlock()
+
+	for topic, consumer := range c.consumers {
+		if err := consumer.UnsubscribeForce(); err != nil {
+			msg := fmt.Sprintf("unable to force unsubscribe from topic=%s subscription=%s",
+				topic, c.Subscription())
+			errs = pkgerrors.Wrap(err, msg)
+		}
+	}
+	return errs
+}
+
+func (c *regexConsumer) GetLastMessageIDs() ([]TopicMessageID, error) {
+	ids := make([]TopicMessageID, 0)
+	for _, c := range c.consumers {
+		id, err := c.GetLastMessageIDs()
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, id...)
+	}
+	return ids, nil
+}
+
 func (c *regexConsumer) Receive(ctx context.Context) (message Message, err error) {
 	for {
 		select {

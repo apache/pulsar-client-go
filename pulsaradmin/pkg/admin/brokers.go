@@ -19,7 +19,6 @@ package admin
 
 import (
 	"fmt"
-	"net/url"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -27,6 +26,9 @@ import (
 
 // Brokers is admin interface for brokers management
 type Brokers interface {
+
+	// GetListActiveBrokers Get the list of active brokers in the local cluster.
+	GetListActiveBrokers() ([]string, error)
 	// GetActiveBrokers returns the list of active brokers in the cluster.
 	GetActiveBrokers(cluster string) ([]string, error)
 
@@ -53,8 +55,14 @@ type Brokers interface {
 	// GetAllDynamicConfigurations returns values of all overridden dynamic-configs
 	GetAllDynamicConfigurations() (map[string]string, error)
 
-	// HealthCheck run a health check on the broker
+	// Deprecated: Use HealthCheckWithTopicVersion instead
 	HealthCheck() error
+
+	// HealthCheckWithTopicVersion run a health check on the broker
+	HealthCheckWithTopicVersion(utils.TopicVersion) error
+
+	// GetLeaderBroker get the information of the leader broker.
+	GetLeaderBroker() (utils.BrokerInfo, error)
 }
 
 type broker struct {
@@ -72,6 +80,16 @@ func (c *pulsarClient) Brokers() Brokers {
 
 func (b *broker) GetActiveBrokers(cluster string) ([]string, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, cluster)
+	var res []string
+	err := b.pulsar.Client.Get(endpoint, &res)
+	if err != nil {
+		return nil, err
+	}
+	return res, nil
+}
+
+func (b *broker) GetListActiveBrokers() ([]string, error) {
+	endpoint := b.pulsar.endpoint(b.basePath)
 	var res []string
 	err := b.pulsar.Client.Get(endpoint, &res)
 	if err != nil {
@@ -101,8 +119,8 @@ func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils
 }
 
 func (b *broker) UpdateDynamicConfiguration(configName, configValue string) error {
-	value := url.QueryEscape(configValue)
-	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", configName, value)
+	value := fmt.Sprintf("/configuration/%s/%s", configName, configValue)
+	endpoint := b.pulsar.endpointWithFullPath(b.basePath, value)
 	return b.pulsar.Client.Post(endpoint, nil)
 }
 
@@ -142,9 +160,14 @@ func (b *broker) GetAllDynamicConfigurations() (map[string]string, error) {
 }
 
 func (b *broker) HealthCheck() error {
+	return b.HealthCheckWithTopicVersion(utils.TopicVersionV1)
+}
+func (b *broker) HealthCheckWithTopicVersion(topicVersion utils.TopicVersion) error {
 	endpoint := b.pulsar.endpoint(b.basePath, "/health")
 
-	buf, err := b.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
+	buf, err := b.pulsar.Client.GetWithQueryParams(endpoint, nil, map[string]string{
+		"topicVersion": topicVersion.String(),
+	}, false)
 	if err != nil {
 		return err
 	}
@@ -153,4 +176,13 @@ func (b *broker) HealthCheck() error {
 		return fmt.Errorf("health check returned unexpected result: %s", string(buf))
 	}
 	return nil
+}
+func (b *broker) GetLeaderBroker() (utils.BrokerInfo, error) {
+	endpoint := b.pulsar.endpoint(b.basePath, "/leaderBroker")
+	var brokerInfo utils.BrokerInfo
+	err := b.pulsar.Client.Get(endpoint, &brokerInfo)
+	if err != nil {
+		return brokerInfo, err
+	}
+	return brokerInfo, nil
 }
