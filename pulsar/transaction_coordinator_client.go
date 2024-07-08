@@ -120,8 +120,6 @@ func (t *transactionHandler) getConn() internal.Connection {
 }
 
 func (t *transactionHandler) runEventsLoop() {
-	defer close(t.requestCh)
-	defer close(t.connectClosedCh)
 	for {
 		select {
 		case <-t.closeCh:
