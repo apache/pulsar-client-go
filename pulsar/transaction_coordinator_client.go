@@ -58,6 +58,10 @@ const (
 	txnHandlerClosed
 )
 
+var ErrMaxConcurrentOpsReached = newError(MaxConcurrentOperationsReached, "Max concurrent operations reached")
+var ErrTransactionCoordinatorNotEnabled = newError(TransactionCoordinatorNotEnabled, "The broker doesn't enable "+
+	"the transaction coordinator, or the transaction coordinator has not initialized")
+
 func (t *transactionHandler) getState() txnHandlerState {
 	return txnHandlerState(t.state.Load())
 }
@@ -357,6 +361,9 @@ func (tc *transactionCoordinatorClient) start() error {
 	}
 	tc.handlers = make([]*transactionHandler, r.Partitions)
 	//Get connections with all transaction_impl coordinators which is synchronized
+	if r.Partitions <= 0 {
+		return ErrTransactionCoordinatorNotEnabled
+	}
 	for i := 0; i < r.Partitions; i++ {
 		handler, err := tc.newTransactionHandler(uint64(i))
 		if err != nil {
@@ -458,12 +465,11 @@ func getTCAssignTopicName(partition uint64) string {
 
 func (tc *transactionCoordinatorClient) canSendRequest() error {
 	if !tc.semaphore.Acquire(context.Background()) {
-		// What? This is not an Unknown Error. We need to fix that!
-		return newError(UnknownError, "Failed to acquire semaphore")
+		return ErrMaxConcurrentOpsReached
 	}
 	return nil
 }
 
 func (tc *transactionCoordinatorClient) nextTCNumber() uint64 {
-	return atomic.AddUint64(&tc.epoch, 1) % uint64(len(tc.handlers)) // TODO: The tc.cons may be empty
+	return atomic.AddUint64(&tc.epoch, 1) % uint64(len(tc.handlers))
 }
