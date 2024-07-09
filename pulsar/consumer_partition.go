@@ -587,7 +587,7 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 	if pc.options.backoffPolicy != nil {
 		bo = pc.options.backoffPolicy
 	} else {
-		bo = &backoff.DefaultBackoff{}
+		bo = NewDefaultBackoff()
 	}
 	request := func() (*trackingMessageID, error) {
 		req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
