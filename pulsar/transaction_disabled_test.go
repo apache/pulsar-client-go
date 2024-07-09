@@ -30,5 +30,5 @@ func TestTransactionDisabled(t *testing.T) {
 		EnableTransaction: true,
 	})
 	assert.NotNil(t, err)
-	assert.ErrorContains(t, err, "The broker doesn't enable the transaction coordinator")
+	assert.ErrorContains(t, err, "Transactions are not enabled")
 }
