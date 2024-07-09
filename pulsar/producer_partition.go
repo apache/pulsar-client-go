@@ -464,7 +464,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 	if p.options.BackoffPolicy != nil {
 		bo = p.options.BackoffPolicy
 	} else {
-		bo = &backoff.DefaultBackoff{}
+		bo = NewDefaultBackoff()
 	}
 
 	for maxRetry != 0 {
