@@ -29,5 +29,6 @@ func TestTransactionDisabled(t *testing.T) {
 		URL:               "pulsar://broker-1:6650",
 		EnableTransaction: true,
 	})
-	assert.ErrorIs(t, err, ErrTransactionCoordinatorNotEnabled)
+	assert.NotNil(t, err)
+	assert.ErrorContains(t, err, "The broker doesn't enable the transaction coordinator")
 }

@@ -111,8 +111,12 @@ func (t *transactionHandler) grabConn() error {
 	}
 
 	go func() {
-		<-res.Cnx.WaitForClose()
-		t.connectClosedCh <- &connectionClosed{}
+		select {
+		case <-t.closeCh:
+			return
+		case <-res.Cnx.WaitForClose():
+			t.connectClosedCh <- &connectionClosed{}
+		}
 	}()
 	t.conn.Store(res.Cnx)
 	t.log.Infof("Transaction handler with transaction coordinator id %d connected", t.partition)
@@ -189,6 +193,7 @@ func (t *transactionHandler) reconnectToBroker() {
 
 func (t *transactionHandler) checkRetriableError(err error, op any) bool {
 	if err != nil && errors.Is(err, internal.ErrConnectionClosed) {
+		// We are in the EventLoop here, so we need to insert the request back to the requestCh asynchronously.
 		go func() {
 			t.requestCh <- op
 		}()

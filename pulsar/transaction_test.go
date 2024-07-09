@@ -548,7 +548,6 @@ func TestTxnConnReconnect(t *testing.T) {
 	topic := newTopicName()
 	_, cli := createTcClient(t)
 
-	// Open a transaction and send 10 messages with the transaction.
 	txn, err := cli.NewTransaction(5 * time.Minute)
 	assert.NoError(t, err)
 
