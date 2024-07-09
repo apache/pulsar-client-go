@@ -34,6 +34,9 @@ type ConnectionPool interface {
 	// GetConnection get a connection from ConnectionPool.
 	GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error)
 
+	// GetConnections get all connections in the pool.
+	GetConnections() map[string]Connection
+
 	// Close all the connections in the pool
 	Close()
 }
@@ -122,6 +125,16 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 
 	err := conn.waitUntilReady()
 	return conn, err
+}
+
+func (p *connectionPool) GetConnections() map[string]Connection {
+	p.Lock()
+	conns := make(map[string]Connection)
+	for k, c := range p.connections {
+		conns[k] = c
+	}
+	p.Unlock()
+	return conns
 }
 
 func (p *connectionPool) Close() {

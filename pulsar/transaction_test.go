@@ -241,10 +241,11 @@ func TestConsumeAndProduceWithTxn(t *testing.T) {
 		SubscriptionName: sub,
 	})
 	assert.NoError(t, err)
-	producer, _ := client.CreateProducer(ProducerOptions{
+	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:       topic,
 		SendTimeout: 0,
 	})
+	assert.NoError(t, err)
 	// Step 3: Open a transaction, send 10 messages with the transaction and 10 messages without the transaction.
 	// Expectation: We can receive the 10 messages sent without a transaction and
 	// cannot receive the 10 messages sent with the transaction.
@@ -448,7 +449,7 @@ func consumerShouldNotReceiveMessage(t *testing.T, consumer Consumer) {
 	}
 }
 
-func TestAckChunkMessage(t *testing.T) {
+func TestTransactionAckChunkMessage(t *testing.T) {
 	topic := newTopicName()
 	sub := "my-sub"
 
@@ -538,4 +539,58 @@ func TestAckChunkMessage(t *testing.T) {
 	})
 	require.Nil(t, err)
 	consumerShouldNotReceiveMessage(t, consumer)
+}
+
+func TestTxnConnReconnect(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	topic := newTopicName()
+	_, cli := createTcClient(t)
+
+	// Open a transaction and send 10 messages with the transaction.
+	txn, err := cli.NewTransaction(5 * time.Minute)
+	assert.NoError(t, err)
+
+	connections := cli.cnxPool.GetConnections()
+	for _, conn := range connections {
+		conn.Close()
+	}
+
+	err = txn.Commit(ctx)
+	assert.NoError(t, err)
+
+	txn, err = cli.NewTransaction(5 * time.Minute)
+	assert.NoError(t, err) // Assert that the transaction can be opened after the connections are reconnected
+
+	// Start a goroutine to periodically close connections
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(1 * time.Second):
+				connections := cli.cnxPool.GetConnections()
+				for _, conn := range connections {
+					conn.Close()
+				}
+			}
+		}
+	}()
+
+	producer, err := cli.CreateProducer(ProducerOptions{
+		Topic:       topic,
+		SendTimeout: 0,
+	})
+	assert.NoError(t, err)
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(context.Background(), &ProducerMessage{
+			Transaction: txn,
+			Payload:     make([]byte, 1024),
+		})
+		require.Nil(t, err)
+		time.Sleep(500 * time.Millisecond)
+	}
+	err = txn.Commit(context.Background())
+	assert.NoError(t, err)
 }
