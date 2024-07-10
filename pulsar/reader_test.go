@@ -854,8 +854,7 @@ func (b *testBackoffPolicy) IsMaxBackoffReached() bool {
 }
 
 func (b *testBackoffPolicy) Reset() {
-	b.curBackoff, b.minBackoff, b.minBackoff = 0, 0, 0
-	b.retryTime = 0
+
 }
 
 func (b *testBackoffPolicy) IsExpectedIntervalFrom(startTime time.Time) bool {
