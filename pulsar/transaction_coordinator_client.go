@@ -225,7 +225,6 @@ func (t *transactionHandler) newTransaction(op *newTxnOp) {
 		return
 	}
 	defer close(op.done)
-	defer t.tc.semaphore.Release()
 	if err != nil {
 		op.err = err
 	} else if res.Response.NewTxnResponse.Error != nil {
@@ -260,7 +259,6 @@ func (t *transactionHandler) addPublishPartitionToTxn(op *addPublishPartitionOp)
 		return
 	}
 	defer close(op.done)
-	defer t.tc.semaphore.Release()
 	if err != nil {
 		op.err = err
 	} else if res.Response.AddPartitionToTxnResponse.Error != nil {
@@ -297,7 +295,6 @@ func (t *transactionHandler) addSubscriptionToTxn(op *addSubscriptionOp) {
 		return
 	}
 	defer close(op.done)
-	defer t.tc.semaphore.Release()
 	if err != nil {
 		op.err = err
 	} else if res.Response.AddSubscriptionToTxnResponse.Error != nil {
@@ -328,7 +325,6 @@ func (t *transactionHandler) endTxn(op *endTxnOp) {
 		return
 	}
 	defer close(op.done)
-	defer t.tc.semaphore.Release()
 	if err != nil {
 		op.err = err
 	} else if res.Response.EndTxnResponse.Error != nil {
