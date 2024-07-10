@@ -2336,7 +2336,7 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 	testProducer, err := client.CreateProducer(ProducerOptions{
 		Topic:                   newTopicName(),
 		DisableBlockIfQueueFull: false,
-		BatchingMaxPublishDelay: 100000,
+		BatchingMaxPublishDelay: 10 * time.Second,
 		BatchingMaxMessages:     1000,
 	})
 
