@@ -45,19 +45,28 @@ type RetryMessage struct {
 }
 
 type retryRouter struct {
-	client    Client
-	producer  Producer
-	policy    *DLQPolicy
-	messageCh chan RetryMessage
-	closeCh   chan interface{}
-	log       log.Logger
+	client            Client
+	producer          Producer
+	policy            *DLQPolicy
+	messageCh         chan RetryMessage
+	closeCh           chan interface{}
+	backOffPolicyFunc func() backoff.Policy
+	log               log.Logger
 }
 
-func newRetryRouter(client Client, policy *DLQPolicy, retryEnabled bool, logger log.Logger) (*retryRouter, error) {
+func newRetryRouter(client Client, policy *DLQPolicy, retryEnabled bool, backOffPolicyFunc func() backoff.Policy,
+	logger log.Logger) (*retryRouter, error) {
+	var boFunc func() backoff.Policy
+	if backOffPolicyFunc != nil {
+		boFunc = backOffPolicyFunc
+	} else {
+		boFunc = backoff.NewDefaultBackoff
+	}
 	r := &retryRouter{
-		client: client,
-		policy: policy,
-		log:    logger,
+		client:            client,
+		policy:            policy,
+		backOffPolicyFunc: boFunc,
+		log:               logger,
 	}
 
 	if policy != nil && retryEnabled {
@@ -125,7 +134,7 @@ func (r *retryRouter) getProducer() Producer {
 	}
 
 	// Retry to create producer indefinitely
-	bo := &backoff.DefaultBackoff{}
+	bo := r.backOffPolicyFunc()
 	for {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.RetryLetterTopic

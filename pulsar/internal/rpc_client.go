@@ -25,8 +25,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
+	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -116,7 +117,7 @@ func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
 	var host *url.URL
 	var rpcResult *RPCResult
 	startTime := time.Now()
-	bo := backoff.NewDefaultBackoff(100 * time.Millisecond)
+	bo := backoff.NewDefaultBackoffWithBackOff(100 * time.Millisecond)
 	// we can retry these requests because this kind of request is
 	// not specific to any particular broker
 	for time.Since(startTime) < c.requestTimeout {

@@ -30,6 +30,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -3789,12 +3791,14 @@ func TestConsumerWithBackoffPolicy(t *testing.T) {
 
 	topicName := newTopicName()
 
-	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	bo := newTestBackoffPolicy(1*time.Second, 4*time.Second)
 	_consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topicName,
 		SubscriptionName: "sub-1",
 		Type:             Shared,
-		BackoffPolicy:    backoff,
+		BackOffPolicyFunc: func() backoff.Policy {
+			return bo
+		},
 	})
 	assert.Nil(t, err)
 	defer _consumer.Close()
@@ -3803,22 +3807,22 @@ func TestConsumerWithBackoffPolicy(t *testing.T) {
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 2 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 }
 
 func TestAckWithMessageID(t *testing.T) {

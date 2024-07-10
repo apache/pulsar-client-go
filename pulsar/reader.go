@@ -89,9 +89,9 @@ type ReaderOptions struct {
 	// Schema represents the schema implementation.
 	Schema Schema
 
-	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// BackoffPolicyFunc parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
-	BackoffPolicy backoff.Policy
+	BackoffPolicyFunc func() backoff.Policy
 
 	// MaxPendingChunkedMessage sets the maximum pending chunked messages. (default: 100)
 	MaxPendingChunkedMessage int

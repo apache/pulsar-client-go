@@ -42,7 +42,7 @@ func TestBackoff_NextExponentialBackoff(t *testing.T) {
 		// the jitter introduces at most 20% difference so delay is less than twice the previous value
 		assert.LessOrEqual(t, int64(float64(delay)*.8), int64(2*float64(previousDelay)))
 		previousDelay = delay
-		assert.Equal(t, false, backoff.IsMaxBackoffReached(delay, time.Second))
+		assert.Equal(t, false, backoff.IsMaxBackoffReached())
 	}
 }
 
@@ -55,7 +55,9 @@ func TestBackoff_NextMaxValue(t *testing.T) {
 
 	cappedDelay := backoff.Next()
 	assert.GreaterOrEqual(t, int64(cappedDelay), int64(maxBackoff))
-	assert.Equal(t, true, backoff.IsMaxBackoffReached(cappedDelay, time.Second))
+	assert.Equal(t, true, backoff.IsMaxBackoffReached())
 	// max value is 60 seconds + 20% jitter = 72 seconds
 	assert.LessOrEqual(t, int64(cappedDelay), int64(72*time.Second))
+	backoff.Reset()
+	assert.Equal(t, false, backoff.IsMaxBackoffReached())
 }

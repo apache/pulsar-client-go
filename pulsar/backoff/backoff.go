@@ -33,7 +33,10 @@ type Policy interface {
 	Next() time.Duration
 
 	// IsMaxBackoffReached evaluates if the max number of retries is reached
-	IsMaxBackoffReached(delayReconnectTime, totalDelayReconnectTime time.Duration) bool
+	IsMaxBackoffReached() bool
+
+	// Reset the backoff to the initial state
+	Reset()
 }
 
 // DefaultBackoff computes the delay before retrying an action.
@@ -42,7 +45,10 @@ type DefaultBackoff struct {
 	backoff time.Duration
 }
 
-func NewDefaultBackoff(backoff time.Duration) Policy {
+func NewDefaultBackoff() Policy {
+	return &DefaultBackoff{}
+}
+func NewDefaultBackoffWithBackOff(backoff time.Duration) Policy {
 	return &DefaultBackoff{backoff: backoff}
 }
 
@@ -66,6 +72,10 @@ func (b *DefaultBackoff) Next() time.Duration {
 }
 
 // IsMaxBackoffReached evaluates if the max number of retries is reached
-func (b *DefaultBackoff) IsMaxBackoffReached(delayReconnectTime, totalDelayReconnectTime time.Duration) bool {
+func (b *DefaultBackoff) IsMaxBackoffReached() bool {
 	return b.backoff >= maxBackoff
+}
+
+func (b *DefaultBackoff) Reset() {
+	b.backoff = 0
 }

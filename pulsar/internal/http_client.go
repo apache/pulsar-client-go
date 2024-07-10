@@ -150,7 +150,7 @@ func (c *httpClient) Get(endpoint string, obj interface{}, params map[string]str
 	if _, ok := err.(*url.Error); ok {
 		// We can retry this kind of requests over a connection error because they're
 		// not specific to a particular broker.
-		bo := backoff.NewDefaultBackoff(100 * time.Millisecond)
+		bo := backoff.NewDefaultBackoffWithBackOff(100 * time.Millisecond)
 		startTime := time.Now()
 		var retryTime time.Duration
 
