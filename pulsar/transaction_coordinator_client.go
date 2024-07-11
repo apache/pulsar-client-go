@@ -156,7 +156,6 @@ func (t *transactionHandler) reconnectToBroker() {
 
 		t.log.WithFields(log.Fields{
 			"delayReconnectTime": delayReconnectTime,
-			"partition":          t.partition,
 		}).Info("Transaction handler will reconnect to the transaction coordinator")
 		time.Sleep(delayReconnectTime)
 
@@ -205,10 +204,9 @@ type newTxnOp struct {
 
 func (t *transactionHandler) newTransaction(op *newTxnOp) {
 	requestID := t.tc.client.rpcClient.NewRequestID()
-	nextTcID := t.tc.nextTCNumber()
 	cmdNewTxn := &pb.CommandNewTxn{
 		RequestId:     proto.Uint64(requestID),
-		TcId:          proto.Uint64(nextTcID),
+		TcId:          &t.partition,
 		TxnTtlSeconds: proto.Uint64(uint64(op.timeout.Milliseconds())),
 	}
 	res, err := t.tc.client.rpcClient.RequestOnCnx(t.getConn(), requestID, pb.BaseCommand_NEW_TXN, cmdNewTxn)
