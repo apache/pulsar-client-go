@@ -18,9 +18,9 @@
 package oauth2
 
 import (
-	"net/http"
-
 	"github.com/apache/pulsar-client-go/oauth2/clock"
+	"net/http"
+	"strings"
 
 	"github.com/pkg/errors"
 )
@@ -68,7 +68,6 @@ func newClientCredentialsFlow(
 // NewDefaultClientCredentialsFlow provides an easy way to build up a default
 // client credentials flow with all the correct configuration.
 func NewDefaultClientCredentialsFlow(options ClientCredentialsFlowOptions) (*ClientCredentialsFlow, error) {
-
 	credsProvider := NewClientCredentialsProviderFromKeyFile(options.KeyFile)
 	keyFile, err := credsProvider.GetClientCredentials()
 	if err != nil {
@@ -81,6 +80,22 @@ func NewDefaultClientCredentialsFlow(options ClientCredentialsFlowOptions) (*Cli
 	}
 
 	tokenRetriever := NewTokenRetriever(&http.Client{})
+
+	// Merge the scopes of the options AdditionalScopes with the scopes read from the keyFile config
+	var scopesToAdd []string
+	if len(options.AdditionalScopes) > 0 {
+		for _, scope := range options.AdditionalScopes {
+			scopesToAdd = append(scopesToAdd, scope)
+		}
+	}
+
+	if keyFile.Scope != "" {
+		scopesSplit := strings.Split(keyFile.Scope, " ")
+		for _, scope := range scopesSplit {
+			scopesToAdd = append(scopesToAdd, scope)
+		}
+	}
+	options.AdditionalScopes = scopesToAdd
 
 	return newClientCredentialsFlow(
 		options,
