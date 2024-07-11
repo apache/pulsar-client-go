@@ -292,12 +292,12 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		}
 	}
 
-	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	res, err := p.client.rpcClient.RequestOnCnx(cnx, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		if errors.Is(err, internal.ErrRequestTimeOut) {
 			id := p.client.rpcClient.NewRequestID()
-			_, _ = p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_CLOSE_PRODUCER,
+			_, _ = p.client.rpcClient.RequestOnCnx(res.Cnx, id, pb.BaseCommand_CLOSE_PRODUCER,
 				&pb.CommandCloseProducer{
 					ProducerId: &p.producerID,
 					RequestId:  &id,
