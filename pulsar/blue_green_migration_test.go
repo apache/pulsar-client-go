@@ -54,8 +54,8 @@ func (suite *BlueGreenMigrationTestSuite) TestTopicMigration() {
 	for _, scenario := range []topicUnloadTestCase{
 
 		{
-			testCaseName: "proxyConnection",
-			blueAdminURL: "http://localhost:8080",
+			testCaseName:  "proxyConnection",
+			blueAdminURL:  "http://localhost:8080",
 			blueClientUrl: "pulsar://localhost:6650",
 			greenAdminURL: "http://localhost:8081",
 			migrationBody: `
@@ -83,17 +83,17 @@ func testTopicMigrate(
 	migrationBody string) {
 	runtime.GOMAXPROCS(1)
 	const (
-		cluster = "cluster-a"
+		cluster   = "cluster-a"
 		tenant    = utils.PUBLICTENANT
 		namespace = utils.DEFAULTNAMESPACE
 
-		blueBroker1URL = "pulsar://broker-1:6650"
-		blueBroker2URL = "pulsar://broker-2:6650"
+		blueBroker1URL  = "pulsar://broker-1:6650"
+		blueBroker2URL  = "pulsar://broker-2:6650"
 		greenBroker1URL = "pulsar://green-broker-1:6650"
 		greenBroker2URL = "pulsar://green-broker-2:6650"
 
-		blueBroker1LookupURL = "broker-1:8080"
-		blueBroker2LookupURL = "broker-2:8080"
+		blueBroker1LookupURL  = "broker-1:8080"
+		blueBroker2LookupURL  = "broker-2:8080"
 		greenBroker1LookupURL = "green-broker-1:8080"
 		greenBroker2LookupURL = "green-broker-2:8080"
 	)
@@ -233,7 +233,6 @@ func testTopicMigrate(
 	bundleRange, err := greenAdmin.Topics().GetBundleRange(*topicName)
 	req.NoError(err)
 	req.NotEmpty(bundleRange)
-
 
 	unloadURL := fmt.Sprintf(
 		"/admin/v2/namespaces/%s/%s/%s/unload?destinationBroker=%s",

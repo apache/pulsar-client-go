@@ -15,7 +15,7 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package internal
+package backoff
 
 import (
 	"testing"
@@ -58,4 +58,6 @@ func TestBackoff_NextMaxValue(t *testing.T) {
 	assert.Equal(t, true, backoff.IsMaxBackoffReached())
 	// max value is 60 seconds + 20% jitter = 72 seconds
 	assert.LessOrEqual(t, int64(cappedDelay), int64(72*time.Second))
+	backoff.Reset()
+	assert.Equal(t, false, backoff.IsMaxBackoffReached())
 }
