@@ -42,6 +42,8 @@ type transactionCoordinatorClient struct {
 const TransactionCoordinatorAssign = "persistent://pulsar/system/transaction_coordinator_assign"
 
 var ErrMaxConcurrentOpsReached = newError(MaxConcurrentOperationsReached, "Max concurrent operations reached")
+var ErrTransactionCoordinatorNotEnabled = newError(TransactionCoordinatorNotEnabled, "The broker doesn't enable "+
+	"the transaction coordinator, or the transaction coordinator has not initialized")
 
 // newTransactionCoordinatorClientImpl init a transactionImpl coordinator client and
 // acquire connections with all transactionImpl coordinators.
@@ -62,6 +64,9 @@ func (tc *transactionCoordinatorClient) start() error {
 	tc.cons = make([]internal.Connection, r.Partitions)
 
 	//Get connections with all transaction_impl coordinators which is synchronized
+	if r.Partitions <= 0 {
+		return ErrTransactionCoordinatorNotEnabled
+	}
 	for i := 0; i < r.Partitions; i++ {
 		err := tc.grabConn(uint64(i))
 		if err != nil {

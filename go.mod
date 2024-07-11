@@ -1,6 +1,6 @@
 module github.com/apache/pulsar-client-go
 
-go 1.18
+go 1.20
 
 require (
 	github.com/99designs/keyring v1.2.1
@@ -10,8 +10,7 @@ require (
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/davecgh/go-spew v1.1.1
 	github.com/google/uuid v1.1.2
-	github.com/klauspost/compress v1.14.4
-	github.com/linkedin/goavro/v2 v2.9.8
+	github.com/klauspost/compress v1.17.9
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.19.0
 	github.com/opentracing/opentracing-go v1.2.0
@@ -21,9 +20,9 @@ require (
 	github.com/sirupsen/logrus v1.6.0
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cobra v1.6.1
-	github.com/stretchr/testify v1.8.0
+	github.com/stretchr/testify v1.9.0
 	go.uber.org/atomic v1.7.0
-	golang.org/x/mod v0.8.0
+	golang.org/x/mod v0.18.0
 	golang.org/x/oauth2 v0.0.0-20210402161424-2e8d93401602
 	golang.org/x/time v0.0.0-20191024005414-555d28b269f0
 	google.golang.org/protobuf v1.33.0
@@ -32,6 +31,7 @@ require (
 require (
 	github.com/golang-jwt/jwt/v5 v5.2.1
 	github.com/golang/protobuf v1.5.2
+	github.com/hamba/avro/v2 v2.22.2-0.20240625062549-66aad10411d9
 	github.com/hashicorp/go-multierror v1.1.1
 )
 
@@ -44,12 +44,15 @@ require (
 	github.com/dvsekhvalnov/jose2go v1.6.0 // indirect
 	github.com/fsnotify/fsnotify v1.4.9 // indirect
 	github.com/godbus/dbus v0.0.0-20190726142602-4481cbc300e2 // indirect
-	github.com/golang/snappy v0.0.1 // indirect
 	github.com/gsterjov/go-libsecret v0.0.0-20161001094733-a6f4afe4910c // indirect
 	github.com/hashicorp/errwrap v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.0.1 // indirect
+	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.3 // indirect
 	github.com/matttproud/golang_protobuf_extensions v1.0.1 // indirect
+	github.com/mitchellh/mapstructure v1.5.0 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
@@ -57,7 +60,7 @@ require (
 	github.com/prometheus/common v0.26.0 // indirect
 	github.com/prometheus/procfs v0.6.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	github.com/stretchr/objx v0.4.0 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	golang.org/x/net v0.23.0 // indirect
 	golang.org/x/sys v0.18.0 // indirect
 	golang.org/x/term v0.18.0 // indirect

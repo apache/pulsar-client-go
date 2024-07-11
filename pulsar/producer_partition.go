@@ -105,19 +105,19 @@ type partitionProducer struct {
 	compressionProvider      compression.Provider
 
 	// Channel where app is posting messages to be published
-	dataChan        chan *sendRequest
-	cmdChan         chan interface{}
-	connectClosedCh chan *connectionClosed
-
-	publishSemaphore internal.Semaphore
-	pendingQueue     internal.BlockingQueue
-	lastSequenceID   int64
-	schemaInfo       *SchemaInfo
-	partitionIdx     int32
-	metrics          *internal.LeveledMetrics
-	epoch            uint64
-	schemaCache      *schemaCache
-	topicEpoch       *uint64
+	dataChan             chan *sendRequest
+	cmdChan              chan interface{}
+	connectClosedCh      chan *connectionClosed
+	publishSemaphore     internal.Semaphore
+	pendingQueue         internal.BlockingQueue
+	lastSequenceID       int64
+	schemaInfo           *SchemaInfo
+	partitionIdx         int32
+	metrics              *internal.LeveledMetrics
+	epoch                uint64
+	schemaCache          *schemaCache
+	topicEpoch           *uint64
+	redirectedClusterURI string
 }
 
 type schemaCache struct {
@@ -223,7 +223,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
 	if len(brokerServiceURL) == 0 {
-		lr, err := p.client.lookupService.Lookup(p.topic)
+		lr, err := p.client.rpcClient.LookupService(p.redirectedClusterURI).Lookup(p.topic)
 		if err != nil {
 			p.log.WithError(err).Warn("Failed to lookup topic")
 			return nil, err
@@ -232,7 +232,8 @@ func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.Look
 		p.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	return p.client.lookupService.GetBrokerAddress(brokerServiceURL, p._getConn().IsProxied())
+	return p.client.rpcClient.LookupService(p.redirectedClusterURI).
+		GetBrokerAddress(brokerServiceURL, p._getConn().IsProxied())
 }
 
 func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
@@ -280,6 +281,17 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 	if len(p.options.Properties) > 0 {
 		cmdProducer.Metadata = toKeyValues(p.options.Properties)
 	}
+
+	cnx, err := p.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr)
+	// registering the producer first in case broker sends commands in the middle
+	if err == nil {
+		p._setConn(cnx)
+		err = p._getConn().RegisterListener(p.producerID, p)
+		if err != nil {
+			p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
+		}
+	}
+
 	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
 	if err != nil {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
@@ -317,8 +329,6 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		p.schemaCache.Put(p.schemaInfo, schemaVersion)
 	}
 
-	p._setConn(res.Cnx)
-	err = p._getConn().RegisterListener(p.producerID, p)
 	if err != nil {
 		return err
 	}
@@ -401,6 +411,10 @@ func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProdu
 	p.connectClosedCh <- &connectionClosed{
 		assignedBrokerURL: assignedBrokerURL,
 	}
+}
+
+func (p *partitionProducer) SetRedirectedClusterURI(redirectedClusterURI string) {
+	p.redirectedClusterURI = redirectedClusterURI
 }
 
 func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVersion []byte, err error) {

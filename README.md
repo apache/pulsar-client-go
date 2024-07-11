@@ -38,7 +38,7 @@ CGo-based library.
 
 ## Requirements
 
-- Go 1.18+
+- Go 1.20+
 
 > **Note**:
 >
@@ -152,7 +152,7 @@ Run the tests:
 
 Run the tests with specific versions of GOLANG and PULSAR:
 
-    make test GOLANG_VERSION=1.18 PULSAR_VERSION=2.10.0
+    make test GO_VERSION=1.20 PULSAR_VERSION=2.10.0
 
 ## Contributing
 

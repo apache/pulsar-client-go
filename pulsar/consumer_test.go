@@ -30,6 +30,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -1006,11 +1010,13 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 
 		if i == N-1 {
 			// cumulative ack the first half of messages
-			c1.AckCumulative(msg)
+			err := c1.AckCumulative(msg)
+			assert.Nil(t, err)
 		} else if i == N {
 			// the N+1 msg is in the second batch
 			// cumulative ack it to test if the first batch can be acked
-			c2.AckCumulative(msg)
+			err := c2.AckCumulative(msg)
+			assert.Nil(t, err)
 		}
 	}
 
@@ -3946,7 +3952,8 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 	// Acknowledge half of the messages
 	if cumulative {
 		msgID := msgIds[BatchingMaxSize/2-1]
-		consumer.AckIDCumulative(msgID)
+		err := consumer.AckIDCumulative(msgID)
+		assert.Nil(t, err)
 		log.Printf("Acknowledge %v:%d cumulatively\n", msgID, msgID.BatchIdx())
 	} else {
 		for i := 0; i < BatchingMaxSize; i++ {
@@ -3981,7 +3988,8 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 	}
 	if cumulative {
 		msgID := msgIds[BatchingMaxSize-1]
-		consumer.AckIDCumulative(msgID)
+		err := consumer.AckIDCumulative(msgID)
+		assert.Nil(t, err)
 		log.Printf("Acknowledge %v:%d cumulatively\n", msgID, msgID.BatchIdx())
 	}
 	consumer.Close()
@@ -4476,5 +4484,121 @@ func TestConsumerForceUnSubscribe(t *testing.T) {
 
 	err = consumer.UnsubscribeForce()
 	assert.Error(t, err)
+
+}
+
+func TestConsumerGetLastMessageIDs(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	partition := 1
+	topic := "my-topic"
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	// send messages
+	totalMessage := 10
+	for i := 0; i < totalMessage; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			assert.Nil(t, err)
+		}
+	}
+
+	// create admin
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+
+	messageIDs, err := consumer.GetLastMessageIDs()
+	assert.Nil(t, err)
+	assert.Equal(t, partition, len(messageIDs))
+
+	id := messageIDs[0]
+	topicName, err := utils.GetTopicName(id.Topic())
+	assert.Nil(t, err)
+	messages, err := admin.Subscriptions().GetMessagesByID(*topicName, id.LedgerID(), id.EntryID())
+	assert.Nil(t, err)
+	assert.Equal(t, 1, len(messages))
+
+}
+
+func TestPartitionConsumerGetLastMessageIDs(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	partition := 3
+	err = createPartitionedTopic(topic, partition)
+	assert.Nil(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	ctx := context.Background()
+	totalMessage := 30
+	// send messages
+	for i := 0; i < totalMessage; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			assert.Nil(t, err)
+		}
+	}
+
+	// create admin
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+
+	topicMessageIDs, err := consumer.GetLastMessageIDs()
+	assert.Nil(t, err)
+	assert.Equal(t, partition, len(topicMessageIDs))
+	for _, id := range topicMessageIDs {
+		assert.Equal(t, int(id.EntryID()), totalMessage/partition-1)
+
+		topicName, err := utils.GetTopicName(id.Topic())
+		assert.Nil(t, err)
+		messages, err := admin.Subscriptions().GetMessagesByID(*topicName, id.LedgerID(), id.EntryID())
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(messages))
+
+	}
 
 }

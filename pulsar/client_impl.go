@@ -169,26 +169,11 @@ func newClient(options ClientOptions) (Client, error) {
 		operationTimeout: operationTimeout,
 		tlsEnabled:       tlsConfig != nil,
 	}
-	serviceNameResolver := internal.NewPulsarServiceNameResolver(url)
 
-	c.rpcClient = internal.NewRPCClient(url, serviceNameResolver, c.cnxPool, operationTimeout, logger, metrics)
+	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger, metrics,
+		options.ListenerName, tlsConfig, authProvider)
 
-	switch url.Scheme {
-	case "pulsar", "pulsar+ssl":
-		c.lookupService = internal.NewLookupService(c.rpcClient, url, serviceNameResolver,
-			c.tlsEnabled, options.ListenerName, logger, metrics)
-	case "http", "https":
-		httpClient, err := internal.NewHTTPClient(url, serviceNameResolver, tlsConfig,
-			operationTimeout, logger, metrics, authProvider)
-		if err != nil {
-			return nil, newError(InvalidConfiguration, fmt.Sprintf("Failed to init http client with err: '%s'",
-				err.Error()))
-		}
-		c.lookupService = internal.NewHTTPLookupService(httpClient, url, serviceNameResolver,
-			c.tlsEnabled, logger, metrics)
-	default:
-		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
-	}
+	c.lookupService = c.rpcClient.LookupService("")
 
 	c.handlers = internal.NewClientHandlers()
 

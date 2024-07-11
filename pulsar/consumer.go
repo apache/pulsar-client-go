@@ -160,6 +160,11 @@ type ConsumerOptions struct {
 	// Default value is `1000` messages and should be good for most use cases.
 	ReceiverQueueSize int
 
+	// EnableZeroQueueConsumer, if enabled, the ReceiverQueueSize will be 0.
+	// Notice: only non-partitioned topic is supported.
+	// Default is false.
+	EnableZeroQueueConsumer bool
+
 	// EnableAutoScaledReceiverQueueSize, if enabled, the consumer receive queue will be auto-scaled
 	// by the consumer actual throughput. The ReceiverQueueSize will be the maximum size which consumer
 	// receive queue can be scaled.
@@ -277,6 +282,11 @@ type Consumer interface {
 	// This operation will fail when performed on a shared subscription
 	// where more than one consumer are currently connected.
 	UnsubscribeForce() error
+
+	// GetLastMessageIDs get all the last message id of the topics the consumer subscribed.
+	//
+	// The list of MessageID instances of all the topics that the consumer subscribed
+	GetLastMessageIDs() ([]TopicMessageID, error)
 
 	// Receive a single message.
 	// This calls blocks until a message is available.
