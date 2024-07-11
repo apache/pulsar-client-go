@@ -121,15 +121,6 @@ const (
 	// fenced. Applications are now supposed to close it and create a
 	// new producer
 	ProducerFenced
-	// MaxConcurrentOperationsReached indicates that the maximum number of concurrent operations
-	// has been reached. This means that no additional operations can be started until some
-	// of the current operations complete.
-	MaxConcurrentOperationsReached
-	// TransactionCoordinatorNotEnabled indicates that the transaction coordinator is not enabled.
-	// This error is returned when an operation that requires the transaction coordinator is attempted
-	// but the transaction coordinator feature is not enabled in the system or the transaction coordinator
-	// has not initialized
-	TransactionCoordinatorNotEnabled
 )
 
 // Error implement error interface, composed of two parts: msg and result.
