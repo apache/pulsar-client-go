@@ -62,10 +62,6 @@ func (t *transactionHandler) getState() txnHandlerState {
 	return txnHandlerState(t.state.Load())
 }
 
-func (t *transactionHandler) setState(state txnHandlerState) {
-	t.state.Store(int32(state))
-}
-
 func (tc *transactionCoordinatorClient) newTransactionHandler(partition uint64) (*transactionHandler, error) {
 	handler := &transactionHandler{
 		tc:              tc,
@@ -237,7 +233,6 @@ type addPublishPartitionOp struct {
 
 	// Response
 	errCh chan error
-	err   error
 }
 
 func (t *transactionHandler) addPublishPartitionToTxn(op *addPublishPartitionOp) {
@@ -269,7 +264,6 @@ type addSubscriptionOp struct {
 
 	// Response
 	errCh chan error
-	err   error
 }
 
 func (t *transactionHandler) addSubscriptionToTxn(op *addSubscriptionOp) {
@@ -304,7 +298,6 @@ type endTxnOp struct {
 
 	// Response
 	errCh chan error
-	err   error
 }
 
 func (t *transactionHandler) endTxn(op *endTxnOp) {
