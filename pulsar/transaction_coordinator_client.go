@@ -41,6 +41,7 @@ type transactionCoordinatorClient struct {
 // where the TC located.
 const TransactionCoordinatorAssign = "persistent://pulsar/system/transaction_coordinator_assign"
 
+var ErrMaxConcurrentOpsReached = newError(MaxConcurrentOperationsReached, "Max concurrent operations reached")
 var ErrTransactionCoordinatorNotEnabled = newError(TransactionCoordinatorNotEnabled, "The broker doesn't enable "+
 	"the transaction coordinator, or the transaction coordinator has not initialized")
 
@@ -212,7 +213,7 @@ func getTCAssignTopicName(partition uint64) string {
 
 func (tc *transactionCoordinatorClient) canSendRequest() error {
 	if !tc.semaphore.Acquire(context.Background()) {
-		return newError(UnknownError, "Failed to acquire semaphore")
+		return ErrMaxConcurrentOpsReached
 	}
 	return nil
 }
