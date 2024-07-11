@@ -28,26 +28,34 @@ import (
 )
 
 type dlqRouter struct {
-	client           Client
-	producer         Producer
-	policy           *DLQPolicy
-	messageCh        chan ConsumerMessage
-	closeCh          chan interface{}
-	topicName        string
-	subscriptionName string
-	consumerName     string
-	log              log.Logger
+	client            Client
+	producer          Producer
+	policy            *DLQPolicy
+	messageCh         chan ConsumerMessage
+	closeCh           chan interface{}
+	topicName         string
+	subscriptionName  string
+	consumerName      string
+	backOffPolicyFunc func() backoff.Policy
+	log               log.Logger
 }
 
 func newDlqRouter(client Client, policy *DLQPolicy, topicName, subscriptionName, consumerName string,
-	logger log.Logger) (*dlqRouter, error) {
+	backOffPolicyFunc func() backoff.Policy, logger log.Logger) (*dlqRouter, error) {
+	var boFunc func() backoff.Policy
+	if backOffPolicyFunc != nil {
+		boFunc = backOffPolicyFunc
+	} else {
+		boFunc = backoff.NewDefaultBackoff
+	}
 	r := &dlqRouter{
-		client:           client,
-		policy:           policy,
-		topicName:        topicName,
-		subscriptionName: subscriptionName,
-		consumerName:     consumerName,
-		log:              logger,
+		client:            client,
+		policy:            policy,
+		topicName:         topicName,
+		subscriptionName:  subscriptionName,
+		consumerName:      consumerName,
+		backOffPolicyFunc: boFunc,
+		log:               logger,
 	}
 
 	if policy != nil {
@@ -156,7 +164,7 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 	}
 
 	// Retry to create producer indefinitely
-	bo := &backoff.DefaultBackoff{}
+	bo := r.backOffPolicyFunc()
 	for {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.DeadLetterTopic

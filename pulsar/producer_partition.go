@@ -461,7 +461,7 @@ func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVer
 
 func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed) {
 	var (
-		maxRetry                                    int
+		maxRetry           int
 		delayReconnectTime time.Duration
 	)
 	if p.options.MaxReconnectToBroker == nil {

@@ -128,7 +128,8 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	}
 
 	// Provide dummy dlq router with not dlq policy
-	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, options.Name, client.log)
+	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, options.Name,
+		options.BackoffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
