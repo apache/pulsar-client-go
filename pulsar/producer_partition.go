@@ -488,7 +488,6 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		} else {
 			delayReconnectTime = bo.Next()
 		}
-		totalDelayReconnectTime += delayReconnectTime
 
 		p.log.WithFields(log.Fields{
 			"assignedBrokerURL":  assignedBrokerURL,
