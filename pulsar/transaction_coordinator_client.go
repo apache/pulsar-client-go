@@ -140,7 +140,6 @@ func (t *transactionHandler) runEventsLoop() {
 				t.endTxn(r)
 			}
 		case <-t.connectClosedCh:
-			t.log.Infof("Transaction handler %d will reconnect to the transaction coordinator", t.partition)
 			t.reconnectToBroker()
 		}
 	}
@@ -161,7 +160,8 @@ func (t *transactionHandler) reconnectToBroker() {
 
 		t.log.WithFields(log.Fields{
 			"delayReconnectTime": delayReconnectTime,
-		}).Info("Reconnecting to broker")
+			"partition":          t.partition,
+		}).Info("Transaction handler will reconnect to the transaction coordinator")
 		time.Sleep(delayReconnectTime)
 
 		// double check
@@ -181,7 +181,7 @@ func (t *transactionHandler) reconnectToBroker() {
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
-			t.log.Warn("Topic Not Found.")
+			t.log.Warn("Topic Not Found")
 			break
 		}
 	}
@@ -203,8 +203,7 @@ type newTxnOp struct {
 	timeout time.Duration
 
 	// Response
-	done  chan any
-	err   error
+	errCh chan error
 	txnID *TxnID
 }
 
@@ -220,11 +219,11 @@ func (t *transactionHandler) newTransaction(op *newTxnOp) {
 	if t.checkRetriableError(err, op) {
 		return
 	}
-	defer close(op.done)
+	defer close(op.errCh)
 	if err != nil {
-		op.err = err
+		op.errCh <- err
 	} else if res.Response.NewTxnResponse.Error != nil {
-		op.err = getErrorFromServerError(res.Response.NewTxnResponse.Error)
+		op.errCh <- getErrorFromServerError(res.Response.NewTxnResponse.Error)
 	} else {
 		op.txnID = &TxnID{*res.Response.NewTxnResponse.TxnidMostBits,
 			*res.Response.NewTxnResponse.TxnidLeastBits}
@@ -237,8 +236,8 @@ type addPublishPartitionOp struct {
 	partitions []string
 
 	// Response
-	done chan any
-	err  error
+	errCh chan error
+	err   error
 }
 
 func (t *transactionHandler) addPublishPartitionToTxn(op *addPublishPartitionOp) {
@@ -254,11 +253,11 @@ func (t *transactionHandler) addPublishPartitionToTxn(op *addPublishPartitionOp)
 	if t.checkRetriableError(err, op) {
 		return
 	}
-	defer close(op.done)
+	defer close(op.errCh)
 	if err != nil {
-		op.err = err
+		op.errCh <- err
 	} else if res.Response.AddPartitionToTxnResponse.Error != nil {
-		op.err = getErrorFromServerError(res.Response.AddPartitionToTxnResponse.Error)
+		op.errCh <- getErrorFromServerError(res.Response.AddPartitionToTxnResponse.Error)
 	}
 }
 
@@ -269,8 +268,8 @@ type addSubscriptionOp struct {
 	subscription string
 
 	// Response
-	done chan any
-	err  error
+	errCh chan error
+	err   error
 }
 
 func (t *transactionHandler) addSubscriptionToTxn(op *addSubscriptionOp) {
@@ -290,11 +289,11 @@ func (t *transactionHandler) addSubscriptionToTxn(op *addSubscriptionOp) {
 	if t.checkRetriableError(err, op) {
 		return
 	}
-	defer close(op.done)
+	defer close(op.errCh)
 	if err != nil {
-		op.err = err
+		op.errCh <- err
 	} else if res.Response.AddSubscriptionToTxnResponse.Error != nil {
-		op.err = getErrorFromServerError(res.Response.AddSubscriptionToTxnResponse.Error)
+		op.errCh <- getErrorFromServerError(res.Response.AddSubscriptionToTxnResponse.Error)
 	}
 }
 
@@ -304,8 +303,8 @@ type endTxnOp struct {
 	action pb.TxnAction
 
 	// Response
-	done chan any
-	err  error
+	errCh chan error
+	err   error
 }
 
 func (t *transactionHandler) endTxn(op *endTxnOp) {
@@ -320,20 +319,19 @@ func (t *transactionHandler) endTxn(op *endTxnOp) {
 	if t.checkRetriableError(err, op) {
 		return
 	}
-	defer close(op.done)
+	defer close(op.errCh)
 	if err != nil {
-		op.err = err
+		op.errCh <- err
 	} else if res.Response.EndTxnResponse.Error != nil {
-		op.err = getErrorFromServerError(res.Response.EndTxnResponse.Error)
+		op.errCh <- getErrorFromServerError(res.Response.EndTxnResponse.Error)
 	}
 }
 
 func (t *transactionHandler) close() {
-	if t.getState() != txnHandlerReady {
+	if !t.state.CAS(txnHandlerReady, txnHandlerClosed) {
 		return
 	}
 	close(t.closeCh)
-	t.setState(txnHandlerClosed)
 }
 
 // TransactionCoordinatorAssign is the transaction_impl coordinator topic which is used to look up the broker
@@ -383,14 +381,10 @@ func (tc *transactionCoordinatorClient) newTransaction(timeout time.Duration) (*
 	defer tc.semaphore.Release()
 	op := &newTxnOp{
 		timeout: timeout,
-		done:    make(chan any),
+		errCh:   make(chan error),
 	}
 	tc.handlers[tc.nextTCNumber()].requestCh <- op
-	<-op.done
-	if op.err != nil {
-		return nil, op.err
-	}
-	return op.txnID, nil
+	return op.txnID, <-op.errCh
 }
 
 // addPublishPartitionToTxn register the partitions which published messages with the transactionImpl.
@@ -403,14 +397,10 @@ func (tc *transactionCoordinatorClient) addPublishPartitionToTxn(id *TxnID, part
 	op := &addPublishPartitionOp{
 		id:         id,
 		partitions: partitions,
-		done:       make(chan any),
+		errCh:      make(chan error),
 	}
 	tc.handlers[id.MostSigBits].requestCh <- op
-	<-op.done
-	if op.err != nil {
-		return op.err
-	}
-	return nil
+	return <-op.errCh
 }
 
 // addSubscriptionToTxn register the subscription which acked messages with the transactionImpl.
@@ -424,14 +414,10 @@ func (tc *transactionCoordinatorClient) addSubscriptionToTxn(id *TxnID, topic st
 		id:           id,
 		topic:        topic,
 		subscription: subscription,
-		done:         make(chan any),
+		errCh:        make(chan error),
 	}
 	tc.handlers[id.MostSigBits].requestCh <- op
-	<-op.done
-	if op.err != nil {
-		return op.err
-	}
-	return nil
+	return <-op.errCh
 }
 
 // endTxn commit or abort the transactionImpl.
@@ -443,14 +429,10 @@ func (tc *transactionCoordinatorClient) endTxn(id *TxnID, action pb.TxnAction) e
 	op := &endTxnOp{
 		id:     id,
 		action: action,
-		done:   make(chan any),
+		errCh:  make(chan error),
 	}
 	tc.handlers[id.MostSigBits].requestCh <- op
-	<-op.done
-	if op.err != nil {
-		return op.err
-	}
-	return nil
+	return <-op.errCh
 }
 
 func getTCAssignTopicName(partition uint64) string {
