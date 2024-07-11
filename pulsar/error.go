@@ -121,6 +121,10 @@ const (
 	// fenced. Applications are now supposed to close it and create a
 	// new producer
 	ProducerFenced
+	// MaxConcurrentOperationsReached indicates that the maximum number of concurrent operations
+	// has been reached. This means that no additional operations can be started until some
+	// of the current operations complete.
+	MaxConcurrentOperationsReached
 )
 
 // Error implement error interface, composed of two parts: msg and result.
