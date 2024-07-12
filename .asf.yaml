@@ -42,6 +42,14 @@ github:
     # disable rebase button:
     rebase:  false
 
+  protected_branches:
+    master:
+      required_pull_request_reviews:
+        require_code_owner_reviews: true
+        required_approving_review_count: 1
+
+      # Requires all conversations on code to be resolved before a pull request can be merged.
+      required_conversation_resolution: true
 
 notifications:
   commits:      commits@pulsar.apache.org
