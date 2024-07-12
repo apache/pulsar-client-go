@@ -284,20 +284,24 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 
 	cnx, err := p.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr)
 	// registering the producer first in case broker sends commands in the middle
-	if err == nil {
-		p._setConn(cnx)
-		err = p._getConn().RegisterListener(p.producerID, p)
-		if err != nil {
-			p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
-		}
+	if err != nil {
+		p.log.Error("Failed to get connection")
+		return err
 	}
 
-	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	p._setConn(cnx)
+	err = p._getConn().RegisterListener(p.producerID, p)
 	if err != nil {
+		p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
+	}
+
+	res, err := p.client.rpcClient.RequestOnCnx(cnx, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	if err != nil {
+		p._getConn().UnregisterListener(p.producerID)
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		if errors.Is(err, internal.ErrRequestTimeOut) {
 			id := p.client.rpcClient.NewRequestID()
-			_, _ = p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_CLOSE_PRODUCER,
+			_, _ = p.client.rpcClient.RequestOnCnx(cnx, id, pb.BaseCommand_CLOSE_PRODUCER,
 				&pb.CommandCloseProducer{
 					ProducerId: &p.producerID,
 					RequestId:  &id,
