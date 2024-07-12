@@ -284,12 +284,15 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 
 	cnx, err := p.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr)
 	// registering the producer first in case broker sends commands in the middle
-	if err == nil {
-		p._setConn(cnx)
-		err = p._getConn().RegisterListener(p.producerID, p)
-		if err != nil {
-			p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
-		}
+	if err != nil {
+		p.log.Error("Failed to get connection")
+		return err
+	}
+
+	p._setConn(cnx)
+	err = p._getConn().RegisterListener(p.producerID, p)
+	if err != nil {
+		p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
 	}
 
 	res, err := p.client.rpcClient.RequestOnCnx(cnx, id, pb.BaseCommand_PRODUCER, cmdProducer)
