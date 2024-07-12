@@ -177,7 +177,7 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 		case res := <-ch:
 			// Ignoring producer not ready response.
 			// Continue to wait for the producer to create successfully
-			if res.error == nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
+			if res.error == nil && res.Response != nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
 				if !res.RPCResult.Response.ProducerSuccess.GetProducerReady() {
 					timeoutCh = nil
 					break
