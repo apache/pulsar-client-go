@@ -23,6 +23,67 @@
 
 All notable changes to this project will be documented in this file.
 
+[0.13.0] 2024-07-12
+
+## What's Changed
+* [chore(deps):] bump golang.org/x/net from 0.0.0-20220225172249-27dd8689420f to 0.17.0 by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/1155
+* [fix] Fix DLQ producer name conflicts when multiples consumers send messages to DLQ by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1156
+* Add 0.12.0 change log by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1153
+* Fix SIGSEGV with zstd compression enabled by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1164
+* [Producer] respect context cancellation in Flush by @jayshrivastava in https://github.com/apache/pulsar-client-go/pull/1165
+* Added CodeQL static code scanner by @merlimat in https://github.com/apache/pulsar-client-go/pull/1169
+* Fix BytesSchema by @petermnhull in https://github.com/apache/pulsar-client-go/pull/1173
+* [feat] Support partitioned topic reader by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1178
+* [Bug Fix]Fix available permits in MessageReceived by @panszobe in https://github.com/apache/pulsar-client-go/pull/1181
+* fix: make function state values `omitempty` by @freeznet in https://github.com/apache/pulsar-client-go/pull/1185
+* [fix] Fix Infinite Loop in Reader's `HasNext` Function by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1182
+* [Improve] Add optional parameters for getPartitionedStats by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1193
+* Remove `VERSION` and `stable.txt` files by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1158
+* [Improve] getMessagesById gets all messages by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1194
+* [Improve]Change base image to apachepulsar/pulsar by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1195
+* Add change log for 0.12.1 by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1189
+* [fix] Change the wrong `SourceInstanceStatusData` in `SinkInstanceStatus` by @jiangpengcheng in https://github.com/apache/pulsar-client-go/pull/1199
+* chore(deps): bump google.golang.org/protobuf from 1.30.0 to 1.33.0 by @dependabot in https://github.com/apache/pulsar-client-go/pull/1198
+* [Improve] Add admin api HealthCheckWithTopicVersion by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1200
+* [improve] Update topic admin interface comment, add topic admin test … by @geniusjoe in https://github.com/apache/pulsar-client-go/pull/1202
+* [fix][build] Build test container image using current hardware platform by @dragosvictor in https://github.com/apache/pulsar-client-go/pull/1205
+* [improve] expose RuntimeFlags for Pulsar Functions and Connectors by @freeznet in https://github.com/apache/pulsar-client-go/pull/1204
+* [improve] Use physical address information in connection pool key by @dragosvictor in https://github.com/apache/pulsar-client-go/pull/1206
+* [improve] add a lint-docker command in makefile by @geniusjoe in https://github.com/apache/pulsar-client-go/pull/1207
+* [Improve] Add admin api GetLeaderBroker by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1203
+* chore(deps): bump golang.org/x/net from 0.17.0 to 0.23.0 by @dependabot in https://github.com/apache/pulsar-client-go/pull/1209
+* [improve] PIP-307: Use assigned broker URL hints during broker reconnection by @dragosvictor in https://github.com/apache/pulsar-client-go/pull/1208
+* [Improve] Add admin api GetListActiveBrokers by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1212
+* [Improve] Add admin api ForceDeleteSchema by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1213
+* [improve] Upgrade golang-jwt to v5 by @nodece in https://github.com/apache/pulsar-client-go/pull/1214
+* [Improve] Supplement schema admin api. by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1215
+* [fix] Return an error when AckCumulative on a Shared/KeyShared subscription by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1217
+* [cleanup] Remove AvroCodec from JSONSchema by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1216
+* [Issue 1218][Reader] Reader Next returns on closed consumer by @Gilthoniel in https://github.com/apache/pulsar-client-go/pull/1219
+* [Improve] PIP-313 Support force unsubscribe using consumer api by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1220
+* [Improve] PIP-313 Add GetLastMessageIDs API by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1221
+* [feat] PIP-188 Support blue-green migration by @heesung-sn in https://github.com/apache/pulsar-client-go/pull/1210
+* [Improve] Add admin topic api CreateWithProperties by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1226
+* fix dynamic config by @labuladong in https://github.com/apache/pulsar-client-go/pull/1228
+* [Issue 1223] Support ZeroQueueConsumer by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1225
+* Fix custom value with `/` by @labuladong in https://github.com/apache/pulsar-client-go/pull/1229
+* Reuse function checkMsgIDPartition by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1232
+* [refactor][schema] replace linkedin/goavro/v2 with hamba/avro/v2 by @adrianiacobghiula in https://github.com/apache/pulsar-client-go/pull/1230
+* [Issue 1233] Fix the issue where the AckIDCumulativ cannot return error. by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1235
+* [feat] added a slog wrapper of the logger interface by @ivan-penchev in https://github.com/apache/pulsar-client-go/pull/1234
+* [fix] fix the client crash when the transaction coordinator not found by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1241
+* [improve] return `ErrMaxConcurrentOpsReached` when too many concurrent ops in transaction coordinator client by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1242
+* Fix transaction coordinator client cann't reconnect to the broker by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1237
+
+## New Contributors
+* @jayshrivastava made their first contribution in https://github.com/apache/pulsar-client-go/pull/1165
+* @petermnhull made their first contribution in https://github.com/apache/pulsar-client-go/pull/1173
+* @panszobe made their first contribution in https://github.com/apache/pulsar-client-go/pull/1181
+* @dragosvictor made their first contribution in https://github.com/apache/pulsar-client-go/pull/1205
+* @heesung-sn made their first contribution in https://github.com/apache/pulsar-client-go/pull/1210
+* @adrianiacobghiula made their first contribution in https://github.com/apache/pulsar-client-go/pull/1230
+* @ivan-penchev made their first contribution in https://github.com/apache/pulsar-client-go/pull/1234
+
 [0.12.1] 2024-02-29
 
 - [fix] Fix Infinite Loop in Reader's `HasNext` Function by @RobertIndie in [#1182](https://github.com/apache/pulsar-client-go/pull/1182)
