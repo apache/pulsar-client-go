@@ -301,7 +301,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		if errors.Is(err, internal.ErrRequestTimeOut) {
 			id := p.client.rpcClient.NewRequestID()
-			_, _ = p.client.rpcClient.RequestOnCnx(res.Cnx, id, pb.BaseCommand_CLOSE_PRODUCER,
+			_, _ = p.client.rpcClient.RequestOnCnx(cnx, id, pb.BaseCommand_CLOSE_PRODUCER,
 				&pb.CommandCloseProducer{
 					ProducerId: &p.producerID,
 					RequestId:  &id,
