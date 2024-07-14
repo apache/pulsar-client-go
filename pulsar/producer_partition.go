@@ -1511,9 +1511,8 @@ func (p *partitionProducer) Close() {
 		// Producer is closing
 		return
 	}
-
 	cp := &closeProducer{doneCh: make(chan struct{})}
-	p.cmdChan <- cp
+	p.internalClose(cp)
 
 	// wait for close producer request to complete
 	<-cp.doneCh
