@@ -750,7 +750,7 @@ func (n *namespaces) GrantSubPermission(namespace utils.NameSpaceName, sName str
 
 func (n *namespaces) RevokeSubPermission(namespace utils.NameSpaceName, sName, role string) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions",
-		"subscription", sName, role)
+		sName, role)
 	return n.pulsar.Client.Delete(endpoint)
 }
 
