@@ -245,11 +245,16 @@ type TopicStats struct {
 }
 
 type PublisherStats struct {
-	ProducerID      int64             `json:"producerId"`
-	MsgRateIn       float64           `json:"msgRateIn"`
-	MsgThroughputIn float64           `json:"msgThroughputIn"`
-	AverageMsgSize  float64           `json:"averageMsgSize"`
-	Metadata        map[string]string `json:"metadata"`
+	ProducerID         int64             `json:"producerId"`
+	ProducerName       string	     `json:"producerName"`
+	Address            string            `json:"address"`
+	ClientVersion      string            `json:"clientVersion"`
+	AccessMode         string            `json:"accessMode"`
+	MsgRateIn          float64           `json:"msgRateIn"`
+	MsgThroughputIn    float64           `json:"msgThroughputIn"`
+	ChunkedMessageRate float64           `json:"chunkedMessageRate"`
+	AverageMsgSize     float64           `json:"averageMsgSize"`
+	Metadata           map[string]string `json:"metadata"`
 }
 
 type SubscriptionStats struct {
