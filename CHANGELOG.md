@@ -25,6 +25,12 @@ All notable changes to this project will be documented in this file.
 
 [0.13.0] 2024-07-12
 
+## Important notice
+
+- The avro schema codec has been changed from `github.com/linkedin/goavro/v2` to `github.com/hamba/avro/v2`.
+- `pulsar.NewSchemaDefinition` has been removed. Use `pulsar.NewAvroSchema` instead.
+- The client has dropped support for Go 1.18 and 1.19. The minimum supported version is now Go 1.20.
+
 ## What's Changed
 * [chore] bump golang.org/x/net from 0.0.0-20220225172249-27dd8689420f to 0.17.0 by @BewareMyPower in https://github.com/apache/pulsar-client-go/pull/1155
 * [fix] Fix DLQ producer name conflicts when multiple consumers send messages to DLQ by @crossoverJie in https://github.com/apache/pulsar-client-go/pull/1156
@@ -74,6 +80,7 @@ All notable changes to this project will be documented in this file.
 * [fix] Fix the client crash when the transaction coordinator not found by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1241
 * [improve] Return `ErrMaxConcurrentOpsReached` when too many concurrent ops in transaction coordinator client by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1242
 * [fix] Fix transaction coordinator client cannot reconnect to the broker by @RobertIndie in https://github.com/apache/pulsar-client-go/pull/1237
+* [fix] Fix producer connection by @nodece in https://github.com/apache/pulsar-client-go/pull/1243
 
 ## New Contributors
 * @jayshrivastava made their first contribution in https://github.com/apache/pulsar-client-go/pull/1165
