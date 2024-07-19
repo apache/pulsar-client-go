@@ -57,19 +57,22 @@ type BatchBuilder interface {
 	) bool
 
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-	Flush() (batchData Buffer, sequenceID uint64, callbacks []interface{}, err error)
+	Flush() *FlushBatch
 
-	// Flush all the messages buffered in multiple batches and wait until all
-	// messages have been successfully persisted.
-	FlushBatches() (
-		batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}, errors []error,
-	)
+	FlushBatches() []*FlushBatch
 
 	// Return the batch container batch message in multiple batches.
 	IsMultiBatches() bool
 
 	reset()
 	Close() error
+}
+
+type FlushBatch struct {
+	BatchData  Buffer
+	SequenceID uint64
+	Callbacks  []interface{}
+	Error      error
 }
 
 // batchContainer wraps the objects needed to a batch.
@@ -250,12 +253,10 @@ func (bc *batchContainer) reset() {
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
-func (bc *batchContainer) Flush() (
-	batchData Buffer, sequenceID uint64, callbacks []interface{}, err error,
-) {
+func (bc *batchContainer) Flush() *FlushBatch {
 	if bc.numMessages == 0 {
 		// No-Op for empty batch
-		return nil, 0, nil, nil
+		return nil
 	}
 
 	bc.log.Debug("BatchBuilder flush: messages: ", bc.numMessages)
@@ -271,6 +272,8 @@ func (bc *batchContainer) Flush() (
 		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
 	}
 
+	sequenceID := uint64(0)
+	var err error
 	if err = serializeMessage(
 		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
 		bc.encryptor, bc.maxMessageSize, true,
@@ -278,15 +281,18 @@ func (bc *batchContainer) Flush() (
 		sequenceID = bc.cmdSend.Send.GetSequenceId()
 	}
 
-	callbacks = bc.callbacks
+	callbacks := bc.callbacks
 	bc.reset()
-	return buffer, sequenceID, callbacks, err
+	return &FlushBatch{
+		BatchData:  buffer,
+		SequenceID: sequenceID,
+		Callbacks:  callbacks,
+		Error:      err,
+	}
 }
 
 // FlushBatches only for multiple batches container
-func (bc *batchContainer) FlushBatches() (
-	batchData []Buffer, sequenceID []uint64, callbacks [][]interface{}, errors []error,
-) {
+func (bc *batchContainer) FlushBatches() []*FlushBatch {
 	panic("single batch container not support FlushBatches(), please use Flush() instead")
 }
 

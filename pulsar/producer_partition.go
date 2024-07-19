@@ -846,7 +846,8 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 		return
 	}
 
-	batchData, sequenceID, callbacks, err := p.batchBuilder.Flush()
+	batch := p.batchBuilder.Flush()
+	batchData, sequenceID, callbacks, err := batch.BatchData, batch.SequenceID, batch.Callbacks, batch.Error
 	if batchData == nil {
 		return
 	}
@@ -969,38 +970,38 @@ func (p *partitionProducer) failTimeoutMessages() {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatches() {
-	batchesData, sequenceIDs, callbacks, errs := p.batchBuilder.FlushBatches()
-	if batchesData == nil {
+	flushBatches := p.batchBuilder.FlushBatches()
+	if flushBatches == nil {
 		return
 	}
 
-	for i := range batchesData {
+	for _, b := range flushBatches {
 		// error occurred in processing batch
 		// report it using callback
-		if errs[i] != nil {
-			for _, cb := range callbacks[i] {
+		if b.Error != nil {
+			for _, cb := range b.Callbacks {
 				if sr, ok := cb.(*sendRequest); ok {
-					sr.done(nil, errs[i])
+					sr.done(nil, b.Error)
 				}
 			}
 
-			if errors.Is(errs[i], internal.ErrExceedMaxMessageSize) {
-				p.log.WithError(ErrMessageTooLarge).Errorf("internal err: %s", errs[i])
+			if errors.Is(b.Error, internal.ErrExceedMaxMessageSize) {
+				p.log.WithError(ErrMessageTooLarge).Errorf("internal err: %s", b.Error)
 				return
 			}
 
 			continue
 		}
-		if batchesData[i] == nil {
+		if b.BatchData == nil {
 			continue
 		}
 		p.pendingQueue.Put(&pendingItem{
 			sentAt:       time.Now(),
-			buffer:       batchesData[i],
-			sequenceID:   sequenceIDs[i],
-			sendRequests: callbacks[i],
+			buffer:       b.BatchData,
+			sequenceID:   b.SequenceID,
+			sendRequests: b.Callbacks,
 		})
-		p._getConn().WriteData(batchesData[i])
+		p._getConn().WriteData(b.BatchData)
 	}
 
 }
