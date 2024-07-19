@@ -813,7 +813,7 @@ func (p *partitionProducer) internalSingleSend(
 		return
 	}
 
-	p.writeData(buffer, sid, &[]interface{}{sr})
+	p.writeData(buffer, sid, []interface{}{sr})
 }
 
 type pendingItem struct {
@@ -862,17 +862,17 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 		return
 	}
 
-	p.writeData(batchData, sequenceID, &callbacks)
+	p.writeData(batchData, sequenceID, callbacks)
 }
 
-func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64, callbacks *[]interface{}) {
+func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64, callbacks []interface{}) {
 	now := time.Now()
 	p.pendingQueue.Put(&pendingItem{
 		createdAt:    now,
 		sentAt:       now,
 		buffer:       buffer,
 		sequenceID:   sequenceID,
-		sendRequests: *callbacks,
+		sendRequests: callbacks,
 	})
 	p._getConn().WriteData(buffer)
 }
@@ -995,7 +995,7 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 		if b.BatchData == nil {
 			continue
 		}
-		p.writeData(b.BatchData, b.SequenceID, &b.Callbacks)
+		p.writeData(b.BatchData, b.SequenceID, b.Callbacks)
 	}
 
 }
