@@ -276,6 +276,15 @@ type Namespaces interface {
 
 	// SetInactiveTopicPolicies sets the inactive topic policies on a namespace
 	SetInactiveTopicPolicies(namespace utils.NameSpaceName, data utils.InactiveTopicPolicies) error
+
+	// GetSubscriptionExpirationTime gets the subscription expiration time on a namespace. Returns -1 if not set
+	GetSubscriptionExpirationTime(namespace utils.NameSpaceName) (int, error)
+
+	// SetSubscriptionExpirationTime sets the subscription expiration time on a namespace
+	SetSubscriptionExpirationTime(namespace utils.NameSpaceName, expirationTimeInMinutes int) error
+
+	// RemoveSubscriptionExpirationTime removes subscription expiration time from a namespace, defaulting to broker settings
+	RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error
 }
 
 type namespaces struct {
@@ -882,4 +891,22 @@ func (n *namespaces) RemoveInactiveTopicPolicies(namespace utils.NameSpaceName) 
 func (n *namespaces) SetInactiveTopicPolicies(namespace utils.NameSpaceName, data utils.InactiveTopicPolicies) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "inactiveTopicPolicies")
 	return n.pulsar.Client.Post(endpoint, data)
+}
+
+func (n *namespaces) GetSubscriptionExpirationTime(namespace utils.NameSpaceName) (int, error) {
+	var result int = -1
+
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
+}
+
+func (n *namespaces) SetSubscriptionExpirationTime(namespace utils.NameSpaceName, subscriptionExpirationTimeInMinutes int) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
+	return n.pulsar.Client.Post(endpoint, &subscriptionExpirationTimeInMinutes)
+}
+
+func (n *namespaces) RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
+	return n.pulsar.Client.Delete(endpoint)
 }
