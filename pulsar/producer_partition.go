@@ -847,10 +847,10 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 	}
 
 	batch := p.batchBuilder.Flush()
-	batchData, sequenceID, callbacks, err := batch.BatchData, batch.SequenceID, batch.Callbacks, batch.Error
-	if batchData == nil {
+	if batch == nil {
 		return
 	}
+	batchData, sequenceID, callbacks, err := batch.BatchData, batch.SequenceID, batch.Callbacks, batch.Error
 
 	// error occurred in batch flush
 	// report it using callback
