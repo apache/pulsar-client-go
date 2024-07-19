@@ -19,14 +19,15 @@ package internal
 
 import (
 	"fmt"
+	"testing"
+	"time"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
-	"testing"
-	"time"
 )
 
 type mockBufferPool struct {
@@ -60,13 +61,13 @@ func TestKeyBasedBatcherOrdering(t *testing.T) {
 		assert.Fail(t, "Failed to create key based batcher")
 	}
 
-	sequenceId := uint64(0)
+	sequenceID := uint64(0)
 	for i := 0; i < 10; i++ {
 		metadata := &pb.SingleMessageMetadata{
 			OrderingKey: []byte(fmt.Sprintf("key-%d", i)),
 			PayloadSize: proto.Int32(0),
 		}
-		assert.True(t, keyBatcher.Add(metadata, &sequenceId, []byte("test"), nil, nil, time.Now(),
+		assert.True(t, keyBatcher.Add(metadata, &sequenceID, []byte("test"), nil, nil, time.Now(),
 			nil, false, false, 0, 0))
 	}
 
