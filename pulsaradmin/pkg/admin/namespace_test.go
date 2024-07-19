@@ -18,7 +18,6 @@
 package admin
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
@@ -193,7 +192,6 @@ func TestRevokeSubPermission(t *testing.T) {
 	require.NoError(t, err)
 	permissions, err := admin.Namespaces().GetSubPermissions(*namespace)
 	require.NoError(t, err)
-	fmt.Println(permissions)
 	assert.Equal(t, roles, permissions[sub])
 
 	// revoke subscription permission and get it
