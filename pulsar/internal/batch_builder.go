@@ -59,6 +59,8 @@ type BatchBuilder interface {
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
 	Flush() *FlushBatch
 
+	// FlushBatches all the messages buffered in multiple batches and wait until all
+	// messages have been successfully persisted.
 	FlushBatches() []*FlushBatch
 
 	// Return the batch container batch message in multiple batches.
