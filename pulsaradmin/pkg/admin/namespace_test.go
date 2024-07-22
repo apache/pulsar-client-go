@@ -174,12 +174,35 @@ func TestGetTopicAutoCreation(t *testing.T) {
 	assert.Equal(t, expected, *topicAutoCreation)
 }
 
-func TestNamespaces_SetSubscriptionExpirationTime(t *testing.T) {
+func TestRevokeSubPermission(t *testing.T) {
 	config := &config.Config{}
 	admin, err := New(config)
 	require.NoError(t, err)
 	require.NotNil(t, admin)
+  
+	namespace, err := utils.GetNamespaceName("public/default")
+	require.NoError(t, err)
+	require.NotNil(t, namespace)
 
+	sub := "subscription"
+	roles := []string{"user"}
+
+	// grant subscription permission and get it
+	err = admin.Namespaces().GrantSubPermission(*namespace, sub, roles)
+	require.NoError(t, err)
+	permissions, err := admin.Namespaces().GetSubPermissions(*namespace)
+	require.NoError(t, err)
+	assert.Equal(t, roles, permissions[sub])
+
+	// revoke subscription permission and get it
+	err = admin.Namespaces().RevokeSubPermission(*namespace, sub, roles[0])
+	require.NoError(t, err)
+	permissions, err = admin.Namespaces().GetSubPermissions(*namespace)
+	require.NoError(t, err)
+	assert.Equal(t, 0, len(permissions[sub]))
+}
+
+func TestNamespaces_SetSubscriptionExpirationTime(t *testing.T) {
 	tests := []struct {
 		name                       string
 		namespace                  string
