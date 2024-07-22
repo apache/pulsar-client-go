@@ -200,6 +200,9 @@ type Namespaces interface {
 	// RevokeSubPermission revoke permissions on a subscription's admin-api access
 	RevokeSubPermission(namespace utils.NameSpaceName, sName, role string) error
 
+	// GetSubPermissions returns subscription permissions on a namespace
+	GetSubPermissions(namespace utils.NameSpaceName) (map[string][]string, error)
+
 	// SetSubscriptionAuthMode sets the given subscription auth mode on all topics on a namespace
 	SetSubscriptionAuthMode(namespace utils.NameSpaceName, mode utils.SubscriptionAuthMode) error
 
@@ -750,8 +753,15 @@ func (n *namespaces) GrantSubPermission(namespace utils.NameSpaceName, sName str
 
 func (n *namespaces) RevokeSubPermission(namespace utils.NameSpaceName, sName, role string) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions",
-		"subscription", sName, role)
+		sName, role)
 	return n.pulsar.Client.Delete(endpoint)
+}
+
+func (n *namespaces) GetSubPermissions(namespace utils.NameSpaceName) (map[string][]string, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions", "subscription")
+	var permissions map[string][]string
+	err := n.pulsar.Client.Get(endpoint, &permissions)
+	return permissions, err
 }
 
 func (n *namespaces) SetSubscriptionAuthMode(namespace utils.NameSpaceName, mode utils.SubscriptionAuthMode) error {
