@@ -19,6 +19,7 @@ package oauth2
 
 import (
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/apache/pulsar-client-go/oauth2/clock"
@@ -47,6 +48,7 @@ var clientCredentials = KeyFile{
 	ClientSecret: "test_clientSecret",
 	ClientEmail:  "test_clientEmail",
 	IssuerURL:    "http://issuer",
+	Scope:        "test_scope",
 }
 
 var _ = Describe("ClientCredentialsFlow", func() {
@@ -81,6 +83,7 @@ var _ = Describe("ClientCredentialsFlow", func() {
 				ClientID:      clientCredentials.ClientID,
 				ClientSecret:  clientCredentials.ClientSecret,
 				Audience:      "test_audience",
+				Scopes:        strings.Split(clientCredentials.Scope, " "),
 			}))
 		})
 

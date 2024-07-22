@@ -84,16 +84,12 @@ func NewDefaultClientCredentialsFlow(options ClientCredentialsFlowOptions) (*Cli
 	// Merge the scopes of the options AdditionalScopes with the scopes read from the keyFile config
 	var scopesToAdd []string
 	if len(options.AdditionalScopes) > 0 {
-		for _, scope := range options.AdditionalScopes {
-			scopesToAdd = append(scopesToAdd, scope)
-		}
+		scopesToAdd = append(scopesToAdd, options.AdditionalScopes...)
 	}
 
 	if keyFile.Scope != "" {
 		scopesSplit := strings.Split(keyFile.Scope, " ")
-		for _, scope := range scopesSplit {
-			scopesToAdd = append(scopesToAdd, scope)
-		}
+		scopesToAdd = append(scopesToAdd, scopesSplit...)
 	}
 	options.AdditionalScopes = scopesToAdd
 
