@@ -179,7 +179,7 @@ func TestRevokeSubPermission(t *testing.T) {
 	admin, err := New(config)
 	require.NoError(t, err)
 	require.NotNil(t, admin)
-  
+
 	namespace, err := utils.GetNamespaceName("public/default")
 	require.NoError(t, err)
 	require.NotNil(t, namespace)
