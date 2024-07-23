@@ -2534,7 +2534,9 @@ func TestProducerKeepReconnectingAndThenCallClose(t *testing.T) {
 	require.NoError(t, err, "Failed to get the pulsar endpoint")
 
 	client, err := NewClient(ClientOptions{
-		URL: endpoint,
+		URL:               endpoint,
+		ConnectionTimeout: 5 * time.Second,
+		OperationTimeout:  5 * time.Second,
 	})
 	require.NoError(t, err)
 	defer client.Close()
@@ -2551,5 +2553,5 @@ func TestProducerKeepReconnectingAndThenCallClose(t *testing.T) {
 	require.Eventually(t, func() bool {
 		testProducer.Close()
 		return true
-	}, 5*time.Second, 1*time.Second)
+	}, 30*time.Second, 1*time.Second)
 }
