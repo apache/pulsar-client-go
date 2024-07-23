@@ -29,6 +29,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 
@@ -2473,4 +2475,34 @@ func TestDisableReplication(t *testing.T) {
 	err = proto.Unmarshal(metadata, &msgMetadata)
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"__local__"}, msgMetadata.GetReplicateTo())
+}
+
+func TestProducerWithMaxConnectionsPerBroker(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 8,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	for i := 0; i < 10; i++ {
+		testProducer, err := client.CreateProducer(ProducerOptions{
+			Topic:  newTopicName(),
+			Schema: NewBytesSchema(nil),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, testProducer)
+
+		var ok int32
+		testProducer.SendAsync(context.Background(), &ProducerMessage{Value: []byte("hello")},
+			func(id MessageID, producerMessage *ProducerMessage, err error) {
+				if err == nil {
+					atomic.StoreInt32(&ok, 1)
+				}
+			})
+		require.Eventually(t, func() bool {
+			return atomic.LoadInt32(&ok) == 1
+		}, 3*time.Second, time.Millisecond*100)
+		testProducer.Close()
+	}
 }

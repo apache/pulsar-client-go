@@ -284,20 +284,24 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 
 	cnx, err := p.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr)
 	// registering the producer first in case broker sends commands in the middle
-	if err == nil {
-		p._setConn(cnx)
-		err = p._getConn().RegisterListener(p.producerID, p)
-		if err != nil {
-			p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
-		}
+	if err != nil {
+		p.log.Error("Failed to get connection")
+		return err
 	}
 
-	res, err := p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	p._setConn(cnx)
+	err = p._getConn().RegisterListener(p.producerID, p)
 	if err != nil {
+		p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
+	}
+
+	res, err := p.client.rpcClient.RequestOnCnx(cnx, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	if err != nil {
+		p._getConn().UnregisterListener(p.producerID)
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
 		if errors.Is(err, internal.ErrRequestTimeOut) {
 			id := p.client.rpcClient.NewRequestID()
-			_, _ = p.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, id, pb.BaseCommand_CLOSE_PRODUCER,
+			_, _ = p.client.rpcClient.RequestOnCnx(cnx, id, pb.BaseCommand_CLOSE_PRODUCER,
 				&pb.CommandCloseProducer{
 					ProducerId: &p.producerID,
 					RequestId:  &id,
@@ -368,8 +372,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 				continue
 			}
 			pi := item.(*pendingItem)
-			// when resending pending batches, we update the sendAt timestamp and put to the back of queue
-			// to avoid pending item been removed by failTimeoutMessages and cause race condition
+			// when resending pending batches, we update the sendAt timestamp to record the metric.
 			pi.Lock()
 			pi.sentAt = time.Now()
 			pi.Unlock()
@@ -810,19 +813,14 @@ func (p *partitionProducer) internalSingleSend(
 		return
 	}
 
-	p.pendingQueue.Put(&pendingItem{
-		sentAt:       time.Now(),
-		buffer:       buffer,
-		sequenceID:   sid,
-		sendRequests: []interface{}{sr},
-	})
-	p._getConn().WriteData(buffer)
+	p.writeData(buffer, sid, []interface{}{sr})
 }
 
 type pendingItem struct {
 	sync.Mutex
 	buffer        internal.Buffer
 	sequenceID    uint64
+	createdAt     time.Time
 	sentAt        time.Time
 	sendRequests  []interface{}
 	isDone        bool
@@ -842,10 +840,11 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 		return
 	}
 
-	batchData, sequenceID, callbacks, err := p.batchBuilder.Flush()
-	if batchData == nil {
+	batch := p.batchBuilder.Flush()
+	if batch == nil {
 		return
 	}
+	batchData, sequenceID, callbacks, err := batch.BatchData, batch.SequenceID, batch.Callbacks, batch.Error
 
 	// error occurred in batch flush
 	// report it using callback
@@ -863,13 +862,19 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 		return
 	}
 
+	p.writeData(batchData, sequenceID, callbacks)
+}
+
+func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64, callbacks []interface{}) {
+	now := time.Now()
 	p.pendingQueue.Put(&pendingItem{
-		sentAt:       time.Now(),
-		buffer:       batchData,
+		createdAt:    now,
+		sentAt:       now,
+		buffer:       buffer,
 		sequenceID:   sequenceID,
 		sendRequests: callbacks,
 	})
-	p._getConn().WriteData(batchData)
+	p._getConn().WriteData(buffer)
 }
 
 func (p *partitionProducer) failTimeoutMessages() {
@@ -893,7 +898,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 			continue
 		}
 		oldestItem := item.(*pendingItem)
-		if nextWaiting := diff(oldestItem.sentAt); nextWaiting > 0 {
+		if nextWaiting := diff(oldestItem.createdAt); nextWaiting > 0 {
 			// none of these pending messages have timed out, wait and retry
 			t.Reset(nextWaiting)
 			continue
@@ -925,7 +930,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 					pi := m.(*pendingItem)
 					pi.Lock()
 					defer pi.Unlock()
-					if nextWaiting := diff(pi.sentAt); nextWaiting > 0 {
+					if nextWaiting := diff(pi.createdAt); nextWaiting > 0 {
 						// current and subsequent items not timeout yet, stop iterating
 						tickerNeedWaiting = nextWaiting
 						return false
@@ -965,38 +970,32 @@ func (p *partitionProducer) failTimeoutMessages() {
 }
 
 func (p *partitionProducer) internalFlushCurrentBatches() {
-	batchesData, sequenceIDs, callbacks, errs := p.batchBuilder.FlushBatches()
-	if batchesData == nil {
+	flushBatches := p.batchBuilder.FlushBatches()
+	if flushBatches == nil {
 		return
 	}
 
-	for i := range batchesData {
+	for _, b := range flushBatches {
 		// error occurred in processing batch
 		// report it using callback
-		if errs[i] != nil {
-			for _, cb := range callbacks[i] {
+		if b.Error != nil {
+			for _, cb := range b.Callbacks {
 				if sr, ok := cb.(*sendRequest); ok {
-					sr.done(nil, errs[i])
+					sr.done(nil, b.Error)
 				}
 			}
 
-			if errors.Is(errs[i], internal.ErrExceedMaxMessageSize) {
-				p.log.WithError(ErrMessageTooLarge).Errorf("internal err: %s", errs[i])
+			if errors.Is(b.Error, internal.ErrExceedMaxMessageSize) {
+				p.log.WithError(ErrMessageTooLarge).Errorf("internal err: %s", b.Error)
 				return
 			}
 
 			continue
 		}
-		if batchesData[i] == nil {
+		if b.BatchData == nil {
 			continue
 		}
-		p.pendingQueue.Put(&pendingItem{
-			sentAt:       time.Now(),
-			buffer:       batchesData[i],
-			sequenceID:   sequenceIDs[i],
-			sendRequests: callbacks[i],
-		})
-		p._getConn().WriteData(batchesData[i])
+		p.writeData(b.BatchData, b.SequenceID, b.Callbacks)
 	}
 
 }

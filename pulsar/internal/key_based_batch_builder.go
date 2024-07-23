@@ -191,51 +191,35 @@ func (bc *keyBasedBatchContainer) reset() {
 	bc.batches.containers = map[string]*batchContainer{}
 }
 
-// Flush all the messages buffered in multiple batches and wait until all
+// FlushBatches all the messages buffered in multiple batches and wait until all
 // messages have been successfully persisted.
-func (bc *keyBasedBatchContainer) FlushBatches() (
-	batchesData []Buffer, sequenceIDs []uint64, callbacks [][]interface{}, errors []error,
-) {
+func (bc *keyBasedBatchContainer) FlushBatches() []*FlushBatch {
 	if bc.numMessages == 0 {
 		// No-Op for empty batch
-		return nil, nil, nil, nil
+		return nil
 	}
 
 	bc.log.Debug("keyBasedBatchContainer flush: messages: ", bc.numMessages)
-	var batchesLen = len(bc.batches.containers)
-	var idx = 0
-	sortedKeys := make([]string, 0, batchesLen)
-
-	batchesData = make([]Buffer, batchesLen)
-	sequenceIDs = make([]uint64, batchesLen)
-	callbacks = make([][]interface{}, batchesLen)
-	errors = make([]error, batchesLen)
-
 	bc.batches.l.RLock()
 	defer bc.batches.l.RUnlock()
-	for k := range bc.batches.containers {
-		sortedKeys = append(sortedKeys, k)
-	}
-	sort.Strings(sortedKeys)
-	for _, k := range sortedKeys {
-		container := bc.batches.containers[k]
-		b, s, c, err := container.Flush()
-		if b != nil {
-			batchesData[idx] = b
-			sequenceIDs[idx] = s
-			callbacks[idx] = c
-			errors[idx] = err
+	flushBatches := make([]*FlushBatch, 0, len(bc.batches.containers))
+	for _, container := range bc.batches.containers {
+		batch := container.Flush()
+		if batch == nil {
+			continue
 		}
-		idx++
+		flushBatches = append(flushBatches, batch)
 	}
 
 	bc.reset()
-	return batchesData, sequenceIDs, callbacks, errors
+	// Sort items by sequenceID
+	sort.Slice(flushBatches, func(i, j int) bool {
+		return flushBatches[i].SequenceID < flushBatches[j].SequenceID
+	})
+	return flushBatches
 }
 
-func (bc *keyBasedBatchContainer) Flush() (
-	batchData Buffer, sequenceID uint64, callbacks []interface{}, err error,
-) {
+func (bc *keyBasedBatchContainer) Flush() *FlushBatch {
 	panic("multi batches container not support Flush(), please use FlushBatches() instead")
 }
 
