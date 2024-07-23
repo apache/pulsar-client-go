@@ -19,7 +19,9 @@ package oauth2
 
 import (
 	"github.com/apache/pulsar-client-go/oauth2/clock"
+
 	"net/http"
+	
 	"strings"
 
 	"github.com/pkg/errors"
