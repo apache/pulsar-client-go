@@ -203,6 +203,11 @@ func TestRevokeSubPermission(t *testing.T) {
 }
 
 func TestNamespaces_SetSubscriptionExpirationTime(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
 	tests := []struct {
 		name                       string
 		namespace                  string
