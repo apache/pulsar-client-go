@@ -19,7 +19,6 @@ package oauth2
 
 import (
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/apache/pulsar-client-go/oauth2/clock"
@@ -66,9 +65,11 @@ var _ = Describe("ClientCredentialsFlow", func() {
 		})
 
 		It("invokes TokenExchanger with credentials", func() {
+			additionalScope := "additional_scope"
 			provider := newClientCredentialsFlow(
 				ClientCredentialsFlowOptions{
-					KeyFile: "test_keyfile",
+					KeyFile:          "test_keyfile",
+					AdditionalScopes: []string{additionalScope},
 				},
 				&clientCredentials,
 				oidcEndpoints,
@@ -83,7 +84,7 @@ var _ = Describe("ClientCredentialsFlow", func() {
 				ClientID:      clientCredentials.ClientID,
 				ClientSecret:  clientCredentials.ClientSecret,
 				Audience:      "test_audience",
-				Scopes:        strings.Split(clientCredentials.Scope, " "),
+				Scopes:        []string{additionalScope, clientCredentials.Scope},
 			}))
 		})
 

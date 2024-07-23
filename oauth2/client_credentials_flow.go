@@ -80,19 +80,6 @@ func NewDefaultClientCredentialsFlow(options ClientCredentialsFlowOptions) (*Cli
 	}
 
 	tokenRetriever := NewTokenRetriever(&http.Client{})
-
-	// Merge the scopes of the options AdditionalScopes with the scopes read from the keyFile config
-	var scopesToAdd []string
-	if len(options.AdditionalScopes) > 0 {
-		scopesToAdd = append(scopesToAdd, options.AdditionalScopes...)
-	}
-
-	if keyFile.Scope != "" {
-		scopesSplit := strings.Split(keyFile.Scope, " ")
-		scopesToAdd = append(scopesToAdd, scopesSplit...)
-	}
-	options.AdditionalScopes = scopesToAdd
-
 	return newClientCredentialsFlow(
 		options,
 		keyFile,
@@ -105,13 +92,25 @@ var _ Flow = &ClientCredentialsFlow{}
 
 func (c *ClientCredentialsFlow) Authorize(audience string) (*AuthorizationGrant, error) {
 	var err error
+
+	// Merge the scopes of the options AdditionalScopes with the scopes read from the keyFile config
+	var scopesToAdd []string
+	if len(c.options.AdditionalScopes) > 0 {
+		scopesToAdd = append(scopesToAdd, c.options.AdditionalScopes...)
+	}
+
+	if c.keyfile.Scope != "" {
+		scopesSplit := strings.Split(c.keyfile.Scope, " ")
+		scopesToAdd = append(scopesToAdd, scopesSplit...)
+	}
+
 	grant := &AuthorizationGrant{
 		Type:              GrantTypeClientCredentials,
 		Audience:          audience,
 		ClientID:          c.keyfile.ClientID,
 		ClientCredentials: c.keyfile,
 		TokenEndpoint:     c.oidcWellKnownEndpoints.TokenEndpoint,
-		Scopes:            c.options.AdditionalScopes,
+		Scopes:            scopesToAdd,
 	}
 
 	// test the credentials and obtain an initial access token
