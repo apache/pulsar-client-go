@@ -48,6 +48,9 @@ WORKDIR /pulsar/pulsar-client-go
 ENV GOPATH=/pulsar/go
 ENV GOCACHE=/tmp/go-cache
 
+ARG PULSAR_IMAGE
+ENV PULSAR_IMAGE=$PULSAR_IMAGE
+
 # Install dependencies
 RUN go mod download
 
