@@ -47,6 +47,7 @@ var clientCredentials = KeyFile{
 	ClientSecret: "test_clientSecret",
 	ClientEmail:  "test_clientEmail",
 	IssuerURL:    "http://issuer",
+	Scope:        "test_scope",
 }
 
 var _ = Describe("ClientCredentialsFlow", func() {
@@ -64,9 +65,11 @@ var _ = Describe("ClientCredentialsFlow", func() {
 		})
 
 		It("invokes TokenExchanger with credentials", func() {
+			additionalScope := "additional_scope"
 			provider := newClientCredentialsFlow(
 				ClientCredentialsFlowOptions{
-					KeyFile: "test_keyfile",
+					KeyFile:          "test_keyfile",
+					AdditionalScopes: []string{additionalScope},
 				},
 				&clientCredentials,
 				oidcEndpoints,
@@ -81,6 +84,7 @@ var _ = Describe("ClientCredentialsFlow", func() {
 				ClientID:      clientCredentials.ClientID,
 				ClientSecret:  clientCredentials.ClientSecret,
 				Audience:      "test_audience",
+				Scopes:        []string{additionalScope, clientCredentials.Scope},
 			}))
 		})
 

@@ -38,6 +38,7 @@ type KeyFile struct {
 	ClientSecret string `json:"client_secret"`
 	ClientEmail  string `json:"client_email"`
 	IssuerURL    string `json:"issuer_url"`
+	Scope        string `json:"scope"`
 }
 
 func NewClientCredentialsProviderFromKeyFile(keyFile string) *KeyFileProvider {
