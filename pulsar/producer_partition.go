@@ -473,78 +473,79 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		case <-p.ctx.Done():
 			return
 		default:
-			if p.getProducerState() != producerReady {
-				// Producer is already closing
-				p.log.Info("producer state not ready, exit reconnect")
-				return
-			}
+		}
 
-			var assignedBrokerURL string
+		if p.getProducerState() != producerReady {
+			// Producer is already closing
+			p.log.Info("producer state not ready, exit reconnect")
+			return
+		}
 
-			if connectionClosed != nil && connectionClosed.HasURL() {
-				delayReconnectTime = 0
-				assignedBrokerURL = connectionClosed.assignedBrokerURL
-				connectionClosed = nil // Only attempt once
-			} else if p.options.BackoffPolicy == nil {
-				delayReconnectTime = defaultBackoff.Next()
-			} else {
-				delayReconnectTime = p.options.BackoffPolicy.Next()
-			}
+		var assignedBrokerURL string
 
-			p.log.WithFields(log.Fields{
-				"assignedBrokerURL":  assignedBrokerURL,
-				"delayReconnectTime": delayReconnectTime,
-			}).Info("Reconnecting to broker")
-			time.Sleep(delayReconnectTime)
+		if connectionClosed != nil && connectionClosed.HasURL() {
+			delayReconnectTime = 0
+			assignedBrokerURL = connectionClosed.assignedBrokerURL
+			connectionClosed = nil // Only attempt once
+		} else if p.options.BackoffPolicy == nil {
+			delayReconnectTime = defaultBackoff.Next()
+		} else {
+			delayReconnectTime = p.options.BackoffPolicy.Next()
+		}
 
-			// double check
-			if p.getProducerState() != producerReady {
-				// Producer is already closing
-				p.log.Info("producer state not ready, exit reconnect")
-				return
-			}
+		p.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
+		}).Info("Reconnecting to broker")
+		time.Sleep(delayReconnectTime)
 
-			atomic.AddUint64(&p.epoch, 1)
-			err := p.grabCnx(assignedBrokerURL)
-			if err == nil {
-				// Successfully reconnected
-				p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
-				return
-			}
-			p.log.WithError(err).Error("Failed to create producer at reconnect")
-			errMsg := err.Error()
-			if strings.Contains(errMsg, errMsgTopicNotFound) {
-				// when topic is deleted, we should give up reconnection.
-				p.log.Warn("Topic not found, stop reconnecting, close the producer")
-				p.doClose(joinErrors(ErrTopicNotfound, err))
-				break
-			}
+		// double check
+		if p.getProducerState() != producerReady {
+			// Producer is already closing
+			p.log.Info("producer state not ready, exit reconnect")
+			return
+		}
 
-			if strings.Contains(errMsg, errMsgTopicTerminated) {
-				p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
-				p.doClose(joinErrors(ErrTopicTerminated, err))
-				break
-			}
+		atomic.AddUint64(&p.epoch, 1)
+		err := p.grabCnx(assignedBrokerURL)
+		if err == nil {
+			// Successfully reconnected
+			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
+			return
+		}
+		p.log.WithError(err).Error("Failed to create producer at reconnect")
+		errMsg := err.Error()
+		if strings.Contains(errMsg, errMsgTopicNotFound) {
+			// when topic is deleted, we should give up reconnection.
+			p.log.Warn("Topic not found, stop reconnecting, close the producer")
+			p.doClose(joinErrors(ErrTopicNotfound, err))
+			break
+		}
 
-			if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
-				p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
-				p.failPendingMessages(joinErrors(ErrProducerBlockedQuotaExceeded, err))
-				break
-			}
+		if strings.Contains(errMsg, errMsgTopicTerminated) {
+			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
+			p.doClose(joinErrors(ErrTopicTerminated, err))
+			break
+		}
 
-			if strings.Contains(errMsg, errMsgProducerFenced) {
-				p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
-				p.doClose(joinErrors(ErrProducerFenced, err))
-				break
-			}
+		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
+			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
+			p.failPendingMessages(joinErrors(ErrProducerBlockedQuotaExceeded, err))
+			break
+		}
 
-			if maxRetry > 0 {
-				maxRetry--
-			}
-			p.metrics.ProducersReconnectFailure.Inc()
-			if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
-				p.metrics.ProducersReconnectMaxRetry.Inc()
-			}
+		if strings.Contains(errMsg, errMsgProducerFenced) {
+			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
+			p.doClose(joinErrors(ErrProducerFenced, err))
+			break
+		}
+
+		if maxRetry > 0 {
+			maxRetry--
+		}
+		p.metrics.ProducersReconnectFailure.Inc()
+		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
+			p.metrics.ProducersReconnectMaxRetry.Inc()
 		}
 	}
 }
