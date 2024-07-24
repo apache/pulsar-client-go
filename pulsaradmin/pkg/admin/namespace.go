@@ -904,7 +904,7 @@ func (n *namespaces) SetInactiveTopicPolicies(namespace utils.NameSpaceName, dat
 }
 
 func (n *namespaces) GetSubscriptionExpirationTime(namespace utils.NameSpaceName) (int, error) {
-	var result int = -1
+	var result = -1
 
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
 	err := n.pulsar.Client.Get(endpoint, &result)
