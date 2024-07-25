@@ -17,27 +17,39 @@
 
 package pulsar
 
+import "context"
+
 type ProducerInterceptor interface {
 	// BeforeSend This is called before send the message to the brokers. This method is allowed to modify the
 	// message.
-	BeforeSend(producer Producer, message *ProducerMessage)
+	BeforeSend(ctx context.Context, producer Producer, message *ProducerMessage) context.Context
 
 	// OnSendAcknowledgement This method is called when the message sent to the broker has been acknowledged,
 	// or when sending the message fails.
-	OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID)
+	OnSendAcknowledgement(ctx context.Context, producer Producer, message *ProducerMessage, msgID MessageID)
 }
 
 type ProducerInterceptors []ProducerInterceptor
 
-func (x ProducerInterceptors) BeforeSend(producer Producer, message *ProducerMessage) {
+func (x ProducerInterceptors) BeforeSend(
+	ctx context.Context,
+	producer Producer,
+	message *ProducerMessage,
+) context.Context {
 	for i := range x {
-		x[i].BeforeSend(producer, message)
+		ctx = x[i].BeforeSend(ctx, producer, message)
 	}
+	return ctx
 }
 
-func (x ProducerInterceptors) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
+func (x ProducerInterceptors) OnSendAcknowledgement(
+	ctx context.Context,
+	producer Producer,
+	message *ProducerMessage,
+	msgID MessageID,
+) {
 	for i := range x {
-		x[i].OnSendAcknowledgement(producer, message, msgID)
+		x[i].OnSendAcknowledgement(ctx, producer, message, msgID)
 	}
 }
 
