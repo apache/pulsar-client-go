@@ -286,7 +286,8 @@ type Namespaces interface {
 	// SetSubscriptionExpirationTime sets the subscription expiration time on a namespace
 	SetSubscriptionExpirationTime(namespace utils.NameSpaceName, expirationTimeInMinutes int) error
 
-	// RemoveSubscriptionExpirationTime removes subscription expiration time from a namespace, defaulting to broker settings
+	// RemoveSubscriptionExpirationTime removes subscription expiration time from a namespace,
+	// defaulting to broker settings
 	RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error
 }
 
@@ -911,7 +912,8 @@ func (n *namespaces) GetSubscriptionExpirationTime(namespace utils.NameSpaceName
 	return result, err
 }
 
-func (n *namespaces) SetSubscriptionExpirationTime(namespace utils.NameSpaceName, subscriptionExpirationTimeInMinutes int) error {
+func (n *namespaces) SetSubscriptionExpirationTime(namespace utils.NameSpaceName,
+	subscriptionExpirationTimeInMinutes int) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
 	return n.pulsar.Client.Post(endpoint, &subscriptionExpirationTimeInMinutes)
 }
