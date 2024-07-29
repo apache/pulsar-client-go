@@ -523,6 +523,21 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	assert.Equal(t, msgCount, numOfMessages/2)
 }
 
+func TestProducerReturnsErrorOnFlushWhenClosed(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{Topic: newTopicName()})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	producer.Close()
+
+	err = producer.FlushWithCtx(context.Background())
+	assert.Error(t, err)
+}
+
 func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
 	topicName := "public/default/partition-testRoundRobinRouterPartitionedProducer"
 	numberOfPartitions := 5
