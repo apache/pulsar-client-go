@@ -1494,6 +1494,10 @@ func (p *partitionProducer) Flush() error {
 }
 
 func (p *partitionProducer) FlushWithCtx(ctx context.Context) error {
+	if p.getProducerState() != producerReady {
+		return ErrProducerClosed
+	}
+
 	flushReq := &flushRequest{
 		doneCh: make(chan struct{}),
 		err:    nil,
