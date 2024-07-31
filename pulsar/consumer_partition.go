@@ -183,6 +183,9 @@ type partitionConsumer struct {
 	lastMessageInBroker *trackingMessageID
 
 	redirectedClusterURI string
+
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -319,6 +322,7 @@ func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
 	messageCh chan ConsumerMessage, dlq *dlqRouter,
 	metrics *internal.LeveledMetrics) (*partitionConsumer, error) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	pc := &partitionConsumer{
 		parentConsumer:       parent,
 		client:               client,
@@ -340,6 +344,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
+		ctx:                  ctx,
+		cancelFunc:           cancelFunc,
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
@@ -841,6 +847,8 @@ func (pc *partitionConsumer) Close() {
 	if pc.getConsumerState() != consumerReady {
 		return
 	}
+
+	pc.cancelFunc()
 
 	// flush all pending ACK requests and terminate the timer goroutine
 	pc.ackGroupingTracker.close()
@@ -1461,7 +1469,7 @@ func (pc *partitionConsumer) dispatcher() {
 		}
 
 		select {
-		case <-pc.closeCh:
+		case <-pc.ctx.Done():
 			return
 
 		case _, ok := <-pc.connectedCh:
@@ -1595,21 +1603,15 @@ func (pc *partitionConsumer) runEventsLoop() {
 	}()
 	pc.log.Debug("get into runEventsLoop")
 
-	go func() {
-		for {
-			select {
-			case <-pc.closeCh:
-				pc.log.Info("close consumer, exit reconnect")
-				return
-			case connectionClosed := <-pc.connectClosedCh:
-				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker(connectionClosed)
-			}
-		}
-	}()
-
 	for {
-		for i := range pc.eventsCh {
+		select {
+		case <-pc.ctx.Done():
+			pc.log.Info("close consumer, exit reconnect")
+			return
+		case connectionClosed := <-pc.connectClosedCh:
+			pc.log.Debug("runEventsLoop will reconnect")
+			pc.reconnectToBroker(connectionClosed)
+		case i := <-pc.eventsCh:
 			switch v := i.(type) {
 			case *ackRequest:
 				pc.internalAck(v)

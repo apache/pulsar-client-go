@@ -3691,9 +3691,6 @@ func TestConsumerSeekByTimeOnPartitionedTopic(t *testing.T) {
 	err = consumer.SeekByTime(currentTimestamp.Add(-retentionTimeInSecond))
 	assert.Nil(t, err)
 
-	// Seek command disconnects the consumer, so we need to wait for reconnection.
-	<-time.After(5 * time.Second)
-
 	// should be able to consume all messages once again
 	for i := 0; i < N; i++ {
 		msg, err := consumer.Receive(ctx)
