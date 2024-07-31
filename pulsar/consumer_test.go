@@ -1539,6 +1539,91 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	assert.Error(t, err)
 	assert.Nil(t, msg)
 }
+func TestDeadLetterTopicWithInitialSubscription(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/" + newTopicName()
+	dlqSub, sub, consumerName := "init-sub", "my-sub", "my-consumer"
+	dlqTopic := fmt.Sprintf("%s-%s-DLQ", topic, sub)
+	ctx := context.Background()
+
+	// create consumer
+	maxRedeliveryCount, sendMessages := 1, 100
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               topic,
+		SubscriptionName:    sub,
+		NackRedeliveryDelay: 1 * time.Second,
+		Type:                Shared,
+		DLQ: &DLQPolicy{
+			MaxDeliveries:           uint32(maxRedeliveryCount),
+			DeadLetterTopic:         dlqTopic,
+			InitialSubscriptionName: dlqSub,
+		},
+		Name:              consumerName,
+		ReceiverQueueSize: sendMessages,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send messages
+	for i := 0; i < sendMessages; i++ {
+		if _, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	// nack all messages
+	for i := 0; i < sendMessages*(maxRedeliveryCount+1); i++ {
+		ctx, canc := context.WithTimeout(context.Background(), 3*time.Second)
+		defer canc()
+		msg, _ := consumer.Receive(ctx)
+		if msg == nil {
+			break
+		}
+		consumer.Nack(msg)
+	}
+
+	// create dlq consumer
+	dlqConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            dlqTopic,
+		SubscriptionName: dlqSub,
+	})
+	assert.Nil(t, err)
+	defer dlqConsumer.Close()
+
+	for i := 0; i < sendMessages; i++ {
+		ctx, canc := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer canc()
+		msg, err := dlqConsumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.NotNil(t, msg)
+		err = dlqConsumer.Ack(msg)
+		assert.Nil(t, err)
+	}
+
+	// No more messages on the DLQ
+	ctx, canc := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer canc()
+	msg, err := dlqConsumer.Receive(ctx)
+	assert.Error(t, err)
+	assert.Nil(t, msg)
+
+}
 
 func TestDLQMultiTopics(t *testing.T) {
 	client, err := NewClient(ClientOptions{

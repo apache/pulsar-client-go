@@ -273,6 +273,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		Epoch:                    proto.Uint64(atomic.LoadUint64(&p.epoch)),
 		UserProvidedProducerName: proto.Bool(p.userProvidedProducerName),
 		ProducerAccessMode:       toProtoProducerAccessMode(p.options.ProducerAccessMode).Enum(),
+		InitialSubscriptionName:  proto.String(p.options.initialSubscriptionName),
 	}
 
 	if p.topicEpoch != nil {
