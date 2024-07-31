@@ -127,7 +127,7 @@ func TestConsumerConnectError(t *testing.T) {
 	assert.Nil(t, consumer)
 	assert.NotNil(t, err)
 
-	assert.Equal(t, err.Error(), "connection error")
+	assert.ErrorContains(t, err, "connection error")
 }
 
 func TestBatchMessageReceive(t *testing.T) {
@@ -3690,6 +3690,9 @@ func TestConsumerSeekByTimeOnPartitionedTopic(t *testing.T) {
 	currentTimestamp := time.Now()
 	err = consumer.SeekByTime(currentTimestamp.Add(-retentionTimeInSecond))
 	assert.Nil(t, err)
+
+	// Seek command disconnects the consumer, so we need to wait for reconnection.
+	<-time.After(5 * time.Second)
 
 	// should be able to consume all messages once again
 	for i := 0; i < N; i++ {
