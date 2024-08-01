@@ -78,6 +78,12 @@ type DLQPolicy struct {
 
 	// RetryLetterTopic specifies the name of the topic where the retry messages will be sent.
 	RetryLetterTopic string
+
+	// InitialSubscriptionName Name of the initial subscription name of the dead letter topic.
+	// If this field is not set, the initial subscription for the dead letter topic will not be created.
+	// If this field is set but the broker's `allowAutoSubscriptionCreation` is disabled, the DLQ producer
+	// will fail to be created.
+	InitialSubscriptionName string
 }
 
 // AckGroupingOptions controls how to group ACK requests
