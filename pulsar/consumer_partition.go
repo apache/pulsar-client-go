@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"container/list"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -182,6 +183,9 @@ type partitionConsumer struct {
 	lastMessageInBroker *trackingMessageID
 
 	redirectedClusterURI string
+
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -318,6 +322,7 @@ func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
 	messageCh chan ConsumerMessage, dlq *dlqRouter,
 	metrics *internal.LeveledMetrics) (*partitionConsumer, error) {
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	pc := &partitionConsumer{
 		parentConsumer:       parent,
 		client:               client,
@@ -339,6 +344,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
+		ctx:                  ctx,
+		cancelFunc:           cancelFunc,
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
@@ -580,7 +587,7 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		pc.log.WithField("state", state).Error("Failed to getLastMessageID for the closing or closed consumer")
 		return nil, errors.New("failed to getLastMessageID for the closing or closed consumer")
 	}
-	remainTime := pc.client.operationTimeout
+
 	var backoff internal.BackoffPolicy
 	if pc.options.backoffPolicy != nil {
 		backoff = pc.options.backoffPolicy
@@ -595,23 +602,30 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		<-req.doneCh
 		return req.msgID, req.err
 	}
-	for {
+
+	opFn := func() (*trackingMessageID, error) {
 		msgID, err := request()
 		if err == nil {
 			return msgID, nil
 		}
-		if remainTime <= 0 {
-			pc.log.WithError(err).Error("Failed to getLastMessageID")
-			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
-		}
-		nextDelay := backoff.Next()
-		if nextDelay > remainTime {
-			nextDelay = remainTime
-		}
-		remainTime -= nextDelay
-		pc.log.WithError(err).Errorf("Failed to get last message id from broker, retrying in %v...", nextDelay)
-		time.Sleep(nextDelay)
+		return nil, err
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), pc.client.operationTimeout)
+	defer cancel()
+
+	res, err := internal.Retry(ctx, opFn, func(err error) time.Duration {
+		nextDelay := backoff.Next()
+		pc.log.WithError(err).Errorf("Failed to get last message id from broker, retrying in %v...", nextDelay)
+		return nextDelay
+	})
+
+	if err != nil {
+		pc.log.WithError(err).Error("Failed to getLastMessageID")
+		return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
+	}
+
+	return res, nil
 }
 
 func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) {
@@ -833,6 +847,8 @@ func (pc *partitionConsumer) Close() {
 	if pc.getConsumerState() != consumerReady {
 		return
 	}
+
+	pc.cancelFunc()
 
 	// flush all pending ACK requests and terminate the timer goroutine
 	pc.ackGroupingTracker.close()
@@ -1453,7 +1469,7 @@ func (pc *partitionConsumer) dispatcher() {
 		}
 
 		select {
-		case <-pc.closeCh:
+		case <-pc.ctx.Done():
 			return
 
 		case _, ok := <-pc.connectedCh:
@@ -1587,21 +1603,15 @@ func (pc *partitionConsumer) runEventsLoop() {
 	}()
 	pc.log.Debug("get into runEventsLoop")
 
-	go func() {
-		for {
-			select {
-			case <-pc.closeCh:
-				pc.log.Info("close consumer, exit reconnect")
-				return
-			case connectionClosed := <-pc.connectClosedCh:
-				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker(connectionClosed)
-			}
-		}
-	}()
-
 	for {
-		for i := range pc.eventsCh {
+		select {
+		case <-pc.ctx.Done():
+			pc.log.Info("close consumer, exit reconnect")
+			return
+		case connectionClosed := <-pc.connectClosedCh:
+			pc.log.Debug("runEventsLoop will reconnect")
+			pc.reconnectToBroker(connectionClosed)
+		case i := <-pc.eventsCh:
 			switch v := i.(type) {
 			case *ackRequest:
 				pc.internalAck(v)
@@ -1693,50 +1703,38 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		defaultBackoff     = internal.DefaultBackoff{}
 	)
 
-	for maxRetry != 0 {
+	var assignedBrokerURL string
+	if connectionClosed != nil && connectionClosed.HasURL() {
+		assignedBrokerURL = connectionClosed.assignedBrokerURL
+	}
+
+	opFn := func() (struct{}, error) {
+		if maxRetry == 0 {
+			return struct{}{}, nil
+		}
+
 		if pc.getConsumerState() != consumerReady {
 			// Consumer is already closing
 			pc.log.Info("consumer state not ready, exit reconnect")
-			return
-		}
-
-		var assignedBrokerURL string
-
-		if connectionClosed != nil && connectionClosed.HasURL() {
-			delayReconnectTime = 0
-			assignedBrokerURL = connectionClosed.assignedBrokerURL
-			connectionClosed = nil // Attempt connecting to the assigned broker just once
-		} else if pc.options.backoffPolicy == nil {
-			delayReconnectTime = defaultBackoff.Next()
-		} else {
-			delayReconnectTime = pc.options.backoffPolicy.Next()
-		}
-
-		pc.log.WithFields(log.Fields{
-			"assignedBrokerURL":  assignedBrokerURL,
-			"delayReconnectTime": delayReconnectTime,
-		}).Info("Reconnecting to broker")
-		time.Sleep(delayReconnectTime)
-
-		// double check
-		if pc.getConsumerState() != consumerReady {
-			// Consumer is already closing
-			pc.log.Info("consumer state not ready, exit reconnect")
-			return
+			return struct{}{}, nil
 		}
 
 		err := pc.grabConn(assignedBrokerURL)
+		if assignedBrokerURL != "" {
+			// Attempt connecting to the assigned broker just once
+			assignedBrokerURL = ""
+		}
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
-			return
+			return struct{}{}, nil
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
 			pc.log.Warn("Topic Not Found.")
-			break
+			return struct{}{}, nil
 		}
 
 		if maxRetry > 0 {
@@ -1746,7 +1744,22 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
 		}
+
+		return struct{}{}, err
 	}
+
+	_, _ = internal.Retry(context.Background(), opFn, func(_ error) time.Duration {
+		if pc.options.backoffPolicy == nil {
+			delayReconnectTime = defaultBackoff.Next()
+		} else {
+			delayReconnectTime = pc.options.backoffPolicy.Next()
+		}
+		pc.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
+		}).Info("Reconnecting to broker")
+		return delayReconnectTime
+	})
 }
 
 func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
