@@ -30,7 +30,7 @@ import (
 func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan []*message, 1),
+		queueCh:              make(chan *message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -47,13 +47,11 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	}
 
 	// ensure the tracker was set on the message id
-	messages := <-pc.queueCh
-	for _, m := range messages {
-		assert.Nil(t, m.ID().(*trackingMessageID).tracker)
-	}
+	m := <-pc.queueCh
+	assert.Nil(t, m.ID().(*trackingMessageID).tracker)
 
 	// ack the message id
-	pc.AckID(messages[0].msgID.(*trackingMessageID))
+	pc.AckID(m.msgID.(*trackingMessageID))
 
 	select {
 	case <-eventsCh:
@@ -69,7 +67,7 @@ func newTestMetrics() *internal.LeveledMetrics {
 func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan []*message, 1),
+		queueCh:              make(chan *message, 1),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -86,13 +84,11 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	}
 
 	// ensure the tracker was set on the message id
-	messages := <-pc.queueCh
-	for _, m := range messages {
-		assert.Nil(t, m.ID().(*trackingMessageID).tracker)
-	}
+	m := <-pc.queueCh
+	assert.Nil(t, m.ID().(*trackingMessageID).tracker)
 
 	// ack the message id
-	err := pc.AckID(messages[0].msgID.(*trackingMessageID))
+	err := pc.AckID(m.msgID.(*trackingMessageID))
 	assert.Nil(t, err)
 
 	select {
@@ -105,7 +101,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan []*message, 1),
+		queueCh:              make(chan *message, 10),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -121,15 +117,11 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// ensure the tracker was set on the message id
-	messages := <-pc.queueCh
-	for _, m := range messages {
-		assert.NotNil(t, m.ID().(*trackingMessageID).tracker)
-	}
-
 	// ack all message ids except the last one
 	for i := 0; i < 9; i++ {
-		err := pc.AckID(messages[i].msgID.(*trackingMessageID))
+		m := <-pc.queueCh
+		assert.NotNil(t, m.ID().(*trackingMessageID).tracker)
+		err := pc.AckID(m.msgID.(*trackingMessageID))
 		assert.Nil(t, err)
 	}
 
@@ -139,8 +131,9 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	default:
 	}
 
+	m := <-pc.queueCh
 	// ack last message
-	err := pc.AckID(messages[9].msgID.(*trackingMessageID))
+	err := pc.AckID(m.msgID.(*trackingMessageID))
 	assert.Nil(t, err)
 
 	select {
