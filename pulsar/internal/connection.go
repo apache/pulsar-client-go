@@ -1070,6 +1070,13 @@ func (c *connection) Close() {
 
 		close(c.closeCh)
 
+		c.pendingLock.Lock()
+		for id, req := range c.pendingReqs {
+			delete(c.pendingReqs, id)
+			req.callback(nil, errors.New("connection closed"))
+		}
+		c.pendingLock.Unlock()
+
 		listeners := make(map[uint64]ConnectionListener)
 		c.listenersLock.Lock()
 		for id, listener := range c.listeners {
