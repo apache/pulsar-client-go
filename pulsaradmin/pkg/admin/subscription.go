@@ -234,8 +234,9 @@ const (
 )
 
 func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, error) {
+
 	msgID := resp.Header.Get("X-Pulsar-Message-ID")
-	ID, err := utils.ParseMessageID(msgID)
+	ID, err := utils.ParseMessageIDWithPartitionIndex(msgID, topic.GetPartitionIndex())
 	if err != nil {
 		return nil, err
 	}

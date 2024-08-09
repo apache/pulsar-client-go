@@ -34,6 +34,15 @@ type MessageID struct {
 var Latest = MessageID{0x7fffffffffffffff, 0x7fffffffffffffff, -1, -1}
 var Earliest = MessageID{-1, -1, -1, -1}
 
+func ParseMessageIDWithPartitionIndex(str string, index int) (*MessageID, error) {
+	id, err := ParseMessageID(str)
+	if err != nil {
+		return nil, err
+	}
+	id.PartitionIndex = index
+	return id, nil
+}
+
 func ParseMessageID(str string) (*MessageID, error) {
 	s := strings.Split(str, ":")
 

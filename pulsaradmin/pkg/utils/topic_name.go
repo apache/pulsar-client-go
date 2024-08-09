@@ -143,6 +143,10 @@ func (t *TopicName) GetPartition(index int) (*TopicName, error) {
 	return GetTopicName(topicNameWithPartition)
 }
 
+func (t *TopicName) GetPartitionIndex() int {
+	return t.partitionIndex
+}
+
 func getPartitionIndex(topic string) int {
 	if strings.Contains(topic, PARTITIONEDTOPICSUFFIX) {
 		parts := strings.Split(topic, "-")

@@ -90,6 +90,60 @@ func TestGetMessagesByID(t *testing.T) {
 
 }
 
+func TestPeekMessageForPartitionedTopic(t *testing.T) {
+	ctx := context.Background()
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	topicName, _ := utils.GetTopicName(topic)
+	subName := "test-sub"
+
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	err = admin.Topics().Create(*topicName, 2)
+	assert.NoError(t, err)
+
+	err = admin.Subscriptions().Create(*topicName, subName, utils.Earliest)
+	assert.NoError(t, err)
+
+	client, err := pulsar.NewClient(pulsar.ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(pulsar.ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	for i := 0; i < 100; i++ {
+		producer.SendAsync(ctx, &pulsar.ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}, nil)
+	}
+	err = producer.Flush()
+	if err != nil {
+		return
+	}
+
+	for i := 0; i < 2; i++ {
+		topicWithPartition := fmt.Sprintf("%s-partition-%d", topic, i)
+		topicName, err := utils.GetTopicName(topicWithPartition)
+		assert.NoError(t, err)
+		messages, err := admin.Subscriptions().PeekMessages(*topicName, subName, 10)
+		assert.NoError(t, err)
+		assert.NotNil(t, messages)
+		for _, msg := range messages {
+			assert.Equal(t, msg.GetMessageID().PartitionIndex, i)
+		}
+	}
+}
+
 func TestGetMessageByID(t *testing.T) {
 	randomName := newTopicName()
 	topic := "persistent://public/default/" + randomName
