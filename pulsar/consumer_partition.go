@@ -1587,22 +1587,16 @@ func (pc *partitionConsumer) runEventsLoop() {
 	}()
 	pc.log.Debug("get into runEventsLoop")
 
-	go func() {
-		for {
-			select {
-			case <-pc.closeCh:
-				pc.log.Info("close consumer, exit reconnect")
-				return
-			case connectionClosed := <-pc.connectClosedCh:
-				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker(connectionClosed)
-			}
-		}
-	}()
-
 	for {
-		for i := range pc.eventsCh {
-			switch v := i.(type) {
+		select {
+		case <-pc.closeCh:
+			pc.log.Info("close consumer, exit reconnect")
+			return
+		case connectionClosed := <-pc.connectClosedCh:
+			pc.log.Debug("runEventsLoop will reconnect")
+			pc.reconnectToBroker(connectionClosed)
+		case event := <-pc.eventsCh:
+			switch v := event.(type) {
 			case *ackRequest:
 				pc.internalAck(v)
 			case *ackWithTxnRequest:
