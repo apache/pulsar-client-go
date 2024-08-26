@@ -277,3 +277,67 @@ func TestNamespaces_GetSubscriptionExpirationTime(t *testing.T) {
 	expected = -1
 	assert.Equal(t, expected, subscriptionExpirationTime)
 }
+
+func TestNamespaces_SetOffloadThresholdInSeconds(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	tests := []struct {
+		name      string
+		namespace string
+		threshold int64
+		errReason string
+	}{
+		{
+			name:      "Set valid offloadThresholdInSecond",
+			namespace: "public/default",
+			threshold: 60,
+			errReason: "",
+		},
+		{
+			name:      "Set invalid offloadThresholdInSecond",
+			namespace: "public/default",
+			threshold: -60,
+			errReason: "Invalid value for offloadThresholdInSecond",
+		},
+		{
+			name:      "Set valid offloadThresholdInSecond: 0",
+			namespace: "public/default",
+			threshold: 0,
+			errReason: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			namespace, _ := utils.GetNamespaceName(tt.namespace)
+			err := admin.Namespaces().SetOffloadThresholdInSeconds(*namespace, tt.threshold)
+			if tt.errReason == "" {
+				assert.Equal(t, nil, err)
+			}
+			if err != nil {
+				restError := err.(rest.Error)
+				assert.Equal(t, tt.errReason, restError.Reason)
+			}
+		})
+	}
+}
+
+func TestNamespaces_GetOffloadThresholdInSeconds(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// set the subscription expiration time and get it
+	err = admin.Namespaces().SetOffloadThresholdInSeconds(*namespace,
+		60)
+	assert.Equal(t, nil, err)
+	offloadThresholdInSeconds, err := admin.Namespaces().GetOffloadThresholdInSeconds(*namespace)
+	assert.Equal(t, nil, err)
+	expected := 60
+	assert.Equal(t, expected, offloadThresholdInSeconds)
+}
