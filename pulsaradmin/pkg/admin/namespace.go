@@ -114,7 +114,7 @@ type Namespaces interface {
 	// GetOffloadThreshold returns the offloadThreshold for a namespace
 	GetOffloadThreshold(namespace utils.NameSpaceName) (int64, error)
 
-	// SetOffloadThreshold sets the offloadThresholdInSeconds for a namespace
+	// SetOffloadThresholdInSeconds sets the offloadThresholdInSeconds for a namespace
 	SetOffloadThresholdInSeconds(namespace utils.NameSpaceName, threshold int64) error
 
 	// GetOffloadThresholdInSeconds returns the offloadThresholdInSeconds for a namespace
