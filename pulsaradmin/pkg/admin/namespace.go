@@ -114,6 +114,12 @@ type Namespaces interface {
 	// GetOffloadThreshold returns the offloadThreshold for a namespace
 	GetOffloadThreshold(namespace utils.NameSpaceName) (int64, error)
 
+	// SetOffloadThreshold sets the offloadThresholdInSeconds for a namespace
+	SetOffloadThresholdInSeconds(namespace utils.NameSpaceName, threshold int64) error
+
+	// GetOffloadThreshold returns the offloadThresholdInSeconds for a namespace
+	GetOffloadThresholdInSeconds(namespace utils.NameSpaceName) (int64, error)
+
 	// SetCompactionThreshold sets the compactionThreshold for a namespace
 	SetCompactionThreshold(namespace utils.NameSpaceName, threshold int64) error
 
@@ -547,6 +553,18 @@ func (n *namespaces) SetOffloadThreshold(namespace utils.NameSpaceName, threshol
 func (n *namespaces) GetOffloadThreshold(namespace utils.NameSpaceName) (int64, error) {
 	var result int64
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadThreshold")
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
+}
+
+func (n *namespaces) SetOffloadThresholdInSeconds(namespace utils.NameSpaceName, threshold int64) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadThresholdInSeconds")
+	return n.pulsar.Client.Put(endpoint, threshold)
+}
+
+func (n *namespaces) GetOffloadThresholdInSeconds(namespace utils.NameSpaceName) (int64, error) {
+	var result int64
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadThresholdInSeconds")
 	err := n.pulsar.Client.Get(endpoint, &result)
 	return result, err
 }
