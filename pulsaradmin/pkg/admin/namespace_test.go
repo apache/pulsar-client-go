@@ -338,6 +338,6 @@ func TestNamespaces_GetOffloadThresholdInSeconds(t *testing.T) {
 	assert.Equal(t, nil, err)
 	offloadThresholdInSeconds, err := admin.Namespaces().GetOffloadThresholdInSeconds(*namespace)
 	assert.Equal(t, nil, err)
-	expected := 60
+	expected := int64(60)
 	assert.Equal(t, expected, offloadThresholdInSeconds)
 }
