@@ -332,7 +332,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
-		connectClosedCh:      make(chan *connectionClosed, 10),
+		connectClosedCh:      make(chan *connectionClosed, 1),
 		closeCh:              make(chan struct{}),
 		clearQueueCh:         make(chan func(id *trackingMessageID)),
 		compressionProviders: sync.Map{},
@@ -1381,8 +1381,12 @@ func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseCons
 		assignedBrokerURL = pc.client.selectServiceURL(
 			closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
 	}
-	pc.connectClosedCh <- &connectionClosed{
-		assignedBrokerURL: assignedBrokerURL,
+
+	select {
+	case pc.connectClosedCh <- &connectionClosed{assignedBrokerURL: assignedBrokerURL}:
+	default:
+		// Reconnect has already been requested so we do not block the
+		// connection callback.
 	}
 }
 
