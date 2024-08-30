@@ -178,6 +178,7 @@ type partitionConsumer struct {
 	chunkedMsgCtxMap   *chunkedMsgCtxMap
 	unAckChunksTracker *unAckChunksTracker
 	ackGroupingTracker ackGroupingTracker
+	ackTrackers        *ackTrackers
 
 	lastMessageInBroker *trackingMessageID
 
@@ -375,6 +376,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.decryptor = decryptor
 
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, options.nackBackoffPolicy, pc.log)
+	pc.ackTrackers = newAckTrackers()
 
 	err := pc.grabConn("")
 	if err != nil {
@@ -443,6 +445,9 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 	}
 
 	trackingID := toTrackingMessageID(msgID)
+	if trackingID != nil && trackingID.tracker == nil {
+		trackingID.tracker = pc.ackTrackers.tracker(trackingID)
+	}
 
 	if trackingID != nil && trackingID.ack() {
 		// All messages in the same batch have been acknowledged, we only need to acknowledge the
@@ -453,6 +458,7 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 				entryID:  trackingID.entryID,
 			},
 		}
+		pc.ackTrackers.remove(trackingID)
 		pc.metrics.AcksCounter.Inc()
 		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
 	} else if !pc.options.enableBatchIndexAck {
@@ -712,6 +718,9 @@ func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withRespon
 	if trackingID == nil {
 		return errors.New("failed to convert trackingMessageID")
 	}
+	if trackingID.tracker == nil {
+		trackingID.tracker = pc.ackTrackers.tracker(trackingID)
+	}
 
 	var msgIDToAck *trackingMessageID
 	if trackingID.ackCumulative() || pc.options.enableBatchIndexAck {
@@ -725,6 +734,7 @@ func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withRespon
 		return nil
 	}
 
+	pc.ackTrackers.remove(msgIDToAck)
 	pc.metrics.AcksCounter.Inc()
 	pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
 
@@ -1162,6 +1172,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			ackTracker)
 		// set the consumer so we know how to ack the message id
 		trackingMsgID.consumer = pc
+		pc.ackTrackers.add(trackingMsgID, ackTracker)
 
 		if pc.messageShouldBeDiscarded(trackingMsgID) {
 			pc.AckID(trackingMsgID)
@@ -2365,4 +2376,33 @@ func (u *unAckChunksTracker) nack(cmid *chunkMessageID) {
 		u.pc.NackID(id)
 	}
 	u.remove(cmid)
+}
+
+type ackTrackers struct {
+	mu       sync.RWMutex
+	trackers map[[2]int64]*ackTracker
+}
+
+func newAckTrackers() *ackTrackers {
+	return &ackTrackers{
+		trackers: make(map[[2]int64]*ackTracker),
+	}
+}
+
+func (a *ackTrackers) tracker(id MessageID) *ackTracker {
+	a.mu.RLock()
+	defer a.mu.RUnlock()
+	return a.trackers[[2]int64{id.LedgerID(), id.EntryID()}]
+}
+
+func (a *ackTrackers) add(id MessageID, tracker *ackTracker) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.trackers[[2]int64{id.LedgerID(), id.EntryID()}] = tracker
+}
+
+func (a *ackTrackers) remove(id MessageID) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	delete(a.trackers, [2]int64{id.LedgerID(), id.EntryID()})
 }
