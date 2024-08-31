@@ -1494,7 +1494,10 @@ func (pc *partitionConsumer) dispatcher() {
 			messages[0] = nil
 			messages = messages[1:]
 
-			pc.availablePermits.inc()
+			// for the zeroQueueConsumer, the permits controlled by itself
+			if pc.options.receiverQueueSize > 0 {
+				pc.availablePermits.inc()
+			}
 
 			if pc.options.autoReceiverQueueSize {
 				pc.incomingMessages.Dec()
