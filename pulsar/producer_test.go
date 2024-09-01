@@ -19,20 +19,31 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/protobuf/proto"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+
+	log "github.com/sirupsen/logrus"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
-	log "github.com/sirupsen/logrus"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -106,6 +117,15 @@ func TestSimpleProducer(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, ID)
 	}
+
+	_, err = producer.Send(context.Background(), nil)
+	assert.NotNil(t, err)
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("hello"),
+		Value:   []byte("hello"),
+	})
+	assert.NotNil(t, err)
 }
 
 func TestProducerAsyncSend(t *testing.T) {
@@ -144,7 +164,68 @@ func TestProducerAsyncSend(t *testing.T) {
 		assert.NoError(t, err)
 	}
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
+	assert.Nil(t, err)
+
+	wg.Wait()
+
+	assert.Equal(t, 0, errors.Size())
+
+	wg.Add(1)
+	producer.SendAsync(context.Background(), nil, func(id MessageID, m *ProducerMessage, e error) {
+		assert.NotNil(t, e)
+		assert.Nil(t, id)
+		wg.Done()
+	})
+	wg.Wait()
+
+	wg.Add(1)
+	producer.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("hello"), Value: []byte("hello")},
+		func(id MessageID, m *ProducerMessage, e error) {
+			assert.NotNil(t, e)
+			assert.Nil(t, id)
+			wg.Done()
+		})
+	wg.Wait()
+}
+
+func TestProducerFlushDisableBatching(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	wg := sync.WaitGroup{}
+	wg.Add(10)
+	errors := internal.NewBlockingQueue(10)
+
+	for i := 0; i < 10; i++ {
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: []byte("hello"),
+		}, func(id MessageID, message *ProducerMessage, e error) {
+			if e != nil {
+				log.WithError(e).Error("Failed to publish")
+				errors.Put(e)
+			} else {
+				log.Info("Published message ", id)
+			}
+			wg.Done()
+		})
+
+		assert.NoError(t, err)
+	}
+
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 
 	wg.Wait()
@@ -311,7 +392,7 @@ func TestFlushInProducer(t *testing.T) {
 		})
 		assert.Nil(t, err)
 	}
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 	wg.Wait()
 
@@ -323,7 +404,7 @@ func TestFlushInProducer(t *testing.T) {
 		assert.Nil(t, err)
 		msgCount++
 
-		msgID := msg.ID().(trackingMessageID)
+		msgID := msg.ID().(*trackingMessageID)
 		// Since messages are batched, they will be sharing the same ledgerId/entryId
 		if ledgerID == -1 {
 			ledgerID = msgID.ledgerID
@@ -353,7 +434,7 @@ func TestFlushInProducer(t *testing.T) {
 		assert.Nil(t, err)
 	}
 
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 	wg.Wait()
 
@@ -424,7 +505,7 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 	}
 
 	// After flush, should be able to consume.
-	err = producer.Flush()
+	err = producer.FlushWithCtx(context.Background())
 	assert.Nil(t, err)
 
 	wg.Wait()
@@ -440,6 +521,21 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 		msgCount++
 	}
 	assert.Equal(t, msgCount, numOfMessages/2)
+}
+
+func TestProducerReturnsErrorOnFlushWhenClosed(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{Topic: newTopicName()})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	producer.Close()
+
+	err = producer.FlushWithCtx(context.Background())
+	assert.Error(t, err)
 }
 
 func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
@@ -557,6 +653,67 @@ func TestMessageRouter(t *testing.T) {
 	assert.Nil(t, err)
 	assert.NotNil(t, msg)
 	assert.Equal(t, string(msg.Payload()), "hello")
+}
+func TestMessageSingleRouter(t *testing.T) {
+	// Create topic with 5 partitions
+	topicAdminURL := "admin/v2/persistent/public/default/my-single-partitioned-topic/partitions"
+	err := httpPut(topicAdminURL, 5)
+	defer httpDelete(topicAdminURL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	numOfMessages := 10
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            "my-single-partitioned-topic",
+		SubscriptionName: "my-sub",
+	})
+
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:         "my-single-partitioned-topic",
+		MessageRouter: NewSinglePartitionRouter(),
+	})
+
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+
+	for i := 0; i < numOfMessages; i++ {
+		ID, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte("hello"),
+		})
+		assert.Nil(t, err)
+		assert.NotNil(t, ID)
+	}
+
+	// Verify message was published on single partition
+	msgCount := 0
+	msgPartitionMap := make(map[string]int)
+	for i := 0; i < numOfMessages; i++ {
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.NotNil(t, msg)
+		consumer.Ack(msg)
+		msgCount++
+		msgPartitionMap[msg.Topic()]++
+	}
+	assert.Equal(t, msgCount, numOfMessages)
+	assert.Equal(t, len(msgPartitionMap), 1)
+	for _, i := range msgPartitionMap {
+		assert.Equal(t, i, numOfMessages)
+	}
+
 }
 
 func TestNonPersistentTopic(t *testing.T) {
@@ -740,7 +897,7 @@ func TestBatchDelayMessage(t *testing.T) {
 	var delayMsgID int64
 	ch := make(chan struct{}, 2)
 	producer.SendAsync(ctx, delayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
-		atomic.StoreInt64(&delayMsgID, id.(messageID).entryID)
+		atomic.StoreInt64(&delayMsgID, id.(*messageID).entryID)
 		ch <- struct{}{}
 	})
 	delayMsgPublished := false
@@ -756,13 +913,13 @@ func TestBatchDelayMessage(t *testing.T) {
 	}
 	var noDelayMsgID int64
 	producer.SendAsync(ctx, noDelayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
-		atomic.StoreInt64(&noDelayMsgID, id.(messageID).entryID)
+		atomic.StoreInt64(&noDelayMsgID, id.(*messageID).entryID)
 	})
 	for i := 0; i < 2; i++ {
 		msg, err := consumer.Receive(context.Background())
 		assert.Nil(t, err, "unexpected error occurred when recving message from topic")
 
-		switch msg.ID().(trackingMessageID).entryID {
+		switch msg.ID().(*trackingMessageID).entryID {
 		case atomic.LoadInt64(&noDelayMsgID):
 			assert.LessOrEqual(t, time.Since(msg.PublishTime()).Nanoseconds(), int64(batchingDelay*2))
 		case atomic.LoadInt64(&delayMsgID):
@@ -924,8 +1081,8 @@ func TestMaxMessageSize(t *testing.T) {
 	assert.NoError(t, err)
 	defer client.Close()
 
-	// Need to set BatchingMaxSize > serverMaxMessageSize to avoid errMessageTooLarge
-	// being masked by an earlier errFailAddToBatch
+	// Need to set BatchingMaxSize > serverMaxMessageSize to avoid ErrMessageTooLarge
+	// being masked by an earlier ErrFailAddToBatch
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           newTopicName(),
 		BatchingMaxSize: uint(2 * serverMaxMessageSize),
@@ -934,16 +1091,47 @@ func TestMaxMessageSize(t *testing.T) {
 	assert.NotNil(t, producer)
 	defer producer.Close()
 
+	// producer2 disable batching
+	producer2, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer2)
+	defer producer2.Close()
+
+	// When serverMaxMessageSize=1024, the batch payload=1041
+	// The totalSize includes:
+	// | singleMsgMetadataLength | singleMsgMetadata | payload |
+	// | ----------------------- | ----------------- | ------- |
+	// | 4                       | 13                | 1024    |
+	// So when bias <= 0, the uncompressed payload will not exceed maxMessageSize,
+	// but encryptedPayloadSize exceeds maxMessageSize, Send() will return an internal error.
+	// When bias = 1, the first check of maxMessageSize (for uncompressed payload) is valid,
+	// Send() will return ErrMessageTooLarge
 	for bias := -1; bias <= 1; bias++ {
 		payload := make([]byte, serverMaxMessageSize+bias)
 		ID, err := producer.Send(context.Background(), &ProducerMessage{
 			Payload: payload,
 		})
 		if bias <= 0 {
-			assert.NoError(t, err)
-			assert.NotNil(t, ID)
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
 		} else {
-			assert.Equal(t, errMessageTooLarge, err)
+			assert.True(t, errors.Is(err, ErrMessageTooLarge))
+		}
+	}
+
+	for bias := -1; bias <= 1; bias++ {
+		payload := make([]byte, serverMaxMessageSize+bias)
+		ID, err := producer2.Send(context.Background(), &ProducerMessage{
+			Payload: payload,
+		})
+		if bias <= 0 {
+			assert.Equal(t, true, errors.Is(err, internal.ErrExceedMaxMessageSize))
+			assert.Nil(t, ID)
+		} else {
+			assert.True(t, errors.Is(err, ErrMessageTooLarge))
 		}
 	}
 }
@@ -992,6 +1180,62 @@ func TestFailedSchemaEncode(t *testing.T) {
 	wg.Wait()
 }
 
+func TestTopicTermination(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "topic_terminated_sub",
+	})
+	assert.Nil(t, err)
+	defer consumer.Close() // subscribe but do nothing
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:       topicName,
+		SendTimeout: 2 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	afterCh := time.After(5 * time.Second)
+	terminatedChan := make(chan bool)
+	go func() {
+		for {
+			_, err := producer.Send(context.Background(), &ProducerMessage{
+				Payload: make([]byte, 1024),
+			})
+			if err != nil {
+				if errors.Is(err, ErrTopicTerminated) || errors.Is(err, ErrProducerClosed) {
+					terminatedChan <- true
+				} else {
+					terminatedChan <- false
+				}
+			}
+			time.Sleep(1 * time.Millisecond)
+		}
+	}()
+
+	terminateURL := adminURL + "/admin/v2/persistent/public/default/" + topicName + "/terminate"
+	log.Info(terminateURL)
+	makeHTTPCall(t, http.MethodPost, terminateURL, "")
+
+	for {
+		select {
+		case d := <-terminatedChan:
+			assert.Equal(t, d, true)
+			return
+		case <-afterCh:
+			assert.Fail(t, "Time is up. Topic should have been terminated by now")
+			return
+		}
+	}
+}
+
 func TestSendTimeout(t *testing.T) {
 	quotaURL := adminURL + "/admin/v2/namespaces/public/default/backlogQuota"
 	quotaFmt := `{"limit": "%d", "policy": "producer_request_hold"}`
@@ -1038,6 +1282,46 @@ func TestSendTimeout(t *testing.T) {
 	assert.Nil(t, id)
 
 	makeHTTPCall(t, http.MethodDelete, quotaURL, "")
+}
+
+func TestProducerWithBackoffPolicy(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Topic:         topicName,
+		SendTimeout:   2 * time.Second,
+		BackoffPolicy: backoff,
+	})
+	assert.Nil(t, err)
+	defer _producer.Close()
+
+	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
+	// 1 s
+	startTime := time.Now()
+	partitionProducerImp.reconnectToBroker(nil)
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 2 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker(nil)
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker(nil)
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+
+	// 4 s
+	startTime = time.Now()
+	partitionProducerImp.reconnectToBroker(nil)
+	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
 }
 
 func TestSendContextExpired(t *testing.T) {
@@ -1379,4 +1663,910 @@ func TestExactlyOnceWithProducerNameSpecified(t *testing.T) {
 
 	assert.NotNil(t, err)
 	assert.Nil(t, producer3)
+}
+
+func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
+	const MsgBatchCount = 10
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema1 := NewAvroSchema(`{"fields":
+		[	
+			{"name":"id","type":"int"},
+			{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+				{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			   {"default":null,"name":"age","type":["null","int"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	v1 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "aac",
+		},
+	}
+	v2 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "test",
+		},
+		"age": map[string]interface{}{
+			"int": 10,
+		},
+	}
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:              topic,
+		Schema:             schema1,
+		BatcherBuilderType: KeyBasedBatchBuilder,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	keys := []string{"key1", "key2", "key3"}
+
+	for i := 0; i < MsgBatchCount; i++ {
+		var messageContent []byte
+		var schema Schema
+		for _, key := range keys {
+			if i%2 == 0 {
+				messageContent, err = schema1.Encode(v1)
+				schema = schema1
+				assert.NoError(t, err)
+			} else {
+				messageContent, err = schema2.Encode(v2)
+				schema = schema2
+				assert.NoError(t, err)
+			}
+			producer.SendAsync(context.Background(), &ProducerMessage{
+				Payload: messageContent,
+				Key:     key,
+				Schema:  schema,
+			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+				assert.NoError(t, err)
+				assert.NotNil(t, id)
+			})
+		}
+
+	}
+	producer.FlushWithCtx(context.Background())
+
+	//// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub2",
+		Type:                        Failover,
+		Schema:                      schema1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < MsgBatchCount*len(keys); i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v interface{}
+		err = msg.GetSchemaValue(&v)
+		t.Logf(`schemaVersion: %x recevice %s:%v`, msg.SchemaVersion(), msg.Key(), v)
+		assert.Nil(t, err)
+	}
+}
+
+func TestMultipleSchemaProducerConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema1 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+		],
+		"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	schema2 := NewAvroSchema(`{"fields":
+		[
+			{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]},
+			{"default":null,"name":"age","type":["null","int"]}
+		],"name":"MyAvro3","namespace":"PulsarTestCase","type":"record"}`, nil)
+	v1 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "aac",
+		},
+	}
+	v2 := map[string]interface{}{
+		"id": 1,
+		"name": map[string]interface{}{
+			"string": "test",
+		},
+		"age": map[string]interface{}{
+			"int": 10,
+		},
+	}
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema1,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	for i := 0; i < 10; i++ {
+		var messageContent []byte
+		var key string
+		var schema Schema
+		if i%2 == 0 {
+			messageContent, err = schema1.Encode(v1)
+			key = "v1"
+			schema = schema1
+			assert.NoError(t, err)
+		} else {
+			messageContent, err = schema2.Encode(v2)
+			key = "v2"
+			schema = schema2
+			assert.NoError(t, err)
+		}
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: messageContent,
+			Key:     key,
+			Schema:  schema,
+		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			assert.NoError(t, err)
+			assert.NotNil(t, id)
+		})
+	}
+	producer.FlushWithCtx(context.Background())
+
+	//// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub2",
+		Type:                        Failover,
+		Schema:                      schema1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		var v interface{}
+		err = msg.GetSchemaValue(&v)
+		t.Logf(`schemaVersion: %x recevice %s:%v`, msg.SchemaVersion(), msg.Key(), v)
+		assert.Nil(t, err)
+	}
+}
+
+func TestProducerWithSchemaAndConsumerSchemaNotFound(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	schema := NewAvroSchema(`{"fields":
+	[
+		{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+	],
+	"name":"MyAvro","namespace":"schemaNotFoundTestCase","type":"record"}`, nil)
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "my-sub-schema-not-found",
+		Type:                        Exclusive,
+		Schema:                      schema,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, consumer)
+
+	// each produced message will have schema version set in the message metadata
+	for i := 0; i < 5; i++ {
+		messageContent, err := schema.Encode(map[string]interface{}{
+			"id": i,
+			"name": map[string]interface{}{
+				"string": "abc",
+			},
+		})
+		assert.NoError(t, err)
+		_, err = producer.Send(context.Background(), &ProducerMessage{
+			Payload: messageContent,
+		})
+		assert.NoError(t, err)
+	}
+
+	// delete schema of topic
+	topicSchemaDeleteURL := fmt.Sprintf("admin/v2/schemas/public/default/%v/schema", topic)
+	err = httpDelete(topicSchemaDeleteURL)
+	assert.NoError(t, err)
+
+	// consume message
+	msg, err := consumer.Receive(context.Background())
+	assert.NoError(t, err)
+	assert.NotNil(t, msg)
+
+	// try to serialize message payload
+	var v interface{}
+	err = msg.GetSchemaValue(&v)
+	// should fail with error but not panic
+	assert.Error(t, err)
+}
+
+func TestExclusiveProducer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeExclusive,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	_, err = client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeExclusive,
+	})
+	assert.Error(t, err, "Producer should be fenced")
+	assert.True(t, strings.Contains(err.Error(), "ProducerFenced"))
+
+	_, err = client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.Error(t, err, "Producer should be failed")
+	assert.True(t, strings.Contains(err.Error(), "ProducerBusy"))
+}
+
+func TestWaitForExclusiveProducer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+		// Set the request timeout is 200ms
+		OperationTimeout: 200 * time.Millisecond,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	producer1, err := client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeExclusive,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer1)
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		producer2, err := client.CreateProducer(ProducerOptions{
+			Topic:              topicName,
+			ProducerAccessMode: ProducerAccessModeWaitForExclusive,
+		})
+		defer producer2.Close()
+		assert.NoError(t, err)
+		assert.NotNil(t, producer2)
+
+		id, err := producer2.Send(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		})
+		assert.Nil(t, err)
+		assert.NotNil(t, id)
+		wg.Done()
+	}()
+	// Because set the request timeout is 200ms before.
+	// Here waite 300ms to cover wait for exclusive producer never timeout
+	time.Sleep(300 * time.Millisecond)
+	producer1.Close()
+	wg.Wait()
+}
+
+func TestMemLimitRejectProducerMessages(t *testing.T) {
+
+	c, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		MemoryLimitBytes: 100 * 1024,
+	})
+	assert.NoError(t, err)
+	defer c.Close()
+
+	topicName := newTopicName()
+	producer1, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer2, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	n := 101
+	for i := 0; i < n/2; i++ {
+		producer1.SendAsync(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+
+		producer2.SendAsync(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+	}
+	// Last message in order to reach the limit
+	producer1.SendAsync(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	}, func(id MessageID, message *ProducerMessage, e error) {})
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int64(n*1024), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	_, err = producer2.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	// flush pending msg
+	err = producer1.FlushWithCtx(context.Background())
+	assert.NoError(t, err)
+	err = producer2.FlushWithCtx(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.NoError(t, err)
+	_, err = producer2.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.NoError(t, err)
+}
+
+func TestMemLimitRejectProducerMessagesWithSchema(t *testing.T) {
+
+	c, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		MemoryLimitBytes: 100 * 6,
+	})
+	assert.NoError(t, err)
+	defer c.Close()
+
+	schema := NewAvroSchema(`{"fields":
+	[
+		{"name":"id","type":"int"},{"default":null,"name":"name","type":["null","string"]}
+	],
+	"name":"MyAvro","namespace":"schemaNotFoundTestCase","type":"record"}`, nil)
+
+	topicName := newTopicName()
+	producer1, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer2, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	// the size of encoded value is 6 bytes
+	value := map[string]interface{}{
+		"id": 0,
+		"name": map[string]interface{}{
+			"string": "abc",
+		},
+	}
+
+	n := 101
+	for i := 0; i < n/2; i++ {
+		producer1.SendAsync(context.Background(), &ProducerMessage{
+			Value:  value,
+			Schema: schema,
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+
+		producer2.SendAsync(context.Background(), &ProducerMessage{
+			Value:  value,
+			Schema: schema,
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+	}
+	// Last message in order to reach the limit
+	producer1.SendAsync(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	}, func(id MessageID, message *ProducerMessage, e error) {})
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int64(n*6), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	_, err = producer2.Send(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	// flush pending msg
+	err = producer1.FlushWithCtx(context.Background())
+	assert.NoError(t, err)
+	err = producer2.FlushWithCtx(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	_, err = producer2.Send(context.Background(), &ProducerMessage{
+		Value:  value,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+}
+
+func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
+	c, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		MemoryLimitBytes: 5 * 1024,
+	})
+	assert.NoError(t, err)
+	defer c.Close()
+
+	topicName := newTopicName()
+	producer1, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         true,
+		EnableChunking:          true,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer2, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Millisecond,
+		SendTimeout:             2 * time.Second,
+	})
+
+	producer2.SendAsync(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 5*1024+1),
+	}, func(id MessageID, message *ProducerMessage, e error) {
+		if e != nil {
+			t.Fatal(e)
+		}
+	})
+
+	time.Sleep(50 * time.Millisecond)
+	assert.Equal(t, int64(5*1024+1), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1),
+	})
+	assert.Error(t, err)
+	assert.ErrorContains(t, err, getResultStr(ClientMemoryBufferIsFull))
+
+	// wait all the mem have been released
+	retryAssert(t, 10, 200, func() {}, func(t assert.TestingT) bool {
+		return assert.Equal(t, 0, int(c.(*client).memLimit.CurrentUsage()))
+	})
+
+	producer3, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: true,
+		DisableBatching:         true,
+		EnableChunking:          true,
+		MaxPendingMessages:      1,
+		ChunkMaxMessageSize:     1024,
+		SendTimeout:             2 * time.Second,
+	})
+
+	// producer3 cannot reserve 2*1024 bytes because it reaches MaxPendingMessages in chunking
+	_, _ = producer3.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 2*1024),
+	})
+	assert.Zero(t, c.(*client).memLimit.CurrentUsage())
+}
+
+func TestMemLimitContextCancel(t *testing.T) {
+
+	c, err := NewClient(ClientOptions{
+		URL:              serviceURL,
+		MemoryLimitBytes: 100 * 1024,
+	})
+	assert.NoError(t, err)
+	defer c.Close()
+
+	topicName := newTopicName()
+	producer, _ := c.CreateProducer(ProducerOptions{
+		Topic:                   topicName,
+		DisableBlockIfQueueFull: false,
+		DisableBatching:         false,
+		BatchingMaxPublishDelay: 100 * time.Second,
+		SendTimeout:             2 * time.Second,
+	})
+
+	n := 101
+	ctx, cancel := context.WithCancel(context.Background())
+	for i := 0; i < n; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {})
+	}
+	time.Sleep(100 * time.Millisecond)
+	assert.Equal(t, int64(n*1024), c.(*client).memLimit.CurrentUsage())
+
+	wg := sync.WaitGroup{}
+	wg.Add(1)
+	go func() {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {
+			assert.Error(t, e)
+			assert.ErrorContains(t, e, getResultStr(TimeoutError))
+			wg.Done()
+		})
+	}()
+
+	// cancel pending msg
+	cancel()
+	wg.Wait()
+
+	err = producer.FlushWithCtx(context.Background())
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), c.(*client).memLimit.CurrentUsage())
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: make([]byte, 1024),
+	})
+	assert.NoError(t, err)
+}
+
+func TestBatchSendMessagesWithMetadata(t *testing.T) {
+	testSendMessagesWithMetadata(t, false)
+}
+
+func TestNoBatchSendMessagesWithMetadata(t *testing.T) {
+	testSendMessagesWithMetadata(t, true)
+}
+
+func testSendMessagesWithMetadata(t *testing.T, disableBatch bool) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: disableBatch,
+	})
+	assert.Nil(t, err)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "my-sub",
+	})
+	assert.Nil(t, err)
+
+	msg := &ProducerMessage{EventTime: time.Now().Local(),
+		Key:         "my-key",
+		OrderingKey: "my-ordering-key",
+		Properties:  map[string]string{"k1": "v1", "k2": "v2"},
+		Payload:     []byte("msg")}
+
+	_, err = producer.Send(context.Background(), msg)
+	assert.Nil(t, err)
+
+	recvMsg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+
+	assert.Equal(t, internal.TimestampMillis(msg.EventTime), internal.TimestampMillis(recvMsg.EventTime()))
+	assert.Equal(t, msg.Key, recvMsg.Key())
+	assert.Equal(t, msg.OrderingKey, recvMsg.OrderingKey())
+	assert.Equal(t, msg.Properties, recvMsg.Properties())
+}
+
+func TestProducerSendWithContext(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Make ctx be canceled to invalidate the context immediately
+	cancel()
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload: make([]byte, 1024*1024),
+	})
+	//  producer.Send should fail and return err context.Canceled
+	assert.True(t, errors.Is(err, context.Canceled))
+}
+
+func TestFailPendingMessageWithClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+	testProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   newTopicName(),
+		DisableBlockIfQueueFull: false,
+		BatchingMaxPublishDelay: 100000,
+		BatchingMaxMessages:     1000,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, testProducer)
+	for i := 0; i < 3; i++ {
+		testProducer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 1024),
+		}, func(id MessageID, message *ProducerMessage, e error) {
+			if e != nil {
+				assert.True(t, errors.Is(e, ErrProducerClosed))
+			}
+		})
+	}
+	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp.pendingQueue.Put(&pendingItem{})
+	testProducer.Close()
+	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
+}
+
+func TestSendConcurrently(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+	testProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:            newTopicName(),
+		CompressionType:  ZSTD,
+		CompressionLevel: Better,
+		DisableBatching:  true,
+	})
+	assert.NoError(t, err)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wg.Add(1)
+		go func() {
+			_, err := testProducer.Send(context.Background(), &ProducerMessage{
+				Payload: make([]byte, 100),
+			})
+			assert.NoError(t, err)
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}
+
+type pendingQueueWrapper struct {
+	pendingQueue   internal.BlockingQueue
+	writtenBuffers *[]internal.Buffer
+}
+
+func (pqw *pendingQueueWrapper) Put(item interface{}) {
+	pi := item.(*pendingItem)
+	writerIdx := pi.buffer.WriterIndex()
+	buf := internal.NewBuffer(int(writerIdx))
+	buf.Write(pi.buffer.Get(0, writerIdx))
+	*pqw.writtenBuffers = append(*pqw.writtenBuffers, buf)
+	pqw.pendingQueue.Put(item)
+}
+
+func (pqw *pendingQueueWrapper) Take() interface{} {
+	return pqw.pendingQueue.Take()
+}
+
+func (pqw *pendingQueueWrapper) Poll() interface{} {
+	return pqw.pendingQueue.Poll()
+}
+
+func (pqw *pendingQueueWrapper) CompareAndPoll(compare func(interface{}) bool) interface{} {
+	return pqw.pendingQueue.CompareAndPoll(compare)
+}
+
+func (pqw *pendingQueueWrapper) Peek() interface{} {
+	return pqw.pendingQueue.Peek()
+}
+
+func (pqw *pendingQueueWrapper) PeekLast() interface{} {
+	return pqw.pendingQueue.PeekLast()
+}
+
+func (pqw *pendingQueueWrapper) Size() int {
+	return pqw.pendingQueue.Size()
+}
+
+func (pqw *pendingQueueWrapper) ReadableSlice() []interface{} {
+	return pqw.pendingQueue.ReadableSlice()
+}
+
+func TestDisableReplication(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	testProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:           newTopicName(),
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, testProducer)
+	defer testProducer.Close()
+
+	writtenBuffers := make([]internal.Buffer, 0)
+	pqw := &pendingQueueWrapper{
+		pendingQueue:   internal.NewBlockingQueue(1000),
+		writtenBuffers: &writtenBuffers,
+	}
+
+	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp.pendingQueue = pqw
+
+	ID, err := testProducer.Send(context.Background(), &ProducerMessage{
+		Payload:            []byte("disable-replication"),
+		DisableReplication: true,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, ID)
+
+	assert.Equal(t, 1, len(writtenBuffers))
+	buf := writtenBuffers[0]
+
+	buf.Skip(4)                        // TOTAL_SIZE
+	cmdSize := buf.ReadUint32()        // CMD_SIZE
+	buf.Skip(cmdSize)                  // CMD
+	buf.Skip(2)                        // MAGIC_NUMBER
+	buf.Skip(4)                        // CHECKSUM
+	metadataSize := buf.ReadUint32()   // METADATA_SIZE
+	metadata := buf.Read(metadataSize) // METADATA
+
+	var msgMetadata pb.MessageMetadata
+	err = proto.Unmarshal(metadata, &msgMetadata)
+	assert.NoError(t, err)
+	assert.Equal(t, []string{"__local__"}, msgMetadata.GetReplicateTo())
+}
+
+func TestProducerWithMaxConnectionsPerBroker(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 8,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	for i := 0; i < 10; i++ {
+		testProducer, err := client.CreateProducer(ProducerOptions{
+			Topic:  newTopicName(),
+			Schema: NewBytesSchema(nil),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, testProducer)
+
+		var ok int32
+		testProducer.SendAsync(context.Background(), &ProducerMessage{Value: []byte("hello")},
+			func(id MessageID, producerMessage *ProducerMessage, err error) {
+				if err == nil {
+					atomic.StoreInt32(&ok, 1)
+				}
+			})
+		require.Eventually(t, func() bool {
+			return atomic.LoadInt32(&ok) == 1
+		}, 3*time.Second, time.Millisecond*100)
+		testProducer.Close()
+	}
+}
+
+func getPulsarTestImage() string {
+	image := os.Getenv("PULSAR_IMAGE")
+	if image == "" {
+		image = "apachepulsar/pulsar:latest"
+	}
+	return image
+}
+
+func TestProducerKeepReconnectingAndThenCallClose(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 5 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	var testProducer Producer
+	require.Eventually(t, func() bool {
+		testProducer, err = client.CreateProducer(ProducerOptions{
+			Topic:  newTopicName(),
+			Schema: NewBytesSchema(nil),
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	_ = c.Terminate(context.Background())
+	require.Eventually(t, func() bool {
+		testProducer.Close()
+		return true
+	}, 30*time.Second, 1*time.Second)
 }

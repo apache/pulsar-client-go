@@ -35,14 +35,19 @@ type nackMockedConsumer struct {
 	lock   sync.Mutex
 }
 
-func newNackMockedConsumer() *nackMockedConsumer {
+func newNackMockedConsumer(nackBackoffPolicy NackBackoffPolicy) *nackMockedConsumer {
 	t := &nackMockedConsumer{
 		ch: make(chan messageID, 10),
 	}
 	go func() {
 		// since the client ticks at an interval of delay / 3
 		// wait another interval to ensure we get all messages
-		time.Sleep(testNackDelay + 101*time.Millisecond)
+		// And we wait another 100 milliseconds to reduce the flaky
+		if nackBackoffPolicy == nil {
+			time.Sleep(testNackDelay + 200*time.Millisecond)
+		} else {
+			time.Sleep(nackBackoffPolicy.Next(1) + 200*time.Millisecond)
+		}
 		t.lock.Lock()
 		defer t.lock.Unlock()
 		t.closed = true
@@ -74,16 +79,16 @@ func (nmc *nackMockedConsumer) Wait() <-chan messageID {
 }
 
 func TestNacksTracker(t *testing.T) {
-	nmc := newNackMockedConsumer()
+	nmc := newNackMockedConsumer(nil)
 	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
@@ -107,28 +112,28 @@ func TestNacksTracker(t *testing.T) {
 }
 
 func TestNacksWithBatchesTracker(t *testing.T) {
-	nmc := newNackMockedConsumer()
+	nmc := newNackMockedConsumer(nil)
 	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 2,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 3,
 	})
 
-	nacks.Add(messageID{
+	nacks.Add(&messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
@@ -150,7 +155,7 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 }
 
 func TestNackBackoffTracker(t *testing.T) {
-	nmc := newNackMockedConsumer()
+	nmc := newNackMockedConsumer(new(defaultNackBackoffPolicy))
 	nacks := newNegativeAcksTracker(nmc, testNackDelay, new(defaultNackBackoffPolicy), log.DefaultNopLogger())
 
 	nacks.AddMessage(new(mockMessage1))
@@ -190,7 +195,7 @@ func (msg *mockMessage1) Payload() []byte {
 }
 
 func (msg *mockMessage1) ID() MessageID {
-	return messageID{
+	return &messageID{
 		ledgerID: 1,
 		entryID:  1,
 		batchIdx: 1,
@@ -233,6 +238,10 @@ func (msg *mockMessage1) ProducerName() string {
 	return ""
 }
 
+func (msg *mockMessage1) SchemaVersion() []byte {
+	return nil
+}
+
 func (msg *mockMessage1) GetEncryptionContext() *EncryptionContext {
 	return &EncryptionContext{}
 }
@@ -262,7 +271,7 @@ func (msg *mockMessage2) Payload() []byte {
 }
 
 func (msg *mockMessage2) ID() MessageID {
-	return messageID{
+	return &messageID{
 		ledgerID: 2,
 		entryID:  2,
 		batchIdx: 1,
@@ -298,6 +307,10 @@ func (msg *mockMessage2) GetReplicatedFrom() string {
 }
 
 func (msg *mockMessage2) GetSchemaValue(v interface{}) error {
+	return nil
+}
+
+func (msg *mockMessage2) SchemaVersion() []byte {
 	return nil
 }
 

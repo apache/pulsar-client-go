@@ -19,12 +19,14 @@ package pulsar
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -36,8 +38,13 @@ import (
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
 type acker interface {
-	AckID(id trackingMessageID) error
-	NackID(id trackingMessageID)
+	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
+	AckID(id MessageID) error
+	AckIDWithResponse(id MessageID) error
+	AckIDWithTxn(msgID MessageID, txn Transaction) error
+	AckIDCumulative(msgID MessageID) error
+	AckIDWithResponseCumulative(msgID MessageID) error
+	NackID(id MessageID)
 	NackMsg(msg Message)
 }
 
@@ -78,6 +85,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.ReceiverQueueSize = defaultReceiverQueueSize
 	}
 
+	if options.EnableZeroQueueConsumer {
+		options.ReceiverQueueSize = 0
+	}
+
 	if options.Interceptors == nil {
 		options.Interceptors = defaultConsumerInterceptors
 	}
@@ -90,6 +101,14 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		if options.Schema.GetSchemaInfo().Type == NONE {
 			options.Schema = NewBytesSchema(nil)
 		}
+	}
+
+	if options.MaxPendingChunkedMessage == 0 {
+		options.MaxPendingChunkedMessage = 100
+	}
+
+	if options.ExpireTimeOfIncompleteChunk == 0 {
+		options.ExpireTimeOfIncompleteChunk = time.Minute
 	}
 
 	if options.NackBackoffPolicy == nil && options.EnableDefaultNackBackoffPolicy {
@@ -114,8 +133,26 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return nil, err
 		}
 
-		retryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
-		dlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
+		topicName := internal.TopicNameWithoutPartitionPart(tn)
+
+		retryTopic := topicName + "-" + options.SubscriptionName + RetryTopicSuffix
+		dlqTopic := topicName + "-" + options.SubscriptionName + DlqTopicSuffix
+
+		oldRetryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
+		oldDlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
+
+		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldRetryTopic); err == nil &&
+			r != nil &&
+			r.Partitions > 0 {
+			retryTopic = oldRetryTopic
+		}
+
+		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldDlqTopic); err == nil &&
+			r != nil &&
+			r.Partitions > 0 {
+			dlqTopic = oldDlqTopic
+		}
+
 		if options.DLQ == nil {
 			options.DLQ = &DLQPolicy{
 				MaxDeliveries:    MaxReconsumeTimes,
@@ -138,7 +175,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 	}
 
-	dlq, err := newDlqRouter(client, options.DLQ, client.log)
+	dlq, err := newDlqRouter(client, options.DLQ, options.Topic, options.SubscriptionName, options.Name, client.log)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +244,24 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 }
 
 func newInternalConsumer(client *client, options ConsumerOptions, topic string,
-	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (*consumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, rlq *retryRouter, disableForceTopicCreation bool) (Consumer, error) {
+	partitions, err := client.TopicPartitions(topic)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(partitions) > 1 && options.EnableZeroQueueConsumer {
+		return nil, pkgerrors.New("ZeroQueueConsumer is not supported for partitioned topics")
+	}
+
+	if len(partitions) == 1 && options.EnableZeroQueueConsumer &&
+		strings.Contains(partitions[0], utils.PARTITIONEDTOPICSUFFIX) {
+		return nil, pkgerrors.New("ZeroQueueConsumer is not supported for partitioned topics")
+	}
+
+	if len(partitions) == 1 && options.EnableZeroQueueConsumer {
+		return newZeroConsumer(client, options, topic, messageCh, dlq, rlq, disableForceTopicCreation)
+	}
 
 	consumer := &consumer{
 		topic:                     topic,
@@ -224,7 +278,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 		metrics:                   client.metrics.GetLeveledMetrics(topic),
 	}
 
-	err := consumer.internalTopicSubscribeToPartitions()
+	err = consumer.internalTopicSubscribeToPartitions()
 	if err != nil {
 		return nil, err
 	}
@@ -315,10 +369,6 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		consumer  *partitionConsumer
 	}
 
-	receiverQueueSize := c.options.ReceiverQueueSize
-	metadata := c.options.Properties
-	subProperties := c.options.SubscriptionProperties
-
 	startPartition := oldNumPartitions
 	partitionsToAdd := newNumPartitions - oldNumPartitions
 
@@ -336,36 +386,7 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 		go func(idx int, pt string) {
 			defer wg.Done()
-
-			var nackRedeliveryDelay time.Duration
-			if c.options.NackRedeliveryDelay == 0 {
-				nackRedeliveryDelay = defaultNackRedeliveryDelay
-			} else {
-				nackRedeliveryDelay = c.options.NackRedeliveryDelay
-			}
-			opts := &partitionConsumerOpts{
-				topic:                      pt,
-				consumerName:               c.consumerName,
-				subscription:               c.options.SubscriptionName,
-				subscriptionType:           c.options.Type,
-				subscriptionInitPos:        c.options.SubscriptionInitialPosition,
-				partitionIdx:               idx,
-				receiverQueueSize:          receiverQueueSize,
-				nackRedeliveryDelay:        nackRedeliveryDelay,
-				nackBackoffPolicy:          c.options.NackBackoffPolicy,
-				metadata:                   metadata,
-				subProperties:              subProperties,
-				replicateSubscriptionState: c.options.ReplicateSubscriptionState,
-				startMessageID:             trackingMessageID{},
-				subscriptionMode:           durable,
-				readCompacted:              c.options.ReadCompacted,
-				interceptors:               c.options.Interceptors,
-				maxReconnectToBroker:       c.options.MaxReconnectToBroker,
-				keySharedPolicy:            c.options.KeySharedPolicy,
-				schema:                     c.options.Schema,
-				decryption:                 c.options.Decryption,
-				ackWithResponse:            c.options.AckWithResponse,
-			}
+			opts := newPartitionConsumerOpts(pt, c.consumerName, idx, c.options)
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
 				err:       err,
@@ -407,17 +428,67 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	return nil
 }
 
+func newPartitionConsumerOpts(topic, consumerName string, idx int, options ConsumerOptions) *partitionConsumerOpts {
+
+	var nackRedeliveryDelay time.Duration
+	if options.NackRedeliveryDelay == 0 {
+		nackRedeliveryDelay = defaultNackRedeliveryDelay
+	} else {
+		nackRedeliveryDelay = options.NackRedeliveryDelay
+	}
+	return &partitionConsumerOpts{
+		topic:                       topic,
+		consumerName:                consumerName,
+		subscription:                options.SubscriptionName,
+		subscriptionType:            options.Type,
+		subscriptionInitPos:         options.SubscriptionInitialPosition,
+		partitionIdx:                idx,
+		receiverQueueSize:           options.ReceiverQueueSize,
+		nackRedeliveryDelay:         nackRedeliveryDelay,
+		nackBackoffPolicy:           options.NackBackoffPolicy,
+		metadata:                    options.Properties,
+		subProperties:               options.SubscriptionProperties,
+		replicateSubscriptionState:  options.ReplicateSubscriptionState,
+		startMessageID:              options.startMessageID,
+		startMessageIDInclusive:     options.StartMessageIDInclusive,
+		subscriptionMode:            options.SubscriptionMode,
+		readCompacted:               options.ReadCompacted,
+		interceptors:                options.Interceptors,
+		maxReconnectToBroker:        options.MaxReconnectToBroker,
+		backoffPolicy:               options.BackoffPolicy,
+		keySharedPolicy:             options.KeySharedPolicy,
+		schema:                      options.Schema,
+		decryption:                  options.Decryption,
+		ackWithResponse:             options.AckWithResponse,
+		maxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
+		expireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
+		autoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
+		consumerEventListener:       options.EventListener,
+		enableBatchIndexAck:         options.EnableBatchIndexAcknowledgment,
+		ackGroupingOptions:          options.AckGroupingOptions,
+		autoReceiverQueueSize:       options.EnableAutoScaledReceiverQueueSize,
+	}
+}
+
 func (c *consumer) Subscription() string {
 	return c.options.SubscriptionName
 }
 
 func (c *consumer) Unsubscribe() error {
+	return c.unsubscribe(false)
+}
+
+func (c *consumer) UnsubscribeForce() error {
+	return c.unsubscribe(true)
+}
+
+func (c *consumer) unsubscribe(force bool) error {
 	c.Lock()
 	defer c.Unlock()
 
 	var errMsg string
 	for _, consumer := range c.consumers {
-		if err := consumer.Unsubscribe(); err != nil {
+		if err := consumer.unsubscribe(force); err != nil {
 			errMsg += fmt.Sprintf("topic %s, subscription %s: %s", consumer.topic, c.Subscription(), err)
 		}
 	}
@@ -429,6 +500,19 @@ func (c *consumer) Unsubscribe() error {
 
 func (c *consumer) Closed() <-chan struct{} {
 	return c.closeCh
+}
+
+func (c *consumer) GetLastMessageIDs() ([]TopicMessageID, error) {
+	ids := make([]TopicMessageID, 0)
+	for _, pc := range c.consumers {
+		id, err := pc.getLastMessageID()
+		tm := &topicMessageID{topic: pc.topic, track: id}
+		if err != nil {
+			return nil, err
+		}
+		ids = append(ids, tm)
+	}
+	return ids, nil
 }
 
 func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
@@ -447,6 +531,15 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 	}
 }
 
+func (c *consumer) AckWithTxn(msg Message, txn Transaction) error {
+	msgID := msg.ID()
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+
+	return c.consumers[msgID.PartitionIdx()].AckIDWithTxn(msgID, txn)
+}
+
 // Chan return the message chan to users
 func (c *consumer) Chan() <-chan ConsumerMessage {
 	return c.messageCh
@@ -459,29 +552,65 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
-	mid, ok := c.messageID(msgID)
-	if !ok {
-		return errors.New("failed to convert trackingMessageID")
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
 	}
 
-	if mid.consumer != nil {
-		return mid.Ack()
+	if c.options.AckWithResponse {
+		return c.consumers[msgID.PartitionIdx()].AckIDWithResponse(msgID)
 	}
 
-	return c.consumers[mid.partitionIdx].AckID(mid)
+	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
+}
+
+// AckCumulative the reception of all the messages in the stream up to (and including)
+// the provided message, identified by its MessageID
+func (c *consumer) AckCumulative(msg Message) error {
+	return c.AckIDCumulative(msg.ID())
+}
+
+// AckIDCumulative the reception of all the messages in the stream up to (and including)
+// the provided message, identified by its MessageID
+func (c *consumer) AckIDCumulative(msgID MessageID) error {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+
+	if c.options.AckWithResponse {
+		return c.consumers[msgID.PartitionIdx()].AckIDWithResponseCumulative(msgID)
+	}
+
+	return c.consumers[msgID.PartitionIdx()].AckIDCumulative(msgID)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
 func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
+	c.ReconsumeLaterWithCustomProperties(msg, map[string]string{}, delay)
+}
+
+// ReconsumeLaterWithCustomProperties mark a message for redelivery after custom delay with custom properties
+func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string,
+	delay time.Duration) {
 	if delay < 0 {
 		delay = 0
 	}
-	msgID, ok := c.messageID(msg.ID())
-	if !ok {
+
+	if !checkMessageIDType(msg.ID()) {
+		c.log.Warnf("invalid message id type %T", msg.ID())
 		return
 	}
+
+	msgID := c.messageID(msg.ID())
+	if msgID == nil {
+		return
+	}
+
 	props := make(map[string]string)
 	for k, v := range msg.Properties() {
+		props[k] = v
+	}
+
+	for k, v := range customProperties {
 		props[k] = v
 	}
 
@@ -521,14 +650,18 @@ func (c *consumer) ReconsumeLater(msg Message, delay time.Duration) {
 }
 
 func (c *consumer) Nack(msg Message) {
+	if !checkMessageIDType(msg.ID()) {
+		c.log.Warnf("invalid message id type %T", msg.ID())
+		return
+	}
 	if c.options.EnableDefaultNackBackoffPolicy || c.options.NackBackoffPolicy != nil {
-		mid, ok := c.messageID(msg.ID())
-		if !ok {
+		mid := c.messageID(msg.ID())
+		if mid == nil {
 			return
 		}
 
 		if mid.consumer != nil {
-			mid.Nack()
+			mid.NackByMsg(msg)
 			return
 		}
 		c.consumers[mid.partitionIdx].NackMsg(msg)
@@ -539,17 +672,11 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	mid, ok := c.messageID(msgID)
-	if !ok {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
 		return
 	}
 
-	if mid.consumer != nil {
-		mid.Nack()
-		return
-	}
-
-	c.consumers[mid.partitionIdx].NackID(mid)
+	c.consumers[msgID.PartitionIdx()].NackID(msgID)
 }
 
 func (c *consumer) Close() {
@@ -591,12 +718,20 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
-	mid, ok := c.messageID(msgID)
-	if !ok {
-		return nil
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
 	}
 
-	return c.consumers[mid.partitionIdx].Seek(mid)
+	if err := c.consumers[msgID.PartitionIdx()].Seek(msgID); err != nil {
+		return err
+	}
+
+	// clear messageCh
+	for len(c.messageCh) > 0 {
+		<-c.messageCh
+	}
+
+	return nil
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
@@ -610,7 +745,68 @@ func (c *consumer) SeekByTime(time time.Time) error {
 			errs = pkgerrors.Wrap(newError(SeekFailed, err.Error()), msg)
 		}
 	}
+
+	// clear messageCh
+	for len(c.messageCh) > 0 {
+		<-c.messageCh
+	}
+
 	return errs
+}
+
+func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
+	partition := msgID.PartitionIdx()
+	if partition < 0 || int(partition) >= len(c.consumers) {
+		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
+		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(c.consumers))
+	}
+	return nil
+}
+
+func (c *consumer) hasNext() bool {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Make sure all paths cancel the context to avoid context leak
+
+	var wg sync.WaitGroup
+	wg.Add(len(c.consumers))
+
+	hasNext := make(chan bool)
+	for _, pc := range c.consumers {
+		pc := pc
+		go func() {
+			defer wg.Done()
+			if pc.hasNext() {
+				select {
+				case hasNext <- true:
+				case <-ctx.Done():
+				}
+			}
+		}()
+	}
+
+	go func() {
+		wg.Wait()
+		close(hasNext) // Close the channel after all goroutines have finished
+	}()
+
+	// Wait for either a 'true' result or for all goroutines to finish
+	for hn := range hasNext {
+		if hn {
+			return true
+		}
+	}
+
+	return false
+}
+
+func (c *consumer) setLastDequeuedMsg(msgID MessageID) error {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+	c.consumers[msgID.PartitionIdx()].lastDequeuedMsg = toTrackingMessageID(msgID)
+	return nil
 }
 
 var r = &random{
@@ -671,22 +867,11 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 	return pb.CommandSubscribe_Latest
 }
 
-func (c *consumer) messageID(msgID MessageID) (trackingMessageID, bool) {
-	mid, ok := toTrackingMessageID(msgID)
-	if !ok {
-		c.log.Warnf("invalid message id type %T", msgID)
-		return trackingMessageID{}, false
+func (c *consumer) messageID(msgID MessageID) *trackingMessageID {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return nil
 	}
-
-	partition := int(mid.partitionIdx)
-	// did we receive a valid partition index?
-	if partition < 0 || partition >= len(c.consumers) {
-		c.log.Warnf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(c.consumers))
-		return trackingMessageID{}, false
-	}
-
-	return mid, true
+	return toTrackingMessageID(msgID)
 }
 
 func addMessageCryptoIfMissing(client *client, options *ConsumerOptions, topics interface{}) error {

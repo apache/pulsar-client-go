@@ -19,6 +19,7 @@ package pulsar
 
 type ProducerInterceptor interface {
 	// BeforeSend This is called before send the message to the brokers. This method is allowed to modify the
+	// message.
 	BeforeSend(producer Producer, message *ProducerMessage)
 
 	// OnSendAcknowledgement This method is called when the message sent to the broker has been acknowledged,

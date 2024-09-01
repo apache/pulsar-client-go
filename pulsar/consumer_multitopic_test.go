@@ -22,6 +22,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+
 	"github.com/stretchr/testify/assert"
 )
 
@@ -83,4 +87,134 @@ func TestMultiTopicConsumerReceive(t *testing.T) {
 		}
 	}
 	assert.Equal(t, receivedTopic1, receivedTopic2)
+}
+
+func TestMultiTopicConsumerUnsubscribe(t *testing.T) {
+	topic1 := newTopicName()
+	topic2 := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topics := []string{topic1, topic2}
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topics:           topics,
+		SubscriptionName: "multi-topic-sub",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+
+	err = consumer.Unsubscribe()
+	assert.Nil(t, err)
+
+	err = consumer.Unsubscribe()
+	assert.Error(t, err)
+
+}
+func TestMultiTopicConsumerForceUnsubscribe(t *testing.T) {
+	topic1 := newTopicName()
+	topic2 := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL: "pulsar://localhost:6650",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	topics := []string{topic1, topic2}
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topics:           topics,
+		SubscriptionName: "multi-topic-sub",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer consumer.Close()
+	err = consumer.UnsubscribeForce()
+	assert.Nil(t, err)
+
+	err = consumer.UnsubscribeForce()
+	assert.Error(t, err)
+}
+
+func TestMultiTopicGetLastMessageIDs(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic1Partition, topic2Partition, topic3Partition := 1, 2, 3
+
+	topic1 := newTopicName()
+	err = createPartitionedTopic(topic1, topic1Partition)
+	assert.Nil(t, err)
+
+	topic2 := newTopicName()
+	err = createPartitionedTopic(topic2, topic2Partition)
+	assert.Nil(t, err)
+
+	topic3 := newTopicName()
+	err = createPartitionedTopic(topic3, topic3Partition)
+	assert.Nil(t, err)
+
+	topics := []string{topic1, topic2, topic3}
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topics:           topics,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// produce messages
+	totalMessage := 30
+	for i, topic := range topics {
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:           topic,
+			DisableBatching: true,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		err = genMessages(p, totalMessage, func(idx int) string {
+			return fmt.Sprintf("topic-%d-hello-%d", i+1, idx)
+		})
+		p.Close()
+		if err != nil {
+			assert.Nil(t, err)
+		}
+	}
+
+	// create admin
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+
+	topicMessageIDs, err := consumer.GetLastMessageIDs()
+	assert.Nil(t, err)
+	assert.Equal(t, topic1Partition+topic2Partition+topic3Partition, len(topicMessageIDs))
+	for _, id := range topicMessageIDs {
+		if strings.Contains(id.Topic(), topic1) {
+			assert.Equal(t, int(id.EntryID()), totalMessage/topic1Partition-1)
+		} else if strings.Contains(id.Topic(), topic2) {
+			assert.Equal(t, int(id.EntryID()), totalMessage/topic2Partition-1)
+		} else if strings.Contains(id.Topic(), topic3) {
+			assert.Equal(t, int(id.EntryID()), totalMessage/topic3Partition-1)
+		}
+
+		topicName, err := utils.GetTopicName(id.Topic())
+		assert.Nil(t, err)
+		messages, err := admin.Subscriptions().GetMessagesByID(*topicName, id.LedgerID(), id.EntryID())
+		assert.Nil(t, err)
+		assert.Equal(t, 1, len(messages))
+
+	}
+
 }

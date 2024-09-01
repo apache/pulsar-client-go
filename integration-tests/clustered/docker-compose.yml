@@ -1,0 +1,167 @@
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#   http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing,
+# software distributed under the License is distributed on an
+# "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+# KIND, either express or implied.  See the License for the
+# specific language governing permissions and limitations
+# under the License.
+
+version: '3'
+networks:
+  pulsar:
+    driver: bridge
+services:
+  # Start ZooKeeper
+  zookeeper:
+    image: apachepulsar/pulsar:${PULSAR_VERSION}
+    container_name: zookeeper
+    restart: on-failure
+    networks:
+      - pulsar
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/zookeeper.conf && \
+             bin/generate-zookeeper-config.sh conf/zookeeper.conf && \
+             exec bin/pulsar zookeeper"
+    healthcheck:
+      test: ["CMD", "bin/pulsar-zookeeper-ruok.sh"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Initialize cluster metadata
+  pulsar-init:
+    container_name: pulsar-init
+    hostname: pulsar-init
+    image: apachepulsar/pulsar:${PULSAR_VERSION}
+    networks:
+      - pulsar
+    environment:
+      - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
+    command: >
+      bin/pulsar initialize-cluster-metadata \
+               --cluster cluster-a \
+               --zookeeper zookeeper:2181 \
+               --configuration-store zookeeper:2181 \
+               --web-service-url http://broker-1:8080 \
+               --broker-service-url pulsar://broker-1:6650
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+
+  # Start bookie
+  bookie:
+    image: apachepulsar/pulsar:${PULSAR_VERSION}
+    container_name: bookie
+    restart: on-failure
+    networks:
+      - pulsar
+    environment:
+      - clusterName=cluster-a
+      - zkServers=zookeeper:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper:2181
+      - advertisedAddress=bookie
+      - BOOKIE_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      pulsar-init:
+        condition: service_completed_successfully
+    command: bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf && exec bin/pulsar bookie"
+
+  proxy:
+    image: apachepulsar/pulsar:${PULSAR_VERSION}
+    container_name: proxy
+    hostname: proxy
+    restart: on-failure
+    networks:
+      - pulsar
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - zookeeperServers=zookeeper:2181
+      - clusterName=cluster-a
+      - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
+    ports:
+      - "8080:8080"
+      - "6650:6650"
+    depends_on:
+      broker-1:
+        condition: service_healthy
+      broker-2:
+        condition: service_healthy
+    command: bash -c "bin/apply-config-from-env.py conf/proxy.conf && exec bin/pulsar proxy"
+
+  # Start broker 1
+  broker-1:
+    image: apachepulsar/pulsar:${PULSAR_VERSION}
+    container_name: broker-1
+    hostname: broker-1
+    restart: on-failure
+    networks:
+      - pulsar
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - zookeeperServers=zookeeper:2181
+      - clusterName=cluster-a
+      - managedLedgerDefaultEnsembleSize=1
+      - managedLedgerDefaultWriteQuorum=1
+      - managedLedgerDefaultAckQuorum=1
+      - advertisedAddress=broker-1
+      - internalListenerName=internal
+      - advertisedListeners=internal:pulsar://broker-1:6650
+      - PULSAR_MEM=-Xms256m -Xmx256m -XX:MaxDirectMemorySize=56m
+      - PULSAR_PREFIX_defaultNumberOfNamespaceBundles=1
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      bookie:
+        condition: service_started
+    command: bash -c "bin/apply-config-from-env.py conf/broker.conf && exec bin/pulsar broker"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/metrics || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Start broker 2
+  broker-2:
+    image: apachepulsar/pulsar:${PULSAR_VERSION}
+    container_name: broker-2
+    hostname: broker-2
+    restart: on-failure
+    networks:
+      - pulsar
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - zookeeperServers=zookeeper:2181
+      - clusterName=cluster-a
+      - managedLedgerDefaultEnsembleSize=1
+      - managedLedgerDefaultWriteQuorum=1
+      - managedLedgerDefaultAckQuorum=1
+      - advertisedAddress=broker-2
+      - internalListenerName=internal
+      - advertisedListeners=internal:pulsar://broker-2:6650
+      - PULSAR_MEM=-Xms256m -Xmx256m -XX:MaxDirectMemorySize=56m
+      - PULSAR_PREFIX_defaultNumberOfNamespaceBundles=1
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      bookie:
+        condition: service_started
+    command: bash -c "bin/apply-config-from-env.py conf/broker.conf && exec bin/pulsar broker"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/metrics || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 30

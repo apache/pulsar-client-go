@@ -1,4 +1,3 @@
-#
 # Licensed to the Apache Software Foundation (ASF) under one
 # or more contributor license agreements.  See the NOTICE file
 # distributed with this work for additional information
@@ -15,7 +14,6 @@
 # KIND, either express or implied.  See the License for the
 # specific language governing permissions and limitations
 # under the License.
-#
 
 github:
   description: "Apache Pulsar Go Client Library"
@@ -43,3 +41,19 @@ github:
     merge:   false
     # disable rebase button:
     rebase:  false
+
+  protected_branches:
+    master:
+      required_pull_request_reviews:
+        require_code_owner_reviews: true
+        required_approving_review_count: 1
+
+      # Requires all conversations on code to be resolved before a pull request can be merged.
+      required_conversation_resolution: true
+
+notifications:
+  commits:      commits@pulsar.apache.org
+  issues:       commits@pulsar.apache.org
+  pullrequests: commits@pulsar.apache.org
+  discussions:  dev@pulsar.apache.org
+  jira_options: link label

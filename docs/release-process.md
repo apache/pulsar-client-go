@@ -13,7 +13,7 @@ In general, you need to perform the following steps:
 9. Announce the release.
 
 ### Requirements
-- [GPG keys to sign release artifacts](https://github.com/apache/pulsar/wiki/Create-GPG-keys-to-sign-release-artifacts)
+- [Creating GPG keys to sign release artifacts](https://pulsar.apache.org/contribute/create-gpg-keys/)
 
 ## Steps in detail
 
@@ -35,9 +35,7 @@ cd pulsar-client-go
 git checkout -b branch-0.X.0 origin/master
 ```
 
-2. Update the version and tag of a package.
-
-Update the information of the new release to the `VERSION` file and `stable.txt` file and send a PR for requesting the changes.
+2. Create a tag for the release candidate.
 
 During the release process, you can create a "candidate" tag which will get promoted to the "real" final tag after verification and approval.
 
@@ -114,7 +112,7 @@ It fixes the following issues:
 https://github.com/apache/pulsar-client-go/milestone/1?closed=1
 
 Pulsar Client Go's KEYS file contains PGP keys we used to sign this release:
-https://dist.apache.org/repos/dist/dev/pulsar/KEYS
+https://downloads.apache.org/pulsar/KEYS
 
 Please download these packages and review this release candidate:
 - Review release notes
@@ -128,7 +126,7 @@ https://dist.apache.org/repos/dist/dev/pulsar/pulsar-client-go-0.X.0-candidate-1
 
 The tag to be voted upon:
 v0.X.0
-https://github.com/apache/pulsar-client-node/releases/tag/v0.X.0
+https://github.com/apache/pulsar-client-go/tree/v0.X.0-candidate-1
 
 SHA-512 checksums:
 97bb1000f70011e9a585186590e0688586590e09  apache-pulsar-client-go-0.X.0-src.tar.gz

@@ -22,7 +22,8 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/beefsack/go-rate"
+	"golang.org/x/time/rate"
+
 	"github.com/bmizerany/perks/quantile"
 	"github.com/spf13/cobra"
 
@@ -33,12 +34,13 @@ import (
 
 // ProduceArgs define the parameters required by produce
 type ProduceArgs struct {
-	Topic              string
-	Rate               int
-	BatchingTimeMillis int
-	BatchingMaxSize    int
-	MessageSize        int
-	ProducerQueueSize  int
+	Topic               string
+	Rate                int
+	BatchingTimeMillis  int
+	BatchingMaxSize     uint
+	BatchingNumMessages uint
+	MessageSize         int
+	ProducerQueueSize   int
 }
 
 func newProducerCommand() *cobra.Command {
@@ -63,8 +65,10 @@ func newProducerCommand() *cobra.Command {
 		"Publish rate. Set to 0 to go unthrottled")
 	flags.IntVarP(&produceArgs.BatchingTimeMillis, "batching-time", "b", 1,
 		"Batching grouping time in millis")
-	flags.IntVarP(&produceArgs.BatchingMaxSize, "batching-max-size", "", 128,
+	flags.UintVar(&produceArgs.BatchingMaxSize, "batching-max-size", 128,
 		"Max size of a batch (in KB)")
+	flags.UintVar(&produceArgs.BatchingNumMessages, "batching-num-messages", 1000,
+		"Maximum number of messages permitted in a batch")
 	flags.IntVarP(&produceArgs.MessageSize, "size", "s", 1024,
 		"Message size")
 	flags.IntVarP(&produceArgs.ProducerQueueSize, "queue-size", "q", 1000,
@@ -89,7 +93,8 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 		Topic:                   produceArgs.Topic,
 		MaxPendingMessages:      produceArgs.ProducerQueueSize,
 		BatchingMaxPublishDelay: time.Millisecond * time.Duration(produceArgs.BatchingTimeMillis),
-		BatchingMaxSize:         uint(produceArgs.BatchingMaxSize * 1024),
+		BatchingMaxSize:         produceArgs.BatchingMaxSize * 1024,
+		BatchingMaxMessages:     produceArgs.BatchingNumMessages,
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -102,12 +107,10 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 
 	ch := make(chan float64)
 
-	go func(stopCh <-chan struct{}) {
-		var rateLimiter *rate.RateLimiter
-		if produceArgs.Rate > 0 {
-			rateLimiter = rate.New(produceArgs.Rate, time.Second)
-		}
+	limit := rate.Every(time.Duration(float64(time.Second) / float64(produceArgs.Rate)))
+	rateLimiter := rate.NewLimiter(limit, produceArgs.Rate)
 
+	go func(stopCh <-chan struct{}) {
 		for {
 			select {
 			case <-stopCh:
@@ -115,11 +118,10 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 			default:
 			}
 
-			if rateLimiter != nil {
-				rateLimiter.Wait()
-			}
-
 			start := time.Now()
+			if produceArgs.Rate > 0 {
+				_ = rateLimiter.Wait(context.TODO())
+			}
 
 			producer.SendAsync(ctx, &pulsar.ProducerMessage{
 				Payload: payload,
