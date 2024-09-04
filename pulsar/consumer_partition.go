@@ -1099,15 +1099,18 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		}
 	}
 
-	// decryption is success, decompress the payload
-	uncompressedHeadersAndPayload, err := pc.Decompress(msgMeta, processedPayloadBuffer)
-	if err != nil {
-		pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
-		return err
-	}
+	var uncompressedHeadersAndPayload internal.Buffer
+	// decryption is success, decompress the payload, but only if payload is not empty
+	if n := msgMeta.UncompressedSize; n != nil && *n > 0 {
+		uncompressedHeadersAndPayload, err = pc.Decompress(msgMeta, processedPayloadBuffer)
+		if err != nil {
+			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecompressionError)
+			return err
+		}
 
-	// Reset the reader on the uncompressed buffer
-	reader.ResetBuffer(uncompressedHeadersAndPayload)
+		// Reset the reader on the uncompressed buffer
+		reader.ResetBuffer(uncompressedHeadersAndPayload)
+	}
 
 	numMsgs := 1
 	if msgMeta.NumMessagesInBatch != nil {
