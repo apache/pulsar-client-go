@@ -217,6 +217,52 @@ func TestDuplicateAfterClose(t *testing.T) {
 	assert.False(t, tracker.isDuplicate(&messageID{ledgerID: 1}))
 }
 
+func TestCloseFlushWithoutTimer(t *testing.T) {
+	var acker mockAcker
+	tracker := newAckGroupingTracker(
+		&AckGroupingOptions{MaxSize: 3, MaxTime: 0},
+		nil,
+		func(id MessageID) { acker.ackCumulative(id) },
+		func(ids []*pb.MessageIdData) { acker.ack(ids) },
+	)
+
+	// case 1: message will not be acked because the cache is not full
+	tracker.add(&messageID{ledgerID: 1})
+	tracker.add(&messageID{ledgerID: 2})
+	assert.True(t, tracker.isDuplicate(&messageID{ledgerID: int64(1)}))
+	assert.True(t, tracker.isDuplicate(&messageID{ledgerID: int64(2)}))
+	assert.Equal(t, 0, len(acker.getLedgerIDs()))
+
+	// case 2: tracker close so that all messages are flushed and acked
+	tracker.close()
+	assert.False(t, tracker.isDuplicate(&messageID{ledgerID: 1}))
+	assert.False(t, tracker.isDuplicate(&messageID{ledgerID: 2}))
+	assert.Equal(t, []int64{1, 2}, acker.getLedgerIDs())
+}
+
+func TestCloseFlushWithTimer(t *testing.T) {
+	var acker mockAcker
+	tracker := newAckGroupingTracker(
+		&AckGroupingOptions{MaxSize: 1000, MaxTime: 10 * 1000},
+		nil,
+		func(id MessageID) { acker.ackCumulative(id) },
+		func(ids []*pb.MessageIdData) { acker.ack(ids) },
+	)
+
+	// case 1: messages are not acked because the cache is not full
+	tracker.add(&messageID{ledgerID: 1})
+	tracker.add(&messageID{ledgerID: 2})
+	assert.True(t, tracker.isDuplicate(&messageID{ledgerID: int64(1)}))
+	assert.True(t, tracker.isDuplicate(&messageID{ledgerID: int64(2)}))
+	assert.Equal(t, 0, len(acker.getLedgerIDs()))
+
+	// case 2: tracker close so that all messages are flushed and acked
+	tracker.close()
+	assert.False(t, tracker.isDuplicate(&messageID{ledgerID: 1}))
+	assert.False(t, tracker.isDuplicate(&messageID{ledgerID: 2}))
+	assert.Equal(t, []int64{1, 2}, acker.getLedgerIDs())
+}
+
 func TestTrackerPendingAcks(t *testing.T) {
 	m := make(map[uint64][]int64)
 	tracker := newAckGroupingTracker(&AckGroupingOptions{MaxSize: 3, MaxTime: 0}, nil, nil,
