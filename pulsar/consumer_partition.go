@@ -494,8 +494,8 @@ func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
 		req.err = newError(ConsumerClosed, "Failed to ack by closing or closed consumer")
 		return
 	}
-	if req.Transaction.state != TxnOpen {
-		pc.log.WithField("state", req.Transaction.state).Error("Failed to ack by a non-open transaction.")
+	if req.Transaction.state.Load() != int32(TxnOpen) {
+		pc.log.WithField("state", req.Transaction.state.Load()).Error("Failed to ack by a non-open transaction.")
 		req.err = newError(InvalidStatus, "Failed to ack by a non-open transaction.")
 		return
 	}
