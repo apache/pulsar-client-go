@@ -154,9 +154,8 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 		return r.producer
 	}
 
-	// Retry to create producer indefinitely
 	backoff := &internal.DefaultBackoff{}
-	for {
+	opFn := func() (Producer, error) {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.DeadLetterTopic
 		opt.Schema = schema
@@ -170,15 +169,17 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 		if r.policy.ProducerOptions.CompressionType == NoCompression {
 			opt.CompressionType = LZ4
 		}
-		producer, err := r.client.CreateProducer(opt)
-
-		if err != nil {
-			r.log.WithError(err).Error("Failed to create DLQ producer")
-			time.Sleep(backoff.Next())
-			continue
-		} else {
-			r.producer = producer
-			return producer
-		}
+		return r.client.CreateProducer(opt)
 	}
+
+	res, err := internal.Retry(context.Background(), opFn, func(err error) time.Duration {
+		r.log.WithError(err).Error("Failed to create DLQ producer")
+		return backoff.Next()
+	})
+
+	if err == nil {
+		r.producer = res
+	}
+
+	return res
 }

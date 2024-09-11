@@ -123,9 +123,8 @@ func (r *retryRouter) getProducer() Producer {
 		return r.producer
 	}
 
-	// Retry to create producer indefinitely
 	backoff := &internal.DefaultBackoff{}
-	for {
+	opFn := func() (Producer, error) {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.RetryLetterTopic
 		// the origin code sets to LZ4 compression with no options
@@ -134,15 +133,16 @@ func (r *retryRouter) getProducer() Producer {
 			opt.CompressionType = LZ4
 		}
 
-		producer, err := r.client.CreateProducer(opt)
-
-		if err != nil {
-			r.log.WithError(err).Error("Failed to create RLQ producer")
-			time.Sleep(backoff.Next())
-			continue
-		} else {
-			r.producer = producer
-			return producer
-		}
+		return r.client.CreateProducer(opt)
 	}
+
+	res, err := internal.Retry(context.Background(), opFn, func(err error) time.Duration {
+		r.log.WithError(err).Error("Failed to create RLQ producer")
+		return backoff.Next()
+	})
+	if err == nil {
+		r.producer = res
+	}
+
+	return res
 }
