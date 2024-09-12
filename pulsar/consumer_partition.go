@@ -152,7 +152,7 @@ type partitionConsumer struct {
 
 	// the size of the queue channel for buffering messages
 	maxQueueSize    int32
-	queueCh         chan []*message
+	queueCh         chan *message
 	startMessageID  atomicMessageID
 	lastDequeuedMsg *trackingMessageID
 
@@ -328,7 +328,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		partitionIdx:         int32(options.partitionIdx),
 		eventsCh:             make(chan interface{}, 10),
 		maxQueueSize:         int32(options.receiverQueueSize),
-		queueCh:              make(chan []*message, options.receiverQueueSize),
+		queueCh:              make(chan *message, options.receiverQueueSize),
 		startMessageID:       atomicMessageID{msgID: options.startMessageID},
 		connectedCh:          make(chan struct{}),
 		messageCh:            messageCh,
@@ -1051,37 +1051,33 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			return fmt.Errorf("discarding message on decryption error :%v", err)
 		case crypto.ConsumerCryptoFailureActionConsume:
 			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
-			messages := []*message{
-				{
-					publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
-					eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
-					key:          msgMeta.GetPartitionKey(),
-					producerName: msgMeta.GetProducerName(),
-					properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
-					topic:        pc.topic,
-					msgID: newMessageID(
-						int64(pbMsgID.GetLedgerId()),
-						int64(pbMsgID.GetEntryId()),
-						pbMsgID.GetBatchIndex(),
-						pc.partitionIdx,
-						pbMsgID.GetBatchSize(),
-					),
-					payLoad:             headersAndPayload.ReadableSlice(),
-					schema:              pc.options.schema,
-					replicationClusters: msgMeta.GetReplicateTo(),
-					replicatedFrom:      msgMeta.GetReplicatedFrom(),
-					redeliveryCount:     response.GetRedeliveryCount(),
-					encryptionContext:   createEncryptionContext(msgMeta),
-					orderingKey:         string(msgMeta.OrderingKey),
-				},
-			}
-
 			if pc.options.autoReceiverQueueSize {
 				pc.incomingMessages.Inc()
 				pc.markScaleIfNeed()
 			}
 
-			pc.queueCh <- messages
+			pc.queueCh <- &message{
+				publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
+				eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
+				key:          msgMeta.GetPartitionKey(),
+				producerName: msgMeta.GetProducerName(),
+				properties:   internal.ConvertToStringMap(msgMeta.GetProperties()),
+				topic:        pc.topic,
+				msgID: newMessageID(
+					int64(pbMsgID.GetLedgerId()),
+					int64(pbMsgID.GetEntryId()),
+					pbMsgID.GetBatchIndex(),
+					pc.partitionIdx,
+					pbMsgID.GetBatchSize(),
+				),
+				payLoad:             headersAndPayload.ReadableSlice(),
+				schema:              pc.options.schema,
+				replicationClusters: msgMeta.GetReplicateTo(),
+				replicatedFrom:      msgMeta.GetReplicatedFrom(),
+				redeliveryCount:     response.GetRedeliveryCount(),
+				encryptionContext:   createEncryptionContext(msgMeta),
+				orderingKey:         string(msgMeta.OrderingKey),
+			}
 			return nil
 		}
 	}
@@ -1255,7 +1251,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			Message:  msg,
 		})
 
-		messages = append(messages, msg)
+		pc.queueCh <- msg
 		bytesReceived += msg.size()
 	}
 
@@ -1269,8 +1265,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		pc.availablePermits.add(skippedMessages)
 	}
 
-	// send messages to the dispatcher
-	pc.queueCh <- messages
 	return nil
 }
 
@@ -1426,20 +1420,19 @@ func (pc *partitionConsumer) dispatcher() {
 	defer func() {
 		pc.log.Debug("exiting dispatch loop")
 	}()
-	var messages []*message
+	var queueMsg *message
 	for {
-		var queueCh chan []*message
+		var queueCh chan *message
 		var messageCh chan ConsumerMessage
 		var nextMessage ConsumerMessage
 		var nextMessageSize int
 
-		// are there more messages to send?
-		if len(messages) > 0 {
+		if queueMsg != nil {
 			nextMessage = ConsumerMessage{
 				Consumer: pc.parentConsumer,
-				Message:  messages[0],
+				Message:  queueMsg,
 			}
-			nextMessageSize = messages[0].size()
+			nextMessageSize = queueMsg.size()
 
 			if pc.dlq.shouldSendToDlq(&nextMessage) {
 				// pass the message to the DLQ router
@@ -1451,7 +1444,7 @@ func (pc *partitionConsumer) dispatcher() {
 			}
 
 			pc.metrics.PrefetchedMessages.Dec()
-			pc.metrics.PrefetchedBytes.Sub(float64(len(messages[0].payLoad)))
+			pc.metrics.PrefetchedBytes.Sub(float64(len(queueMsg.payLoad)))
 		} else {
 			queueCh = pc.queueCh
 		}
@@ -1466,7 +1459,7 @@ func (pc *partitionConsumer) dispatcher() {
 			}
 			pc.log.Debug("dispatcher received connection event")
 
-			messages = nil
+			queueMsg = nil
 
 			// reset available permits
 			pc.availablePermits.reset()
@@ -1484,19 +1477,16 @@ func (pc *partitionConsumer) dispatcher() {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
 			}
 
-		case msgs, ok := <-queueCh:
+		case msg, ok := <-queueCh:
 			if !ok {
 				return
 			}
-			// we only read messages here after the consumer has processed all messages
-			// in the previous batch
-			messages = msgs
+
+			queueMsg = msg
 
 		// if the messageCh is nil or the messageCh is full this will not be selected
 		case messageCh <- nextMessage:
-			// allow this message to be garbage collected
-			messages[0] = nil
-			messages = messages[1:]
+			queueMsg = nil
 
 			pc.availablePermits.inc()
 
@@ -1519,14 +1509,14 @@ func (pc *partitionConsumer) dispatcher() {
 				if m == nil {
 					break
 				} else if nextMessageInQueue == nil {
-					nextMessageInQueue = toTrackingMessageID(m[0].msgID)
+					nextMessageInQueue = toTrackingMessageID(m.msgID)
 				}
 				if pc.options.autoReceiverQueueSize {
-					pc.incomingMessages.Sub(int32(len(m)))
+					pc.incomingMessages.Sub(int32(1))
 				}
 			}
 
-			messages = nil
+			queueMsg = nil
 
 			clearQueueCb(nextMessageInQueue)
 		}
