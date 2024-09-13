@@ -1110,7 +1110,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
 
-	messages := make([]*message, 0)
 	var ackTracker *ackTracker
 	// are there multiple messages in this batch?
 	if numMsgs > 1 {
@@ -1131,7 +1130,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	pc.metrics.PrefetchedMessages.Add(float64(numMsgs))
 
 	var (
-		bytesReceived   int
 		skippedMessages int32
 	)
 	for i := 0; i < numMsgs; i++ {
@@ -1251,14 +1249,13 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			Message:  msg,
 		})
 
-		pc.queueCh <- msg
-		bytesReceived += msg.size()
-	}
+		if pc.options.autoReceiverQueueSize {
+			pc.client.memLimit.ForceReserveMemory(int64(msg.size()))
+			pc.incomingMessages.Add(int32(1))
+			pc.markScaleIfNeed()
+		}
 
-	if pc.options.autoReceiverQueueSize {
-		pc.client.memLimit.ForceReserveMemory(int64(bytesReceived))
-		pc.incomingMessages.Add(int32(len(messages)))
-		pc.markScaleIfNeed()
+		pc.queueCh <- msg
 	}
 
 	if skippedMessages > 0 {
