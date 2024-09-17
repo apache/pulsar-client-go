@@ -59,9 +59,9 @@ func TestNoCacheTracker(t *testing.T) {
 }
 
 type mockAcker struct {
-	sync.Mutex
-	ledgerIDs          []int64
 	cumulativeLedgerID int64
+	sync.Mutex
+	ledgerIDs []int64
 }
 
 func (a *mockAcker) ack(ids []*pb.MessageIdData) {
