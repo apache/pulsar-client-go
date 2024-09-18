@@ -87,6 +87,8 @@ func init() {
 }
 
 type partitionProducer struct {
+	lastSequenceID int64
+
 	state  uAtomic.Int32
 	client *client
 	topic  string
@@ -110,7 +112,6 @@ type partitionProducer struct {
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
 	pendingQueue         internal.BlockingQueue
-	lastSequenceID       int64
 	schemaInfo           *SchemaInfo
 	partitionIdx         int32
 	metrics              *internal.LeveledMetrics
