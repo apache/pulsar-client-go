@@ -114,6 +114,12 @@ type Namespaces interface {
 	// GetOffloadThreshold returns the offloadThreshold for a namespace
 	GetOffloadThreshold(namespace utils.NameSpaceName) (int64, error)
 
+	// SetOffloadThresholdInSeconds sets the offloadThresholdInSeconds for a namespace
+	SetOffloadThresholdInSeconds(namespace utils.NameSpaceName, threshold int64) error
+
+	// GetOffloadThresholdInSeconds returns the offloadThresholdInSeconds for a namespace
+	GetOffloadThresholdInSeconds(namespace utils.NameSpaceName) (int64, error)
+
 	// SetCompactionThreshold sets the compactionThreshold for a namespace
 	SetCompactionThreshold(namespace utils.NameSpaceName, threshold int64) error
 
@@ -200,6 +206,9 @@ type Namespaces interface {
 	// RevokeSubPermission revoke permissions on a subscription's admin-api access
 	RevokeSubPermission(namespace utils.NameSpaceName, sName, role string) error
 
+	// GetSubPermissions returns subscription permissions on a namespace
+	GetSubPermissions(namespace utils.NameSpaceName) (map[string][]string, error)
+
 	// SetSubscriptionAuthMode sets the given subscription auth mode on all topics on a namespace
 	SetSubscriptionAuthMode(namespace utils.NameSpaceName, mode utils.SubscriptionAuthMode) error
 
@@ -276,6 +285,16 @@ type Namespaces interface {
 
 	// SetInactiveTopicPolicies sets the inactive topic policies on a namespace
 	SetInactiveTopicPolicies(namespace utils.NameSpaceName, data utils.InactiveTopicPolicies) error
+
+	// GetSubscriptionExpirationTime gets the subscription expiration time on a namespace. Returns -1 if not set
+	GetSubscriptionExpirationTime(namespace utils.NameSpaceName) (int, error)
+
+	// SetSubscriptionExpirationTime sets the subscription expiration time on a namespace
+	SetSubscriptionExpirationTime(namespace utils.NameSpaceName, expirationTimeInMinutes int) error
+
+	// RemoveSubscriptionExpirationTime removes subscription expiration time from a namespace,
+	// defaulting to broker settings
+	RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error
 }
 
 type namespaces struct {
@@ -538,6 +557,18 @@ func (n *namespaces) GetOffloadThreshold(namespace utils.NameSpaceName) (int64, 
 	return result, err
 }
 
+func (n *namespaces) SetOffloadThresholdInSeconds(namespace utils.NameSpaceName, threshold int64) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadThresholdInSeconds")
+	return n.pulsar.Client.Put(endpoint, threshold)
+}
+
+func (n *namespaces) GetOffloadThresholdInSeconds(namespace utils.NameSpaceName) (int64, error) {
+	var result int64
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadThresholdInSeconds")
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
+}
+
 func (n *namespaces) SetMaxConsumersPerTopic(namespace utils.NameSpaceName, max int) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
 	return n.pulsar.Client.Post(endpoint, max)
@@ -750,8 +781,15 @@ func (n *namespaces) GrantSubPermission(namespace utils.NameSpaceName, sName str
 
 func (n *namespaces) RevokeSubPermission(namespace utils.NameSpaceName, sName, role string) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions",
-		"subscription", sName, role)
+		sName, role)
 	return n.pulsar.Client.Delete(endpoint)
+}
+
+func (n *namespaces) GetSubPermissions(namespace utils.NameSpaceName) (map[string][]string, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions", "subscription")
+	var permissions map[string][]string
+	err := n.pulsar.Client.Get(endpoint, &permissions)
+	return permissions, err
 }
 
 func (n *namespaces) SetSubscriptionAuthMode(namespace utils.NameSpaceName, mode utils.SubscriptionAuthMode) error {
@@ -882,4 +920,23 @@ func (n *namespaces) RemoveInactiveTopicPolicies(namespace utils.NameSpaceName) 
 func (n *namespaces) SetInactiveTopicPolicies(namespace utils.NameSpaceName, data utils.InactiveTopicPolicies) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "inactiveTopicPolicies")
 	return n.pulsar.Client.Post(endpoint, data)
+}
+
+func (n *namespaces) GetSubscriptionExpirationTime(namespace utils.NameSpaceName) (int, error) {
+	var result = -1
+
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
+}
+
+func (n *namespaces) SetSubscriptionExpirationTime(namespace utils.NameSpaceName,
+	subscriptionExpirationTimeInMinutes int) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
+	return n.pulsar.Client.Post(endpoint, &subscriptionExpirationTimeInMinutes)
+}
+
+func (n *namespaces) RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
+	return n.pulsar.Client.Delete(endpoint)
 }

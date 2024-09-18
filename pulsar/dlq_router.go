@@ -172,6 +172,7 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 		if opt.Name == "" {
 			opt.Name = fmt.Sprintf("%s-%s-%s-DLQ", r.topicName, r.subscriptionName, r.consumerName)
 		}
+		opt.initialSubscriptionName = r.policy.InitialSubscriptionName
 
 		// the origin code sets to LZ4 compression with no options
 		// so the new design allows compression type to be overwritten but still set lz4 by default

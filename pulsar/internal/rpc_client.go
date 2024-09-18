@@ -152,11 +152,17 @@ func (c *rpcClient) RequestToHost(serviceNameResolver *ServiceNameResolver, requ
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	c.metrics.RPCRequestCount.Inc()
 	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
 	if err != nil {
 		return nil, err
 	}
+
+	return c.RequestOnCnx(cnx, requestID, cmdType, message)
+}
+
+func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RPCResult, error) {
+	c.metrics.RPCRequestCount.Inc()
 
 	ch := make(chan result, 1)
 
@@ -173,7 +179,7 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 		case res := <-ch:
 			// Ignoring producer not ready response.
 			// Continue to wait for the producer to create successfully
-			if res.error == nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
+			if res.error == nil && res.Response != nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
 				if !res.RPCResult.Response.ProducerSuccess.GetProducerReady() {
 					timeoutCh = nil
 					break
@@ -183,28 +189,6 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 		case <-timeoutCh:
 			return nil, ErrRequestTimeOut
 		}
-	}
-}
-
-func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
-	c.metrics.RPCRequestCount.Inc()
-
-	ch := make(chan result, 1)
-
-	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
-		ch <- result{&RPCResult{
-			Cnx:      cnx,
-			Response: response,
-		}, err}
-		close(ch)
-	})
-
-	select {
-	case res := <-ch:
-		return res.RPCResult, res.error
-	case <-time.After(c.requestTimeout):
-		return nil, ErrRequestTimeOut
 	}
 }
 

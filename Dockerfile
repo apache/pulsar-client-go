@@ -18,18 +18,18 @@
 # Explicit version of Pulsar and Golang images should be
 # set via the Makefile or CLI
 ARG PULSAR_IMAGE=apachepulsar/pulsar:latest
+
+ARG GO_VERSION=1.20
+FROM golang:$GO_VERSION as golang
+
 FROM $PULSAR_IMAGE
 USER root
-ARG GO_VERSION=1.18
-ARG ARCH=amd64
 
-RUN curl -L https://dl.google.com/go/go${GO_VERSION}.linux-${ARCH}.tar.gz -o golang.tar.gz && \
-    mkdir -p /pulsar/go && tar -C /pulsar -xzf golang.tar.gz
+COPY --from=golang /usr/local/go /pulsar/go
 
 ENV PATH /pulsar/go/bin:$PATH
 
-RUN apt-get update && apt-get install -y git && apt-get install -y gcc
-
+RUN apt-get update && apt-get install -y git gcc
 
 ### Add pulsar config
 COPY integration-tests/certs /pulsar/certs
@@ -47,6 +47,9 @@ WORKDIR /pulsar/pulsar-client-go
 
 ENV GOPATH=/pulsar/go
 ENV GOCACHE=/tmp/go-cache
+
+ARG PULSAR_IMAGE
+ENV PULSAR_IMAGE=$PULSAR_IMAGE
 
 # Install dependencies
 RUN go mod download

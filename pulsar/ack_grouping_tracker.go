@@ -120,7 +120,7 @@ type timedAckGroupingTracker struct {
 
 	// Key is the pair of the ledger id and the entry id,
 	// Value is the bit set that represents which messages are acknowledged if the entry stores a batch.
-	// The bit 1 represents the message has been acknowledged, i.e. the bits "111" represents all messages
+	// The bit 1 represents the message has not been acknowledged, i.e. the bits "111" represents all messages
 	// in the batch whose batch size is 3 are not acknowledged.
 	// After the 1st message (i.e. batch index is 0) is acknowledged, the bits will become "011".
 	// Value is nil if the entry represents a single message.
@@ -241,6 +241,9 @@ func (t *timedAckGroupingTracker) clearPendingAcks() map[[2]uint64]*bitset.BitSe
 }
 
 func (t *timedAckGroupingTracker) close() {
+	if t.ticker != nil {
+		t.ticker.Stop()
+	}
 	t.flushAndClean()
 	if t.exitCh != nil {
 		close(t.exitCh)

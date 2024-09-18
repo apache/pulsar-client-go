@@ -22,12 +22,17 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
 
@@ -518,6 +523,21 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 		msgCount++
 	}
 	assert.Equal(t, msgCount, numOfMessages/2)
+}
+
+func TestProducerReturnsErrorOnFlushWhenClosed(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{Topic: newTopicName()})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	producer.Close()
+
+	err = producer.FlushWithCtx(context.Background())
+	assert.Error(t, err)
 }
 
 func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
@@ -2477,4 +2497,80 @@ func TestDisableReplication(t *testing.T) {
 	err = proto.Unmarshal(metadata, &msgMetadata)
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"__local__"}, msgMetadata.GetReplicateTo())
+}
+
+func TestProducerWithMaxConnectionsPerBroker(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 8,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	for i := 0; i < 10; i++ {
+		testProducer, err := client.CreateProducer(ProducerOptions{
+			Topic:  newTopicName(),
+			Schema: NewBytesSchema(nil),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, testProducer)
+
+		var ok int32
+		testProducer.SendAsync(context.Background(), &ProducerMessage{Value: []byte("hello")},
+			func(id MessageID, producerMessage *ProducerMessage, err error) {
+				if err == nil {
+					atomic.StoreInt32(&ok, 1)
+				}
+			})
+		require.Eventually(t, func() bool {
+			return atomic.LoadInt32(&ok) == 1
+		}, 3*time.Second, time.Millisecond*100)
+		testProducer.Close()
+	}
+}
+
+func getPulsarTestImage() string {
+	image := os.Getenv("PULSAR_IMAGE")
+	if image == "" {
+		image = "apachepulsar/pulsar:latest"
+	}
+	return image
+}
+
+func TestProducerKeepReconnectingAndThenCallClose(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 5 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	var testProducer Producer
+	require.Eventually(t, func() bool {
+		testProducer, err = client.CreateProducer(ProducerOptions{
+			Topic:  newTopicName(),
+			Schema: NewBytesSchema(nil),
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	_ = c.Terminate(context.Background())
+	require.Eventually(t, func() bool {
+		testProducer.Close()
+		return true
+	}, 30*time.Second, 1*time.Second)
 }

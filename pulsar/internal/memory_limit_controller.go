@@ -35,9 +35,9 @@ type MemoryLimitController interface {
 }
 
 type memoryLimitController struct {
+	currentUsage int64
 	limit        int64
 	chCond       *chCond
-	currentUsage int64
 
 	triggers []*thresholdTrigger
 	// valid range is (0, 1.0)
