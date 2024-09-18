@@ -48,7 +48,7 @@ type DefaultBackoff struct {
 func NewDefaultBackoff() Policy {
 	return &DefaultBackoff{}
 }
-func NewDefaultBackoffWithBackOff(backoff time.Duration) Policy {
+func NewDefaultBackoffWithInitialBackOff(backoff time.Duration) Policy {
 	return &DefaultBackoff{backoff: backoff}
 }
 
