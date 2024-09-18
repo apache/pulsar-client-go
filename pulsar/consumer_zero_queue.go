@@ -136,6 +136,10 @@ func (z *zeroQueueConsumer) Chan() <-chan ConsumerMessage {
 	panic("zeroQueueConsumer cannot support Chan method")
 }
 
+func (z *zeroQueueConsumer) Closed() <-chan struct{} {
+	return z.closeCh
+}
+
 func (z *zeroQueueConsumer) Ack(m Message) error {
 	return z.AckID(m.ID())
 }

@@ -133,6 +133,10 @@ func (c *regexConsumer) Unsubscribe() error {
 	return errs
 }
 
+func (c *regexConsumer) Closed() <-chan struct{} {
+	return c.closeCh
+}
+
 func (c *regexConsumer) UnsubscribeForce() error {
 	var errs error
 	c.consumersLock.Lock()

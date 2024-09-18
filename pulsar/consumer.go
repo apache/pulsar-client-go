@@ -294,6 +294,9 @@ type Consumer interface {
 	// The list of MessageID instances of all the topics that the consumer subscribed
 	GetLastMessageIDs() ([]TopicMessageID, error)
 
+	// Closed returns a channel indicating that consumer is closed
+	Closed() <-chan struct{}
+
 	// Receive a single message.
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)

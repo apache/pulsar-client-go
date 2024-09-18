@@ -97,6 +97,10 @@ func (c *multiTopicConsumer) Unsubscribe() error {
 	return errs
 }
 
+func (c *multiTopicConsumer) Closed() <-chan struct{} {
+	return c.closeCh
+}
+
 func (c *multiTopicConsumer) UnsubscribeForce() error {
 	var errs error
 	for t, consumer := range c.consumers {

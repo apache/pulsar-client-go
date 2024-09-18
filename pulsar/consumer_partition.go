@@ -1599,7 +1599,9 @@ func (pc *partitionConsumer) runEventsLoop() {
 				return
 			case connectionClosed := <-pc.connectClosedCh:
 				pc.log.Debug("runEventsLoop will reconnect")
-				pc.reconnectToBroker(connectionClosed)
+				if !pc.reconnectToBroker(connectionClosed) {
+					pc.parentConsumer.Close()
+				}
 			}
 		}
 	}()
@@ -1683,7 +1685,7 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	close(pc.closeCh)
 }
 
-func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {
+func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) bool {
 	var maxRetry int
 
 	if pc.options.maxReconnectToBroker == nil {
@@ -1701,7 +1703,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		if pc.getConsumerState() != consumerReady {
 			// Consumer is already closing
 			pc.log.Info("consumer state not ready, exit reconnect")
-			return
+			return false
 		}
 
 		var assignedBrokerURL string
@@ -1726,14 +1728,14 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		if pc.getConsumerState() != consumerReady {
 			// Consumer is already closing
 			pc.log.Info("consumer state not ready, exit reconnect")
-			return
+			return false
 		}
 
 		err := pc.grabConn(assignedBrokerURL)
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
-			return
+			return true
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
 		errMsg := err.Error()
@@ -1751,6 +1753,9 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
 		}
 	}
+
+	pc.log.Warn("Reached maximum number of reconnection attempts")
+	return false
 }
 
 func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {

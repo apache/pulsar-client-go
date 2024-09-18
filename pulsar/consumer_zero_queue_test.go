@@ -24,6 +24,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
@@ -95,6 +97,7 @@ func TestNormalZeroQueueConsumer(t *testing.T) {
 	err = consumer.Unsubscribe()
 	assert.Nil(t, err)
 }
+
 func TestPartitionZeroQueueConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -136,6 +139,35 @@ func TestOnePartitionZeroQueueConsumer(t *testing.T) {
 	})
 	assert.Nil(t, consumer)
 	assert.Error(t, err, "ZeroQueueConsumer is not supported for partitioned topics")
+}
+
+func TestZeroQueueConsumerClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	require.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	// create consumer
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                   topic,
+		SubscriptionName:        "my-sub",
+		EnableZeroQueueConsumer: true,
+	})
+	require.NoError(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
+
+	consumer.Close()
+
+	select {
+	case <-consumer.Closed():
+	default:
+		assert.Fail(t, "consumer should be closed")
+	}
 }
 
 func TestZeroQueueConsumerGetLastMessageIDs(t *testing.T) {
