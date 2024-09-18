@@ -24,6 +24,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -143,7 +145,7 @@ func (t *transactionHandler) runEventsLoop() {
 
 func (t *transactionHandler) reconnectToBroker() {
 	var delayReconnectTime time.Duration
-	var defaultBackoff = internal.DefaultBackoff{}
+	var defaultBackoff = backoff.DefaultBackoff{}
 
 	for {
 		if t.getState() == txnHandlerClosed {
