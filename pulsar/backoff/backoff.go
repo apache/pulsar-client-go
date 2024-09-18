@@ -49,7 +49,7 @@ func NewDefaultBackoff() Policy {
 	return &DefaultBackoff{}
 }
 func NewDefaultBackoffWithInitialBackOff(backoff time.Duration) Policy {
-	return &DefaultBackoff{backoff: backoff}
+	return &DefaultBackoff{backoff: backoff / 2}
 }
 
 const maxBackoff = 60 * time.Second
