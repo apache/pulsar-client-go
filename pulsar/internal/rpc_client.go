@@ -117,7 +117,7 @@ func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
 	var host *url.URL
 	var rpcResult *RPCResult
 	startTime := time.Now()
-	bo := backoff.NewDefaultBackoffWithBackOff(100 * time.Millisecond)
+	bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
 	// we can retry these requests because this kind of request is
 	// not specific to any particular broker
 	for time.Since(startTime) < c.requestTimeout {
