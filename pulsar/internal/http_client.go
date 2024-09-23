@@ -29,6 +29,8 @@ import (
 	"path"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/auth"
 
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -148,12 +150,12 @@ func (c *httpClient) Get(endpoint string, obj interface{}, params map[string]str
 	if _, ok := err.(*url.Error); ok {
 		// We can retry this kind of requests over a connection error because they're
 		// not specific to a particular broker.
-		backoff := DefaultBackoff{100 * time.Millisecond}
+		bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
 		startTime := time.Now()
 		var retryTime time.Duration
 
 		for time.Since(startTime) < c.requestTimeout {
-			retryTime = backoff.Next()
+			retryTime = bo.Next()
 			c.log.Debugf("Retrying httpRequest in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
 			time.Sleep(retryTime)
 			_, err = c.GetWithQueryParams(endpoint, obj, params, true)

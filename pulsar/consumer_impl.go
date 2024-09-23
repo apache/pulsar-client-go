@@ -174,11 +174,12 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 	}
 
-	dlq, err := newDlqRouter(client, options.DLQ, options.Topic, options.SubscriptionName, options.Name, client.log)
+	dlq, err := newDlqRouter(client, options.DLQ, options.Topic, options.SubscriptionName, options.Name,
+		options.BackOffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
-	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable, client.log)
+	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable, options.BackOffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
@@ -453,7 +454,7 @@ func newPartitionConsumerOpts(topic, consumerName string, idx int, options Consu
 		readCompacted:               options.ReadCompacted,
 		interceptors:                options.Interceptors,
 		maxReconnectToBroker:        options.MaxReconnectToBroker,
-		backoffPolicy:               options.BackoffPolicy,
+		backOffPolicyFunc:           options.BackOffPolicyFunc,
 		keySharedPolicy:             options.KeySharedPolicy,
 		schema:                      options.Schema,
 		decryption:                  options.Decryption,

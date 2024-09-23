@@ -26,6 +26,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"google.golang.org/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
@@ -110,7 +112,7 @@ type partitionConsumerOpts struct {
 	disableForceTopicCreation   bool
 	interceptors                ConsumerInterceptors
 	maxReconnectToBroker        *uint
-	backoffPolicy               internal.BackoffPolicy
+	backOffPolicyFunc           func() backoff.Policy
 	keySharedPolicy             *KeySharedPolicy
 	schema                      Schema
 	decryption                  *MessageDecryptionInfo
@@ -182,6 +184,7 @@ type partitionConsumer struct {
 	lastMessageInBroker *trackingMessageID
 
 	redirectedClusterURI string
+	backoffPolicyFunc    func() backoff.Policy
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -318,6 +321,13 @@ func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
 	messageCh chan ConsumerMessage, dlq *dlqRouter,
 	metrics *internal.LeveledMetrics) (*partitionConsumer, error) {
+	var boFunc func() backoff.Policy
+	if options.backOffPolicyFunc != nil {
+		boFunc = options.backOffPolicyFunc
+	} else {
+		boFunc = backoff.NewDefaultBackoff
+	}
+
 	pc := &partitionConsumer{
 		parentConsumer:       parent,
 		client:               client,
@@ -339,6 +349,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		dlq:                  dlq,
 		metrics:              metrics,
 		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
+		backoffPolicyFunc:    boFunc,
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
@@ -581,12 +592,7 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		return nil, errors.New("failed to getLastMessageID for the closing or closed consumer")
 	}
 	remainTime := pc.client.operationTimeout
-	var backoff internal.BackoffPolicy
-	if pc.options.backoffPolicy != nil {
-		backoff = pc.options.backoffPolicy
-	} else {
-		backoff = &internal.DefaultBackoff{}
-	}
+	bo := pc.backoffPolicyFunc()
 	request := func() (*trackingMessageID, error) {
 		req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
 		pc.eventsCh <- req
@@ -604,7 +610,7 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 			pc.log.WithError(err).Error("Failed to getLastMessageID")
 			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
 		}
-		nextDelay := backoff.Next()
+		nextDelay := bo.Next()
 		if nextDelay > remainTime {
 			nextDelay = remainTime
 		}
@@ -1684,18 +1690,17 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 }
 
 func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {
-	var maxRetry int
+	var (
+		maxRetry                                    int
+		delayReconnectTime, totalDelayReconnectTime time.Duration
+	)
 
 	if pc.options.maxReconnectToBroker == nil {
 		maxRetry = -1
 	} else {
 		maxRetry = int(*pc.options.maxReconnectToBroker)
 	}
-
-	var (
-		delayReconnectTime time.Duration
-		defaultBackoff     = internal.DefaultBackoff{}
-	)
+	bo := pc.backoffPolicyFunc()
 
 	for maxRetry != 0 {
 		if pc.getConsumerState() != consumerReady {
@@ -1710,11 +1715,10 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			delayReconnectTime = 0
 			assignedBrokerURL = connectionClosed.assignedBrokerURL
 			connectionClosed = nil // Attempt connecting to the assigned broker just once
-		} else if pc.options.backoffPolicy == nil {
-			delayReconnectTime = defaultBackoff.Next()
 		} else {
-			delayReconnectTime = pc.options.backoffPolicy.Next()
+			delayReconnectTime = bo.Next()
 		}
+		totalDelayReconnectTime += delayReconnectTime
 
 		pc.log.WithFields(log.Fields{
 			"assignedBrokerURL":  assignedBrokerURL,
@@ -1733,6 +1737,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
+			bo.Reset()
 			return
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
@@ -1747,7 +1752,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			maxRetry--
 		}
 		pc.metrics.ConsumersReconnectFailure.Inc()
-		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
+		if maxRetry == 0 || bo.IsMaxBackoffReached() {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
 		}
 	}

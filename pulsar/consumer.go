@@ -21,7 +21,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 )
 
 // ConsumerMessage represents a pair of a Consumer and Message.
@@ -207,9 +207,9 @@ type ConsumerOptions struct {
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
-	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// BackOffPolicyFunc parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
-	BackoffPolicy internal.BackoffPolicy
+	BackOffPolicyFunc func() backoff.Policy
 
 	// Decryption represents the encryption related fields required by the consumer to decrypt a message.
 	Decryption *MessageDecryptionInfo

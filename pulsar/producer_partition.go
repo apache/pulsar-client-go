@@ -28,6 +28,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
@@ -121,6 +123,7 @@ type partitionProducer struct {
 	redirectedClusterURI string
 	ctx                  context.Context
 	cancelFunc           context.CancelFunc
+	backOffPolicyFunc    func() backoff.Policy
 }
 
 type schemaCache struct {
@@ -147,6 +150,14 @@ func (s *schemaCache) Get(schema *SchemaInfo) (schemaVersion []byte) {
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
 	metrics *internal.LeveledMetrics) (
 	*partitionProducer, error) {
+
+	var boFunc func() backoff.Policy
+	if options.BackOffPolicyFunc != nil {
+		boFunc = options.BackOffPolicyFunc
+	} else {
+		boFunc = backoff.NewDefaultBackoff
+	}
+
 	var batchingMaxPublishDelay time.Duration
 	if options.BatchingMaxPublishDelay != 0 {
 		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
@@ -176,15 +187,16 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
 			compression.Level(options.CompressionLevel)),
-		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
-		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
-		lastSequenceID:   -1,
-		partitionIdx:     int32(partitionIdx),
-		metrics:          metrics,
-		epoch:            0,
-		schemaCache:      newSchemaCache(),
-		ctx:              ctx,
-		cancelFunc:       cancelFunc,
+		publishSemaphore:  internal.NewSemaphore(int32(maxPendingMessages)),
+		pendingQueue:      internal.NewBlockingQueue(maxPendingMessages),
+		lastSequenceID:    -1,
+		partitionIdx:      int32(partitionIdx),
+		metrics:           metrics,
+		epoch:             0,
+		schemaCache:       newSchemaCache(),
+		ctx:               ctx,
+		cancelFunc:        cancelFunc,
+		backOffPolicyFunc: boFunc,
 	}
 	if p.options.DisableBatching {
 		p.batchFlushTicker.Stop()
@@ -458,17 +470,17 @@ func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVer
 }
 
 func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed) {
-	var maxRetry int
+	var (
+		maxRetry           int
+		delayReconnectTime time.Duration
+	)
 	if p.options.MaxReconnectToBroker == nil {
 		maxRetry = -1
 	} else {
 		maxRetry = int(*p.options.MaxReconnectToBroker)
 	}
 
-	var (
-		delayReconnectTime time.Duration
-		defaultBackoff     = internal.DefaultBackoff{}
-	)
+	bo := p.backOffPolicyFunc()
 
 	for maxRetry != 0 {
 		select {
@@ -489,10 +501,8 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			delayReconnectTime = 0
 			assignedBrokerURL = connectionClosed.assignedBrokerURL
 			connectionClosed = nil // Only attempt once
-		} else if p.options.BackoffPolicy == nil {
-			delayReconnectTime = defaultBackoff.Next()
 		} else {
-			delayReconnectTime = p.options.BackoffPolicy.Next()
+			delayReconnectTime = bo.Next()
 		}
 
 		p.log.WithFields(log.Fields{
@@ -513,6 +523,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
+			bo.Reset()
 			return
 		}
 		p.log.WithError(err).Error("Failed to create producer at reconnect")
@@ -546,7 +557,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			maxRetry--
 		}
 		p.metrics.ProducersReconnectFailure.Inc()
-		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
+		if maxRetry == 0 || bo.IsMaxBackoffReached() {
 			p.metrics.ProducersReconnectMaxRetry.Inc()
 		}
 	}

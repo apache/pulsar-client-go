@@ -34,6 +34,8 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
 
@@ -1293,11 +1295,13 @@ func TestProducerWithBackoffPolicy(t *testing.T) {
 
 	topicName := newTopicName()
 
-	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	bo := newTestBackoffPolicy(1*time.Second, 4*time.Second)
 	_producer, err := client.CreateProducer(ProducerOptions{
-		Topic:         topicName,
-		SendTimeout:   2 * time.Second,
-		BackoffPolicy: backoff,
+		Topic:       topicName,
+		SendTimeout: 2 * time.Second,
+		BackOffPolicyFunc: func() backoff.Policy {
+			return bo
+		},
 	})
 	assert.Nil(t, err)
 	defer _producer.Close()
@@ -1306,22 +1310,22 @@ func TestProducerWithBackoffPolicy(t *testing.T) {
 	// 1 s
 	startTime := time.Now()
 	partitionProducerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 2 s
 	startTime = time.Now()
 	partitionProducerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionProducerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionProducerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 }
 
 func TestSendContextExpired(t *testing.T) {

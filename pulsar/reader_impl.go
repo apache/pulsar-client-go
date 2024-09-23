@@ -112,7 +112,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		ReplicateSubscriptionState:  false,
 		Decryption:                  options.Decryption,
 		Schema:                      options.Schema,
-		BackoffPolicy:               options.BackoffPolicy,
+		BackOffPolicyFunc:           options.BackoffPolicyFunc,
 		MaxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
 		ExpireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
 		AutoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
@@ -128,12 +128,13 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	}
 
 	// Provide dummy dlq router with not dlq policy
-	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, options.Name, client.log)
+	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, options.Name,
+		options.BackoffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
 	// Provide dummy rlq router with not dlq policy
-	rlq, err := newRetryRouter(client, nil, false, client.log)
+	rlq, err := newRetryRouter(client, nil, false, options.BackoffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
