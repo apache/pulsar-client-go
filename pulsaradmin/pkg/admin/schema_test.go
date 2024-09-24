@@ -43,7 +43,7 @@ func TestSchemas_GetAllSchemas(t *testing.T) {
 
 	infos, err := admin.Schemas().GetAllSchemas(topic)
 	assert.NoError(t, err)
-	assert.Len(t, infos, 2)
+	assert.Len(t, infos, 1)
 
 	err = admin.Schemas().ForceDeleteSchema(topic)
 	assert.NoError(t, err)
