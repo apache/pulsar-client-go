@@ -95,7 +95,10 @@ func ConvertGetSchemaResponseToSchemaInfoWithVersion(tn *TopicName, response Get
 	return info
 }
 
-func ConvertGetAllSchemasResponseToSchemaInfosWithVersion(tn *TopicName, response GetAllSchemasResponse) []*SchemaInfoWithVersion {
+func ConvertGetAllSchemasResponseToSchemaInfosWithVersion(
+	tn *TopicName,
+	response GetAllSchemasResponse,
+) []*SchemaInfoWithVersion {
 	infos := make([]*SchemaInfoWithVersion, len(response.Schemas))
 
 	for i, schema := range response.Schemas {
