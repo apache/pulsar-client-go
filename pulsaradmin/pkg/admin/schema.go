@@ -35,7 +35,7 @@ type Schema interface {
 	// GetSchemaInfoByVersion retrieves the schema of a topic at a given <tt>version</tt>
 	GetSchemaInfoByVersion(topic string, version int64) (*utils.SchemaInfo, error)
 
-	// GetAllSchemas retrieves the latest schema of a topic
+	// GetAllSchemas retrieves all schemas of a topic
 	GetAllSchemas(topic string) ([]*utils.SchemaInfoWithVersion, error)
 
 	// DeleteSchema deletes the schema associated with a given <tt>topic</tt>
