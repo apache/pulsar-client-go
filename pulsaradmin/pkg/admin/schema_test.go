@@ -27,6 +27,31 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestSchemas_GetAllSchemas(t *testing.T) {
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	topic := fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
+	schemaPayload := utils.PostSchemaPayload{
+		SchemaType: "STRING",
+		Schema:     "",
+	}
+	err = admin.Schemas().CreateSchemaByPayload(topic, schemaPayload)
+	assert.NoError(t, err)
+
+	infos, err := admin.Schemas().GetAllSchemas(topic)
+	assert.NoError(t, err)
+	assert.Len(t, infos, 2)
+
+	err = admin.Schemas().ForceDeleteSchema(topic)
+	assert.NoError(t, err)
+
+	_, err = admin.Schemas().GetSchemaInfo(topic)
+	assert.Errorf(t, err, "Schema not found")
+}
+
 func TestSchemas_DeleteSchema(t *testing.T) {
 	cfg := &config.Config{}
 	admin, err := New(cfg)

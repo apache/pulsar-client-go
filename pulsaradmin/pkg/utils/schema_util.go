@@ -44,6 +44,10 @@ type GetSchemaResponse struct {
 	Properties map[string]string `json:"properties"`
 }
 
+type GetAllSchemasResponse struct {
+	Schemas []GetSchemaResponse `json:"getSchemaResponses"`
+}
+
 type IsCompatibility struct {
 	IsCompatibility             bool                        `json:"compatibility"`
 	SchemaCompatibilityStrategy SchemaCompatibilityStrategy `json:"schemaCompatibilityStrategy"`
@@ -89,4 +93,14 @@ func ConvertGetSchemaResponseToSchemaInfoWithVersion(tn *TopicName, response Get
 	info.SchemaInfo = ConvertGetSchemaResponseToSchemaInfo(tn, response)
 	info.Version = response.Version
 	return info
+}
+
+func ConvertGetAllSchemasResponseToSchemaInfosWithVersion(tn *TopicName, response GetAllSchemasResponse) []*SchemaInfoWithVersion {
+	infos := make([]*SchemaInfoWithVersion, len(response.Schemas))
+
+	for i, schema := range response.Schemas {
+		infos[i] = ConvertGetSchemaResponseToSchemaInfoWithVersion(tn, schema)
+	}
+
+	return infos
 }
