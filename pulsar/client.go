@@ -129,6 +129,8 @@ type ClientOptions struct {
 	// TLSMaxVersion contains the maximum TLS version that is acceptable. See tls.Config MaxVersion for more information.
 	TLSMaxVersion uint16
 
+	TLSConfig *tls.Config
+
 	// Configure the net model for vpc user to connect the pulsar broker
 	ListenerName string
 

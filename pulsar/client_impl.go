@@ -97,6 +97,7 @@ func newClient(options ClientOptions) (Client, error) {
 			CipherSuites:            options.TLSCipherSuites,
 			MinVersion:              options.TLSMinVersion,
 			MaxVersion:              options.TLSMaxVersion,
+			TLSConfig:               options.TLSConfig,
 		}
 	default:
 		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
