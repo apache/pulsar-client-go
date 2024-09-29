@@ -243,7 +243,7 @@ func TestCloseFlushWithoutTimer(t *testing.T) {
 func TestCloseFlushWithTimer(t *testing.T) {
 	var acker mockAcker
 	tracker := newAckGroupingTracker(
-		&AckGroupingOptions{MaxSize: 1000, MaxTime: 10 * 1000},
+		&AckGroupingOptions{MaxSize: 1000, MaxTime: 10 * time.Second},
 		nil,
 		func(id MessageID) { acker.ackCumulative(id) },
 		func(ids []*pb.MessageIdData) { acker.ack(ids) },
