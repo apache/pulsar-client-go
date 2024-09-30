@@ -35,6 +35,9 @@ type Schema interface {
 	// GetSchemaInfoByVersion retrieves the schema of a topic at a given <tt>version</tt>
 	GetSchemaInfoByVersion(topic string, version int64) (*utils.SchemaInfo, error)
 
+	// GetAllSchemas retrieves all schemas of a topic
+	GetAllSchemas(topic string) ([]*utils.SchemaInfoWithVersion, error)
+
 	// DeleteSchema deletes the schema associated with a given <tt>topic</tt>
 	DeleteSchema(topic string) error
 
@@ -128,6 +131,24 @@ func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*utils.Sc
 
 	info := utils.ConvertGetSchemaResponseToSchemaInfo(topicName, response)
 	return info, nil
+}
+
+func (s *schemas) GetAllSchemas(topic string) ([]*utils.SchemaInfoWithVersion, error) {
+	topicName, err := utils.GetTopicName(topic)
+	if err != nil {
+		return nil, err
+	}
+	var response utils.GetAllSchemasResponse
+	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
+		topicName.GetLocalName(), "schemas")
+
+	err = s.pulsar.Client.Get(endpoint, &response)
+	if err != nil {
+		return nil, err
+	}
+
+	infos := utils.ConvertGetAllSchemasResponseToSchemaInfosWithVersion(topicName, response)
+	return infos, nil
 }
 
 func (s *schemas) DeleteSchema(topic string) error {
