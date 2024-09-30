@@ -144,7 +144,6 @@ func (s *schemas) GetAllSchemas(topic string) ([]*utils.SchemaInfoWithVersion, e
 
 	err = s.pulsar.Client.Get(endpoint, &response)
 	if err != nil {
-		fmt.Println("err:", err.Error())
 		return nil, err
 	}
 
