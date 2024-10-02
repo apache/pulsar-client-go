@@ -51,6 +51,7 @@ type TLSOptions struct {
 	CipherSuites            []uint16
 	MinVersion              uint16
 	MaxVersion              uint16
+	TLSConfig               *tls.Config
 }
 
 var (
@@ -1083,6 +1084,10 @@ func (c *connection) closed() bool {
 }
 
 func (c *connection) getTLSConfig() (*tls.Config, error) {
+	if c.tlsOptions.TLSConfig != nil {
+		return c.tlsOptions.TLSConfig, nil
+	}
+
 	tlsConfig := &tls.Config{
 		InsecureSkipVerify: c.tlsOptions.AllowInsecureConnection,
 		CipherSuites:       c.tlsOptions.CipherSuites,

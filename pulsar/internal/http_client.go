@@ -339,29 +339,33 @@ func responseError(resp *http.Response) error {
 func getDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
 	transport := http.DefaultTransport.(*http.Transport)
 	if tlsConfig != nil {
-		cfg := &tls.Config{
-			InsecureSkipVerify: tlsConfig.AllowInsecureConnection,
-			CipherSuites:       tlsConfig.CipherSuites,
-			MinVersion:         tlsConfig.MinVersion,
-			MaxVersion:         tlsConfig.MaxVersion,
-		}
-		if len(tlsConfig.TrustCertsFilePath) > 0 {
-			rootCA, err := os.ReadFile(tlsConfig.TrustCertsFilePath)
-			if err != nil {
-				return nil, err
+		if tlsConfig.TLSConfig != nil {
+			transport.TLSClientConfig = tlsConfig.TLSConfig
+		} else {
+			cfg := &tls.Config{
+				InsecureSkipVerify: tlsConfig.AllowInsecureConnection,
+				CipherSuites:       tlsConfig.CipherSuites,
+				MinVersion:         tlsConfig.MinVersion,
+				MaxVersion:         tlsConfig.MaxVersion,
 			}
-			cfg.RootCAs = x509.NewCertPool()
-			cfg.RootCAs.AppendCertsFromPEM(rootCA)
-		}
+			if len(tlsConfig.TrustCertsFilePath) > 0 {
+				rootCA, err := os.ReadFile(tlsConfig.TrustCertsFilePath)
+				if err != nil {
+					return nil, err
+				}
+				cfg.RootCAs = x509.NewCertPool()
+				cfg.RootCAs.AppendCertsFromPEM(rootCA)
+			}
 
-		if tlsConfig.CertFile != "" && tlsConfig.KeyFile != "" {
-			cert, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
-			if err != nil {
-				return nil, errors.New(err.Error())
+			if tlsConfig.CertFile != "" && tlsConfig.KeyFile != "" {
+				cert, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
+				if err != nil {
+					return nil, errors.New(err.Error())
+				}
+				cfg.Certificates = []tls.Certificate{cert}
 			}
-			cfg.Certificates = []tls.Certificate{cert}
+			transport.TLSClientConfig = cfg
 		}
-		transport.TLSClientConfig = cfg
 	}
 	transport.MaxIdleConnsPerHost = 10
 	return transport, nil
