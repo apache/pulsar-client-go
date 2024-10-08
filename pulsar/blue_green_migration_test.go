@@ -55,15 +55,15 @@ func (suite *BlueGreenMigrationTestSuite) TestTopicMigration() {
 
 		{
 			testCaseName:  "proxyConnection",
-			blueAdminURL:  "http://localhost:8080",
-			blueClientUrl: "pulsar://localhost:6650",
-			greenAdminURL: "http://localhost:8081",
+			blueAdminURL:  "http://proxy:8080",
+			blueClientUrl: "pulsar://proxy:6650",
+			greenAdminURL: "http://green-proxy:8080",
 			migrationBody: `
 						{
-							"serviceUrl": "http://localhost:8081",
-							"serviceUrlTls":"https://localhost:8085",
-							"brokerServiceUrl": "pulsar://localhost:6651",
-							"brokerServiceUrlTls": "pulsar+ssl://localhost:6655"
+							"serviceUrl": "http://green-proxy:8080",
+							"serviceUrlTls":"https://green-proxy:8081",
+							"brokerServiceUrl": "pulsar://green-proxy:6650",
+							"brokerServiceUrlTls": "pulsar+ssl://green-proxy:6651"
 						}
 					`,
 		},

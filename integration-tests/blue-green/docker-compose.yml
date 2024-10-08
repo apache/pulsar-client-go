@@ -17,18 +17,20 @@
 
 version: '3'
 networks:
-  green-pulsar:
-    driver: bridge
+  # We use external extensible-load-manager_pulsar docker network
+  # to make sure blue cluster and green cluster are in the same network
+  extensible-load-manager_pulsar:
+    external: true
 services:
   # Start ZooKeeper
-  zookeeper:
+  green-zookeeper:
     image: apachepulsar/pulsar:${PULSAR_VERSION}
     container_name: green-zookeeper
     restart: on-failure
     networks:
-      - green-pulsar
+      - extensible-load-manager_pulsar
     environment:
-      - metadataStoreUrl=zk:zookeeper:2181
+      - metadataStoreUrl=zk:green-zookeeper:2181
       - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
     command: >
       bash -c "bin/apply-config-from-env.py conf/zookeeper.conf && \
@@ -41,79 +43,79 @@ services:
       retries: 30
 
   # Initialize cluster metadata
-  pulsar-init:
+  green-pulsar-init:
     container_name: green-pulsar-init
-    hostname: pulsar-init
+    hostname: green-pulsar-init
     image: apachepulsar/pulsar:${PULSAR_VERSION}
     networks:
-      - green-pulsar
+      - extensible-load-manager_pulsar
     environment:
       - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
     command: >
       bin/pulsar initialize-cluster-metadata \
-               --cluster cluster-a \
-               --zookeeper zookeeper:2181 \
-               --configuration-store zookeeper:2181 \
-               --web-service-url http://broker-1:8080 \
-               --broker-service-url pulsar://broker-1:6650
+               --cluster cluster-green \
+               --zookeeper green-zookeeper:2181 \
+               --configuration-store green-zookeeper:2181 \
+               --web-service-url http://green-broker-1:8080 \
+               --broker-service-url pulsar://green-broker-1:6650
     depends_on:
-      zookeeper:
+      green-zookeeper:
         condition: service_healthy
 
   # Start bookie
-  bookie:
+  green-bookie:
     image: apachepulsar/pulsar:${PULSAR_VERSION}
     container_name: green-bookie
     restart: on-failure
     networks:
-      - green-pulsar
+      - extensible-load-manager_pulsar
     environment:
-      - clusterName=cluster-a
-      - zkServers=zookeeper:2181
-      - metadataServiceUri=metadata-store:zk:zookeeper:2181
-      - advertisedAddress=bookie
+      - clusterName=cluster-green
+      - zkServers=green-zookeeper:2181
+      - metadataServiceUri=metadata-store:zk:green-zookeeper:2181
+      - advertisedAddress=green-bookie
       - BOOKIE_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
     depends_on:
-      zookeeper:
+      green-zookeeper:
         condition: service_healthy
-      pulsar-init:
+      green-pulsar-init:
         condition: service_completed_successfully
     command: bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf && exec bin/pulsar bookie"
 
-  proxy:
+  green-proxy:
     image: apachepulsar/pulsar:${PULSAR_VERSION}
     container_name: green-proxy
-    hostname: proxy
+    hostname: green-proxy
     restart: on-failure
     networks:
-      - green-pulsar
+      - extensible-load-manager_pulsar
     environment:
-      - metadataStoreUrl=zk:zookeeper:2181
-      - zookeeperServers=zookeeper:2181
-      - clusterName=cluster-a
+      - metadataStoreUrl=zk:green-zookeeper:2181
+      - zookeeperServers=green-zookeeper:2181
+      - clusterName=cluster-green
       - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
     ports:
       - "8081:8080"
       - "6651:6650"
     depends_on:
-      broker-1:
+      green-broker-1:
         condition: service_started
-      broker-2:
+      green-broker-2:
         condition: service_started
     command: bash -c "bin/apply-config-from-env.py conf/proxy.conf && exec bin/pulsar proxy"
 
   # Start broker 1
-  broker-1:
+  green-broker-1:
     image: apachepulsar/pulsar:${PULSAR_VERSION}
     container_name: green-broker-1
-    hostname: broker-1
+    hostname: green-broker-1
     restart: on-failure
     networks:
-      - green-pulsar
+      - extensible-load-manager_pulsar
     environment:
-      - metadataStoreUrl=zk:zookeeper:2181
-      - zookeeperServers=zookeeper:2181
-      - clusterName=cluster-a
+      - metadataStoreUrl=zk:green-zookeeper:2181
+      - zookeeperServers=green-zookeeper:2181
+      - clusterName=cluster-green
       - managedLedgerDefaultEnsembleSize=1
       - managedLedgerDefaultWriteQuorum=1
       - managedLedgerDefaultAckQuorum=1
@@ -129,24 +131,24 @@ services:
       - brokerServiceCompactionThresholdInBytes=1000000
       - PULSAR_PREFIX_defaultNumberOfNamespaceBundles=1
     depends_on:
-      zookeeper:
+      green-zookeeper:
         condition: service_healthy
-      bookie:
+      green-bookie:
         condition: service_started
     command: bash -c "bin/apply-config-from-env.py conf/broker.conf && exec bin/pulsar broker"
 
   # Start broker 2
-  broker-2:
+  green-broker-2:
     image: apachepulsar/pulsar:${PULSAR_VERSION}
     container_name: green-broker-2
-    hostname: broker-2
+    hostname: green-broker-2
     restart: on-failure
     networks:
-      - green-pulsar
+      - extensible-load-manager_pulsar
     environment:
-      - metadataStoreUrl=zk:zookeeper:2181
-      - zookeeperServers=zookeeper:2181
-      - clusterName=cluster-a
+      - metadataStoreUrl=zk:green-zookeeper:2181
+      - zookeeperServers=green-zookeeper:2181
+      - clusterName=cluster-green
       - managedLedgerDefaultEnsembleSize=1
       - managedLedgerDefaultWriteQuorum=1
       - managedLedgerDefaultAckQuorum=1
@@ -162,8 +164,8 @@ services:
       - brokerServiceCompactionThresholdInBytes=1000000
       - PULSAR_PREFIX_defaultNumberOfNamespaceBundles=1
     depends_on:
-      zookeeper:
+      green-zookeeper:
         condition: service_healthy
-      bookie:
+      green-bookie:
         condition: service_started
     command: bash -c "bin/apply-config-from-env.py conf/broker.conf && exec bin/pulsar broker"
