@@ -9,7 +9,11 @@ require (
 	github.com/bits-and-blooms/bitset v1.4.0
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/davecgh/go-spew v1.1.1
+	github.com/golang-jwt/jwt/v5 v5.2.1
+	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
+	github.com/hamba/avro/v2 v2.26.0
+	github.com/hashicorp/go-multierror v1.1.1
 	github.com/klauspost/compress v1.17.9
 	github.com/onsi/ginkgo v1.16.5
 	github.com/onsi/gomega v1.19.0
@@ -21,19 +25,12 @@ require (
 	github.com/spaolacci/murmur3 v1.1.0
 	github.com/spf13/cobra v1.6.1
 	github.com/stretchr/testify v1.9.0
+	github.com/testcontainers/testcontainers-go v0.32.0
 	go.uber.org/atomic v1.7.0
-	golang.org/x/mod v0.18.0
+	golang.org/x/mod v0.20.0
 	golang.org/x/oauth2 v0.11.0
 	golang.org/x/time v0.0.0-20220210224613-90d013bbcef8
 	google.golang.org/protobuf v1.33.0
-)
-
-require (
-	github.com/golang-jwt/jwt/v5 v5.2.1
-	github.com/golang/protobuf v1.5.4
-	github.com/hamba/avro/v2 v2.22.2-0.20240625062549-66aad10411d9
-	github.com/hashicorp/go-multierror v1.1.1
-	github.com/testcontainers/testcontainers-go v0.32.0
 )
 
 require (
