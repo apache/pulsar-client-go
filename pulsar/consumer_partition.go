@@ -24,6 +24,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
@@ -185,6 +186,15 @@ type partitionConsumer struct {
 
 	redirectedClusterURI string
 	backoffPolicyFunc    func() backoff.Policy
+
+	discardMessage atomic.Bool
+}
+
+// pauseDispatchMessage used to discard the message in the dispatcher goroutine.
+// This method will be called When the parent consumer performs the seek operation.
+// After the seek operation, the dispatcher will continue dispatching messages automatically.
+func (pc *partitionConsumer) pauseDispatchMessage() {
+	pc.discardMessage.Store(true)
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -879,6 +889,7 @@ func (pc *partitionConsumer) Seek(msgID MessageID) error {
 
 	// wait for the request to complete
 	<-req.doneCh
+	pc.discardMessage.Store(false)
 	return req.err
 }
 
@@ -937,6 +948,7 @@ func (pc *partitionConsumer) SeekByTime(time time.Time) error {
 
 	// wait for the request to complete
 	<-req.doneCh
+	pc.discardMessage.Store(false)
 	return req.err
 }
 
