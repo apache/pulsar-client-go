@@ -24,6 +24,7 @@ import (
 	"math"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
@@ -185,6 +186,16 @@ type partitionConsumer struct {
 
 	redirectedClusterURI string
 	backoffPolicyFunc    func() backoff.Policy
+
+	dispatcherSeekingControlCh chan bool
+	isSeeking                  atomic.Bool
+}
+
+// pauseDispatchMessage used to discard the message in the dispatcher goroutine.
+// This method will be called When the parent consumer performs the seek operation.
+// After the seek operation, the dispatcher will continue dispatching messages automatically.
+func (pc *partitionConsumer) pauseDispatchMessage() {
+	pc.dispatcherSeekingControlCh <- true
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -329,27 +340,28 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	}
 
 	pc := &partitionConsumer{
-		parentConsumer:       parent,
-		client:               client,
-		options:              options,
-		topic:                options.topic,
-		name:                 options.consumerName,
-		consumerID:           client.rpcClient.NewConsumerID(),
-		partitionIdx:         int32(options.partitionIdx),
-		eventsCh:             make(chan interface{}, 10),
-		maxQueueSize:         int32(options.receiverQueueSize),
-		queueCh:              make(chan *message, options.receiverQueueSize),
-		startMessageID:       atomicMessageID{msgID: options.startMessageID},
-		connectedCh:          make(chan struct{}),
-		messageCh:            messageCh,
-		connectClosedCh:      make(chan *connectionClosed, 1),
-		closeCh:              make(chan struct{}),
-		clearQueueCh:         make(chan func(id *trackingMessageID)),
-		compressionProviders: sync.Map{},
-		dlq:                  dlq,
-		metrics:              metrics,
-		schemaInfoCache:      newSchemaInfoCache(client, options.topic),
-		backoffPolicyFunc:    boFunc,
+		parentConsumer:             parent,
+		client:                     client,
+		options:                    options,
+		topic:                      options.topic,
+		name:                       options.consumerName,
+		consumerID:                 client.rpcClient.NewConsumerID(),
+		partitionIdx:               int32(options.partitionIdx),
+		eventsCh:                   make(chan interface{}, 10),
+		maxQueueSize:               int32(options.receiverQueueSize),
+		queueCh:                    make(chan *message, options.receiverQueueSize),
+		startMessageID:             atomicMessageID{msgID: options.startMessageID},
+		connectedCh:                make(chan struct{}),
+		messageCh:                  messageCh,
+		connectClosedCh:            make(chan *connectionClosed, 1),
+		closeCh:                    make(chan struct{}),
+		clearQueueCh:               make(chan func(id *trackingMessageID)),
+		compressionProviders:       sync.Map{},
+		dlq:                        dlq,
+		metrics:                    metrics,
+		schemaInfoCache:            newSchemaInfoCache(client, options.topic),
+		backoffPolicyFunc:          boFunc,
+		dispatcherSeekingControlCh: make(chan bool),
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
@@ -1440,17 +1452,18 @@ func (pc *partitionConsumer) dispatcher() {
 			}
 			nextMessageSize = queueMsg.size()
 
-			if pc.dlq.shouldSendToDlq(&nextMessage) {
-				// pass the message to the DLQ router
-				pc.metrics.DlqCounter.Inc()
-				messageCh = pc.dlq.Chan()
-			} else {
-				// pass the message to application channel
-				messageCh = pc.messageCh
+			if !pc.isSeeking.Load() {
+				if pc.dlq.shouldSendToDlq(&nextMessage) {
+					// pass the message to the DLQ router
+					pc.metrics.DlqCounter.Inc()
+					messageCh = pc.dlq.Chan()
+				} else {
+					// pass the message to application channel
+					messageCh = pc.messageCh
+				}
+				pc.metrics.PrefetchedMessages.Dec()
+				pc.metrics.PrefetchedBytes.Sub(float64(len(queueMsg.payLoad)))
 			}
-
-			pc.metrics.PrefetchedMessages.Dec()
-			pc.metrics.PrefetchedBytes.Sub(float64(len(queueMsg.payLoad)))
 		} else {
 			queueCh = pc.queueCh
 		}
@@ -1482,6 +1495,12 @@ func (pc *partitionConsumer) dispatcher() {
 			if err := pc.internalFlow(initialPermits); err != nil {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
 			}
+
+		case val, ok := <-pc.dispatcherSeekingControlCh:
+			if !ok {
+				return
+			}
+			pc.isSeeking.Store(val)
 
 		case msg, ok := <-queueCh:
 			if !ok {
@@ -1674,6 +1693,8 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 }
 
 func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {
+	pc.isSeeking.Store(false)
+
 	var (
 		maxRetry                                    int
 		delayReconnectTime, totalDelayReconnectTime time.Duration
