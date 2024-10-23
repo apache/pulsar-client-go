@@ -20,6 +20,7 @@ package admin
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -230,7 +231,14 @@ func safeRespClose(resp *http.Response) {
 const (
 	PublishTimeHeader = "X-Pulsar-Publish-Time"
 	BatchHeader       = "X-Pulsar-Num-Batch-Message"
-	PropertyPrefix    = "X-Pulsar-Property-"
+
+	// PropertyPrefix is part of the old protocol for message properties.
+	PropertyPrefix = "X-Pulsar-Property-"
+
+	// PropertyHeader is part of the new protocol introduced in SNIP-279
+	// https://github.com/apache/pulsar/pull/20627
+	// The value is a JSON string representing the properties.
+	PropertyHeader = "X-Pulsar-Property"
 )
 
 func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, error) {
@@ -261,6 +269,11 @@ func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, e
 				properties[BatchHeader] = h
 			}
 			return getIndividualMsgsFromBatch(topic, ID, payload, properties)
+		case k == PropertyHeader:
+			propJSON := resp.Header.Get(k)
+			if err := json.Unmarshal([]byte(propJSON), &properties); err != nil {
+				return nil, err
+			}
 		case strings.Contains(k, PropertyPrefix):
 			key := strings.TrimPrefix(k, PropertyPrefix)
 			properties[key] = resp.Header.Get(k)
