@@ -147,7 +147,7 @@ func TestPeekMessageForPartitionedTopic(t *testing.T) {
 func TestPeekMessageWithProperties(t *testing.T) {
 	randomName := newTopicName()
 	topic := "persistent://public/default/" + randomName
-	topicName, err := utils.GetTopicName(topic)
+	topicName, _ := utils.GetTopicName(topic)
 	subName := "test-sub"
 
 	cfg := &config.Config{}
