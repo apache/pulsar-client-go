@@ -144,6 +144,58 @@ func TestPeekMessageForPartitionedTopic(t *testing.T) {
 	}
 }
 
+func TestPeekMessageWithProperties(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	topicName, _ := utils.GetTopicName(topic)
+	subName := "test-sub"
+
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	client, err := pulsar.NewClient(pulsar.ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	// Create a producer for non-batch messages
+	producer, err := client.CreateProducer(pulsar.ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	props := map[string]string{
+		"key1":        "value1",
+		"KEY2":        "VALUE2",
+		"KeY3":        "VaLuE3",
+		"details=man": "good at playing basketball",
+	}
+
+	_, err = producer.Send(context.Background(), &pulsar.ProducerMessage{
+		Payload:    []byte("test-message"),
+		Properties: props,
+	})
+	assert.NoError(t, err)
+
+	// Peek messages
+	messages, err := admin.Subscriptions().PeekMessages(*topicName, subName, 1)
+	assert.NoError(t, err)
+	assert.NotNil(t, messages)
+
+	// Verify properties of messages
+	for _, msg := range messages {
+		assert.Equal(t, "value1", msg.Properties["key1"])
+		assert.Equal(t, "VALUE2", msg.Properties["KEY2"])
+		assert.Equal(t, "VaLuE3", msg.Properties["KeY3"])
+		assert.Equal(t, "good at playing basketball", msg.Properties["details=man"])
+	}
+}
+
 func TestGetMessageByID(t *testing.T) {
 	randomName := newTopicName()
 	topic := "persistent://public/default/" + randomName
