@@ -694,8 +694,6 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 
 	for _, msgID := range msgIDs {
 		if checkMessageIDType(msgID) {
-			if trackingMessageID := msgID.(*trackingMessageID); trackingMessageID.ack() {
-			}
 			validMsgIDs = append(validMsgIDs, msgID)
 		} else if msgID.PartitionIdx() != pc.partitionIdx {
 			errorMap[msgID] = fmt.Errorf("inconsistent partition index %v (current: %v)",
@@ -714,7 +712,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 		return errorMap
 	}
 
-	pendingAcks := make(map[[2]uint64]*bitset.BitSet)
+	pendingAcks := make(map[position]*bitset.BitSet)
 	for _, msgID := range validMsgIDs {
 		addMsgIDToPendingAcks(pendingAcks, msgID)
 	}
@@ -1072,6 +1070,7 @@ func (pc *partitionConsumer) internalAckList(request *ackListRequest) {
 			AckType:    pb.CommandAck_Individual.Enum(),
 			ConsumerId: proto.Uint64(pc.consumerID),
 			MessageId:  request.msgIDs,
+			RequestId:  &reqID,
 		})
 		request.errCh <- err
 		return

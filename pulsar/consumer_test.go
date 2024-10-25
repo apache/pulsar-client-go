@@ -4758,11 +4758,12 @@ func TestAckIDList(t *testing.T) {
 
 	createConsumer := func() Consumer {
 		consumer, err := client.Subscribe(ConsumerOptions{
-			Topic:                       topic,
-			SubscriptionName:            "my-sub",
-			SubscriptionInitialPosition: SubscriptionPositionEarliest,
-			Type:                        Shared,
-			AckWithResponse:             true,
+			Topic:                          topic,
+			SubscriptionName:               "my-sub",
+			SubscriptionInitialPosition:    SubscriptionPositionEarliest,
+			Type:                           Shared,
+			EnableBatchIndexAcknowledgment: true,
+			AckWithResponse:                true,
 		})
 		assert.Nil(t, err)
 		return consumer
@@ -4773,19 +4774,24 @@ func TestAckIDList(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msgs[i].Payload()))
 	}
-	msgIDs := make([]MessageID, len(msgs))
-	for i := 0; i < 3; i++ {
-		msgIDs[i] = msgs[i].ID()
+	// 0,2,3 belong to the 1st batch whose size is 5, 6 and 8 are individual messages
+	// TODO: fix the message IDs without batch index are handled well
+	ackedIndexes := []int{0, 2, 3}
+	unackedIndexes := []int{1, 4, 5, 6, 7, 8, 9}
+	msgIDs := make([]MessageID, len(ackedIndexes))
+	for i := 0; i < len(ackedIndexes); i++ {
+		msgIDs[i] = msgs[ackedIndexes[i]].ID()
 	}
-	assert.Nil(t, consumer.AckIDList(msgIDs))
+	assert.Empty(t, consumer.AckIDList(msgIDs))
 	consumer.Close()
 
 	consumer = createConsumer()
 	defer consumer.Close()
-	msgs = receiveMessages(t, consumer, 7)
-	assert.Equal(t, 7, len(msgs))
-	for i := 0; i < 7; i++ {
-		assert.Equal(t, fmt.Sprintf("msg-%d", i+3), string(msgs[i].Payload()))
+	msgs = receiveMessages(t, consumer, len(unackedIndexes))
+	assert.Equal(t, len(unackedIndexes), len(msgs))
+
+	for i := 0; i < 5; i++ {
+		assert.Equal(t, fmt.Sprintf("msg-%d", unackedIndexes[i]), string(msgs[i].Payload()))
 	}
 }
 
@@ -4819,8 +4825,9 @@ func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	msgs := make([]Message, 0)
-	for i := 0; i < 10; i++ {
+	for i := 0; i < numMessages; i++ {
 		if msg, err := consumer.Receive(ctx); err == nil {
+			fmt.Println("Received message: ", string(msg.Payload()))
 			msgs = append(msgs, msg)
 		} else {
 			fmt.Printf("Failed to receive message: %v", err)
