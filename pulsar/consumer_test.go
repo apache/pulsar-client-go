@@ -4745,3 +4745,87 @@ func TestLookupConsumer(t *testing.T) {
 		consumer.Ack(msg)
 	}
 }
+
+func TestAckIDList(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("test-ack-id-list-%v", time.Now().Nanosecond())
+	prepareMessagesForAckTest(t, client, topic)
+
+	createConsumer := func() Consumer {
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:                       topic,
+			SubscriptionName:            "my-sub",
+			SubscriptionInitialPosition: SubscriptionPositionEarliest,
+			Type:                        Shared,
+			AckWithResponse:             true,
+		})
+		assert.Nil(t, err)
+		return consumer
+	}
+	consumer := createConsumer()
+	msgs := receiveMessages(t, consumer, 10)
+	assert.Equal(t, 10, len(msgs))
+	for i := 0; i < 10; i++ {
+		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msgs[i].Payload()))
+	}
+	msgIDs := make([]MessageID, len(msgs))
+	for i := 0; i < 3; i++ {
+		msgIDs[i] = msgs[i].ID()
+	}
+	assert.Nil(t, consumer.AckIDList(msgIDs))
+	consumer.Close()
+
+	consumer = createConsumer()
+	defer consumer.Close()
+	msgs = receiveMessages(t, consumer, 7)
+	assert.Equal(t, 7, len(msgs))
+	for i := 0; i < 7; i++ {
+		assert.Equal(t, fmt.Sprintf("msg-%d", i+3), string(msgs[i].Payload()))
+	}
+}
+
+// Send 10 messages to the topic, where the first 5 messages are included in the same batch
+// and the last 5 messages are sent individually.
+func prepareMessagesForAckTest(t *testing.T, client Client, topic string) {
+	ctx := context.Background()
+
+	sendFunc := func(disableBatching bool, startIndex int) {
+		if producer, err := client.CreateProducer(ProducerOptions{
+			Topic:           topic,
+			DisableBatching: disableBatching,
+		}); err == nil {
+			defer producer.Close()
+			for i := 0; i < 5; i++ {
+				producer.SendAsync(ctx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("msg-%d", startIndex+i)),
+				}, func(mi MessageID, pm *ProducerMessage, err error) {})
+			}
+			producer.Flush()
+			producer.Close()
+		} else {
+			assert.Fail(t, "Failed to create producer", err)
+		}
+	}
+	sendFunc(false, 0)
+	sendFunc(true, 5)
+}
+
+func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	msgs := make([]Message, 0)
+	for i := 0; i < 10; i++ {
+		if msg, err := consumer.Receive(ctx); err == nil {
+			msgs = append(msgs, msg)
+		} else {
+			fmt.Printf("Failed to receive message: %v", err)
+			break
+		}
+	}
+	return msgs
+}
