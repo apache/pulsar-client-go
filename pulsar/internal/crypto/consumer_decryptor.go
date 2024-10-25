@@ -42,7 +42,7 @@ func NewConsumerDecryptor(keyReader crypto.KeyReader,
 }
 
 func (d *consumerDecryptor) Decrypt(payload []byte,
-	msgID *pb.MessageIdData,
+	_ *pb.MessageIdData,
 	msgMetadata *pb.MessageMetadata) ([]byte, error) {
 	// encryption keys are not present in message metadta, no need decrypt the payload
 	if len(msgMetadata.GetEncryptionKeys()) == 0 {

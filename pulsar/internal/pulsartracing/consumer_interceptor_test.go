@@ -52,7 +52,7 @@ func (c *mockConsumer) Subscription() string {
 	return ""
 }
 
-func (c *mockConsumer) AckWithTxn(msg pulsar.Message, txn pulsar.Transaction) error {
+func (c *mockConsumer) AckWithTxn(_ pulsar.Message, _ pulsar.Transaction) error {
 	return nil
 }
 
@@ -63,7 +63,7 @@ func (c *mockConsumer) UnsubscribeForce() error {
 	return nil
 }
 
-func (c *mockConsumer) Receive(ctx context.Context) (message pulsar.Message, err error) {
+func (c *mockConsumer) Receive(_ context.Context) (message pulsar.Message, err error) {
 	return nil, nil
 }
 
@@ -71,39 +71,39 @@ func (c *mockConsumer) Chan() <-chan pulsar.ConsumerMessage {
 	return nil
 }
 
-func (c *mockConsumer) Ack(msg pulsar.Message) error {
+func (c *mockConsumer) Ack(_ pulsar.Message) error {
 	return nil
 }
 
-func (c *mockConsumer) AckID(msgID pulsar.MessageID) error {
+func (c *mockConsumer) AckID(_ pulsar.MessageID) error {
 	return nil
 }
 
-func (c *mockConsumer) AckCumulative(msg pulsar.Message) error {
+func (c *mockConsumer) AckCumulative(_ pulsar.Message) error {
 	return nil
 }
 
-func (c *mockConsumer) AckIDCumulative(msgID pulsar.MessageID) error {
+func (c *mockConsumer) AckIDCumulative(_ pulsar.MessageID) error {
 	return nil
 }
 
-func (c *mockConsumer) ReconsumeLater(msg pulsar.Message, delay time.Duration) {}
+func (c *mockConsumer) ReconsumeLater(_ pulsar.Message, _ time.Duration) {}
 
-func (c *mockConsumer) ReconsumeLaterWithCustomProperties(msg pulsar.Message, customProperties map[string]string,
-	delay time.Duration) {
+func (c *mockConsumer) ReconsumeLaterWithCustomProperties(_ pulsar.Message, _ map[string]string,
+	_ time.Duration) {
 }
 
-func (c *mockConsumer) Nack(msg pulsar.Message) {}
+func (c *mockConsumer) Nack(_ pulsar.Message) {}
 
-func (c *mockConsumer) NackID(msgID pulsar.MessageID) {}
+func (c *mockConsumer) NackID(_ pulsar.MessageID) {}
 
 func (c *mockConsumer) Close() {}
 
-func (c *mockConsumer) Seek(msgID pulsar.MessageID) error {
+func (c *mockConsumer) Seek(_ pulsar.MessageID) error {
 	return nil
 }
 
-func (c *mockConsumer) SeekByTime(time time.Time) error {
+func (c *mockConsumer) SeekByTime(_ time.Time) error {
 	return nil
 }
 

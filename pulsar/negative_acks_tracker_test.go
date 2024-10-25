@@ -56,22 +56,22 @@ func newNackMockedConsumer(nackBackoffPolicy NackBackoffPolicy) *nackMockedConsu
 	return t
 }
 
-func (nmc *nackMockedConsumer) Redeliver(msgIds []messageID) {
+func (nmc *nackMockedConsumer) Redeliver(msgIDs []messageID) {
 	nmc.lock.Lock()
 	defer nmc.lock.Unlock()
 	if nmc.closed {
 		return
 	}
-	for _, id := range msgIds {
+	for _, id := range msgIDs {
 		nmc.ch <- id
 	}
 }
 
-func sortMessageIds(msgIds []messageID) []messageID {
-	sort.Slice(msgIds, func(i, j int) bool {
-		return msgIds[i].ledgerID < msgIds[j].entryID
+func sortMessageIDs(msgIDs []messageID) []messageID {
+	sort.Slice(msgIDs, func(i, j int) bool {
+		return msgIDs[i].ledgerID < msgIDs[j].entryID
 	})
-	return msgIds
+	return msgIDs
 }
 
 func (nmc *nackMockedConsumer) Wait() <-chan messageID {
@@ -94,17 +94,17 @@ func TestNacksTracker(t *testing.T) {
 		batchIdx: 1,
 	})
 
-	msgIds := make([]messageID, 0)
+	msgIDs := make([]messageID, 0)
 	for id := range nmc.Wait() {
-		msgIds = append(msgIds, id)
+		msgIDs = append(msgIDs, id)
 	}
-	msgIds = sortMessageIds(msgIds)
+	msgIDs = sortMessageIDs(msgIDs)
 
-	assert.Equal(t, 2, len(msgIds))
-	assert.Equal(t, int64(1), msgIds[0].ledgerID)
-	assert.Equal(t, int64(1), msgIds[0].entryID)
-	assert.Equal(t, int64(2), msgIds[1].ledgerID)
-	assert.Equal(t, int64(2), msgIds[1].entryID)
+	assert.Equal(t, 2, len(msgIDs))
+	assert.Equal(t, int64(1), msgIDs[0].ledgerID)
+	assert.Equal(t, int64(1), msgIDs[0].entryID)
+	assert.Equal(t, int64(2), msgIDs[1].ledgerID)
+	assert.Equal(t, int64(2), msgIDs[1].entryID)
 
 	nacks.Close()
 	// allow multiple Close without panicing
@@ -139,17 +139,17 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 		batchIdx: 1,
 	})
 
-	msgIds := make([]messageID, 0)
+	msgIDs := make([]messageID, 0)
 	for id := range nmc.Wait() {
-		msgIds = append(msgIds, id)
+		msgIDs = append(msgIDs, id)
 	}
-	msgIds = sortMessageIds(msgIds)
+	msgIDs = sortMessageIDs(msgIDs)
 
-	assert.Equal(t, 2, len(msgIds))
-	assert.Equal(t, int64(1), msgIds[0].ledgerID)
-	assert.Equal(t, int64(1), msgIds[0].entryID)
-	assert.Equal(t, int64(2), msgIds[1].ledgerID)
-	assert.Equal(t, int64(2), msgIds[1].entryID)
+	assert.Equal(t, 2, len(msgIDs))
+	assert.Equal(t, int64(1), msgIDs[0].ledgerID)
+	assert.Equal(t, int64(1), msgIDs[0].entryID)
+	assert.Equal(t, int64(2), msgIDs[1].ledgerID)
+	assert.Equal(t, int64(2), msgIDs[1].entryID)
 
 	nacks.Close()
 }
@@ -161,17 +161,17 @@ func TestNackBackoffTracker(t *testing.T) {
 	nacks.AddMessage(new(mockMessage1))
 	nacks.AddMessage(new(mockMessage2))
 
-	msgIds := make([]messageID, 0)
+	msgIDs := make([]messageID, 0)
 	for id := range nmc.Wait() {
-		msgIds = append(msgIds, id)
+		msgIDs = append(msgIDs, id)
 	}
-	msgIds = sortMessageIds(msgIds)
+	msgIDs = sortMessageIDs(msgIDs)
 
-	assert.Equal(t, 2, len(msgIds))
-	assert.Equal(t, int64(1), msgIds[0].ledgerID)
-	assert.Equal(t, int64(1), msgIds[0].entryID)
-	assert.Equal(t, int64(2), msgIds[1].ledgerID)
-	assert.Equal(t, int64(2), msgIds[1].entryID)
+	assert.Equal(t, 2, len(msgIDs))
+	assert.Equal(t, int64(1), msgIDs[0].ledgerID)
+	assert.Equal(t, int64(1), msgIDs[0].entryID)
+	assert.Equal(t, int64(2), msgIDs[1].ledgerID)
+	assert.Equal(t, int64(2), msgIDs[1].entryID)
 
 	nacks.Close()
 	// allow multiple Close without panicing
@@ -230,7 +230,7 @@ func (msg *mockMessage1) GetReplicatedFrom() string {
 	return ""
 }
 
-func (msg *mockMessage1) GetSchemaValue(v interface{}) error {
+func (msg *mockMessage1) GetSchemaValue(_ interface{}) error {
 	return nil
 }
 
@@ -306,7 +306,7 @@ func (msg *mockMessage2) GetReplicatedFrom() string {
 	return ""
 }
 
-func (msg *mockMessage2) GetSchemaValue(v interface{}) error {
+func (msg *mockMessage2) GetSchemaValue(_ interface{}) error {
 	return nil
 }
 

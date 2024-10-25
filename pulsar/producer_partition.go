@@ -1093,7 +1093,7 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	isDone := uAtomic.NewBool(false)
 	doneCh := make(chan struct{})
 
-	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
+	p.internalSendAsync(ctx, msg, func(ID MessageID, _ *ProducerMessage, e error) {
 		if isDone.CAS(false, true) {
 			err = e
 			msgID = ID
@@ -1375,59 +1375,58 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, local > remote, ignore it",
 			response.GetMessageId(), response.GetSequenceId(), pi.sequenceID)
 		return
-	} else {
-		// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
-		p.pendingQueue.Poll()
+	}
+	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
+	p.pendingQueue.Poll()
 
-		now := time.Now().UnixNano()
+	now := time.Now().UnixNano()
 
-		// lock the pending item while sending the requests
-		pi.Lock()
-		defer pi.Unlock()
-		p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
-		batchSize := int32(len(pi.sendRequests))
-		for idx, i := range pi.sendRequests {
-			sr := i.(*sendRequest)
-			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
+	// lock the pending item while sending the requests
+	pi.Lock()
+	defer pi.Unlock()
+	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
+	batchSize := int32(len(pi.sendRequests))
+	for idx, i := range pi.sendRequests {
+		sr := i.(*sendRequest)
+		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
 
-			msgID := newMessageID(
-				int64(response.MessageId.GetLedgerId()),
-				int64(response.MessageId.GetEntryId()),
-				int32(idx),
-				p.partitionIdx,
-				batchSize,
-			)
+		msgID := newMessageID(
+			int64(response.MessageId.GetLedgerId()),
+			int64(response.MessageId.GetEntryId()),
+			int32(idx),
+			p.partitionIdx,
+			batchSize,
+		)
 
-			if sr.totalChunks > 1 {
-				if sr.chunkID == 0 {
-					sr.chunkRecorder.setFirstChunkID(
-						&messageID{
-							int64(response.MessageId.GetLedgerId()),
-							int64(response.MessageId.GetEntryId()),
-							-1,
-							p.partitionIdx,
-							0,
-						})
-				} else if sr.chunkID == sr.totalChunks-1 {
-					sr.chunkRecorder.setLastChunkID(
-						&messageID{
-							int64(response.MessageId.GetLedgerId()),
-							int64(response.MessageId.GetEntryId()),
-							-1,
-							p.partitionIdx,
-							0,
-						})
-					// use chunkMsgID to set msgID
-					msgID = &sr.chunkRecorder.chunkedMsgID
-				}
+		if sr.totalChunks > 1 {
+			if sr.chunkID == 0 {
+				sr.chunkRecorder.setFirstChunkID(
+					&messageID{
+						int64(response.MessageId.GetLedgerId()),
+						int64(response.MessageId.GetEntryId()),
+						-1,
+						p.partitionIdx,
+						0,
+					})
+			} else if sr.chunkID == sr.totalChunks-1 {
+				sr.chunkRecorder.setLastChunkID(
+					&messageID{
+						int64(response.MessageId.GetLedgerId()),
+						int64(response.MessageId.GetEntryId()),
+						-1,
+						p.partitionIdx,
+						0,
+					})
+				// use chunkMsgID to set msgID
+				msgID = &sr.chunkRecorder.chunkedMsgID
 			}
-
-			sr.done(msgID, nil)
 		}
 
-		// Mark this pending item as done
-		pi.done(nil)
+		sr.done(msgID, nil)
 	}
+
+	// Mark this pending item as done
+	pi.done(nil)
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {

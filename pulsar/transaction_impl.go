@@ -84,7 +84,7 @@ func (txn *transaction) GetState() TxnState {
 	return txn.state
 }
 
-func (txn *transaction) Commit(ctx context.Context) error {
+func (txn *transaction) Commit(_ context.Context) error {
 	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), int32(TxnOpen), int32(TxnCommitting)) ||
 		txn.state == TxnCommitting) {
 		return newError(InvalidStatus, "Expect transaction state is TxnOpen but "+txn.state.string())
@@ -110,7 +110,7 @@ func (txn *transaction) Commit(ctx context.Context) error {
 	return err
 }
 
-func (txn *transaction) Abort(ctx context.Context) error {
+func (txn *transaction) Abort(_ context.Context) error {
 	if !(atomic.CompareAndSwapInt32((*int32)(&txn.state), int32(TxnOpen), int32(TxnAborting)) ||
 		txn.state == TxnAborting) {
 		return newError(InvalidStatus, "Expect transaction state is TxnOpen but "+txn.state.string())

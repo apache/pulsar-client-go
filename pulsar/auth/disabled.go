@@ -49,7 +49,7 @@ func (disabled) Close() error {
 	return nil
 }
 
-func (d disabled) RoundTrip(req *http.Request) (*http.Response, error) {
+func (d disabled) RoundTrip(_ *http.Request) (*http.Response, error) {
 	return nil, nil
 }
 
@@ -57,6 +57,6 @@ func (d disabled) Transport() http.RoundTripper {
 	return nil
 }
 
-func (d disabled) WithTransport(tripper http.RoundTripper) error {
+func (d disabled) WithTransport(_ http.RoundTripper) error {
 	return nil
 }

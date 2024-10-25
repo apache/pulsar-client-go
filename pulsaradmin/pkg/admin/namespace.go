@@ -148,7 +148,7 @@ type Namespaces interface {
 	GetNamespaceReplicationClusters(namespace string) ([]string, error)
 
 	// SetNamespaceReplicationClusters returns the replication clusters for a namespace
-	SetNamespaceReplicationClusters(namespace string, clusterIds []string) error
+	SetNamespaceReplicationClusters(namespace string, clusterIDs []string) error
 
 	// SetNamespaceAntiAffinityGroup sets anti-affinity group name for a namespace
 	SetNamespaceAntiAffinityGroup(namespace string, namespaceAntiAffinityGroup string) error
@@ -616,13 +616,13 @@ func (n *namespaces) GetNamespaceReplicationClusters(namespace string) ([]string
 	return data, err
 }
 
-func (n *namespaces) SetNamespaceReplicationClusters(namespace string, clusterIds []string) error {
+func (n *namespaces) SetNamespaceReplicationClusters(namespace string, clusterIDs []string) error {
 	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "replication")
-	return n.pulsar.Client.Post(endpoint, &clusterIds)
+	return n.pulsar.Client.Post(endpoint, &clusterIDs)
 }
 
 func (n *namespaces) SetNamespaceAntiAffinityGroup(namespace string, namespaceAntiAffinityGroup string) error {

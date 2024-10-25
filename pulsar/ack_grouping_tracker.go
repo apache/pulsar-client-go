@@ -97,7 +97,7 @@ func (i *immediateAckGroupingTracker) addCumulative(id MessageID) {
 	i.ackCumulative(id)
 }
 
-func (i *immediateAckGroupingTracker) isDuplicate(id MessageID) bool {
+func (i *immediateAckGroupingTracker) isDuplicate(_ MessageID) bool {
 	return false
 }
 

@@ -75,7 +75,7 @@ func (z *zstdCGoProvider) Compress(dst, src []byte) []byte {
 	return out
 }
 
-func (z *zstdCGoProvider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
+func (z *zstdCGoProvider) Decompress(dst, src []byte, _ int) ([]byte, error) {
 	ctx := z.ctxPool.Get().(zstd.Ctx)
 	defer z.ctxPool.Put(ctx)
 	return ctx.Decompress(dst, src)

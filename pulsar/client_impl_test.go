@@ -257,7 +257,7 @@ func mockOAuthServer() *httptest.Server {
 
 	// mock the used REST path for the tests
 	mockedHandler := http.NewServeMux()
-	mockedHandler.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, _ *http.Request) {
 		s := fmt.Sprintf(`{
     "issuer":"%s",
     "authorization_endpoint":"%s/authorize",
@@ -266,13 +266,13 @@ func mockOAuthServer() *httptest.Server {
 }`, server.URL, server.URL, server.URL, server.URL)
 		fmt.Fprintln(writer, s)
 	})
-	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintln(writer, "{\n"+
 			"  \"access_token\": \"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0b2tlbi1wcmluY2lwYWwifQ."+
 			"tSfgR8l7dKC6LoWCxQgNkuSB8our7xV_nAM7wpgCbG4\",\n"+
 			"  \"token_type\": \"Bearer\"\n}")
 	})
-	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintln(writer, "true")
 	})
 

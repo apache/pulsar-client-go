@@ -33,9 +33,9 @@ func (t *ProducerInterceptor) BeforeSend(producer pulsar.Producer, message *puls
 	buildAndInjectSpan(message, producer).Finish()
 }
 
-func (t *ProducerInterceptor) OnSendAcknowledgement(producer pulsar.Producer,
-	message *pulsar.ProducerMessage,
-	msgID pulsar.MessageID) {
+func (t *ProducerInterceptor) OnSendAcknowledgement(_ pulsar.Producer,
+	_ *pulsar.ProducerMessage,
+	_ pulsar.MessageID) {
 }
 
 func buildAndInjectSpan(message *pulsar.ProducerMessage, producer pulsar.Producer) opentracing.Span {
