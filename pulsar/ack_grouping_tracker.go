@@ -138,32 +138,34 @@ func (t *timedAckGroupingTracker) add(id MessageID) {
 	}
 }
 
-func (t *timedAckGroupingTracker) tryAddIndividual(id MessageID) map[[2]uint64]*bitset.BitSet {
-	t.Lock()
-	defer t.Unlock()
+func addMsgIDToPendingAcks(pendingAcks map[[2]uint64]*bitset.BitSet, id MessageID) {
 	key := [2]uint64{uint64(id.LedgerID()), uint64(id.EntryID())}
 
 	batchIdx := id.BatchIdx()
 	batchSize := id.BatchSize()
 
 	if batchIdx >= 0 && batchSize > 0 {
-		bs, found := t.pendingAcks[key]
+		bs, found := pendingAcks[key]
 		if !found {
-			if batchSize > 1 {
-				bs = bitset.New(uint(batchSize))
-				for i := uint(0); i < uint(batchSize); i++ {
-					bs.Set(i)
-				}
+			bs = bitset.New(uint(batchSize))
+			for i := uint(0); i < uint(batchSize); i++ {
+				bs.Set(i)
 			}
-			t.pendingAcks[key] = bs
+			pendingAcks[key] = bs
 		}
 		if bs != nil {
 			bs.Clear(uint(batchIdx))
 		}
 	} else {
-		t.pendingAcks[key] = nil
+		pendingAcks[key] = nil
 	}
+}
 
+func (t *timedAckGroupingTracker) tryAddIndividual(id MessageID) map[[2]uint64]*bitset.BitSet {
+	t.Lock()
+	defer t.Unlock()
+
+	addMsgIDToPendingAcks(t.pendingAcks, id)
 	if len(t.pendingAcks) >= t.maxNumAcks {
 		pendingAcks := t.pendingAcks
 		t.pendingAcks = make(map[[2]uint64]*bitset.BitSet)
@@ -250,7 +252,7 @@ func (t *timedAckGroupingTracker) close() {
 	}
 }
 
-func (t *timedAckGroupingTracker) flushIndividual(pendingAcks map[[2]uint64]*bitset.BitSet) {
+func createMsgIDDataListFromPendingAcks(pendingAcks map[[2]uint64]*bitset.BitSet) []*pb.MessageIdData {
 	msgIDs := make([]*pb.MessageIdData, 0, len(pendingAcks))
 	for k, v := range pendingAcks {
 		ledgerID := k[0]
@@ -265,5 +267,9 @@ func (t *timedAckGroupingTracker) flushIndividual(pendingAcks map[[2]uint64]*bit
 		}
 		msgIDs = append(msgIDs, msgID)
 	}
-	t.ackList(msgIDs)
+	return msgIDs
+}
+
+func (t *timedAckGroupingTracker) flushIndividual(pendingAcks map[[2]uint64]*bitset.BitSet) {
+	t.ackList(createMsgIDDataListFromPendingAcks(pendingAcks))
 }

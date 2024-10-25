@@ -215,6 +215,19 @@ func (c *regexConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
+func (c *regexConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
+	return ackIDListFromMultiTopics(msgIDs, func(msgID MessageID) (acker, error) {
+		if !checkMessageIDType(msgID) {
+			return nil, fmt.Errorf("invalid message id type %T", msgID)
+		}
+		if mid := toTrackingMessageID(msgID); mid.consumer != nil {
+			return mid.consumer, nil
+		} else {
+			return nil, errors.New("consumer is nil in consumer_regex")
+		}
+	})
+}
+
 // AckID the consumption of a single message, identified by its MessageID
 func (c *regexConsumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()

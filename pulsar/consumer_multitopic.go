@@ -167,6 +167,38 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
+func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
+	return ackIDListFromMultiTopics(msgIDs, func(msgID MessageID) (acker, error) {
+		if !checkMessageIDType(msgID) {
+			return nil, errors.New("invalid message id type %T")
+		}
+		if mid := toTrackingMessageID(msgID); mid.consumer == nil {
+			return mid.consumer, nil
+		} else {
+			return nil, errors.New("consumer is nil")
+		}
+	})
+}
+
+func ackIDListFromMultiTopics(msgIDs []MessageID,
+	findConsumer func(MessageID) (acker, error)) map[MessageID]error {
+	errorMap := make(map[MessageID]error)
+	consumerToMsgIDs := make(map[acker][]MessageID)
+	for _, msgID := range msgIDs {
+		if consumer, err := findConsumer(msgID); err == nil {
+			consumerToMsgIDs[consumer] = append(consumerToMsgIDs[consumer], msgID)
+		} else {
+			errorMap[msgID] = err
+		}
+	}
+	for consumer, ids := range consumerToMsgIDs {
+		for k, v := range consumer.AckIDList(ids) {
+			errorMap[k] = v
+		}
+	}
+	return errorMap
+}
+
 // AckWithTxn the consumption of a single message with a transaction
 func (c *multiTopicConsumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()

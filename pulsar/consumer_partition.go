@@ -363,7 +363,12 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.ackGroupingTracker = newAckGroupingTracker(options.ackGroupingOptions,
 		func(id MessageID) { pc.sendIndividualAck(id) },
 		func(id MessageID) { pc.sendCumulativeAck(id) },
-		func(ids []*pb.MessageIdData) { pc.eventsCh <- ids })
+		func(ids []*pb.MessageIdData) {
+			pc.eventsCh <- &ackListRequest{
+				errCh:  nil, // ignore the error
+				msgIDs: ids,
+			}
+		})
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
@@ -681,6 +686,51 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 		return fmt.Errorf("invalid message id type %T", msgID)
 	}
 	return pc.ackID(msgID, false)
+}
+
+func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
+	errorMap := make(map[MessageID]error)
+	validMsgIDs := make([]MessageID, 0, len(msgIDs))
+
+	for _, msgID := range msgIDs {
+		if checkMessageIDType(msgID) {
+			if trackingMessageID := msgID.(*trackingMessageID); trackingMessageID.ack() {
+			}
+			validMsgIDs = append(validMsgIDs, msgID)
+		} else if msgID.PartitionIdx() != pc.partitionIdx {
+			errorMap[msgID] = fmt.Errorf("inconsistent partition index %v (current: %v)",
+				msgID.PartitionIdx(), pc.partitionIdx)
+		} else {
+			errorMap[msgID] = fmt.Errorf("invalid message id type %T", msgID)
+		}
+	}
+
+	if !pc.options.ackWithResponse {
+		for _, msgID := range validMsgIDs {
+			if err := pc.ackID(msgID, false); err != nil {
+				errorMap[msgID] = err
+			}
+		}
+		return errorMap
+	}
+
+	pendingAcks := make(map[[2]uint64]*bitset.BitSet)
+	for _, msgID := range validMsgIDs {
+		addMsgIDToPendingAcks(pendingAcks, msgID)
+	}
+	req := &ackListRequest{
+		errCh:  make(chan error),
+		msgIDs: createMsgIDDataListFromPendingAcks(pendingAcks),
+	}
+	pc.eventsCh <- req
+
+	if err := <-req.errCh; err != nil {
+		for _, msgID := range validMsgIDs {
+			errorMap[msgID] = err
+		}
+	}
+
+	return errorMap
 }
 
 func (pc *partitionConsumer) AckIDCumulative(msgID MessageID) error {
@@ -1015,11 +1065,21 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	}
 }
 
-func (pc *partitionConsumer) internalAckList(msgIDs []*pb.MessageIdData) {
+func (pc *partitionConsumer) internalAckList(request *ackListRequest) {
+	if request.errCh != nil {
+		reqID := pc.client.rpcClient.NewRequestID()
+		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, &pb.CommandAck{
+			AckType:    pb.CommandAck_Individual.Enum(),
+			ConsumerId: proto.Uint64(pc.consumerID),
+			MessageId:  request.msgIDs,
+		})
+		request.errCh <- err
+		return
+	}
 	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, &pb.CommandAck{
 		AckType:    pb.CommandAck_Individual.Enum(),
 		ConsumerId: proto.Uint64(pc.consumerID),
-		MessageId:  msgIDs,
+		MessageId:  request.msgIDs,
 	})
 }
 
@@ -1541,6 +1601,11 @@ type ackRequest struct {
 	err     error
 }
 
+type ackListRequest struct {
+	errCh  chan error
+	msgIDs []*pb.MessageIdData
+}
+
 type ackWithTxnRequest struct {
 	doneCh      chan struct{}
 	msgID       trackingMessageID
@@ -1607,7 +1672,7 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.internalAck(v)
 			case *ackWithTxnRequest:
 				pc.internalAckWithTxn(v)
-			case []*pb.MessageIdData:
+			case *ackListRequest:
 				pc.internalAckList(v)
 			case *redeliveryRequest:
 				pc.internalRedeliver(v)
