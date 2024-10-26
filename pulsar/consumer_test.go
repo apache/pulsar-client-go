@@ -4775,9 +4775,8 @@ func TestAckIDList(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msgs[i].Payload()))
 	}
 	// 0,2,3 belong to the 1st batch whose size is 5, 6 and 8 are individual messages
-	// TODO: fix the message IDs without batch index are handled well
-	ackedIndexes := []int{0, 2, 3}
-	unackedIndexes := []int{1, 4, 5, 6, 7, 8, 9}
+	ackedIndexes := []int{0, 2, 3, 6, 8}
+	unackedIndexes := []int{1, 4, 5, 7, 9}
 	msgIDs := make([]MessageID, len(ackedIndexes))
 	for i := 0; i < len(ackedIndexes); i++ {
 		msgIDs[i] = msgs[ackedIndexes[i]].ID()
