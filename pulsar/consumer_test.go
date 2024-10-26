@@ -982,7 +982,7 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 		wg.Add(1)
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-content-%d", i))},
-			func(id MessageID, producerMessage *ProducerMessage, e error) {
+			func(_ MessageID, _ *ProducerMessage, e error) {
 				assert.NoError(t, e)
 				wg.Done()
 			})
@@ -998,7 +998,7 @@ func TestConsumerBatchCumulativeAck(t *testing.T) {
 		wg.Add(1)
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-content-%d", i))},
-			func(id MessageID, producerMessage *ProducerMessage, e error) {
+			func(_ MessageID, _ *ProducerMessage, e error) {
 				assert.NoError(t, e)
 				wg.Done()
 			})
@@ -2301,7 +2301,7 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
-		MessageRouter: func(msg *ProducerMessage, topicMetadata TopicMetadata) int {
+		MessageRouter: func(msg *ProducerMessage, _ TopicMetadata) int {
 			// The message key will contain the partition id where to route
 			i, err := strconv.Atoi(msg.Key)
 			assert.NoError(t, err)
@@ -2422,11 +2422,11 @@ func TestProducerName(t *testing.T) {
 
 type noopConsumerInterceptor struct{}
 
-func (noopConsumerInterceptor) BeforeConsume(message ConsumerMessage) {}
+func (noopConsumerInterceptor) BeforeConsume(_ ConsumerMessage) {}
 
-func (noopConsumerInterceptor) OnAcknowledge(consumer Consumer, msgID MessageID) {}
+func (noopConsumerInterceptor) OnAcknowledge(_ Consumer, _ MessageID) {}
 
-func (noopConsumerInterceptor) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {}
+func (noopConsumerInterceptor) OnNegativeAcksSend(_ Consumer, _ []MessageID) {}
 
 // copyPropertyInterceptor copy all keys in message properties map and add a suffix
 type copyPropertyInterceptor struct {
@@ -2435,31 +2435,31 @@ type copyPropertyInterceptor struct {
 
 func (x copyPropertyInterceptor) BeforeConsume(message ConsumerMessage) {
 	properties := message.Properties()
-	copy := make(map[string]string, len(properties))
+	cp := make(map[string]string, len(properties))
 	for k, v := range properties {
-		copy[k+x.suffix] = v
+		cp[k+x.suffix] = v
 	}
-	for ck, v := range copy {
+	for ck, v := range cp {
 		properties[ck] = v
 	}
 }
 
-func (copyPropertyInterceptor) OnAcknowledge(consumer Consumer, msgID MessageID) {}
+func (copyPropertyInterceptor) OnAcknowledge(_ Consumer, _ MessageID) {}
 
-func (copyPropertyInterceptor) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {}
+func (copyPropertyInterceptor) OnNegativeAcksSend(_ Consumer, _ []MessageID) {}
 
 type metricConsumerInterceptor struct {
 	ackn  int32
 	nackn int32
 }
 
-func (x *metricConsumerInterceptor) BeforeConsume(message ConsumerMessage) {}
+func (x *metricConsumerInterceptor) BeforeConsume(_ ConsumerMessage) {}
 
-func (x *metricConsumerInterceptor) OnAcknowledge(consumer Consumer, msgID MessageID) {
+func (x *metricConsumerInterceptor) OnAcknowledge(_ Consumer, _ MessageID) {
 	atomic.AddInt32(&x.ackn, 1)
 }
 
-func (x *metricConsumerInterceptor) OnNegativeAcksSend(consumer Consumer, msgIDs []MessageID) {
+func (x *metricConsumerInterceptor) OnNegativeAcksSend(_ Consumer, msgIDs []MessageID) {
 	atomic.AddInt32(&x.nackn, int32(len(msgIDs)))
 }
 
@@ -2512,7 +2512,7 @@ func TestConsumerWithInterceptors(t *testing.T) {
 		}
 	}
 
-	var nackIds []MessageID
+	var nackIDs []MessageID
 	// receive 10 messages
 	for i := 0; i < 10; i++ {
 		msg, err := consumer.Receive(context.Background())
@@ -2533,13 +2533,13 @@ func TestConsumerWithInterceptors(t *testing.T) {
 		if i%2 == 0 {
 			consumer.Ack(msg)
 		} else {
-			nackIds = append(nackIds, msg.ID())
+			nackIDs = append(nackIDs, msg.ID())
 		}
 	}
 	assert.Equal(t, int32(5), atomic.LoadInt32(&metric.ackn))
 
-	for i := range nackIds {
-		consumer.NackID(nackIds[i])
+	for i := range nackIDs {
+		consumer.NackID(nackIDs[i])
 	}
 
 	// receive 5 nack messages
@@ -2633,7 +2633,7 @@ func TestKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 			producer.SendAsync(ctx, &ProducerMessage{
 				Key:     k,
 				Payload: []byte(fmt.Sprintf("value-%d", i)),
-			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			}, func(_ MessageID, _ *ProducerMessage, err error) {
 				assert.Nil(t, err)
 			},
 			)
@@ -2728,7 +2728,7 @@ func TestOrderingOfKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 			producer.SendAsync(ctx, &ProducerMessage{
 				Key:     k,
 				Payload: []byte(fmt.Sprintf("value-%d", i)),
-			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			}, func(_ MessageID, _ *ProducerMessage, err error) {
 				assert.Nil(t, err)
 			},
 			)
@@ -2762,7 +2762,7 @@ func TestOrderingOfKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 				Key:         u.String(),
 				OrderingKey: k,
 				Payload:     []byte(fmt.Sprintf("value-%d", i)),
-			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			}, func(_ MessageID, _ *ProducerMessage, err error) {
 				assert.Nil(t, err)
 			},
 			)
@@ -3511,12 +3511,12 @@ func NewEncKeyReader(publicKeyPath, privateKeyPath string) *EncKeyReader {
 }
 
 // GetPublicKey read public key from the given path
-func (d *EncKeyReader) PublicKey(keyName string, keyMeta map[string]string) (*crypto.EncryptionKeyInfo, error) {
+func (d *EncKeyReader) PublicKey(keyName string, _ map[string]string) (*crypto.EncryptionKeyInfo, error) {
 	return readKey(keyName, d.publicKeyPath, d.metaMap)
 }
 
 // GetPrivateKey read private key from the given path
-func (d *EncKeyReader) PrivateKey(keyName string, keyMeta map[string]string) (*crypto.EncryptionKeyInfo, error) {
+func (d *EncKeyReader) PrivateKey(keyName string, _ map[string]string) (*crypto.EncryptionKeyInfo, error) {
 	return readKey(keyName, d.privateKeyPath, d.metaMap)
 }
 
@@ -4022,31 +4022,31 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 	for i := 0; i < BatchingMaxSize; i++ {
 		producer.SendAsync(context.Background(), &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-%d", i)),
-		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		}, func(id MessageID, _ *ProducerMessage, err error) {
 			assert.Nil(t, err)
 			log.Printf("Sent to %v:%d:%d", id, id.BatchIdx(), id.BatchSize())
 		})
 	}
 	assert.Nil(t, producer.FlushWithCtx(context.Background()))
 
-	msgIds := make([]MessageID, BatchingMaxSize)
+	msgIDs := make([]MessageID, BatchingMaxSize)
 	for i := 0; i < BatchingMaxSize; i++ {
 		message, err := consumer.Receive(context.Background())
 		assert.Nil(t, err)
-		msgIds[i] = message.ID()
+		msgIDs[i] = message.ID()
 		log.Printf("Received %v from %v:%d:%d", string(message.Payload()), message.ID(),
 			message.ID().BatchIdx(), message.ID().BatchSize())
 	}
 
 	// Acknowledge half of the messages
 	if cumulative {
-		msgID := msgIds[BatchingMaxSize/2-1]
+		msgID := msgIDs[BatchingMaxSize/2-1]
 		err := consumer.AckIDCumulative(msgID)
 		assert.Nil(t, err)
 		log.Printf("Acknowledge %v:%d cumulatively\n", msgID, msgID.BatchIdx())
 	} else {
 		for i := 0; i < BatchingMaxSize; i++ {
-			msgID := msgIds[i]
+			msgID := msgIDs[i]
 			if i%2 == 0 {
 				consumer.AckID(msgID)
 				log.Printf("Acknowledge %v:%d\n", msgID, msgID.BatchIdx())
@@ -4066,17 +4066,17 @@ func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, o
 			index = i + BatchingMaxSize/2
 		}
 		assert.Equal(t, []byte(fmt.Sprintf("msg-%d", index)), message.Payload())
-		assert.Equal(t, msgIds[index].BatchIdx(), message.ID().BatchIdx())
+		assert.Equal(t, msgIDs[index].BatchIdx(), message.ID().BatchIdx())
 		// We should not acknowledge message.ID() here because message.ID() shares a different
 		// tracker with msgIds
 		if !cumulative {
-			msgID := msgIds[index]
+			msgID := msgIDs[index]
 			consumer.AckID(msgID)
 			log.Printf("Acknowledge %v:%d\n", msgID, msgID.BatchIdx())
 		}
 	}
 	if cumulative {
-		msgID := msgIds[BatchingMaxSize-1]
+		msgID := msgIDs[BatchingMaxSize-1]
 		err := consumer.AckIDCumulative(msgID)
 		assert.Nil(t, err)
 		log.Printf("Acknowledge %v:%d cumulatively\n", msgID, msgID.BatchIdx())
@@ -4167,7 +4167,7 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 		p.SendAsync(
 			context.Background(),
 			&ProducerMessage{Payload: []byte("hello")},
-			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			func(_ MessageID, _ *ProducerMessage, _ error) {
 			},
 		)
 	}
@@ -4333,7 +4333,7 @@ func TestConsumerMemoryLimit(t *testing.T) {
 		p1.SendAsync(
 			context.Background(),
 			&ProducerMessage{Payload: createTestMessagePayload(1)},
-			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			func(_ MessageID, _ *ProducerMessage, _ error) {
 			},
 		)
 	}
@@ -4373,7 +4373,7 @@ func TestConsumerMemoryLimit(t *testing.T) {
 		p1.SendAsync(
 			context.Background(),
 			&ProducerMessage{Payload: createTestMessagePayload(1)},
-			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			func(_ MessageID, _ *ProducerMessage, _ error) {
 			},
 		)
 	}
@@ -4456,7 +4456,7 @@ func TestMultiConsumerMemoryLimit(t *testing.T) {
 		p1.SendAsync(
 			context.Background(),
 			&ProducerMessage{Payload: createTestMessagePayload(1)},
-			func(id MessageID, producerMessage *ProducerMessage, err error) {
+			func(_ MessageID, _ *ProducerMessage, _ error) {
 			},
 		)
 	}

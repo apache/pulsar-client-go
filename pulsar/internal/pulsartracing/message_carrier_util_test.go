@@ -112,7 +112,7 @@ func (msg *mockConsumerMessage) GetReplicatedFrom() string {
 	return ""
 }
 
-func (msg *mockConsumerMessage) GetSchemaValue(v interface{}) error {
+func (msg *mockConsumerMessage) GetSchemaValue(_ interface{}) error {
 	return nil
 }
 

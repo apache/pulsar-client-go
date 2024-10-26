@@ -169,7 +169,7 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 			// we should never reach here
 			msg := fmt.Sprintf("%v Failed to find encrypted Data key for key %v", d.logCtx, keyName)
 			d.logger.Errorf(msg)
-			return nil, fmt.Errorf(msg)
+			return nil, errors.New(msg)
 		}
 
 	}

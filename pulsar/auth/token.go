@@ -38,9 +38,8 @@ func NewAuthenticationTokenWithParams(params map[string]string) (Provider, error
 		return NewAuthenticationToken(params["token"]), nil
 	} else if params["file"] != "" {
 		return NewAuthenticationTokenFromFile(params["file"]), nil
-	} else {
-		return nil, errors.New("missing configuration for token auth")
 	}
+	return nil, errors.New("missing configuration for token auth")
 }
 
 // NewAuthenticationToken returns a token auth provider that will use the specified token to

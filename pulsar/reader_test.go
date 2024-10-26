@@ -320,7 +320,7 @@ func TestReaderOnSpecificMessageWithBatching(t *testing.T) {
 
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		}, func(id MessageID, _ *ProducerMessage, err error) {
 			assert.NoError(t, err)
 			assert.NotNil(t, id)
 			msgIDs[idx] = id
@@ -396,7 +396,7 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		}, func(id MessageID, _ *ProducerMessage, err error) {
 			assert.NoError(t, err)
 			assert.NotNil(t, id)
 			msgIDs[idx] = id

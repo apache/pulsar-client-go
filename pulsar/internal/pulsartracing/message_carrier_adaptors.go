@@ -38,14 +38,14 @@ func (a *ProducerMessageExtractAdapter) ForeachKey(handler func(key, val string)
 	return nil
 }
 
-func (a *ProducerMessageExtractAdapter) Set(key, val string) {}
+func (a *ProducerMessageExtractAdapter) Set(_, _ string) {}
 
 // ProducerMessageInjectAdapter Implements TextMap Interface
 type ProducerMessageInjectAdapter struct {
 	message *pulsar.ProducerMessage
 }
 
-func (a *ProducerMessageInjectAdapter) ForeachKey(handler func(key, val string) error) error {
+func (a *ProducerMessageInjectAdapter) ForeachKey(_ func(_, _ string) error) error {
 	return errors.New("iterator should never be used with Tracer.inject()")
 }
 
@@ -68,14 +68,14 @@ func (a *ConsumerMessageExtractAdapter) ForeachKey(handler func(key, val string)
 	return nil
 }
 
-func (a *ConsumerMessageExtractAdapter) Set(key, val string) {}
+func (a *ConsumerMessageExtractAdapter) Set(_, _ string) {}
 
 // ConsumerMessageInjectAdapter Implements TextMap Interface
 type ConsumerMessageInjectAdapter struct {
 	message pulsar.ConsumerMessage
 }
 
-func (a *ConsumerMessageInjectAdapter) ForeachKey(handler func(key, val string) error) error {
+func (a *ConsumerMessageInjectAdapter) ForeachKey(_ func(_, _ string) error) error {
 	return errors.New("iterator should never be used with tracer.inject()")
 }
 

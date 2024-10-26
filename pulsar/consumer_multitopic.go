@@ -294,11 +294,11 @@ func (c *multiTopicConsumer) Close() {
 	})
 }
 
-func (c *multiTopicConsumer) Seek(msgID MessageID) error {
+func (c *multiTopicConsumer) Seek(_ MessageID) error {
 	return newError(SeekFailed, "seek command not allowed for multi topic consumer")
 }
 
-func (c *multiTopicConsumer) SeekByTime(time time.Time) error {
+func (c *multiTopicConsumer) SeekByTime(_ time.Time) error {
 	return newError(SeekFailed, "seek command not allowed for multi topic consumer")
 }
 

@@ -49,7 +49,7 @@ func newProducerCommand() *cobra.Command {
 		Use:   "produce ",
 		Short: "Produce on a topic and measure performance",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, args []string) {
 			stop := stopCh()
 			if FlagProfile {
 				RunProfiling(stop)
@@ -125,7 +125,7 @@ func produce(produceArgs *ProduceArgs, stop <-chan struct{}) {
 
 			producer.SendAsync(ctx, &pulsar.ProducerMessage{
 				Payload: payload,
-			}, func(msgID pulsar.MessageID, message *pulsar.ProducerMessage, e error) {
+			}, func(_ pulsar.MessageID, _ *pulsar.ProducerMessage, e error) {
 				if e != nil {
 					log.WithError(e).Fatal("Failed to publish")
 				}

@@ -58,7 +58,7 @@ func (p *zstdProvider) Compress(dst, src []byte) []byte {
 	return p.encoder.EncodeAll(src, dst)
 }
 
-func (p *zstdProvider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
+func (p *zstdProvider) Decompress(dst, src []byte, _ int) ([]byte, error) {
 	return p.decoder.DecodeAll(src, dst)
 }
 

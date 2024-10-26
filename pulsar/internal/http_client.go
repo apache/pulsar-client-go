@@ -159,9 +159,7 @@ func (c *httpClient) Get(endpoint string, obj interface{}, params map[string]str
 			c.log.Debugf("Retrying httpRequest in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
 			time.Sleep(retryTime)
 			_, err = c.GetWithQueryParams(endpoint, obj, params, true)
-			if _, ok := err.(*url.Error); ok {
-				continue
-			} else {
+			if _, ok := err.(*url.Error); !ok {
 				// We either succeeded or encountered a non connection error
 				break
 			}

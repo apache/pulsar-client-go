@@ -67,7 +67,7 @@ func TestGetMessagesByID(t *testing.T) {
 	for i := 0; i <= numberMessages; i++ {
 		producer.SendAsync(ctx, &pulsar.ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}, func(id pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
+		}, func(id pulsar.MessageID, _ *pulsar.ProducerMessage, err error) {
 			assert.Nil(t, err)
 			messageIDMap[id.String()]++
 			wg.Done()

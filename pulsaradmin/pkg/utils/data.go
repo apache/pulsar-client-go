@@ -215,7 +215,7 @@ type NamespacesData struct {
 	MessageTTL                     int      `json:"messageTTL"`
 	BookkeeperAckQuorum            int      `json:"bookkeeperAckQuorum"`
 	ManagedLedgerMaxMarkDeleteRate float64  `json:"managedLedgerMaxMarkDeleteRate"`
-	ClusterIds                     string   `json:"clusterIds"`
+	ClusterIDs                     string   `json:"clusterIds"`
 	RetentionTimeStr               string   `json:"retentionTimeStr"`
 	LimitStr                       string   `json:"limitStr"`
 	LimitTime                      int64    `json:"limitTime"`

@@ -121,7 +121,7 @@ func NewAuthenticationOAuth2WithParams(
 	issuerEndpoint,
 	clientID,
 	audience string,
-	scope string,
+	_ string,
 	transport http.RoundTripper) (*OAuth2Provider, error) {
 
 	issuer := oauth2.Issuer{
@@ -257,6 +257,6 @@ func makeKeyring() (keyring.Keyring, error) {
 	})
 }
 
-func keyringPrompt(prompt string) (string, error) {
+func keyringPrompt(_ string) (string, error) {
 	return "", nil
 }

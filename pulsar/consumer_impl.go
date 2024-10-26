@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -492,7 +493,7 @@ func (c *consumer) unsubscribe(force bool) error {
 		}
 	}
 	if errMsg != "" {
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 	return nil
 }

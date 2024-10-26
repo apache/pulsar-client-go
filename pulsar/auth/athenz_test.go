@@ -48,13 +48,13 @@ type MockRoleToken struct {
 	mock.Mock
 }
 
-func (m *MockTokenBuilder) SetExpiration(t time.Duration) {
+func (m *MockTokenBuilder) SetExpiration(_ time.Duration) {
 }
-func (m *MockTokenBuilder) SetHostname(h string) {
+func (m *MockTokenBuilder) SetHostname(_ string) {
 }
-func (m *MockTokenBuilder) SetIPAddress(ip string) {
+func (m *MockTokenBuilder) SetIPAddress(_ string) {
 }
-func (m *MockTokenBuilder) SetKeyService(keyService string) {
+func (m *MockTokenBuilder) SetKeyService(_ string) {
 }
 func (m *MockTokenBuilder) Token() zms.Token {
 	result := m.Called()

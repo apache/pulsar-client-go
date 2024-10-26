@@ -21,13 +21,13 @@ import (
 	"context"
 	"testing"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 )
 
 func TestAuth(t *testing.T) {
-	RegisterFailHandler(Fail)
-	RunSpecs(t, "cloud-cli Auth Suite")
+	gomega.RegisterFailHandler(ginkgo.Fail)
+	ginkgo.RunSpecs(t, "cloud-cli Auth Suite")
 }
 
 type MockTokenExchanger struct {
@@ -52,7 +52,7 @@ func (te *MockTokenExchanger) ExchangeClientCredentials(req ClientCredentialsExc
 	return te.ReturnsTokens, te.ReturnsError
 }
 
-func (te *MockTokenExchanger) ExchangeDeviceCode(ctx context.Context,
+func (te *MockTokenExchanger) ExchangeDeviceCode(_ context.Context,
 	req DeviceCodeExchangeRequest) (*TokenResult, error) {
 	te.CalledWithRequest = &req
 	return te.ReturnsTokens, te.ReturnsError

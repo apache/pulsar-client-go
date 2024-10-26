@@ -42,7 +42,7 @@ func (noopProvider) Compress(dst, src []byte) []byte {
 	return dst[:len(src)]
 }
 
-func (noopProvider) Decompress(dst, src []byte, originalSize int) ([]byte, error) {
+func (noopProvider) Decompress(dst, src []byte, _ int) ([]byte, error) {
 	if dst == nil {
 		dst = make([]byte, len(src))
 	}

@@ -56,11 +56,9 @@ type IsCompatibility struct {
 func ConvertGetSchemaResponseToSchemaInfo(tn *TopicName, response GetSchemaResponse) *SchemaInfo {
 	info := new(SchemaInfo)
 	schema := make([]byte, 0, 10)
-	if response.Type == "KEY_VALUE" {
-		// TODO: impl logic
-	} else {
+	if response.Type != "KEY_VALUE" {
 		schema = []byte(response.Data)
-	}
+	} // TODO: impl logic for KEY_VALUE
 
 	info.Schema = schema
 	info.Type = response.Type

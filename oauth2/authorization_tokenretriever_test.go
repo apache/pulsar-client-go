@@ -26,8 +26,8 @@ import (
 	"strings"
 	"time"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 )
 
 type MockTransport struct {
@@ -37,7 +37,7 @@ type MockTransport struct {
 
 var _ HTTPAuthTransport = &MockTransport{}
 
-func (t *MockTransport) Do(req *http.Request) (*http.Response, error) {
+func (t *MockTransport) Do(_ *http.Request) (*http.Response, error) {
 	if len(t.Responses) > 0 {
 		r := t.Responses[0]
 		t.Responses = t.Responses[1:]
@@ -46,9 +46,9 @@ func (t *MockTransport) Do(req *http.Request) (*http.Response, error) {
 	return nil, t.ReturnError
 }
 
-var _ = Describe("CodetokenExchanger", func() {
-	Describe("newExchangeCodeRequest", func() {
-		It("creates the request", func() {
+var _ = ginkgo.Describe("CodetokenExchanger", func() {
+	ginkgo.Describe("newExchangeCodeRequest", func() {
+		ginkgo.It("creates the request", func() {
 			tokenRetriever := TokenRetriever{}
 			exchangeRequest := AuthorizationCodeExchangeRequest{
 				TokenEndpoint: "https://issuer/oauth/token",
@@ -62,32 +62,32 @@ var _ = Describe("CodetokenExchanger", func() {
 
 			result.ParseForm()
 
-			Expect(err).To(BeNil())
-			Expect(result.FormValue("grant_type")).To(Equal("authorization_code"))
-			Expect(result.FormValue("client_id")).To(Equal("clientID"))
-			Expect(result.FormValue("code_verifier")).To(Equal("Verifier"))
-			Expect(result.FormValue("code")).To(Equal("code"))
-			Expect(result.FormValue("redirect_uri")).To(Equal("https://redirect"))
-			Expect(result.URL.String()).To(Equal("https://issuer/oauth/token"))
+			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(result.FormValue("grant_type")).To(gomega.Equal("authorization_code"))
+			gomega.Expect(result.FormValue("client_id")).To(gomega.Equal("clientID"))
+			gomega.Expect(result.FormValue("code_verifier")).To(gomega.Equal("Verifier"))
+			gomega.Expect(result.FormValue("code")).To(gomega.Equal("code"))
+			gomega.Expect(result.FormValue("redirect_uri")).To(gomega.Equal("https://redirect"))
+			gomega.Expect(result.URL.String()).To(gomega.Equal("https://issuer/oauth/token"))
 
-			Expect(result.Header.Get("Content-Type")).To(Equal("application/x-www-form-urlencoded"))
-			Expect(result.Header.Get("Content-Length")).To(Equal("117"))
+			gomega.Expect(result.Header.Get("Content-Type")).To(gomega.Equal("application/x-www-form-urlencoded"))
+			gomega.Expect(result.Header.Get("Content-Length")).To(gomega.Equal("117"))
 		})
 
-		It("returns an error when NewRequest returns an error", func() {
+		ginkgo.It("returns an error when NewRequest returns an error", func() {
 			tokenRetriever := TokenRetriever{}
 
 			result, err := tokenRetriever.newExchangeCodeRequest(AuthorizationCodeExchangeRequest{
 				TokenEndpoint: "://issuer/oauth/token",
 			})
 
-			Expect(result).To(BeNil())
-			Expect(err.Error()).To(Equal("parse \"://issuer/oauth/token\": missing protocol scheme"))
+			gomega.Expect(result).To(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Equal("parse \"://issuer/oauth/token\": missing protocol scheme"))
 		})
 	})
 
-	Describe("handleAuthTokensResponse", func() {
-		It("handles the response", func() {
+	ginkgo.Describe("handleAuthTokensResponse", func() {
+		ginkgo.It("handles the response", func() {
 			tokenRetriever := TokenRetriever{}
 			response := buildResponse(200, AuthorizationTokenResponse{
 				ExpiresIn:    1,
@@ -97,49 +97,49 @@ var _ = Describe("CodetokenExchanger", func() {
 
 			result, err := tokenRetriever.handleAuthTokensResponse(response)
 
-			Expect(err).To(BeNil())
-			Expect(result).To(Equal(&TokenResult{
+			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(result).To(gomega.Equal(&TokenResult{
 				ExpiresIn:    1,
 				AccessToken:  "myAccessToken",
 				RefreshToken: "myRefreshToken",
 			}))
 		})
 
-		It("returns error when status code is not successful", func() {
+		ginkgo.It("returns error when status code is not successful", func() {
 			tokenRetriever := TokenRetriever{}
 			response := buildResponse(500, nil)
 
 			result, err := tokenRetriever.handleAuthTokensResponse(response)
 
-			Expect(result).To(BeNil())
-			Expect(err.Error()).To(Not(BeNil()))
+			gomega.Expect(result).To(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Not(gomega.BeNil()))
 		})
 
-		It("returns typed error when response body contains error information", func() {
+		ginkgo.It("returns typed error when response body contains error information", func() {
 			errorBody := TokenErrorResponse{Error: "test", ErrorDescription: "test description"}
 			tokenRetriever := TokenRetriever{}
 			response := buildResponse(400, errorBody)
 
 			result, err := tokenRetriever.handleAuthTokensResponse(response)
 
-			Expect(result).To(BeNil())
-			Expect(err).To(Equal(&TokenError{ErrorCode: "test", ErrorDescription: "test description"}))
-			Expect(err.Error()).To(Equal("test description (test)"))
+			gomega.Expect(result).To(gomega.BeNil())
+			gomega.Expect(err).To(gomega.Equal(&TokenError{ErrorCode: "test", ErrorDescription: "test description"}))
+			gomega.Expect(err.Error()).To(gomega.Equal("test description (test)"))
 		})
 
-		It("returns error when deserialization fails", func() {
+		ginkgo.It("returns error when deserialization fails", func() {
 			tokenRetriever := TokenRetriever{}
 			response := buildResponse(200, "")
 
 			result, err := tokenRetriever.handleAuthTokensResponse(response)
-			Expect(result).To(BeNil())
-			Expect(err.Error()).To(Equal(
+			gomega.Expect(result).To(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Equal(
 				"json: cannot unmarshal string into Go value of type oauth2.AuthorizationTokenResponse"))
 		})
 	})
 
-	Describe("newRefreshTokenRequest", func() {
-		It("creates the request", func() {
+	ginkgo.Describe("newRefreshTokenRequest", func() {
+		ginkgo.It("creates the request", func() {
 			tokenRetriever := TokenRetriever{}
 			exchangeRequest := RefreshTokenExchangeRequest{
 				TokenEndpoint: "https://issuer/oauth/token",
@@ -151,30 +151,30 @@ var _ = Describe("CodetokenExchanger", func() {
 
 			result.ParseForm()
 
-			Expect(err).To(BeNil())
-			Expect(result.FormValue("grant_type")).To(Equal("refresh_token"))
-			Expect(result.FormValue("client_id")).To(Equal("clientID"))
-			Expect(result.FormValue("refresh_token")).To(Equal("refreshToken"))
-			Expect(result.URL.String()).To(Equal("https://issuer/oauth/token"))
+			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(result.FormValue("grant_type")).To(gomega.Equal("refresh_token"))
+			gomega.Expect(result.FormValue("client_id")).To(gomega.Equal("clientID"))
+			gomega.Expect(result.FormValue("refresh_token")).To(gomega.Equal("refreshToken"))
+			gomega.Expect(result.URL.String()).To(gomega.Equal("https://issuer/oauth/token"))
 
-			Expect(result.Header.Get("Content-Type")).To(Equal("application/x-www-form-urlencoded"))
-			Expect(result.Header.Get("Content-Length")).To(Equal("70"))
+			gomega.Expect(result.Header.Get("Content-Type")).To(gomega.Equal("application/x-www-form-urlencoded"))
+			gomega.Expect(result.Header.Get("Content-Length")).To(gomega.Equal("70"))
 		})
 
-		It("returns an error when NewRequest returns an error", func() {
+		ginkgo.It("returns an error when NewRequest returns an error", func() {
 			tokenRetriever := TokenRetriever{}
 
 			result, err := tokenRetriever.newRefreshTokenRequest(RefreshTokenExchangeRequest{
 				TokenEndpoint: "://issuer/oauth/token",
 			})
 
-			Expect(result).To(BeNil())
-			Expect(err.Error()).To(Equal("parse \"://issuer/oauth/token\": missing protocol scheme"))
+			gomega.Expect(result).To(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Equal("parse \"://issuer/oauth/token\": missing protocol scheme"))
 		})
 	})
 
-	Describe("newClientCredentialsRequest", func() {
-		It("creates the request", func() {
+	ginkgo.Describe("newClientCredentialsRequest", func() {
+		ginkgo.It("creates the request", func() {
 			tokenRetriever := TokenRetriever{}
 			exchangeRequest := ClientCredentialsExchangeRequest{
 				TokenEndpoint: "https://issuer/oauth/token",
@@ -187,31 +187,31 @@ var _ = Describe("CodetokenExchanger", func() {
 
 			result.ParseForm()
 
-			Expect(err).To(BeNil())
-			Expect(result.FormValue("grant_type")).To(Equal("client_credentials"))
-			Expect(result.FormValue("client_id")).To(Equal("clientID"))
-			Expect(result.FormValue("client_secret")).To(Equal("clientSecret"))
-			Expect(result.FormValue("audience")).To(Equal("audience"))
-			Expect(result.URL.String()).To(Equal("https://issuer/oauth/token"))
+			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(result.FormValue("grant_type")).To(gomega.Equal("client_credentials"))
+			gomega.Expect(result.FormValue("client_id")).To(gomega.Equal("clientID"))
+			gomega.Expect(result.FormValue("client_secret")).To(gomega.Equal("clientSecret"))
+			gomega.Expect(result.FormValue("audience")).To(gomega.Equal("audience"))
+			gomega.Expect(result.URL.String()).To(gomega.Equal("https://issuer/oauth/token"))
 
-			Expect(result.Header.Get("Content-Type")).To(Equal("application/x-www-form-urlencoded"))
-			Expect(result.Header.Get("Content-Length")).To(Equal("93"))
+			gomega.Expect(result.Header.Get("Content-Type")).To(gomega.Equal("application/x-www-form-urlencoded"))
+			gomega.Expect(result.Header.Get("Content-Length")).To(gomega.Equal("93"))
 		})
 
-		It("returns an error when NewRequest returns an error", func() {
+		ginkgo.It("returns an error when NewRequest returns an error", func() {
 			tokenRetriever := TokenRetriever{}
 
 			result, err := tokenRetriever.newClientCredentialsRequest(ClientCredentialsExchangeRequest{
 				TokenEndpoint: "://issuer/oauth/token",
 			})
 
-			Expect(result).To(BeNil())
-			Expect(err.Error()).To(Equal("parse \"://issuer/oauth/token\": missing protocol scheme"))
+			gomega.Expect(result).To(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Equal("parse \"://issuer/oauth/token\": missing protocol scheme"))
 		})
 	})
 
-	Describe("newDeviceCodeExchangeRequest", func() {
-		It("creates the request", func() {
+	ginkgo.Describe("newDeviceCodeExchangeRequest", func() {
+		ginkgo.It("creates the request", func() {
 			tokenRetriever := TokenRetriever{}
 			exchangeRequest := DeviceCodeExchangeRequest{
 				TokenEndpoint: "https://issuer/oauth/token",
@@ -224,35 +224,35 @@ var _ = Describe("CodetokenExchanger", func() {
 
 			result.ParseForm()
 
-			Expect(err).To(BeNil())
-			Expect(result.FormValue("grant_type")).To(Equal("urn:ietf:params:oauth:grant-type:device_code"))
-			Expect(result.FormValue("client_id")).To(Equal("clientID"))
-			Expect(result.FormValue("device_code")).To(Equal("deviceCode"))
-			Expect(result.URL.String()).To(Equal("https://issuer/oauth/token"))
+			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(result.FormValue("grant_type")).To(gomega.Equal("urn:ietf:params:oauth:grant-type:device_code"))
+			gomega.Expect(result.FormValue("client_id")).To(gomega.Equal("clientID"))
+			gomega.Expect(result.FormValue("device_code")).To(gomega.Equal("deviceCode"))
+			gomega.Expect(result.URL.String()).To(gomega.Equal("https://issuer/oauth/token"))
 
-			Expect(result.Header.Get("Content-Type")).To(Equal("application/x-www-form-urlencoded"))
-			Expect(result.Header.Get("Content-Length")).To(Equal("107"))
+			gomega.Expect(result.Header.Get("Content-Type")).To(gomega.Equal("application/x-www-form-urlencoded"))
+			gomega.Expect(result.Header.Get("Content-Length")).To(gomega.Equal("107"))
 		})
 
-		It("returns an error when NewRequest returns an error", func() {
+		ginkgo.It("returns an error when NewRequest returns an error", func() {
 			tokenRetriever := TokenRetriever{}
 
 			result, err := tokenRetriever.newClientCredentialsRequest(ClientCredentialsExchangeRequest{
 				TokenEndpoint: "://issuer/oauth/token",
 			})
 
-			Expect(result).To(BeNil())
-			Expect(err.Error()).To(Equal("parse \"://issuer/oauth/token\": missing protocol scheme"))
+			gomega.Expect(result).To(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Equal("parse \"://issuer/oauth/token\": missing protocol scheme"))
 		})
 	})
 
-	Describe("ExchangeDeviceCode", func() {
+	ginkgo.Describe("ExchangeDeviceCode", func() {
 		var mockTransport *MockTransport
 		var tokenRetriever *TokenRetriever
 		var exchangeRequest DeviceCodeExchangeRequest
 		var tokenResult TokenResult
 
-		BeforeEach(func() {
+		ginkgo.BeforeEach(func() {
 			mockTransport = &MockTransport{}
 			tokenRetriever = &TokenRetriever{
 				transport: mockTransport,
@@ -270,21 +270,21 @@ var _ = Describe("CodetokenExchanger", func() {
 			}
 		})
 
-		It("returns a token", func() {
+		ginkgo.It("returns a token", func() {
 		})
 
-		It("supports cancellation", func() {
+		ginkgo.It("supports cancellation", func() {
 			mockTransport.Responses = []*http.Response{
 				buildResponse(400, &TokenErrorResponse{"authorization_pending", ""}),
 			}
 			ctx, cancel := context.WithCancel(context.Background())
 			cancel()
 			_, err := tokenRetriever.ExchangeDeviceCode(ctx, exchangeRequest)
-			Expect(err).ToNot(BeNil())
-			Expect(err.Error()).To(Equal("cancelled"))
+			gomega.Expect(err).ToNot(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Equal("cancelled"))
 		})
 
-		It("implements authorization_pending and slow_down", func() {
+		ginkgo.It("implements authorization_pending and slow_down", func() {
 			startTime := time.Now()
 			mockTransport.Responses = []*http.Response{
 				buildResponse(400, &TokenErrorResponse{"authorization_pending", ""}),
@@ -293,28 +293,28 @@ var _ = Describe("CodetokenExchanger", func() {
 				buildResponse(200, &tokenResult),
 			}
 			token, err := tokenRetriever.ExchangeDeviceCode(context.Background(), exchangeRequest)
-			Expect(err).To(BeNil())
-			Expect(token).To(Equal(&tokenResult))
+			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(token).To(gomega.Equal(&tokenResult))
 			endTime := time.Now()
-			Expect(endTime.Sub(startTime)).To(BeNumerically(">", exchangeRequest.PollInterval*3))
+			gomega.Expect(endTime.Sub(startTime)).To(gomega.BeNumerically(">", exchangeRequest.PollInterval*3))
 		})
 
-		It("implements expired_token", func() {
+		ginkgo.It("implements expired_token", func() {
 			mockTransport.Responses = []*http.Response{
 				buildResponse(400, &TokenErrorResponse{"expired_token", ""}),
 			}
 			_, err := tokenRetriever.ExchangeDeviceCode(context.Background(), exchangeRequest)
-			Expect(err).ToNot(BeNil())
-			Expect(err.Error()).To(Equal("the device code has expired"))
+			gomega.Expect(err).ToNot(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Equal("the device code has expired"))
 		})
 
-		It("implements access_denied", func() {
+		ginkgo.It("implements access_denied", func() {
 			mockTransport.Responses = []*http.Response{
 				buildResponse(400, &TokenErrorResponse{"access_denied", ""}),
 			}
 			_, err := tokenRetriever.ExchangeDeviceCode(context.Background(), exchangeRequest)
-			Expect(err).ToNot(BeNil())
-			Expect(err.Error()).To(Equal("the device was not authorized"))
+			gomega.Expect(err).ToNot(gomega.BeNil())
+			gomega.Expect(err.Error()).To(gomega.Equal("the device was not authorized"))
 		})
 	})
 })
