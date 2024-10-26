@@ -222,9 +222,8 @@ func (c *regexConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 		}
 		if mid := toTrackingMessageID(msgID); mid.consumer != nil {
 			return mid.consumer, nil
-		} else {
-			return nil, errors.New("consumer is nil in consumer_regex")
 		}
+		return nil, errors.New("consumer is nil in consumer_regex")
 	})
 }
 

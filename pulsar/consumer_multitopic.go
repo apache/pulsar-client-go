@@ -174,9 +174,8 @@ func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 		}
 		if mid := toTrackingMessageID(msgID); mid.consumer == nil {
 			return mid.consumer, nil
-		} else {
-			return nil, errors.New("consumer is nil")
 		}
+		return nil, errors.New("consumer is nil")
 	})
 }
 

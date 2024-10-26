@@ -4770,7 +4770,6 @@ func TestAckIDList(t *testing.T) {
 	}
 	consumer := createConsumer()
 	msgs := receiveMessages(t, consumer, 10)
-	assert.Equal(t, 10, len(msgs))
 	for i := 0; i < 10; i++ {
 		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msgs[i].Payload()))
 	}
@@ -4787,9 +4786,7 @@ func TestAckIDList(t *testing.T) {
 	consumer = createConsumer()
 	defer consumer.Close()
 	msgs = receiveMessages(t, consumer, len(unackedIndexes))
-	assert.Equal(t, len(unackedIndexes), len(msgs))
-
-	for i := 0; i < 5; i++ {
+	for i := 0; i < len(unackedIndexes); i++ {
 		assert.Equal(t, fmt.Sprintf("msg-%d", unackedIndexes[i]), string(msgs[i].Payload()))
 	}
 }
@@ -4808,7 +4805,7 @@ func prepareMessagesForAckTest(t *testing.T, client Client, topic string) {
 			for i := 0; i < 5; i++ {
 				producer.SendAsync(ctx, &ProducerMessage{
 					Payload: []byte(fmt.Sprintf("msg-%d", startIndex+i)),
-				}, func(mi MessageID, pm *ProducerMessage, err error) {})
+				}, func(_ MessageID, _ *ProducerMessage, _ error) {})
 			}
 			producer.Flush()
 			producer.Close()
@@ -4833,5 +4830,6 @@ func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message
 			break
 		}
 	}
+	assert.Equal(t, numMessages, len(msgs))
 	return msgs
 }
