@@ -694,13 +694,16 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 
 	startTime := time.Now().UnixNano()
 	for _, msgID := range msgIDs {
-		if checkMessageIDType(msgID) {
-			validMsgIDs = append(validMsgIDs, msgID)
+		if !checkMessageIDType(msgID) {
+			errorMap[msgID] = fmt.Errorf("invalid message id type %T", msgID)
 		} else if msgID.PartitionIdx() != pc.partitionIdx {
 			errorMap[msgID] = fmt.Errorf("inconsistent partition index %v (current: %v)",
 				msgID.PartitionIdx(), pc.partitionIdx)
+		} else if msgID.BatchIdx() >= 0 && msgID.BatchSize() > 0 &&
+			msgID.BatchIdx() >= msgID.BatchSize() {
+			errorMap[msgID] = fmt.Errorf("invalid batch index %v (size: %v)", msgID.BatchIdx(), msgID.BatchSize())
 		} else {
-			errorMap[msgID] = fmt.Errorf("invalid message id type %T", msgID)
+			validMsgIDs = append(validMsgIDs, msgID)
 		}
 	}
 
