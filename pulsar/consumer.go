@@ -307,9 +307,8 @@ type Consumer interface {
 	// AckID the consumption of a single message, identified by its MessageID
 	AckID(MessageID) error
 
-	// AckIDList the consumption of a list of messages, identified by their MessageID
-	// NOTE: this API will acknowledge the MessageID even if it represents a single message in the batch,
-	//   i.e. the enableBatchIndexAck option will be treated as true when calling this method
+	// AckIDList the consumption of a list of messages, identified by their MessageIDs
+	// Returns a map of MessageID to error, the keys are the MessageIDs that failed to be acknowledged
 	AckIDList([]MessageID) map[MessageID]error
 
 	// AckWithTxn the consumption of a single message with a transaction

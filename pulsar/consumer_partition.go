@@ -692,6 +692,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 	errorMap := make(map[MessageID]error)
 	validMsgIDs := make([]MessageID, 0, len(msgIDs))
 
+	startTime := time.Now().UnixNano()
 	for _, msgID := range msgIDs {
 		if checkMessageIDType(msgID) {
 			validMsgIDs = append(validMsgIDs, msgID)
@@ -742,13 +743,19 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 		validMsgIDs = completeMsgIDs
 	}
 
+	pc.metrics.AcksCounter.Add(float64(len(validMsgIDs)))
+	pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-startTime) / 1.0e9)
 	req := &ackListRequest{
 		errCh:  make(chan error),
-		msgIDs: createMsgIDDataListFromPendingAcks(pendingAcks),
+		msgIDs: toMsgIDDataList(pendingAcks),
 	}
 	pc.eventsCh <- req
 
-	if err := <-req.errCh; err != nil {
+	if err := <-req.errCh; err == nil {
+		for _, msgID := range validMsgIDs {
+			pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+		}
+	} else {
 		for _, msgID := range validMsgIDs {
 			errorMap[msgID] = err
 		}

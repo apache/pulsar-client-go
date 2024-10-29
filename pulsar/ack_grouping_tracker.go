@@ -256,7 +256,7 @@ func (t *timedAckGroupingTracker) close() {
 	}
 }
 
-func createMsgIDDataListFromPendingAcks(pendingAcks map[position]*bitset.BitSet) []*pb.MessageIdData {
+func toMsgIDDataList(pendingAcks map[position]*bitset.BitSet) []*pb.MessageIdData {
 	msgIDs := make([]*pb.MessageIdData, 0, len(pendingAcks))
 	for k, v := range pendingAcks {
 		msgID := &pb.MessageIdData{LedgerId: &k.ledgerID, EntryId: &k.entryID}
@@ -273,5 +273,5 @@ func createMsgIDDataListFromPendingAcks(pendingAcks map[position]*bitset.BitSet)
 }
 
 func (t *timedAckGroupingTracker) flushIndividual(pendingAcks map[position]*bitset.BitSet) {
-	t.ackList(createMsgIDDataListFromPendingAcks(pendingAcks))
+	t.ackList(toMsgIDDataList(pendingAcks))
 }
