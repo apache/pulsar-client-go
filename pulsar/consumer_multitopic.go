@@ -172,7 +172,7 @@ func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 		if !checkMessageIDType(msgID) {
 			return nil, errors.New("invalid message id type %T")
 		}
-		if mid := toTrackingMessageID(msgID); mid.consumer == nil {
+		if mid := toTrackingMessageID(msgID); mid != nil && mid.consumer != nil {
 			return mid.consumer, nil
 		}
 		return nil, errors.New("consumer is nil")
