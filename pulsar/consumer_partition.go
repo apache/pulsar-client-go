@@ -716,6 +716,32 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 	for _, msgID := range validMsgIDs {
 		addMsgIDToPendingAcks(pendingAcks, msgID)
 	}
+	if !pc.options.enableBatchIndexAck {
+		incompleteBatchPositions := make([]position, 0)
+		for position, bitSet := range pendingAcks {
+			if bitSet != nil && !bitSet.None() {
+				incompleteBatchPositions = append(incompleteBatchPositions, position)
+			}
+		}
+		for _, position := range incompleteBatchPositions {
+			delete(pendingAcks, position)
+		}
+
+		completeMsgIDs := make([]MessageID, 0)
+		for _, msgID := range validMsgIDs {
+			position := position{
+				ledgerID: uint64(msgID.LedgerID()),
+				entryID:  uint64(msgID.EntryID()),
+			}
+			if _, found := pendingAcks[position]; found {
+				completeMsgIDs = append(completeMsgIDs, msgID)
+			} else {
+				errorMap[msgID] = errors.New("incomplete batch")
+			}
+		}
+		validMsgIDs = completeMsgIDs
+	}
+
 	req := &ackListRequest{
 		errCh:  make(chan error),
 		msgIDs: createMsgIDDataListFromPendingAcks(pendingAcks),

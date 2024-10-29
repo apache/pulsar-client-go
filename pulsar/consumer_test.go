@@ -4747,6 +4747,14 @@ func TestLookupConsumer(t *testing.T) {
 }
 
 func TestAckIDList(t *testing.T) {
+	for _, params := range []bool{true, false} {
+		t.Run(fmt.Sprintf("TestAckIDList_%v", params), func(t *testing.T) {
+			runAckIDListTest(t, params)
+		})
+	}
+}
+
+func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -4754,7 +4762,6 @@ func TestAckIDList(t *testing.T) {
 	defer client.Close()
 
 	topic := fmt.Sprintf("test-ack-id-list-%v", time.Now().Nanosecond())
-	prepareMessagesForAckTest(t, client, topic)
 
 	createConsumer := func() Consumer {
 		consumer, err := client.Subscribe(ConsumerOptions{
@@ -4762,25 +4769,45 @@ func TestAckIDList(t *testing.T) {
 			SubscriptionName:               "my-sub",
 			SubscriptionInitialPosition:    SubscriptionPositionEarliest,
 			Type:                           Shared,
-			EnableBatchIndexAcknowledgment: true,
+			EnableBatchIndexAcknowledgment: enableBatchIndexAck,
 			AckWithResponse:                true,
 		})
 		assert.Nil(t, err)
 		return consumer
 	}
 	consumer := createConsumer()
+
+	sendMessages(t, client, topic, 0, 5, true)  // entry 0: [0, 1, 2, 3, 4]
+	sendMessages(t, client, topic, 5, 3, false) // entry 2: [5], 3: [6], 4: [7]
+	sendMessages(t, client, topic, 8, 2, true)  // entry 5: [8, 9]
+
 	msgs := receiveMessages(t, consumer, 10)
 	for i := 0; i < 10; i++ {
 		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msgs[i].Payload()))
 	}
-	// 0,2,3 belong to the 1st batch whose size is 5, 6 and 8 are individual messages
-	ackedIndexes := []int{0, 2, 3, 6, 8}
-	unackedIndexes := []int{1, 4, 5, 7, 9}
+	ackedIndexes := []int{0, 2, 3, 6, 8, 9}
+	unackedIndexes := []int{1, 4, 5, 7}
+	if !enableBatchIndexAck {
+		// [0, 4] is the first batch range but only partial of it is acked
+		unackedIndexes = []int{0, 1, 2, 3, 4, 5, 7}
+	}
 	msgIDs := make([]MessageID, len(ackedIndexes))
 	for i := 0; i < len(ackedIndexes); i++ {
 		msgIDs[i] = msgs[ackedIndexes[i]].ID()
 	}
-	assert.Empty(t, consumer.AckIDList(msgIDs))
+	errorMap := consumer.AckIDList(msgIDs)
+	if enableBatchIndexAck {
+		assert.Empty(t, consumer.AckIDList(msgIDs))
+	} else {
+		for _, i := range []int{0, 1, 2} {
+			msgID := msgIDs[i]
+			if value, ok := errorMap[msgID]; ok {
+				assert.Equal(t, "incomplete batch", value.Error())
+			} else {
+				assert.Fail(t, fmt.Sprintf("AckIDList should return error for message %v", msgID))
+			}
+		}
+	}
 	consumer.Close()
 
 	consumer = createConsumer()
@@ -4791,30 +4818,24 @@ func TestAckIDList(t *testing.T) {
 	}
 }
 
-// Send 10 messages to the topic, where the first 5 messages are included in the same batch
-// and the last 5 messages are sent individually.
-func prepareMessagesForAckTest(t *testing.T, client Client, topic string) {
-	ctx := context.Background()
+func sendMessages(t *testing.T, client Client, topic string, startIndex int, numMessages int, batching bool) {
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: !batching,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
 
-	sendFunc := func(disableBatching bool, startIndex int) {
-		if producer, err := client.CreateProducer(ProducerOptions{
-			Topic:           topic,
-			DisableBatching: disableBatching,
-		}); err == nil {
-			defer producer.Close()
-			for i := 0; i < 5; i++ {
-				producer.SendAsync(ctx, &ProducerMessage{
-					Payload: []byte(fmt.Sprintf("msg-%d", startIndex+i)),
-				}, func(_ MessageID, _ *ProducerMessage, _ error) {})
-			}
-			producer.Flush()
-			producer.Close()
+	ctx := context.Background()
+	for i := 0; i < numMessages; i++ {
+		msg := &ProducerMessage{Payload: []byte(fmt.Sprintf("msg-%d", startIndex+i))}
+		if batching {
+			producer.SendAsync(ctx, msg, func(_ MessageID, _ *ProducerMessage, _ error) {})
 		} else {
-			assert.Fail(t, "Failed to create producer", err)
+			producer.Send(ctx, msg)
 		}
 	}
-	sendFunc(false, 0)
-	sendFunc(true, 5)
+	producer.Flush()
 }
 
 func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message {
