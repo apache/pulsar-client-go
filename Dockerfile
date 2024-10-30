@@ -29,6 +29,8 @@ COPY --from=golang /usr/local/go /pulsar/go
 
 ENV PATH /pulsar/go/bin:$PATH
 
+RUN apk add git
+
 ### Add pulsar config
 COPY integration-tests/certs /pulsar/certs
 COPY integration-tests/tokens /pulsar/tokens
