@@ -163,6 +163,14 @@ type ClientOptions struct {
 	// Limit of client memory usage (in byte). The 64M default can guarantee a high producer throughput.
 	// Config less than 0 indicates off memory limit.
 	MemoryLimitBytes int64
+
+	// Set the properties used for topic lookup.
+	// When the broker performs topic lookup, these lookup properties will be taken into consideration in a customized
+	// load manager.
+	// Note: The lookup properties are only used in topic lookup when:
+	// The protocol is binary protocol, i.e. the service URL starts with "pulsar://" or "pulsar+ssl://"
+	// The `loadManagerClassName` config in broker is a class that implements the `ExtensibleLoadManager` interface
+	LookupProperties map[string]string
 }
 
 // Client represents a pulsar client

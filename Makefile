@@ -18,7 +18,7 @@
 #
 
 IMAGE_NAME = pulsar-client-go-test:latest
-PULSAR_VERSION ?= 3.2.2
+PULSAR_VERSION ?= 4.0.0
 PULSAR_IMAGE = apachepulsar/pulsar:$(PULSAR_VERSION)
 GO_VERSION ?= 1.22
 CONTAINER_ARCH ?= $(shell uname -m | sed s/x86_64/amd64/)

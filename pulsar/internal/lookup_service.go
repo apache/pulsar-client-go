@@ -77,18 +77,21 @@ type lookupService struct {
 	serviceNameResolver ServiceNameResolver
 	tlsEnabled          bool
 	listenerName        string
+	lookupProperties    []*pb.KeyValue
 	log                 log.Logger
 	metrics             *Metrics
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
 func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
-	tlsEnabled bool, listenerName string, logger log.Logger, metrics *Metrics) LookupService {
+	tlsEnabled bool, listenerName string,
+	lookupProperties []*pb.KeyValue, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
 		rpcClient:           rpcClient,
 		serviceNameResolver: serviceNameResolver,
 		tlsEnabled:          tlsEnabled,
 		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		lookupProperties:    lookupProperties,
 		metrics:             metrics,
 		listenerName:        listenerName,
 	}
@@ -146,6 +149,7 @@ func (ls *lookupService) Lookup(topic string) (*LookupResult, error) {
 			Topic:                  &topic,
 			Authoritative:          proto.Bool(false),
 			AdvertisedListenerName: proto.String(ls.listenerName),
+			Properties:             ls.lookupProperties,
 		})
 	if err != nil {
 		return nil, err

@@ -87,11 +87,12 @@ type rpcClient struct {
 	lookupService           LookupService
 	urlLookupServiceMapLock sync.RWMutex
 	urlLookupServiceMap     map[string]LookupService
+	lookupProperties        []*pb.KeyValue
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
-	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider) RPCClient {
+	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider, lookupProperties []*pb.KeyValue) RPCClient {
 	c := rpcClient{
 		pool:                pool,
 		requestTimeout:      requestTimeout,
@@ -101,6 +102,7 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 		tlsConfig:           tlsConfig,
 		authProvider:        authProvider,
 		urlLookupServiceMap: make(map[string]LookupService),
+		lookupProperties:    lookupProperties,
 	}
 	lookupService, err := c.NewLookupService(serviceURL)
 	if err != nil {
@@ -240,7 +242,7 @@ func (c *rpcClient) NewLookupService(url *url.URL) (LookupService, error) {
 	case "pulsar", "pulsar+ssl":
 		serviceNameResolver := NewPulsarServiceNameResolver(url)
 		return NewLookupService(c, url, serviceNameResolver,
-			c.tlsConfig != nil, c.listenerName, c.log, c.metrics), nil
+			c.tlsConfig != nil, c.listenerName, c.lookupProperties, c.log, c.metrics), nil
 	case "http", "https":
 		serviceNameResolver := NewPulsarServiceNameResolver(url)
 		httpClient, err := NewHTTPClient(url, serviceNameResolver, c.tlsConfig,
