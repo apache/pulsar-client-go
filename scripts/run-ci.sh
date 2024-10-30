@@ -22,6 +22,7 @@ set -e -x
 scripts/pulsar-test-service-start.sh
 
 export CGO_ENABLED=1
+apk update
 apk add gcc
 apk add musl - dev
 go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./...
