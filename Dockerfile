@@ -29,7 +29,7 @@ COPY --from=golang /usr/local/go /pulsar/go
 
 ENV PATH /pulsar/go/bin:$PATH
 
-RUN apk add git
+RUN apk add git gcc
 
 ### Add pulsar config
 COPY integration-tests/certs /pulsar/certs
