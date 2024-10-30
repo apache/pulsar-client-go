@@ -4755,28 +4755,13 @@ func TestAckIDList(t *testing.T) {
 }
 
 func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
-	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
-	})
+	client, err := NewClient(ClientOptions{URL: lookupURL})
 	assert.Nil(t, err)
 	defer client.Close()
 
 	topic := fmt.Sprintf("test-ack-id-list-%v", time.Now().Nanosecond())
 
-	createConsumer := func() Consumer {
-		consumer, err := client.Subscribe(ConsumerOptions{
-			Topic:                          topic,
-			SubscriptionName:               "my-sub",
-			SubscriptionInitialPosition:    SubscriptionPositionEarliest,
-			Type:                           Shared,
-			EnableBatchIndexAcknowledgment: enableBatchIndexAck,
-			AckWithResponse:                true,
-		})
-		assert.Nil(t, err)
-		return consumer
-	}
-	consumer := createConsumer()
-
+	consumer := createSharedConsumer(t, client, topic, enableBatchIndexAck)
 	sendMessages(t, client, topic, 0, 5, true)  // entry 0: [0, 1, 2, 3, 4]
 	sendMessages(t, client, topic, 5, 3, false) // entry 2: [5], 3: [6], 4: [7]
 	sendMessages(t, client, topic, 8, 2, true)  // entry 5: [8, 9]
@@ -4810,12 +4795,63 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 	}
 	consumer.Close()
 
-	consumer = createConsumer()
+	consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
 	defer consumer.Close()
 	msgs = receiveMessages(t, consumer, len(unackedIndexes))
 	for i := 0; i < len(unackedIndexes); i++ {
 		assert.Equal(t, fmt.Sprintf("msg-%d", unackedIndexes[i]), string(msgs[i].Payload()))
 	}
+}
+
+func TestAckIDListRetry(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("test-ack-id-list-retry-%v", time.Now().Nanosecond())
+	consumer := createSharedConsumer(t, client, topic, false)
+	sendMessages(t, client, topic, 0, 2, true) // entry 0: [0, 1]
+
+	msgs := receiveMessages(t, consumer, 2)
+	for i, msg := range msgs {
+		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msg.Payload()))
+	}
+	msgIDsToAck := make([]MessageID, 0)
+	for msgID, err := range consumer.AckIDList([]MessageID{msgs[0].ID()}) {
+		msgIDsToAck = append(msgIDsToAck, msgID)
+		assert.Equal(t, "incomplete batch", err.Error())
+	}
+
+	consumer.Close()
+	consumer = createSharedConsumer(t, client, topic, false)
+	// The previous acknowledgment failed so it wll receive all messages again
+	msgs = receiveMessages(t, consumer, 2)
+	for i, msg := range msgs {
+		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msg.Payload()))
+		msgIDsToAck = append(msgIDsToAck, msg.ID())
+	}
+	errorMap := consumer.AckIDList(msgIDsToAck)
+	assert.Empty(t, errorMap)
+
+	consumer.Close()
+	consumer = createSharedConsumer(t, client, topic, false)
+	defer consumer.Close()
+	sendMessages(t, client, topic, 2, 1, true) // entry 1: [2]
+	msgs = receiveMessages(t, consumer, 1)
+	assert.Equal(t, "msg-2", string(msgs[0].Payload()))
+}
+
+func createSharedConsumer(t *testing.T, client Client, topic string, enableBatchIndexAck bool) Consumer {
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                          topic,
+		SubscriptionName:               "my-sub",
+		SubscriptionInitialPosition:    SubscriptionPositionEarliest,
+		Type:                           Shared,
+		EnableBatchIndexAcknowledgment: enableBatchIndexAck,
+		AckWithResponse:                true,
+	})
+	assert.Nil(t, err)
+	return consumer
 }
 
 func sendMessages(t *testing.T, client Client, topic string, startIndex int, numMessages int, batching bool) {
