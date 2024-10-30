@@ -4703,7 +4703,7 @@ func TestLookupConsumer(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic := "my-topic"
+	topic := newTopicName()
 	ctx := context.Background()
 
 	// create consumer
