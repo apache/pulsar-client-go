@@ -29,8 +29,6 @@ COPY --from=golang /usr/local/go /pulsar/go
 
 ENV PATH /pulsar/go/bin:$PATH
 
-RUN apt-get update && apt-get install -y git gcc
-
 ### Add pulsar config
 COPY integration-tests/certs /pulsar/certs
 COPY integration-tests/tokens /pulsar/tokens
