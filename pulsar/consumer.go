@@ -309,6 +309,10 @@ type Consumer interface {
 
 	// AckIDList the consumption of a list of messages, identified by their MessageIDs
 	// Returns a map of MessageID to error, the keys are the MessageIDs that failed to be acknowledged
+	// NOTE: When EnableBatchIndexAcknowledgment is false, if a message ID represents a message in the batch,
+	// it will not be actually acknowledged by broker until all messages in that batch are acknowledged via
+	// the AckID or AckIDList method.
+	// However, in this case, no error will be returned for that message ID even if AckWithResponse is true.
 	AckIDList([]MessageID) map[MessageID]error
 
 	// AckWithTxn the consumption of a single message with a transaction

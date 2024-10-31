@@ -690,25 +690,8 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 
 func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 	errorMap := make(map[MessageID]error)
-	validMsgIDs := make([]MessageID, 0, len(msgIDs))
-
-	startTime := time.Now().UnixNano()
-	for _, msgID := range msgIDs {
-		if !checkMessageIDType(msgID) {
-			errorMap[msgID] = fmt.Errorf("invalid message id type %T", msgID)
-		} else if msgID.PartitionIdx() != pc.partitionIdx {
-			errorMap[msgID] = fmt.Errorf("inconsistent partition index %v (current: %v)",
-				msgID.PartitionIdx(), pc.partitionIdx)
-		} else if msgID.BatchIdx() >= 0 && msgID.BatchSize() > 0 &&
-			msgID.BatchIdx() >= msgID.BatchSize() {
-			errorMap[msgID] = fmt.Errorf("invalid batch index %v (size: %v)", msgID.BatchIdx(), msgID.BatchSize())
-		} else {
-			validMsgIDs = append(validMsgIDs, msgID)
-		}
-	}
-
 	if !pc.options.ackWithResponse {
-		for _, msgID := range validMsgIDs {
+		for _, msgID := range msgIDs {
 			if err := pc.ackID(msgID, false); err != nil {
 				errorMap[msgID] = err
 			}
@@ -716,54 +699,69 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 		return errorMap
 	}
 
+	chunkedMsgIDs := make([]*chunkMessageID, 0) // we need to remove them after acknowledging
 	pendingAcks := make(map[position]*bitset.BitSet)
-	for _, msgID := range validMsgIDs {
-		addMsgIDToPendingAcks(pendingAcks, msgID)
-	}
-	if !pc.options.enableBatchIndexAck {
-		incompleteBatchPositions := make([]position, 0)
-		for position, bitSet := range pendingAcks {
-			if bitSet != nil && !bitSet.None() {
-				incompleteBatchPositions = append(incompleteBatchPositions, position)
-			}
-		}
-		for _, position := range incompleteBatchPositions {
-			delete(pendingAcks, position)
-		}
 
-		completeMsgIDs := make([]MessageID, 0)
-		for _, msgID := range validMsgIDs {
-			position := position{
-				ledgerID: uint64(msgID.LedgerID()),
-				entryID:  uint64(msgID.EntryID()),
-			}
-			if _, found := pendingAcks[position]; found {
-				completeMsgIDs = append(completeMsgIDs, msgID)
-			} else {
-				errorMap[msgID] = errors.New("incomplete batch")
+	// They might be complete after the whole for loop
+	incompleteTrackingIDs := make([]*trackingMessageID, 0)
+	for _, msgID := range msgIDs {
+		if msgID.PartitionIdx() != pc.partitionIdx {
+			errorMap[msgID] = fmt.Errorf("inconsistent partition index %v (current: %v)",
+				msgID.PartitionIdx(), pc.partitionIdx)
+		} else if msgID.BatchIdx() >= 0 && msgID.BatchSize() > 0 &&
+			msgID.BatchIdx() >= msgID.BatchSize() {
+			errorMap[msgID] = fmt.Errorf("invalid batch index %v (size: %v)", msgID.BatchIdx(), msgID.BatchSize())
+		} else {
+			switch convertedMsgID := msgID.(type) {
+			case *trackingMessageID:
+				if convertedMsgID.ack() {
+					pendingAcks[newPosition(msgID)] = nil
+				} else {
+					incompleteTrackingIDs = append(incompleteTrackingIDs, convertedMsgID)
+				}
+			case *chunkMessageID:
+				for _, id := range pc.unAckChunksTracker.get(convertedMsgID) {
+					pendingAcks[newPosition(id)] = nil
+				}
+				chunkedMsgIDs = append(chunkedMsgIDs, convertedMsgID)
+			case *messageID:
+				pendingAcks[newPosition(msgID)] = nil
+			default:
+				errorMap[msgID] = fmt.Errorf("invalid message id type %T", msgID)
 			}
 		}
-		validMsgIDs = completeMsgIDs
 	}
 
-	pc.metrics.AcksCounter.Add(float64(len(validMsgIDs)))
-	pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-startTime) / 1.0e9)
+	if pc.options.enableBatchIndexAck {
+		for _, trackingID := range incompleteTrackingIDs {
+			position := newPosition(trackingID)
+			if _, found := pendingAcks[position]; !found {
+				pendingAcks[position] = trackingID.tracker.getAckBitSet()
+			}
+		}
+	}
+
 	req := &ackListRequest{
 		errCh:  make(chan error),
 		msgIDs: toMsgIDDataList(pendingAcks),
 	}
 	pc.eventsCh <- req
-
 	if err := <-req.errCh; err == nil {
-		for _, msgID := range validMsgIDs {
-			pc.options.interceptors.OnAcknowledge(pc.parentConsumer, msgID)
+		for _, id := range chunkedMsgIDs {
+			pc.unAckChunksTracker.remove(id)
+		}
+		for _, id := range msgIDs {
+			if _, ok := errorMap[id]; !ok {
+				pc.options.interceptors.OnAcknowledge(pc.parentConsumer, id)
+			}
 		}
 	} else {
-		for _, msgID := range validMsgIDs {
-			errorMap[msgID] = err
+		for _, id := range msgIDs {
+			if _, ok := errorMap[id]; !ok {
+				errorMap[id] = err
+			}
 		}
 	}
-
 	return errorMap
 }
 

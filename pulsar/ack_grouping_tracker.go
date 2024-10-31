@@ -115,6 +115,10 @@ type position struct {
 	entryID  uint64
 }
 
+func newPosition(msgID MessageID) position {
+	return position{ledgerID: uint64(msgID.LedgerID()), entryID: uint64(msgID.EntryID())}
+}
+
 type timedAckGroupingTracker struct {
 	sync.RWMutex
 
@@ -144,7 +148,7 @@ func (t *timedAckGroupingTracker) add(id MessageID) {
 }
 
 func addMsgIDToPendingAcks(pendingAcks map[position]*bitset.BitSet, id MessageID) {
-	key := position{ledgerID: uint64(id.LedgerID()), entryID: uint64(id.EntryID())}
+	key := newPosition(id)
 	batchIdx := id.BatchIdx()
 	batchSize := id.BatchSize()
 
@@ -201,7 +205,7 @@ func (t *timedAckGroupingTracker) isDuplicate(id MessageID) bool {
 	if messageIDCompare(t.lastCumulativeAck, id) >= 0 {
 		return true
 	}
-	key := position{uint64(id.LedgerID()), uint64(id.EntryID())}
+	key := newPosition(id)
 	if bs, found := t.pendingAcks[key]; found {
 		if bs == nil {
 			return true
