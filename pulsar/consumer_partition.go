@@ -187,7 +187,7 @@ type partitionConsumer struct {
 	redirectedClusterURI string
 	backoffPolicyFunc    func() backoff.Policy
 
-	dispatcherSeekingControlCh chan bool
+	dispatcherSeekingControlCh chan struct{}
 	isSeeking                  atomic.Bool
 }
 
@@ -195,7 +195,7 @@ type partitionConsumer struct {
 // This method will be called When the parent consumer performs the seek operation.
 // After the seek operation, the dispatcher will continue dispatching messages automatically.
 func (pc *partitionConsumer) pauseDispatchMessage() {
-	pc.dispatcherSeekingControlCh <- true
+	pc.dispatcherSeekingControlCh <- struct{}{}
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
@@ -361,7 +361,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		metrics:                    metrics,
 		schemaInfoCache:            newSchemaInfoCache(client, options.topic),
 		backoffPolicyFunc:          boFunc,
-		dispatcherSeekingControlCh: make(chan bool),
+		dispatcherSeekingControlCh: make(chan struct{}),
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
@@ -1496,11 +1496,11 @@ func (pc *partitionConsumer) dispatcher() {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
 			}
 
-		case val, ok := <-pc.dispatcherSeekingControlCh:
+		case _, ok := <-pc.dispatcherSeekingControlCh:
 			if !ok {
 				return
 			}
-			pc.isSeeking.Store(val)
+			pc.isSeeking.Store(true)
 
 		case msg, ok := <-queueCh:
 			if !ok {
