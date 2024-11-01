@@ -79,7 +79,7 @@ func (c *mockConsumer) AckID(_ pulsar.MessageID) error {
 	return nil
 }
 
-func (c *mockConsumer) AckIDList(_ []pulsar.MessageID) map[pulsar.MessageID]error {
+func (c *mockConsumer) AckIDList(_ []pulsar.MessageID) error {
 	return nil
 }
 

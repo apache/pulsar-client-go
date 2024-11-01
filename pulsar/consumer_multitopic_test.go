@@ -286,19 +286,36 @@ func runMultiTopicAckIDList(t *testing.T, regex bool) {
 		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(topicToMsgs[topic2][i].Payload()))
 	}
 
-	ackResult := consumer.AckIDList([]MessageID{
+	assert.Nil(t, consumer.AckIDList([]MessageID{
 		topicToMsgs[topic1][0].ID(),
 		topicToMsgs[topic1][2].ID(),
 		topicToMsgs[topic2][1].ID(),
-	})
-	assert.Empty(t, ackResult)
+	}))
 
 	consumer.Close()
 	consumer = createConsumer()
-	defer consumer.Close()
 	topicToMsgs = receiveMessageMap(consumer, 2)
 	assert.Equal(t, 1, len(topicToMsgs[topic1]))
 	assert.Equal(t, "msg-1", string(topicToMsgs[topic1][0].Payload()))
 	assert.Equal(t, 1, len(topicToMsgs[topic2]))
 	assert.Equal(t, "msg-0", string(topicToMsgs[topic2][0].Payload()))
+	consumer.Close()
+
+	msgID0 := topicToMsgs[topic1][0].ID()
+	err = consumer.AckIDList([]MessageID{msgID0})
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "consumer state is closed")
+
+	msgID1 := topicToMsgs[topic2][0].ID()
+	msgIDs := []MessageID{msgID0, msgID1}
+	if ackError, ok := consumer.AckIDList(msgIDs).(AckError); ok {
+		assert.Equal(t, 2, len(ackError))
+		for _, msgID := range msgIDs {
+			assert.Equal(t, "consumer state is closed", ackError[msgID].Error())
+			assert.True(t, strings.Contains(ackError.Error(), "consumer state is closed"))
+			assert.True(t, strings.Contains(ackError.Error(), msgID.String()))
+		}
+	} else {
+		assert.Fail(t, "AckIDList should return AckError")
+	}
 }

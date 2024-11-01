@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
@@ -266,6 +267,13 @@ type ConsumerOptions struct {
 	startMessageID *trackingMessageID
 }
 
+// This error could only be returned when calling `AckIDList` on a consumer that subscribes multiple topics
+type AckError map[MessageID]error
+
+func (e AckError) Error() string {
+	return fmt.Sprintf("%v", map[MessageID]error(e))
+}
+
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
 type Consumer interface {
 	// Subscription get a subscription for the consumer
@@ -305,15 +313,25 @@ type Consumer interface {
 	Ack(Message) error
 
 	// AckID the consumption of a single message, identified by its MessageID
+	// When `EnableBatchIndexAcknowledgment` is false, if a message ID represents a message in the batch,
+	// it will not be actually acknowledged by broker until all messages in that batch are acknowledged via
+	// `AckID` or `AckIDList`.
 	AckID(MessageID) error
 
 	// AckIDList the consumption of a list of messages, identified by their MessageIDs
-	// Returns a map of MessageID to error, the keys are the MessageIDs that failed to be acknowledged
-	// NOTE: When EnableBatchIndexAcknowledgment is false, if a message ID represents a message in the batch,
-	// it will not be actually acknowledged by broker until all messages in that batch are acknowledged via
-	// the AckID or AckIDList method.
-	// However, in this case, no error will be returned for that message ID even if AckWithResponse is true.
-	AckIDList([]MessageID) map[MessageID]error
+	//
+	// This method should be used when `AckWithResponse` is true. Otherwise, it will be equivalent with calling
+	// `AckID` on each message ID in the list.
+	//
+	// If there are some invalid message IDs in the list, this method won't return an error for them, only error logs
+	// will be printed because retrying acknowledging them will not make a difference. Message IDs retrieved from
+	// Message objects are always valid.
+	//
+	// If the consumer has subscribed multiple topics or partitions, since each topic is associated with an ACK request,
+	// `AckError` will be returned if there are errors because some message IDs might succeed while others might fail.
+	// If you're sure that only 1 message is subscribed, all message IDs should be re-acknowledged when it returns an
+	// error. Otherwise, you should cast the error to `AckError` and handle it accordingly.
+	AckIDList([]MessageID) error
 
 	// AckWithTxn the consumption of a single message with a transaction
 	AckWithTxn(Message, Transaction) error

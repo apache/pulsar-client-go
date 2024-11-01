@@ -171,7 +171,7 @@ func (z *zeroQueueConsumer) AckID(msgID MessageID) error {
 	return z.pc.AckID(msgID)
 }
 
-func (z *zeroQueueConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
+func (z *zeroQueueConsumer) AckIDList(msgIDs []MessageID) error {
 	return z.pc.AckIDList(msgIDs)
 }
 

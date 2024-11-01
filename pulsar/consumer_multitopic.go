@@ -167,8 +167,8 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
-func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
-	return ackIDListFromMultiTopics(msgIDs, func(msgID MessageID) (acker, error) {
+func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) error {
+	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
 		if !checkMessageIDType(msgID) {
 			return nil, errors.New("invalid message id type %T")
 		}
@@ -179,23 +179,32 @@ func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 	})
 }
 
-func ackIDListFromMultiTopics(msgIDs []MessageID,
-	findConsumer func(MessageID) (acker, error)) map[MessageID]error {
-	errorMap := make(map[MessageID]error)
+func ackIDListFromMultiTopics(log log.Logger, msgIDs []MessageID, findConsumer func(MessageID) (acker, error)) error {
 	consumerToMsgIDs := make(map[acker][]MessageID)
 	for _, msgID := range msgIDs {
 		if consumer, err := findConsumer(msgID); err == nil {
 			consumerToMsgIDs[consumer] = append(consumerToMsgIDs[consumer], msgID)
 		} else {
-			errorMap[msgID] = err
+			log.Warnf("Can not find consumer for %v", msgID)
 		}
 	}
+
+	errorMap := make(map[MessageID]error)
 	for consumer, ids := range consumerToMsgIDs {
-		for k, v := range consumer.AckIDList(ids) {
-			errorMap[k] = v
+		if err := consumer.AckIDList(ids); err != nil {
+			for _, id := range ids {
+				errorMap[id] = err
+			}
 		}
 	}
-	return errorMap
+	if len(errorMap) == 0 {
+		return nil
+	} else if len(consumerToMsgIDs) == 1 {
+		for _, err := range errorMap {
+			return err
+		}
+	}
+	return AckError(errorMap)
 }
 
 // AckWithTxn the consumption of a single message with a transaction

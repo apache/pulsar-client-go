@@ -688,15 +688,14 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 	return pc.ackID(msgID, false)
 }
 
-func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
-	errorMap := make(map[MessageID]error)
+func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 	if !pc.options.ackWithResponse {
 		for _, msgID := range msgIDs {
-			if err := pc.ackID(msgID, false); err != nil {
-				errorMap[msgID] = err
+			if err := pc.AckID(msgID); err != nil {
+				return err
 			}
 		}
-		return errorMap
+		return nil
 	}
 
 	chunkedMsgIDs := make([]*chunkMessageID, 0) // we need to remove them after acknowledging
@@ -706,11 +705,10 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 	incompleteTrackingIDs := make([]*trackingMessageID, 0)
 	for _, msgID := range msgIDs {
 		if msgID.PartitionIdx() != pc.partitionIdx {
-			errorMap[msgID] = fmt.Errorf("inconsistent partition index %v (current: %v)",
-				msgID.PartitionIdx(), pc.partitionIdx)
+			pc.log.Errorf("%v inconsistent partition index %v (current: %v)", msgID, msgID.PartitionIdx(), pc.partitionIdx)
 		} else if msgID.BatchIdx() >= 0 && msgID.BatchSize() > 0 &&
 			msgID.BatchIdx() >= msgID.BatchSize() {
-			errorMap[msgID] = fmt.Errorf("invalid batch index %v (size: %v)", msgID.BatchIdx(), msgID.BatchSize())
+			pc.log.Errorf("%v invalid batch index %v (size: %v)", msgID, msgID.BatchIdx(), msgID.BatchSize())
 		} else {
 			switch convertedMsgID := msgID.(type) {
 			case *trackingMessageID:
@@ -727,7 +725,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 			case *messageID:
 				pendingAcks[newPosition(msgID)] = nil
 			default:
-				errorMap[msgID] = fmt.Errorf("invalid message id type %T", msgID)
+				pc.log.Errorf("invalid message id type %T: %v", msgID, msgID)
 			}
 		}
 	}
@@ -741,28 +739,26 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
 		}
 	}
 
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return errors.New("consumer state is closed")
+	}
+
 	req := &ackListRequest{
 		errCh:  make(chan error),
 		msgIDs: toMsgIDDataList(pendingAcks),
 	}
 	pc.eventsCh <- req
-	if err := <-req.errCh; err == nil {
-		for _, id := range chunkedMsgIDs {
-			pc.unAckChunksTracker.remove(id)
-		}
-		for _, id := range msgIDs {
-			if _, ok := errorMap[id]; !ok {
-				pc.options.interceptors.OnAcknowledge(pc.parentConsumer, id)
-			}
-		}
-	} else {
-		for _, id := range msgIDs {
-			if _, ok := errorMap[id]; !ok {
-				errorMap[id] = err
-			}
-		}
+	if err := <-req.errCh; err != nil {
+		return err
 	}
-	return errorMap
+	for _, id := range chunkedMsgIDs {
+		pc.unAckChunksTracker.remove(id)
+	}
+	for _, id := range msgIDs {
+		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, id)
+	}
+	return nil
 }
 
 func (pc *partitionConsumer) AckIDCumulative(msgID MessageID) error {

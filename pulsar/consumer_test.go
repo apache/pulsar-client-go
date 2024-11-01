@@ -4783,7 +4783,7 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 	for i := 0; i < len(ackedIndexes); i++ {
 		msgIDs[i] = msgs[ackedIndexes[i]].ID()
 	}
-	assert.Empty(t, consumer.AckIDList(msgIDs))
+	assert.Nil(t, consumer.AckIDList(msgIDs))
 	consumer.Close()
 
 	consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
@@ -4797,7 +4797,7 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 		for i := 0; i < 5; i++ {
 			msgIDs = append(msgIDs, originalMsgIDs[i])
 		}
-		consumer.AckIDList(msgIDs)
+		assert.Nil(t, consumer.AckIDList(msgIDs))
 		consumer.Close()
 
 		consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
@@ -4806,6 +4806,10 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 		assert.Equal(t, "msg-7", string(msgs[1].Payload()))
 		consumer.Close()
 	}
+	consumer.Close()
+	err = consumer.AckIDList(msgIDs)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.Error(), "consumer state is closed")
 }
 
 func createSharedConsumer(t *testing.T, client Client, topic string, enableBatchIndexAck bool) Consumer {

@@ -215,8 +215,8 @@ func (c *regexConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
-func (c *regexConsumer) AckIDList(msgIDs []MessageID) map[MessageID]error {
-	return ackIDListFromMultiTopics(msgIDs, func(msgID MessageID) (acker, error) {
+func (c *regexConsumer) AckIDList(msgIDs []MessageID) error {
+	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
 		if !checkMessageIDType(msgID) {
 			return nil, fmt.Errorf("invalid message id type %T", msgID)
 		}
