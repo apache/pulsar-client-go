@@ -1463,6 +1463,8 @@ func (pc *partitionConsumer) dispatcher() {
 				}
 				pc.metrics.PrefetchedMessages.Dec()
 				pc.metrics.PrefetchedBytes.Sub(float64(len(queueMsg.payLoad)))
+			} else {
+				pc.log.Debug("skip dispatching messages when seeking")
 			}
 		} else {
 			queueCh = pc.queueCh
@@ -1500,6 +1502,7 @@ func (pc *partitionConsumer) dispatcher() {
 			if !ok {
 				return
 			}
+			pc.log.Debug("received dispatcherSeekingControlCh, set isSeek to true")
 			pc.isSeeking.Store(true)
 
 		case msg, ok := <-queueCh:
@@ -1693,8 +1696,9 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 }
 
 func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {
-	pc.isSeeking.Store(false)
-
+	if pc.isSeeking.CompareAndSwap(true, false) {
+		pc.log.Debug("seek operation triggers reconnection, and reset isSeeking")
+	}
 	var (
 		maxRetry                                    int
 		delayReconnectTime, totalDelayReconnectTime time.Duration
