@@ -48,7 +48,7 @@ services:
     networks:
       - pulsar
     environment:
-      - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=516m -Dpicocli.trace=DEBUG
+      - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
     command: >
       bash -c "bin/pulsar initialize-cluster-metadata \
       --cluster cluster-a \
