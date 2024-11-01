@@ -320,7 +320,6 @@ func runMultiTopicAckIDList(t *testing.T, regex bool) {
 			} else if topic == topic2 {
 				assert.Same(t, topicAckError.MsgIDs[0], msgID1)
 				assert.True(t, strings.Contains(errStr, msgID1.String()))
-			} else if topic == topic2 {
 			} else {
 				assert.Fail(t, fmt.Sprintf("unexpected topic %v", topic))
 			}
