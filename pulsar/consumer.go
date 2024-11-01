@@ -20,6 +20,7 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
@@ -267,12 +268,22 @@ type ConsumerOptions struct {
 	startMessageID *trackingMessageID
 }
 
+type TopicAckError struct {
+	Err    error
+	MsgIDs []MessageID
+}
+
 // This error could only be returned when calling `AckIDList` on a consumer that subscribes multiple topics
-// The key in the map represents the error for the corresponding message ID list.
-type AckError map[error][]MessageID
+// The key is the topic name, and the value is the ACK error and the failed message ID in this topic.
+type AckError map[string]*TopicAckError
 
 func (e AckError) Error() string {
-	return fmt.Sprintf("%v", map[error][]MessageID(e))
+	builder := strings.Builder{}
+	for topic, topicAckError := range e {
+		builder.WriteString(fmt.Sprintf("topic: %s, error: %s, messageIDs: %v\n",
+			topic, topicAckError.Err, topicAckError.MsgIDs))
+	}
+	return builder.String()
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

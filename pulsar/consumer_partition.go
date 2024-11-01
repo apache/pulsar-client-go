@@ -187,6 +187,10 @@ type partitionConsumer struct {
 	backoffPolicyFunc    func() backoff.Policy
 }
 
+func (pc *partitionConsumer) Topic() string {
+	return pc.topic
+}
+
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
 	listener := pc.options.consumerEventListener
 	if listener == nil {

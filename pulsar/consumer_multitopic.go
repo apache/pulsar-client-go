@@ -189,20 +189,23 @@ func ackIDListFromMultiTopics(log log.Logger, msgIDs []MessageID, findConsumer f
 		}
 	}
 
-	errorMap := make(map[error][]MessageID)
+	ackError := make(map[string]*TopicAckError)
 	for consumer, ids := range consumerToMsgIDs {
 		if err := consumer.AckIDList(ids); err != nil {
-			errorMap[err] = ids
+			ackError[consumer.Topic()] = &TopicAckError{
+				Err:    err,
+				MsgIDs: ids,
+			}
 		}
 	}
-	if len(errorMap) == 0 {
+	if len(ackError) == 0 {
 		return nil
-	} else if len(errorMap) == 1 {
-		for err := range errorMap {
-			return err
+	} else if len(ackError) == 1 {
+		for _, topicAckError := range ackError {
+			return topicAckError.Err
 		}
 	}
-	return AckError(errorMap)
+	return AckError(ackError)
 }
 
 // AckWithTxn the consumption of a single message with a transaction
