@@ -329,8 +329,8 @@ type Consumer interface {
 	//
 	// If the consumer has subscribed multiple topics or partitions, since each topic is associated with an ACK request,
 	// `AckError` will be returned if there are errors because some message IDs might succeed while others might fail.
-	// If you're sure that only 1 message is subscribed, all message IDs should be re-acknowledged when it returns an
-	// error. Otherwise, you should cast the error to `AckError` and handle it accordingly.
+	// If you're sure that only 1 message is subscribed, you should treat all message IDs as failed when it returns an
+	// error. Otherwise, you should cast the error to `AckError` and check the error for each message ID.
 	AckIDList([]MessageID) error
 
 	// AckWithTxn the consumption of a single message with a transaction
