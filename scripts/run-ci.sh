@@ -21,6 +21,7 @@ set -e -x
 
 scripts/pulsar-test-service-start.sh
 
+export CGO_ENABLED=1
 go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./...
 go tool cover -html=/tmp/coverage -o coverage.html
 
