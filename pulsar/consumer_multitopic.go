@@ -189,18 +189,16 @@ func ackIDListFromMultiTopics(log log.Logger, msgIDs []MessageID, findConsumer f
 		}
 	}
 
-	errorMap := make(map[MessageID]error)
+	errorMap := make(map[error][]MessageID)
 	for consumer, ids := range consumerToMsgIDs {
 		if err := consumer.AckIDList(ids); err != nil {
-			for _, id := range ids {
-				errorMap[id] = err
-			}
+			errorMap[err] = ids
 		}
 	}
 	if len(errorMap) == 0 {
 		return nil
-	} else if len(consumerToMsgIDs) == 1 {
-		for _, err := range errorMap {
+	} else if len(errorMap) == 1 {
+		for err := range errorMap {
 			return err
 		}
 	}

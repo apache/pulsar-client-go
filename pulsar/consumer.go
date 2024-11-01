@@ -268,10 +268,11 @@ type ConsumerOptions struct {
 }
 
 // This error could only be returned when calling `AckIDList` on a consumer that subscribes multiple topics
-type AckError map[MessageID]error
+// The key in the map represents the error for the corresponding message ID list.
+type AckError map[error][]MessageID
 
 func (e AckError) Error() string {
-	return fmt.Sprintf("%v", map[MessageID]error(e))
+	return fmt.Sprintf("%v", map[error][]MessageID(e))
 }
 
 // Consumer is an interface that abstracts behavior of Pulsar's consumer

@@ -307,13 +307,14 @@ func runMultiTopicAckIDList(t *testing.T, regex bool) {
 	assert.Equal(t, err.Error(), "consumer state is closed")
 
 	msgID1 := topicToMsgs[topic2][0].ID()
-	msgIDs := []MessageID{msgID0, msgID1}
-	if ackError, ok := consumer.AckIDList(msgIDs).(AckError); ok {
+	if ackError, ok := consumer.AckIDList([]MessageID{msgID0, msgID1}).(AckError); ok {
 		assert.Equal(t, 2, len(ackError))
-		for _, msgID := range msgIDs {
-			assert.Equal(t, "consumer state is closed", ackError[msgID].Error())
-			assert.True(t, strings.Contains(ackError.Error(), "consumer state is closed"))
-			assert.True(t, strings.Contains(ackError.Error(), msgID.String()))
+		for err, ids := range ackError {
+			assert.Equal(t, "consumer state is closed", err.Error())
+			assert.Equal(t, 1, len(ids))
+			if ids[0] != msgID0 && ids[0] != msgID1 {
+				assert.Fail(t, fmt.Sprintf("unexpected message id %v", ids[0]))
+			}
 		}
 	} else {
 		assert.Fail(t, "AckIDList should return AckError")
