@@ -52,12 +52,12 @@ services:
     environment:
       - PULSAR_MEM=-Xms128m -Xmx128m -XX:MaxDirectMemorySize=56m
     command: >
-      bin/pulsar initialize-cluster-metadata \
-               --cluster cluster-green \
-               --zookeeper green-zookeeper:2181 \
-               --configuration-store green-zookeeper:2181 \
-               --web-service-url http://green-broker-1:8080 \
-               --broker-service-url pulsar://green-broker-1:6650
+      bash -c "bin/pulsar initialize-cluster-metadata \
+      --cluster cluster-green \
+      --zookeeper green-zookeeper:2181 \
+      --configuration-store green-zookeeper:2181 \
+      --web-service-url http://green-broker-1:8080 \
+      --broker-service-url pulsar://green-broker-1:6650"
     depends_on:
       green-zookeeper:
         condition: service_healthy
