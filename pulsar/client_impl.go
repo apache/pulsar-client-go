@@ -172,7 +172,7 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger, metrics,
-		options.ListenerName, tlsConfig, authProvider)
+		options.ListenerName, tlsConfig, authProvider, toKeyValues(options.LookupProperties))
 
 	c.lookupService = c.rpcClient.LookupService("")
 
