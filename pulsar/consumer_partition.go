@@ -702,7 +702,6 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 	pendingAcks := make(map[position]*bitset.BitSet)
 
 	// They might be complete after the whole for loop
-	incompleteTrackingIDs := make([]*trackingMessageID, 0)
 	for _, msgID := range msgIDs {
 		if msgID.PartitionIdx() != pc.partitionIdx {
 			pc.log.Errorf("%v inconsistent partition index %v (current: %v)", msgID, msgID.PartitionIdx(), pc.partitionIdx)
@@ -712,10 +711,11 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 		} else {
 			switch convertedMsgID := msgID.(type) {
 			case *trackingMessageID:
+				position := newPosition(msgID)
 				if convertedMsgID.ack() {
-					pendingAcks[newPosition(msgID)] = nil
-				} else {
-					incompleteTrackingIDs = append(incompleteTrackingIDs, convertedMsgID)
+					pendingAcks[position] = nil
+				} else if pc.options.enableBatchIndexAck {
+					pendingAcks[position] = convertedMsgID.tracker.getAckBitSet()
 				}
 			case *chunkMessageID:
 				for _, id := range pc.unAckChunksTracker.get(convertedMsgID) {
@@ -726,15 +726,6 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 				pendingAcks[newPosition(msgID)] = nil
 			default:
 				pc.log.Errorf("invalid message id type %T: %v", msgID, msgID)
-			}
-		}
-	}
-
-	if pc.options.enableBatchIndexAck {
-		for _, trackingID := range incompleteTrackingIDs {
-			position := newPosition(trackingID)
-			if _, found := pendingAcks[position]; !found {
-				pendingAcks[position] = trackingID.tracker.getAckBitSet()
 			}
 		}
 	}

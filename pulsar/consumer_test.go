@@ -4827,8 +4827,11 @@ func createSharedConsumer(t *testing.T, client Client, topic string, enableBatch
 
 func sendMessages(t *testing.T, client Client, topic string, startIndex int, numMessages int, batching bool) {
 	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:           topic,
-		DisableBatching: !batching,
+		Topic:                   topic,
+		DisableBatching:         !batching,
+		BatchingMaxMessages:     uint(numMessages),
+		BatchingMaxSize:         1024 * 1024 * 10,
+		BatchingMaxPublishDelay: 1 * time.Hour,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -4837,12 +4840,18 @@ func sendMessages(t *testing.T, client Client, topic string, startIndex int, num
 	for i := 0; i < numMessages; i++ {
 		msg := &ProducerMessage{Payload: []byte(fmt.Sprintf("msg-%d", startIndex+i))}
 		if batching {
-			producer.SendAsync(ctx, msg, func(_ MessageID, _ *ProducerMessage, _ error) {})
+			producer.SendAsync(ctx, msg, func(_ MessageID, _ *ProducerMessage, err error) {
+				if err != nil {
+					t.Logf("Failed to send message: %v", err)
+				}
+			})
 		} else {
-			producer.Send(ctx, msg)
+			if _, err := producer.Send(ctx, msg); err != nil {
+				assert.Fail(t, "Failed to send message: %v", err)
+			}
 		}
 	}
-	producer.Flush()
+	assert.Nil(t, producer.Flush())
 }
 
 func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message {
@@ -4851,10 +4860,9 @@ func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message
 	msgs := make([]Message, 0)
 	for i := 0; i < numMessages; i++ {
 		if msg, err := consumer.Receive(ctx); err == nil {
-			fmt.Println("Received message: ", string(msg.Payload()))
 			msgs = append(msgs, msg)
 		} else {
-			fmt.Printf("Failed to receive message: %v", err)
+			t.Logf("Failed to receive message: %v", err)
 			break
 		}
 	}
