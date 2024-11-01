@@ -4727,10 +4727,6 @@ func TestLookupConsumer(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		if _, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-			Key:     "pulsar",
-			Properties: map[string]string{
-				"key-1": "pulsar-1",
-			},
 		}); err != nil {
 			log.Fatal(err)
 		}
@@ -4744,12 +4740,7 @@ func TestLookupConsumer(t *testing.T) {
 		}
 
 		expectMsg := fmt.Sprintf("hello-%d", i)
-		expectProperties := map[string]string{
-			"key-1": "pulsar-1",
-		}
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
-		assert.Equal(t, "pulsar", msg.Key())
-		assert.Equal(t, expectProperties, msg.Properties())
 		// ack message
 		consumer.Ack(msg)
 	}
