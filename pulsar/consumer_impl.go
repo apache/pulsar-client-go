@@ -712,33 +712,35 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return err
 	}
 
-	if err := c.consumers[msgID.PartitionIdx()].Seek(msgID); err != nil {
-		return err
-	}
-
+	consumer := c.consumers[msgID.PartitionIdx()]
+	consumer.pauseDispatchMessage()
 	// clear messageCh
 	for len(c.messageCh) > 0 {
 		<-c.messageCh
 	}
 
-	return nil
+	return consumer.Seek(msgID)
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
 	c.Lock()
 	defer c.Unlock()
 	var errs error
+
+	for _, cons := range c.consumers {
+		cons.pauseDispatchMessage()
+	}
+	// clear messageCh
+	for len(c.messageCh) > 0 {
+		<-c.messageCh
+	}
+
 	// run SeekByTime on every partition of topic
 	for _, cons := range c.consumers {
 		if err := cons.SeekByTime(time); err != nil {
 			msg := fmt.Sprintf("unable to SeekByTime for topic=%s subscription=%s", c.topic, c.Subscription())
 			errs = pkgerrors.Wrap(newError(SeekFailed, err.Error()), msg)
 		}
-	}
-
-	// clear messageCh
-	for len(c.messageCh) > 0 {
-		<-c.messageCh
 	}
 
 	return errs
