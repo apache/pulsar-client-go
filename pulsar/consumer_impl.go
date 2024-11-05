@@ -48,7 +48,6 @@ type acker interface {
 	AckIDWithResponseCumulative(msgID MessageID) error
 	NackID(id MessageID)
 	NackMsg(msg Message)
-	Topic() string
 }
 
 type consumer struct {
