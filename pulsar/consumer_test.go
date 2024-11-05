@@ -4809,7 +4809,15 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 	consumer.Close()
 	err = consumer.AckIDList(msgIDs)
 	assert.NotNil(t, err)
-	assert.Equal(t, err.Error(), "consumer state is closed")
+	if ackError := err.(AckError); ackError != nil {
+		assert.Equal(t, len(msgIDs), len(ackError))
+		for _, id := range msgIDs {
+			assert.Contains(t, ackError, id)
+			assert.Equal(t, "consumer state is closed", ackError[id].Error())
+		}
+	} else {
+		assert.Fail(t, "AckIDList should return AckError")
+	}
 }
 
 func createSharedConsumer(t *testing.T, client Client, topic string, enableBatchIndexAck bool) Consumer {

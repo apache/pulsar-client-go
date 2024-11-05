@@ -170,7 +170,7 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) error {
 	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
 		if !checkMessageIDType(msgID) {
-			return nil, errors.New("invalid message id type %T")
+			return nil, fmt.Errorf("invalid message id type %T", msgID)
 		}
 		if mid := toTrackingMessageID(msgID); mid != nil && mid.consumer != nil {
 			return mid.consumer, nil
@@ -189,23 +189,25 @@ func ackIDListFromMultiTopics(log log.Logger, msgIDs []MessageID, findConsumer f
 		}
 	}
 
-	ackError := make(map[string]*TopicAckError)
+	ackError := AckError{}
 	for consumer, ids := range consumerToMsgIDs {
 		if err := consumer.AckIDList(ids); err != nil {
-			ackError[consumer.Topic()] = &TopicAckError{
-				Err:    err,
-				MsgIDs: ids,
+			if topicAckError := err.(AckError); topicAckError != nil {
+				for id, err := range topicAckError {
+					ackError[id] = err
+				}
+			} else {
+				// It should not reach here
+				for _, id := range ids {
+					ackError[id] = err
+				}
 			}
 		}
 	}
 	if len(ackError) == 0 {
 		return nil
-	} else if len(ackError) == 1 {
-		for _, topicAckError := range ackError {
-			return topicAckError.Err
-		}
 	}
-	return AckError(ackError)
+	return ackError
 }
 
 // AckWithTxn the consumption of a single message with a transaction

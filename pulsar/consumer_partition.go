@@ -704,6 +704,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 
 	chunkedMsgIDs := make([]*chunkMessageID, 0) // we need to remove them after acknowledging
 	pendingAcks := make(map[position]*bitset.BitSet)
+	validMsgIDs := make([]MessageID, 0, len(msgIDs))
 
 	// They might be complete after the whole for loop
 	for _, msgID := range msgIDs {
@@ -713,6 +714,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 			msgID.BatchIdx() >= msgID.BatchSize() {
 			pc.log.Errorf("%v invalid batch index %v (size: %v)", msgID, msgID.BatchIdx(), msgID.BatchSize())
 		} else {
+			valid := true
 			switch convertedMsgID := msgID.(type) {
 			case *trackingMessageID:
 				position := newPosition(msgID)
@@ -730,13 +732,17 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 				pendingAcks[newPosition(msgID)] = nil
 			default:
 				pc.log.Errorf("invalid message id type %T: %v", msgID, msgID)
+				valid = false
+			}
+			if valid {
+				validMsgIDs = append(validMsgIDs, msgID)
 			}
 		}
 	}
 
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
-		return errors.New("consumer state is closed")
+		return toAckError(map[error][]MessageID{errors.New("consumer state is closed"): validMsgIDs})
 	}
 
 	req := &ackListRequest{
@@ -745,7 +751,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 	}
 	pc.eventsCh <- req
 	if err := <-req.errCh; err != nil {
-		return err
+		return toAckError(map[error][]MessageID{err: validMsgIDs})
 	}
 	for _, id := range chunkedMsgIDs {
 		pc.unAckChunksTracker.remove(id)
@@ -754,6 +760,16 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, id)
 	}
 	return nil
+}
+
+func toAckError(errorMap map[error][]MessageID) AckError {
+	e := AckError{}
+	for err, ids := range errorMap {
+		for _, id := range ids {
+			e[id] = err
+		}
+	}
+	return e
 }
 
 func (pc *partitionConsumer) AckIDCumulative(msgID MessageID) error {

@@ -268,20 +268,19 @@ type ConsumerOptions struct {
 	startMessageID *trackingMessageID
 }
 
-type TopicAckError struct {
-	Err    error
-	MsgIDs []MessageID
-}
-
-// This error could only be returned when calling `AckIDList` on a consumer that subscribes multiple topics
-// The key is the topic name, and the value is the ACK error and the failed message ID in this topic.
-type AckError map[string]*TopicAckError
+// This error is returned when `AckIDList` failed and `AckWithResponse` is true.
+// It only contains the valid message IDs that failed to be acknowledged in the `AckIDList` call.
+// For those invalid message IDs, users should ignore them and not acknowledge them again.
+type AckError map[MessageID]error
 
 func (e AckError) Error() string {
 	builder := strings.Builder{}
-	for topic, topicAckError := range e {
-		builder.WriteString(fmt.Sprintf("topic: %s, error: %s, messageIDs: %v\n",
-			topic, topicAckError.Err, topicAckError.MsgIDs))
+	errorMap := make(map[string][]MessageID)
+	for id, err := range e {
+		errorMap[err.Error()] = append(errorMap[err.Error()], id)
+	}
+	for err, msgIDs := range errorMap {
+		builder.WriteString(fmt.Sprintf("error: %s, failed message IDs: %v\n", err, msgIDs))
 	}
 	return builder.String()
 }
@@ -335,14 +334,8 @@ type Consumer interface {
 	// This method should be used when `AckWithResponse` is true. Otherwise, it will be equivalent with calling
 	// `AckID` on each message ID in the list.
 	//
-	// If there are some invalid message IDs in the list, this method won't return an error for them, only error logs
-	// will be printed because retrying acknowledging them will not make a difference. Message IDs retrieved from
-	// Message objects are always valid.
-	//
-	// If the consumer has subscribed multiple topics or partitions, since each topic is associated with an ACK request,
-	// `AckError` will be returned if there are errors because some message IDs might succeed while others might fail.
-	// If you're sure that only 1 message is subscribed, you should treat all message IDs as failed when it returns an
-	// error. Otherwise, you should cast the error to `AckError` and check the error for each message ID.
+	// When `AckWithResponse` is true, the returned error could be an `AckError` which contains the failed message ID
+	// and the corresponding error.
 	AckIDList([]MessageID) error
 
 	// AckWithTxn the consumption of a single message with a transaction
