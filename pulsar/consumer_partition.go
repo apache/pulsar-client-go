@@ -198,6 +198,10 @@ func (pc *partitionConsumer) pauseDispatchMessage() {
 	pc.dispatcherSeekingControlCh <- struct{}{}
 }
 
+func (pc *partitionConsumer) Topic() string {
+	return pc.topic
+}
+
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
 	listener := pc.options.consumerEventListener
 	if listener == nil {
@@ -375,7 +379,12 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.ackGroupingTracker = newAckGroupingTracker(options.ackGroupingOptions,
 		func(id MessageID) { pc.sendIndividualAck(id) },
 		func(id MessageID) { pc.sendCumulativeAck(id) },
-		func(ids []*pb.MessageIdData) { pc.eventsCh <- ids })
+		func(ids []*pb.MessageIdData) {
+			pc.eventsCh <- &ackListRequest{
+				errCh:  nil, // ignore the error
+				msgIDs: ids,
+			}
+		})
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
@@ -693,6 +702,86 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 		return fmt.Errorf("invalid message id type %T", msgID)
 	}
 	return pc.ackID(msgID, false)
+}
+
+func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
+	if !pc.options.ackWithResponse {
+		for _, msgID := range msgIDs {
+			if err := pc.AckID(msgID); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+
+	chunkedMsgIDs := make([]*chunkMessageID, 0) // we need to remove them after acknowledging
+	pendingAcks := make(map[position]*bitset.BitSet)
+	validMsgIDs := make([]MessageID, 0, len(msgIDs))
+
+	// They might be complete after the whole for loop
+	for _, msgID := range msgIDs {
+		if msgID.PartitionIdx() != pc.partitionIdx {
+			pc.log.Errorf("%v inconsistent partition index %v (current: %v)", msgID, msgID.PartitionIdx(), pc.partitionIdx)
+		} else if msgID.BatchIdx() >= 0 && msgID.BatchSize() > 0 &&
+			msgID.BatchIdx() >= msgID.BatchSize() {
+			pc.log.Errorf("%v invalid batch index %v (size: %v)", msgID, msgID.BatchIdx(), msgID.BatchSize())
+		} else {
+			valid := true
+			switch convertedMsgID := msgID.(type) {
+			case *trackingMessageID:
+				position := newPosition(msgID)
+				if convertedMsgID.ack() {
+					pendingAcks[position] = nil
+				} else if pc.options.enableBatchIndexAck {
+					pendingAcks[position] = convertedMsgID.tracker.getAckBitSet()
+				}
+			case *chunkMessageID:
+				for _, id := range pc.unAckChunksTracker.get(convertedMsgID) {
+					pendingAcks[newPosition(id)] = nil
+				}
+				chunkedMsgIDs = append(chunkedMsgIDs, convertedMsgID)
+			case *messageID:
+				pendingAcks[newPosition(msgID)] = nil
+			default:
+				pc.log.Errorf("invalid message id type %T: %v", msgID, msgID)
+				valid = false
+			}
+			if valid {
+				validMsgIDs = append(validMsgIDs, msgID)
+			}
+		}
+	}
+
+	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
+		return toAckError(map[error][]MessageID{errors.New("consumer state is closed"): validMsgIDs})
+	}
+
+	req := &ackListRequest{
+		errCh:  make(chan error),
+		msgIDs: toMsgIDDataList(pendingAcks),
+	}
+	pc.eventsCh <- req
+	if err := <-req.errCh; err != nil {
+		return toAckError(map[error][]MessageID{err: validMsgIDs})
+	}
+	for _, id := range chunkedMsgIDs {
+		pc.unAckChunksTracker.remove(id)
+	}
+	for _, id := range msgIDs {
+		pc.options.interceptors.OnAcknowledge(pc.parentConsumer, id)
+	}
+	return nil
+}
+
+func toAckError(errorMap map[error][]MessageID) AckError {
+	e := AckError{}
+	for err, ids := range errorMap {
+		for _, id := range ids {
+			e[id] = err
+		}
+	}
+	return e
 }
 
 func (pc *partitionConsumer) AckIDCumulative(msgID MessageID) error {
@@ -1027,11 +1116,22 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 	}
 }
 
-func (pc *partitionConsumer) internalAckList(msgIDs []*pb.MessageIdData) {
+func (pc *partitionConsumer) internalAckList(request *ackListRequest) {
+	if request.errCh != nil {
+		reqID := pc.client.rpcClient.NewRequestID()
+		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, &pb.CommandAck{
+			AckType:    pb.CommandAck_Individual.Enum(),
+			ConsumerId: proto.Uint64(pc.consumerID),
+			MessageId:  request.msgIDs,
+			RequestId:  &reqID,
+		})
+		request.errCh <- err
+		return
+	}
 	pc.client.rpcClient.RequestOnCnxNoWait(pc._getConn(), pb.BaseCommand_ACK, &pb.CommandAck{
 		AckType:    pb.CommandAck_Individual.Enum(),
 		ConsumerId: proto.Uint64(pc.consumerID),
-		MessageId:  msgIDs,
+		MessageId:  request.msgIDs,
 	})
 }
 
@@ -1563,6 +1663,11 @@ type ackRequest struct {
 	err     error
 }
 
+type ackListRequest struct {
+	errCh  chan error
+	msgIDs []*pb.MessageIdData
+}
+
 type ackWithTxnRequest struct {
 	doneCh      chan struct{}
 	msgID       trackingMessageID
@@ -1623,7 +1728,7 @@ func (pc *partitionConsumer) runEventsLoop() {
 				pc.internalAck(v)
 			case *ackWithTxnRequest:
 				pc.internalAckWithTxn(v)
-			case []*pb.MessageIdData:
+			case *ackListRequest:
 				pc.internalAckList(v)
 			case *redeliveryRequest:
 				pc.internalRedeliver(v)

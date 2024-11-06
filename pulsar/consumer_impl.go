@@ -41,6 +41,7 @@ const defaultNackRedeliveryDelay = 1 * time.Minute
 type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
 	AckID(id MessageID) error
+	AckIDList(msgIDs []MessageID) error
 	AckIDWithResponse(id MessageID) error
 	AckIDWithTxn(msgID MessageID, txn Transaction) error
 	AckIDCumulative(msgID MessageID) error
@@ -557,6 +558,15 @@ func (c *consumer) AckID(msgID MessageID) error {
 	}
 
 	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
+}
+
+func (c *consumer) AckIDList(msgIDs []MessageID) error {
+	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
+		if err := c.checkMsgIDPartition(msgID); err != nil {
+			return nil, err
+		}
+		return c.consumers[msgID.PartitionIdx()], nil
+	})
 }
 
 // AckCumulative the reception of all the messages in the stream up to (and including)

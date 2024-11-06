@@ -19,6 +19,8 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
@@ -266,6 +268,23 @@ type ConsumerOptions struct {
 	startMessageID *trackingMessageID
 }
 
+// This error is returned when `AckIDList` failed and `AckWithResponse` is true.
+// It only contains the valid message IDs that failed to be acknowledged in the `AckIDList` call.
+// For those invalid message IDs, users should ignore them and not acknowledge them again.
+type AckError map[MessageID]error
+
+func (e AckError) Error() string {
+	builder := strings.Builder{}
+	errorMap := make(map[string][]MessageID)
+	for id, err := range e {
+		errorMap[err.Error()] = append(errorMap[err.Error()], id)
+	}
+	for err, msgIDs := range errorMap {
+		builder.WriteString(fmt.Sprintf("error: %s, failed message IDs: %v\n", err, msgIDs))
+	}
+	return builder.String()
+}
+
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
 type Consumer interface {
 	// Subscription get a subscription for the consumer
@@ -305,7 +324,19 @@ type Consumer interface {
 	Ack(Message) error
 
 	// AckID the consumption of a single message, identified by its MessageID
+	// When `EnableBatchIndexAcknowledgment` is false, if a message ID represents a message in the batch,
+	// it will not be actually acknowledged by broker until all messages in that batch are acknowledged via
+	// `AckID` or `AckIDList`.
 	AckID(MessageID) error
+
+	// AckIDList the consumption of a list of messages, identified by their MessageIDs
+	//
+	// This method should be used when `AckWithResponse` is true. Otherwise, it will be equivalent with calling
+	// `AckID` on each message ID in the list.
+	//
+	// When `AckWithResponse` is true, the returned error could be an `AckError` which contains the failed message ID
+	// and the corresponding error.
+	AckIDList([]MessageID) error
 
 	// AckWithTxn the consumption of a single message with a transaction
 	AckWithTxn(Message, Transaction) error

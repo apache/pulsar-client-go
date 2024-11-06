@@ -171,6 +171,10 @@ func (z *zeroQueueConsumer) AckID(msgID MessageID) error {
 	return z.pc.AckID(msgID)
 }
 
+func (z *zeroQueueConsumer) AckIDList(msgIDs []MessageID) error {
+	return z.pc.AckIDList(msgIDs)
+}
+
 func (z *zeroQueueConsumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()
 	if err := z.checkMsgIDPartition(msgID); err != nil {

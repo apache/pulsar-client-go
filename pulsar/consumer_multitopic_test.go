@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
@@ -217,4 +218,102 @@ func TestMultiTopicGetLastMessageIDs(t *testing.T) {
 
 	}
 
+}
+
+func TestMultiTopicAckIDList(t *testing.T) {
+	for _, params := range []bool{true, false} {
+		t.Run(fmt.Sprintf("TestMultiTopicConsumerAckIDList%v", params), func(t *testing.T) {
+			runMultiTopicAckIDList(t, params)
+		})
+	}
+}
+
+func runMultiTopicAckIDList(t *testing.T, regex bool) {
+	topicPrefix := fmt.Sprintf("multiTopicAckIDList%v", time.Now().UnixNano())
+	topic1 := "persistent://public/default/" + topicPrefix + "1"
+	topic2 := "persistent://public/default/" + topicPrefix + "2"
+
+	client, err := NewClient(ClientOptions{URL: "pulsar://localhost:6650"})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	if regex {
+		admin, err := pulsaradmin.NewClient(&config.Config{})
+		assert.Nil(t, err)
+		for _, topic := range []string{topic1, topic2} {
+			topicName, err := utils.GetTopicName(topic)
+			assert.Nil(t, err)
+			admin.Topics().Create(*topicName, 0)
+		}
+	}
+
+	createConsumer := func() Consumer {
+		options := ConsumerOptions{
+			SubscriptionName: "sub",
+			Type:             Shared,
+			AckWithResponse:  true,
+		}
+		if regex {
+			options.TopicsPattern = topicPrefix + ".*"
+		} else {
+			options.Topics = []string{topic1, topic2}
+		}
+		consumer, err := client.Subscribe(options)
+		assert.Nil(t, err)
+		return consumer
+	}
+	consumer := createConsumer()
+
+	sendMessages(t, client, topic1, 0, 3, false)
+	sendMessages(t, client, topic2, 0, 2, false)
+
+	receiveMessageMap := func(consumer Consumer, numMessages int) map[string][]Message {
+		msgs := receiveMessages(t, consumer, numMessages)
+		topicToMsgs := make(map[string][]Message)
+		for _, msg := range msgs {
+			topicToMsgs[msg.Topic()] = append(topicToMsgs[msg.Topic()], msg)
+		}
+		return topicToMsgs
+	}
+
+	topicToMsgs := receiveMessageMap(consumer, 5)
+	assert.Equal(t, 3, len(topicToMsgs[topic1]))
+	for i := 0; i < 3; i++ {
+		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(topicToMsgs[topic1][i].Payload()))
+	}
+	assert.Equal(t, 2, len(topicToMsgs[topic2]))
+	for i := 0; i < 2; i++ {
+		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(topicToMsgs[topic2][i].Payload()))
+	}
+
+	assert.Nil(t, consumer.AckIDList([]MessageID{
+		topicToMsgs[topic1][0].ID(),
+		topicToMsgs[topic1][2].ID(),
+		topicToMsgs[topic2][1].ID(),
+	}))
+
+	consumer.Close()
+	consumer = createConsumer()
+	topicToMsgs = receiveMessageMap(consumer, 2)
+	assert.Equal(t, 1, len(topicToMsgs[topic1]))
+	assert.Equal(t, "msg-1", string(topicToMsgs[topic1][0].Payload()))
+	assert.Equal(t, 1, len(topicToMsgs[topic2]))
+	assert.Equal(t, "msg-0", string(topicToMsgs[topic2][0].Payload()))
+	consumer.Close()
+
+	msgID0 := topicToMsgs[topic1][0].ID()
+	err = consumer.AckIDList([]MessageID{msgID0})
+	assert.NotNil(t, err)
+	t.Logf("AckIDList error: %v", err)
+
+	msgID1 := topicToMsgs[topic2][0].ID()
+	if ackError, ok := consumer.AckIDList([]MessageID{msgID0, msgID1}).(AckError); ok {
+		assert.Equal(t, 2, len(ackError))
+		assert.Contains(t, ackError, msgID0)
+		assert.Equal(t, "consumer state is closed", ackError[msgID0].Error())
+		assert.Contains(t, ackError, msgID1)
+		assert.Equal(t, "consumer state is closed", ackError[msgID1].Error())
+	} else {
+		assert.Fail(t, "AckIDList should return AckError")
+	}
 }

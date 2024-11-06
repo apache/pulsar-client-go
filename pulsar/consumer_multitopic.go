@@ -167,6 +167,49 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
+func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) error {
+	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
+		if !checkMessageIDType(msgID) {
+			return nil, fmt.Errorf("invalid message id type %T", msgID)
+		}
+		if mid := toTrackingMessageID(msgID); mid != nil && mid.consumer != nil {
+			return mid.consumer, nil
+		}
+		return nil, errors.New("consumer is nil")
+	})
+}
+
+func ackIDListFromMultiTopics(log log.Logger, msgIDs []MessageID, findConsumer func(MessageID) (acker, error)) error {
+	consumerToMsgIDs := make(map[acker][]MessageID)
+	for _, msgID := range msgIDs {
+		if consumer, err := findConsumer(msgID); err == nil {
+			consumerToMsgIDs[consumer] = append(consumerToMsgIDs[consumer], msgID)
+		} else {
+			log.Warnf("Can not find consumer for %v", msgID)
+		}
+	}
+
+	ackError := AckError{}
+	for consumer, ids := range consumerToMsgIDs {
+		if err := consumer.AckIDList(ids); err != nil {
+			if topicAckError := err.(AckError); topicAckError != nil {
+				for id, err := range topicAckError {
+					ackError[id] = err
+				}
+			} else {
+				// It should not reach here
+				for _, id := range ids {
+					ackError[id] = err
+				}
+			}
+		}
+	}
+	if len(ackError) == 0 {
+		return nil
+	}
+	return ackError
+}
+
 // AckWithTxn the consumption of a single message with a transaction
 func (c *multiTopicConsumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()

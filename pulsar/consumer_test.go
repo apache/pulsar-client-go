@@ -4745,3 +4745,135 @@ func TestLookupConsumer(t *testing.T) {
 		consumer.Ack(msg)
 	}
 }
+
+func TestAckIDList(t *testing.T) {
+	for _, params := range []bool{true, false} {
+		t.Run(fmt.Sprintf("TestAckIDList_%v", params), func(t *testing.T) {
+			runAckIDListTest(t, params)
+		})
+	}
+}
+
+func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("test-ack-id-list-%v", time.Now().Nanosecond())
+
+	consumer := createSharedConsumer(t, client, topic, enableBatchIndexAck)
+	sendMessages(t, client, topic, 0, 5, true)  // entry 0: [0, 1, 2, 3, 4]
+	sendMessages(t, client, topic, 5, 3, false) // entry 2: [5], 3: [6], 4: [7]
+	sendMessages(t, client, topic, 8, 2, true)  // entry 5: [8, 9]
+
+	msgs := receiveMessages(t, consumer, 10)
+	originalMsgIDs := make([]MessageID, 0)
+	for i := 0; i < 10; i++ {
+		originalMsgIDs = append(originalMsgIDs, msgs[i].ID())
+		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msgs[i].Payload()))
+	}
+
+	ackedIndexes := []int{0, 2, 3, 6, 8, 9}
+	unackedIndexes := []int{1, 4, 5, 7}
+	if !enableBatchIndexAck {
+		// [0, 4] is the first batch range but only partial of it is acked
+		unackedIndexes = []int{0, 1, 2, 3, 4, 5, 7}
+	}
+	msgIDs := make([]MessageID, len(ackedIndexes))
+	for i := 0; i < len(ackedIndexes); i++ {
+		msgIDs[i] = msgs[ackedIndexes[i]].ID()
+	}
+	assert.Nil(t, consumer.AckIDList(msgIDs))
+	consumer.Close()
+
+	consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
+	msgs = receiveMessages(t, consumer, len(unackedIndexes))
+	for i := 0; i < len(unackedIndexes); i++ {
+		assert.Equal(t, fmt.Sprintf("msg-%d", unackedIndexes[i]), string(msgs[i].Payload()))
+	}
+
+	if !enableBatchIndexAck {
+		msgIDs = make([]MessageID, 0)
+		for i := 0; i < 5; i++ {
+			msgIDs = append(msgIDs, originalMsgIDs[i])
+		}
+		assert.Nil(t, consumer.AckIDList(msgIDs))
+		consumer.Close()
+
+		consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
+		msgs = receiveMessages(t, consumer, 2)
+		assert.Equal(t, "msg-5", string(msgs[0].Payload()))
+		assert.Equal(t, "msg-7", string(msgs[1].Payload()))
+		consumer.Close()
+	}
+	consumer.Close()
+	err = consumer.AckIDList(msgIDs)
+	assert.NotNil(t, err)
+	if ackError := err.(AckError); ackError != nil {
+		assert.Equal(t, len(msgIDs), len(ackError))
+		for _, id := range msgIDs {
+			assert.Contains(t, ackError, id)
+			assert.Equal(t, "consumer state is closed", ackError[id].Error())
+		}
+	} else {
+		assert.Fail(t, "AckIDList should return AckError")
+	}
+}
+
+func createSharedConsumer(t *testing.T, client Client, topic string, enableBatchIndexAck bool) Consumer {
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                          topic,
+		SubscriptionName:               "my-sub",
+		SubscriptionInitialPosition:    SubscriptionPositionEarliest,
+		Type:                           Shared,
+		EnableBatchIndexAcknowledgment: enableBatchIndexAck,
+		AckWithResponse:                true,
+	})
+	assert.Nil(t, err)
+	return consumer
+}
+
+func sendMessages(t *testing.T, client Client, topic string, startIndex int, numMessages int, batching bool) {
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		DisableBatching:         !batching,
+		BatchingMaxMessages:     uint(numMessages),
+		BatchingMaxSize:         1024 * 1024 * 10,
+		BatchingMaxPublishDelay: 1 * time.Hour,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	for i := 0; i < numMessages; i++ {
+		msg := &ProducerMessage{Payload: []byte(fmt.Sprintf("msg-%d", startIndex+i))}
+		if batching {
+			producer.SendAsync(ctx, msg, func(_ MessageID, _ *ProducerMessage, err error) {
+				if err != nil {
+					t.Logf("Failed to send message: %v", err)
+				}
+			})
+		} else {
+			if _, err := producer.Send(ctx, msg); err != nil {
+				assert.Fail(t, "Failed to send message: %v", err)
+			}
+		}
+	}
+	assert.Nil(t, producer.Flush())
+}
+
+func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	msgs := make([]Message, 0)
+	for i := 0; i < numMessages; i++ {
+		if msg, err := consumer.Receive(ctx); err == nil {
+			msgs = append(msgs, msg)
+		} else {
+			t.Logf("Failed to receive message: %v", err)
+			break
+		}
+	}
+	assert.Equal(t, numMessages, len(msgs))
+	return msgs
+}
