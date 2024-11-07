@@ -471,8 +471,7 @@ func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVer
 
 func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed) {
 	var (
-		maxRetry           int
-		delayReconnectTime time.Duration
+		maxRetry int
 	)
 	if p.options.MaxReconnectToBroker == nil {
 		maxRetry = -1
@@ -482,49 +481,39 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 
 	bo := p.backOffPolicyFunc()
 
-	for maxRetry != 0 {
+	var assignedBrokerURL string
+	if connectionClosed != nil && connectionClosed.HasURL() {
+		assignedBrokerURL = connectionClosed.assignedBrokerURL
+	}
+
+	opFn := func() (struct{}, error) {
+		if maxRetry == 0 {
+			return struct{}{}, nil
+		}
+
 		select {
 		case <-p.ctx.Done():
-			return
+			return struct{}{}, nil
 		default:
 		}
 
 		if p.getProducerState() != producerReady {
 			// Producer is already closing
 			p.log.Info("producer state not ready, exit reconnect")
-			return
-		}
-
-		var assignedBrokerURL string
-
-		if connectionClosed != nil && connectionClosed.HasURL() {
-			delayReconnectTime = 0
-			assignedBrokerURL = connectionClosed.assignedBrokerURL
-			connectionClosed = nil // Only attempt once
-		} else {
-			delayReconnectTime = bo.Next()
-		}
-
-		p.log.WithFields(log.Fields{
-			"assignedBrokerURL":  assignedBrokerURL,
-			"delayReconnectTime": delayReconnectTime,
-		}).Info("Reconnecting to broker")
-		time.Sleep(delayReconnectTime)
-
-		// double check
-		if p.getProducerState() != producerReady {
-			// Producer is already closing
-			p.log.Info("producer state not ready, exit reconnect")
-			return
+			return struct{}{}, nil
 		}
 
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx(assignedBrokerURL)
+		if assignedBrokerURL != "" {
+			// Only attempt once
+			assignedBrokerURL = ""
+		}
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
 			bo.Reset()
-			return
+			return struct{}{}, nil
 		}
 		p.log.WithError(err).Error("Failed to create producer at reconnect")
 		errMsg := err.Error()
@@ -532,25 +521,25 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic not found, stop reconnecting, close the producer")
 			p.doClose(joinErrors(ErrTopicNotfound, err))
-			break
+			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgTopicTerminated) {
 			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
 			p.doClose(joinErrors(ErrTopicTerminated, err))
-			break
+			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
 			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
 			p.failPendingMessages(joinErrors(ErrProducerBlockedQuotaExceeded, err))
-			break
+			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgProducerFenced) {
 			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
 			p.doClose(joinErrors(ErrProducerFenced, err))
-			break
+			return struct{}{}, nil
 		}
 
 		if maxRetry > 0 {
@@ -560,7 +549,17 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		if maxRetry == 0 || bo.IsMaxBackoffReached() {
 			p.metrics.ProducersReconnectMaxRetry.Inc()
 		}
+
+		return struct{}{}, err
 	}
+	_, _ = internal.Retry(context.Background(), opFn, func(_ error) time.Duration {
+		delayReconnectTime := bo.Next()
+		p.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
+		}).Info("Reconnecting to broker")
+		return delayReconnectTime
+	})
 }
 
 func (p *partitionProducer) runEventsLoop() {
