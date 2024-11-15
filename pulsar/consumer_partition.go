@@ -623,12 +623,9 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		return req.msgID, req.err
 	}
 
-	opFn := func() (*trackingMessageID, error) {
-		return request()
-	}
 	ctx, cancel := context.WithTimeout(context.Background(), pc.client.operationTimeout)
 	defer cancel()
-	res, err := internal.Retry(ctx, opFn, func(err error) time.Duration {
+	res, err := internal.Retry(ctx, request, func(err error) time.Duration {
 		nextDelay := bo.Next()
 		pc.log.WithError(err).Errorf("Failed to get last message id from broker, retrying in %v...", nextDelay)
 		return nextDelay
