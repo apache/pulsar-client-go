@@ -21,6 +21,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
 
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -135,7 +137,7 @@ func (r *retryRouter) getProducer() Producer {
 
 	// Retry to create producer indefinitely
 	bo := r.backOffPolicyFunc()
-	for {
+	opFn := func() (Producer, error) {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.RetryLetterTopic
 		// the origin code sets to LZ4 compression with no options
@@ -144,14 +146,15 @@ func (r *retryRouter) getProducer() Producer {
 			opt.CompressionType = LZ4
 		}
 
-		producer, err := r.client.CreateProducer(opt)
-
-		if err != nil {
-			r.log.WithError(err).Error("Failed to create RLQ producer")
-			time.Sleep(bo.Next())
-			continue
-		}
-		r.producer = producer
-		return producer
+		return r.client.CreateProducer(opt)
 	}
+	res, err := internal.Retry(context.Background(), opFn, func(err error) time.Duration {
+		r.log.WithError(err).Error("Failed to create RLQ producer")
+		return bo.Next()
+	})
+	if err == nil {
+		r.producer = res
+	}
+
+	return res
 }

@@ -73,7 +73,7 @@ func TestProducerConnectError(t *testing.T) {
 	assert.Nil(t, producer)
 	assert.NotNil(t, err)
 
-	assert.Equal(t, err.Error(), "connection error")
+	assert.ErrorContains(t, err, "connection error")
 }
 
 func TestProducerNoTopic(t *testing.T) {

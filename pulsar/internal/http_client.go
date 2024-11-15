@@ -19,6 +19,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -146,25 +147,27 @@ func (c *httpClient) MakeRequest(method, endpoint string) (*http.Response, error
 }
 
 func (c *httpClient) Get(endpoint string, obj interface{}, params map[string]string) error {
-	_, err := c.GetWithQueryParams(endpoint, obj, params, true)
-	if _, ok := err.(*url.Error); ok {
-		// We can retry this kind of requests over a connection error because they're
-		// not specific to a particular broker.
-		bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
-		startTime := time.Now()
-		var retryTime time.Duration
-
-		for time.Since(startTime) < c.requestTimeout {
-			retryTime = bo.Next()
-			c.log.Debugf("Retrying httpRequest in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
-			time.Sleep(retryTime)
-			_, err = c.GetWithQueryParams(endpoint, obj, params, true)
-			if _, ok := err.(*url.Error); !ok {
-				// We either succeeded or encountered a non connection error
-				break
-			}
+	var err error
+	opFn := func() (struct{}, error) {
+		_, err = c.GetWithQueryParams(endpoint, obj, params, true)
+		if _, ok := err.(*url.Error); ok {
+			// We can retry this kind of requests over a connection error because they're
+			// not specific to a particular broker.
+			return struct{}{}, err
 		}
+		return struct{}{}, nil
 	}
+
+	bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.requestTimeout)
+	defer cancel()
+
+	_, _ = Retry(ctx, opFn, func(_ error) time.Duration {
+		retryTime := bo.Next()
+		c.log.Debugf("Retrying httpRequest in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
+		return retryTime
+	})
 	return err
 }
 

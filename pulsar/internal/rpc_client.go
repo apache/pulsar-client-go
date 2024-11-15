@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
@@ -117,27 +118,26 @@ func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
 	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	var err error
 	var host *url.URL
-	var rpcResult *RPCResult
-	startTime := time.Now()
 	bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
 	// we can retry these requests because this kind of request is
 	// not specific to any particular broker
-	for time.Since(startTime) < c.requestTimeout {
+	opFn := func() (*RPCResult, error) {
 		host, err = (*serviceNameResolver).ResolveHost()
 		if err != nil {
 			c.log.WithError(err).Errorf("rpc client failed to resolve host")
 			return nil, err
 		}
-		rpcResult, err = c.Request(host, host, requestID, cmdType, message)
-		// success we got a response
-		if err == nil {
-			break
-		}
+		return c.Request(host, host, requestID, cmdType, message)
+	}
 
+	ctx, cancel := context.WithTimeout(context.Background(), c.requestTimeout)
+	defer cancel()
+
+	rpcResult, err := Retry(ctx, opFn, func(_ error) time.Duration {
 		retryTime := bo.Next()
 		c.log.Debugf("Retrying request in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
-		time.Sleep(retryTime)
-	}
+		return retryTime
+	})
 
 	return rpcResult, err
 }

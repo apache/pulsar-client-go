@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"container/list"
+	"context"
 	"encoding/hex"
 	"fmt"
 	"math"
@@ -612,7 +613,6 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		pc.log.WithField("state", state).Error("Failed to getLastMessageID for the closing or closed consumer")
 		return nil, errors.New("failed to getLastMessageID for the closing or closed consumer")
 	}
-	remainTime := pc.client.operationTimeout
 	bo := pc.backoffPolicyFunc()
 	request := func() (*trackingMessageID, error) {
 		req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
@@ -622,23 +622,20 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 		<-req.doneCh
 		return req.msgID, req.err
 	}
-	for {
-		msgID, err := request()
-		if err == nil {
-			return msgID, nil
-		}
-		if remainTime <= 0 {
-			pc.log.WithError(err).Error("Failed to getLastMessageID")
-			return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
-		}
+
+	ctx, cancel := context.WithTimeout(context.Background(), pc.client.operationTimeout)
+	defer cancel()
+	res, err := internal.Retry(ctx, request, func(err error) time.Duration {
 		nextDelay := bo.Next()
-		if nextDelay > remainTime {
-			nextDelay = remainTime
-		}
-		remainTime -= nextDelay
 		pc.log.WithError(err).Errorf("Failed to get last message id from broker, retrying in %v...", nextDelay)
-		time.Sleep(nextDelay)
+		return nextDelay
+	})
+	if err != nil {
+		pc.log.WithError(err).Error("Failed to getLastMessageID")
+		return nil, fmt.Errorf("failed to getLastMessageID due to %w", err)
 	}
+
+	return res, nil
 }
 
 func (pc *partitionConsumer) internalGetLastMessageID(req *getLastMsgIDRequest) {
@@ -1805,8 +1802,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		pc.log.Debug("seek operation triggers reconnection, and reset isSeeking")
 	}
 	var (
-		maxRetry                                    int
-		delayReconnectTime, totalDelayReconnectTime time.Duration
+		maxRetry int
 	)
 
 	if pc.options.maxReconnectToBroker == nil {
@@ -1816,50 +1812,39 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 	}
 	bo := pc.backoffPolicyFunc()
 
-	for maxRetry != 0 {
+	var assignedBrokerURL string
+	if connectionClosed != nil && connectionClosed.HasURL() {
+		assignedBrokerURL = connectionClosed.assignedBrokerURL
+	}
+
+	opFn := func() (struct{}, error) {
+		if maxRetry == 0 {
+			return struct{}{}, nil
+		}
+
 		if pc.getConsumerState() != consumerReady {
 			// Consumer is already closing
 			pc.log.Info("consumer state not ready, exit reconnect")
-			return
-		}
-
-		var assignedBrokerURL string
-
-		if connectionClosed != nil && connectionClosed.HasURL() {
-			delayReconnectTime = 0
-			assignedBrokerURL = connectionClosed.assignedBrokerURL
-			connectionClosed = nil // Attempt connecting to the assigned broker just once
-		} else {
-			delayReconnectTime = bo.Next()
-		}
-		totalDelayReconnectTime += delayReconnectTime
-
-		pc.log.WithFields(log.Fields{
-			"assignedBrokerURL":  assignedBrokerURL,
-			"delayReconnectTime": delayReconnectTime,
-		}).Info("Reconnecting to broker")
-		time.Sleep(delayReconnectTime)
-
-		// double check
-		if pc.getConsumerState() != consumerReady {
-			// Consumer is already closing
-			pc.log.Info("consumer state not ready, exit reconnect")
-			return
+			return struct{}{}, nil
 		}
 
 		err := pc.grabConn(assignedBrokerURL)
+		if assignedBrokerURL != "" {
+			// Attempt connecting to the assigned broker just once
+			assignedBrokerURL = ""
+		}
 		if err == nil {
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
 			bo.Reset()
-			return
+			return struct{}{}, nil
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
 			pc.log.Warn("Topic Not Found.")
-			break
+			return struct{}{}, nil
 		}
 
 		if maxRetry > 0 {
@@ -1869,7 +1854,17 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		if maxRetry == 0 || bo.IsMaxBackoffReached() {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
 		}
+
+		return struct{}{}, err
 	}
+	_, _ = internal.Retry(context.Background(), opFn, func(_ error) time.Duration {
+		delayReconnectTime := bo.Next()
+		pc.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
+		}).Info("Reconnecting to broker")
+		return delayReconnectTime
+	})
 }
 
 func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
