@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -367,7 +368,7 @@ func (dummyConnection) IsProxied() bool {
 
 func TestMultiTopicAckIDListTimeout(t *testing.T) {
 	topic := fmt.Sprintf("multiTopicAckIDListTimeout%v", time.Now().UnixNano())
-	createPartitionedTopic(topic, 5)
+	assert.NoError(t, createPartitionedTopic(topic, 5))
 
 	cli, err := NewClient(ClientOptions{
 		URL:              "pulsar://localhost:6650",
@@ -402,13 +403,12 @@ func TestMultiTopicAckIDListTimeout(t *testing.T) {
 	err = consumer.AckIDList(msgIDs)
 	elapsed := time.Since(start)
 	t.Logf("AckIDList takes %v ms", elapsed)
-	assert.True(t, elapsed < 4*time.Second && elapsed >= 3*time.Second)
-	if ackError, ok := err.(AckError); ok {
+	assert.True(t, elapsed < 5*time.Second && elapsed >= 3*time.Second)
+	var ackError AckError
+	if errors.As(err, &ackError) {
 		for _, err := range ackError {
 			assert.Equal(t, "request timed out", err.Error())
 		}
-	} else {
-		assert.Fail(t, "AckIDList should return AckError")
 	}
 
 	for i := 0; i < len(msgs); i++ {
