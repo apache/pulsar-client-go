@@ -18,7 +18,6 @@
 package internal
 
 import (
-	"bufio"
 	"fmt"
 	"io"
 
@@ -29,13 +28,11 @@ import (
 type connectionReader struct {
 	cnx    *connection
 	buffer Buffer
-	reader *bufio.Reader
 }
 
 func newConnectionReader(cnx *connection) *connectionReader {
 	return &connectionReader{
 		cnx:    cnx,
-		reader: bufio.NewReader(cnx.cnx),
 		buffer: NewBuffer(4096),
 	}
 }
