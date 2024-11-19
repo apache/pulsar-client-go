@@ -491,12 +491,6 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			return struct{}{}, nil
 		}
 
-		select {
-		case <-p.ctx.Done():
-			return struct{}{}, nil
-		default:
-		}
-
 		if p.getProducerState() != producerReady {
 			// Producer is already closing
 			p.log.Info("producer state not ready, exit reconnect")
@@ -552,7 +546,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 
 		return struct{}{}, err
 	}
-	_, _ = internal.Retry(context.Background(), opFn, func(_ error) time.Duration {
+	_, _ = internal.Retry(p.ctx, opFn, func(_ error) time.Duration {
 		delayReconnectTime := bo.Next()
 		p.log.WithFields(log.Fields{
 			"assignedBrokerURL":  assignedBrokerURL,
