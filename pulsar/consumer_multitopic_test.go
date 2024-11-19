@@ -18,15 +18,17 @@
 package pulsar
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-
 	"github.com/stretchr/testify/assert"
 )
 
@@ -315,5 +317,103 @@ func runMultiTopicAckIDList(t *testing.T, regex bool) {
 		assert.Equal(t, "consumer state is closed", ackError[msgID1].Error())
 	} else {
 		assert.Fail(t, "AckIDList should return AckError")
+	}
+}
+
+type dummyConnection struct {
+}
+
+func (dummyConnection) SendRequest(_ uint64, _ *pb.BaseCommand, _ func(*pb.BaseCommand, error)) {
+}
+
+func (dummyConnection) SendRequestNoWait(_ *pb.BaseCommand) error {
+	return nil
+}
+
+func (dummyConnection) WriteData(_ internal.Buffer) {
+}
+
+func (dummyConnection) RegisterListener(_ uint64, _ internal.ConnectionListener) error {
+	return nil
+}
+
+func (dummyConnection) UnregisterListener(_ uint64) {
+}
+
+func (dummyConnection) AddConsumeHandler(_ uint64, _ internal.ConsumerHandler) error {
+	return nil
+}
+
+func (dummyConnection) DeleteConsumeHandler(_ uint64) {
+}
+
+func (dummyConnection) ID() string {
+	return "cnx"
+}
+
+func (dummyConnection) GetMaxMessageSize() int32 {
+	return 0
+}
+
+func (dummyConnection) Close() {
+}
+
+func (dummyConnection) WaitForClose() <-chan struct{} {
+	return nil
+}
+
+func (dummyConnection) IsProxied() bool {
+	return false
+}
+
+func TestMultiTopicAckIDListTimeout(t *testing.T) {
+	topic := fmt.Sprintf("multiTopicAckIDListTimeout%v", time.Now().UnixNano())
+	assert.NoError(t, createPartitionedTopic(topic, 5))
+
+	cli, err := NewClient(ClientOptions{
+		URL:              "pulsar://localhost:6650",
+		OperationTimeout: 3 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer cli.Close()
+
+	consumer, err := cli.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "sub",
+		AckWithResponse:  true,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	const numMessages = 5
+	sendMessages(t, cli, topic, 0, numMessages, false)
+	msgs := receiveMessages(t, consumer, numMessages)
+	msgIDs := make([]MessageID, len(msgs))
+
+	var conn internal.Connection
+	for i := 0; i < len(msgs); i++ {
+		msgIDs[i] = msgs[i].ID()
+		pc, ok := msgIDs[i].(*trackingMessageID).consumer.(*partitionConsumer)
+		assert.True(t, ok)
+		conn = pc._getConn()
+		pc._setConn(dummyConnection{})
+	}
+
+	start := time.Now()
+	err = consumer.AckIDList(msgIDs)
+	elapsed := time.Since(start)
+	t.Logf("AckIDList takes %v ms", elapsed)
+	assert.True(t, elapsed < 5*time.Second && elapsed >= 3*time.Second)
+	var ackError AckError
+	if errors.As(err, &ackError) {
+		for _, err := range ackError {
+			assert.Equal(t, "request timed out", err.Error())
+		}
+	}
+
+	for i := 0; i < len(msgs); i++ {
+		pc, ok := msgIDs[i].(*trackingMessageID).consumer.(*partitionConsumer)
+		assert.True(t, ok)
+		pc._setConn(conn)
 	}
 }

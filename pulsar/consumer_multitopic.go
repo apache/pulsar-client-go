@@ -189,18 +189,17 @@ func ackIDListFromMultiTopics(log log.Logger, msgIDs []MessageID, findConsumer f
 		}
 	}
 
-	ackError := AckError{}
+	subErrCh := make(chan error, len(consumerToMsgIDs))
 	for consumer, ids := range consumerToMsgIDs {
-		if err := consumer.AckIDList(ids); err != nil {
-			if topicAckError := err.(AckError); topicAckError != nil {
-				for id, err := range topicAckError {
-					ackError[id] = err
-				}
-			} else {
-				// It should not reach here
-				for _, id := range ids {
-					ackError[id] = err
-				}
+		go func() {
+			subErrCh <- consumer.AckIDList(ids)
+		}()
+	}
+	ackError := AckError{}
+	for i := 0; i < len(consumerToMsgIDs); i++ {
+		if topicAckError, ok := (<-subErrCh).(AckError); ok {
+			for id, err := range topicAckError {
+				ackError[id] = err
 			}
 		}
 	}

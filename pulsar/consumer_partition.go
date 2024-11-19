@@ -141,7 +141,7 @@ type partitionConsumer struct {
 	state          uAtomic.Int32
 	options        *partitionConsumerOpts
 
-	conn uAtomic.Value
+	conn atomic.Pointer[internal.Connection]
 
 	topic        string
 	name         string
@@ -2205,7 +2205,7 @@ func (pc *partitionConsumer) hasMoreMessages() bool {
 // _setConn sets the internal connection field of this partition consumer atomically.
 // Note: should only be called by this partition consumer when a new connection is available.
 func (pc *partitionConsumer) _setConn(conn internal.Connection) {
-	pc.conn.Store(conn)
+	pc.conn.Store(&conn)
 }
 
 // _getConn returns internal connection field of this partition consumer atomically.
@@ -2214,7 +2214,7 @@ func (pc *partitionConsumer) _getConn() internal.Connection {
 	// Invariant: The conn must be non-nill for the lifetime of the partitionConsumer.
 	//            For this reason we leave this cast unchecked and panic() if the
 	//            invariant is broken
-	return pc.conn.Load().(internal.Connection)
+	return *pc.conn.Load()
 }
 
 func convertToMessageIDData(msgID *trackingMessageID) *pb.MessageIdData {
