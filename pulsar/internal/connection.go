@@ -625,10 +625,6 @@ func (c *connection) checkServerError(err *pb.ServerError) {
 	}
 }
 
-func (c *connection) Write(data Buffer) {
-	c.writeRequestsCh <- data
-}
-
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
 	c.incomingRequestsWG.Add(1)
