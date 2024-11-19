@@ -30,6 +30,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin"
@@ -4939,4 +4943,43 @@ func TestAckResponseNotBlocked(t *testing.T) {
 			}
 		}
 	}
+}
+
+func TestConsumerKeepReconnectingAndThenCallClose(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 5 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	var testConsumer Consumer
+	require.Eventually(t, func() bool {
+		testConsumer, err = client.Subscribe(ConsumerOptions{
+			Topic:            newTopicName(),
+			Schema:           NewBytesSchema(nil),
+			SubscriptionName: "test-sub",
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	_ = c.Terminate(context.Background())
+	require.Eventually(t, func() bool {
+		testConsumer.Close()
+		return true
+	}, 30*time.Second, 1*time.Second)
 }
