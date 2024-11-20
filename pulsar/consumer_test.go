@@ -4877,3 +4877,61 @@ func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message
 	assert.Equal(t, numMessages, len(msgs))
 	return msgs
 }
+
+func TestAckResponseNotBlocked(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:              lookupURL,
+		OperationTimeout: 5 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("test-ack-response-not-blocked-%v", time.Now().Nanosecond())
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+
+	ctx := context.Background()
+	for i := 0; i < 1000; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("value-%d", i)),
+		}, func(_ MessageID, _ *ProducerMessage, err error) {
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+		time.Sleep(1 * time.Millisecond)
+	}
+	producer.Flush()
+	producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                          topic,
+		SubscriptionName:               "my-sub",
+		SubscriptionInitialPosition:    SubscriptionPositionEarliest,
+		Type:                           KeyShared,
+		EnableBatchIndexAcknowledgment: true,
+		AckWithResponse:                true,
+		ReceiverQueueSize:              10,
+	})
+	assert.Nil(t, err)
+	msgIDs := make([]MessageID, 0)
+	for i := 0; i < 1000; i++ {
+		if msg, err := consumer.Receive(context.Background()); err != nil {
+			t.Fatal(err)
+		} else {
+			msgIDs = append(msgIDs, msg.ID())
+			if len(msgIDs) >= 10 {
+				if err := consumer.AckIDList(msgIDs); err != nil {
+					t.Fatal("Failed to acked messages: ", msgIDs, " ", err)
+					t.Fail()
+				} else {
+					t.Log("Acked messages: ", msgIDs)
+				}
+				msgIDs = msgIDs[:0]
+			}
+		}
+	}
+}
