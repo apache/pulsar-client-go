@@ -184,7 +184,10 @@ func (id *messageID) BatchSize() int32 {
 }
 
 func (id *messageID) String() string {
-	return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
+	if id.batchIdx < 0 && id.batchSize < 1 {
+		return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
+	}
+	return fmt.Sprintf("%d:%d:%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx, id.batchIdx, id.batchSize)
 }
 
 func deserializeMessageID(data []byte) (MessageID, error) {

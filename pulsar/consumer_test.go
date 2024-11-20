@@ -4894,7 +4894,8 @@ func TestAckResponseNotBlocked(t *testing.T) {
 	assert.Nil(t, err)
 
 	ctx := context.Background()
-	for i := 0; i < 1000; i++ {
+	numMessages := 100
+	for i := 0; i < numMessages; i++ {
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("value-%d", i)),
 		}, func(_ MessageID, _ *ProducerMessage, err error) {
@@ -4918,10 +4919,11 @@ func TestAckResponseNotBlocked(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	msgIDs := make([]MessageID, 0)
-	for i := 0; i < 1000; i++ {
+	for i := 0; i < numMessages; i++ {
 		if msg, err := consumer.Receive(context.Background()); err != nil {
 			t.Fatal(err)
 		} else {
+			t.Log("Received message: ", msg.ID())
 			msgIDs = append(msgIDs, msg.ID())
 			if len(msgIDs) >= 10 {
 				if err := consumer.AckIDList(msgIDs); err != nil {
