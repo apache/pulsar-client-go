@@ -22,12 +22,19 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
+
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
@@ -66,7 +73,7 @@ func TestProducerConnectError(t *testing.T) {
 	assert.Nil(t, producer)
 	assert.NotNil(t, err)
 
-	assert.Equal(t, err.Error(), "connection error")
+	assert.ErrorContains(t, err, "connection error")
 }
 
 func TestProducerNoTopic(t *testing.T) {
@@ -146,7 +153,7 @@ func TestProducerAsyncSend(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		producer.SendAsync(context.Background(), &ProducerMessage{
 			Payload: []byte("hello"),
-		}, func(id MessageID, message *ProducerMessage, e error) {
+		}, func(id MessageID, _ *ProducerMessage, e error) {
 			if e != nil {
 				log.WithError(e).Error("Failed to publish")
 				errors.Put(e)
@@ -167,7 +174,7 @@ func TestProducerAsyncSend(t *testing.T) {
 	assert.Equal(t, 0, errors.Size())
 
 	wg.Add(1)
-	producer.SendAsync(context.Background(), nil, func(id MessageID, m *ProducerMessage, e error) {
+	producer.SendAsync(context.Background(), nil, func(id MessageID, _ *ProducerMessage, e error) {
 		assert.NotNil(t, e)
 		assert.Nil(t, id)
 		wg.Done()
@@ -176,7 +183,7 @@ func TestProducerAsyncSend(t *testing.T) {
 
 	wg.Add(1)
 	producer.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("hello"), Value: []byte("hello")},
-		func(id MessageID, m *ProducerMessage, e error) {
+		func(id MessageID, _ *ProducerMessage, e error) {
 			assert.NotNil(t, e)
 			assert.Nil(t, id)
 			wg.Done()
@@ -207,7 +214,7 @@ func TestProducerFlushDisableBatching(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		producer.SendAsync(context.Background(), &ProducerMessage{
 			Payload: []byte("hello"),
-		}, func(id MessageID, message *ProducerMessage, e error) {
+		}, func(id MessageID, _ *ProducerMessage, e error) {
 			if e != nil {
 				log.WithError(e).Error("Failed to publish")
 				errors.Put(e)
@@ -376,7 +383,7 @@ func TestFlushInProducer(t *testing.T) {
 		messageContent := prefix + fmt.Sprintf("%d", i)
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(messageContent),
-		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
+		}, func(id MessageID, _ *ProducerMessage, e error) {
 			if e != nil {
 				log.WithError(e).Error("Failed to publish")
 				errors.Put(e)
@@ -417,7 +424,7 @@ func TestFlushInProducer(t *testing.T) {
 		messageContent := prefix + fmt.Sprintf("%d", i)
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(messageContent),
-		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
+		}, func(id MessageID, _ *ProducerMessage, e error) {
 			if e != nil {
 				log.WithError(e).Error("Failed to publish")
 				errors.Put(e)
@@ -487,7 +494,7 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 		messageContent := prefix + fmt.Sprintf("%d", i)
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(messageContent),
-		}, func(id MessageID, producerMessage *ProducerMessage, e error) {
+		}, func(id MessageID, _ *ProducerMessage, e error) {
 			if e != nil {
 				log.WithError(e).Error("Failed to publish")
 				errors.Put(e)
@@ -516,6 +523,21 @@ func TestFlushInPartitionedProducer(t *testing.T) {
 		msgCount++
 	}
 	assert.Equal(t, msgCount, numOfMessages/2)
+}
+
+func TestProducerReturnsErrorOnFlushWhenClosed(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{Topic: newTopicName()})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	producer.Close()
+
+	err = producer.FlushWithCtx(context.Background())
+	assert.Error(t, err)
 }
 
 func TestRoundRobinRouterPartitionedProducer(t *testing.T) {
@@ -822,7 +844,7 @@ func TestBatchMessageFlushing(t *testing.T) {
 		msg := &ProducerMessage{
 			Payload: msg,
 		}
-		producer.SendAsync(ctx, msg, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		producer.SendAsync(ctx, msg, func(_ MessageID, _ *ProducerMessage, _ error) {
 			ch <- struct{}{}
 		})
 	}
@@ -876,7 +898,7 @@ func TestBatchDelayMessage(t *testing.T) {
 	}
 	var delayMsgID int64
 	ch := make(chan struct{}, 2)
-	producer.SendAsync(ctx, delayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
+	producer.SendAsync(ctx, delayMsg, func(id MessageID, _ *ProducerMessage, _ error) {
 		atomic.StoreInt64(&delayMsgID, id.(*messageID).entryID)
 		ch <- struct{}{}
 	})
@@ -892,7 +914,7 @@ func TestBatchDelayMessage(t *testing.T) {
 		Payload: []byte("no delay"),
 	}
 	var noDelayMsgID int64
-	producer.SendAsync(ctx, noDelayMsg, func(id MessageID, producerMessage *ProducerMessage, err error) {
+	producer.SendAsync(ctx, noDelayMsg, func(id MessageID, _ *ProducerMessage, _ error) {
 		atomic.StoreInt64(&noDelayMsgID, id.(*messageID).entryID)
 	})
 	for i := 0; i < 2; i++ {
@@ -1152,7 +1174,7 @@ func TestFailedSchemaEncode(t *testing.T) {
 	// producer should send return an error as message is Int64, but schema is String
 	producer.SendAsync(ctx, &ProducerMessage{
 		Value: int64(1),
-	}, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+	}, func(messageID MessageID, _ *ProducerMessage, err error) {
 		assert.NotNil(t, err)
 		assert.Nil(t, messageID)
 		wg.Done()
@@ -1273,11 +1295,13 @@ func TestProducerWithBackoffPolicy(t *testing.T) {
 
 	topicName := newTopicName()
 
-	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	bo := newTestBackoffPolicy(1*time.Second, 4*time.Second)
 	_producer, err := client.CreateProducer(ProducerOptions{
-		Topic:         topicName,
-		SendTimeout:   2 * time.Second,
-		BackoffPolicy: backoff,
+		Topic:       topicName,
+		SendTimeout: 2 * time.Second,
+		BackOffPolicyFunc: func() backoff.Policy {
+			return bo
+		},
 	})
 	assert.Nil(t, err)
 	defer _producer.Close()
@@ -1285,23 +1309,23 @@ func TestProducerWithBackoffPolicy(t *testing.T) {
 	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
 	// 1 s
 	startTime := time.Now()
-	partitionProducerImp.reconnectToBroker()
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	partitionProducerImp.reconnectToBroker(nil)
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 2 s
 	startTime = time.Now()
-	partitionProducerImp.reconnectToBroker()
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	partitionProducerImp.reconnectToBroker(nil)
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
-	partitionProducerImp.reconnectToBroker()
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	partitionProducerImp.reconnectToBroker(nil)
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
-	partitionProducerImp.reconnectToBroker()
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	partitionProducerImp.reconnectToBroker(nil)
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 }
 
 func TestSendContextExpired(t *testing.T) {
@@ -1479,9 +1503,9 @@ func TestProducuerSendFailOnInvalidKey(t *testing.T) {
 
 type noopProduceInterceptor struct{}
 
-func (noopProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {}
+func (noopProduceInterceptor) BeforeSend(_ Producer, _ *ProducerMessage) {}
 
-func (noopProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
+func (noopProduceInterceptor) OnSendAcknowledgement(_ Producer, _ *ProducerMessage, _ MessageID) {
 }
 
 // copyPropertyIntercepotr copy all keys in message properties map and add a suffix
@@ -1490,11 +1514,11 @@ type metricProduceInterceptor struct {
 	ackn  int
 }
 
-func (x *metricProduceInterceptor) BeforeSend(producer Producer, message *ProducerMessage) {
+func (x *metricProduceInterceptor) BeforeSend(_ Producer, _ *ProducerMessage) {
 	x.sendn++
 }
 
-func (x *metricProduceInterceptor) OnSendAcknowledgement(producer Producer, message *ProducerMessage, msgID MessageID) {
+func (x *metricProduceInterceptor) OnSendAcknowledgement(_ Producer, _ *ProducerMessage, _ MessageID) {
 	x.ackn++
 }
 
@@ -1710,7 +1734,7 @@ func TestMultipleSchemaOfKeyBasedBatchProducerConsumer(t *testing.T) {
 				Payload: messageContent,
 				Key:     key,
 				Schema:  schema,
-			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			}, func(id MessageID, _ *ProducerMessage, err error) {
 				assert.NoError(t, err)
 				assert.NotNil(t, id)
 			})
@@ -1803,7 +1827,7 @@ func TestMultipleSchemaProducerConsumer(t *testing.T) {
 			Payload: messageContent,
 			Key:     key,
 			Schema:  schema,
-		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		}, func(id MessageID, _ *ProducerMessage, err error) {
 			assert.NoError(t, err)
 			assert.NotNil(t, id)
 		})
@@ -2001,16 +2025,16 @@ func TestMemLimitRejectProducerMessages(t *testing.T) {
 	for i := 0; i < n/2; i++ {
 		producer1.SendAsync(context.Background(), &ProducerMessage{
 			Payload: make([]byte, 1024),
-		}, func(id MessageID, message *ProducerMessage, e error) {})
+		}, func(_ MessageID, _ *ProducerMessage, _ error) {})
 
 		producer2.SendAsync(context.Background(), &ProducerMessage{
 			Payload: make([]byte, 1024),
-		}, func(id MessageID, message *ProducerMessage, e error) {})
+		}, func(_ MessageID, _ *ProducerMessage, _ error) {})
 	}
 	// Last message in order to reach the limit
 	producer1.SendAsync(context.Background(), &ProducerMessage{
 		Payload: make([]byte, 1024),
-	}, func(id MessageID, message *ProducerMessage, e error) {})
+	}, func(_ MessageID, _ *ProducerMessage, _ error) {})
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, int64(n*1024), c.(*client).memLimit.CurrentUsage())
 
@@ -2088,18 +2112,18 @@ func TestMemLimitRejectProducerMessagesWithSchema(t *testing.T) {
 		producer1.SendAsync(context.Background(), &ProducerMessage{
 			Value:  value,
 			Schema: schema,
-		}, func(id MessageID, message *ProducerMessage, e error) {})
+		}, func(_ MessageID, _ *ProducerMessage, _ error) {})
 
 		producer2.SendAsync(context.Background(), &ProducerMessage{
 			Value:  value,
 			Schema: schema,
-		}, func(id MessageID, message *ProducerMessage, e error) {})
+		}, func(_ MessageID, _ *ProducerMessage, _ error) {})
 	}
 	// Last message in order to reach the limit
 	producer1.SendAsync(context.Background(), &ProducerMessage{
 		Value:  value,
 		Schema: schema,
-	}, func(id MessageID, message *ProducerMessage, e error) {})
+	}, func(_ MessageID, _ *ProducerMessage, _ error) {})
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, int64(n*6), c.(*client).memLimit.CurrentUsage())
 
@@ -2163,7 +2187,7 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 
 	producer2.SendAsync(context.Background(), &ProducerMessage{
 		Payload: make([]byte, 5*1024+1),
-	}, func(id MessageID, message *ProducerMessage, e error) {
+	}, func(_ MessageID, _ *ProducerMessage, e error) {
 		if e != nil {
 			t.Fatal(e)
 		}
@@ -2223,7 +2247,7 @@ func TestMemLimitContextCancel(t *testing.T) {
 	for i := 0; i < n; i++ {
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: make([]byte, 1024),
-		}, func(id MessageID, message *ProducerMessage, e error) {})
+		}, func(_ MessageID, _ *ProducerMessage, _ error) {})
 	}
 	time.Sleep(100 * time.Millisecond)
 	assert.Equal(t, int64(n*1024), c.(*client).memLimit.CurrentUsage())
@@ -2233,7 +2257,7 @@ func TestMemLimitContextCancel(t *testing.T) {
 	go func() {
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: make([]byte, 1024),
-		}, func(id MessageID, message *ProducerMessage, e error) {
+		}, func(_ MessageID, _ *ProducerMessage, e error) {
 			assert.Error(t, e)
 			assert.ErrorContains(t, e, getResultStr(TimeoutError))
 			wg.Done()
@@ -2345,7 +2369,7 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		testProducer.SendAsync(context.Background(), &ProducerMessage{
 			Payload: make([]byte, 1024),
-		}, func(id MessageID, message *ProducerMessage, e error) {
+		}, func(_ MessageID, _ *ProducerMessage, e error) {
 			if e != nil {
 				assert.True(t, errors.Is(e, ErrProducerClosed))
 			}
@@ -2473,4 +2497,80 @@ func TestDisableReplication(t *testing.T) {
 	err = proto.Unmarshal(metadata, &msgMetadata)
 	assert.NoError(t, err)
 	assert.Equal(t, []string{"__local__"}, msgMetadata.GetReplicateTo())
+}
+
+func TestProducerWithMaxConnectionsPerBroker(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 8,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	for i := 0; i < 10; i++ {
+		testProducer, err := client.CreateProducer(ProducerOptions{
+			Topic:  newTopicName(),
+			Schema: NewBytesSchema(nil),
+		})
+		require.NoError(t, err)
+		require.NotNil(t, testProducer)
+
+		var ok int32
+		testProducer.SendAsync(context.Background(), &ProducerMessage{Value: []byte("hello")},
+			func(_ MessageID, _ *ProducerMessage, err error) {
+				if err == nil {
+					atomic.StoreInt32(&ok, 1)
+				}
+			})
+		require.Eventually(t, func() bool {
+			return atomic.LoadInt32(&ok) == 1
+		}, 3*time.Second, time.Millisecond*100)
+		testProducer.Close()
+	}
+}
+
+func getPulsarTestImage() string {
+	image := os.Getenv("PULSAR_IMAGE")
+	if image == "" {
+		image = "apachepulsar/pulsar:latest"
+	}
+	return image
+}
+
+func TestProducerKeepReconnectingAndThenCallClose(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 5 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	var testProducer Producer
+	require.Eventually(t, func() bool {
+		testProducer, err = client.CreateProducer(ProducerOptions{
+			Topic:  newTopicName(),
+			Schema: NewBytesSchema(nil),
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	_ = c.Terminate(context.Background())
+	require.Eventually(t, func() bool {
+		testProducer.Close()
+		return true
+	}, 30*time.Second, 1*time.Second)
 }

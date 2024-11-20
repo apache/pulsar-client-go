@@ -1,4 +1,4 @@
-// Licensed to the Apache Software Foundation (ASF) under one
+/// Licensed to the Apache Software Foundation (ASF) under one
 // or more contributor license agreements.  See the NOTICE file
 // distributed with this work for additional information
 // regarding copyright ownership.  The ASF licenses this file
@@ -14,3 +14,36 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
+//go:build go1.21
+
+package pulsar
+
+import (
+	"log/slog"
+	"os"
+	"testing"
+
+	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/stretchr/testify/assert"
+)
+
+func TestClientWithSlog(t *testing.T) {
+	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
+	client, err := NewClient(ClientOptions{
+		URL:    serviceURL,
+		Logger: log.NewLoggerWithSlog(sLogger),
+	})
+	assert.NotNil(t, client)
+	assert.Nil(t, err)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: newTopicName(),
+	})
+	assert.NotNil(t, producer)
+	assert.Nil(t, err)
+
+	producer.Close()
+	client.Close()
+}

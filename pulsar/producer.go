@@ -21,7 +21,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 )
 
 type HashingScheme int
@@ -171,9 +171,9 @@ type ProducerOptions struct {
 	// MaxReconnectToBroker specifies the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
-	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// BackOffPolicyFunc parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
-	BackoffPolicy internal.BackoffPolicy
+	BackOffPolicyFunc func() backoff.Policy
 
 	// BatcherBuilderType sets the batch builder type (default DefaultBatchBuilder)
 	// This will be used to create batch container when batching is enabled.
@@ -207,6 +207,12 @@ type ProducerOptions struct {
 	// - ProducerAccessModeShared
 	// - ProducerAccessModeExclusive
 	ProducerAccessMode
+
+	// initialSubscriptionName Name of the initial subscription name of the dead letter topic.
+	// If this field is not set, the initial subscription for the dead letter topic will not be created.
+	// If this field is set but the broker's `allowAutoSubscriptionCreation` is disabled, the DLQ producer
+	// will fail to be created.
+	initialSubscriptionName string
 }
 
 // Producer is used to publish messages on a topic

@@ -22,6 +22,9 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -44,19 +47,28 @@ type RetryMessage struct {
 }
 
 type retryRouter struct {
-	client    Client
-	producer  Producer
-	policy    *DLQPolicy
-	messageCh chan RetryMessage
-	closeCh   chan interface{}
-	log       log.Logger
+	client            Client
+	producer          Producer
+	policy            *DLQPolicy
+	messageCh         chan RetryMessage
+	closeCh           chan interface{}
+	backOffPolicyFunc func() backoff.Policy
+	log               log.Logger
 }
 
-func newRetryRouter(client Client, policy *DLQPolicy, retryEnabled bool, logger log.Logger) (*retryRouter, error) {
+func newRetryRouter(client Client, policy *DLQPolicy, retryEnabled bool, backOffPolicyFunc func() backoff.Policy,
+	logger log.Logger) (*retryRouter, error) {
+	var boFunc func() backoff.Policy
+	if backOffPolicyFunc != nil {
+		boFunc = backOffPolicyFunc
+	} else {
+		boFunc = backoff.NewDefaultBackoff
+	}
 	r := &retryRouter{
-		client: client,
-		policy: policy,
-		log:    logger,
+		client:            client,
+		policy:            policy,
+		backOffPolicyFunc: boFunc,
+		log:               logger,
 	}
 
 	if policy != nil && retryEnabled {
@@ -88,8 +100,8 @@ func (r *retryRouter) run() {
 			producer := r.getProducer()
 
 			msgID := rm.consumerMsg.ID()
-			producer.SendAsync(context.Background(), &rm.producerMsg, func(messageID MessageID,
-				producerMessage *ProducerMessage, err error) {
+			producer.SendAsync(context.Background(), &rm.producerMsg, func(_ MessageID,
+				_ *ProducerMessage, err error) {
 				if err != nil {
 					r.log.WithError(err).WithField("msgID", msgID).Error("Failed to send message to RLQ")
 					rm.consumerMsg.Consumer.Nack(rm.consumerMsg)
@@ -124,8 +136,8 @@ func (r *retryRouter) getProducer() Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.DefaultBackoff{}
-	for {
+	bo := r.backOffPolicyFunc()
+	opFn := func() (Producer, error) {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.RetryLetterTopic
 		// the origin code sets to LZ4 compression with no options
@@ -134,15 +146,15 @@ func (r *retryRouter) getProducer() Producer {
 			opt.CompressionType = LZ4
 		}
 
-		producer, err := r.client.CreateProducer(opt)
-
-		if err != nil {
-			r.log.WithError(err).Error("Failed to create RLQ producer")
-			time.Sleep(backoff.Next())
-			continue
-		} else {
-			r.producer = producer
-			return producer
-		}
+		return r.client.CreateProducer(opt)
 	}
+	res, err := internal.Retry(context.Background(), opFn, func(err error) time.Duration {
+		r.log.WithError(err).Error("Failed to create RLQ producer")
+		return bo.Next()
+	})
+	if err == nil {
+		r.producer = res
+	}
+
+	return res
 }

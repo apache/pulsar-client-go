@@ -61,7 +61,7 @@ type customAuthProvider struct {
 
 var _ auth.Provider = &customAuthProvider{}
 
-func (c *customAuthProvider) RoundTrip(req *http.Request) (*http.Response, error) {
+func (c *customAuthProvider) RoundTrip(_ *http.Request) (*http.Response, error) {
 	panic("implement me")
 }
 

@@ -44,14 +44,21 @@ type GetSchemaResponse struct {
 	Properties map[string]string `json:"properties"`
 }
 
+type GetAllSchemasResponse struct {
+	Schemas []GetSchemaResponse `json:"getSchemaResponses"`
+}
+
+type IsCompatibility struct {
+	IsCompatibility             bool                        `json:"compatibility"`
+	SchemaCompatibilityStrategy SchemaCompatibilityStrategy `json:"schemaCompatibilityStrategy"`
+}
+
 func ConvertGetSchemaResponseToSchemaInfo(tn *TopicName, response GetSchemaResponse) *SchemaInfo {
 	info := new(SchemaInfo)
 	schema := make([]byte, 0, 10)
-	if response.Type == "KEY_VALUE" {
-		// TODO: impl logic
-	} else {
+	if response.Type != "KEY_VALUE" {
 		schema = []byte(response.Data)
-	}
+	} // TODO: impl logic for KEY_VALUE
 
 	info.Schema = schema
 	info.Type = response.Type
@@ -61,9 +68,40 @@ func ConvertGetSchemaResponseToSchemaInfo(tn *TopicName, response GetSchemaRespo
 	return info
 }
 
+func ConvertSchemaDataToStringLegacy(schemaInfo SchemaInfo) string {
+	schema := schemaInfo.Schema
+	if schema == nil {
+		return ""
+	}
+	// TODO: KEY_VALUE
+	return string(schema)
+
+}
+
+func ConvertSchemaInfoToPostSchemaPayload(schemaInfo SchemaInfo) PostSchemaPayload {
+	return PostSchemaPayload{
+		SchemaType: schemaInfo.Type,
+		Schema:     ConvertSchemaDataToStringLegacy(schemaInfo),
+		Properties: schemaInfo.Properties,
+	}
+}
+
 func ConvertGetSchemaResponseToSchemaInfoWithVersion(tn *TopicName, response GetSchemaResponse) *SchemaInfoWithVersion {
 	info := new(SchemaInfoWithVersion)
 	info.SchemaInfo = ConvertGetSchemaResponseToSchemaInfo(tn, response)
 	info.Version = response.Version
 	return info
+}
+
+func ConvertGetAllSchemasResponseToSchemaInfosWithVersion(
+	tn *TopicName,
+	response GetAllSchemasResponse,
+) []*SchemaInfoWithVersion {
+	infos := make([]*SchemaInfoWithVersion, len(response.Schemas))
+
+	for i, schema := range response.Schemas {
+		infos[i] = ConvertGetSchemaResponseToSchemaInfoWithVersion(tn, schema)
+	}
+
+	return infos
 }

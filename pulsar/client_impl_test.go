@@ -257,7 +257,7 @@ func mockOAuthServer() *httptest.Server {
 
 	// mock the used REST path for the tests
 	mockedHandler := http.NewServeMux()
-	mockedHandler.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, _ *http.Request) {
 		s := fmt.Sprintf(`{
     "issuer":"%s",
     "authorization_endpoint":"%s/authorize",
@@ -266,13 +266,13 @@ func mockOAuthServer() *httptest.Server {
 }`, server.URL, server.URL, server.URL, server.URL)
 		fmt.Fprintln(writer, s)
 	})
-	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintln(writer, "{\n"+
 			"  \"access_token\": \"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0b2tlbi1wcmluY2lwYWwifQ."+
 			"tSfgR8l7dKC6LoWCxQgNkuSB8our7xV_nAM7wpgCbG4\",\n"+
 			"  \"token_type\": \"Bearer\"\n}")
 	})
-	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintln(writer, "true")
 	})
 
@@ -568,61 +568,6 @@ func anonymousNamespacePolicy() map[string]interface{} {
 		},
 		"replication_clusters": []string{"standalone"},
 	}
-}
-
-func TestRetryWithMultipleHosts(t *testing.T) {
-	// Multi hosts included an unreached port and the actual port for verify retry logic
-	client, err := NewClient(ClientOptions{
-		URL: "pulsar://localhost:6600,localhost:6650",
-	})
-
-	assert.Nil(t, err)
-	defer client.Close()
-
-	topic := "persistent://public/default/retry-multiple-hosts-" + generateRandomName()
-
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic: topic,
-	})
-
-	assert.Nil(t, err)
-	defer producer.Close()
-
-	ctx := context.Background()
-	var msgIDs [][]byte
-
-	for i := 0; i < 10; i++ {
-		if msgID, err := producer.Send(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}); err != nil {
-			assert.Nil(t, err)
-		} else {
-			assert.NotNil(t, msgID)
-			msgIDs = append(msgIDs, msgID.Serialize())
-		}
-	}
-
-	assert.Equal(t, 10, len(msgIDs))
-
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                       topic,
-		SubscriptionName:            "retry-multi-hosts-sub",
-		Type:                        Shared,
-		SubscriptionInitialPosition: SubscriptionPositionEarliest,
-	})
-	assert.Nil(t, err)
-	defer consumer.Close()
-
-	for i := 0; i < 10; i++ {
-		msg, err := consumer.Receive(context.Background())
-		assert.Nil(t, err)
-		assert.Contains(t, msgIDs, msg.ID().Serialize())
-		consumer.Ack(msg)
-	}
-
-	err = consumer.Unsubscribe()
-	assert.Nil(t, err)
-
 }
 
 func TestHTTPSConnectionCAError(t *testing.T) {

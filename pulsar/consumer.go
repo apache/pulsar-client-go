@@ -19,9 +19,11 @@ package pulsar
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 )
 
 // ConsumerMessage represents a pair of a Consumer and Message.
@@ -78,6 +80,12 @@ type DLQPolicy struct {
 
 	// RetryLetterTopic specifies the name of the topic where the retry messages will be sent.
 	RetryLetterTopic string
+
+	// InitialSubscriptionName Name of the initial subscription name of the dead letter topic.
+	// If this field is not set, the initial subscription for the dead letter topic will not be created.
+	// If this field is set but the broker's `allowAutoSubscriptionCreation` is disabled, the DLQ producer
+	// will fail to be created.
+	InitialSubscriptionName string
 }
 
 // AckGroupingOptions controls how to group ACK requests
@@ -160,6 +168,11 @@ type ConsumerOptions struct {
 	// Default value is `1000` messages and should be good for most use cases.
 	ReceiverQueueSize int
 
+	// EnableZeroQueueConsumer, if enabled, the ReceiverQueueSize will be 0.
+	// Notice: only non-partitioned topic is supported.
+	// Default is false.
+	EnableZeroQueueConsumer bool
+
 	// EnableAutoScaledReceiverQueueSize, if enabled, the consumer receive queue will be auto-scaled
 	// by the consumer actual throughput. The ReceiverQueueSize will be the maximum size which consumer
 	// receive queue can be scaled.
@@ -196,9 +209,9 @@ type ConsumerOptions struct {
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
 	MaxReconnectToBroker *uint
 
-	// BackoffPolicy parameterize the following options in the reconnection logic to
+	// BackOffPolicyFunc parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
-	BackoffPolicy internal.BackoffPolicy
+	BackOffPolicyFunc func() backoff.Policy
 
 	// Decryption represents the encryption related fields required by the consumer to decrypt a message.
 	Decryption *MessageDecryptionInfo
@@ -255,6 +268,23 @@ type ConsumerOptions struct {
 	startMessageID *trackingMessageID
 }
 
+// This error is returned when `AckIDList` failed and `AckWithResponse` is true.
+// It only contains the valid message IDs that failed to be acknowledged in the `AckIDList` call.
+// For those invalid message IDs, users should ignore them and not acknowledge them again.
+type AckError map[MessageID]error
+
+func (e AckError) Error() string {
+	builder := strings.Builder{}
+	errorMap := make(map[string][]MessageID)
+	for id, err := range e {
+		errorMap[err.Error()] = append(errorMap[err.Error()], id)
+	}
+	for err, msgIDs := range errorMap {
+		builder.WriteString(fmt.Sprintf("error: %s, failed message IDs: %v\n", err, msgIDs))
+	}
+	return builder.String()
+}
+
 // Consumer is an interface that abstracts behavior of Pulsar's consumer
 type Consumer interface {
 	// Subscription get a subscription for the consumer
@@ -269,6 +299,20 @@ type Consumer interface {
 	// where more than one consumer are currently connected.
 	Unsubscribe() error
 
+	// UnsubscribeForce the consumer, forcefully unsubscribe by disconnecting connected consumers.
+	//
+	// Unsubscribing will cause the subscription to be deleted,
+	// and all the retained data can potentially be deleted based on message retention and ttl policy.
+	//
+	// This operation will fail when performed on a shared subscription
+	// where more than one consumer are currently connected.
+	UnsubscribeForce() error
+
+	// GetLastMessageIDs get all the last message id of the topics the consumer subscribed.
+	//
+	// The list of MessageID instances of all the topics that the consumer subscribed
+	GetLastMessageIDs() ([]TopicMessageID, error)
+
 	// Receive a single message.
 	// This calls blocks until a message is available.
 	Receive(context.Context) (Message, error)
@@ -280,7 +324,19 @@ type Consumer interface {
 	Ack(Message) error
 
 	// AckID the consumption of a single message, identified by its MessageID
+	// When `EnableBatchIndexAcknowledgment` is false, if a message ID represents a message in the batch,
+	// it will not be actually acknowledged by broker until all messages in that batch are acknowledged via
+	// `AckID` or `AckIDList`.
 	AckID(MessageID) error
+
+	// AckIDList the consumption of a list of messages, identified by their MessageIDs
+	//
+	// This method should be used when `AckWithResponse` is true. Otherwise, it will be equivalent with calling
+	// `AckID` on each message ID in the list.
+	//
+	// When `AckWithResponse` is true, the returned error could be an `AckError` which contains the failed message ID
+	// and the corresponding error.
+	AckIDList([]MessageID) error
 
 	// AckWithTxn the consumption of a single message with a transaction
 	AckWithTxn(Message, Transaction) error

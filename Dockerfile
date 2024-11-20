@@ -18,14 +18,18 @@
 # Explicit version of Pulsar and Golang images should be
 # set via the Makefile or CLI
 ARG PULSAR_IMAGE=apachepulsar/pulsar:latest
-ARG GOLANG_IMAGE=golang:latest
 
-FROM $PULSAR_IMAGE as pulsar
-FROM $GOLANG_IMAGE
+ARG GO_VERSION=1.22
+FROM golang:$GO_VERSION as golang
 
-RUN apt-get update && apt-get install -y openjdk-17-jre ca-certificates
+FROM $PULSAR_IMAGE
+USER root
 
-COPY --from=pulsar /pulsar /pulsar
+COPY --from=golang /usr/local/go /pulsar/go
+
+ENV PATH /pulsar/go/bin:$PATH
+
+RUN apk add git gcc musl-dev
 
 ### Add pulsar config
 COPY integration-tests/certs /pulsar/certs
@@ -38,3 +42,19 @@ COPY integration-tests/conf/.htpasswd \
 COPY . /pulsar/pulsar-client-go
 
 ENV PULSAR_EXTRA_OPTS="-Dpulsar.auth.basic.conf=/pulsar/conf/.htpasswd"
+
+WORKDIR /pulsar/pulsar-client-go
+
+ENV GOPATH=/pulsar/go
+ENV GOCACHE=/tmp/go-cache
+
+ARG PULSAR_IMAGE
+ENV PULSAR_IMAGE=$PULSAR_IMAGE
+
+# Install dependencies
+RUN go mod download
+
+# Basic compilation
+RUN go build ./pulsar
+RUN go build ./pulsaradmin
+RUN go build -o bin/pulsar-perf ./perf

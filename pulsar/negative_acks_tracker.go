@@ -25,7 +25,7 @@ import (
 )
 
 type redeliveryConsumer interface {
-	Redeliver(msgIds []messageID)
+	Redeliver(msgIDs []messageID)
 }
 
 type negativeAcksTracker struct {
@@ -123,7 +123,7 @@ func (t *negativeAcksTracker) track() {
 		case <-t.tick.C:
 			{
 				now := time.Now()
-				msgIds := make([]messageID, 0)
+				msgIDs := make([]messageID, 0)
 
 				t.Lock()
 
@@ -131,15 +131,15 @@ func (t *negativeAcksTracker) track() {
 					t.log.Debugf("MsgId: %v -- targetTime: %v -- now: %v", msgID, targetTime, now)
 					if targetTime.Before(now) {
 						t.log.Debugf("Adding MsgId: %v", msgID)
-						msgIds = append(msgIds, msgID)
+						msgIDs = append(msgIDs, msgID)
 						delete(t.negativeAcks, msgID)
 					}
 				}
 
 				t.Unlock()
 
-				if len(msgIds) > 0 {
-					t.rc.Redeliver(msgIds)
+				if len(msgIDs) > 0 {
+					t.rc.Redeliver(msgIDs)
 				}
 			}
 		}

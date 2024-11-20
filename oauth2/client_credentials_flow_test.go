@@ -23,9 +23,8 @@ import (
 
 	"github.com/apache/pulsar-client-go/oauth2/clock"
 	"github.com/apache/pulsar-client-go/oauth2/clock/testing"
-
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 )
 
 type MockClientCredentialsProvider struct {
@@ -47,15 +46,16 @@ var clientCredentials = KeyFile{
 	ClientSecret: "test_clientSecret",
 	ClientEmail:  "test_clientEmail",
 	IssuerURL:    "http://issuer",
+	Scope:        "test_scope",
 }
 
-var _ = Describe("ClientCredentialsFlow", func() {
-	Describe("Authorize", func() {
+var _ = ginkgo.Describe("ClientCredentialsFlow", func() {
+	ginkgo.Describe("Authorize", func() {
 
 		var mockClock clock.Clock
 		var mockTokenExchanger *MockTokenExchanger
 
-		BeforeEach(func() {
+		ginkgo.BeforeEach(func() {
 			mockClock = testing.NewFakeClock(time.Unix(0, 0))
 			expectedTokens := TokenResult{AccessToken: "accessToken", RefreshToken: "refreshToken", ExpiresIn: 1234}
 			mockTokenExchanger = &MockTokenExchanger{
@@ -63,10 +63,12 @@ var _ = Describe("ClientCredentialsFlow", func() {
 			}
 		})
 
-		It("invokes TokenExchanger with credentials", func() {
+		ginkgo.It("invokes TokenExchanger with credentials", func() {
+			additionalScope := "additional_scope"
 			provider := newClientCredentialsFlow(
 				ClientCredentialsFlowOptions{
-					KeyFile: "test_keyfile",
+					KeyFile:          "test_keyfile",
+					AdditionalScopes: []string{additionalScope},
 				},
 				&clientCredentials,
 				oidcEndpoints,
@@ -75,16 +77,17 @@ var _ = Describe("ClientCredentialsFlow", func() {
 			)
 
 			_, err := provider.Authorize("test_audience")
-			Expect(err).ToNot(HaveOccurred())
-			Expect(mockTokenExchanger.CalledWithRequest).To(Equal(&ClientCredentialsExchangeRequest{
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
+			gomega.Expect(mockTokenExchanger.CalledWithRequest).To(gomega.Equal(&ClientCredentialsExchangeRequest{
 				TokenEndpoint: oidcEndpoints.TokenEndpoint,
 				ClientID:      clientCredentials.ClientID,
 				ClientSecret:  clientCredentials.ClientSecret,
 				Audience:      "test_audience",
+				Scopes:        []string{additionalScope, clientCredentials.Scope},
 			}))
 		})
 
-		It("returns TokensResult from TokenExchanger", func() {
+		ginkgo.It("returns TokensResult from TokenExchanger", func() {
 			provider := newClientCredentialsFlow(
 				ClientCredentialsFlowOptions{
 					KeyFile: "test_keyfile",
@@ -96,12 +99,12 @@ var _ = Describe("ClientCredentialsFlow", func() {
 			)
 
 			grant, err := provider.Authorize("test_audience")
-			Expect(err).ToNot(HaveOccurred())
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
 			expected := convertToOAuth2Token(mockTokenExchanger.ReturnsTokens, mockClock)
-			Expect(*grant.Token).To(Equal(expected))
+			gomega.Expect(*grant.Token).To(gomega.Equal(expected))
 		})
 
-		It("returns an error if token exchanger errors", func() {
+		ginkgo.It("returns an error if token exchanger errors", func() {
 			mockTokenExchanger.ReturnsError = errors.New("someerror")
 			mockTokenExchanger.ReturnsTokens = nil
 
@@ -116,19 +119,19 @@ var _ = Describe("ClientCredentialsFlow", func() {
 			)
 
 			_, err := provider.Authorize("test_audience")
-			Expect(err.Error()).To(Equal("authentication failed using client credentials: " +
+			gomega.Expect(err.Error()).To(gomega.Equal("authentication failed using client credentials: " +
 				"could not exchange client credentials: someerror"))
 		})
 	})
 })
 
-var _ = Describe("ClientCredentialsGrantRefresher", func() {
+var _ = ginkgo.Describe("ClientCredentialsGrantRefresher", func() {
 
-	Describe("Refresh", func() {
+	ginkgo.Describe("Refresh", func() {
 		var mockClock clock.Clock
 		var mockTokenExchanger *MockTokenExchanger
 
-		BeforeEach(func() {
+		ginkgo.BeforeEach(func() {
 			mockClock = testing.NewFakeClock(time.Unix(0, 0))
 			expectedTokens := TokenResult{AccessToken: "accessToken", RefreshToken: "refreshToken", ExpiresIn: 1234}
 			mockTokenExchanger = &MockTokenExchanger{
@@ -136,7 +139,7 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 			}
 		})
 
-		It("invokes TokenExchanger with credentials", func() {
+		ginkgo.It("invokes TokenExchanger with credentials", func() {
 			refresher := &ClientCredentialsGrantRefresher{
 				clock:     mockClock,
 				exchanger: mockTokenExchanger,
@@ -150,8 +153,8 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 				Scopes:            []string{"profile"},
 			}
 			_, err := refresher.Refresh(og)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(mockTokenExchanger.CalledWithRequest).To(Equal(&ClientCredentialsExchangeRequest{
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
+			gomega.Expect(mockTokenExchanger.CalledWithRequest).To(gomega.Equal(&ClientCredentialsExchangeRequest{
 				TokenEndpoint: oidcEndpoints.TokenEndpoint,
 				ClientID:      clientCredentials.ClientID,
 				ClientSecret:  clientCredentials.ClientSecret,
@@ -160,7 +163,7 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 			}))
 		})
 
-		It("returns a valid grant", func() {
+		ginkgo.It("returns a valid grant", func() {
 			refresher := &ClientCredentialsGrantRefresher{
 				clock:     mockClock,
 				exchanger: mockTokenExchanger,
@@ -174,14 +177,14 @@ var _ = Describe("ClientCredentialsGrantRefresher", func() {
 				Scopes:            []string{"profile"},
 			}
 			ng, err := refresher.Refresh(og)
-			Expect(err).ToNot(HaveOccurred())
-			Expect(ng.Audience).To(Equal("test_audience"))
-			Expect(ng.ClientID).To(Equal(""))
-			Expect(*ng.ClientCredentials).To(Equal(clientCredentials))
-			Expect(ng.TokenEndpoint).To(Equal(oidcEndpoints.TokenEndpoint))
+			gomega.Expect(err).ToNot(gomega.HaveOccurred())
+			gomega.Expect(ng.Audience).To(gomega.Equal("test_audience"))
+			gomega.Expect(ng.ClientID).To(gomega.Equal(""))
+			gomega.Expect(*ng.ClientCredentials).To(gomega.Equal(clientCredentials))
+			gomega.Expect(ng.TokenEndpoint).To(gomega.Equal(oidcEndpoints.TokenEndpoint))
 			expected := convertToOAuth2Token(mockTokenExchanger.ReturnsTokens, mockClock)
-			Expect(*ng.Token).To(Equal(expected))
-			Expect(ng.Scopes).To(Equal([]string{"profile"}))
+			gomega.Expect(*ng.Token).To(gomega.Equal(expected))
+			gomega.Expect(ng.Scopes).To(gomega.Equal([]string{"profile"}))
 		})
 	})
 })

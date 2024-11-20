@@ -34,12 +34,14 @@ func TestNewClientCredentialsProviderFromKeyFile(t *testing.T) {
 	ClientSecret := "CLIENT_SECRET"
 	ClientEmail := "CLIENT_EMAIL"
 	IssuerURL := "ISSUER_URL"
+	Scope := "SCOPE"
 	keyFile := &KeyFile{
 		Type:         oauthType,
 		ClientID:     clientID,
 		ClientSecret: ClientSecret,
 		ClientEmail:  ClientEmail,
 		IssuerURL:    IssuerURL,
+		Scope:        Scope,
 	}
 
 	b, err := json.Marshal(keyFile)

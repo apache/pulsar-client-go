@@ -88,7 +88,7 @@ func initLogger(debug bool) {
 
 func main() {
 	rootCmd := &cobra.Command{
-		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		PersistentPreRun: func(_ *cobra.Command, _ []string) {
 			initLogger(flagDebug)
 		},
 		Use: "pulsar-perf-go",

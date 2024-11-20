@@ -20,6 +20,7 @@ package admin
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -72,8 +73,11 @@ type Subscriptions interface {
 	// PeekMessages peeks messages from a topic subscription
 	PeekMessages(utils.TopicName, string, int) ([]*utils.Message, error)
 
-	// GetMessageByID gets message by its ledgerID and entryID
+	// Deprecated: Use GetMessagesByID() instead
 	GetMessageByID(topic utils.TopicName, ledgerID, entryID int64) (*utils.Message, error)
+
+	// GetMessagesByID gets messages by its ledgerID and entryID
+	GetMessagesByID(topic utils.TopicName, ledgerID, entryID int64) ([]*utils.Message, error)
 }
 
 type subscriptions struct {
@@ -187,6 +191,18 @@ func (s *subscriptions) peekNthMessage(topic utils.TopicName, sName string, pos 
 }
 
 func (s *subscriptions) GetMessageByID(topic utils.TopicName, ledgerID, entryID int64) (*utils.Message, error) {
+	messages, err := s.GetMessagesByID(topic, ledgerID, entryID)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(messages) == 0 {
+		return nil, nil
+	}
+	return messages[0], nil
+}
+
+func (s *subscriptions) GetMessagesByID(topic utils.TopicName, ledgerID, entryID int64) ([]*utils.Message, error) {
 	ledgerIDStr := strconv.FormatInt(ledgerID, 10)
 	entryIDStr := strconv.FormatInt(entryID, 10)
 
@@ -201,11 +217,7 @@ func (s *subscriptions) GetMessageByID(topic utils.TopicName, ledgerID, entryID 
 	if err != nil {
 		return nil, err
 	}
-
-	if len(messages) == 0 {
-		return nil, nil
-	}
-	return messages[0], nil
+	return messages, nil
 }
 
 // safeRespClose is used to close a response body
@@ -219,12 +231,20 @@ func safeRespClose(resp *http.Response) {
 const (
 	PublishTimeHeader = "X-Pulsar-Publish-Time"
 	BatchHeader       = "X-Pulsar-Num-Batch-Message"
-	PropertyPrefix    = "X-Pulsar-Property-"
+
+	// PropertyPrefix is part of the old protocol for message properties.
+	PropertyPrefix = "X-Pulsar-Property-"
+
+	// PropertyHeader is part of the new protocol introduced in SNIP-279
+	// https://github.com/apache/pulsar/pull/20627
+	// The value is a JSON string representing the properties.
+	PropertyHeader = "X-Pulsar-Property"
 )
 
 func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, error) {
+
 	msgID := resp.Header.Get("X-Pulsar-Message-ID")
-	ID, err := utils.ParseMessageID(msgID)
+	ID, err := utils.ParseMessageIDWithPartitionIndex(msgID, topic.GetPartitionIndex())
 	if err != nil {
 		return nil, err
 	}
@@ -249,6 +269,11 @@ func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, e
 				properties[BatchHeader] = h
 			}
 			return getIndividualMsgsFromBatch(topic, ID, payload, properties)
+		case k == PropertyHeader:
+			propJSON := resp.Header.Get(k)
+			if err := json.Unmarshal([]byte(propJSON), &properties); err != nil {
+				return nil, err
+			}
 		case strings.Contains(k, PropertyPrefix):
 			key := strings.TrimPrefix(k, PropertyPrefix)
 			properties[key] = resp.Header.Get(k)

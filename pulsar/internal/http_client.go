@@ -19,6 +19,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
@@ -28,6 +29,8 @@ import (
 	"os"
 	"path"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 
 	"github.com/apache/pulsar-client-go/pulsar/auth"
 
@@ -144,27 +147,27 @@ func (c *httpClient) MakeRequest(method, endpoint string) (*http.Response, error
 }
 
 func (c *httpClient) Get(endpoint string, obj interface{}, params map[string]string) error {
-	_, err := c.GetWithQueryParams(endpoint, obj, params, true)
-	if _, ok := err.(*url.Error); ok {
-		// We can retry this kind of requests over a connection error because they're
-		// not specific to a particular broker.
-		backoff := DefaultBackoff{100 * time.Millisecond}
-		startTime := time.Now()
-		var retryTime time.Duration
-
-		for time.Since(startTime) < c.requestTimeout {
-			retryTime = backoff.Next()
-			c.log.Debugf("Retrying httpRequest in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
-			time.Sleep(retryTime)
-			_, err = c.GetWithQueryParams(endpoint, obj, params, true)
-			if _, ok := err.(*url.Error); ok {
-				continue
-			} else {
-				// We either succeeded or encountered a non connection error
-				break
-			}
+	var err error
+	opFn := func() (struct{}, error) {
+		_, err = c.GetWithQueryParams(endpoint, obj, params, true)
+		if _, ok := err.(*url.Error); ok {
+			// We can retry this kind of requests over a connection error because they're
+			// not specific to a particular broker.
+			return struct{}{}, err
 		}
+		return struct{}{}, nil
 	}
+
+	bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.requestTimeout)
+	defer cancel()
+
+	_, _ = Retry(ctx, opFn, func(_ error) time.Duration {
+		retryTime := bo.Next()
+		c.log.Debugf("Retrying httpRequest in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
+		return retryTime
+	})
 	return err
 }
 
@@ -337,29 +340,33 @@ func responseError(resp *http.Response) error {
 func getDefaultTransport(tlsConfig *TLSOptions) (http.RoundTripper, error) {
 	transport := http.DefaultTransport.(*http.Transport)
 	if tlsConfig != nil {
-		cfg := &tls.Config{
-			InsecureSkipVerify: tlsConfig.AllowInsecureConnection,
-			CipherSuites:       tlsConfig.CipherSuites,
-			MinVersion:         tlsConfig.MinVersion,
-			MaxVersion:         tlsConfig.MaxVersion,
-		}
-		if len(tlsConfig.TrustCertsFilePath) > 0 {
-			rootCA, err := os.ReadFile(tlsConfig.TrustCertsFilePath)
-			if err != nil {
-				return nil, err
+		if tlsConfig.TLSConfig != nil {
+			transport.TLSClientConfig = tlsConfig.TLSConfig
+		} else {
+			cfg := &tls.Config{
+				InsecureSkipVerify: tlsConfig.AllowInsecureConnection,
+				CipherSuites:       tlsConfig.CipherSuites,
+				MinVersion:         tlsConfig.MinVersion,
+				MaxVersion:         tlsConfig.MaxVersion,
 			}
-			cfg.RootCAs = x509.NewCertPool()
-			cfg.RootCAs.AppendCertsFromPEM(rootCA)
-		}
+			if len(tlsConfig.TrustCertsFilePath) > 0 {
+				rootCA, err := os.ReadFile(tlsConfig.TrustCertsFilePath)
+				if err != nil {
+					return nil, err
+				}
+				cfg.RootCAs = x509.NewCertPool()
+				cfg.RootCAs.AppendCertsFromPEM(rootCA)
+			}
 
-		if tlsConfig.CertFile != "" && tlsConfig.KeyFile != "" {
-			cert, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
-			if err != nil {
-				return nil, errors.New(err.Error())
+			if tlsConfig.CertFile != "" && tlsConfig.KeyFile != "" {
+				cert, err := tls.LoadX509KeyPair(tlsConfig.CertFile, tlsConfig.KeyFile)
+				if err != nil {
+					return nil, errors.New(err.Error())
+				}
+				cfg.Certificates = []tls.Certificate{cert}
 			}
-			cfg.Certificates = []tls.Certificate{cert}
+			transport.TLSClientConfig = cfg
 		}
-		transport.TLSClientConfig = cfg
 	}
 	transport.MaxIdleConnsPerHost = 10
 	return transport, nil

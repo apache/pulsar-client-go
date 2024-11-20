@@ -18,8 +18,8 @@
 package oauth2
 
 import (
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 )
 
 type mockConfigProvider struct {
@@ -42,15 +42,15 @@ func (m *mockConfigProvider) SaveTokens(identifier, accessToken, refreshToken st
 	m.SavedRefreshToken = refreshToken
 }
 
-var _ = Describe("main", func() {
-	Describe("configCachingProvider", func() {
-		It("sets up the identifier using the clientID and audience", func() {
+var _ = ginkgo.Describe("main", func() {
+	ginkgo.Describe("configCachingProvider", func() {
+		ginkgo.It("sets up the identifier using the clientID and audience", func() {
 			p := NewConfigBackedCachingProvider("iamclientid", "iamaudience", &mockConfigProvider{})
 
-			Expect(p.identifier).To(Equal("iamclientid-iamaudience"))
+			gomega.Expect(p.identifier).To(gomega.Equal("iamclientid-iamaudience"))
 		})
 
-		It("gets tokens from the config provider", func() {
+		ginkgo.It("gets tokens from the config provider", func() {
 			c := &mockConfigProvider{
 				ReturnAccessToken:  "accessToken",
 				ReturnRefreshToken: "refreshToken",
@@ -62,15 +62,15 @@ var _ = Describe("main", func() {
 
 			r, err := p.GetTokens()
 
-			Expect(err).NotTo(HaveOccurred())
-			Expect(c.GetTokensCalledIdentifier).To(Equal(p.identifier))
-			Expect(r).To(Equal(&TokenResult{
+			gomega.Expect(err).NotTo(gomega.HaveOccurred())
+			gomega.Expect(c.GetTokensCalledIdentifier).To(gomega.Equal(p.identifier))
+			gomega.Expect(r).To(gomega.Equal(&TokenResult{
 				AccessToken:  c.ReturnAccessToken,
 				RefreshToken: c.ReturnRefreshToken,
 			}))
 		})
 
-		It("caches the tokens in the config provider", func() {
+		ginkgo.It("caches the tokens in the config provider", func() {
 			c := &mockConfigProvider{}
 			p := ConfigBackedCachingProvider{
 				identifier: "iamidentifier",
@@ -83,9 +83,9 @@ var _ = Describe("main", func() {
 
 			p.CacheTokens(toSave)
 
-			Expect(c.SavedIdentifier).To(Equal(p.identifier))
-			Expect(c.SavedAccessToken).To(Equal(toSave.AccessToken))
-			Expect(c.SavedRefreshToken).To(Equal(toSave.RefreshToken))
+			gomega.Expect(c.SavedIdentifier).To(gomega.Equal(p.identifier))
+			gomega.Expect(c.SavedAccessToken).To(gomega.Equal(toSave.AccessToken))
+			gomega.Expect(c.SavedRefreshToken).To(gomega.Equal(toSave.RefreshToken))
 		})
 	})
 })

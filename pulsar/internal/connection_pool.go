@@ -34,6 +34,9 @@ type ConnectionPool interface {
 	// GetConnection get a connection from ConnectionPool.
 	GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error)
 
+	// GetConnections get all connections in the pool.
+	GetConnections() map[string]Connection
+
 	// Close all the connections in the pool
 	Close()
 }
@@ -79,7 +82,8 @@ func NewConnectionPool(
 }
 
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
-	key := p.getMapKey(logicalAddr)
+	p.log.WithField("logicalAddr", logicalAddr).WithField("physicalAddr", physicalAddr).Debug("Getting pooled connection")
+	key := p.getMapKey(logicalAddr, physicalAddr)
 
 	p.Lock()
 	conn, ok := p.connections[key]
@@ -123,6 +127,16 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 	return conn, err
 }
 
+func (p *connectionPool) GetConnections() map[string]Connection {
+	p.Lock()
+	conns := make(map[string]Connection)
+	for k, c := range p.connections {
+		conns[k] = c
+	}
+	p.Unlock()
+	return conns
+}
+
 func (p *connectionPool) Close() {
 	p.Lock()
 	close(p.closeCh)
@@ -133,13 +147,13 @@ func (p *connectionPool) Close() {
 	p.Unlock()
 }
 
-func (p *connectionPool) getMapKey(addr *url.URL) string {
+func (p *connectionPool) getMapKey(logicalAddr *url.URL, physicalAddr *url.URL) string {
 	cnt := atomic.AddInt32(&p.roundRobinCnt, 1)
 	if cnt < 0 {
 		cnt = -cnt
 	}
 	idx := cnt % p.maxConnectionsPerHost
-	return fmt.Sprint(addr.Host, '-', idx)
+	return fmt.Sprint(logicalAddr.Host, "-", physicalAddr.Host, "-", idx)
 }
 
 func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration) {

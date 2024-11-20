@@ -57,7 +57,7 @@ func (c *mockedLookupRPCClient) NewConsumerID() uint64 {
 	return 1
 }
 
-func (c *mockedLookupRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
+func (c *mockedLookupRPCClient) RequestToAnyBroker(_ uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
 	assert.Equal(c.t, cmdType, pb.BaseCommand_LOOKUP)
 
@@ -77,7 +77,16 @@ func (c *mockedLookupRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.
 	}, nil
 }
 
-func (c *mockedLookupRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
+func (c *mockedLookupRPCClient) RequestToHost(_ *ServiceNameResolver, requestID uint64,
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	return c.RequestToAnyBroker(requestID, cmdType, message)
+}
+
+func (c *mockedLookupRPCClient) LookupService(_ string) LookupService {
+	return nil
+}
+
+func (c *mockedLookupRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, _ uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	assert.Equal(c.t, cmdType, pb.BaseCommand_LOOKUP)
 	expectedRequest := &c.expectedRequests[0]
@@ -99,14 +108,14 @@ func (c *mockedLookupRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.
 	}, nil
 }
 
-func (c *mockedLookupRPCClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
+func (c *mockedLookupRPCClient) RequestOnCnx(_ Connection, _ uint64, _ pb.BaseCommand_Type,
+	_ proto.Message) (*RPCResult, error) {
 	assert.Fail(c.t, "Shouldn't be called")
 	return nil, nil
 }
 
-func (c *mockedLookupRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type,
-	message proto.Message) error {
+func (c *mockedLookupRPCClient) RequestOnCnxNoWait(_ Connection, _ pb.BaseCommand_Type,
+	_ proto.Message) error {
 	assert.Fail(c.t, "Shouldn't be called")
 	return nil
 }
@@ -119,7 +128,7 @@ func TestLookupSuccess(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 	serviceNameResolver := NewPulsarServiceNameResolver(url)
-
+	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
 
@@ -129,6 +138,7 @@ func TestLookupSuccess(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				Authoritative:          proto.Bool(false),
 				AdvertisedListenerName: proto.String(""),
+				Properties:             kvs,
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -140,9 +150,8 @@ func TestLookupSuccess(t *testing.T) {
 			},
 		},
 	}
-
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, serviceNameResolver, false, "", log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, url, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -156,6 +165,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 	url, err := url.Parse("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
 	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
 
@@ -165,6 +175,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				Authoritative:          proto.Bool(false),
 				AdvertisedListenerName: proto.String(""),
+				Properties:             kvs,
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -178,7 +189,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 	}
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
 
-	ls := NewLookupService(mockedClient, url, serviceNameResolver, true, "", log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, url, serviceNameResolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -192,6 +203,7 @@ func TestLookupWithProxy(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
 	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
 
@@ -201,6 +213,7 @@ func TestLookupWithProxy(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				Authoritative:          proto.Bool(false),
 				AdvertisedListenerName: proto.String(""),
+				Properties:             kvs,
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -214,7 +227,7 @@ func TestLookupWithProxy(t *testing.T) {
 		},
 	}
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, serviceNameResolver, false, "", log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, url, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -227,7 +240,7 @@ func TestLookupWithProxy(t *testing.T) {
 func TestTlsLookupWithProxy(t *testing.T) {
 	url, err := url.Parse("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
-
+	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
 
@@ -237,6 +250,7 @@ func TestTlsLookupWithProxy(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				Authoritative:          proto.Bool(false),
 				AdvertisedListenerName: proto.String(""),
+				Properties:             kvs,
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -251,7 +265,7 @@ func TestTlsLookupWithProxy(t *testing.T) {
 	}
 	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, true, "", log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, url, resolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -264,7 +278,7 @@ func TestTlsLookupWithProxy(t *testing.T) {
 func TestLookupWithRedirect(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
-
+	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t:           t,
 		expectedURL: "pulsar://broker-2:6650",
@@ -275,6 +289,7 @@ func TestLookupWithRedirect(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				Authoritative:          proto.Bool(false),
 				AdvertisedListenerName: proto.String(""),
+				Properties:             kvs,
 			},
 			{
 				RequestId:              proto.Uint64(2),
@@ -300,7 +315,7 @@ func TestLookupWithRedirect(t *testing.T) {
 	}
 	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, false, "", log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, url, resolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -313,7 +328,7 @@ func TestLookupWithRedirect(t *testing.T) {
 func TestTlsLookupWithRedirect(t *testing.T) {
 	url, err := url.Parse("pulsar+ssl://example:6651")
 	assert.NoError(t, err)
-
+	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t:           t,
 		expectedURL: "pulsar+ssl://broker-2:6651",
@@ -324,6 +339,7 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				Authoritative:          proto.Bool(false),
 				AdvertisedListenerName: proto.String(""),
+				Properties:             kvs,
 			},
 			{
 				RequestId:              proto.Uint64(2),
@@ -350,7 +366,7 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 
 	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, true, "", log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, url, resolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -363,7 +379,7 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 func TestLookupWithInvalidUrlResponse(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
-
+	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
 
@@ -373,6 +389,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				Authoritative:          proto.Bool(false),
 				AdvertisedListenerName: proto.String(""),
+				Properties:             kvs,
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -387,7 +404,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 	}
 	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, false, "", log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, url, resolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -397,7 +414,7 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 func TestLookupWithLookupFailure(t *testing.T) {
 	url, err := url.Parse("pulsar://example:6650")
 	assert.NoError(t, err)
-
+	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
 
@@ -407,6 +424,7 @@ func TestLookupWithLookupFailure(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				Authoritative:          proto.Bool(false),
 				AdvertisedListenerName: proto.String(""),
+				Properties:             kvs,
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -420,7 +438,7 @@ func TestLookupWithLookupFailure(t *testing.T) {
 
 	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, false, "", log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, url, resolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -449,7 +467,7 @@ func (m mockedPartitionedTopicMetadataRPCClient) NewConsumerID() uint64 {
 }
 
 func (m mockedPartitionedTopicMetadataRPCClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
+	_ proto.Message) (*RPCResult, error) {
 	assert.Equal(m.t, cmdType, pb.BaseCommand_PARTITIONED_METADATA)
 
 	expectedRequest := &m.expectedRequests[0]
@@ -468,22 +486,31 @@ func (m mockedPartitionedTopicMetadataRPCClient) RequestToAnyBroker(requestID ui
 	}, nil
 }
 
-func (m mockedPartitionedTopicMetadataRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (m mockedPartitionedTopicMetadataRPCClient) Request(_ *url.URL, _ *url.URL, _ uint64,
+	_ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil, nil
 }
 
-func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type,
-	message proto.Message) error {
+func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnxNoWait(_ Connection, _ pb.BaseCommand_Type,
+	_ proto.Message) error {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil
 }
 
-func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnx(cnx Connection, requestID uint64,
-	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnx(_ Connection, _ uint64,
+	_ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil, nil
+}
+
+func (m *mockedPartitionedTopicMetadataRPCClient) RequestToHost(_ *ServiceNameResolver,
+	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	return m.RequestToAnyBroker(requestID, cmdType, message)
+}
+
+func (m *mockedPartitionedTopicMetadataRPCClient) LookupService(_ string) LookupService {
+	return nil
 }
 
 func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
@@ -491,6 +518,7 @@ func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
 	assert.NoError(t, err)
 	serviceNameResolver := NewPulsarServiceNameResolver(url)
 
+	kvs := make([]*pb.KeyValue, 0)
 	ls := NewLookupService(&mockedPartitionedTopicMetadataRPCClient{
 		t: t,
 
@@ -507,7 +535,7 @@ func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
 				Response:   pb.CommandPartitionedTopicMetadataResponse_Success.Enum(),
 			},
 		},
-	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(),
+	}, url, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(),
 		NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer))
 
 	metadata, err := ls.GetPartitionedTopicMetadata("my-topic")
@@ -521,6 +549,7 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 	assert.NoError(t, err)
 	serviceNameResolver := NewPulsarServiceNameResolver(url)
 
+	kvs := make([]*pb.KeyValue, 0)
 	ls := NewLookupService(&mockedLookupRPCClient{
 		t: t,
 
@@ -530,6 +559,7 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 				Topic:                  proto.String("my-topic"),
 				AdvertisedListenerName: proto.String(""),
 				Authoritative:          proto.Bool(false),
+				Properties:             kvs,
 			},
 		},
 		mockedResponses: []pb.CommandLookupTopicResponse{
@@ -540,7 +570,7 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, serviceNameResolver, false, "", log.DefaultNopLogger(),
+	}, url, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(),
 		NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer))
 
 	lr, err := ls.Lookup("my-topic")
@@ -557,7 +587,7 @@ type MockHTTPClient struct {
 
 func (c *MockHTTPClient) Close() {}
 
-func (c *MockHTTPClient) Get(endpoint string, obj interface{}, params map[string]string) error {
+func (c *MockHTTPClient) Get(endpoint string, obj interface{}, _ map[string]string) error {
 	if strings.Contains(endpoint, HTTPLookupServiceBasePathV1) || strings.Contains(endpoint,
 		HTTPLookupServiceBasePathV2) {
 		return mockHTTPGetLookupResult(obj)

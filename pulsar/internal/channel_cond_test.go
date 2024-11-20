@@ -24,7 +24,7 @@ import (
 	"time"
 )
 
-func TestChCond(t *testing.T) {
+func TestChCond(_ *testing.T) {
 	cond := newCond(&sync.Mutex{})
 	wg := sync.WaitGroup{}
 	wg.Add(1)
@@ -39,7 +39,7 @@ func TestChCond(t *testing.T) {
 	wg.Wait()
 }
 
-func TestChCondWithContext(t *testing.T) {
+func TestChCondWithContext(_ *testing.T) {
 	cond := newCond(&sync.Mutex{})
 	wg := sync.WaitGroup{}
 	ctx, cancel := context.WithCancel(context.Background())

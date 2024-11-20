@@ -24,29 +24,29 @@ func DefaultNopLogger() Logger {
 
 type nopLogger struct{}
 
-func (l nopLogger) SubLogger(fields Fields) Logger                 { return l }
-func (l nopLogger) WithFields(fields Fields) Entry                 { return nopEntry{} }
-func (l nopLogger) WithField(name string, value interface{}) Entry { return nopEntry{} }
-func (l nopLogger) WithError(err error) Entry                      { return nopEntry{} }
-func (l nopLogger) Debug(args ...interface{})                      {}
-func (l nopLogger) Info(args ...interface{})                       {}
-func (l nopLogger) Warn(args ...interface{})                       {}
-func (l nopLogger) Error(args ...interface{})                      {}
-func (l nopLogger) Debugf(format string, args ...interface{})      {}
-func (l nopLogger) Infof(format string, args ...interface{})       {}
-func (l nopLogger) Warnf(format string, args ...interface{})       {}
-func (l nopLogger) Errorf(format string, args ...interface{})      {}
+func (l nopLogger) SubLogger(_ Fields) Logger               { return l }
+func (l nopLogger) WithFields(_ Fields) Entry               { return nopEntry{} }
+func (l nopLogger) WithField(_ string, _ interface{}) Entry { return nopEntry{} }
+func (l nopLogger) WithError(_ error) Entry                 { return nopEntry{} }
+func (l nopLogger) Debug(_ ...interface{})                  {}
+func (l nopLogger) Info(_ ...interface{})                   {}
+func (l nopLogger) Warn(_ ...interface{})                   {}
+func (l nopLogger) Error(_ ...interface{})                  {}
+func (l nopLogger) Debugf(_ string, _ ...interface{})       {}
+func (l nopLogger) Infof(_ string, _ ...interface{})        {}
+func (l nopLogger) Warnf(_ string, _ ...interface{})        {}
+func (l nopLogger) Errorf(_ string, _ ...interface{})       {}
 
 type nopEntry struct{}
 
-func (e nopEntry) WithFields(fields Fields) Entry                 { return nopEntry{} }
-func (e nopEntry) WithField(name string, value interface{}) Entry { return nopEntry{} }
+func (e nopEntry) WithFields(_ Fields) Entry               { return nopEntry{} }
+func (e nopEntry) WithField(_ string, _ interface{}) Entry { return nopEntry{} }
 
-func (e nopEntry) Debug(args ...interface{})                 {}
-func (e nopEntry) Info(args ...interface{})                  {}
-func (e nopEntry) Warn(args ...interface{})                  {}
-func (e nopEntry) Error(args ...interface{})                 {}
-func (e nopEntry) Debugf(format string, args ...interface{}) {}
-func (e nopEntry) Infof(format string, args ...interface{})  {}
-func (e nopEntry) Warnf(format string, args ...interface{})  {}
-func (e nopEntry) Errorf(format string, args ...interface{}) {}
+func (e nopEntry) Debug(_ ...interface{})            {}
+func (e nopEntry) Info(_ ...interface{})             {}
+func (e nopEntry) Warn(_ ...interface{})             {}
+func (e nopEntry) Error(_ ...interface{})            {}
+func (e nopEntry) Debugf(_ string, _ ...interface{}) {}
+func (e nopEntry) Infof(_ string, _ ...interface{})  {}
+func (e nopEntry) Warnf(_ string, _ ...interface{})  {}
+func (e nopEntry) Errorf(_ string, _ ...interface{}) {}

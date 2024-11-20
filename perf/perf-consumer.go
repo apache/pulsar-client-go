@@ -46,7 +46,7 @@ func newConsumerCommand() *cobra.Command {
 		Use:   "consume <topic>",
 		Short: "Consume from topic",
 		Args:  cobra.ExactArgs(1),
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, args []string) {
 			stop := stopCh()
 			if FlagProfile {
 				RunProfiling(stop)

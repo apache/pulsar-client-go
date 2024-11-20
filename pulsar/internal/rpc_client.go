@@ -18,11 +18,17 @@
 package internal
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"net/url"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
+	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -55,72 +61,110 @@ type RPCClient interface {
 	// Send a request and block until the result is available
 	RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
+	RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64,
+		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
 	RequestOnCnxNoWait(cnx Connection, cmdType pb.BaseCommand_Type, message proto.Message) error
 
 	RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+
+	LookupService(URL string) LookupService
 }
 
 type rpcClient struct {
-	serviceNameResolver ServiceNameResolver
-	pool                ConnectionPool
-	requestTimeout      time.Duration
-	requestIDGenerator  uint64
-	producerIDGenerator uint64
-	consumerIDGenerator uint64
-	log                 log.Logger
-	metrics             *Metrics
+	pool                    ConnectionPool
+	requestTimeout          time.Duration
+	requestIDGenerator      uint64
+	producerIDGenerator     uint64
+	consumerIDGenerator     uint64
+	log                     log.Logger
+	metrics                 *Metrics
+	tlsConfig               *TLSOptions
+	listenerName            string
+	authProvider            auth.Provider
+	lookupService           LookupService
+	urlLookupServiceMapLock sync.RWMutex
+	urlLookupServiceMap     map[string]LookupService
+	lookupProperties        []*pb.KeyValue
 }
 
-func NewRPCClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, pool ConnectionPool,
-	requestTimeout time.Duration, logger log.Logger, metrics *Metrics) RPCClient {
-	return &rpcClient{
-		serviceNameResolver: serviceNameResolver,
+func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
+	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
+	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider, lookupProperties []*pb.KeyValue) RPCClient {
+	c := rpcClient{
 		pool:                pool,
 		requestTimeout:      requestTimeout,
 		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
 		metrics:             metrics,
+		listenerName:        listenerName,
+		tlsConfig:           tlsConfig,
+		authProvider:        authProvider,
+		urlLookupServiceMap: make(map[string]LookupService),
+		lookupProperties:    lookupProperties,
 	}
+	lookupService, err := c.NewLookupService(serviceURL)
+	if err != nil {
+		panic(err)
+	}
+	c.lookupService = lookupService
+
+	return &c
 }
 
-func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
+func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
+	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	var err error
 	var host *url.URL
-	var rpcResult *RPCResult
-	startTime := time.Now()
-	backoff := DefaultBackoff{100 * time.Millisecond}
+	bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
 	// we can retry these requests because this kind of request is
 	// not specific to any particular broker
-	for time.Since(startTime) < c.requestTimeout {
-		host, err = c.serviceNameResolver.ResolveHost()
+	opFn := func() (*RPCResult, error) {
+		host, err = (*serviceNameResolver).ResolveHost()
 		if err != nil {
 			c.log.WithError(err).Errorf("rpc client failed to resolve host")
 			return nil, err
 		}
-		rpcResult, err = c.Request(host, host, requestID, cmdType, message)
-		// success we got a response
-		if err == nil {
-			break
-		}
-
-		retryTime := backoff.Next()
-		c.log.Debugf("Retrying request in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
-		time.Sleep(retryTime)
+		return c.Request(host, host, requestID, cmdType, message)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.requestTimeout)
+	defer cancel()
+
+	rpcResult, err := Retry(ctx, opFn, func(_ error) time.Duration {
+		retryTime := bo.Next()
+		c.log.Debugf("Retrying request in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
+		return retryTime
+	})
 
 	return rpcResult, err
 }
 
+func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RPCResult, error) {
+	return c.requestToHost(c.lookupService.ServiceNameResolver(), requestID, cmdType, message)
+}
+
+func (c *rpcClient) RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64,
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	return c.requestToHost(serviceNameResolver, requestID, cmdType, message)
+}
+
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	c.metrics.RPCRequestCount.Inc()
 	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
 	if err != nil {
 		return nil, err
 	}
+
+	return c.RequestOnCnx(cnx, requestID, cmdType, message)
+}
+
+func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
+	message proto.Message) (*RPCResult, error) {
+	c.metrics.RPCRequestCount.Inc()
 
 	ch := make(chan result, 1)
 
@@ -137,7 +181,7 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 		case res := <-ch:
 			// Ignoring producer not ready response.
 			// Continue to wait for the producer to create successfully
-			if res.error == nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
+			if res.error == nil && res.Response != nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
 				if !res.RPCResult.Response.ProducerSuccess.GetProducerReady() {
 					timeoutCh = nil
 					break
@@ -147,28 +191,6 @@ func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, request
 		case <-timeoutCh:
 			return nil, ErrRequestTimeOut
 		}
-	}
-}
-
-func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
-	message proto.Message) (*RPCResult, error) {
-	c.metrics.RPCRequestCount.Inc()
-
-	ch := make(chan result, 1)
-
-	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
-		ch <- result{&RPCResult{
-			Cnx:      cnx,
-			Response: response,
-		}, err}
-		close(ch)
-	})
-
-	select {
-	case res := <-ch:
-		return res.RPCResult, res.error
-	case <-time.After(c.requestTimeout):
-		return nil, ErrRequestTimeOut
 	}
 }
 
@@ -187,4 +209,60 @@ func (c *rpcClient) NewProducerID() uint64 {
 
 func (c *rpcClient) NewConsumerID() uint64 {
 	return atomic.AddUint64(&c.consumerIDGenerator, 1)
+}
+
+func (c *rpcClient) LookupService(URL string) LookupService {
+	if URL == "" {
+		return c.lookupService
+	}
+	c.urlLookupServiceMapLock.Lock()
+	defer c.urlLookupServiceMapLock.Unlock()
+	lookupService, ok := c.urlLookupServiceMap[URL]
+	if ok {
+		return lookupService
+	}
+
+	serviceURL, err := url.Parse(URL)
+	if err != nil {
+		panic(err)
+	}
+
+	lookupService, err = c.NewLookupService(serviceURL)
+	if err != nil {
+		panic(err)
+	}
+	c.urlLookupServiceMap[URL] = lookupService
+	return lookupService
+
+}
+
+func (c *rpcClient) NewLookupService(url *url.URL) (LookupService, error) {
+
+	switch url.Scheme {
+	case "pulsar", "pulsar+ssl":
+		serviceNameResolver := NewPulsarServiceNameResolver(url)
+		return NewLookupService(c, url, serviceNameResolver,
+			c.tlsConfig != nil, c.listenerName, c.lookupProperties, c.log, c.metrics), nil
+	case "http", "https":
+		serviceNameResolver := NewPulsarServiceNameResolver(url)
+		httpClient, err := NewHTTPClient(url, serviceNameResolver, c.tlsConfig,
+			c.requestTimeout, c.log, c.metrics, c.authProvider)
+		if err != nil {
+			return nil, err
+		}
+
+		return NewHTTPLookupService(
+			httpClient, url, serviceNameResolver, c.tlsConfig != nil, c.log, c.metrics), nil
+	default:
+		panic(fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
+	}
+}
+
+func (c *rpcClient) Close() {
+	c.lookupService.Close()
+	c.urlLookupServiceMapLock.Lock()
+	defer c.urlLookupServiceMapLock.Unlock()
+	for _, value := range c.urlLookupServiceMap {
+		value.Close()
+	}
 }

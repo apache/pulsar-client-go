@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -110,7 +112,7 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		ReplicateSubscriptionState:  false,
 		Decryption:                  options.Decryption,
 		Schema:                      options.Schema,
-		BackoffPolicy:               options.BackoffPolicy,
+		BackOffPolicyFunc:           options.BackoffPolicyFunc,
 		MaxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
 		ExpireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
 		AutoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
@@ -126,12 +128,13 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 	}
 
 	// Provide dummy dlq router with not dlq policy
-	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, options.Name, client.log)
+	dlq, err := newDlqRouter(client, nil, options.Topic, options.SubscriptionName, options.Name,
+		options.BackoffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
 	// Provide dummy rlq router with not dlq policy
-	rlq, err := newRetryRouter(client, nil, false, client.log)
+	rlq, err := newRetryRouter(client, nil, false, options.BackoffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +144,11 @@ func newReader(client *client, options ReaderOptions) (Reader, error) {
 		close(reader.messageCh)
 		return nil, err
 	}
-	reader.c = c
+	cs, ok := c.(*consumer)
+	if !ok {
+		return nil, errors.New("invalid consumer type")
+	}
+	reader.c = cs
 
 	reader.metrics.ReadersOpened.Inc()
 	return reader, nil
@@ -171,6 +178,8 @@ func (r *reader) Next(ctx context.Context) (Message, error) {
 				return nil, err
 			}
 			return cm.Message, nil
+		case <-r.c.closeCh:
+			return nil, newError(ConsumerClosed, "consumer closed")
 		case <-ctx.Done():
 			return nil, ctx.Err()
 		}
