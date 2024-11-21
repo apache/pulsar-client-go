@@ -18,7 +18,6 @@ package pulsar
 
 import (
 	"container/list"
-	"sync/atomic"
 )
 
 type unboundedChannel[T interface{}] struct {
@@ -26,7 +25,6 @@ type unboundedChannel[T interface{}] struct {
 	inCh    chan<- T
 	outCh   <-chan T
 	closeCh chan struct{}
-	closed  atomic.Bool
 }
 
 func newUnboundedChannel[T interface{}]() *unboundedChannel[T] {
@@ -37,11 +35,9 @@ func newUnboundedChannel[T interface{}]() *unboundedChannel[T] {
 		inCh:    inCh,
 		outCh:   outCh,
 		closeCh: make(chan struct{}),
-		closed:  atomic.Bool{},
 	}
-	c.closed.Store(false)
 	go func() {
-		for !c.closed.Load() {
+		for {
 			front := c.values.Front()
 			var ch chan T
 			var value T
@@ -57,9 +53,9 @@ func newUnboundedChannel[T interface{}]() *unboundedChannel[T] {
 			case ch <- value:
 				c.values.Remove(front)
 			case <-c.closeCh:
-				c.closed.Store(true)
 				close(inCh)
 				close(outCh)
+				return
 			}
 		}
 	}()
