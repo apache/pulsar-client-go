@@ -20,6 +20,7 @@ package pulsar
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
@@ -121,14 +122,18 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 
 	// ensure the tracker was set on the message id
 	var messageIDs []*trackingMessageID
-	for i := 0; i < 10; i++ {
+	running := true
+	for running {
 		select {
 		case m := <-pc.queueCh.outCh:
 			id := m.ID().(*trackingMessageID)
 			assert.NotNil(t, id.tracker)
 			messageIDs = append(messageIDs, id)
-		default:
-			break
+			if len(messageIDs) == 10 {
+				running = false
+			}
+		case <-time.After(5 * time.Second):
+			running = false
 		}
 	}
 
