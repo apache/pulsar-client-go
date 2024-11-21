@@ -123,18 +123,21 @@ func TestPartitionState(t *testing.T) {
 
 	assert.Nil(t, err)
 	defer client.Close()
+	subName := "my-sub"
 	consumer, err := client.Subscribe(pulsar.ConsumerOptions{
 		Topic:            topic,
-		SubscriptionName: "my-sub",
+		SubscriptionName: subName,
 		Type:             pulsar.Exclusive,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
 
 	// create producer
+	producerName := "test-producer"
 	producer, err := client.CreateProducer(pulsar.ProducerOptions{
 		Topic:           topic,
 		DisableBatching: false,
+		Name:            producerName,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
@@ -172,6 +175,53 @@ func TestPartitionState(t *testing.T) {
 	for _, subscriptionStats := range stats.Subscriptions {
 		assert.Equal(t, len(subscriptionStats.Consumers), 0)
 	}
+
+	partition, err := topicName.GetPartition(0)
+	assert.Nil(t, err)
+	topicState, err := admin.Topics().GetStats(*partition)
+	assert.Nil(t, err)
+	assert.Equal(t, len(topicState.Publishers), 1)
+	publisher := topicState.Publishers[0]
+	assert.Equal(t, publisher.AccessModel, utils.ProduceModeShared)
+	assert.Equal(t, publisher.IsSupportsPartialProducer, false)
+	assert.Equal(t, publisher.ProducerName, producerName)
+	assert.Contains(t, publisher.Address, "127.0.0.1")
+	assert.Contains(t, publisher.ClientVersion, "Pulsar Go version")
+
+	sub := topicState.Subscriptions[subName]
+	assert.Equal(t, sub.BytesOutCounter, int64(0))
+	assert.Equal(t, sub.MsgOutCounter, int64(0))
+	assert.Equal(t, sub.MessageAckRate, float64(0))
+	assert.Equal(t, sub.ChunkedMessageRate, float64(0))
+	assert.Equal(t, sub.BacklogSize, int64(0))
+	assert.Equal(t, sub.EarliestMsgPublishTimeInBacklog, int64(0))
+	assert.Equal(t, sub.LastExpireTimestamp, int64(0))
+	assert.Equal(t, sub.TotalMsgExpired, int64(0))
+	assert.Equal(t, sub.LastMarkDeleteAdvancedTimestamp, int64(0))
+	assert.Equal(t, sub.IsDurable, true)
+	assert.Equal(t, sub.AllowOutOfOrderDelivery, false)
+	assert.Equal(t, sub.ConsumersAfterMarkDeletePosition, map[string]string{})
+	assert.Equal(t, sub.NonContiguousDeletedMessagesRanges, 0)
+	assert.Equal(t, sub.NonContiguousDeletedMessagesRangesSerializedSize, 0)
+	assert.Equal(t, sub.DelayedMessageIndexSizeInBytes, int64(0))
+	assert.Equal(t, sub.SubscriptionProperties, map[string]string{})
+	assert.Equal(t, sub.FilterProcessedMsgCount, int64(0))
+	assert.Equal(t, sub.FilterAcceptedMsgCount, int64(0))
+	assert.Equal(t, sub.FilterRejectedMsgCount, int64(0))
+	assert.Equal(t, sub.FilterRescheduledMsgCount, int64(0))
+
+	assert.Equal(t, len(sub.Consumers), 1)
+	consumerState := sub.Consumers[0]
+	assert.Equal(t, consumerState.BytesOutCounter, int64(0))
+	assert.Equal(t, consumerState.MsgOutCounter, int64(0))
+	assert.Equal(t, consumerState.MessageAckRate, float64(0))
+	assert.Equal(t, consumerState.ChunkedMessageRate, float64(0))
+	assert.Equal(t, consumerState.AvgMessagesPerEntry, int(0))
+	assert.Contains(t, consumerState.Address, "127.0.0.1")
+	assert.Contains(t, consumerState.ClientVersion, "Pulsar Go version")
+	assert.Equal(t, consumerState.LastAckedTimestamp, int64(0))
+	assert.Equal(t, consumerState.LastConsumedTimestamp, int64(0))
+	assert.True(t, consumerState.LastConsumedFlowTimestamp > 0)
 
 }
 func TestNonPartitionState(t *testing.T) {
