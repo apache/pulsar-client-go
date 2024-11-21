@@ -202,7 +202,7 @@ func TestPartitionState(t *testing.T) {
 	assert.Equal(t, sub.AllowOutOfOrderDelivery, false)
 	assert.Equal(t, sub.ConsumersAfterMarkDeletePosition, map[string]string{})
 	assert.Equal(t, sub.NonContiguousDeletedMessagesRanges, 0)
-	assert.Equal(t, sub.NonContiguousDeletedMessagesRangesSerializedSize, 0)
+	assert.Equal(t, sub.NonContiguousDeletedMessagesRangesSrzSize, 0)
 	assert.Equal(t, sub.DelayedMessageIndexSizeInBytes, int64(0))
 	assert.Equal(t, sub.SubscriptionProperties, map[string]string{})
 	assert.Equal(t, sub.FilterProcessedMsgCount, int64(0))
