@@ -4908,6 +4908,8 @@ func TestAckResponseNotBlocked(t *testing.T) {
 	producer.Flush()
 	producer.Close()
 
+	// Set a small receiver queue size to trigger ack response blocking if the internal `queueCh`
+	// is a channel with the same size
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                          topic,
 		SubscriptionName:               "my-sub",
@@ -4928,7 +4930,6 @@ func TestAckResponseNotBlocked(t *testing.T) {
 			if len(msgIDs) >= 10 {
 				if err := consumer.AckIDList(msgIDs); err != nil {
 					t.Fatal("Failed to acked messages: ", msgIDs, " ", err)
-					t.Fail()
 				} else {
 					t.Log("Acked messages: ", msgIDs)
 				}

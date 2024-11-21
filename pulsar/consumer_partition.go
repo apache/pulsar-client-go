@@ -156,7 +156,7 @@ type partitionConsumer struct {
 
 	// the size of the queue channel for buffering messages
 	maxQueueSize    int32
-	queueCh         chan *message
+	queueCh         *unboundedChannel[*message]
 	startMessageID  atomicMessageID
 	lastDequeuedMsg *trackingMessageID
 
@@ -354,7 +354,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		partitionIdx:               int32(options.partitionIdx),
 		eventsCh:                   make(chan interface{}, 10),
 		maxQueueSize:               int32(options.receiverQueueSize),
-		queueCh:                    make(chan *message, options.receiverQueueSize),
+		queueCh:                    newUnboundedChannel[*message](),
 		startMessageID:             atomicMessageID{msgID: options.startMessageID},
 		connectedCh:                make(chan struct{}),
 		messageCh:                  messageCh,
@@ -949,6 +949,11 @@ func (pc *partitionConsumer) Close() {
 
 	// wait for request to finish
 	<-req.doneCh
+
+	// It will close `queueCh.in`. If `MessageReceived` was called after that, it will panic because new messages
+	// will be sent to a closed channel. However, generally it's impossible because the broker will not be able to
+	// dispatch messages to this consumer after receiving the close request.
+	pc.queueCh.stop()
 }
 
 func (pc *partitionConsumer) Seek(msgID MessageID) error {
@@ -1171,7 +1176,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				pc.markScaleIfNeed()
 			}
 
-			pc.queueCh <- &message{
+			pc.queueCh.inCh <- &message{
 				publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
 				eventTime:    timeFromUnixTimestampMillis(msgMeta.GetEventTime()),
 				key:          msgMeta.GetPartitionKey(),
@@ -1373,7 +1378,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			pc.markScaleIfNeed()
 		}
 
-		pc.queueCh <- msg
+		pc.queueCh.inCh <- msg
 	}
 
 	if skippedMessages > 0 {
@@ -1537,7 +1542,7 @@ func (pc *partitionConsumer) dispatcher() {
 	}()
 	var queueMsg *message
 	for {
-		var queueCh chan *message
+		var queueCh <-chan *message
 		var messageCh chan ConsumerMessage
 		var nextMessage ConsumerMessage
 		var nextMessageSize int
@@ -1564,7 +1569,7 @@ func (pc *partitionConsumer) dispatcher() {
 				pc.log.Debug("skip dispatching messages when seeking")
 			}
 		} else {
-			queueCh = pc.queueCh
+			queueCh = pc.queueCh.outCh
 		}
 
 		select {
@@ -1625,11 +1630,9 @@ func (pc *partitionConsumer) dispatcher() {
 			// drain the message queue on any new connection by sending a
 			// special nil message to the channel so we know when to stop dropping messages
 			var nextMessageInQueue *trackingMessageID
-			go func() {
-				pc.queueCh <- nil
-			}()
+			pc.queueCh.inCh <- nil
 
-			for m := range pc.queueCh {
+			for m := range pc.queueCh.outCh {
 				// the queue has been drained
 				if m == nil {
 					break

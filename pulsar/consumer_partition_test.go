@@ -30,7 +30,7 @@ import (
 func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan *message, 1),
+		queueCh:              newUnboundedChannel[*message](),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -47,7 +47,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	}
 
 	// ensure the tracker was set on the message id
-	message := <-pc.queueCh
+	message := <-pc.queueCh.outCh
 	id := message.ID().(*trackingMessageID)
 	assert.Nil(t, id.tracker)
 
@@ -68,7 +68,7 @@ func newTestMetrics() *internal.LeveledMetrics {
 func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan *message, 1),
+		queueCh:              newUnboundedChannel[*message](),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -85,7 +85,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	}
 
 	// ensure the tracker was set on the message id
-	message := <-pc.queueCh
+	message := <-pc.queueCh.outCh
 	id := message.ID().(*trackingMessageID)
 	assert.Nil(t, id.tracker)
 
@@ -103,7 +103,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan *message, 10),
+		queueCh:              newUnboundedChannel[*message](),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -123,7 +123,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	var messageIDs []*trackingMessageID
 	for i := 0; i < 10; i++ {
 		select {
-		case m := <-pc.queueCh:
+		case m := <-pc.queueCh.outCh:
 			id := m.ID().(*trackingMessageID)
 			assert.NotNil(t, id.tracker)
 			messageIDs = append(messageIDs, id)
