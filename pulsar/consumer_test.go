@@ -4887,6 +4887,7 @@ func TestAckResponseNotBlocked(t *testing.T) {
 	defer client.Close()
 
 	topic := fmt.Sprintf("test-ack-response-not-blocked-%v", time.Now().Nanosecond())
+	assert.Nil(t, createPartitionedTopic(topic, 10))
 
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
@@ -4894,7 +4895,7 @@ func TestAckResponseNotBlocked(t *testing.T) {
 	assert.Nil(t, err)
 
 	ctx := context.Background()
-	numMessages := 100
+	numMessages := 1000
 	for i := 0; i < numMessages; i++ {
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("value-%d", i)),
@@ -4903,7 +4904,9 @@ func TestAckResponseNotBlocked(t *testing.T) {
 				t.Fatal(err)
 			}
 		})
-		time.Sleep(1 * time.Millisecond)
+		if i%100 == 99 {
+			assert.Nil(t, producer.Flush())
+		}
 	}
 	producer.Flush()
 	producer.Close()
@@ -4917,7 +4920,7 @@ func TestAckResponseNotBlocked(t *testing.T) {
 		Type:                           KeyShared,
 		EnableBatchIndexAcknowledgment: true,
 		AckWithResponse:                true,
-		ReceiverQueueSize:              10,
+		ReceiverQueueSize:              5,
 	})
 	assert.Nil(t, err)
 	msgIDs := make([]MessageID, 0)
@@ -4925,7 +4928,6 @@ func TestAckResponseNotBlocked(t *testing.T) {
 		if msg, err := consumer.Receive(context.Background()); err != nil {
 			t.Fatal(err)
 		} else {
-			t.Log("Received message: ", msg.ID())
 			msgIDs = append(msgIDs, msg.ID())
 			if len(msgIDs) >= 10 {
 				if err := consumer.AckIDList(msgIDs); err != nil {

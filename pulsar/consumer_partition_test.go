@@ -31,7 +31,7 @@ import (
 func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              newUnboundedChannel[*message](),
+		closeCh:              make(chan struct{}),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -41,6 +41,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	pc.availablePermits = &availablePermits{pc: &pc}
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
 		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
+	pc.startQueueMessagesFromBroker()
 
 	headersAndPayload := internal.NewBufferWrapper(rawCompatSingleMessage)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -48,7 +49,7 @@ func TestSingleMessageIDNoAckTracker(t *testing.T) {
 	}
 
 	// ensure the tracker was set on the message id
-	message := <-pc.queueCh.outCh
+	message := <-pc.queueOutCh
 	id := message.ID().(*trackingMessageID)
 	assert.Nil(t, id.tracker)
 
@@ -69,7 +70,7 @@ func newTestMetrics() *internal.LeveledMetrics {
 func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              newUnboundedChannel[*message](),
+		closeCh:              make(chan struct{}),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -79,6 +80,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	pc.availablePermits = &availablePermits{pc: &pc}
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
 		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
+	pc.startQueueMessagesFromBroker()
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -86,7 +88,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 	}
 
 	// ensure the tracker was set on the message id
-	message := <-pc.queueCh.outCh
+	message := <-pc.queueOutCh
 	id := message.ID().(*trackingMessageID)
 	assert.Nil(t, id.tracker)
 
@@ -104,7 +106,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              newUnboundedChannel[*message](),
+		closeCh:              make(chan struct{}),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},
@@ -114,6 +116,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	pc.availablePermits = &availablePermits{pc: &pc}
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
 		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
+	pc.startQueueMessagesFromBroker()
 
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
 	if err := pc.MessageReceived(nil, headersAndPayload); err != nil {
@@ -125,7 +128,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	running := true
 	for running {
 		select {
-		case m := <-pc.queueCh.outCh:
+		case m := <-pc.queueOutCh:
 			id := m.ID().(*trackingMessageID)
 			assert.NotNil(t, id.tracker)
 			messageIDs = append(messageIDs, id)
