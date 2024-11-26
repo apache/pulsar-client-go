@@ -4877,3 +4877,66 @@ func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message
 	assert.Equal(t, numMessages, len(msgs))
 	return msgs
 }
+
+func TestAckResponseNotBlocked(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:              lookupURL,
+		OperationTimeout: 5 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("test-ack-response-not-blocked-%v", time.Now().Nanosecond())
+	assert.Nil(t, createPartitionedTopic(topic, 10))
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+
+	ctx := context.Background()
+	numMessages := 1000
+	for i := 0; i < numMessages; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("value-%d", i)),
+		}, func(_ MessageID, _ *ProducerMessage, err error) {
+			if err != nil {
+				t.Fatal(err)
+			}
+		})
+		if i%100 == 99 {
+			assert.Nil(t, producer.Flush())
+		}
+	}
+	producer.Flush()
+	producer.Close()
+
+	// Set a small receiver queue size to trigger ack response blocking if the internal `queueCh`
+	// is a channel with the same size
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                          topic,
+		SubscriptionName:               "my-sub",
+		SubscriptionInitialPosition:    SubscriptionPositionEarliest,
+		Type:                           KeyShared,
+		EnableBatchIndexAcknowledgment: true,
+		AckWithResponse:                true,
+		ReceiverQueueSize:              5,
+	})
+	assert.Nil(t, err)
+	msgIDs := make([]MessageID, 0)
+	for i := 0; i < numMessages; i++ {
+		if msg, err := consumer.Receive(context.Background()); err != nil {
+			t.Fatal(err)
+		} else {
+			msgIDs = append(msgIDs, msg.ID())
+			if len(msgIDs) >= 10 {
+				if err := consumer.AckIDList(msgIDs); err != nil {
+					t.Fatal("Failed to acked messages: ", msgIDs, " ", err)
+				} else {
+					t.Log("Acked messages: ", msgIDs)
+				}
+				msgIDs = msgIDs[:0]
+			}
+		}
+	}
+}
