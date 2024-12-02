@@ -24,6 +24,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"regexp"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -1517,8 +1518,9 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 		expectMsg := fmt.Sprintf("hello-%d", expectedMsgIdx)
 		assert.Equal(t, []byte(expectMsg), msg.Payload())
 
-		// check dql produceName
-		assert.Equal(t, msg.ProducerName(), fmt.Sprintf("%s-%s-%s-DLQ", topic, sub, consumerName))
+		// check dlq produceName
+		regex := regexp.MustCompile(fmt.Sprintf("%s-%s-%s-[a-z]{5}-DLQ", topic, sub, consumerName))
+		assert.True(t, regex.MatchString(msg.ProducerName()))
 
 		// check original messageId
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
