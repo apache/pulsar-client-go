@@ -190,6 +190,8 @@ type partitionConsumer struct {
 
 	dispatcherSeekingControlCh chan struct{}
 	isSeeking                  atomic.Bool
+	ctx                        context.Context
+	cancelFunc                 context.CancelFunc
 }
 
 // pauseDispatchMessage used to discard the message in the dispatcher goroutine.
@@ -344,6 +346,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		boFunc = backoff.NewDefaultBackoff
 	}
 
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	pc := &partitionConsumer{
 		parentConsumer:             parent,
 		client:                     client,
@@ -367,6 +370,8 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		schemaInfoCache:            newSchemaInfoCache(client, options.topic),
 		backoffPolicyFunc:          boFunc,
 		dispatcherSeekingControlCh: make(chan struct{}),
+		ctx:                        ctx,
+		cancelFunc:                 cancelFunc,
 	}
 	if pc.options.autoReceiverQueueSize {
 		pc.currentQueueSize.Store(initialReceiverQueueSize)
@@ -937,6 +942,8 @@ func (pc *partitionConsumer) Close() {
 	if pc.getConsumerState() != consumerReady {
 		return
 	}
+
+	pc.cancelFunc()
 
 	// flush all pending ACK requests and terminate the timer goroutine
 	pc.ackGroupingTracker.close()
@@ -1866,7 +1873,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 
 		return struct{}{}, err
 	}
-	_, _ = internal.Retry(context.Background(), opFn, func(_ error) time.Duration {
+	_, _ = internal.Retry(pc.ctx, opFn, func(_ error) time.Duration {
 		delayReconnectTime := bo.Next()
 		pc.log.WithFields(log.Fields{
 			"assignedBrokerURL":  assignedBrokerURL,
