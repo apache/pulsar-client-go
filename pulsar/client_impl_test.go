@@ -231,7 +231,9 @@ func TestTokenAuthWithClientVersion(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
-	cfg := &config.Config{}
+	cfg := &config.Config{
+		Token: string(token),
+	}
 	admin, err := admin.New(cfg)
 	assert.NoError(t, err)
 	assert.NotNil(t, admin)
