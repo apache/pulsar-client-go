@@ -21,7 +21,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"log"
 	"net/http"
 	"os"
@@ -31,6 +30,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
