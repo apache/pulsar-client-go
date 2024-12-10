@@ -81,6 +81,72 @@ func TestTableView(t *testing.T) {
 	}
 }
 
+func TestTableView_Message(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	// Create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	numMsg := 10
+	valuePrefix := "hello table view: "
+	publicationTimeForKey := map[string]time.Time{}
+	keys := make([]string, 0, numMsg)
+
+	for i := 0; i < numMsg; i++ {
+		key := fmt.Sprintf("%d", i)
+		keys = append(keys, key)
+
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+		defer cancel()
+		_, err = producer.Send(ctx, &ProducerMessage{
+			Key:   key,
+			Value: fmt.Sprintf(valuePrefix + key),
+		})
+		assert.NoError(t, err)
+
+		publicationTimeForKey[key] = time.Now()
+	}
+
+	// Create table view
+	v := ""
+	tv, err := client.CreateTableView(TableViewOptions{
+		Topic:           topic,
+		Schema:          schema,
+		SchemaValueType: reflect.TypeOf(&v),
+	})
+	assert.NoError(t, err)
+	defer tv.Close()
+
+	// Wait until table view receives all messages
+	for tv.Size() < numMsg {
+		time.Sleep(time.Second * 500)
+		t.Logf("TableView number of elements: %d", tv.Size())
+	}
+
+	for _, k := range keys {
+		msg := tv.Message(k)
+
+		// Check that the payload can be accessed as bytes
+		assert.Equal(t, []byte(fmt.Sprintf("%s%s", valuePrefix, k)), msg.Payload())
+
+		// Check publication times can be accessed and are close to the recorded times above
+		assert.WithinDuration(t, publicationTimeForKey[k], msg.PublishTime(), time.Millisecond*10)
+	}
+}
+
 func TestTableViewSchemas(t *testing.T) {
 	var tests = []struct {
 		name          string
