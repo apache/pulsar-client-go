@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 	"log"
 	"net/http"
 	"os"
@@ -4984,4 +4985,53 @@ func TestConsumerKeepReconnectingAndThenCallClose(t *testing.T) {
 		testConsumer.Close()
 		return true
 	}, 30*time.Second, 1*time.Second)
+}
+
+func TestClientVersion(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	cfg := &config.Config{}
+	admin, err := admin.New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	topicState, err := admin.Topics().GetStats(*topicName)
+	assert.Nil(t, err)
+	publisher := topicState.Publishers[0]
+	assert.Contains(t, publisher.ClientVersion, "Pulsar Go version")
+
+	topic = newTopicName()
+	client, err = NewClient(ClientOptions{
+		URL:         lookupURL,
+		Description: "test-client",
+	})
+	assert.Nil(t, err)
+	producer, err = client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	topicName, err = utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	topicState, err = admin.Topics().GetStats(*topicName)
+	assert.Nil(t, err)
+	publisher = topicState.Publishers[0]
+	assert.Contains(t, publisher.ClientVersion, "test-client")
+
 }

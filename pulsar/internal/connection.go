@@ -176,7 +176,8 @@ type connection struct {
 
 	keepAliveInterval time.Duration
 
-	lastActive time.Time
+	lastActive  time.Time
+	description string
 }
 
 // connectionOptions defines configurations for creating connection.
@@ -189,6 +190,7 @@ type connectionOptions struct {
 	logger            log.Logger
 	metrics           *Metrics
 	keepAliveInterval time.Duration
+	description       string
 }
 
 func newConnection(opts connectionOptions) *connection {
@@ -218,6 +220,7 @@ func newConnection(opts connectionOptions) *connection {
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
 		metrics:          opts.metrics,
+		description:      opts.description,
 	}
 	cnx.state.Store(int32(connectionInit))
 	cnx.reader = newConnectionReader(cnx)
@@ -305,7 +308,7 @@ func (c *connection) doHandshake() bool {
 	c.cnx.SetDeadline(time.Now().Add(c.keepAliveInterval))
 	cmdConnect := &pb.CommandConnect{
 		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
-		ClientVersion:   proto.String(ClientVersionString),
+		ClientVersion:   proto.String(c.getClientVersion()),
 		AuthMethodName:  proto.String(c.auth.Name()),
 		AuthData:        authData,
 		FeatureFlags: &pb.FeatureFlags{
@@ -344,6 +347,16 @@ func (c *connection) doHandshake() bool {
 	c.setStateReady()
 	close(c.readyCh) // broadcast the readiness of the connection.
 	return true
+}
+
+func (c *connection) getClientVersion() string {
+	var clientVersion string
+	if c.description == "" {
+		clientVersion = ClientVersionString
+	} else {
+		clientVersion = fmt.Sprintf("%s-%s", ClientVersionString, c.description)
+	}
+	return clientVersion
 }
 
 func (c *connection) IsProxied() bool {
@@ -832,7 +845,7 @@ func (c *connection) handleAuthChallenge(authChallenge *pb.CommandAuthChallenge)
 
 	cmdAuthResponse := &pb.CommandAuthResponse{
 		ProtocolVersion: proto.Int32(PulsarProtocolVersion),
-		ClientVersion:   proto.String(ClientVersionString),
+		ClientVersion:   proto.String(c.getClientVersion()),
 		Response: &pb.AuthData{
 			AuthMethodName: proto.String(c.auth.Name()),
 			AuthData:       authData,
