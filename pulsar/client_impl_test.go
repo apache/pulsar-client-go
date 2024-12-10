@@ -231,8 +231,10 @@ func TestTokenAuthWithClientVersion(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, producer)
 
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	assert.NoError(t, err)
 	cfg := &config.Config{
-		Token: string(token),
+		Token: string(readFile),
 	}
 	admin, err := admin.New(cfg)
 	assert.NoError(t, err)
