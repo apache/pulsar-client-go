@@ -356,7 +356,8 @@ func (c *connection) waitUntilReady() error {
 		return nil
 	case <-c.closeCh:
 		// Connection has been closed while waiting for the readiness.
-		return errors.New("connection error")
+		errMsg := fmt.Sprintf(`WARN[0009] Failed to connect to broker. error="dial tcp [::1]:6650: connect: connection refused" remote_addr="%s"`, c.physicalAddr.String())
+		return errors.New(errMsg)
 	}
 }
 
