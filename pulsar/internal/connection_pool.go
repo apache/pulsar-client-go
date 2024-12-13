@@ -52,8 +52,9 @@ type connectionPool struct {
 	keepAliveInterval     time.Duration
 	closeCh               chan struct{}
 
-	metrics *Metrics
-	log     log.Logger
+	metrics     *Metrics
+	log         log.Logger
+	description string
 }
 
 // NewConnectionPool init connection pool.
@@ -65,6 +66,7 @@ func NewConnectionPool(
 	maxConnectionsPerHost int,
 	logger log.Logger,
 	metrics *Metrics,
+	description string,
 	connectionMaxIdleTime time.Duration) ConnectionPool {
 	p := &connectionPool{
 		connections:           make(map[string]*connection),
@@ -76,6 +78,7 @@ func NewConnectionPool(
 		log:                   logger,
 		metrics:               metrics,
 		closeCh:               make(chan struct{}),
+		description:           description,
 	}
 	go p.checkAndCleanIdleConnections(connectionMaxIdleTime)
 	return p
@@ -113,6 +116,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 			keepAliveInterval: p.keepAliveInterval,
 			logger:            p.log,
 			metrics:           p.metrics,
+			description:       p.description,
 		})
 		p.connections[key] = conn
 		p.Unlock()

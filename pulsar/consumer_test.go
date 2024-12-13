@@ -26,10 +26,13 @@ import (
 	"os"
 	"regexp"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
 
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -4984,4 +4987,54 @@ func TestConsumerKeepReconnectingAndThenCallClose(t *testing.T) {
 		testConsumer.Close()
 		return true
 	}, 30*time.Second, 1*time.Second)
+}
+
+func TestClientVersion(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	cfg := &config.Config{}
+	admin, err := admin.New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	topicState, err := admin.Topics().GetStats(*topicName)
+	assert.Nil(t, err)
+	publisher := topicState.Publishers[0]
+	assert.True(t, strings.HasPrefix(publisher.ClientVersion, "Pulsar Go version"))
+
+	topic = newTopicName()
+	client, err = NewClient(ClientOptions{
+		URL:         lookupURL,
+		Description: "test-client",
+	})
+	assert.Nil(t, err)
+	producer, err = client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	topicName, err = utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	topicState, err = admin.Topics().GetStats(*topicName)
+	assert.Nil(t, err)
+	publisher = topicState.Publishers[0]
+	assert.True(t, strings.HasPrefix(publisher.ClientVersion, "Pulsar Go version"))
+	assert.True(t, strings.HasSuffix(publisher.ClientVersion, "-test-client"))
+
 }

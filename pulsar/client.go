@@ -171,6 +171,15 @@ type ClientOptions struct {
 	// The protocol is binary protocol, i.e. the service URL starts with "pulsar://" or "pulsar+ssl://"
 	// The `loadManagerClassName` config in broker is a class that implements the `ExtensibleLoadManager` interface
 	LookupProperties map[string]string
+
+	// Set the description.
+	// By default, when the client connects to the broker, a version string like "Pulsar Go <version>" will be
+	// carried and saved by the broker. The client version string could be queried from the topic stats.
+	// This method provides a way to add more description to a specific PulsarClient instance. If it's configured,
+	// the description will be appended to the original client version string, with '-' as the separator.
+	// For example, if the client version is 3.0.0, and the description is "forked", the final client version string
+	// "Pulsar Go 3.0.0-forked".
+	Description string
 }
 
 // Client represents a pulsar client

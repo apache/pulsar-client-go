@@ -29,6 +29,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+
 	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
@@ -207,6 +211,43 @@ func TestTokenAuth(t *testing.T) {
 	assert.NotNil(t, producer)
 
 	client.Close()
+}
+func TestTokenAuthWithClientVersion(t *testing.T) {
+	token, err := os.ReadFile(tokenFilePath)
+	assert.NoError(t, err)
+
+	client, err := NewClient(ClientOptions{
+		URL:            serviceURL,
+		Authentication: NewAuthenticationToken(string(token)),
+		Description:    "test-client",
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newAuthTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	readFile, err := os.ReadFile("../integration-tests/tokens/admin-token")
+	assert.NoError(t, err)
+	cfg := &config.Config{
+		Token: string(readFile),
+	}
+	admin, err := admin.New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	topicState, err := admin.Topics().GetStats(*topicName)
+	assert.Nil(t, err)
+	publisher := topicState.Publishers[0]
+	assert.True(t, strings.HasPrefix(publisher.ClientVersion, "Pulsar Go version"))
+	assert.True(t, strings.HasSuffix(publisher.ClientVersion, "-test-client"))
 }
 
 func TestTokenAuthWithSupplier(t *testing.T) {
