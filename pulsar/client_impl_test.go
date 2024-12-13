@@ -222,6 +222,7 @@ func TestTokenAuthWithClientVersion(t *testing.T) {
 		Description:    "test-client",
 	})
 	assert.NoError(t, err)
+	defer client.Close()
 
 	topic := newAuthTopicName()
 	producer, err := client.CreateProducer(ProducerOptions{
