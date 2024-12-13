@@ -246,7 +246,7 @@ func TestTokenAuthWithClientVersion(t *testing.T) {
 	topicState, err := admin.Topics().GetStats(*topicName)
 	assert.Nil(t, err)
 	publisher := topicState.Publishers[0]
-        assert.True(t, strings.HasPrefix(publisher.ClientVersion, "Pulsar Go version"))
+	assert.True(t, strings.HasPrefix(publisher.ClientVersion, "Pulsar Go version"))
 	assert.True(t, strings.HasSuffix(publisher.ClientVersion, "-test-client"))
 }
 
