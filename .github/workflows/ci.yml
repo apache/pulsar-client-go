@@ -51,8 +51,12 @@ jobs:
         go-version: [ '1.22', '1.23' ]
     steps:
       - uses: actions/checkout@v3
-      - name: clean docker cache
-        run: docker rmi $(docker images -q) -f && df -h
+      - name: Check for Docker images
+        id: check_images
+        run: echo "::set-output name=images::$(docker images -q | wc -l)"
+      - name: Clean Docker cache if images exist
+        if: ${{ steps.check_images.outputs.images > 0 }}
+        run: docker rmi $(docker images -q) -f && df -h        
       - uses: actions/setup-go@v3
         with:
           go-version: ${{ matrix.go-version }}

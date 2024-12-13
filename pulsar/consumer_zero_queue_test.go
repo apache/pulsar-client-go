@@ -95,6 +95,89 @@ func TestNormalZeroQueueConsumer(t *testing.T) {
 	err = consumer.Unsubscribe()
 	assert.Nil(t, err)
 }
+
+func TestMultipleConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create consumer1
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:                   topic,
+		SubscriptionName:        "my-sub",
+		Type:                    Shared,
+		EnableZeroQueueConsumer: true,
+	})
+	assert.Nil(t, err)
+	_, ok := consumer1.(*zeroQueueConsumer)
+	assert.True(t, ok)
+	defer consumer1.Close()
+
+	// create consumer2
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:                   topic,
+		SubscriptionName:        "my-sub",
+		Type:                    Shared,
+		EnableZeroQueueConsumer: true,
+	})
+	assert.Nil(t, err)
+	_, ok = consumer2.(*zeroQueueConsumer)
+	assert.True(t, ok)
+	defer consumer2.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	sendNum := 10
+	// send 10 messages
+	for i := 0; i < sendNum; i++ {
+		msg, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
+		})
+		assert.Nil(t, err)
+		log.Printf("send message: %s", msg.String())
+	}
+
+	// receive messages
+	for i := 0; i < sendNum/2; i++ {
+		msg, err := consumer1.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("consumer1 receive message: %s %s", msg.ID().String(), msg.Payload())
+		// ack message
+		consumer1.Ack(msg)
+	}
+
+	// receive messages
+	for i := 0; i < sendNum/2; i++ {
+		msg, err := consumer2.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+		log.Printf("consumer2 receive message: %s %s", msg.ID().String(), msg.Payload())
+		// ack message
+		consumer2.Ack(msg)
+	}
+
+}
+
 func TestPartitionZeroQueueConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
