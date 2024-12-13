@@ -135,7 +135,7 @@ func TestMultipleConsumer(t *testing.T) {
 	// create producer
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic:           topic,
-		DisableBatching: false,
+		DisableBatching: true,
 	})
 	assert.Nil(t, err)
 	defer producer.Close()
