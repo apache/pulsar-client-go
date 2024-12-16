@@ -1244,5 +1244,6 @@ func TestConnectionClosedError(t *testing.T) {
 		Topic: "my-topic",
 	})
 	assert.Error(t, err)
-	assert.True(t, strings.Contains(err.Error(), "failed to connect to broker: dial tcp [::1]:1234: connect: connection refused"), "error-message", err.Error())
+	assert.True(t, strings.Contains(err.Error(), "failed to connect to broker: dial tcp [::1]:1234: connect:"+
+		" connection refused"), "error-message", err.Error())
 }
