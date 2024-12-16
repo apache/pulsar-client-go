@@ -28,6 +28,6 @@ func NewNoopEncryptor() Encryptor {
 }
 
 // Encrypt Noop ecryptor
-func (e *noopEncryptor) Encrypt(data []byte, msgMetadata *pb.MessageMetadata) ([]byte, error) {
+func (e *noopEncryptor) Encrypt(data []byte, _ *pb.MessageMetadata) ([]byte, error) {
 	return data, nil
 }

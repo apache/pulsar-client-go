@@ -19,37 +19,40 @@ package internal
 
 import (
 	"context"
-	"sync"
+	"errors"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
-func TestChCond(_ *testing.T) {
-	cond := newCond(&sync.Mutex{})
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-	go func() {
-		cond.L.Lock()
-		cond.wait()
-		cond.L.Unlock()
-		wg.Done()
-	}()
-	time.Sleep(10 * time.Millisecond)
-	cond.broadcast()
-	wg.Wait()
+func TestRetryWithCtxBackground(t *testing.T) {
+	ctx := context.Background()
+	i := 0
+	res, err := Retry(ctx, func() (string, error) {
+		if i == 2 {
+			return "ok", nil
+		}
+		i++
+		return "", errors.New("error")
+	}, func(_ error) time.Duration {
+		return 1 * time.Second
+	})
+	require.NoError(t, err)
+	require.Equal(t, "ok", res)
 }
 
-func TestChCondWithContext(_ *testing.T) {
-	cond := newCond(&sync.Mutex{})
-	wg := sync.WaitGroup{}
-	ctx, cancel := context.WithCancel(context.Background())
-	wg.Add(1)
-	go func() {
-		cond.L.Lock()
-		cond.waitWithContext(ctx)
-		cond.L.Unlock()
-		wg.Done()
-	}()
-	cancel()
-	wg.Wait()
+func TestRetryWithCtxTimeout(t *testing.T) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancelFn()
+	retryErr := errors.New("error")
+	res, err := Retry(ctx, func() (string, error) {
+		return "", retryErr
+	}, func(err error) time.Duration {
+		require.Equal(t, retryErr, err)
+		return 1 * time.Second
+	})
+	require.ErrorIs(t, err, context.DeadlineExceeded)
+	require.ErrorContains(t, err, retryErr.Error())
+	require.Equal(t, "", res)
 }

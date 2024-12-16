@@ -97,6 +97,7 @@ func newClient(options ClientOptions) (Client, error) {
 			CipherSuites:            options.TLSCipherSuites,
 			MinVersion:              options.TLSMinVersion,
 			MaxVersion:              options.TLSMaxVersion,
+			TLSConfig:               options.TLSConfig,
 		}
 	default:
 		return nil, newError(InvalidConfiguration, fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
@@ -162,7 +163,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval,
-			maxConnectionsPerHost, logger, metrics, connectionMaxIdleTime),
+			maxConnectionsPerHost, logger, metrics, options.Description, connectionMaxIdleTime),
 		log:              logger,
 		metrics:          metrics,
 		memLimit:         internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
@@ -171,7 +172,7 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger, metrics,
-		options.ListenerName, tlsConfig, authProvider)
+		options.ListenerName, tlsConfig, authProvider, toKeyValues(options.LookupProperties))
 
 	c.lookupService = c.rpcClient.LookupService("")
 

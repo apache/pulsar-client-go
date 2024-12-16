@@ -86,7 +86,7 @@ func (txn *transaction) GetState() TxnState {
 	return TxnState(txn.state.Load())
 }
 
-func (txn *transaction) Commit(ctx context.Context) error {
+func (txn *transaction) Commit(_ context.Context) error {
 	if !(txn.state.CompareAndSwap(int32(TxnOpen), int32(TxnCommitting))) {
 		txnState := txn.state.Load()
 		return newError(InvalidStatus, txnStateErrorMessage(TxnOpen, TxnState(txnState)))
@@ -117,7 +117,7 @@ func (txn *transaction) Commit(ctx context.Context) error {
 	return err
 }
 
-func (txn *transaction) Abort(ctx context.Context) error {
+func (txn *transaction) Abort(_ context.Context) error {
 	if !(txn.state.CompareAndSwap(int32(TxnOpen), int32(TxnAborting))) {
 		txnState := txn.state.Load()
 		return newError(InvalidStatus, txnStateErrorMessage(TxnOpen, TxnState(txnState)))

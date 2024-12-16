@@ -167,6 +167,48 @@ func (c *multiTopicConsumer) AckID(msgID MessageID) error {
 	return mid.consumer.AckID(msgID)
 }
 
+func (c *multiTopicConsumer) AckIDList(msgIDs []MessageID) error {
+	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
+		if !checkMessageIDType(msgID) {
+			return nil, fmt.Errorf("invalid message id type %T", msgID)
+		}
+		if mid := toTrackingMessageID(msgID); mid != nil && mid.consumer != nil {
+			return mid.consumer, nil
+		}
+		return nil, errors.New("consumer is nil")
+	})
+}
+
+func ackIDListFromMultiTopics(log log.Logger, msgIDs []MessageID, findConsumer func(MessageID) (acker, error)) error {
+	consumerToMsgIDs := make(map[acker][]MessageID)
+	for _, msgID := range msgIDs {
+		if consumer, err := findConsumer(msgID); err == nil {
+			consumerToMsgIDs[consumer] = append(consumerToMsgIDs[consumer], msgID)
+		} else {
+			log.Warnf("Can not find consumer for %v", msgID)
+		}
+	}
+
+	subErrCh := make(chan error, len(consumerToMsgIDs))
+	for consumer, ids := range consumerToMsgIDs {
+		go func() {
+			subErrCh <- consumer.AckIDList(ids)
+		}()
+	}
+	ackError := AckError{}
+	for i := 0; i < len(consumerToMsgIDs); i++ {
+		if topicAckError, ok := (<-subErrCh).(AckError); ok {
+			for id, err := range topicAckError {
+				ackError[id] = err
+			}
+		}
+	}
+	if len(ackError) == 0 {
+		return nil
+	}
+	return ackError
+}
+
 // AckWithTxn the consumption of a single message with a transaction
 func (c *multiTopicConsumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()
@@ -294,11 +336,11 @@ func (c *multiTopicConsumer) Close() {
 	})
 }
 
-func (c *multiTopicConsumer) Seek(msgID MessageID) error {
+func (c *multiTopicConsumer) Seek(_ MessageID) error {
 	return newError(SeekFailed, "seek command not allowed for multi topic consumer")
 }
 
-func (c *multiTopicConsumer) SeekByTime(time time.Time) error {
+func (c *multiTopicConsumer) SeekByTime(_ time.Time) error {
 	return newError(SeekFailed, "seek command not allowed for multi topic consumer")
 }
 

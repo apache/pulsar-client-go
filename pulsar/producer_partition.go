@@ -28,6 +28,8 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 
@@ -87,6 +89,8 @@ func init() {
 }
 
 type partitionProducer struct {
+	lastSequenceID int64
+
 	state  uAtomic.Int32
 	client *client
 	topic  string
@@ -110,7 +114,6 @@ type partitionProducer struct {
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
 	pendingQueue         internal.BlockingQueue
-	lastSequenceID       int64
 	schemaInfo           *SchemaInfo
 	partitionIdx         int32
 	metrics              *internal.LeveledMetrics
@@ -120,6 +123,7 @@ type partitionProducer struct {
 	redirectedClusterURI string
 	ctx                  context.Context
 	cancelFunc           context.CancelFunc
+	backOffPolicyFunc    func() backoff.Policy
 }
 
 type schemaCache struct {
@@ -146,6 +150,14 @@ func (s *schemaCache) Get(schema *SchemaInfo) (schemaVersion []byte) {
 func newPartitionProducer(client *client, topic string, options *ProducerOptions, partitionIdx int,
 	metrics *internal.LeveledMetrics) (
 	*partitionProducer, error) {
+
+	var boFunc func() backoff.Policy
+	if options.BackOffPolicyFunc != nil {
+		boFunc = options.BackOffPolicyFunc
+	} else {
+		boFunc = backoff.NewDefaultBackoff
+	}
+
 	var batchingMaxPublishDelay time.Duration
 	if options.BatchingMaxPublishDelay != 0 {
 		batchingMaxPublishDelay = options.BatchingMaxPublishDelay
@@ -171,19 +183,20 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		producerID:       client.rpcClient.NewProducerID(),
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
 		cmdChan:          make(chan interface{}, 10),
-		connectClosedCh:  make(chan *connectionClosed, 10),
+		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
 			compression.Level(options.CompressionLevel)),
-		publishSemaphore: internal.NewSemaphore(int32(maxPendingMessages)),
-		pendingQueue:     internal.NewBlockingQueue(maxPendingMessages),
-		lastSequenceID:   -1,
-		partitionIdx:     int32(partitionIdx),
-		metrics:          metrics,
-		epoch:            0,
-		schemaCache:      newSchemaCache(),
-		ctx:              ctx,
-		cancelFunc:       cancelFunc,
+		publishSemaphore:  internal.NewSemaphore(int32(maxPendingMessages)),
+		pendingQueue:      internal.NewBlockingQueue(maxPendingMessages),
+		lastSequenceID:    -1,
+		partitionIdx:      int32(partitionIdx),
+		metrics:           metrics,
+		epoch:             0,
+		schemaCache:       newSchemaCache(),
+		ctx:               ctx,
+		cancelFunc:        cancelFunc,
+		backOffPolicyFunc: boFunc,
 	}
 	if p.options.DisableBatching {
 		p.batchFlushTicker.Stop()
@@ -413,8 +426,12 @@ func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProdu
 		assignedBrokerURL = p.client.selectServiceURL(
 			closeProducer.GetAssignedBrokerServiceUrl(), closeProducer.GetAssignedBrokerServiceUrlTls())
 	}
-	p.connectClosedCh <- &connectionClosed{
-		assignedBrokerURL: assignedBrokerURL,
+
+	select {
+	case p.connectClosedCh <- &connectionClosed{assignedBrokerURL: assignedBrokerURL}:
+	default:
+		// Reconnect has already been requested so we do not block the
+		// connection callback.
 	}
 }
 
@@ -453,62 +470,44 @@ func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVer
 }
 
 func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed) {
-	var maxRetry int
+	var (
+		maxRetry int
+	)
 	if p.options.MaxReconnectToBroker == nil {
 		maxRetry = -1
 	} else {
 		maxRetry = int(*p.options.MaxReconnectToBroker)
 	}
 
-	var (
-		delayReconnectTime time.Duration
-		defaultBackoff     = internal.DefaultBackoff{}
-	)
+	bo := p.backOffPolicyFunc()
 
-	for maxRetry != 0 {
-		select {
-		case <-p.ctx.Done():
-			return
-		default:
+	var assignedBrokerURL string
+	if connectionClosed != nil && connectionClosed.HasURL() {
+		assignedBrokerURL = connectionClosed.assignedBrokerURL
+	}
+
+	opFn := func() (struct{}, error) {
+		if maxRetry == 0 {
+			return struct{}{}, nil
 		}
 
 		if p.getProducerState() != producerReady {
 			// Producer is already closing
 			p.log.Info("producer state not ready, exit reconnect")
-			return
-		}
-
-		var assignedBrokerURL string
-
-		if connectionClosed != nil && connectionClosed.HasURL() {
-			delayReconnectTime = 0
-			assignedBrokerURL = connectionClosed.assignedBrokerURL
-			connectionClosed = nil // Only attempt once
-		} else if p.options.BackoffPolicy == nil {
-			delayReconnectTime = defaultBackoff.Next()
-		} else {
-			delayReconnectTime = p.options.BackoffPolicy.Next()
-		}
-
-		p.log.WithFields(log.Fields{
-			"assignedBrokerURL":  assignedBrokerURL,
-			"delayReconnectTime": delayReconnectTime,
-		}).Info("Reconnecting to broker")
-		time.Sleep(delayReconnectTime)
-
-		// double check
-		if p.getProducerState() != producerReady {
-			// Producer is already closing
-			p.log.Info("producer state not ready, exit reconnect")
-			return
+			return struct{}{}, nil
 		}
 
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx(assignedBrokerURL)
+		if assignedBrokerURL != "" {
+			// Only attempt once
+			assignedBrokerURL = ""
+		}
 		if err == nil {
 			// Successfully reconnected
 			p.log.WithField("cnx", p._getConn().ID()).Info("Reconnected producer to broker")
-			return
+			bo.Reset()
+			return struct{}{}, nil
 		}
 		p.log.WithError(err).Error("Failed to create producer at reconnect")
 		errMsg := err.Error()
@@ -516,35 +515,45 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic not found, stop reconnecting, close the producer")
 			p.doClose(joinErrors(ErrTopicNotfound, err))
-			break
+			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgTopicTerminated) {
 			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
 			p.doClose(joinErrors(ErrTopicTerminated, err))
-			break
+			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
 			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
 			p.failPendingMessages(joinErrors(ErrProducerBlockedQuotaExceeded, err))
-			break
+			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgProducerFenced) {
 			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
 			p.doClose(joinErrors(ErrProducerFenced, err))
-			break
+			return struct{}{}, nil
 		}
 
 		if maxRetry > 0 {
 			maxRetry--
 		}
 		p.metrics.ProducersReconnectFailure.Inc()
-		if maxRetry == 0 || defaultBackoff.IsMaxBackoffReached() {
+		if maxRetry == 0 || bo.IsMaxBackoffReached() {
 			p.metrics.ProducersReconnectMaxRetry.Inc()
 		}
+
+		return struct{}{}, err
 	}
+	_, _ = internal.Retry(p.ctx, opFn, func(_ error) time.Duration {
+		delayReconnectTime := bo.Next()
+		p.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": delayReconnectTime,
+		}).Info("Reconnecting to broker")
+		return delayReconnectTime
+	})
 }
 
 func (p *partitionProducer) runEventsLoop() {
@@ -1077,7 +1086,7 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	isDone := uAtomic.NewBool(false)
 	doneCh := make(chan struct{})
 
-	p.internalSendAsync(ctx, msg, func(ID MessageID, message *ProducerMessage, e error) {
+	p.internalSendAsync(ctx, msg, func(ID MessageID, _ *ProducerMessage, e error) {
 		if isDone.CAS(false, true) {
 			err = e
 			msgID = ID
@@ -1359,59 +1368,58 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		p.log.Warnf("Received ack for %v on sequenceId %v - expected: %v, local > remote, ignore it",
 			response.GetMessageId(), response.GetSequenceId(), pi.sequenceID)
 		return
-	} else {
-		// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
-		p.pendingQueue.Poll()
+	}
+	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
+	p.pendingQueue.Poll()
 
-		now := time.Now().UnixNano()
+	now := time.Now().UnixNano()
 
-		// lock the pending item while sending the requests
-		pi.Lock()
-		defer pi.Unlock()
-		p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
-		batchSize := int32(len(pi.sendRequests))
-		for idx, i := range pi.sendRequests {
-			sr := i.(*sendRequest)
-			atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
+	// lock the pending item while sending the requests
+	pi.Lock()
+	defer pi.Unlock()
+	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
+	batchSize := int32(len(pi.sendRequests))
+	for idx, i := range pi.sendRequests {
+		sr := i.(*sendRequest)
+		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
 
-			msgID := newMessageID(
-				int64(response.MessageId.GetLedgerId()),
-				int64(response.MessageId.GetEntryId()),
-				int32(idx),
-				p.partitionIdx,
-				batchSize,
-			)
+		msgID := newMessageID(
+			int64(response.MessageId.GetLedgerId()),
+			int64(response.MessageId.GetEntryId()),
+			int32(idx),
+			p.partitionIdx,
+			batchSize,
+		)
 
-			if sr.totalChunks > 1 {
-				if sr.chunkID == 0 {
-					sr.chunkRecorder.setFirstChunkID(
-						&messageID{
-							int64(response.MessageId.GetLedgerId()),
-							int64(response.MessageId.GetEntryId()),
-							-1,
-							p.partitionIdx,
-							0,
-						})
-				} else if sr.chunkID == sr.totalChunks-1 {
-					sr.chunkRecorder.setLastChunkID(
-						&messageID{
-							int64(response.MessageId.GetLedgerId()),
-							int64(response.MessageId.GetEntryId()),
-							-1,
-							p.partitionIdx,
-							0,
-						})
-					// use chunkMsgID to set msgID
-					msgID = &sr.chunkRecorder.chunkedMsgID
-				}
+		if sr.totalChunks > 1 {
+			if sr.chunkID == 0 {
+				sr.chunkRecorder.setFirstChunkID(
+					&messageID{
+						int64(response.MessageId.GetLedgerId()),
+						int64(response.MessageId.GetEntryId()),
+						-1,
+						p.partitionIdx,
+						0,
+					})
+			} else if sr.chunkID == sr.totalChunks-1 {
+				sr.chunkRecorder.setLastChunkID(
+					&messageID{
+						int64(response.MessageId.GetLedgerId()),
+						int64(response.MessageId.GetEntryId()),
+						-1,
+						p.partitionIdx,
+						0,
+					})
+				// use chunkMsgID to set msgID
+				msgID = &sr.chunkRecorder.chunkedMsgID
 			}
-
-			sr.done(msgID, nil)
 		}
 
-		// Mark this pending item as done
-		pi.done(nil)
+		sr.done(msgID, nil)
 	}
+
+	// Mark this pending item as done
+	pi.done(nil)
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {

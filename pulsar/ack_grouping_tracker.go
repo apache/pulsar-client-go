@@ -62,7 +62,7 @@ func newAckGroupingTracker(options *AckGroupingOptions,
 		maxNumAcks:        int(options.MaxSize),
 		ackCumulative:     ackCumulative,
 		ackList:           ackList,
-		pendingAcks:       make(map[[2]uint64]*bitset.BitSet),
+		pendingAcks:       make(map[position]*bitset.BitSet),
 		lastCumulativeAck: EarliestMessageID(),
 	}
 
@@ -97,7 +97,7 @@ func (i *immediateAckGroupingTracker) addCumulative(id MessageID) {
 	i.ackCumulative(id)
 }
 
-func (i *immediateAckGroupingTracker) isDuplicate(id MessageID) bool {
+func (i *immediateAckGroupingTracker) isDuplicate(_ MessageID) bool {
 	return false
 }
 
@@ -108,6 +108,15 @@ func (i *immediateAckGroupingTracker) flushAndClean() {
 }
 
 func (i *immediateAckGroupingTracker) close() {
+}
+
+type position struct {
+	ledgerID uint64
+	entryID  uint64
+}
+
+func newPosition(msgID MessageID) position {
+	return position{ledgerID: uint64(msgID.LedgerID()), entryID: uint64(msgID.EntryID())}
 }
 
 type timedAckGroupingTracker struct {
@@ -124,7 +133,7 @@ type timedAckGroupingTracker struct {
 	// in the batch whose batch size is 3 are not acknowledged.
 	// After the 1st message (i.e. batch index is 0) is acknowledged, the bits will become "011".
 	// Value is nil if the entry represents a single message.
-	pendingAcks map[[2]uint64]*bitset.BitSet
+	pendingAcks map[position]*bitset.BitSet
 
 	lastCumulativeAck     MessageID
 	cumulativeAckRequired int32
@@ -138,35 +147,36 @@ func (t *timedAckGroupingTracker) add(id MessageID) {
 	}
 }
 
-func (t *timedAckGroupingTracker) tryAddIndividual(id MessageID) map[[2]uint64]*bitset.BitSet {
-	t.Lock()
-	defer t.Unlock()
-	key := [2]uint64{uint64(id.LedgerID()), uint64(id.EntryID())}
-
+func addMsgIDToPendingAcks(pendingAcks map[position]*bitset.BitSet, id MessageID) {
+	key := newPosition(id)
 	batchIdx := id.BatchIdx()
 	batchSize := id.BatchSize()
 
 	if batchIdx >= 0 && batchSize > 0 {
-		bs, found := t.pendingAcks[key]
+		bs, found := pendingAcks[key]
 		if !found {
-			if batchSize > 1 {
-				bs = bitset.New(uint(batchSize))
-				for i := uint(0); i < uint(batchSize); i++ {
-					bs.Set(i)
-				}
+			bs = bitset.New(uint(batchSize))
+			for i := uint(0); i < uint(batchSize); i++ {
+				bs.Set(i)
 			}
-			t.pendingAcks[key] = bs
+			pendingAcks[key] = bs
 		}
 		if bs != nil {
 			bs.Clear(uint(batchIdx))
 		}
 	} else {
-		t.pendingAcks[key] = nil
+		pendingAcks[key] = nil
 	}
+}
 
+func (t *timedAckGroupingTracker) tryAddIndividual(id MessageID) map[position]*bitset.BitSet {
+	t.Lock()
+	defer t.Unlock()
+
+	addMsgIDToPendingAcks(t.pendingAcks, id)
 	if len(t.pendingAcks) >= t.maxNumAcks {
 		pendingAcks := t.pendingAcks
-		t.pendingAcks = make(map[[2]uint64]*bitset.BitSet)
+		t.pendingAcks = make(map[position]*bitset.BitSet)
 		return pendingAcks
 	}
 	return nil
@@ -195,7 +205,7 @@ func (t *timedAckGroupingTracker) isDuplicate(id MessageID) bool {
 	if messageIDCompare(t.lastCumulativeAck, id) >= 0 {
 		return true
 	}
-	key := [2]uint64{uint64(id.LedgerID()), uint64(id.EntryID())}
+	key := newPosition(id)
 	if bs, found := t.pendingAcks[key]; found {
 		if bs == nil {
 			return true
@@ -232,11 +242,11 @@ func (t *timedAckGroupingTracker) flushAndClean() {
 	}
 }
 
-func (t *timedAckGroupingTracker) clearPendingAcks() map[[2]uint64]*bitset.BitSet {
+func (t *timedAckGroupingTracker) clearPendingAcks() map[position]*bitset.BitSet {
 	t.Lock()
 	defer t.Unlock()
 	pendingAcks := t.pendingAcks
-	t.pendingAcks = make(map[[2]uint64]*bitset.BitSet)
+	t.pendingAcks = make(map[position]*bitset.BitSet)
 	return pendingAcks
 }
 
@@ -250,12 +260,10 @@ func (t *timedAckGroupingTracker) close() {
 	}
 }
 
-func (t *timedAckGroupingTracker) flushIndividual(pendingAcks map[[2]uint64]*bitset.BitSet) {
+func toMsgIDDataList(pendingAcks map[position]*bitset.BitSet) []*pb.MessageIdData {
 	msgIDs := make([]*pb.MessageIdData, 0, len(pendingAcks))
 	for k, v := range pendingAcks {
-		ledgerID := k[0]
-		entryID := k[1]
-		msgID := &pb.MessageIdData{LedgerId: &ledgerID, EntryId: &entryID}
+		msgID := &pb.MessageIdData{LedgerId: &k.ledgerID, EntryId: &k.entryID}
 		if v != nil && !v.None() {
 			bytes := v.Bytes()
 			msgID.AckSet = make([]int64, len(bytes))
@@ -265,5 +273,9 @@ func (t *timedAckGroupingTracker) flushIndividual(pendingAcks map[[2]uint64]*bit
 		}
 		msgIDs = append(msgIDs, msgID)
 	}
-	t.ackList(msgIDs)
+	return msgIDs
+}
+
+func (t *timedAckGroupingTracker) flushIndividual(pendingAcks map[position]*bitset.BitSet) {
+	t.ackList(toMsgIDDataList(pendingAcks))
 }

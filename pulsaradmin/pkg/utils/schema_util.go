@@ -44,6 +44,10 @@ type GetSchemaResponse struct {
 	Properties map[string]string `json:"properties"`
 }
 
+type GetAllSchemasResponse struct {
+	Schemas []GetSchemaResponse `json:"getSchemaResponses"`
+}
+
 type IsCompatibility struct {
 	IsCompatibility             bool                        `json:"compatibility"`
 	SchemaCompatibilityStrategy SchemaCompatibilityStrategy `json:"schemaCompatibilityStrategy"`
@@ -52,11 +56,9 @@ type IsCompatibility struct {
 func ConvertGetSchemaResponseToSchemaInfo(tn *TopicName, response GetSchemaResponse) *SchemaInfo {
 	info := new(SchemaInfo)
 	schema := make([]byte, 0, 10)
-	if response.Type == "KEY_VALUE" {
-		// TODO: impl logic
-	} else {
+	if response.Type != "KEY_VALUE" {
 		schema = []byte(response.Data)
-	}
+	} // TODO: impl logic for KEY_VALUE
 
 	info.Schema = schema
 	info.Type = response.Type
@@ -89,4 +91,17 @@ func ConvertGetSchemaResponseToSchemaInfoWithVersion(tn *TopicName, response Get
 	info.SchemaInfo = ConvertGetSchemaResponseToSchemaInfo(tn, response)
 	info.Version = response.Version
 	return info
+}
+
+func ConvertGetAllSchemasResponseToSchemaInfosWithVersion(
+	tn *TopicName,
+	response GetAllSchemasResponse,
+) []*SchemaInfoWithVersion {
+	infos := make([]*SchemaInfoWithVersion, len(response.Schemas))
+
+	for i, schema := range response.Schemas {
+		infos[i] = ConvertGetSchemaResponseToSchemaInfoWithVersion(tn, schema)
+	}
+
+	return infos
 }

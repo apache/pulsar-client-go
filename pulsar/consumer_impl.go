@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
 	"strconv"
@@ -40,6 +41,7 @@ const defaultNackRedeliveryDelay = 1 * time.Minute
 type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
 	AckID(id MessageID) error
+	AckIDList(msgIDs []MessageID) error
 	AckIDWithResponse(id MessageID) error
 	AckIDWithTxn(msgID MessageID, txn Transaction) error
 	AckIDCumulative(msgID MessageID) error
@@ -174,11 +176,12 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 	}
 
-	dlq, err := newDlqRouter(client, options.DLQ, options.Topic, options.SubscriptionName, options.Name, client.log)
+	dlq, err := newDlqRouter(client, options.DLQ, options.Topic, options.SubscriptionName, options.Name,
+		options.BackOffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
-	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable, client.log)
+	rlq, err := newRetryRouter(client, options.DLQ, options.RetryEnable, options.BackOffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
 	}
@@ -382,16 +385,16 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
-		go func(idx int, pt string) {
+		go func() {
 			defer wg.Done()
-			opts := newPartitionConsumerOpts(pt, c.consumerName, idx, c.options)
+			opts := newPartitionConsumerOpts(partitionTopic, c.consumerName, partitionIdx, c.options)
 			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
 			ch <- ConsumerError{
 				err:       err,
-				partition: idx,
+				partition: partitionIdx,
 				consumer:  cons,
 			}
-		}(partitionIdx, partitionTopic)
+		}()
 	}
 
 	go func() {
@@ -453,7 +456,7 @@ func newPartitionConsumerOpts(topic, consumerName string, idx int, options Consu
 		readCompacted:               options.ReadCompacted,
 		interceptors:                options.Interceptors,
 		maxReconnectToBroker:        options.MaxReconnectToBroker,
-		backoffPolicy:               options.BackoffPolicy,
+		backOffPolicyFunc:           options.BackOffPolicyFunc,
 		keySharedPolicy:             options.KeySharedPolicy,
 		schema:                      options.Schema,
 		decryption:                  options.Decryption,
@@ -491,7 +494,7 @@ func (c *consumer) unsubscribe(force bool) error {
 		}
 	}
 	if errMsg != "" {
-		return fmt.Errorf(errMsg)
+		return errors.New(errMsg)
 	}
 	return nil
 }
@@ -555,6 +558,15 @@ func (c *consumer) AckID(msgID MessageID) error {
 	}
 
 	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
+}
+
+func (c *consumer) AckIDList(msgIDs []MessageID) error {
+	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
+		if err := c.checkMsgIDPartition(msgID); err != nil {
+			return nil, err
+		}
+		return c.consumers[msgID.PartitionIdx()], nil
+	})
 }
 
 // AckCumulative the reception of all the messages in the stream up to (and including)
@@ -710,33 +722,35 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return err
 	}
 
-	if err := c.consumers[msgID.PartitionIdx()].Seek(msgID); err != nil {
-		return err
-	}
-
+	consumer := c.consumers[msgID.PartitionIdx()]
+	consumer.pauseDispatchMessage()
 	// clear messageCh
 	for len(c.messageCh) > 0 {
 		<-c.messageCh
 	}
 
-	return nil
+	return consumer.Seek(msgID)
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
 	c.Lock()
 	defer c.Unlock()
 	var errs error
+
+	for _, cons := range c.consumers {
+		cons.pauseDispatchMessage()
+	}
+	// clear messageCh
+	for len(c.messageCh) > 0 {
+		<-c.messageCh
+	}
+
 	// run SeekByTime on every partition of topic
 	for _, cons := range c.consumers {
 		if err := cons.SeekByTime(time); err != nil {
 			msg := fmt.Sprintf("unable to SeekByTime for topic=%s subscription=%s", c.topic, c.Subscription())
 			errs = pkgerrors.Wrap(newError(SeekFailed, err.Error()), msg)
 		}
-	}
-
-	// clear messageCh
-	for len(c.messageCh) > 0 {
-		<-c.messageCh
 	}
 
 	return errs
@@ -762,7 +776,6 @@ func (c *consumer) hasNext() bool {
 
 	hasNext := make(chan bool)
 	for _, pc := range c.consumers {
-		pc := pc
 		go func() {
 			defer wg.Done()
 			if pc.hasNext() {

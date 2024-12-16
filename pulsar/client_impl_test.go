@@ -29,6 +29,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+
 	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/stretchr/testify/assert"
@@ -208,6 +212,43 @@ func TestTokenAuth(t *testing.T) {
 
 	client.Close()
 }
+func TestTokenAuthWithClientVersion(t *testing.T) {
+	token, err := os.ReadFile(tokenFilePath)
+	assert.NoError(t, err)
+
+	client, err := NewClient(ClientOptions{
+		URL:            serviceURL,
+		Authentication: NewAuthenticationToken(string(token)),
+		Description:    "test-client",
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newAuthTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	readFile, err := os.ReadFile("../integration-tests/tokens/admin-token")
+	assert.NoError(t, err)
+	cfg := &config.Config{
+		Token: string(readFile),
+	}
+	admin, err := admin.New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	topicState, err := admin.Topics().GetStats(*topicName)
+	assert.Nil(t, err)
+	publisher := topicState.Publishers[0]
+	assert.True(t, strings.HasPrefix(publisher.ClientVersion, "Pulsar Go version"))
+	assert.True(t, strings.HasSuffix(publisher.ClientVersion, "-test-client"))
+}
 
 func TestTokenAuthWithSupplier(t *testing.T) {
 	client, err := NewClient(ClientOptions{
@@ -257,7 +298,7 @@ func mockOAuthServer() *httptest.Server {
 
 	// mock the used REST path for the tests
 	mockedHandler := http.NewServeMux()
-	mockedHandler.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, _ *http.Request) {
 		s := fmt.Sprintf(`{
     "issuer":"%s",
     "authorization_endpoint":"%s/authorize",
@@ -266,13 +307,13 @@ func mockOAuthServer() *httptest.Server {
 }`, server.URL, server.URL, server.URL, server.URL)
 		fmt.Fprintln(writer, s)
 	})
-	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintln(writer, "{\n"+
 			"  \"access_token\": \"eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJ0b2tlbi1wcmluY2lwYWwifQ."+
 			"tSfgR8l7dKC6LoWCxQgNkuSB8our7xV_nAM7wpgCbG4\",\n"+
 			"  \"token_type\": \"Bearer\"\n}")
 	})
-	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, request *http.Request) {
+	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintln(writer, "true")
 	})
 

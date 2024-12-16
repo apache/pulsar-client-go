@@ -24,11 +24,10 @@ import (
 )
 
 type defaultRouter struct {
+	lastBatchTimestamp     int64
 	currentPartitionCursor uint32
-
-	lastBatchTimestamp  int64
-	msgCounter          uint32
-	cumulativeBatchSize uint32
+	msgCounter             uint32
+	cumulativeBatchSize    uint32
 }
 
 // NewDefaultRouter set the message routing mode for the partitioned producer.

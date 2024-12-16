@@ -23,30 +23,41 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 type dlqRouter struct {
-	client           Client
-	producer         Producer
-	policy           *DLQPolicy
-	messageCh        chan ConsumerMessage
-	closeCh          chan interface{}
-	topicName        string
-	subscriptionName string
-	consumerName     string
-	log              log.Logger
+	client            Client
+	producer          Producer
+	policy            *DLQPolicy
+	messageCh         chan ConsumerMessage
+	closeCh           chan interface{}
+	topicName         string
+	subscriptionName  string
+	consumerName      string
+	backOffPolicyFunc func() backoff.Policy
+	log               log.Logger
 }
 
 func newDlqRouter(client Client, policy *DLQPolicy, topicName, subscriptionName, consumerName string,
-	logger log.Logger) (*dlqRouter, error) {
+	backOffPolicyFunc func() backoff.Policy, logger log.Logger) (*dlqRouter, error) {
+	var boFunc func() backoff.Policy
+	if backOffPolicyFunc != nil {
+		boFunc = backOffPolicyFunc
+	} else {
+		boFunc = backoff.NewDefaultBackoff
+	}
 	r := &dlqRouter{
-		client:           client,
-		policy:           policy,
-		topicName:        topicName,
-		subscriptionName: subscriptionName,
-		consumerName:     consumerName,
-		log:              logger,
+		client:            client,
+		policy:            policy,
+		topicName:         topicName,
+		subscriptionName:  subscriptionName,
+		consumerName:      consumerName,
+		backOffPolicyFunc: boFunc,
+		log:               logger,
 	}
 
 	if policy != nil {
@@ -117,7 +128,7 @@ func (r *dlqRouter) run() {
 				Properties:          properties,
 				EventTime:           msg.EventTime(),
 				ReplicationClusters: msg.replicationClusters,
-			}, func(messageID MessageID, producerMessage *ProducerMessage, err error) {
+			}, func(_ MessageID, _ *ProducerMessage, err error) {
 				if err == nil {
 					r.log.WithField("msgID", msgID).Debug("Succeed to send message to DLQ")
 					// The Producer ack might be coming from the connection go-routine that
@@ -155,13 +166,13 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 	}
 
 	// Retry to create producer indefinitely
-	backoff := &internal.DefaultBackoff{}
-	for {
+	bo := r.backOffPolicyFunc()
+	opFn := func() (Producer, error) {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.DeadLetterTopic
 		opt.Schema = schema
 		if opt.Name == "" {
-			opt.Name = fmt.Sprintf("%s-%s-%s-DLQ", r.topicName, r.subscriptionName, r.consumerName)
+			opt.Name = fmt.Sprintf("%s-%s-%s-%s-DLQ", r.topicName, r.subscriptionName, r.consumerName, generateRandomName())
 		}
 		opt.initialSubscriptionName = r.policy.InitialSubscriptionName
 
@@ -170,15 +181,17 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 		if r.policy.ProducerOptions.CompressionType == NoCompression {
 			opt.CompressionType = LZ4
 		}
-		producer, err := r.client.CreateProducer(opt)
-
-		if err != nil {
-			r.log.WithError(err).Error("Failed to create DLQ producer")
-			time.Sleep(backoff.Next())
-			continue
-		} else {
-			r.producer = producer
-			return producer
-		}
+		return r.client.CreateProducer(opt)
 	}
+
+	res, err := internal.Retry(context.Background(), opFn, func(err error) time.Duration {
+		r.log.WithError(err).Error("Failed to create DLQ producer")
+		return bo.Next()
+	})
+
+	if err == nil {
+		r.producer = res
+	}
+
+	return res
 }

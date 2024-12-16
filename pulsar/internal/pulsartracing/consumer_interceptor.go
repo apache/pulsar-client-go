@@ -33,9 +33,9 @@ func (t *ConsumerInterceptor) BeforeConsume(message pulsar.ConsumerMessage) {
 	buildAndInjectChildSpan(message).Finish()
 }
 
-func (t *ConsumerInterceptor) OnAcknowledge(consumer pulsar.Consumer, msgID pulsar.MessageID) {}
+func (t *ConsumerInterceptor) OnAcknowledge(_ pulsar.Consumer, _ pulsar.MessageID) {}
 
-func (t *ConsumerInterceptor) OnNegativeAcksSend(consumer pulsar.Consumer, msgIDs []pulsar.MessageID) {
+func (t *ConsumerInterceptor) OnNegativeAcksSend(_ pulsar.Consumer, _ []pulsar.MessageID) {
 }
 
 func buildAndInjectChildSpan(message pulsar.ConsumerMessage) opentracing.Span {

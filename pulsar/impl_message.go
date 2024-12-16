@@ -404,6 +404,12 @@ type ackTracker struct {
 	prevBatchAcked uint32
 }
 
+func (t *ackTracker) getAckBitSet() *bitset.BitSet {
+	t.Lock()
+	defer t.Unlock()
+	return t.batchIDs.Clone()
+}
+
 func (t *ackTracker) ack(batchID int) bool {
 	if batchID < 0 {
 		return true

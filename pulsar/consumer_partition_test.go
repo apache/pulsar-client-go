@@ -105,7 +105,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	eventsCh := make(chan interface{}, 1)
 	pc := partitionConsumer{
-		queueCh:              make(chan []*message, 1),
+		queueCh:              make(chan []*message, 10),
 		eventsCh:             eventsCh,
 		compressionProviders: sync.Map{},
 		options:              &partitionConsumerOpts{},

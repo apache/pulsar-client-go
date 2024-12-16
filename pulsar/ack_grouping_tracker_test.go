@@ -59,9 +59,9 @@ func TestNoCacheTracker(t *testing.T) {
 }
 
 type mockAcker struct {
-	sync.Mutex
-	ledgerIDs          []int64
 	cumulativeLedgerID int64
+	sync.Mutex
+	ledgerIDs []int64
 }
 
 func (a *mockAcker) ack(ids []*pb.MessageIdData) {
@@ -190,8 +190,8 @@ func TestTimedTrackerCumulativeAck(t *testing.T) {
 }
 
 func TestTimedTrackerIsDuplicate(t *testing.T) {
-	tracker := newAckGroupingTracker(nil, func(id MessageID) {}, func(id MessageID) {},
-		func(id []*pb.MessageIdData) {})
+	tracker := newAckGroupingTracker(nil, func(_ MessageID) {}, func(_ MessageID) {},
+		func(_ []*pb.MessageIdData) {})
 
 	tracker.add(&messageID{batchIdx: 0, batchSize: 3})
 	tracker.add(&messageID{batchIdx: 2, batchSize: 3})
@@ -243,7 +243,7 @@ func TestCloseFlushWithoutTimer(t *testing.T) {
 func TestCloseFlushWithTimer(t *testing.T) {
 	var acker mockAcker
 	tracker := newAckGroupingTracker(
-		&AckGroupingOptions{MaxSize: 1000, MaxTime: 10 * 1000},
+		&AckGroupingOptions{MaxSize: 1000, MaxTime: 10 * time.Second},
 		nil,
 		func(id MessageID) { acker.ackCumulative(id) },
 		func(ids []*pb.MessageIdData) { acker.ack(ids) },

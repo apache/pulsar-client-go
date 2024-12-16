@@ -70,7 +70,7 @@ func httpDelete(requestPaths ...string) error {
 	var errs error
 	for _, requestPath := range requestPaths {
 		if err := httpDo(http.MethodDelete, requestPath, nil, nil); err != nil {
-			errs = pkgerrors.Wrapf(err, "unable to delete url: %s"+requestPath)
+			errs = pkgerrors.Wrapf(err, "unable to delete url: %s", requestPath)
 		}
 	}
 	return errs
@@ -186,5 +186,5 @@ func retryAssert(t assert.TestingT, times int, milliseconds int, update func(), 
 
 type fakeAssertT struct{}
 
-func (fa fakeAssertT) Errorf(format string, args ...interface{}) {
+func (fa fakeAssertT) Errorf(_ string, _ ...interface{}) {
 }

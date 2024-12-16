@@ -14,3 +14,49 @@
 // KIND, either express or implied.  See the License for the
 // specific language governing permissions and limitations
 // under the License.
+
+package internal
+
+import (
+	"context"
+	"errors"
+	"time"
+)
+
+type OpFn[T any] func() (T, error)
+
+// Retry the given operation until the returned error is nil or the context is done.
+func Retry[T any](ctx context.Context, op OpFn[T], nextDuration func(error) time.Duration) (T, error) {
+	var (
+		timer *time.Timer
+		res   T
+		err   error
+	)
+
+	cleanTimer := func() {
+		if timer != nil {
+			timer.Stop()
+		}
+	}
+	defer cleanTimer()
+
+	for {
+		res, err = op()
+		if err == nil {
+			return res, nil
+		}
+
+		duration := nextDuration(err)
+		if timer == nil {
+			timer = time.NewTimer(duration)
+		} else {
+			timer.Reset(duration)
+		}
+
+		select {
+		case <-ctx.Done():
+			return res, errors.Join(ctx.Err(), err)
+		case <-timer.C:
+		}
+	}
+}

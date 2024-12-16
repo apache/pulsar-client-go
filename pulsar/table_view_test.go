@@ -55,7 +55,7 @@ func TestTableView(t *testing.T) {
 		t.Log(key)
 		_, err = producer.Send(context.Background(), &ProducerMessage{
 			Key:   key,
-			Value: fmt.Sprintf(valuePrefix + key),
+			Value: valuePrefix + key,
 		})
 		assert.NoError(t, err)
 	}
@@ -329,7 +329,7 @@ func TestForEachAndListenJSONSchema(t *testing.T) {
 		t.Log("foreach" + key)
 		s, ok := value.(testJSON)
 		assert.Truef(t, ok, "expected value to be testJSON type got %T", value)
-		assert.Equal(t, fmt.Sprintf(valuePrefix+key), s.Name)
+		assert.Equal(t, valuePrefix+key, s.Name)
 		return nil
 	})
 
@@ -349,7 +349,7 @@ func TestForEachAndListenJSONSchema(t *testing.T) {
 			Key: key,
 			Value: testJSON{
 				ID:   i,
-				Name: fmt.Sprintf(valuePrefix + key),
+				Name: valuePrefix + key,
 			},
 		})
 		assert.NoError(t, err)

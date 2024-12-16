@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
+
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
@@ -219,7 +221,7 @@ func TestReaderConnectError(t *testing.T) {
 	assert.Nil(t, reader)
 	assert.NotNil(t, err)
 
-	assert.Equal(t, err.Error(), "connection error")
+	assert.ErrorContains(t, err, "connection error")
 }
 
 func TestReaderOnSpecificMessage(t *testing.T) {
@@ -318,7 +320,7 @@ func TestReaderOnSpecificMessageWithBatching(t *testing.T) {
 
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		}, func(id MessageID, _ *ProducerMessage, err error) {
 			assert.NoError(t, err)
 			assert.NotNil(t, id)
 			msgIDs[idx] = id
@@ -394,7 +396,7 @@ func TestReaderOnLatestWithBatching(t *testing.T) {
 
 		producer.SendAsync(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+		}, func(id MessageID, _ *ProducerMessage, err error) {
 			assert.NoError(t, err)
 			assert.NotNil(t, id)
 			msgIDs[idx] = id
@@ -847,6 +849,13 @@ func (b *testBackoffPolicy) Next() time.Duration {
 
 	return b.curBackoff
 }
+func (b *testBackoffPolicy) IsMaxBackoffReached() bool {
+	return false
+}
+
+func (b *testBackoffPolicy) Reset() {
+
+}
 
 func (b *testBackoffPolicy) IsExpectedIntervalFrom(startTime time.Time) bool {
 	// Approximately equal to expected interval
@@ -866,11 +875,13 @@ func TestReaderWithBackoffPolicy(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	backoff := newTestBackoffPolicy(1*time.Second, 4*time.Second)
+	bo := newTestBackoffPolicy(1*time.Second, 4*time.Second)
 	_reader, err := client.CreateReader(ReaderOptions{
 		Topic:          "my-topic",
 		StartMessageID: LatestMessageID(),
-		BackoffPolicy:  backoff,
+		BackoffPolicyFunc: func() backoff.Policy {
+			return bo
+		},
 	})
 	assert.NotNil(t, _reader)
 	assert.Nil(t, err)
@@ -879,22 +890,22 @@ func TestReaderWithBackoffPolicy(t *testing.T) {
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 2 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 
 	// 4 s
 	startTime = time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
-	assert.True(t, backoff.IsExpectedIntervalFrom(startTime))
+	assert.True(t, bo.IsExpectedIntervalFrom(startTime))
 }
 
 func TestReaderGetLastMessageID(t *testing.T) {

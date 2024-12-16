@@ -18,12 +18,15 @@
 package internal
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 
 	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -85,11 +88,12 @@ type rpcClient struct {
 	lookupService           LookupService
 	urlLookupServiceMapLock sync.RWMutex
 	urlLookupServiceMap     map[string]LookupService
+	lookupProperties        []*pb.KeyValue
 }
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
-	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider) RPCClient {
+	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider, lookupProperties []*pb.KeyValue) RPCClient {
 	c := rpcClient{
 		pool:                pool,
 		requestTimeout:      requestTimeout,
@@ -99,6 +103,7 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 		tlsConfig:           tlsConfig,
 		authProvider:        authProvider,
 		urlLookupServiceMap: make(map[string]LookupService),
+		lookupProperties:    lookupProperties,
 	}
 	lookupService, err := c.NewLookupService(serviceURL)
 	if err != nil {
@@ -113,27 +118,26 @@ func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
 	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	var err error
 	var host *url.URL
-	var rpcResult *RPCResult
-	startTime := time.Now()
-	backoff := DefaultBackoff{100 * time.Millisecond}
+	bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
 	// we can retry these requests because this kind of request is
 	// not specific to any particular broker
-	for time.Since(startTime) < c.requestTimeout {
+	opFn := func() (*RPCResult, error) {
 		host, err = (*serviceNameResolver).ResolveHost()
 		if err != nil {
 			c.log.WithError(err).Errorf("rpc client failed to resolve host")
 			return nil, err
 		}
-		rpcResult, err = c.Request(host, host, requestID, cmdType, message)
-		// success we got a response
-		if err == nil {
-			break
-		}
-
-		retryTime := backoff.Next()
-		c.log.Debugf("Retrying request in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
-		time.Sleep(retryTime)
+		return c.Request(host, host, requestID, cmdType, message)
 	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), c.requestTimeout)
+	defer cancel()
+
+	rpcResult, err := Retry(ctx, opFn, func(_ error) time.Duration {
+		retryTime := bo.Next()
+		c.log.Debugf("Retrying request in {%v} with timeout in {%v}", retryTime, c.requestTimeout)
+		return retryTime
+	})
 
 	return rpcResult, err
 }
@@ -238,7 +242,7 @@ func (c *rpcClient) NewLookupService(url *url.URL) (LookupService, error) {
 	case "pulsar", "pulsar+ssl":
 		serviceNameResolver := NewPulsarServiceNameResolver(url)
 		return NewLookupService(c, url, serviceNameResolver,
-			c.tlsConfig != nil, c.listenerName, c.log, c.metrics), nil
+			c.tlsConfig != nil, c.listenerName, c.lookupProperties, c.log, c.metrics), nil
 	case "http", "https":
 		serviceNameResolver := NewPulsarServiceNameResolver(url)
 		httpClient, err := NewHTTPClient(url, serviceNameResolver, c.tlsConfig,

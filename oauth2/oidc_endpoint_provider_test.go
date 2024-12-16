@@ -22,17 +22,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	. "github.com/onsi/ginkgo"
-	. "github.com/onsi/gomega"
+	"github.com/onsi/ginkgo"
+	"github.com/onsi/gomega"
 )
 
-var _ = Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
-	It("calls and gets the well known data from the correct endpoint for the issuer", func() {
+var _ = ginkgo.Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
+	ginkgo.It("calls and gets the well known data from the correct endpoint for the issuer", func() {
 		var req *http.Request
 		wkEndpointsResp := OIDCWellKnownEndpoints{
 			AuthorizationEndpoint: "the-auth-endpoint", TokenEndpoint: "the-token-endpoint"}
 		responseBytes, err := json.Marshal(wkEndpointsResp)
-		Expect(err).ToNot(HaveOccurred())
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			req = r
@@ -45,31 +45,31 @@ var _ = Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
 
 		endpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(ts.URL)
 
-		Expect(err).ToNot(HaveOccurred())
-		Expect(*endpoints).To(Equal(wkEndpointsResp))
-		Expect(req.URL.Path).To(Equal("/.well-known/openid-configuration"))
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+		gomega.Expect(*endpoints).To(gomega.Equal(wkEndpointsResp))
+		gomega.Expect(req.URL.Path).To(gomega.Equal("/.well-known/openid-configuration"))
 	})
 
-	It("errors when url.Parse errors", func() {
+	ginkgo.It("errors when url.Parse errors", func() {
 		endpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL("://")
 
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(Equal(
+		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(err.Error()).To(gomega.Equal(
 			"could not parse issuer url to build well known endpoints: parse \"://\": missing protocol scheme"))
-		Expect(endpoints).To(BeNil())
+		gomega.Expect(endpoints).To(gomega.BeNil())
 	})
 
-	It("errors when the get errors", func() {
+	ginkgo.It("errors when the get errors", func() {
 		endpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL("https://")
 
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(Equal(
+		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(err.Error()).To(gomega.Equal(
 			"could not get well known endpoints from url https://.well-known/openid-configuration: " +
 				"Get \"https://.well-known/openid-configuration\": dial tcp: lookup .well-known: no such host"))
-		Expect(endpoints).To(BeNil())
+		gomega.Expect(endpoints).To(gomega.BeNil())
 	})
 
-	It("errors when the json decoder errors", func() {
+	ginkgo.It("errors when the json decoder errors", func() {
 		var req *http.Request
 
 		ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -83,10 +83,10 @@ var _ = Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
 
 		endpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(ts.URL)
 
-		Expect(err).To(HaveOccurred())
-		Expect(err.Error()).To(Equal("could not decode json body when getting well" +
+		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(err.Error()).To(gomega.Equal("could not decode json body when getting well" +
 			" known endpoints: invalid character '<' looking for beginning of value"))
-		Expect(endpoints).To(BeNil())
-		Expect(req.URL.Path).To(Equal("/.well-known/openid-configuration"))
+		gomega.Expect(endpoints).To(gomega.BeNil())
+		gomega.Expect(req.URL.Path).To(gomega.Equal("/.well-known/openid-configuration"))
 	})
 })

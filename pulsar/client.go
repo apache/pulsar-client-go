@@ -129,6 +129,8 @@ type ClientOptions struct {
 	// TLSMaxVersion contains the maximum TLS version that is acceptable. See tls.Config MaxVersion for more information.
 	TLSMaxVersion uint16
 
+	TLSConfig *tls.Config
+
 	// Configure the net model for vpc user to connect the pulsar broker
 	ListenerName string
 
@@ -161,6 +163,23 @@ type ClientOptions struct {
 	// Limit of client memory usage (in byte). The 64M default can guarantee a high producer throughput.
 	// Config less than 0 indicates off memory limit.
 	MemoryLimitBytes int64
+
+	// Set the properties used for topic lookup.
+	// When the broker performs topic lookup, these lookup properties will be taken into consideration in a customized
+	// load manager.
+	// Note: The lookup properties are only used in topic lookup when:
+	// The protocol is binary protocol, i.e. the service URL starts with "pulsar://" or "pulsar+ssl://"
+	// The `loadManagerClassName` config in broker is a class that implements the `ExtensibleLoadManager` interface
+	LookupProperties map[string]string
+
+	// Set the description.
+	// By default, when the client connects to the broker, a version string like "Pulsar Go <version>" will be
+	// carried and saved by the broker. The client version string could be queried from the topic stats.
+	// This method provides a way to add more description to a specific PulsarClient instance. If it's configured,
+	// the description will be appended to the original client version string, with '-' as the separator.
+	// For example, if the client version is 3.0.0, and the description is "forked", the final client version string
+	// "Pulsar Go 3.0.0-forked".
+	Description string
 }
 
 // Client represents a pulsar client
