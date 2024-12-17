@@ -26,7 +26,7 @@ import (
 // ErrNoAuthenticationData indicates that stored authentication data is not available
 var ErrNoAuthenticationData = errors.New("authentication data is not available")
 
-// ErrUnsupportedAuthData ndicates that stored authentication data is unusable
+// ErrUnsupportedAuthData indicates that stored authentication data is unusable
 var ErrUnsupportedAuthData = errors.New("authentication data is not usable")
 
 // Store is responsible for persisting authorization grants

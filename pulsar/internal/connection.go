@@ -947,7 +947,7 @@ func (c *connection) handleTopicMigrated(commandTopicMigrated *pb.CommandTopicMi
 	resourceID := commandTopicMigrated.GetResourceId()
 	migratedBrokerServiceURL := c.getMigratedBrokerServiceURL(commandTopicMigrated)
 	if migratedBrokerServiceURL == "" {
-		c.log.Warnf("Failed to find the migrated broker url for resource: %s, migratedBrokerUrl: %s, migratedBrokerUrlTls:%s",
+		c.log.Warnf("Failed to find the migrated broker url for resource: %d, migratedBrokerUrl: %s, migratedBrokerUrlTls:%s",
 			resourceID,
 			commandTopicMigrated.GetBrokerServiceUrl(),
 			commandTopicMigrated.GetBrokerServiceUrlTls())

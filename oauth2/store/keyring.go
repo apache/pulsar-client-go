@@ -20,6 +20,7 @@ package store
 import (
 	"crypto/sha1"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -92,7 +93,7 @@ func (f *KeyringStore) LoadGrant(audience string) (*oauth2.AuthorizationGrant, e
 
 	item, err := f.getItem(audience)
 	if err != nil {
-		if err == keyring.ErrKeyNotFound {
+		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return nil, ErrNoAuthenticationData
 		}
 		return nil, err
@@ -119,10 +120,10 @@ func (f *KeyringStore) WhoAmI(audience string) (string, error) {
 	key := hashKeyringKey(audience)
 	authItem, err := f.kr.Get(key)
 	if err != nil {
-		if err == keyring.ErrKeyNotFound {
+		if errors.Is(err, keyring.ErrKeyNotFound) {
 			return "", ErrNoAuthenticationData
 		}
-		return "", fmt.Errorf("unable to get information from the keyring: %v", err)
+		return "", fmt.Errorf("unable to get information from the keyring: %w", err)
 	}
 	return authItem.Label, nil
 }
@@ -134,13 +135,13 @@ func (f *KeyringStore) Logout() error {
 	var err error
 	keys, err := f.kr.Keys()
 	if err != nil {
-		return fmt.Errorf("unable to get information from the keyring: %v", err)
+		return fmt.Errorf("unable to get information from the keyring: %w", err)
 	}
 	for _, key := range keys {
 		err = f.kr.Remove(key)
 	}
 	if err != nil {
-		return fmt.Errorf("unable to update the keyring: %v", err)
+		return fmt.Errorf("unable to update the keyring: %w", err)
 	}
 	return nil
 }
@@ -180,7 +181,7 @@ func (f *KeyringStore) setItem(item storedItem) error {
 	}
 	err = f.kr.Set(i)
 	if err != nil {
-		return fmt.Errorf("unable to update the keyring: %v", err)
+		return fmt.Errorf("unable to update the keyring: %w", err)
 	}
 	return nil
 }

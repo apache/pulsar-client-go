@@ -272,7 +272,7 @@ func serializeMessage(wb Buffer,
 	encryptedPayload, err := encryptor.Encrypt(compressedPayload, msgMetadata)
 	if err != nil {
 		// error occurred while encrypting the payload, ProducerCryptoFailureAction is set to Fail
-		return fmt.Errorf("encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error :%v", err)
+		return fmt.Errorf("encryption of message failed, ProducerCryptoFailureAction is set to Fail. Error: %w", err)
 	}
 
 	cmdSize := uint32(proto.Size(cmdSend))
