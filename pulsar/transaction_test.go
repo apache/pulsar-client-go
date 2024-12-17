@@ -488,8 +488,8 @@ func TestTxn_AckChunkMessage(t *testing.T) {
 		Payload:     createTestMessagePayload(_brokerMaxMessageSize),
 	})
 	require.NoError(t, err)
-	_, ok := msgID.(*messageID)
-	require.True(t, ok, fmt.Sprintf("Expected message ID of type *messageID, got type %T", msgID))
+	_, ok := msgID.(*chunkMessageID)
+	require.True(t, ok, fmt.Sprintf("Expected message ID of type *chunkMessageID, got type %T", msgID))
 
 	err = txn.Commit(context.Background())
 	require.Nil(t, err)
