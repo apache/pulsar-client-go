@@ -86,7 +86,8 @@ type Connection interface {
 	ID() string
 	GetMaxMessageSize() int32
 	Close()
-	WaitForClose() <-chan struct{}
+	CloseWithErr(err error)
+	WaitForClose() <-chan error
 	IsProxied() bool
 }
 
@@ -161,7 +162,7 @@ type connection struct {
 	incomingRequestsWG sync.WaitGroup
 	incomingRequestsCh chan *request
 	incomingCmdCh      chan *incomingCmd
-	closeCh            chan struct{}
+	closeCh            chan error
 	readyCh            chan struct{}
 	writeRequestsCh    chan Buffer
 
@@ -206,7 +207,7 @@ func newConnection(opts connectionOptions) *connection {
 		tlsOptions:           opts.tls,
 		auth:                 opts.auth,
 
-		closeCh:            make(chan struct{}),
+		closeCh:            make(chan error),
 		readyCh:            make(chan struct{}),
 		incomingRequestsCh: make(chan *request, 10),
 		incomingCmdCh:      make(chan *incomingCmd, 10),
@@ -282,7 +283,7 @@ func (c *connection) connect() bool {
 
 	if err != nil {
 		c.log.WithError(err).Warn("Failed to connect to broker.")
-		c.Close()
+		c.CloseWithErr(fmt.Errorf("failed to connect to broker: %w", err))
 		return false
 	}
 
@@ -367,9 +368,9 @@ func (c *connection) waitUntilReady() error {
 	select {
 	case <-c.readyCh:
 		return nil
-	case <-c.closeCh:
+	case err := <-c.closeCh:
 		// Connection has been closed while waiting for the readiness.
-		return errors.New("connection error")
+		return err
 	}
 }
 
@@ -1026,7 +1027,7 @@ func (c *connection) CheckIdle(maxIdleTime time.Duration) bool {
 	return time.Since(c.lastActive) > maxIdleTime
 }
 
-func (c *connection) WaitForClose() <-chan struct{} {
+func (c *connection) WaitForClose() <-chan error {
 	return c.closeCh
 }
 
@@ -1034,6 +1035,10 @@ func (c *connection) WaitForClose() <-chan struct{} {
 // closing underlying socket connection and closeCh.
 // This also triggers callbacks to the ConnectionClosed listeners.
 func (c *connection) Close() {
+	c.CloseWithErr(nil)
+}
+
+func (c *connection) CloseWithErr(err error) {
 	c.closeOnce.Do(func() {
 		listeners, consumerHandlers, cnx := c.closeAndEmptyObservers()
 
@@ -1041,7 +1046,10 @@ func (c *connection) Close() {
 			_ = cnx.Close()
 		}
 
-		close(c.closeCh)
+		go func() {
+			c.closeCh <- err
+			close(c.closeCh)
+		}()
 
 		// notify producers connection closed
 		for _, listener := range listeners {
