@@ -1135,8 +1135,8 @@ func (p *partitionProducer) prepareTransaction(sr *sendRequest) error {
 	}
 
 	txn := (sr.msg.Transaction).(*transaction)
-	if txn.state != TxnOpen {
-		p.log.WithField("state", txn.state).Error("Failed to send message" +
+	if txn.state.Load() != int32(TxnOpen) {
+		p.log.WithField("state", txn.state.Load()).Error("Failed to send message" +
 			" by a non-open transaction.")
 		return joinErrors(ErrTransaction,
 			fmt.Errorf("failed to send message by a non-open transaction"))

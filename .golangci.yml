@@ -18,7 +18,7 @@
 # Run `make lint` from the root path of this project to check code with golangci-lint.
 
 run:
-  deadline: 6m
+  timeout: 5m
 
 linters:
   # Uncomment this line to run only the explicitly enabled linters

@@ -29,7 +29,9 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestTCClient(t *testing.T) {
+const txnTimeout = 10 * time.Minute
+
+func TestTxn_TCClient(t *testing.T) {
 	//1. Prepare: create PulsarClient and init transaction coordinator client.
 	topic := newTopicName()
 	sub := "my-sub"
@@ -52,13 +54,13 @@ func TestTCClient(t *testing.T) {
 	stats, err := transactionStats(id1)
 	assert.NoError(t, err)
 	assert.Equal(t, "OPEN", stats["status"])
-	producedPartitions := stats["producedPartitions"].(map[string]interface{})
-	ackedPartitions := stats["ackedPartitions"].(map[string]interface{})
+	producedPartitions := stats["producedPartitions"].(map[string]any)
+	ackedPartitions := stats["ackedPartitions"].(map[string]any)
 	_, ok := producedPartitions[topic]
 	assert.True(t, ok)
 	temp, ok := ackedPartitions[topic]
 	assert.True(t, ok)
-	subscriptions := temp.(map[string]interface{})
+	subscriptions := temp.(map[string]any)
 	_, ok = subscriptions[sub]
 	assert.True(t, ok)
 	//5. Test End transaction
@@ -78,12 +80,12 @@ func TestTCClient(t *testing.T) {
 	} else {
 		assert.Equal(t, err.Error(), "http error status code: 404")
 	}
-	defer consumer.Close()
-	defer tc.close()
-	defer client.Close()
+	consumer.Close()
+	tc.close()
+	client.Close()
 }
 
-//Test points:
+// Test points:
 //	1. Abort and commit txn.
 //		1. Do nothing, just open a transaction and then commit it or abort it.
 //		The operations of committing/aborting txn should success at the first time and fail at the second time.
@@ -96,8 +98,8 @@ func TestTCClient(t *testing.T) {
 //		1. Register ack topic and send topic, and call http request to get the stats of the transaction
 //		to do verification.
 
-// TestTxnImplCommitOrAbort Test abort and commit txn
-func TestTxnImplCommitOrAbort(t *testing.T) {
+// Test abort and commit txn
+func TestTxn_ImplCommitOrAbort(t *testing.T) {
 	tc, _ := createTcClient(t)
 	//1. Open a transaction and then commit it.
 	//The operations of committing txn1 should success at the first time and fail at the second time.
@@ -105,20 +107,20 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	err := txn1.Commit(context.Background())
 	require.Nil(t, err, fmt.Sprintf("Failed to commit the transaction %d:%d\n", txn1.txnID.MostSigBits,
 		txn1.txnID.LeastSigBits))
-	txn1.state = TxnOpen
+	txn1.state.Store(int32(TxnOpen))
 	txn1.opsFlow <- true
 	err = txn1.Commit(context.Background())
 	assert.Equal(t, err.(*Error).Result(), TransactionNoFoundError)
 	assert.Equal(t, txn1.GetState(), TxnError)
 	//2. Open a transaction and then abort it.
 	//The operations of aborting txn2 should success at the first time and fail at the second time.
-	id2, err := tc.newTransaction(time.Hour)
-	require.Nil(t, err, "Failed to new a transaction")
-	txn2 := newTransaction(*id2, tc, time.Hour)
+	id2, err := tc.newTransaction(txnTimeout)
+	require.Nil(t, err, "Failed to create a transaction")
+	txn2 := newTransaction(*id2, tc, txnTimeout)
 	err = txn2.Abort(context.Background())
 	require.Nil(t, err, fmt.Sprintf("Failed to abort the transaction %d:%d\n",
 		id2.MostSigBits, id2.LeastSigBits))
-	txn2.state = TxnOpen
+	txn2.state.Store(int32(TxnOpen))
 	txn2.opsFlow <- true
 	err = txn2.Abort(context.Background())
 	assert.Equal(t, err.(*Error).Result(), TransactionNoFoundError)
@@ -129,8 +131,8 @@ func TestTxnImplCommitOrAbort(t *testing.T) {
 	assert.Equal(t, err.(*Error).Result(), InvalidStatus)
 }
 
-// TestRegisterOpAndEndOp Test the internal API including the registerSendOrAckOp and endSendOrAckOp.
-func TestRegisterOpAndEndOp(t *testing.T) {
+// Test the internal API including the registerSendOrAckOp and endSendOrAckOp.
+func TestTxn_RegisterOpAndEndOp(t *testing.T) {
 	tc, _ := createTcClient(t)
 	//1. Register 4 operation but only end 3 operations, the transaction can not be committed or aborted.
 	res := registerOpAndEndOp(t, tc, 4, 3, nil, true)
@@ -151,8 +153,8 @@ func TestRegisterOpAndEndOp(t *testing.T) {
 	assert.Equal(t, res.(*Error).Result(), InvalidStatus)
 }
 
-// TestRegisterTopic Test the internal API, registerAckTopic and registerProducerTopic
-func TestRegisterTopic(t *testing.T) {
+// Test the internal API, registerAckTopic and registerProducerTopic
+func TestTxn_RegisterTopic(t *testing.T) {
 	//1. Prepare: create PulsarClient and init transaction coordinator client.
 	topic := newTopicName()
 	sub := "my-sub"
@@ -172,11 +174,11 @@ func TestRegisterTopic(t *testing.T) {
 	//4. Call http request to get the stats of the transaction to do verification.
 	stats2, err := transactionStats(&txn.txnID)
 	assert.NoError(t, err)
-	topics := stats2["producedPartitions"].(map[string]interface{})
-	subTopics := stats2["ackedPartitions"].(map[string]interface{})
+	topics := stats2["producedPartitions"].(map[string]any)
+	subTopics := stats2["ackedPartitions"].(map[string]any)
 	assert.NotNil(t, topics[topic])
 	assert.NotNil(t, subTopics[topic])
-	subs := subTopics[topic].(map[string]interface{})
+	subs := subTopics[topic].(map[string]any)
 	assert.NotNil(t, subs[sub])
 }
 
@@ -198,9 +200,9 @@ func registerOpAndEndOp(t *testing.T, tc *transactionCoordinatorClient, rp int, 
 }
 
 func createTxn(tc *transactionCoordinatorClient, t *testing.T) *transaction {
-	id, err := tc.newTransaction(time.Hour)
-	require.Nil(t, err, "Failed to new a transaction.")
-	return newTransaction(*id, tc, time.Hour)
+	id, err := tc.newTransaction(txnTimeout)
+	require.Nil(t, err, "Failed to create a new transaction.")
+	return newTransaction(*id, tc, txnTimeout)
 }
 
 // createTcClient Create a transaction coordinator client to send request
@@ -216,7 +218,7 @@ func createTcClient(t *testing.T) (*transactionCoordinatorClient, *client) {
 	return c.(*client).tcClient, c.(*client)
 }
 
-// TestConsumeAndProduceWithTxn is a test function that validates the behavior of producing and consuming
+// Validate the behavior of producing and consuming
 // messages with and without transactions. It consists of the following steps:
 //
 // 1. Prepare: Create a PulsarClient and initialize the transaction coordinator client.
@@ -230,7 +232,7 @@ func createTcClient(t *testing.T) (*transactionCoordinatorClient, *client) {
 //
 // The test ensures that the consumer can only receive messages sent with a transaction after it is committed,
 // and that it can always receive messages sent without a transaction.
-func TestConsumeAndProduceWithTxn(t *testing.T) {
+func TestTxn_ConsumeAndProduce(t *testing.T) {
 	// Step 1: Prepare - Create PulsarClient and initialize the transaction coordinator client.
 	topic := newTopicName()
 	sub := "my-sub"
@@ -249,7 +251,7 @@ func TestConsumeAndProduceWithTxn(t *testing.T) {
 	// Step 3: Open a transaction, send 10 messages with the transaction and 10 messages without the transaction.
 	// Expectation: We can receive the 10 messages sent without a transaction and
 	// cannot receive the 10 messages sent with the transaction.
-	txn, err := client.NewTransaction(time.Hour)
+	txn, err := client.NewTransaction(txnTimeout)
 	require.Nil(t, err)
 	for i := 0; i < 10; i++ {
 		_, err = producer.Send(context.Background(), &ProducerMessage{
@@ -289,7 +291,7 @@ func TestConsumeAndProduceWithTxn(t *testing.T) {
 	// Acknowledge the rest of the 10 messages with the transaction.
 	// Expectation: After committing the transaction, all messages of the subscription will be acknowledged.
 	_ = txn.Commit(context.Background())
-	txn, err = client.NewTransaction(time.Hour)
+	txn, err = client.NewTransaction(txnTimeout)
 	require.Nil(t, err)
 	for i := 0; i < 9; i++ {
 		msg, _ := consumer.Receive(context.Background())
@@ -307,7 +309,7 @@ func TestConsumeAndProduceWithTxn(t *testing.T) {
 	// Create a goroutine to attempt receiving a message and send it to the 'done1' channel.
 	done2 := make(chan Message)
 	go func() {
-		consumer.Receive(context.Background())
+		_, _ = consumer.Receive(context.Background())
 		close(done2)
 	}()
 
@@ -323,7 +325,7 @@ func TestConsumeAndProduceWithTxn(t *testing.T) {
 	producer.Close()
 }
 
-func TestAckAndSendWithTxn(t *testing.T) {
+func TestTxn_AckAndSend(t *testing.T) {
 	// Prepare: Create PulsarClient and initialize the transaction coordinator client.
 	sourceTopic := newTopicName()
 	sinkTopic := newTopicName()
@@ -357,7 +359,7 @@ func TestAckAndSendWithTxn(t *testing.T) {
 	}
 
 	// Open a transaction and consume messages from the source topic while sending messages to the sink topic.
-	txn, err := client.NewTransaction(time.Hour)
+	txn, err := client.NewTransaction(txnTimeout)
 	require.Nil(t, err)
 
 	for i := 0; i < 10; i++ {
@@ -393,7 +395,7 @@ func TestAckAndSendWithTxn(t *testing.T) {
 	sinkProducer.Close()
 }
 
-func TestTransactionAbort(t *testing.T) {
+func TestTxn_TransactionAbort(t *testing.T) {
 	// Prepare: Create PulsarClient and initialize the transaction coordinator client.
 	topic := newTopicName()
 	sub := "my-sub"
@@ -410,7 +412,7 @@ func TestTransactionAbort(t *testing.T) {
 	})
 
 	// Open a transaction and send 10 messages with the transaction.
-	txn, err := client.NewTransaction(time.Hour)
+	txn, err := client.NewTransaction(txnTimeout)
 	require.Nil(t, err)
 
 	for i := 0; i < 10; i++ {
@@ -449,7 +451,7 @@ func consumerShouldNotReceiveMessage(t *testing.T, consumer Consumer) {
 	}
 }
 
-func TestTransactionAckChunkMessage(t *testing.T) {
+func TestTxn_AckChunkMessage(t *testing.T) {
 	topic := newTopicName()
 	sub := "my-sub"
 
@@ -457,7 +459,7 @@ func TestTransactionAckChunkMessage(t *testing.T) {
 	_, client := createTcClient(t)
 
 	// Create transaction and register the send operation.
-	txn, err := client.NewTransaction(time.Hour)
+	txn, err := client.NewTransaction(txnTimeout)
 	require.Nil(t, err)
 
 	// Create a producer with chunking enabled to send a large message that will be split into chunks.
@@ -487,13 +489,13 @@ func TestTransactionAckChunkMessage(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_, ok := msgID.(*chunkMessageID)
-	require.True(t, ok)
+	require.True(t, ok, fmt.Sprintf("Expected message ID of type *chunkMessageID, got type %T", msgID))
 
 	err = txn.Commit(context.Background())
 	require.Nil(t, err)
 
 	// Receive the message using a new transaction and ack it.
-	txn2, err := client.NewTransaction(time.Hour)
+	txn2, err := client.NewTransaction(txnTimeout)
 	require.Nil(t, err)
 	message, err := consumer.Receive(context.Background())
 	require.Nil(t, err)
@@ -501,7 +503,7 @@ func TestTransactionAckChunkMessage(t *testing.T) {
 	err = consumer.AckWithTxn(message, txn2)
 	require.Nil(t, err)
 
-	txn2.Abort(context.Background())
+	_ = txn2.Abort(context.Background())
 
 	// Close the consumer to simulate reconnection and receive the same message again.
 	consumer.Close()
@@ -518,7 +520,7 @@ func TestTransactionAckChunkMessage(t *testing.T) {
 	require.NotNil(t, message)
 
 	// Create a new transaction and ack the message again.
-	txn3, err := client.NewTransaction(time.Hour)
+	txn3, err := client.NewTransaction(txnTimeout)
 	require.Nil(t, err)
 
 	err = consumer.AckWithTxn(message, txn3)
@@ -541,7 +543,7 @@ func TestTransactionAckChunkMessage(t *testing.T) {
 	consumerShouldNotReceiveMessage(t, consumer)
 }
 
-func TestTxnConnReconnect(t *testing.T) {
+func TestTxn_ConnReconnect(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -592,4 +594,9 @@ func TestTxnConnReconnect(t *testing.T) {
 	}
 	err = txn.Commit(context.Background())
 	assert.NoError(t, err)
+}
+
+func TestTxn_txnStateErrorMessage(t *testing.T) {
+	expected := "Expected transaction state: TxnOpen, actual: TxnTimeout"
+	assert.Equal(t, expected, txnStateErrorMessage(TxnOpen, TxnTimeout))
 }
