@@ -1767,6 +1767,14 @@ func (pc *partitionConsumer) runEventsLoop() {
 func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	defer close(req.doneCh)
 	state := pc.getConsumerState()
+	if state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
+		if pc.nackTracker != nil {
+			pc.nackTracker.Close()
+		}
+		return
+	}
+
 	if state != consumerReady {
 		// this might be redundant but to ensure nack tracker is closed
 		if pc.nackTracker != nil {
