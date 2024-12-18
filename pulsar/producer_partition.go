@@ -514,25 +514,25 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
 			p.log.Warn("Topic not found, stop reconnecting, close the producer")
-			p.doClose(joinErrors(ErrTopicNotfound, err))
+			p.doClose(errors.Join(ErrTopicNotfound, err))
 			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgTopicTerminated) {
 			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
-			p.doClose(joinErrors(ErrTopicTerminated, err))
+			p.doClose(errors.Join(ErrTopicTerminated, err))
 			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
 			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
-			p.failPendingMessages(joinErrors(ErrProducerBlockedQuotaExceeded, err))
+			p.failPendingMessages(errors.Join(ErrProducerBlockedQuotaExceeded, err))
 			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgProducerFenced) {
 			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
-			p.doClose(joinErrors(ErrProducerFenced, err))
+			p.doClose(errors.Join(ErrProducerFenced, err))
 			return struct{}{}, nil
 		}
 
@@ -1111,18 +1111,18 @@ func (p *partitionProducer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *partitionProducer) validateMsg(msg *ProducerMessage) error {
 	if msg == nil {
-		return joinErrors(ErrInvalidMessage, fmt.Errorf("message is nil"))
+		return errors.Join(ErrInvalidMessage, fmt.Errorf("message is nil"))
 	}
 
 	if msg.Value != nil && msg.Payload != nil {
-		return joinErrors(ErrInvalidMessage, fmt.Errorf("can not set Value and Payload both"))
+		return errors.Join(ErrInvalidMessage, fmt.Errorf("can not set Value and Payload both"))
 	}
 
 	if p.options.DisableMultiSchema {
 		if msg.Schema != nil && p.options.Schema != nil &&
 			msg.Schema.GetSchemaInfo().hash() != p.options.Schema.GetSchemaInfo().hash() {
 			p.log.Errorf("The producer %s of the topic %s is disabled the `MultiSchema`", p.producerName, p.topic)
-			return joinErrors(ErrSchema, fmt.Errorf("msg schema can not match with producer schema"))
+			return errors.Join(ErrSchema, fmt.Errorf("msg schema can not match with producer schema"))
 		}
 	}
 
@@ -1138,16 +1138,16 @@ func (p *partitionProducer) prepareTransaction(sr *sendRequest) error {
 	if txn.state.Load() != int32(TxnOpen) {
 		p.log.WithField("state", txn.state.Load()).Error("Failed to send message" +
 			" by a non-open transaction.")
-		return joinErrors(ErrTransaction,
+		return errors.Join(ErrTransaction,
 			fmt.Errorf("failed to send message by a non-open transaction"))
 	}
 
 	if err := txn.registerProducerTopic(p.topic); err != nil {
-		return joinErrors(ErrTransaction, err)
+		return errors.Join(ErrTransaction, err)
 	}
 
 	if err := txn.registerSendOrAckOp(); err != nil {
-		return joinErrors(ErrTransaction, err)
+		return errors.Join(ErrTransaction, err)
 	}
 
 	sr.transaction = txn
@@ -1173,7 +1173,7 @@ func (p *partitionProducer) updateSchema(sr *sendRequest) error {
 	if schemaVersion == nil {
 		schemaVersion, err = p.getOrCreateSchema(schema.GetSchemaInfo())
 		if err != nil {
-			return joinErrors(ErrSchema, fmt.Errorf("get schema version fail, err: %w", err))
+			return errors.Join(ErrSchema, fmt.Errorf("get schema version fail, err: %w", err))
 		}
 		p.schemaCache.Put(schema.GetSchemaInfo(), schemaVersion)
 	}
@@ -1190,7 +1190,7 @@ func (p *partitionProducer) updateUncompressedPayload(sr *sendRequest) error {
 	if sr.msg.Value != nil {
 		if sr.schema == nil {
 			p.log.Errorf("Schema encode message failed %s", sr.msg.Value)
-			return joinErrors(ErrSchema, fmt.Errorf("set schema value without setting schema"))
+			return errors.Join(ErrSchema, fmt.Errorf("set schema value without setting schema"))
 		}
 
 		// payload and schema are mutually exclusive
@@ -1198,7 +1198,7 @@ func (p *partitionProducer) updateUncompressedPayload(sr *sendRequest) error {
 		schemaPayload, err := sr.schema.Encode(sr.msg.Value)
 		if err != nil {
 			p.log.WithError(err).Errorf("Schema encode message failed %s", sr.msg.Value)
-			return joinErrors(ErrSchema, err)
+			return errors.Join(ErrSchema, err)
 		}
 
 		sr.uncompressedPayload = schemaPayload

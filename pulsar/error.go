@@ -21,7 +21,6 @@ import (
 	"fmt"
 
 	proto "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	"github.com/hashicorp/go-multierror"
 )
 
 // Result used to represent pulsar processing is an alias of type int.
@@ -254,11 +253,4 @@ func getErrorFromServerError(serverError *proto.ServerError) error {
 	default:
 		return newError(UnknownError, serverError.String())
 	}
-}
-
-// joinErrors can join multiple errors into one error, and the returned error can be tested by errors.Is()
-// we use github.com/hashicorp/go-multierror instead of errors.Join() of Go 1.20 so that we can compile pulsar
-// go client with go versions that newer than go 1.13
-func joinErrors(errs ...error) error {
-	return multierror.Append(nil, errs...)
 }
