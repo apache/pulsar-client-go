@@ -100,14 +100,14 @@ func (b BinaryFreeList) Uint64(r io.Reader, byteOrder binary.ByteOrder) (uint64,
 
 func (b BinaryFreeList) Float64(buf []byte) (float64, error) {
 	if len(buf) < 8 {
-		return 0, fmt.Errorf("cannot decode binary double: %s", io.ErrShortBuffer)
+		return 0, fmt.Errorf("cannot decode binary double: %w", io.ErrShortBuffer)
 	}
 	return math.Float64frombits(binary.BigEndian.Uint64(buf[:8])), nil
 }
 
 func (b BinaryFreeList) Float32(buf []byte) (float32, error) {
 	if len(buf) < 4 {
-		return 0, fmt.Errorf("cannot decode binary float: %s", io.ErrShortBuffer)
+		return 0, fmt.Errorf("cannot decode binary float: %w", io.ErrShortBuffer)
 	}
 	return math.Float32frombits(binary.BigEndian.Uint32(buf[:4])), nil
 }

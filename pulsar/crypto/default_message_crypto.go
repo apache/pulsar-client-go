@@ -95,7 +95,7 @@ func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader KeyR
 	d.cipherLock.Lock()
 	defer d.cipherLock.Unlock()
 	if keyName == "" || keyReader == nil {
-		return fmt.Errorf("keyname or keyreader is null")
+		return fmt.Errorf("keyname or keyreader is nil")
 	}
 
 	// read the public key and its info using keyReader
@@ -212,7 +212,7 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 func (d *DefaultMessageCrypto) Decrypt(msgMetadata MessageMetadataSupplier,
 	payload []byte,
 	keyReader KeyReader) ([]byte, error) {
-	// if data key is present, attempt to derypt using the existing key
+	// if data key is present, attempt to decrypt using the existing key
 	if d.dataKey != nil {
 		decryptedData, err := d.getKeyAndDecryptData(msgMetadata, payload)
 		if err != nil {
@@ -342,20 +342,20 @@ func (d *DefaultMessageCrypto) loadPrivateKey(key []byte) (gocrypto.PrivateKey, 
 
 // read the public key into RSA key
 func (d *DefaultMessageCrypto) loadPublicKey(key []byte) (gocrypto.PublicKey, error) {
-	var publickKey gocrypto.PublicKey
+	var publicKey gocrypto.PublicKey
 
 	pubPem, _ := pem.Decode(key)
 	if pubPem == nil {
-		return publickKey, fmt.Errorf("failed to decode public key")
+		return publicKey, fmt.Errorf("failed to decode public key")
 	}
 
 	genericPublicKey, err := x509.ParsePKIXPublicKey(pubPem.Bytes)
 	if err != nil {
-		return publickKey, err
+		return publicKey, err
 	}
-	publickKey = genericPublicKey
+	publicKey = genericPublicKey
 
-	return publickKey, nil
+	return publicKey, nil
 }
 
 func generateDataKey() ([]byte, error) {

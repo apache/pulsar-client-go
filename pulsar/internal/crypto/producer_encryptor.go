@@ -55,11 +55,11 @@ func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata *pb.MessageMetad
 		crypto.NewMessageMetadataSupplier(msgMetadata),
 		payload)
 
-	// error encryping the payload
+	// error encrypting the payload
 	if err != nil {
 		// error occurred in encrypting the payload
 		// crypto ProducerCryptoFailureAction is set to send
-		// send unencrypted message
+		// unencrypted message
 		if e.producerCryptoFailureAction == crypto.ProducerCryptoFailureActionSend {
 			e.logger.
 				WithError(err).
@@ -67,7 +67,7 @@ func (e *producerEncryptor) Encrypt(payload []byte, msgMetadata *pb.MessageMetad
 			return payload, nil
 		}
 
-		return nil, fmt.Errorf("ProducerCryptoFailureAction is set to Fail and error occurred in encrypting payload :%v", err)
+		return nil, fmt.Errorf("ProducerCryptoFailureAction is set to Fail and error occurred in encrypting payload: %w", err)
 	}
 	return encryptedPayload, nil
 }

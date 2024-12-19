@@ -112,7 +112,7 @@ func ExtractUserName(token oauth2.Token) (string, error) {
 	p := jwt.Parser{}
 	claims := jwt.MapClaims{}
 	if _, _, err := p.ParseUnverified(token.AccessToken, claims); err != nil {
-		return "", fmt.Errorf("unable to decode the access token: %v", err)
+		return "", fmt.Errorf("unable to decode the access token: %w", err)
 	}
 	username, ok := claims[ClaimNameUserName]
 	if !ok {

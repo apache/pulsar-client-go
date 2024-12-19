@@ -80,7 +80,7 @@ func (t *tokenCache) Token() (*xoauth2.Token, error) {
 	// load from the store and use the access token if it isn't expired
 	grant, err := t.store.LoadGrant(t.audience)
 	if err != nil {
-		return nil, fmt.Errorf("LoadGrant: %v", err)
+		return nil, fmt.Errorf("LoadGrant: %w", err)
 	}
 	t.token = grant.Token
 	if t.token != nil && t.validateAccessToken(*t.token) {
@@ -90,13 +90,13 @@ func (t *tokenCache) Token() (*xoauth2.Token, error) {
 	// obtain and cache a fresh access token
 	grant, err = t.refresher.Refresh(grant)
 	if err != nil {
-		return nil, fmt.Errorf("RefreshGrant: %v", err)
+		return nil, fmt.Errorf("RefreshGrant: %w", err)
 	}
 	t.token = grant.Token
 	err = t.store.SaveGrant(t.audience, *grant)
 	if err != nil {
 		// TODO log rather than throw
-		return nil, fmt.Errorf("SaveGrant: %v", err)
+		return nil, fmt.Errorf("SaveGrant: %w", err)
 	}
 
 	return t.token, nil
@@ -117,14 +117,14 @@ func (t *tokenCache) InvalidateToken() error {
 	}
 	grant, err := t.store.LoadGrant(t.audience)
 	if err != nil {
-		return fmt.Errorf("LoadGrant: %v", err)
+		return fmt.Errorf("LoadGrant: %w", err)
 	}
 	if grant.Token != nil && grant.Token.AccessToken == previous.AccessToken {
 		grant.Token.Expiry = time.Unix(0, 0).Add(expiryDelta)
 		err = t.store.SaveGrant(t.audience, *grant)
 		if err != nil {
 			// TODO log rather than throw
-			return fmt.Errorf("SaveGrant: %v", err)
+			return fmt.Errorf("SaveGrant: %w", err)
 		}
 	}
 	return nil

@@ -41,8 +41,8 @@ type TableViewImpl struct {
 	dataMu sync.Mutex
 	data   map[string]interface{}
 
-	readersMu    sync.Mutex
-	cancelRaders map[string]cancelReader
+	readersMu     sync.Mutex
+	cancelReaders map[string]cancelReader
 
 	listenersMu sync.Mutex
 	listeners   []func(string, interface{}) error
@@ -73,12 +73,12 @@ func newTableView(client *client, options TableViewOptions) (TableView, error) {
 	}
 
 	tv := TableViewImpl{
-		client:       client,
-		options:      options,
-		data:         make(map[string]interface{}),
-		cancelRaders: make(map[string]cancelReader),
-		logger:       logger,
-		closedCh:     make(chan struct{}),
+		client:        client,
+		options:       options,
+		data:          make(map[string]interface{}),
+		cancelReaders: make(map[string]cancelReader),
+		logger:        logger,
+		closedCh:      make(chan struct{}),
 	}
 
 	// Do an initial round of partition update check to make sure we can populate the partition readers
@@ -104,16 +104,16 @@ func (tv *TableViewImpl) partitionUpdateCheck() error {
 	tv.readersMu.Lock()
 	defer tv.readersMu.Unlock()
 
-	for partition, cancelReader := range tv.cancelRaders {
+	for partition, cancelReader := range tv.cancelReaders {
 		if _, ok := partitions[partition]; !ok {
 			cancelReader.cancelFunc()
 			cancelReader.reader.Close()
-			delete(tv.cancelRaders, partition)
+			delete(tv.cancelReaders, partition)
 		}
 	}
 
 	for partition := range partitions {
-		if _, ok := tv.cancelRaders[partition]; !ok {
+		if _, ok := tv.cancelReaders[partition]; !ok {
 			reader, err := newReader(tv.client, ReaderOptions{
 				Topic:          partition,
 				StartMessageID: EarliestMessageID(),
@@ -127,14 +127,14 @@ func (tv *TableViewImpl) partitionUpdateCheck() error {
 			for reader.HasNext() {
 				msg, err := reader.Next(context.Background())
 				if err != nil {
-					tv.logger.Errorf("read next message failed for %s: %w", partition, err)
+					tv.logger.Errorf("read next message failed for %s: %v", partition, err)
 				}
 				if msg != nil {
 					tv.handleMessage(msg)
 				}
 			}
 			ctx, cancelFunc := context.WithCancel(context.Background())
-			tv.cancelRaders[partition] = cancelReader{
+			tv.cancelReaders[partition] = cancelReader{
 				reader:     reader,
 				cancelFunc: cancelFunc,
 			}
@@ -148,7 +148,7 @@ func (tv *TableViewImpl) partitionUpdateCheck() error {
 func (tv *TableViewImpl) periodicPartitionUpdateCheck() {
 	for {
 		if err := tv.partitionUpdateCheck(); err != nil {
-			tv.logger.Errorf("failed to check for changes in number of partitions: %w", err)
+			tv.logger.Errorf("failed to check for changes in number of partitions: %v", err)
 		}
 		select {
 		case <-tv.closedCh:
@@ -236,7 +236,7 @@ func (tv *TableViewImpl) Close() {
 
 	if !tv.closed {
 		tv.closed = true
-		for _, cancelReader := range tv.cancelRaders {
+		for _, cancelReader := range tv.cancelReaders {
 			cancelReader.reader.Close()
 		}
 		close(tv.closedCh)
@@ -259,7 +259,7 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 
 	for _, listener := range tv.listeners {
 		if err := listener(msg.Key(), reflect.Indirect(payload).Interface()); err != nil {
-			tv.logger.Errorf("table view listener failed for %v: %w", msg, err)
+			tv.logger.Errorf("table view listener failed for %v: %v", msg, err)
 		}
 	}
 }
@@ -268,7 +268,7 @@ func (tv *TableViewImpl) watchReaderForNewMessages(ctx context.Context, reader R
 	for {
 		msg, err := reader.Next(ctx)
 		if err != nil {
-			tv.logger.Errorf("read next message failed for %s: %w", reader.Topic(), err)
+			tv.logger.Errorf("read next message failed for %s: %v", reader.Topic(), err)
 		}
 		var e *Error
 		if (errors.As(err, &e) && e.Result() == ConsumerClosed) || errors.Is(err, context.Canceled) {

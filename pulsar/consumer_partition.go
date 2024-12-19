@@ -1158,21 +1158,21 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	// error decrypting the payload
 	if err != nil {
 		// default crypto failure action
-		crypToFailureAction := crypto.ConsumerCryptoFailureActionFail
+		cryptoFailureAction := crypto.ConsumerCryptoFailureActionFail
 		if pc.options.decryption != nil {
-			crypToFailureAction = pc.options.decryption.ConsumerCryptoFailureAction
+			cryptoFailureAction = pc.options.decryption.ConsumerCryptoFailureAction
 		}
 
-		switch crypToFailureAction {
+		switch cryptoFailureAction {
 		case crypto.ConsumerCryptoFailureActionFail:
-			pc.log.Errorf("consuming message failed due to decryption err :%v", err)
+			pc.log.Errorf("consuming message failed due to decryption err: %v", err)
 			pc.NackID(newTrackingMessageID(int64(pbMsgID.GetLedgerId()), int64(pbMsgID.GetEntryId()), 0, 0, 0, nil))
 			return err
 		case crypto.ConsumerCryptoFailureActionDiscard:
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_DecryptionError)
-			return fmt.Errorf("discarding message on decryption error :%v", err)
+			return fmt.Errorf("discarding message on decryption error: %w", err)
 		case crypto.ConsumerCryptoFailureActionConsume:
-			pc.log.Warnf("consuming encrypted message due to error in decryption :%v", err)
+			pc.log.Warnf("consuming encrypted message due to error in decryption: %v", err)
 			messages := []*message{
 				{
 					publishTime:  timeFromUnixTimestampMillis(msgMeta.GetPublishTime()),
@@ -1767,16 +1767,16 @@ func (pc *partitionConsumer) runEventsLoop() {
 func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	defer close(req.doneCh)
 	state := pc.getConsumerState()
-	if state != consumerReady {
-		// this might be redundant but to ensure nack tracker is closed
+	if state == consumerClosed || state == consumerClosing {
+		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
 		if pc.nackTracker != nil {
 			pc.nackTracker.Close()
 		}
 		return
 	}
 
-	if state == consumerClosed || state == consumerClosing {
-		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
+	if state != consumerReady {
+		// this might be redundant but to ensure nack tracker is closed
 		if pc.nackTracker != nil {
 			pc.nackTracker.Close()
 		}

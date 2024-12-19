@@ -143,7 +143,7 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 				true,
 				client.log.SubLogger(log.Fields{"topic": p.topic}))
 			if err != nil {
-				return nil, fmt.Errorf("unable to get MessageCrypto instance. Producer creation is abandoned. %v", err)
+				return nil, fmt.Errorf("unable to get MessageCrypto instance. Producer creation is abandoned. %w", err)
 			}
 			p.options.Encryption.MessageCrypto = messageCrypto
 		}
