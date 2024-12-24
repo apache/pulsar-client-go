@@ -358,12 +358,16 @@ func (dummyConnection) GetMaxMessageSize() int32 {
 func (dummyConnection) Close() {
 }
 
-func (dummyConnection) WaitForClose() <-chan struct{} {
+func (dummyConnection) WaitForClose() <-chan error {
 	return nil
 }
 
 func (dummyConnection) IsProxied() bool {
 	return false
+}
+
+func (dummyConnection) CloseWithErr(_ error) {
+
 }
 
 func TestMultiTopicAckIDListTimeout(t *testing.T) {
