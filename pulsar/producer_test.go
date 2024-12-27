@@ -2594,13 +2594,11 @@ func TestSelectConnectionForSameProducer(t *testing.T) {
 	defer _producer.Close()
 
 	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
-	conn, ok := partitionProducerImp.conn.Load().(internal.Connection)
-	assert.True(t, ok, "Failed to assert connection type")
+	conn := partitionProducerImp._getConn()
 
 	for i := 0; i < 5; i++ {
 		partitionProducerImp.grabCnx("")
-		currentConn, ok := partitionProducerImp.conn.Load().(internal.Connection)
-		assert.True(t, ok, "Failed to assert connection type")
+		currentConn := partitionProducerImp._getConn()
 		assert.Equal(t, conn.ID(), currentConn.ID(),
 			"The producer uses a different connection when reconnecting")
 	}

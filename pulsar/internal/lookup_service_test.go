@@ -108,8 +108,8 @@ func (c *mockedLookupRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.
 	}, nil
 }
 
-func (c *mockedLookupRPCClient) RequestWithCnxKeySuffix(logicalAddr *url.URL, physicalAddr *url.URL,
-	cnxKeySuffix int32, _ uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (c *mockedLookupRPCClient) RequestWithCnxKeySuffix(_ *url.URL, _ *url.URL,
+	_ int32, _ uint64, _ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
 	assert.Fail(c.t, "Shouldn't be called")
 	return nil, nil
 }
@@ -498,8 +498,8 @@ func (m mockedPartitionedTopicMetadataRPCClient) Request(_ *url.URL, _ *url.URL,
 	return nil, nil
 }
 
-func (m *mockedPartitionedTopicMetadataRPCClient) RequestWithCnxKeySuffix(logicalAddr *url.URL, physicalAddr *url.URL,
-	cnxKeySuffix int32, _ uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+func (m *mockedPartitionedTopicMetadataRPCClient) RequestWithCnxKeySuffix(_ *url.URL, _ *url.URL,
+	_ int32, _ uint64, _ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil, nil
 }
