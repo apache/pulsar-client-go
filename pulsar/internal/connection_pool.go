@@ -32,10 +32,13 @@ import (
 // ConnectionPool is a interface of connection pool.
 type ConnectionPool interface {
 	// GetConnection get a connection from ConnectionPool.
-	GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error)
+	GetConnection(logicalAddr *url.URL, physicalAddr *url.URL, keySuffix int32) (Connection, error)
 
 	// GetConnections get all connections in the pool.
 	GetConnections() map[string]Connection
+
+	// GenerateRoundRobinIndex generates a round-robin index.
+	GenerateRoundRobinIndex() int32
 
 	// Close all the connections in the pool
 	Close()
@@ -84,9 +87,11 @@ func NewConnectionPool(
 	return p
 }
 
-func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL) (Connection, error) {
-	p.log.WithField("logicalAddr", logicalAddr).WithField("physicalAddr", physicalAddr).Debug("Getting pooled connection")
-	key := p.getMapKey(logicalAddr, physicalAddr)
+func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL,
+	keySuffix int32) (Connection, error) {
+	p.log.WithField("logicalAddr", logicalAddr).
+		WithField("physicalAddr", physicalAddr).Debug("Getting pooled connection")
+	key := fmt.Sprint(logicalAddr.Host, "-", physicalAddr.Host, "-", keySuffix)
 
 	p.Lock()
 	conn, ok := p.connections[key]
@@ -141,6 +146,14 @@ func (p *connectionPool) GetConnections() map[string]Connection {
 	return conns
 }
 
+func (p *connectionPool) GenerateRoundRobinIndex() int32 {
+	cnt := atomic.AddInt32(&p.roundRobinCnt, 1)
+	if cnt < 0 {
+		cnt = -cnt
+	}
+	return cnt % p.maxConnectionsPerHost
+}
+
 func (p *connectionPool) Close() {
 	p.Lock()
 	close(p.closeCh)
@@ -149,15 +162,6 @@ func (p *connectionPool) Close() {
 		c.Close()
 	}
 	p.Unlock()
-}
-
-func (p *connectionPool) getMapKey(logicalAddr *url.URL, physicalAddr *url.URL) string {
-	cnt := atomic.AddInt32(&p.roundRobinCnt, 1)
-	if cnt < 0 {
-		cnt = -cnt
-	}
-	idx := cnt % p.maxConnectionsPerHost
-	return fmt.Sprint(logicalAddr.Host, "-", physicalAddr.Host, "-", idx)
 }
 
 func (p *connectionPool) checkAndCleanIdleConnections(maxIdleTime time.Duration) {

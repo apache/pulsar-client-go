@@ -46,6 +46,7 @@ type transactionHandler struct {
 	tc              *transactionCoordinatorClient
 	state           uAtomic.Int32
 	conn            uAtomic.Value
+	cnxKeySuffix    int32
 	partition       uint64
 	closeCh         chan any
 	requestCh       chan any
@@ -67,6 +68,7 @@ func (t *transactionHandler) getState() txnHandlerState {
 func (tc *transactionCoordinatorClient) newTransactionHandler(partition uint64) (*transactionHandler, error) {
 	handler := &transactionHandler{
 		tc:              tc,
+		cnxKeySuffix:    tc.client.cnxPool.GenerateRoundRobinIndex(),
 		partition:       partition,
 		closeCh:         make(chan any),
 		requestCh:       make(chan any),
@@ -95,8 +97,8 @@ func (t *transactionHandler) grabConn() error {
 		TcId:      proto.Uint64(t.partition),
 	}
 
-	res, err := t.tc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
-		pb.BaseCommand_TC_CLIENT_CONNECT_REQUEST, &cmdTCConnect)
+	res, err := t.tc.client.rpcClient.RequestWithCnxKeySuffix(lr.LogicalAddr, lr.PhysicalAddr, t.cnxKeySuffix,
+		requestID, pb.BaseCommand_TC_CLIENT_CONNECT_REQUEST, &cmdTCConnect)
 
 	if err != nil {
 		t.log.WithError(err).Error("Failed to connect transaction_impl coordinator " +

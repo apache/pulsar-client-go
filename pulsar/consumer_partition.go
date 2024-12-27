@@ -141,7 +141,8 @@ type partitionConsumer struct {
 	state          uAtomic.Int32
 	options        *partitionConsumerOpts
 
-	conn atomic.Pointer[internal.Connection]
+	conn         atomic.Pointer[internal.Connection]
+	cnxKeySuffix int32
 
 	topic        string
 	name         string
@@ -351,6 +352,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		parentConsumer:             parent,
 		client:                     client,
 		options:                    options,
+		cnxKeySuffix:               client.cnxPool.GenerateRoundRobinIndex(),
 		topic:                      options.topic,
 		name:                       options.consumerName,
 		consumerID:                 client.rpcClient.NewConsumerID(),
@@ -1964,7 +1966,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		cmdSubscribe.ForceTopicCreation = proto.Bool(false)
 	}
 
-	res, err := pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
+	res, err := pc.client.rpcClient.RequestWithCnxKeySuffix(lr.LogicalAddr, lr.PhysicalAddr, pc.cnxKeySuffix, requestID,
 		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
 
 	if err != nil {
@@ -1975,7 +1977,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 				ConsumerId: proto.Uint64(pc.consumerID),
 				RequestId:  proto.Uint64(requestID),
 			}
-			_, _ = pc.client.rpcClient.Request(lr.LogicalAddr, lr.PhysicalAddr, requestID,
+			_, _ = pc.client.rpcClient.RequestWithCnxKeySuffix(lr.LogicalAddr, lr.PhysicalAddr, pc.cnxKeySuffix, requestID,
 				pb.BaseCommand_CLOSE_CONSUMER, cmdClose)
 		}
 		return err
