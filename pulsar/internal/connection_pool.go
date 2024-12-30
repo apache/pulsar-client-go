@@ -90,7 +90,8 @@ func NewConnectionPool(
 func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.URL,
 	keySuffix int32) (Connection, error) {
 	p.log.WithField("logicalAddr", logicalAddr).
-		WithField("physicalAddr", physicalAddr).Debug("Getting pooled connection")
+		WithField("physicalAddr", physicalAddr).
+		WithField("keySuffix", keySuffix).Debug("Getting pooled connection")
 	key := fmt.Sprint(logicalAddr.Host, "-", physicalAddr.Host, "-", keySuffix)
 
 	p.Lock()
