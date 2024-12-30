@@ -38,7 +38,7 @@ type ConnectionPool interface {
 	GetConnections() map[string]Connection
 
 	// GenerateRoundRobinIndex generates a round-robin index.
-	GenerateRoundRobinIndex() uint32
+	GenerateRoundRobinIndex() int32
 
 	// Close all the connections in the pool
 	Close()
@@ -147,8 +147,8 @@ func (p *connectionPool) GetConnections() map[string]Connection {
 	return conns
 }
 
-func (p *connectionPool) GenerateRoundRobinIndex() uint32 {
-	return atomic.AddUint32(&p.roundRobinCnt, 1) % p.maxConnectionsPerHost
+func (p *connectionPool) GenerateRoundRobinIndex() int32 {
+	return int32(atomic.AddUint32(&p.roundRobinCnt, 1) % p.maxConnectionsPerHost)
 }
 
 func (p *connectionPool) Close() {
