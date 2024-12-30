@@ -38,7 +38,7 @@ type ConnectionPool interface {
 	GetConnections() map[string]Connection
 
 	// GenerateRoundRobinIndex generates a round-robin index.
-	GenerateRoundRobinIndex() int32
+	GenerateRoundRobinIndex() uint32
 
 	// Close all the connections in the pool
 	Close()
@@ -50,8 +50,8 @@ type connectionPool struct {
 	connectionTimeout     time.Duration
 	tlsOptions            *TLSOptions
 	auth                  auth.Provider
-	maxConnectionsPerHost int32
-	roundRobinCnt         int32
+	maxConnectionsPerHost uint32
+	roundRobinCnt         uint32
 	keepAliveInterval     time.Duration
 	closeCh               chan struct{}
 
@@ -76,7 +76,7 @@ func NewConnectionPool(
 		tlsOptions:            tlsOptions,
 		auth:                  auth,
 		connectionTimeout:     connectionTimeout,
-		maxConnectionsPerHost: int32(maxConnectionsPerHost),
+		maxConnectionsPerHost: uint32(maxConnectionsPerHost),
 		keepAliveInterval:     keepAliveInterval,
 		log:                   logger,
 		metrics:               metrics,
@@ -147,12 +147,8 @@ func (p *connectionPool) GetConnections() map[string]Connection {
 	return conns
 }
 
-func (p *connectionPool) GenerateRoundRobinIndex() int32 {
-	cnt := atomic.AddInt32(&p.roundRobinCnt, 1)
-	if cnt < 0 {
-		cnt = -cnt
-	}
-	return cnt % p.maxConnectionsPerHost
+func (p *connectionPool) GenerateRoundRobinIndex() uint32 {
+	return atomic.AddUint32(&p.roundRobinCnt, 1) % p.maxConnectionsPerHost
 }
 
 func (p *connectionPool) Close() {
