@@ -5058,11 +5058,11 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 	defer _consumer.Close()
 
 	partitionConsumerImpl := _consumer.(*consumer).consumers[0]
-	conn := partitionConsumerImp._getConn()
+	conn := partitionConsumerImpl._getConn()
 
 	for i := 0; i < 5; i++ {
-		assert.NoError(t, partitionConsumerImp.grabConn(""))
-		assert.Equal(t, conn.ID(), partitionConsumerImp._getConn().ID(),
+		assert.NoError(t, partitionConsumerImpl.grabConn(""))
+		assert.Equal(t, conn.ID(), partitionConsumerImpl._getConn().ID(),
 			"The consumer uses a different connection when reconnecting")
 	}
 }
