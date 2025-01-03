@@ -108,6 +108,12 @@ func (c *mockedLookupRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.
 	}, nil
 }
 
+func (c *mockedLookupRPCClient) RequestWithCnxKeySuffix(_ *url.URL, _ *url.URL,
+	_ int32, _ uint64, _ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
+	assert.Fail(c.t, "Shouldn't be called")
+	return nil, nil
+}
+
 func (c *mockedLookupRPCClient) RequestOnCnx(_ Connection, _ uint64, _ pb.BaseCommand_Type,
 	_ proto.Message) (*RPCResult, error) {
 	assert.Fail(c.t, "Shouldn't be called")
@@ -488,6 +494,12 @@ func (m mockedPartitionedTopicMetadataRPCClient) RequestToAnyBroker(requestID ui
 
 func (m mockedPartitionedTopicMetadataRPCClient) Request(_ *url.URL, _ *url.URL, _ uint64,
 	_ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
+	assert.Fail(m.t, "Shouldn't be called")
+	return nil, nil
+}
+
+func (m *mockedPartitionedTopicMetadataRPCClient) RequestWithCnxKeySuffix(_ *url.URL, _ *url.URL,
+	_ int32, _ uint64, _ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil, nil
 }

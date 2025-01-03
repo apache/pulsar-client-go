@@ -96,7 +96,8 @@ type partitionProducer struct {
 	topic  string
 	log    log.Logger
 
-	conn uAtomic.Value
+	conn         uAtomic.Value
+	cnxKeySuffix int32
 
 	options                  *ProducerOptions
 	producerName             string
@@ -179,6 +180,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		client:           client,
 		topic:            topic,
 		log:              logger,
+		cnxKeySuffix:     client.cnxPool.GenerateRoundRobinIndex(),
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
@@ -301,7 +303,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		cmdProducer.Metadata = toKeyValues(p.options.Properties)
 	}
 
-	cnx, err := p.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr)
+	cnx, err := p.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr, p.cnxKeySuffix)
 	// registering the producer first in case broker sends commands in the middle
 	if err != nil {
 		p.log.Error("Failed to get connection")

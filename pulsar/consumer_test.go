@@ -5038,3 +5038,31 @@ func TestClientVersion(t *testing.T) {
 	assert.True(t, strings.HasSuffix(publisher.ClientVersion, "-test-client"))
 
 }
+
+func TestSelectConnectionForSameConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 10,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	_consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+		Type:             Shared,
+	})
+	assert.NoError(t, err)
+	defer _consumer.Close()
+
+	partitionConsumerImpl := _consumer.(*consumer).consumers[0]
+	conn := partitionConsumerImpl._getConn()
+
+	for i := 0; i < 5; i++ {
+		assert.NoError(t, partitionConsumerImpl.grabConn(""))
+		assert.Equal(t, conn.ID(), partitionConsumerImpl._getConn().ID(),
+			"The consumer uses a different connection when reconnecting")
+	}
+}

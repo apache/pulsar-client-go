@@ -2574,3 +2574,34 @@ func TestProducerKeepReconnectingAndThenCallClose(t *testing.T) {
 		return true
 	}, 30*time.Second, 1*time.Second)
 }
+
+func TestSelectConnectionForSameProducer(t *testing.T) {
+	topicName := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 10,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	reconnectNum := uint(1)
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                topicName,
+		MaxReconnectToBroker: &reconnectNum,
+	})
+	assert.NoError(t, err)
+	defer _producer.Close()
+
+	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
+	conn := partitionProducerImp._getConn()
+
+	for i := 0; i < 5; i++ {
+		partitionProducerImp.grabCnx("")
+		currentConn := partitionProducerImp._getConn()
+		assert.Equal(t, conn.ID(), currentConn.ID(),
+			"The producer uses a different connection when reconnecting")
+	}
+
+	client.Close()
+}

@@ -64,6 +64,9 @@ type RPCClient interface {
 	RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
+	RequestWithCnxKeySuffix(logicalAddr *url.URL, physicalAddr *url.URL, cnxKeySuffix int32, requestID uint64,
+		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+
 	Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
@@ -154,7 +157,13 @@ func (c *rpcClient) RequestToHost(serviceNameResolver *ServiceNameResolver, requ
 
 func (c *rpcClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, requestID uint64,
 	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
-	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr)
+	return c.RequestWithCnxKeySuffix(logicalAddr, physicalAddr, c.pool.GenerateRoundRobinIndex(),
+		requestID, cmdType, message)
+}
+
+func (c *rpcClient) RequestWithCnxKeySuffix(logicalAddr *url.URL, physicalAddr *url.URL, cnxKeySuffix int32,
+	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	cnx, err := c.pool.GetConnection(logicalAddr, physicalAddr, cnxKeySuffix)
 	if err != nil {
 		return nil, err
 	}
