@@ -295,6 +295,15 @@ type Namespaces interface {
 	// RemoveSubscriptionExpirationTime removes subscription expiration time from a namespace,
 	// defaulting to broker settings
 	RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error
+
+	// GetOffloadPolicies returns the offload configuration for a namespace
+	GetOffloadPolicies(namespace utils.NameSpaceName) (*utils.OffloadPolicies, error)
+
+	// SetOffloadPolicies sets the offload configuration on a namespace
+	SetOffloadPolicies(namespace utils.NameSpaceName, policy *utils.OffloadPolicies) error
+
+	// DeleteOffloadPolicies removes the offload configuration from a namespace
+	DeleteOffloadPolicies(namespace utils.NameSpaceName) error
 }
 
 type namespaces struct {
@@ -938,5 +947,34 @@ func (n *namespaces) SetSubscriptionExpirationTime(namespace utils.NameSpaceName
 
 func (n *namespaces) RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
+	return n.pulsar.Client.Delete(endpoint)
+}
+
+func (n *namespaces) SetOffloadPolicies(namespace utils.NameSpaceName, policy *utils.OffloadPolicies) error {
+	nsName, err := utils.GetNamespaceName(namespace.String())
+	if err != nil {
+		return err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "offloadPolicies")
+	return n.pulsar.Client.Post(endpoint, policy)
+}
+
+func (n *namespaces) GetOffloadPolicies(namespace utils.NameSpaceName) (*utils.OffloadPolicies, error) {
+	var policy utils.OffloadPolicies
+	nsName, err := utils.GetNamespaceName(namespace.String())
+	if err != nil {
+		return nil, err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "offloadPolicies")
+	err = n.pulsar.Client.Get(endpoint, &policy)
+	return &policy, err
+}
+
+func (n *namespaces) DeleteOffloadPolicies(namespace utils.NameSpaceName) error {
+	nsName, err := utils.GetNamespaceName(namespace.String())
+	if err != nil {
+		return err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "removeOffloadPolicies")
 	return n.pulsar.Client.Delete(endpoint)
 }
