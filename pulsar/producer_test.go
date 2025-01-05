@@ -58,7 +58,8 @@ func TestInvalidURL(t *testing.T) {
 
 func TestProducerConnectError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: "pulsar://invalid-hostname:6650",
+		URL:              "pulsar://invalid-hostname:6650",
+		OperationTimeout: 5 * time.Second,
 	})
 
 	assert.Nil(t, err)
@@ -73,7 +74,7 @@ func TestProducerConnectError(t *testing.T) {
 	assert.Nil(t, producer)
 	assert.NotNil(t, err)
 
-	assert.ErrorContains(t, err, "connection error")
+	assert.ErrorContains(t, err, "failed to connect to broker")
 }
 
 func TestProducerNoTopic(t *testing.T) {

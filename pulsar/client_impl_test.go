@@ -1231,3 +1231,19 @@ func TestMultipleCloseClient(t *testing.T) {
 	client.Close()
 	client.Close()
 }
+
+func TestConnectionClosedError(t *testing.T) {
+	c, err := NewClient(ClientOptions{
+		URL:               "pulsar://localhost:1234", // fake address
+		ConnectionTimeout: 1 * time.Second,
+		OperationTimeout:  1 * time.Second,
+	})
+	assert.NoError(t, err)
+
+	_, err = c.CreateProducer(ProducerOptions{
+		Topic: "my-topic",
+	})
+	assert.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "failed to connect to broker: dial tcp [::1]:1234: connect:"+
+		" connection refused"), "error-message", err.Error())
+}

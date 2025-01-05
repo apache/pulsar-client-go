@@ -121,7 +121,8 @@ func TestProducerConsumer(t *testing.T) {
 
 func TestConsumerConnectError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
-		URL: "pulsar://invalid-hostname:6650",
+		URL:              "pulsar://invalid-hostname:6650",
+		OperationTimeout: 5 * time.Second,
 	})
 
 	assert.Nil(t, err)
@@ -137,7 +138,7 @@ func TestConsumerConnectError(t *testing.T) {
 	assert.Nil(t, consumer)
 	assert.NotNil(t, err)
 
-	assert.ErrorContains(t, err, "connection error")
+	assert.ErrorContains(t, err, "failed to connect to broker")
 }
 
 func TestBatchMessageReceive(t *testing.T) {
