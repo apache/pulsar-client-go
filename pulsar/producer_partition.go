@@ -1394,7 +1394,8 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		)
 
 		if sr.totalChunks > 1 {
-			if sr.chunkID == 0 {
+			switch sr.chunkID {
+			case 0:
 				sr.chunkRecorder.setFirstChunkID(
 					&messageID{
 						int64(response.MessageId.GetLedgerId()),
@@ -1403,7 +1404,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 						p.partitionIdx,
 						0,
 					})
-			} else if sr.chunkID == sr.totalChunks-1 {
+			case sr.totalChunks - 1:
 				sr.chunkRecorder.setLastChunkID(
 					&messageID{
 						int64(response.MessageId.GetLedgerId()),
