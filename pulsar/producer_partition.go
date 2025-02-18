@@ -394,7 +394,10 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			pi.sentAt = time.Now()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			p._getConn().WriteData(pi.ctx, pi.buffer)
+			err = p._getConn().WriteData(pi.ctx, pi.buffer)
+			if err != nil {
+				p.log.WithError(err).Warn("failed to write data, it will be retried later")
+			}
 
 			if pi == lastViewItem {
 				break
@@ -908,7 +911,13 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(ctx, buffer)
+
+		// If the connection is closed, WriteData() will failed, but it is fine, the buffer is still kept in p.pendingQueue,
+		// it will be sent out or timeout finally.
+		err := p._getConn().WriteData(ctx, buffer)
+		if err != nil {
+			p.log.WithError(err).Warn("failed to write data, it will be retried later")
+		}
 	}
 }
 

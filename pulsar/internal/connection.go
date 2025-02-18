@@ -79,7 +79,7 @@ type ConnectionListener interface {
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	SendRequestNoWait(req *pb.BaseCommand) error
-	WriteData(ctx context.Context, data Buffer)
+	WriteData(ctx context.Context, data Buffer) error
 	RegisterListener(id uint64, listener ConnectionListener) error
 	UnregisterListener(id uint64)
 	AddConsumeHandler(id uint64, handler ConsumerHandler) error
@@ -456,26 +456,38 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 	}
 }
 
-func (c *connection) WriteData(ctx context.Context, data Buffer) {
+func (c *connection) WriteData(ctx context.Context, data Buffer) error {
+	// If the connection is closed, we should not write on it
+	if c.getState() != connectionReady {
+		c.log.Debug("Connection was already closed")
+		return errConnectionClosed
+	}
+
 	select {
 	case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 		// Channel is not full
-		return
+		return nil
 	case <-ctx.Done():
 		c.log.Debug("Write data context cancelled")
-		return
+		return ctx.Err()
 	default:
 		// Channel full, fallback to probe if connection is closed
+	}
+
+	// check if the connection is closed again
+	if c.getState() != connectionReady {
+		c.log.Debug("Connection was already closed")
+		return errConnectionClosed
 	}
 
 	for {
 		select {
 		case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 			// Successfully wrote on the channel
-			return
+			return nil
 		case <-ctx.Done():
 			c.log.Debug("Write data context cancelled")
-			return
+			return ctx.Err()
 		case <-time.After(100 * time.Millisecond):
 			// The channel is either:
 			// 1. blocked, in which case we need to wait until we have space
@@ -484,7 +496,7 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 
 			if c.getState() != connectionReady {
 				c.log.Debug("Connection was already closed")
-				return
+				return errConnectionClosed
 			}
 		}
 	}
