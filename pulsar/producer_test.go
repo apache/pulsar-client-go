@@ -2623,7 +2623,7 @@ func TestProducerKeepReconnectingAndThenCallSendAsync(t *testing.T) {
 
 	testProducer.SendAsync(context.Background(), &ProducerMessage{
 		Payload: []byte("test"),
-	}, func(messageID MessageID, message *ProducerMessage, err error) {
+	}, func(_ MessageID, _ *ProducerMessage, err error) {
 		errChan <- err
 	})
 	// should success
@@ -2637,7 +2637,7 @@ func TestProducerKeepReconnectingAndThenCallSendAsync(t *testing.T) {
 	// send again
 	testProducer.SendAsync(context.Background(), &ProducerMessage{
 		Payload: []byte("test"),
-	}, func(messageID MessageID, message *ProducerMessage, err error) {
+	}, func(_ MessageID, _ *ProducerMessage, err error) {
 		errChan <- err
 	})
 	// should get a timeout error
@@ -2667,7 +2667,7 @@ func TestProducerKeepReconnectingAndThenCallSendAsync(t *testing.T) {
 	// send again
 	testProducer.SendAsync(context.Background(), &ProducerMessage{
 		Payload: []byte("test"),
-	}, func(messageID MessageID, message *ProducerMessage, err error) {
+	}, func(_ MessageID, _ *ProducerMessage, err error) {
 		errChan <- err
 	})
 	// should success
