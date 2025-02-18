@@ -88,6 +88,7 @@ type Connection interface {
 	Close()
 	WaitForClose() <-chan struct{}
 	IsProxied() bool
+	Closed() bool
 }
 
 type ConsumerHandler interface {
@@ -682,7 +683,7 @@ func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
 }
 
 func (c *connection) internalSendRequest(req *request) {
-	if c.closed() {
+	if c.Closed() {
 		c.log.Warnf("internalSendRequest failed for connectionClosed")
 		if req.callback != nil {
 			req.callback(req.cmd, ErrConnectionClosed)
@@ -1088,7 +1089,7 @@ func (c *connection) setStateClosed() {
 	c.state.Store(int32(connectionClosed))
 }
 
-func (c *connection) closed() bool {
+func (c *connection) Closed() bool {
 	return connectionClosed == c.getState()
 }
 
