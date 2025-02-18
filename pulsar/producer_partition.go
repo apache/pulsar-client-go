@@ -1738,10 +1738,10 @@ func (i *pendingItem) done(err error) {
 		return
 	}
 	i.isDone = true
-	buffersPool.Put(i.buffer)
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
+	buffersPool.Put(i.buffer)
 }
 
 // _setConn sets the internal connection field of this partition producer atomically.
