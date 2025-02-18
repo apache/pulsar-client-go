@@ -369,6 +369,10 @@ func (dummyConnection) IsProxied() bool {
 	return false
 }
 
+func (dummyConnection) Closed() bool {
+	return false
+}
+
 func TestMultiTopicAckIDListTimeout(t *testing.T) {
 	topic := fmt.Sprintf("multiTopicAckIDListTimeout%v", time.Now().UnixNano())
 	assert.NoError(t, createPartitionedTopic(topic, 5))
