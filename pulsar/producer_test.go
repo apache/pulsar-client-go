@@ -30,6 +30,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -2573,6 +2575,104 @@ func TestProducerKeepReconnectingAndThenCallClose(t *testing.T) {
 		testProducer.Close()
 		return true
 	}, 30*time.Second, 1*time.Second)
+}
+
+func TestProducerKeepReconnectingAndThenCallSendAsync(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+		// use fixed port binding so that it can be reconnected after restart
+		HostConfigModifier: func(hostConfig *container.HostConfig) {
+			hostConfig.PortBindings = map[nat.Port][]nat.PortBinding{
+				"6650/tcp": {{HostIP: "0.0.0.0", HostPort: "6650"}},
+				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8080"}},
+			}
+		},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 5 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	var testProducer Producer
+	require.Eventually(t, func() bool {
+		testProducer, err = client.CreateProducer(ProducerOptions{
+			Topic:       newTopicName(),
+			Schema:      NewBytesSchema(nil),
+			SendTimeout: 3 * time.Second,
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+
+	// send a message
+	errChan := make(chan error)
+	defer close(errChan)
+
+	testProducer.SendAsync(context.Background(), &ProducerMessage{
+		Payload: []byte("test"),
+	}, func(messageID MessageID, message *ProducerMessage, err error) {
+		errChan <- err
+	})
+	// should success
+	err = <-errChan
+	require.NoError(t, err)
+
+	// stop pulsar server
+	timeout := 10 * time.Second
+	_ = c.Stop(context.Background(), &timeout)
+
+	// send again
+	testProducer.SendAsync(context.Background(), &ProducerMessage{
+		Payload: []byte("test"),
+	}, func(messageID MessageID, message *ProducerMessage, err error) {
+		errChan <- err
+	})
+	// should get a timeout error
+	err = <-errChan
+	require.True(t, errors.Is(err, ErrSendTimeout))
+
+	oldConn := testProducer.(*producer).producers[0].(*partitionProducer)._getConn()
+	// restart pulsar server
+	err = c.Start(context.Background())
+	require.NoError(t, err)
+	defer c.Terminate(context.Background())
+
+	// wait for reconnection success
+	waitTime := 0
+	for {
+		newConn := testProducer.(*producer).producers[0].(*partitionProducer)._getConn()
+		if oldConn != newConn {
+			break
+		}
+		time.Sleep(5 * time.Second)
+		waitTime += 5
+		if waitTime > 60 {
+			break
+		}
+	}
+
+	// send again
+	testProducer.SendAsync(context.Background(), &ProducerMessage{
+		Payload: []byte("test"),
+	}, func(messageID MessageID, message *ProducerMessage, err error) {
+		errChan <- err
+	})
+	// should success
+	err = <-errChan
+	require.NoError(t, err)
 }
 
 func TestSelectConnectionForSameProducer(t *testing.T) {
