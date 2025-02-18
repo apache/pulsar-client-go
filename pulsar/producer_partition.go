@@ -581,7 +581,8 @@ func (p *partitionProducer) runEventsLoop() {
 			}
 		case connectionClosed := <-p.connectClosedCh:
 			p.log.Info("runEventsLoop will reconnect in producer")
-			p.reconnectToBroker(connectionClosed)
+			// reconnect to broker in a new goroutine so that it won't block the event loop, see issue #1332
+			go p.reconnectToBroker(connectionClosed)
 		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
 		}
