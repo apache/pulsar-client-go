@@ -903,7 +903,15 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(buffer)
+
+		// If the connection is closed, stop sending data. Continuing to send data
+		// to a closed connection will cause the buffer to be passed to it, which
+		// prevents further processing.
+		conn := p._getConn()
+		if conn.Closed() {
+			return
+		}
+		conn.WriteData(buffer)
 	}
 }
 
