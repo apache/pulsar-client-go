@@ -14,3 +14,5 @@ coverage.html
 perf/perf
 pulsar-perf
 bin
+
+vendor/

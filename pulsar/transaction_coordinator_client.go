@@ -319,7 +319,7 @@ func (t *transactionHandler) endTxn(op *endTxnOp) {
 }
 
 func (t *transactionHandler) close() {
-	if !t.state.CAS(txnHandlerReady, txnHandlerClosed) {
+	if !t.state.CompareAndSwap(txnHandlerReady, txnHandlerClosed) {
 		return
 	}
 	close(t.closeCh)

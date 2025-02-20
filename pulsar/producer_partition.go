@@ -1089,7 +1089,7 @@ func (p *partitionProducer) Send(ctx context.Context, msg *ProducerMessage) (Mes
 	doneCh := make(chan struct{})
 
 	p.internalSendAsync(ctx, msg, func(ID MessageID, _ *ProducerMessage, e error) {
-		if isDone.CAS(false, true) {
+		if isDone.CompareAndSwap(false, true) {
 			err = e
 			msgID = ID
 			close(doneCh)
@@ -1394,7 +1394,8 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 		)
 
 		if sr.totalChunks > 1 {
-			if sr.chunkID == 0 {
+			switch sr.chunkID {
+			case 0:
 				sr.chunkRecorder.setFirstChunkID(
 					&messageID{
 						int64(response.MessageId.GetLedgerId()),
@@ -1403,7 +1404,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 						p.partitionIdx,
 						0,
 					})
-			} else if sr.chunkID == sr.totalChunks-1 {
+			case sr.totalChunks - 1:
 				sr.chunkRecorder.setLastChunkID(
 					&messageID{
 						int64(response.MessageId.GetLedgerId()),
@@ -1546,7 +1547,7 @@ func (p *partitionProducer) setProducerState(state producerState) {
 // set a new producerState and return the last state
 // returns bool if the new state has been set or not
 func (p *partitionProducer) casProducerState(oldState, newState producerState) bool {
-	return p.state.CAS(int32(oldState), int32(newState))
+	return p.state.CompareAndSwap(int32(oldState), int32(newState))
 }
 
 func (p *partitionProducer) Close() {
