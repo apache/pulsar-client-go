@@ -21,8 +21,9 @@ import (
 	"fmt"
 	"io"
 
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"google.golang.org/protobuf/proto"
+
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 )
 
 type connectionReader struct {
@@ -41,7 +42,7 @@ func (r *connectionReader) readFromConnection() {
 	for {
 		cmd, headersAndPayload, err := r.readSingleCommand()
 		if err != nil {
-			if !r.cnx.closed() {
+			if !r.cnx.Closed() {
 				r.cnx.log.WithError(err).Infof("Error reading from connection")
 				r.cnx.Close()
 			}
@@ -122,7 +123,7 @@ func (r *connectionReader) readAtLeast(size uint32) error {
 	n, err := io.ReadAtLeast(r.cnx.cnx, r.buffer.WritableSlice(), int(size))
 	if err != nil {
 		// has the connection been closed?
-		if r.cnx.closed() {
+		if r.cnx.Closed() {
 			return errConnectionClosed
 		}
 		r.cnx.Close()

@@ -24,12 +24,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestMultiTopicConsumerReceive(t *testing.T) {
@@ -363,6 +364,10 @@ func (dummyConnection) WaitForClose() <-chan struct{} {
 }
 
 func (dummyConnection) IsProxied() bool {
+	return false
+}
+
+func (dummyConnection) Closed() bool {
 	return false
 }
 
