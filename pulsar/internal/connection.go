@@ -135,6 +135,11 @@ type incomingCmd struct {
 	headersAndPayload Buffer
 }
 
+type dataRequest struct {
+	ctx  context.Context
+	data Buffer
+}
+
 type connection struct {
 	started           int32
 	connectionTimeout time.Duration
@@ -164,7 +169,7 @@ type connection struct {
 	incomingCmdCh      chan *incomingCmd
 	closeCh            chan struct{}
 	readyCh            chan struct{}
-	writeRequestsCh    chan Buffer
+	writeRequestsCh    chan *dataRequest
 
 	pendingLock sync.Mutex
 	pendingReqs map[uint64]*request
@@ -217,7 +222,7 @@ func newConnection(opts connectionOptions) *connection {
 		// partition produces writing on a single connection. In general it's
 		// good to keep this above the number of partition producers assigned
 		// to a single connection.
-		writeRequestsCh:  make(chan Buffer, 256),
+		writeRequestsCh:  make(chan *dataRequest, 256),
 		listeners:        make(map[uint64]ConnectionListener),
 		consumerHandlers: make(map[uint64]ConsumerHandler),
 		metrics:          opts.metrics,
@@ -442,11 +447,11 @@ func (c *connection) run() {
 
 		case cmd := <-c.incomingCmdCh:
 			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
-		case data := <-c.writeRequestsCh:
-			if data == nil {
+		case req := <-c.writeRequestsCh:
+			if req == nil {
 				return
 			}
-			c.internalWriteData(data)
+			c.internalWriteData(req.ctx, req.data)
 
 		case <-pingSendTicker.C:
 			c.sendPing()
@@ -473,7 +478,7 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 
 func (c *connection) WriteData(ctx context.Context, data Buffer) {
 	select {
-	case c.writeRequestsCh <- data:
+	case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 		// Channel is not full
 		return
 	case <-ctx.Done():
@@ -485,7 +490,7 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 
 	for {
 		select {
-		case c.writeRequestsCh <- data:
+		case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 			// Successfully wrote on the channel
 			return
 		case <-ctx.Done():
@@ -506,11 +511,25 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 
 }
 
-func (c *connection) internalWriteData(data Buffer) {
+func (c *connection) internalWriteData(ctx context.Context, data Buffer) {
 	c.log.Debug("Write data: ", data.ReadableBytes())
-	if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
-		c.log.WithError(err).Warn("Failed to write on connection")
-		c.Close()
+	if ctx == nil {
+		if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
+			c.log.WithError(err).Warn("Failed to write on connection")
+			c.Close()
+		}
+
+		return
+	}
+
+	select {
+	case <-ctx.Done():
+		return
+	default:
+		if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
+			c.log.WithError(err).Warn("Failed to write on connection")
+			c.Close()
+		}
 	}
 }
 
@@ -535,7 +554,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	}
 
 	c.writeBuffer.WrittenBytes(cmdSize)
-	c.internalWriteData(c.writeBuffer)
+	c.internalWriteData(nil, c.writeBuffer)
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
