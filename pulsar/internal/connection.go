@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"errors"
@@ -78,7 +79,7 @@ type ConnectionListener interface {
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	SendRequestNoWait(req *pb.BaseCommand) error
-	WriteData(data Buffer)
+	WriteData(ctx context.Context, data Buffer)
 	RegisterListener(id uint64, listener ConnectionListener) error
 	UnregisterListener(id uint64)
 	AddConsumeHandler(id uint64, handler ConsumerHandler) error
@@ -450,12 +451,14 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 	}
 }
 
-func (c *connection) WriteData(data Buffer) {
+func (c *connection) WriteData(ctx context.Context, data Buffer) {
 	select {
 	case c.writeRequestsCh <- data:
 		// Channel is not full
 		return
-
+	case <-ctx.Done():
+		c.log.Debug("Write data context cancelled")
+		return
 	default:
 		// Channel full, fallback to probe if connection is closed
 	}
@@ -465,7 +468,9 @@ func (c *connection) WriteData(data Buffer) {
 		case c.writeRequestsCh <- data:
 			// Successfully wrote on the channel
 			return
-
+		case <-ctx.Done():
+			c.log.Debug("Write data context cancelled")
+			return
 		case <-time.After(100 * time.Millisecond):
 			// The channel is either:
 			// 1. blocked, in which case we need to wait until we have space
