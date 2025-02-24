@@ -418,27 +418,16 @@ func (c *connection) run() {
 	c.log.Debugf("Connection run starting with request capacity=%d queued=%d",
 		cap(c.incomingRequestsCh), len(c.incomingRequestsCh))
 
-	go func() {
-		for {
-			select {
-			case <-c.closeCh:
-				c.failLeftRequestsWhenClose()
-				return
-
-			case req := <-c.incomingRequestsCh:
-				if req == nil {
-					return // TODO: this never gonna be happen
-				}
-				c.internalSendRequest(req)
-			}
-		}
-	}()
-
 	for {
 		select {
 		case <-c.closeCh:
+			c.failLeftRequestsWhenClose()
 			return
-
+		case req := <-c.incomingRequestsCh:
+			if req == nil {
+				return // TODO: this never gonna be happen
+			}
+			c.internalSendRequest(req)
 		case cmd := <-c.incomingCmdCh:
 			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
 		case data := <-c.writeRequestsCh:
