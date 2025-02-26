@@ -628,19 +628,19 @@ func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
 	return res.msgID, err
 }
 
-func (pc *partitionConsumer) getLastMessageIDAndMarkDeletePosition() (*getLastMsgResult, error) {
+func (pc *partitionConsumer) getLastMessageIDAndMarkDeletePosition() (*getLastMsgIDResult, error) {
 	if state := pc.getConsumerState(); state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Failed to getLastMessageID for the closing or closed consumer")
 		return nil, errors.New("failed to getLastMessageID for the closing or closed consumer")
 	}
 	bo := pc.backoffPolicyFunc()
-	request := func() (*getLastMsgResult, error) {
+	request := func() (*getLastMsgIDResult, error) {
 		req := &getLastMsgIDRequest{doneCh: make(chan struct{})}
 		pc.eventsCh <- req
 
 		// wait for the request to complete
 		<-req.doneCh
-		res := &getLastMsgResult{req.msgID, req.markDeletePosition}
+		res := &getLastMsgIDResult{req.msgID, req.markDeletePosition}
 		return res, req.err
 	}
 
@@ -1740,7 +1740,7 @@ type getLastMsgIDRequest struct {
 	err                error
 }
 
-type getLastMsgResult struct {
+type getLastMsgIDResult struct {
 	msgID              *trackingMessageID
 	markDeletePosition *trackingMessageID
 }
@@ -2307,12 +2307,12 @@ func convertToMessageID(id *pb.MessageIdData) *trackingMessageID {
 		messageID: &messageID{
 			ledgerID:  int64(id.GetLedgerId()),
 			entryID:   int64(id.GetEntryId()),
-			batchIdx:  -1,
+			batchIdx:  id.GetBatchIndex(),
 			batchSize: id.GetBatchSize(),
 		},
 	}
-	if id.GetBatchSize() > 1 {
-		msgID.batchIdx = id.GetBatchIndex()
+	if msgID.batchIdx == -1 {
+		msgID.batchIdx = 0
 	}
 
 	return msgID

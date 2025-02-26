@@ -212,9 +212,6 @@ func deserializeMessageID(data []byte) (MessageID, error) {
 }
 
 func newMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32) MessageID {
-	if batchSize <= 1 {
-		batchIdx = -1
-	}
 	return &messageID{
 		ledgerID:     ledgerID,
 		entryID:      entryID,
@@ -236,9 +233,6 @@ func fromMessageID(msgID MessageID) *messageID {
 
 func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32,
 	tracker *ackTracker) *trackingMessageID {
-	if batchSize <= 1 {
-		batchIdx = -1
-	}
 	return &trackingMessageID{
 		messageID: &messageID{
 			ledgerID:     ledgerID,
