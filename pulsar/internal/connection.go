@@ -513,6 +513,10 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 
 func (c *connection) internalWriteData(ctx context.Context, data Buffer) {
 	c.log.Debug("Write data: ", data.ReadableBytes())
+	if ctx == nil {
+		return
+	}
+
 	select {
 	case <-ctx.Done():
 		return
