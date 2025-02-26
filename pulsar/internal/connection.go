@@ -493,15 +493,6 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 
 func (c *connection) internalWriteData(ctx context.Context, data Buffer) {
 	c.log.Debug("Write data: ", data.ReadableBytes())
-	if ctx == nil {
-		if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
-			c.log.WithError(err).Warn("Failed to write on connection")
-			c.Close()
-		}
-
-		return
-	}
-
 	select {
 	case <-ctx.Done():
 		return
@@ -534,7 +525,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 	}
 
 	c.writeBuffer.WrittenBytes(cmdSize)
-	c.internalWriteData(nil, c.writeBuffer)
+	c.internalWriteData(context.Background(), c.writeBuffer)
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
