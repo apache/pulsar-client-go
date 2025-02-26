@@ -88,6 +88,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 	if options.EnableZeroQueueConsumer {
 		options.ReceiverQueueSize = 0
+		options.StartMessageIDInclusive = true
 	}
 
 	if options.Interceptors == nil {

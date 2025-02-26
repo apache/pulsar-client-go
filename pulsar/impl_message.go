@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -147,6 +148,13 @@ func (id *messageID) equal(other *messageID) bool {
 		id.batchIdx == other.batchIdx
 }
 
+func (id *messageID) compareLedgerAndEntryID(other *messageID) int {
+	if result := cmp.Compare(id.ledgerID, other.ledgerID); result != 0 {
+		return result
+	}
+	return cmp.Compare(id.entryID, other.entryID)
+}
+
 func (id *messageID) greaterEqual(other *messageID) bool {
 	return id.equal(other) || id.greater(other)
 }
@@ -204,6 +212,9 @@ func deserializeMessageID(data []byte) (MessageID, error) {
 }
 
 func newMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32) MessageID {
+	if batchSize <= 1 {
+		batchIdx = -1
+	}
 	return &messageID{
 		ledgerID:     ledgerID,
 		entryID:      entryID,
@@ -225,6 +236,9 @@ func fromMessageID(msgID MessageID) *messageID {
 
 func newTrackingMessageID(ledgerID int64, entryID int64, batchIdx int32, partitionIdx int32, batchSize int32,
 	tracker *ackTracker) *trackingMessageID {
+	if batchSize <= 1 {
+		batchIdx = -1
+	}
 	return &trackingMessageID{
 		messageID: &messageID{
 			ledgerID:     ledgerID,
