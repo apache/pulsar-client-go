@@ -494,6 +494,11 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 func (c *connection) internalWriteData(ctx context.Context, data Buffer) {
 	c.log.Debug("Write data: ", data.ReadableBytes())
 	if ctx == nil {
+		if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
+			c.log.WithError(err).Warn("Failed to write on connection")
+			c.Close()
+		}
+
 		return
 	}
 
