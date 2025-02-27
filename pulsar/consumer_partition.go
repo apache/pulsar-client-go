@@ -2230,7 +2230,7 @@ func (pc *partitionConsumer) hasNext() bool {
 	// If a seek by time has been performed, then the `startMessageId` becomes irrelevant.
 	// We need to compare `markDeletePosition` and `lastMessageId`,
 	// and then reset `startMessageID` to `markDeletePosition`.
-	if pc.hasSoughtByTime.CompareAndSwap(true, false) {
+	if pc.lastDequeuedMsg == nil && pc.hasSoughtByTime.CompareAndSwap(true, false) {
 		res, err := pc.getLastMessageIDAndMarkDeletePosition()
 		if err != nil {
 			pc.log.WithError(err).Error("Failed to get last message id")

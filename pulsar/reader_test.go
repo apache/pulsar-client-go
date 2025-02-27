@@ -1096,7 +1096,6 @@ func testReaderSeekByIDWithHasNext(t *testing.T, startMessageID MessageID, start
 		lastMsgID, err = producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
-		fmt.Println(lastMsgID.String())
 		assert.NoError(t, err)
 		assert.NotNil(t, lastMsgID)
 	}
@@ -1133,10 +1132,22 @@ func testReaderSeekByIDWithHasNext(t *testing.T, startMessageID MessageID, start
 }
 
 func TestReaderWithSeekByID(t *testing.T) {
-	testReaderSeekByIDWithHasNext(t, EarliestMessageID(), false)
-	testReaderSeekByIDWithHasNext(t, EarliestMessageID(), true)
-	testReaderSeekByIDWithHasNext(t, LatestMessageID(), false)
-	testReaderSeekByIDWithHasNext(t, LatestMessageID(), true)
+	params := []struct {
+		messageID               MessageID
+		startMessageIDInclusive bool
+	}{
+		{EarliestMessageID(), false},
+		{EarliestMessageID(), true},
+		{LatestMessageID(), false},
+		{LatestMessageID(), true},
+	}
+
+	for _, c := range params {
+		t.Run(fmt.Sprintf("TestReaderSeekByID_%v_%v", c.messageID, c.startMessageIDInclusive),
+			func(t *testing.T) {
+				testReaderSeekByIDWithHasNext(t, c.messageID, c.startMessageIDInclusive)
+			})
+	}
 }
 
 func testReaderSeekByTimeWithHasNext(t *testing.T, startMessageID MessageID) {
@@ -1164,7 +1175,6 @@ func testReaderSeekByTimeWithHasNext(t *testing.T, startMessageID MessageID) {
 		lastMsgID, err = producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		})
-		fmt.Println(lastMsgID.String())
 		assert.NoError(t, err)
 
 		assert.NotNil(t, lastMsgID)
@@ -1197,7 +1207,6 @@ func testReaderSeekByTimeWithHasNext(t *testing.T, startMessageID MessageID) {
 		lastMsgID, err = producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello2-%d", i)),
 		})
-		fmt.Println(lastMsgID.String())
 		assert.NoError(t, err)
 		assert.NotNil(t, lastMsgID)
 	}
@@ -1221,8 +1230,10 @@ func testReaderSeekByTimeWithHasNext(t *testing.T, startMessageID MessageID) {
 	}
 }
 func TestReaderWithSeekByTime(t *testing.T) {
-	testReaderSeekByTimeWithHasNext(t, EarliestMessageID())
-	testReaderSeekByTimeWithHasNext(t, EarliestMessageID())
-	testReaderSeekByTimeWithHasNext(t, LatestMessageID())
-	testReaderSeekByTimeWithHasNext(t, LatestMessageID())
+	startMessageIDs := []MessageID{EarliestMessageID(), LatestMessageID()}
+	for _, startMsgID := range startMessageIDs {
+		t.Run(fmt.Sprintf("TestReaderSeekByTime_%v", startMsgID), func(t *testing.T) {
+			testReaderSeekByTimeWithHasNext(t, startMsgID)
+		})
+	}
 }
