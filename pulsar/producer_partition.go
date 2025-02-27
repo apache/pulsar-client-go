@@ -848,21 +848,6 @@ type pendingItem struct {
 	flushCallback func(err error)
 }
 
-func (i *pendingItem) done(err error) {
-	if i.isDone {
-		return
-	}
-	i.isDone = true
-	buffersPool.Put(i.buffer)
-	if i.flushCallback != nil {
-		i.flushCallback(err)
-	}
-
-	if i.cancel != nil {
-		i.cancel()
-	}
-}
-
 func (p *partitionProducer) internalFlushCurrentBatch() {
 	if p.batchBuilder == nil {
 		// batch is not enabled
@@ -1750,6 +1735,21 @@ type closeProducer struct {
 type flushRequest struct {
 	doneCh chan struct{}
 	err    error
+}
+
+func (i *pendingItem) done(err error) {
+	if i.isDone {
+		return
+	}
+	i.isDone = true
+	buffersPool.Put(i.buffer)
+	if i.flushCallback != nil {
+		i.flushCallback(err)
+	}
+
+	if i.cancel != nil {
+		i.cancel()
+	}
 }
 
 // _setConn sets the internal connection field of this partition producer atomically.
