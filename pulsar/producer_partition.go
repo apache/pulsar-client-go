@@ -394,7 +394,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			pi.sentAt = time.Now()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			p._getConn().WriteData(pi.buffer)
+			p._getConn().WriteData(pi.ctx, pi.buffer)
 
 			if pi == lastViewItem {
 				break
@@ -837,6 +837,8 @@ func (p *partitionProducer) internalSingleSend(
 
 type pendingItem struct {
 	sync.Mutex
+	ctx           context.Context
+	cancel        context.CancelFunc
 	buffer        internal.Buffer
 	sequenceID    uint64
 	createdAt     time.Time
@@ -895,14 +897,17 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		return
 	default:
 		now := time.Now()
+		ctx, cancel := context.WithCancel(context.Background())
 		p.pendingQueue.Put(&pendingItem{
+			ctx:          ctx,
+			cancel:       cancel,
 			createdAt:    now,
 			sentAt:       now,
 			buffer:       buffer,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(buffer)
+		p._getConn().WriteData(ctx, buffer)
 	}
 }
 
@@ -1579,14 +1584,14 @@ type sendRequest struct {
 	uuid             string
 	chunkRecorder    *chunkRecorder
 
-	/// resource management
+	// resource management
 
 	memLimit          internal.MemoryLimitController
 	reservedMem       int64
 	semaphore         internal.Semaphore
 	reservedSemaphore int
 
-	/// convey settable state
+	// convey settable state
 
 	sendAsBatch         bool
 	transaction         *transaction
@@ -1659,7 +1664,7 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 }
 
 func (p *partitionProducer) blockIfQueueFull() bool {
-	//DisableBlockIfQueueFull == false means enable block
+	// DisableBlockIfQueueFull == false means enable block
 	return !p.options.DisableBlockIfQueueFull
 }
 
@@ -1740,6 +1745,10 @@ func (i *pendingItem) done(err error) {
 	buffersPool.Put(i.buffer)
 	if i.flushCallback != nil {
 		i.flushCallback(err)
+	}
+
+	if i.cancel != nil {
+		i.cancel()
 	}
 }
 

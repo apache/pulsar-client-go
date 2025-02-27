@@ -18,18 +18,20 @@
 package pulsar
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestMultiTopicConsumerReceive(t *testing.T) {
@@ -330,7 +332,7 @@ func (dummyConnection) SendRequestNoWait(_ *pb.BaseCommand) error {
 	return nil
 }
 
-func (dummyConnection) WriteData(_ internal.Buffer) {
+func (dummyConnection) WriteData(_ context.Context, _ internal.Buffer) {
 }
 
 func (dummyConnection) RegisterListener(_ uint64, _ internal.ConnectionListener) error {
