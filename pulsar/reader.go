@@ -53,6 +53,7 @@ type ReaderOptions struct {
 	StartMessageID MessageID
 
 	// StartMessageIDInclusive, if true, the reader will start at the `StartMessageID`, included.
+	// Note: This configuration also affects the seek operation.
 	// Default is `false` and the reader will start from the "next" message
 	StartMessageIDInclusive bool
 
