@@ -2234,6 +2234,7 @@ func (pc *partitionConsumer) hasNext() bool {
 		res, err := pc.getLastMessageIDAndMarkDeletePosition()
 		if err != nil {
 			pc.log.WithError(err).Error("Failed to get last message id")
+			pc.hasSoughtByTime.CompareAndSwap(false, true)
 			return false
 		}
 		pc.lastMessageInBroker = res.msgID
