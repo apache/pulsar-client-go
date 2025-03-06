@@ -2147,7 +2147,8 @@ func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload int
 
 	uncompressed, err := provider.Decompress(nil, payload.ReadableSlice(), int(msgMeta.GetUncompressedSize()))
 	if err != nil {
-		return nil, fmt.Errorf("failed to decompress message: %w, compression type: %d, payload size: %d, uncompressed size: %d",
+		return nil, fmt.Errorf("failed to decompress message: %w, compression type: %d, payload size: %d, "+
+			"uncompressed size: %d",
 			err,
 			msgMeta.GetCompression(),
 			len(payload.ReadableSlice()),
