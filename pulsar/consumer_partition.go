@@ -257,7 +257,7 @@ func (p *availablePermits) flowIfNeed() {
 		availablePermits := current
 		requestedPermits := current
 		// check if permits changed
-		if !p.permits.CAS(current, 0) {
+		if !p.permits.CompareAndSwap(current, 0) {
 			return
 		}
 
@@ -2084,13 +2084,13 @@ func (pc *partitionConsumer) expectMoreIncomingMessages() {
 	if !pc.options.autoReceiverQueueSize {
 		return
 	}
-	if pc.scaleReceiverQueueHint.CAS(true, false) {
+	if pc.scaleReceiverQueueHint.CompareAndSwap(true, false) {
 		oldSize := pc.currentQueueSize.Load()
 		maxSize := int32(pc.options.receiverQueueSize)
 		newSize := int32(math.Min(float64(maxSize), float64(oldSize*2)))
 		usagePercent := pc.client.memLimit.CurrentUsagePercent()
 		if usagePercent < receiverQueueExpansionMemThreshold && newSize > oldSize {
-			pc.currentQueueSize.CAS(oldSize, newSize)
+			pc.currentQueueSize.CompareAndSwap(oldSize, newSize)
 			pc.availablePermits.add(newSize - oldSize)
 			pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
 		}
@@ -2116,7 +2116,7 @@ func (pc *partitionConsumer) shrinkReceiverQueueSize() {
 	minSize := int32(math.Min(float64(initialReceiverQueueSize), float64(pc.options.receiverQueueSize)))
 	newSize := int32(math.Max(float64(minSize), float64(oldSize/2)))
 	if newSize < oldSize {
-		pc.currentQueueSize.CAS(oldSize, newSize)
+		pc.currentQueueSize.CompareAndSwap(oldSize, newSize)
 		pc.availablePermits.add(newSize - oldSize)
 		pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
 	}
@@ -2147,7 +2147,12 @@ func (pc *partitionConsumer) Decompress(msgMeta *pb.MessageMetadata, payload int
 
 	uncompressed, err := provider.Decompress(nil, payload.ReadableSlice(), int(msgMeta.GetUncompressedSize()))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to decompress message: %w, compression type: %d, payload size: %d, "+
+			"uncompressed size: %d",
+			err,
+			msgMeta.GetCompression(),
+			len(payload.ReadableSlice()),
+			msgMeta.GetUncompressedSize())
 	}
 
 	return internal.NewBufferWrapper(uncompressed), nil

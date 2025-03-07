@@ -1977,8 +1977,8 @@ func TestWaitForExclusiveProducer(t *testing.T) {
 			Topic:              topicName,
 			ProducerAccessMode: ProducerAccessModeWaitForExclusive,
 		})
-		defer producer2.Close()
 		assert.NoError(t, err)
+		defer producer2.Close()
 		assert.NotNil(t, producer2)
 
 		id, err := producer2.Send(context.Background(), &ProducerMessage{

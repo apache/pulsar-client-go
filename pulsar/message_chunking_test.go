@@ -57,8 +57,6 @@ func TestInvalidChunkingConfig(t *testing.T) {
 }
 
 func TestLargeMessage(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -208,7 +206,6 @@ func TestMaxPendingChunkMessages(t *testing.T) {
 }
 
 func TestExpireIncompleteChunks(t *testing.T) {
-	rand.Seed(time.Now().Unix())
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -240,8 +237,6 @@ func TestExpireIncompleteChunks(t *testing.T) {
 }
 
 func TestChunksEnqueueFailed(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -278,8 +273,6 @@ func TestChunksEnqueueFailed(t *testing.T) {
 }
 
 func TestSeekChunkMessages(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -343,8 +336,6 @@ func TestSeekChunkMessages(t *testing.T) {
 }
 
 func TestChunkAckAndNAck(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -400,8 +391,6 @@ func TestChunkAckAndNAck(t *testing.T) {
 }
 
 func TestChunkSize(t *testing.T) {
-	rand.Seed(time.Now().Unix())
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
