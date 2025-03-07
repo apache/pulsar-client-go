@@ -129,11 +129,6 @@ type request struct {
 	callback func(command *pb.BaseCommand, err error)
 }
 
-type incomingCmd struct {
-	cmd               *pb.BaseCommand
-	headersAndPayload Buffer
-}
-
 type connection struct {
 	started           int32
 	connectionTimeout time.Duration
