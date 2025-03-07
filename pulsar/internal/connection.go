@@ -524,10 +524,6 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
-	c.internalReceivedCommand(cmd, headersAndPayload)
-}
-
-func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
 	c.log.Debugf("Received command: %s -- payload: %v", cmd, headersAndPayload)
 	c.setLastDataReceived(time.Now())
 
