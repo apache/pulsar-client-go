@@ -44,14 +44,15 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 
-	"github.com/apache/pulsar-client-go/pulsar/crypto"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
-	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
-	plog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/google/uuid"
 	"github.com/pierrec/lz4/v4"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/apache/pulsar-client-go/pulsar/crypto"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
+	plog "github.com/apache/pulsar-client-go/pulsar/log"
 )
 
 var (
@@ -564,17 +565,22 @@ func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
 	assert.Equal(t, topic+"-partition-1", topics[1])
 	assert.Equal(t, topic+"-partition-2", topics[2])
 
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:             topic,
-		SubscriptionName:  "my-sub",
-		Type:              Exclusive,
-		ReceiverQueueSize: 10,
-		Decryption: &MessageDecryptionInfo{
-			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
-				"crypto/testdata/pri_key_rsa.pem"),
-			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
-		},
-	})
+	var consumer Consumer
+	// create consumer, make sure it's not nil
+	require.Eventually(t, func() bool {
+		consumer, err = client.Subscribe(ConsumerOptions{
+			Topic:             topic,
+			SubscriptionName:  "my-sub",
+			Type:              Exclusive,
+			ReceiverQueueSize: 10,
+			Decryption: &MessageDecryptionInfo{
+				KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+					"crypto/testdata/pri_key_rsa.pem"),
+				ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
+			},
+		})
+		return err == nil
+	}, 15*time.Second, 1*time.Second)
 	assert.Nil(t, err)
 	defer consumer.Close()
 
