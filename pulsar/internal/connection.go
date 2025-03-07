@@ -160,7 +160,6 @@ type connection struct {
 
 	incomingRequestsWG sync.WaitGroup
 	incomingRequestsCh chan *request
-	incomingCmdCh      chan *incomingCmd
 	closeCh            chan struct{}
 	readyCh            chan struct{}
 	writeRequestsCh    chan Buffer
@@ -209,7 +208,6 @@ func newConnection(opts connectionOptions) *connection {
 		closeCh:            make(chan struct{}),
 		readyCh:            make(chan struct{}),
 		incomingRequestsCh: make(chan *request, 10),
-		incomingCmdCh:      make(chan *incomingCmd, 10),
 
 		// This channel is used to pass data from producers to the connection
 		// go routine. It can become contended or blocking if we have multiple
@@ -438,9 +436,6 @@ func (c *connection) run() {
 		select {
 		case <-c.closeCh:
 			return
-
-		case cmd := <-c.incomingCmdCh:
-			c.internalReceivedCommand(cmd.cmd, cmd.headersAndPayload)
 		case data := <-c.writeRequestsCh:
 			if data == nil {
 				return
@@ -534,7 +529,7 @@ func (c *connection) writeCommand(cmd *pb.BaseCommand) {
 }
 
 func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
-	c.incomingCmdCh <- &incomingCmd{cmd, headersAndPayload}
+	c.internalReceivedCommand(cmd, headersAndPayload)
 }
 
 func (c *connection) internalReceivedCommand(cmd *pb.BaseCommand, headersAndPayload Buffer) {
