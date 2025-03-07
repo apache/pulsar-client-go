@@ -261,6 +261,7 @@ type ConsumerOptions struct {
 	SubscriptionMode SubscriptionMode
 
 	// StartMessageIDInclusive, if true, the consumer will start at the `StartMessageID`, included.
+	// Note: This configuration also affects the seek operation.
 	// Default is `false` and the consumer will start from the "next" message
 	StartMessageIDInclusive bool
 

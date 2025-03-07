@@ -196,19 +196,6 @@ func (r *reader) Close() {
 	r.metrics.ReadersClosed.Inc()
 }
 
-func (r *reader) messageID(msgID MessageID) *trackingMessageID {
-	mid := toTrackingMessageID(msgID)
-
-	partition := int(mid.partitionIdx)
-	// did we receive a valid partition index?
-	if partition < 0 {
-		r.log.Warnf("invalid partition index %d expected", partition)
-		return nil
-	}
-
-	return mid
-}
-
 func (r *reader) Seek(msgID MessageID) error {
 	r.Lock()
 	defer r.Unlock()
@@ -218,9 +205,12 @@ func (r *reader) Seek(msgID MessageID) error {
 		return fmt.Errorf("invalid message id type %T", msgID)
 	}
 
-	mid := r.messageID(msgID)
-	if mid == nil {
-		return nil
+	mid := toTrackingMessageID(msgID)
+
+	partition := int(mid.partitionIdx)
+	if partition < 0 {
+		r.log.Warnf("invalid partition index %d expected", partition)
+		return fmt.Errorf("seek msgId must include partitoinIndex")
 	}
 
 	return r.c.Seek(mid)
