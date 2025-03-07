@@ -581,7 +581,8 @@ func (p *partitionProducer) runEventsLoop() {
 			}
 		case connectionClosed := <-p.connectClosedCh:
 			p.log.Info("runEventsLoop will reconnect in producer")
-			p.reconnectToBroker(connectionClosed)
+			// reconnect to broker in a new goroutine so that it won't block the event loop, see issue #1332
+			go p.reconnectToBroker(connectionClosed)
 		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
 		}
@@ -902,7 +903,15 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(buffer)
+
+		// If the connection is closed, stop sending data. Continuing to send data
+		// to a closed connection will cause the buffer to be passed to it, which
+		// prevents further processing.
+		conn := p._getConn()
+		if conn.Closed() {
+			return
+		}
+		conn.WriteData(buffer)
 	}
 }
 
@@ -1737,10 +1746,10 @@ func (i *pendingItem) done(err error) {
 		return
 	}
 	i.isDone = true
-	buffersPool.Put(i.buffer)
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
+	buffersPool.Put(i.buffer)
 }
 
 // _setConn sets the internal connection field of this partition producer atomically.
