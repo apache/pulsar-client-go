@@ -565,22 +565,17 @@ func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
 	assert.Equal(t, topic+"-partition-1", topics[1])
 	assert.Equal(t, topic+"-partition-2", topics[2])
 
-	var consumer Consumer
-	// create consumer, make sure it's not nil
-	require.Eventually(t, func() bool {
-		consumer, err = client.Subscribe(ConsumerOptions{
-			Topic:             topic,
-			SubscriptionName:  "my-sub",
-			Type:              Exclusive,
-			ReceiverQueueSize: 10,
-			Decryption: &MessageDecryptionInfo{
-				KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
-					"crypto/testdata/pri_key_rsa.pem"),
-				ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
-			},
-		})
-		return err == nil
-	}, 15*time.Second, 1*time.Second)
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  "my-sub",
+		Type:              Exclusive,
+		ReceiverQueueSize: 10,
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
+		},
+	})
 	assert.Nil(t, err)
 	defer consumer.Close()
 
