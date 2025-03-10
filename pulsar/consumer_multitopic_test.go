@@ -369,7 +369,7 @@ func (dummyConnection) IsProxied() bool {
 	return false
 }
 
-func (dummyConnection) Closed() bool {
+func (dummyConnection) closed() bool {
 	return false
 }
 
