@@ -394,7 +394,10 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			pi.sentAt = time.Now()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			p._getConn().WriteData(pi.ctx, pi.buffer)
+			err = p._getConn().WriteData(pi.ctx, pi.buffer)
+			if err != nil {
+				p.log.WithError(err).Warn("failed to write data, it will be retried later")
+			}
 
 			if pi == lastViewItem {
 				break
@@ -581,7 +584,8 @@ func (p *partitionProducer) runEventsLoop() {
 			}
 		case connectionClosed := <-p.connectClosedCh:
 			p.log.Info("runEventsLoop will reconnect in producer")
-			p.reconnectToBroker(connectionClosed)
+			// reconnect to broker in a new goroutine so that it won't block the event loop, see issue #1332
+			go p.reconnectToBroker(connectionClosed)
 		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
 		}
@@ -907,7 +911,13 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(ctx, buffer)
+
+		// If the connection is closed, WriteData() will failed, but it is fine, the buffer is still kept in p.pendingQueue,
+		// it will be sent out or timeout finally.
+		err := p._getConn().WriteData(ctx, buffer)
+		if err != nil {
+			p.log.WithError(err).Warn("failed to write data, it will be retried later")
+		}
 	}
 }
 
@@ -1742,7 +1752,6 @@ func (i *pendingItem) done(err error) {
 		return
 	}
 	i.isDone = true
-	buffersPool.Put(i.buffer)
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
@@ -1750,6 +1759,7 @@ func (i *pendingItem) done(err error) {
 	if i.cancel != nil {
 		i.cancel()
 	}
+	buffersPool.Put(i.buffer)
 }
 
 // _setConn sets the internal connection field of this partition producer atomically.
