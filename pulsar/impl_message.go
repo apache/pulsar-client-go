@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"cmp"
 	"errors"
 	"fmt"
 	"math"
@@ -145,6 +146,13 @@ func (id *messageID) equal(other *messageID) bool {
 	return id.ledgerID == other.ledgerID &&
 		id.entryID == other.entryID &&
 		id.batchIdx == other.batchIdx
+}
+
+func (id *messageID) compareLedgerAndEntryID(other *messageID) int {
+	if result := cmp.Compare(id.ledgerID, other.ledgerID); result != 0 {
+		return result
+	}
+	return cmp.Compare(id.entryID, other.entryID)
 }
 
 func (id *messageID) greaterEqual(other *messageID) bool {

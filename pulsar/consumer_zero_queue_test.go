@@ -474,6 +474,7 @@ func TestZeroQueueConsumer_Seek(t *testing.T) {
 		Topic:                   topicName,
 		EnableZeroQueueConsumer: true,
 		SubscriptionName:        "sub-1",
+		StartMessageIDInclusive: true,
 	})
 	assert.Nil(t, err)
 	_, ok := consumer.(*zeroQueueConsumer)

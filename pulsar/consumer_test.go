@@ -1262,8 +1262,9 @@ func TestConsumerSeek(t *testing.T) {
 	defer producer.Close()
 
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:            topicName,
-		SubscriptionName: "sub-1",
+		Topic:                   topicName,
+		SubscriptionName:        "sub-1",
+		StartMessageIDInclusive: true,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
