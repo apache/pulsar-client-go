@@ -110,7 +110,7 @@ type partitionProducer struct {
 	compressionProvider      compression.Provider
 
 	// Channel where app is posting messages to be published
-	dataChan             chan *sendRequest
+	dataChan             chan *pendingItem
 	cmdChan              chan interface{}
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
@@ -177,16 +177,15 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	p := &partitionProducer{
-		client:           client,
-		topic:            topic,
-		log:              logger,
-		cnxKeySuffix:     client.cnxPool.GenerateRoundRobinIndex(),
-		options:          options,
-		producerID:       client.rpcClient.NewProducerID(),
-		dataChan:         make(chan *sendRequest, maxPendingMessages),
-		cmdChan:          make(chan interface{}, 10),
-		connectClosedCh:  make(chan *connectionClosed, 1),
-		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
+		client:          client,
+		topic:           topic,
+		log:             logger,
+		cnxKeySuffix:    client.cnxPool.GenerateRoundRobinIndex(),
+		options:         options,
+		producerID:      client.rpcClient.NewProducerID(),
+		dataChan:        make(chan *pendingItem, maxPendingMessages),
+		cmdChan:         make(chan interface{}, 10),
+		connectClosedCh: make(chan *connectionClosed, 1),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
 			compression.Level(options.CompressionLevel)),
 		publishSemaphore:  internal.NewSemaphore(int32(maxPendingMessages)),
@@ -199,9 +198,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		ctx:               ctx,
 		cancelFunc:        cancelFunc,
 		backOffPolicyFunc: boFunc,
-	}
-	if p.options.DisableBatching {
-		p.batchFlushTicker.Stop()
 	}
 	p.setProducerState(producerInit)
 
@@ -219,7 +215,6 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	err := p.grabCnx("")
 	if err != nil {
-		p.batchFlushTicker.Stop()
 		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
 		return nil, err
 	}
@@ -231,6 +226,11 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 	p.log.WithField("cnx", p._getConn().ID()).Info("Created producer")
 	p.setProducerState(producerReady)
+
+	if !p.options.DisableBatching {
+		p.batchFlushTicker = time.NewTicker(batchingMaxPublishDelay)
+		go p.listenBatch()
+	}
 
 	if p.options.SendTimeout > 0 {
 		go p.failTimeoutMessages()
@@ -558,6 +558,15 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 	})
 }
 
+func (p *partitionProducer) listenBatch() {
+	for {
+		select {
+		case <-p.batchFlushTicker.C:
+			p.internalFlushCurrentBatch()
+		}
+	}
+}
+
 func (p *partitionProducer) runEventsLoop() {
 	for {
 		select {
@@ -566,7 +575,7 @@ func (p *partitionProducer) runEventsLoop() {
 			if !ok {
 				return
 			}
-			p.internalSend(data)
+			p.internalWriteData(data)
 		case cmd, ok := <-p.cmdChan:
 			// when doClose() is call, p.dataChan will be closed, cmd will be nil
 			if !ok {
@@ -582,8 +591,6 @@ func (p *partitionProducer) runEventsLoop() {
 		case connectionClosed := <-p.connectClosedCh:
 			p.log.Info("runEventsLoop will reconnect in producer")
 			p.reconnectToBroker(connectionClosed)
-		case <-p.batchFlushTicker.C:
-			p.internalFlushCurrentBatch()
 		}
 	}
 }
@@ -686,6 +693,10 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 
 		p.internalSingleSend(nsr.mm, nsr.compressedPayload[lhs:rhs], nsr, uint32(nsr.maxMessageSize))
 	}
+}
+
+func (p *partitionProducer) internalWriteData(item *pendingItem) {
+	p._getConn().WriteData(item.ctx, item.buffer)
 }
 
 func addRequestToBatch(smm *pb.SingleMessageMetadata, p *partitionProducer,
@@ -898,7 +909,7 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 	default:
 		now := time.Now()
 		ctx, cancel := context.WithCancel(context.Background())
-		p.pendingQueue.Put(&pendingItem{
+		item := pendingItem{
 			ctx:          ctx,
 			cancel:       cancel,
 			createdAt:    now,
@@ -906,8 +917,9 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			buffer:       buffer,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
-		})
-		p._getConn().WriteData(ctx, buffer)
+		}
+		p.pendingQueue.Put(&item)
+		p.dataChan <- &item
 	}
 }
 
@@ -1077,7 +1089,7 @@ func (p *partitionProducer) clearPendingSendRequests() {
 	for i := 0; i < sizeBeforeFlushing; i++ {
 		select {
 		case pendingData := <-p.dataChan:
-			p.internalSend(pendingData)
+			p.internalWriteData(pendingData)
 
 		default:
 			return
@@ -1352,7 +1364,7 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
-	p.dataChan <- sr
+	p.internalSend(sr)
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -1466,7 +1478,10 @@ func (p *partitionProducer) doClose(reason error) {
 
 	p.setProducerState(producerClosed)
 	p._getConn().UnregisterListener(p.producerID)
-	p.batchFlushTicker.Stop()
+
+	if p.batchFlushTicker != nil {
+		p.batchFlushTicker.Stop()
+	}
 }
 
 func (p *partitionProducer) failPendingMessages(err error) {
