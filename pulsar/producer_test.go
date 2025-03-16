@@ -2345,7 +2345,7 @@ func TestProducerSendWithContext(t *testing.T) {
 	// Make ctx be canceled to invalidate the context immediately
 	cancel()
 	_, err = producer.Send(ctx, &ProducerMessage{
-		Payload: make([]byte, 1024*1024),
+		Payload: make([]byte, 1024),
 	})
 	//  producer.Send should fail and return err context.Canceled
 	assert.True(t, errors.Is(err, context.Canceled))
