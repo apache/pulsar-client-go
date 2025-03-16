@@ -112,6 +112,7 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	dataChan             chan *pendingItem
 	cmdChan              chan interface{}
+	batchChan            chan interface{}
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
 	pendingQueue         internal.BlockingQueue
@@ -228,6 +229,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	p.setProducerState(producerReady)
 
 	if !p.options.DisableBatching {
+		p.batchChan = make(chan interface{})
 		p.batchFlushTicker = time.NewTicker(batchingMaxPublishDelay)
 		go p.listenBatch()
 	}
@@ -563,6 +565,44 @@ func (p *partitionProducer) listenBatch() {
 		select {
 		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
+		case ch, ok := <-p.batchChan:
+			if !ok {
+				return
+			}
+
+			switch req := ch.(type) {
+			case *sendRequest:
+				smm := p.genSingleMessageMetadataInBatch(req.msg, int(req.uncompressedSize))
+				multiSchemaEnabled := !p.options.DisableMultiSchema
+
+				added := addRequestToBatch(
+					smm, p, req.uncompressedPayload, req, req.msg, req.deliverAt, req.schemaVersion, multiSchemaEnabled)
+				if !added {
+					// The current batch is full. flush it and retry
+					p.internalFlushCurrentBatch()
+
+					// after flushing try again to add the current payload
+					ok := addRequestToBatch(
+						smm, p, req.uncompressedPayload, req, req.msg, req.deliverAt, req.schemaVersion, multiSchemaEnabled)
+					if !ok {
+						p.log.WithField("size", req.uncompressedSize).
+							WithField("properties", req.msg.Properties).
+							Error("unable to add message to batch")
+						req.done(nil, ErrFailAddToBatch)
+						continue
+					}
+				}
+				if req.flushImmediately {
+					p.internalFlushCurrentBatch()
+					continue
+				}
+			case *flushRequest:
+				// Flush request happened on the event loop.
+				p.internalFlushCurrentBatch()
+				req.doneCh <- struct{}{}
+			default:
+				p.log.Error("Unknown request type")
+			}
 		}
 	}
 }
@@ -615,30 +655,7 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 	p.log.Debug("Received send request: ", *sr.msg)
 
 	if sr.sendAsBatch {
-		smm := p.genSingleMessageMetadataInBatch(sr.msg, int(sr.uncompressedSize))
-		multiSchemaEnabled := !p.options.DisableMultiSchema
-
-		added := addRequestToBatch(
-			smm, p, sr.uncompressedPayload, sr, sr.msg, sr.deliverAt, sr.schemaVersion, multiSchemaEnabled)
-		if !added {
-			// The current batch is full. flush it and retry
-			p.internalFlushCurrentBatch()
-
-			// after flushing try again to add the current payload
-			ok := addRequestToBatch(
-				smm, p, sr.uncompressedPayload, sr, sr.msg, sr.deliverAt, sr.schemaVersion, multiSchemaEnabled)
-			if !ok {
-				p.log.WithField("size", sr.uncompressedSize).
-					WithField("properties", sr.msg.Properties).
-					Error("unable to add message to batch")
-				sr.done(nil, ErrFailAddToBatch)
-				return
-			}
-		}
-
-		if sr.flushImmediately {
-			p.internalFlushCurrentBatch()
-		}
+		p.batchChan <- sr
 		return
 	}
 
@@ -1050,7 +1067,17 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 	p.clearPendingSendRequests()
 
 	if !p.options.DisableBatching {
-		p.internalFlushCurrentBatch()
+		// Flush batch
+		batchFlushRequest := &flushRequest{
+			doneCh: make(chan struct{}),
+		}
+		p.batchChan <- batchFlushRequest
+		<-batchFlushRequest.doneCh
+		if batchFlushRequest.err != nil {
+			fr.err = batchFlushRequest.err
+			close(fr.doneCh)
+			return
+		}
 	}
 
 	pi, ok := p.pendingQueue.PeekLast().(*pendingItem)
