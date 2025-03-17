@@ -1743,6 +1743,8 @@ func (i *pendingItem) done(err error) {
 	}
 
 	i.isDone = true
+	// return the buffer to the pool after all callbacks have been called.
+	defer buffersPool.Put(i.buffer)
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
@@ -1750,9 +1752,6 @@ func (i *pendingItem) done(err error) {
 	if i.cancel != nil {
 		i.cancel()
 	}
-
-	// return the buffer to the pool after all callbacks have been called.
-	buffersPool.Put(i.buffer)
 }
 
 // _setConn sets the internal connection field of this partition producer atomically.
