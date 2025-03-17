@@ -1741,8 +1741,10 @@ func (i *pendingItem) done(err error) {
 	if i.isDone {
 		return
 	}
+
 	i.isDone = true
-	buffersPool.Put(i.buffer)
+	// return the buffer to the pool after all callbacks have been called.
+	defer buffersPool.Put(i.buffer)
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
