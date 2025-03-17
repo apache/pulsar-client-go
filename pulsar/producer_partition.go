@@ -113,6 +113,7 @@ type partitionProducer struct {
 	dataChan             chan *sendRequest
 	cmdChan              chan interface{}
 	connectClosedCh      chan *connectionClosed
+	connectClosed        atomic.Bool
 	publishSemaphore     internal.Semaphore
 	pendingQueue         internal.BlockingQueue
 	schemaInfo           *SchemaInfo
@@ -394,7 +395,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			pi.sentAt = time.Now()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			err = p._getConn().WriteData(pi.ctx, pi.buffer)
+			err = p.writeConn(pi.ctx, pi.buffer)
 			if err != nil {
 				p.log.WithError(err).Warn("failed to write data, it will be retried later")
 			}
@@ -432,6 +433,8 @@ func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProdu
 			closeProducer.GetAssignedBrokerServiceUrl(), closeProducer.GetAssignedBrokerServiceUrlTls())
 	}
 
+	// mark the connection as closed
+	p.connectClosed.Store(true)
 	select {
 	case p.connectClosedCh <- &connectionClosed{assignedBrokerURL: assignedBrokerURL}:
 	default:
@@ -914,7 +917,7 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 
 		// If the connection is closed, WriteData() will failed, but it is fine, the buffer is still kept in p.pendingQueue,
 		// it will be sent out or timeout finally.
-		err := p._getConn().WriteData(ctx, buffer)
+		err := p.writeConn(ctx, buffer)
 		if err != nil {
 			p.log.WithError(err).Warn("failed to write data, it will be retried later")
 		}
@@ -1768,6 +1771,7 @@ func (i *pendingItem) done(err error) {
 // Note: should only be called by this partition producer when a new connection is available.
 func (p *partitionProducer) _setConn(conn internal.Connection) {
 	p.conn.Store(conn)
+	p.connectClosed.Store(false)
 }
 
 // _getConn returns internal connection field of this partition producer atomically.
@@ -1777,6 +1781,14 @@ func (p *partitionProducer) _getConn() internal.Connection {
 	//            For this reason we leave this cast unchecked and panic() if the
 	//            invariant is broken
 	return p.conn.Load().(internal.Connection)
+}
+
+func (p *partitionProducer) writeConn(ctx context.Context, data internal.Buffer) error {
+	if p.connectClosed.Load() {
+		return errors.New("connection is closed")
+	}
+
+	return p._getConn().WriteData(ctx, data)
 }
 
 type chunkRecorder struct {
