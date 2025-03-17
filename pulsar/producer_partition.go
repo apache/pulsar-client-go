@@ -1741,8 +1741,8 @@ func (i *pendingItem) done(err error) {
 	if i.isDone {
 		return
 	}
-	i.isDone = true
 
+	i.isDone = true
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
