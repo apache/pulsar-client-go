@@ -434,7 +434,7 @@ func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProdu
 	}
 
 	// mark the connection as closed
-	p.connectClosed.Store(true)
+	p.markConnClosed(true)
 	select {
 	case p.connectClosedCh <- &connectionClosed{assignedBrokerURL: assignedBrokerURL}:
 	default:
@@ -1771,7 +1771,7 @@ func (i *pendingItem) done(err error) {
 // Note: should only be called by this partition producer when a new connection is available.
 func (p *partitionProducer) _setConn(conn internal.Connection) {
 	p.conn.Store(conn)
-	p.connectClosed.Store(false)
+	p.markConnClosed(false)
 }
 
 // _getConn returns internal connection field of this partition producer atomically.
@@ -1781,6 +1781,10 @@ func (p *partitionProducer) _getConn() internal.Connection {
 	//            For this reason we leave this cast unchecked and panic() if the
 	//            invariant is broken
 	return p.conn.Load().(internal.Connection)
+}
+
+func (p *partitionProducer) markConnClosed(closed bool) {
+	p.connectClosed.Store(closed)
 }
 
 func (p *partitionProducer) writeConn(ctx context.Context, data internal.Buffer) error {
