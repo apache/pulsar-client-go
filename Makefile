@@ -30,7 +30,7 @@ GOROOT ?= $(shell go env GOROOT)
 # Pass "-race" to go test if TEST_RACE is set to 1
 TEST_RACE ?= 1
 # Pass "-coverprofile" to go test if TEST_COVERAGE is set to 1
-TEST_COVERAGE ?= 1
+TEST_COVERAGE ?= 0
 
 # Common docker run arguments for test containers
 DOCKER_TEST_ARGS = --rm -i -e TEST_RACE=${TEST_RACE} -e TEST_COVERAGE=${TEST_COVERAGE} ${IMAGE_NAME}

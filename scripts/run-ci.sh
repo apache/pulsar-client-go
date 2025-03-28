@@ -31,7 +31,7 @@ export CGO_ENABLED=1
 # Set TEST_RACE=0 to disable race detector
 # Set TEST_COVERAGE=0 to disable coverage
 : "${TEST_RACE:=1}"
-: "${TEST_COVERAGE:=1}"
+: "${TEST_COVERAGE:=0}"
 
 # Build the test command dynamically
 TEST_CMD="go test"

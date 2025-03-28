@@ -22,7 +22,7 @@ TEST_LOG=/tmp/test-log-$(date +%s).log
 
 # Default values for test configuration
 : "${TEST_RACE:=1}"
-: "${TEST_COVERAGE:=1}"
+: "${TEST_COVERAGE:=0}"
 
 # Build the test command dynamically
 TEST_CMD="go test"
