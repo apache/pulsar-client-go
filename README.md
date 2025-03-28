@@ -148,7 +148,7 @@ Run the tests:
 
 Run the tests with specific versions of GOLANG and PULSAR:
 
-    make test GO_VERSION=1.23 PULSAR_VERSION=4.0.0
+    make test GO_VERSION=1.23 PULSAR_VERSION=4.0.3
 
 ## Contributing
 
