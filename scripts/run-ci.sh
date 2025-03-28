@@ -26,9 +26,24 @@ trap scripts/pulsar-test-service-stop.sh EXIT
 TEST_LOG=/tmp/test-log-$(date +%s).log
 
 export CGO_ENABLED=1
-# TODO: run without race detector and coverage to see if the tests pass
-go test -timeout=20m -v ./... 2>&1 | tee $TEST_LOG
-#go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./... 2>&1 | tee $TEST_LOG
+
+# Default values for test configuration
+# Set TEST_RACE=0 to disable race detector
+# Set TEST_COVERAGE=0 to disable coverage
+: "${TEST_RACE:=1}"
+: "${TEST_COVERAGE:=1}"
+
+# Build the test command dynamically
+TEST_CMD="go test"
+if [ "$TEST_RACE" = "1" ]; then
+    TEST_CMD="$TEST_CMD -race"
+fi
+if [ "$TEST_COVERAGE" = "1" ]; then
+    TEST_CMD="$TEST_CMD -coverprofile=/tmp/coverage"
+fi
+TEST_CMD="$TEST_CMD -timeout=20m -v ./..."
+
+$TEST_CMD 2>&1 | tee $TEST_LOG
 retval=$?
 if [ $retval -ne 0 ]; then
     # Make it easier to find out which test failed
@@ -37,5 +52,7 @@ if [ $retval -ne 0 ]; then
     exit $retval
 else
     echo "Tests passed"
-    #go tool cover -html=/tmp/coverage -o coverage.html
+    if [ "$TEST_COVERAGE" = "1" ]; then
+        go tool cover -html=/tmp/coverage -o coverage.html
+    fi
 fi
