@@ -16,8 +16,35 @@
 # specific language governing permissions and limitations
 # under the License.
 
-set -e -x
+set -x
 
-go test -race -coverprofile=/tmp/coverage -timeout=5m -tags clustered -v -run 'Test.*ClusteredTestSuite|TestTransactionDisabled' -v ./pulsar
-go tool cover -html=/tmp/coverage -o coverage.html
+TEST_LOG=/tmp/test-log-$(date +%s).log
+
+# Default values for test configuration
+: "${TEST_RACE:=1}"
+: "${TEST_COVERAGE:=0}"
+
+# Build the test command dynamically
+TEST_CMD="go test"
+if [ "$TEST_RACE" = "1" ]; then
+    TEST_CMD="$TEST_CMD -race"
+fi
+if [ "$TEST_COVERAGE" = "1" ]; then
+    TEST_CMD="$TEST_CMD -coverprofile=/tmp/coverage"
+fi
+TEST_CMD="$TEST_CMD -timeout=5m -tags clustered -v -run 'Test.*ClusteredTestSuite|TestTransactionDisabled' -v ./pulsar"
+
+$TEST_CMD 2>&1 | tee $TEST_LOG
+retval=$?
+if [ $retval -ne 0 ]; then
+    # Make it easier to find out which test failed
+    echo "Tests failed"
+    grep -- "--- FAIL: " $TEST_LOG
+    exit $retval
+else
+    echo "Tests passed"
+    if [ "$TEST_COVERAGE" = "1" ]; then
+        go tool cover -html=/tmp/coverage -o coverage.html
+    fi
+fi
 
