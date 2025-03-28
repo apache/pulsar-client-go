@@ -24,6 +24,9 @@ cd $SRC_DIR
 
 IMAGE_NAME=pulsar-client-go-test:latest
 
+export PULSAR_MEM="-Xms1g -Xmx1g -XX:MaxDirectMemorySize=1g"
+export PULSAR_STANDALONE_USE_ZOOKEEPER=1
+
 if [[ -f /.dockerenv ]]; then
     # When running tests inside docker
     PULSAR_ADMIN=/pulsar/bin/pulsar-admin
@@ -38,6 +41,8 @@ else
                 -p 6650:6650 \
                 -p 8443:8443 \
                 -p 6651:6651 \
+                -e PULSAR_MEM=${PULSAR_MEM} \
+                -e PULSAR_STANDALONE_USE_ZOOKEEPER=${PULSAR_STANDALONE_USE_ZOOKEEPER} \
                 ${IMAGE_NAME} \
                 /pulsar/bin/pulsar standalone \
                     --no-functions-worker --no-stream-storage
