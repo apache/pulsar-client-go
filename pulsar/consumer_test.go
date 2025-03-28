@@ -546,13 +546,19 @@ func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
 
 	makeHTTPCall(t, http.MethodPut, testURL, "6")
 
-	// create producer
+	// Verify encryption keys exist
+	keyReader := crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem", "crypto/testdata/pri_key_rsa.pem")
+	_, err = keyReader.PublicKey("client-rsa.pem", nil)
+	assert.Nil(t, err, "Failed to load public key")
+	_, err = keyReader.PrivateKey("client-rsa.pem", nil)
+	assert.Nil(t, err, "Failed to load private key")
+
+	// create producer with encryption
 	producer, err := client.CreateProducer(ProducerOptions{
 		Topic: topic,
 		Encryption: &ProducerEncryptionInfo{
-			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
-				"crypto/testdata/pri_key_rsa.pem"),
-			Keys: []string{"client-rsa.pem"},
+			KeyReader: keyReader,
+			Keys:      []string{"client-rsa.pem"},
 		},
 	})
 	assert.Nil(t, err)
@@ -564,21 +570,24 @@ func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
 	assert.Equal(t, topic+"-partition-1", topics[1])
 	assert.Equal(t, topic+"-partition-2", topics[2])
 
+	// create consumer with encryption
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:             topic,
 		SubscriptionName:  "my-sub",
 		Type:              Exclusive,
 		ReceiverQueueSize: 10,
 		Decryption: &MessageDecryptionInfo{
-			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
-				"crypto/testdata/pri_key_rsa.pem"),
+			KeyReader:                   keyReader,
 			ConsumerCryptoFailureAction: crypto.ConsumerCryptoFailureActionFail,
 		},
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
 
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	// Send messages with encryption
 	for i := 0; i < 10; i++ {
 		_, err := producer.Send(ctx, &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
@@ -588,6 +597,7 @@ func TestPartitionTopicsConsumerPubSubEncryption(t *testing.T) {
 
 	msgs := make([]string, 0)
 
+	// Receive messages with encryption
 	for i := 0; i < 10; i++ {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
