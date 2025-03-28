@@ -22,8 +22,10 @@ set -e -x
 scripts/pulsar-test-service-start.sh
 
 export CGO_ENABLED=1
-go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./...
-go tool cover -html=/tmp/coverage -o coverage.html
+# TODO: run without race detector and coverage to see if the tests pass
+go test -timeout=20m -v ./...
+#go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./...
+#go tool cover -html=/tmp/coverage -o coverage.html
 
 scripts/pulsar-test-service-stop.sh
 

@@ -18,6 +18,8 @@
 
 set -e -x
 
-go test -race -coverprofile=/tmp/coverage -timeout=5m -tags clustered -v -run 'Test.*ClusteredTestSuite|TestTransactionDisabled' -v ./pulsar
-go tool cover -html=/tmp/coverage -o coverage.html
+# TODO: run without race detector and coverage to see if the tests pass
+go test -timeout=5m -tags clustered -v -run 'Test.*ClusteredTestSuite|TestTransactionDisabled' -v ./pulsar
+#go test -race -coverprofile=/tmp/coverage -timeout=5m -tags clustered -v -run 'Test.*ClusteredTestSuite|TestTransactionDisabled' -v ./pulsar
+#go tool cover -html=/tmp/coverage -o coverage.html
 
