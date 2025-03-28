@@ -17,15 +17,25 @@
 # under the License.
 
 
-set -e -x
+set -x
 
 scripts/pulsar-test-service-start.sh
 
+trap scripts/pulsar-test-service-stop.sh EXIT
+
+TEST_LOG=/tmp/test-log-$(date +%s).log
+
 export CGO_ENABLED=1
 # TODO: run without race detector and coverage to see if the tests pass
-go test -timeout=20m -v ./...
-#go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./...
-#go tool cover -html=/tmp/coverage -o coverage.html
-
-scripts/pulsar-test-service-stop.sh
-
+go test -timeout=20m -v ./... 2>&1 | tee $TEST_LOG
+#go test -race -coverprofile=/tmp/coverage -timeout=20m -v ./... 2>&1 | tee $TEST_LOG
+retval=$?
+if [ $retval -ne 0 ]; then
+    # Make it easier to find out which test failed
+    echo "Tests failed"
+    grep -- "--- FAIL: " $TEST_LOG
+    exit $retval
+else
+    echo "Tests passed"
+    #go tool cover -html=/tmp/coverage -o coverage.html
+fi
