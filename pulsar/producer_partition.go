@@ -110,6 +110,7 @@ type partitionProducer struct {
 	compressionProvider      compression.Provider
 
 	// Channel where app is posting messages to be published
+	writeChan            chan *pendingItem
 	dataChan             chan *sendRequest
 	cmdChan              chan interface{}
 	connectClosedCh      chan *connectionClosed
@@ -184,6 +185,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		options:          options,
 		producerID:       client.rpcClient.NewProducerID(),
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
+		writeChan:        make(chan *pendingItem),
 		cmdChan:          make(chan interface{}, 10),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
@@ -559,31 +561,42 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 }
 
 func (p *partitionProducer) runEventsLoop() {
+	go func() {
+		for {
+			select {
+			case data, ok := <-p.dataChan:
+				if !ok {
+					return
+				}
+				p.internalSend(data)
+			case <-p.batchFlushTicker.C:
+				p.internalFlushCurrentBatch()
+			case cmd, ok := <-p.cmdChan:
+				// when doClose() is call, p.dataChan will be closed, cmd will be nil
+				if !ok {
+					return
+				}
+				switch v := cmd.(type) {
+				case *flushRequest:
+					p.internalFlush(v)
+				case *closeProducer:
+					p.internalClose(v)
+					return
+				}
+			}
+		}
+	}()
+
 	for {
 		select {
-		case data, ok := <-p.dataChan:
-			// when doClose() is call, p.dataChan will be closed, data will be nil
+		case pi, ok := <-p.writeChan:
 			if !ok {
 				return
 			}
-			p.internalSend(data)
-		case cmd, ok := <-p.cmdChan:
-			// when doClose() is call, p.dataChan will be closed, cmd will be nil
-			if !ok {
-				return
-			}
-			switch v := cmd.(type) {
-			case *flushRequest:
-				p.internalFlush(v)
-			case *closeProducer:
-				p.internalClose(v)
-				return
-			}
+			p._getConn().WriteData(pi.ctx, pi.buffer)
 		case connectionClosed := <-p.connectClosedCh:
 			p.log.Info("runEventsLoop will reconnect in producer")
 			p.reconnectToBroker(connectionClosed)
-		case <-p.batchFlushTicker.C:
-			p.internalFlushCurrentBatch()
 		}
 	}
 }
@@ -898,7 +911,7 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 	default:
 		now := time.Now()
 		ctx, cancel := context.WithCancel(context.Background())
-		p.pendingQueue.Put(&pendingItem{
+		item := pendingItem{
 			ctx:          ctx,
 			cancel:       cancel,
 			createdAt:    now,
@@ -906,8 +919,9 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			buffer:       buffer,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
-		})
-		p._getConn().WriteData(ctx, buffer)
+		}
+		p.pendingQueue.Put(&item)
+		p.writeChan <- &item
 	}
 }
 
@@ -1443,6 +1457,7 @@ func (p *partitionProducer) doClose(reason error) {
 
 	p.log.Info("Closing producer")
 	defer close(p.dataChan)
+	defer close(p.writeChan)
 	defer close(p.cmdChan)
 
 	id := p.client.rpcClient.NewRequestID()
