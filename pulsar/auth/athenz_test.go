@@ -46,6 +46,7 @@ type MockToken struct {
 
 type MockRoleToken struct {
 	mock.Mock
+	isPrefetcherStarted bool
 }
 
 func (m *MockTokenBuilder) SetExpiration(_ time.Duration) {
@@ -69,6 +70,18 @@ func (m *MockToken) Value() (string, error) {
 func (m *MockRoleToken) RoleTokenValue() (string, error) {
 	result := m.Called()
 	return result.Get(0).(string), result.Error(1)
+}
+
+func (m *MockRoleToken) StartPrefetcher() error {
+	m.isPrefetcherStarted = true
+	result := m.Called()
+	return result.Error(0)
+}
+
+func (m *MockRoleToken) StopPrefetcher() error {
+	m.isPrefetcherStarted = false
+	result := m.Called()
+	return result.Error(0)
 }
 
 func MockZmsNewTokenBuilder(domain, name string, privateKeyPEM []byte, keyVersion string) (zms.TokenBuilder, error) {
@@ -106,6 +119,8 @@ func MockZtsNewRoleToken(tok zms.Token, domain string, opts zts.RoleTokenOptions
 
 	mockRoleToken := new(MockRoleToken)
 	mockRoleToken.On("RoleTokenValue").Return("mockRoleToken", nil)
+	mockRoleToken.On("StartPrefetcher").Return(nil)
+	mockRoleToken.On("StopPrefetcher").Return(nil)
 	return mockRoleToken
 }
 
@@ -122,6 +137,8 @@ func MockZtsNewRoleTokenFromCert(certFile, keyFile, domain string, opts zts.Role
 
 	mockRoleToken := new(MockRoleToken)
 	mockRoleToken.On("RoleTokenValue").Return("mockRoleTokenFromCert", nil)
+	mockRoleToken.On("StartPrefetcher").Return(nil)
+	mockRoleToken.On("StopPrefetcher").Return(nil)
 	return mockRoleToken
 }
 
@@ -146,10 +163,15 @@ func TestAthenzAuth(t *testing.T) {
 
 	err := athenz.Init()
 	assert.NoError(t, err)
+	assert.True(t, athenz.roleToken.(*MockRoleToken).isPrefetcherStarted)
 
 	data, err := athenz.GetData()
 	assert.Equal(t, []byte("mockRoleToken"), data)
 	assert.NoError(t, err)
+
+	err = athenz.Close()
+	assert.NoError(t, err)
+	assert.False(t, athenz.roleToken.(*MockRoleToken).isPrefetcherStarted)
 }
 
 func TestCopperArgos(t *testing.T) {
@@ -175,10 +197,15 @@ func TestCopperArgos(t *testing.T) {
 
 	err := athenz.Init()
 	assert.NoError(t, err)
+	assert.True(t, athenz.roleToken.(*MockRoleToken).isPrefetcherStarted)
 
 	data, err := athenz.GetData()
 	assert.Equal(t, []byte("mockRoleTokenFromCert"), data)
 	assert.NoError(t, err)
+
+	err = athenz.Close()
+	assert.NoError(t, err)
+	assert.False(t, athenz.roleToken.(*MockRoleToken).isPrefetcherStarted)
 }
 
 func TestIllegalParams(t *testing.T) {
