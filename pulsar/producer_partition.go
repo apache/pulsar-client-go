@@ -907,6 +907,13 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
+		for _, cb := range callbacks {
+			if sr, ok := cb.(*sendRequest); ok {
+				if sr.enqueued != nil {
+					close(sr.enqueued)
+				}
+			}
+		}
 		p._getConn().WriteData(ctx, buffer)
 	}
 }
@@ -1312,6 +1319,7 @@ func (p *partitionProducer) internalSendAsync(
 		flushImmediately: flushImmediately,
 		publishTime:      time.Now(),
 		chunkID:          -1,
+		enqueued:         make(chan struct{}),
 	}
 
 	if err := p.prepareTransaction(sr); err != nil {
@@ -1353,6 +1361,17 @@ func (p *partitionProducer) internalSendAsync(
 	}
 
 	p.dataChan <- sr
+	select {
+	case <-sr.enqueued:
+	case <-ctx.Done():
+		err := ctx.Err()
+		if errors.Is(err, context.DeadlineExceeded) { // Convert DeadlineExceeded error to ErrSendTimeout
+			err = ErrSendTimeout
+		}
+		sr.callbackOnce.Do(func() {
+			runCallback(callback, nil, msg, err)
+		})
+	}
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -1583,6 +1602,7 @@ type sendRequest struct {
 	chunkID          int
 	uuid             string
 	chunkRecorder    *chunkRecorder
+	enqueued         chan struct{}
 
 	// resource management
 
