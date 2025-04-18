@@ -2611,7 +2611,7 @@ func TestProducerKeepReconnectingAndThenCallSendAsync(t *testing.T) {
 	testProducerKeepReconnectingAndThenCallSendAsync(t, true)
 }
 
-func testProducerKeepReconnectingAndThenCallSendAsync(t *testing.T, isEnabledBatching bool) {
+func testProducerKeepReconnectingAndThenCallSendAsync(t *testing.T, isDisableBatching bool) {
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
@@ -2641,28 +2641,40 @@ func testProducerKeepReconnectingAndThenCallSendAsync(t *testing.T, isEnabledBat
 	var testProducer Producer
 	require.Eventually(t, func() bool {
 		testProducer, err = client.CreateProducer(ProducerOptions{
-			Topic:           newTopicName(),
-			Schema:          NewBytesSchema(nil),
-			SendTimeout:     3 * time.Second,
-			DisableBatching: isEnabledBatching,
+			Topic:               newTopicName(),
+			Schema:              NewBytesSchema(nil),
+			SendTimeout:         3 * time.Second,
+			DisableBatching:     isDisableBatching,
+			BatchingMaxMessages: 5,
 		})
 		return err == nil
 	}, 30*time.Second, 1*time.Second)
 
-	// send a message
-	errChan := make(chan error)
-	defer close(errChan)
-
-	testProducer.SendAsync(context.Background(), &ProducerMessage{
-		Payload: []byte("test"),
-	}, func(_ MessageID, _ *ProducerMessage, err error) {
-		errChan <- err
-	})
-	select {
-	case <-time.After(10 * time.Second):
-		t.Fatal("test timeout")
-	case err := <-errChan:
+	numMessages := 10
+	// Send 10 messages synchronously
+	for i := 0; i < numMessages; i++ {
+		send, err := testProducer.Send(context.Background(), &ProducerMessage{Payload: []byte("test")})
 		require.NoError(t, err)
+		require.NotNil(t, send)
+	}
+
+	// Send 10 messages asynchronously
+	errs := make(chan error, numMessages)
+	for i := 0; i < numMessages; i++ {
+		testProducer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: []byte("test"),
+		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			errs <- err
+		})
+	}
+
+	for i := 0; i < numMessages; i++ {
+		select {
+		case <-time.After(10 * time.Second):
+			t.Fatal("test timeout")
+		case err := <-errs:
+			require.NoError(t, err)
+		}
 	}
 
 	// stop pulsar server
@@ -2670,16 +2682,17 @@ func testProducerKeepReconnectingAndThenCallSendAsync(t *testing.T, isEnabledBat
 	err = c.Stop(context.Background(), &timeout)
 	require.NoError(t, err)
 
+	finalErr := make(chan error, 1)
 	// send again
 	testProducer.SendAsync(context.Background(), &ProducerMessage{
 		Payload: []byte("test"),
 	}, func(_ MessageID, _ *ProducerMessage, err error) {
-		errChan <- err
+		finalErr <- err
 	})
 	select {
 	case <-time.After(10 * time.Second):
 		t.Fatal("test timeout")
-	case err = <-errChan:
+	case err = <-finalErr:
 		// should get a timeout error
 		require.ErrorIs(t, err, ErrSendTimeout)
 	}
