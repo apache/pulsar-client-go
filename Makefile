@@ -42,7 +42,7 @@ bin/golangci-lint:
 # use golangCi-lint docker to avoid local golang env issues
 # https://golangci-lint.run/welcome/install/
 lint-docker:
-	docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:v1.51.2 golangci-lint run -v
+	docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:v1.61.0 golangci-lint run -v
 
 container:
 	docker build -t ${IMAGE_NAME} \

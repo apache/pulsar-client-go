@@ -2692,12 +2692,10 @@ func testSendAsyncCouldTimeoutWhileReconnecting(t *testing.T, isDisableBatching 
 
 	go func() {
 		// Send 10 messages asynchronously to make the pending queue full
-		errs := make(chan error, numMessages)
 		for i := 0; i < numMessages; i++ {
 			testProducer.SendAsync(context.Background(), &ProducerMessage{
 				Payload: []byte("test"),
-			}, func(id MessageID, producerMessage *ProducerMessage, err error) {
-				errs <- err
+			}, func(_ MessageID, _ *ProducerMessage, _ error) {
 			})
 		}
 	}()
