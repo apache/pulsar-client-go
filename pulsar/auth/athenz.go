@@ -34,6 +34,7 @@ import (
 const (
 	minExpire         = 2 * time.Hour
 	maxExpire         = 24 * time.Hour
+	prefetchInterval  = 1 * time.Hour
 	defaultKeyID      = "0"
 	defaultRoleHeader = "Athenz-Role-Auth"
 )
@@ -133,10 +134,11 @@ func (p *athenzAuthProvider) Init() error {
 
 	var roleToken zts.RoleToken
 	opts := zts.RoleTokenOptions{
-		BaseZTSURL: p.ztsURL + "/zts/v1",
-		MinExpire:  minExpire,
-		MaxExpire:  maxExpire,
-		AuthHeader: p.principalHeader,
+		BaseZTSURL:       p.ztsURL + "/zts/v1",
+		MinExpire:        minExpire,
+		MaxExpire:        maxExpire,
+		PrefetchInterval: prefetchInterval,
+		AuthHeader:       p.principalHeader,
 	}
 
 	if p.x509CertChain != "" {
@@ -177,7 +179,7 @@ func (p *athenzAuthProvider) Init() error {
 	}
 
 	p.roleToken = roleToken
-	return nil
+	return p.roleToken.StartPrefetcher()
 }
 
 func (p *athenzAuthProvider) Name() string {
@@ -198,7 +200,7 @@ func (p *athenzAuthProvider) GetData() ([]byte, error) {
 }
 
 func (p *athenzAuthProvider) Close() error {
-	return nil
+	return p.roleToken.StopPrefetcher()
 }
 
 func parseURI(uri string) parsedURI {
