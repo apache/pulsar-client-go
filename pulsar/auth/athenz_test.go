@@ -118,7 +118,11 @@ func MockZtsNewRoleToken(tok zms.Token, domain string, opts zts.RoleTokenOptions
 	}
 
 	mockRoleToken := new(MockRoleToken)
-	mockRoleToken.On("RoleTokenValue").Return("mockRoleToken", nil)
+	if opts.ProxyURL == "" {
+		mockRoleToken.On("RoleTokenValue").Return("mockRoleToken", nil)
+	} else {
+		mockRoleToken.On("RoleTokenValue").Return("mockRoleToken-"+opts.ProxyURL, nil)
+	}
 	mockRoleToken.On("StartPrefetcher").Return(nil)
 	mockRoleToken.On("StopPrefetcher").Return(nil)
 	return mockRoleToken
@@ -136,7 +140,11 @@ func MockZtsNewRoleTokenFromCert(certFile, keyFile, domain string, opts zts.Role
 	}
 
 	mockRoleToken := new(MockRoleToken)
-	mockRoleToken.On("RoleTokenValue").Return("mockRoleTokenFromCert", nil)
+	if opts.ProxyURL == "" {
+		mockRoleToken.On("RoleTokenValue").Return("mockRoleTokenFromCert", nil)
+	} else {
+		mockRoleToken.On("RoleTokenValue").Return("mockRoleTokenFromCert-"+opts.ProxyURL, nil)
+	}
 	mockRoleToken.On("StartPrefetcher").Return(nil)
 	mockRoleToken.On("StopPrefetcher").Return(nil)
 	return mockRoleToken
@@ -154,7 +162,8 @@ func TestAthenzAuth(t *testing.T) {
 		"",                      // caCert
 		"",                      // principalHeader
 		"",                      // roleHeader
-		"http://localhost:9999") // ztsURL
+		"http://localhost:9999", // ztsURL
+		"")                      // ztsProxyURL
 
 	// inject mock function
 	athenz := provider.(*athenzAuthProvider)
@@ -167,6 +176,39 @@ func TestAthenzAuth(t *testing.T) {
 
 	data, err := athenz.GetData()
 	assert.Equal(t, []byte("mockRoleToken"), data)
+	assert.NoError(t, err)
+
+	err = athenz.Close()
+	assert.NoError(t, err)
+	assert.False(t, athenz.roleToken.(*MockRoleToken).isPrefetcherStarted)
+}
+
+func TestAthenzAuthWithProxy(t *testing.T) {
+	privateKey := "file://" + clientKeyPath
+	provider := NewAuthenticationAthenz(
+		"pulsar.test.provider",  // providerDomain
+		"pulsar.test.tenant",    // tenantDomain
+		"service",               // tenantService
+		privateKey,              // privateKey
+		"",                      // keyID
+		"",                      // x509CertChain
+		"",                      // caCert
+		"",                      // principalHeader
+		"",                      // roleHeader
+		"http://localhost:9999", // ztsURL
+		"http://localhost:8080") // ztsProxyURL
+
+	// inject mock function
+	athenz := provider.(*athenzAuthProvider)
+	athenz.zmsNewTokenBuilder = MockZmsNewTokenBuilder
+	athenz.ztsNewRoleToken = MockZtsNewRoleToken
+
+	err := athenz.Init()
+	assert.NoError(t, err)
+	assert.True(t, athenz.roleToken.(*MockRoleToken).isPrefetcherStarted)
+
+	data, err := athenz.GetData()
+	assert.Equal(t, []byte("mockRoleToken-http://localhost:8080"), data)
 	assert.NoError(t, err)
 
 	err = athenz.Close()
@@ -189,7 +231,8 @@ func TestCopperArgos(t *testing.T) {
 		caCert,                  // caCert
 		"",                      // principalHeader
 		"",                      // roleHeader
-		"http://localhost:9999") // ztsURL
+		"http://localhost:9999", // ztsURL
+		"")                      // ztsProxyURL
 
 	// inject mock function
 	athenz := provider.(*athenzAuthProvider)
@@ -201,6 +244,41 @@ func TestCopperArgos(t *testing.T) {
 
 	data, err := athenz.GetData()
 	assert.Equal(t, []byte("mockRoleTokenFromCert"), data)
+	assert.NoError(t, err)
+
+	err = athenz.Close()
+	assert.NoError(t, err)
+	assert.False(t, athenz.roleToken.(*MockRoleToken).isPrefetcherStarted)
+}
+
+func TestCopperArgosWithProxy(t *testing.T) {
+	privateKey := "file://" + clientKeyPath
+	x509CertChain := "file://" + clientCertPath
+	caCert := "file://" + caCertPath
+
+	provider := NewAuthenticationAthenz(
+		"pulsar.test.provider",  // providerDomain
+		"",                      // tenantDomain
+		"",                      // tenantService
+		privateKey,              // privateKey
+		"",                      // keyID
+		x509CertChain,           // x509CertChain
+		caCert,                  // caCert
+		"",                      // principalHeader
+		"",                      // roleHeader
+		"http://localhost:9999", // ztsURL
+		"http://localhost:8080") // ztsProxyURL
+
+	// inject mock function
+	athenz := provider.(*athenzAuthProvider)
+	athenz.ztsNewRoleTokenFromCert = MockZtsNewRoleTokenFromCert
+
+	err := athenz.Init()
+	assert.NoError(t, err)
+	assert.True(t, athenz.roleToken.(*MockRoleToken).isPrefetcherStarted)
+
+	data, err := athenz.GetData()
+	assert.Equal(t, []byte("mockRoleTokenFromCert-http://localhost:8080"), data)
 	assert.NoError(t, err)
 
 	err = athenz.Close()
@@ -222,7 +300,8 @@ func TestIllegalParams(t *testing.T) {
 		"",                      // caCert
 		"",                      // principalHeader
 		"",                      // roleHeader
-		"http://localhost:9999") // ztsURL
+		"http://localhost:9999", // ztsURL
+		"")                      // ztsProxyURL
 	athenz := provider.(*athenzAuthProvider)
 
 	err := athenz.Init()
@@ -239,7 +318,8 @@ func TestIllegalParams(t *testing.T) {
 		"",                      // caCert
 		"",                      // principalHeader
 		"",                      // roleHeader
-		"http://localhost:9999") // ztsURL
+		"http://localhost:9999", // ztsURL
+		"")                      // ztsProxyURL
 	athenz = provider.(*athenzAuthProvider)
 
 	err = athenz.Init()
@@ -256,7 +336,8 @@ func TestIllegalParams(t *testing.T) {
 		"",                      // caCert
 		"",                      // principalHeader
 		"",                      // roleHeader
-		"http://localhost:9999") // ztsURL
+		"http://localhost:9999", // ztsURL
+		"")                      // ztsProxyURL
 	athenz = provider.(*athenzAuthProvider)
 
 	err = athenz.Init()
@@ -273,7 +354,8 @@ func TestIllegalParams(t *testing.T) {
 		"",                      // caCert
 		"",                      // principalHeader
 		"",                      // roleHeader
-		"http://localhost:9999") // ztsURL
+		"http://localhost:9999", // ztsURL
+		"")                      // ztsProxyURL
 	athenz = provider.(*athenzAuthProvider)
 
 	err = athenz.Init()
