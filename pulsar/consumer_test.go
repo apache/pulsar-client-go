@@ -336,9 +336,91 @@ func TestConsumerKeyShared(t *testing.T) {
 	assert.NotEqual(t, 0, receivedConsumer1)
 	assert.NotEqual(t, 0, receivedConsumer2)
 
-	t.Logf("TestConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
+	t.Logf("TestConsumerKeyShared received messages consumer1: %d consumer2: %d\n",
 		receivedConsumer1, receivedConsumer2)
 	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
+}
+
+// TestConsumerKeySharedWithDelayedMessages
+// test using delayed messages and key-shared sub mode at the same time
+func TestConsumerKeySharedWithDelayedMessages(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+	topic := newTopicName()
+
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "sub-1",
+		Type:             KeyShared,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "sub-1",
+		Type:             KeyShared,
+	})
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+	ctx := context.Background()
+	startTime := time.Now()
+	delayTime := 3 * time.Second
+	for i := 0; i < 100; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Key:          fmt.Sprintf("key-shared-%d", i%3),
+			Payload:      []byte(fmt.Sprintf("value-%d", i)),
+			DeliverAfter: delayTime,
+		})
+		assert.Nil(t, err)
+	}
+
+	receivedConsumer1 := 0
+	receivedConsumer2 := 0
+	timeoutTimer := time.After(2 * delayTime)
+	for (receivedConsumer1 + receivedConsumer2) < 100 {
+		select {
+		case <-timeoutTimer:
+			break
+		default:
+		}
+
+		select {
+		case cm, ok := <-consumer1.Chan():
+			if !ok {
+				break
+			}
+			receivedConsumer1++
+			_ = consumer1.Ack(cm.Message)
+			assert.GreaterOrEqual(t, time.Since(startTime), delayTime,
+				"TestConsumerKeySharedWithDelayedMessages should delay messages later than defined deliverAfter time",
+			)
+		case cm, ok := <-consumer2.Chan():
+			if !ok {
+				break
+			}
+			receivedConsumer2++
+			_ = consumer2.Ack(cm.Message)
+			assert.GreaterOrEqual(t, time.Since(startTime), delayTime,
+				"TestConsumerKeySharedWithDelayedMessages should delay messages later than defined deliverAfter time",
+			)
+		}
+	}
+
+	assert.NotEqual(t, 0, receivedConsumer1)
+	assert.NotEqual(t, 0, receivedConsumer2)
+	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
+	t.Logf("TestConsumerKeySharedWithDelayedMessages received messages consumer1: %d consumer2: %d, timecost: %d\n",
+		receivedConsumer1, receivedConsumer2, time.Since(startTime).Milliseconds(),
+	)
 }
 
 func TestPartitionTopicsConsumerPubSub(t *testing.T) {
@@ -2704,11 +2786,11 @@ func TestKeyBasedBatchProducerConsumerKeyShared(t *testing.T) {
 	assert.Equal(t, len(consumer1Keys)*MsgBatchCount, receivedConsumer1)
 	assert.Equal(t, len(consumer2Keys)*MsgBatchCount, receivedConsumer2)
 
-	t.Logf("TestKeyBasedBatchProducerConsumerKeyShared received messages consumer1: %d consumser2: %d\n",
+	t.Logf("TestKeyBasedBatchProducerConsumerKeyShared received messages consumer1: %d consumer2: %d\n",
 		receivedConsumer1, receivedConsumer2)
 	assert.Equal(t, 300, receivedConsumer1+receivedConsumer2)
 
-	t.Logf("TestKeyBasedBatchProducerConsumerKeyShared received messages keys consumer1: %v consumser2: %v\n",
+	t.Logf("TestKeyBasedBatchProducerConsumerKeyShared received messages keys consumer1: %v consumer2: %v\n",
 		consumer1Keys, consumer2Keys)
 }
 
@@ -2887,7 +2969,7 @@ func TestConsumerKeySharedWithOrderingKey(t *testing.T) {
 	assert.NotEqual(t, 0, receivedConsumer2)
 
 	t.Logf(
-		"TestConsumerKeySharedWithOrderingKey received messages consumer1: %d consumser2: %d\n",
+		"TestConsumerKeySharedWithOrderingKey received messages consumer1: %d consumer2: %d\n",
 		receivedConsumer1, receivedConsumer2,
 	)
 	assert.Equal(t, 100, receivedConsumer1+receivedConsumer2)
