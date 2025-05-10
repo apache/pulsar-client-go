@@ -43,15 +43,12 @@ type pulsarServiceNameResolver struct {
 	CurrentIndex int32
 	AddressList  []*url.URL
 
+	rnd   *rand.Rand
 	mutex sync.Mutex
 }
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
-	r := &pulsarServiceNameResolver{}
+	r := &pulsarServiceNameResolver{rnd: rand.New(rand.NewSource(time.Now().UnixNano()))}
 	err := r.UpdateServiceURL(url)
 	if err != nil {
 		log.Errorf("create pulsar service name resolver failed : %v", err)
@@ -94,7 +91,7 @@ func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 	}
 
 	hosts := uri.ServiceHosts
-	addresses := []*url.URL{}
+	var addresses []*url.URL
 	for _, host := range hosts {
 		hostURL := uri.URL.Scheme + "://" + host
 		u, err := url.Parse(hostURL)
@@ -111,7 +108,7 @@ func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 	r.AddressList = addresses
 	r.ServiceURL = u
 	r.ServiceURI = uri
-	r.CurrentIndex = int32(rand.Intn(len(addresses)))
+	r.CurrentIndex = int32(r.rnd.Intn(len(addresses)))
 	return nil
 }
 
