@@ -1984,8 +1984,8 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		KeySharedMeta:              keySharedMeta,
 	}
 
-	if seekMsgId := pc.seekMessageID.get(); seekMsgId != nil {
-		pc.startMessageID.set(seekMsgId)
+	if seekMsgID := pc.seekMessageID.get(); seekMsgID != nil {
+		pc.startMessageID.set(seekMsgID)
 	} else {
 		pc.startMessageID.set(pc.clearReceiverQueue())
 	}
