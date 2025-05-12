@@ -1986,6 +1986,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 
 	if seekMsgID := pc.seekMessageID.get(); seekMsgID != nil {
 		pc.startMessageID.set(seekMsgID)
+		pc.seekMessageID.set(nil) // Reset seekMessageID to nil to avoid persisting state across reconnects
 	} else {
 		pc.startMessageID.set(pc.clearReceiverQueue())
 	}

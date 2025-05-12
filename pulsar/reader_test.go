@@ -1246,7 +1246,7 @@ func TestReaderReadFromLatest(t *testing.T) {
 		URL: lookupURL,
 	})
 
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	defer client.Close()
 
 	r, err := client.CreateReader(ReaderOptions{
