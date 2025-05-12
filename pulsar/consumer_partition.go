@@ -159,8 +159,11 @@ type partitionConsumer struct {
 	maxQueueSize    int32
 	queueCh         chan []*message
 	startMessageID  atomicMessageID
-	seekMessageID   atomicMessageID
 	lastDequeuedMsg *trackingMessageID
+
+	// This is used to track the seeking message id during the seek operation.
+	// It will be set to nil after seek completes and reconnected.
+	seekMessageID atomicMessageID
 
 	currentQueueSize       uAtomic.Int32
 	scaleReceiverQueueHint uAtomic.Bool
