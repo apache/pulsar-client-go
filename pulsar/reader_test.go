@@ -23,6 +23,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
@@ -1236,4 +1238,61 @@ func TestReaderWithSeekByTime(t *testing.T) {
 			testReaderSeekByTimeWithHasNext(t, startMsgID)
 		})
 	}
+}
+
+func TestReaderReadFromLatest(t *testing.T) {
+	topic := newTopicName()
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	r, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: LatestMessageID(),
+	})
+	require.NoError(t, err)
+	defer r.Close()
+
+	p, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	require.NoError(t, err)
+	defer p.Close()
+
+	// Send messages
+	for i := 0; i < 10; i++ {
+		msg := &ProducerMessage{
+			Key:     "key",
+			Payload: []byte(fmt.Sprintf("message-%d", i)),
+		}
+		id, err := p.Send(context.Background(), msg)
+		require.NoError(t, err)
+		require.NotNil(t, id)
+	}
+
+	// Read and verify messages
+	for i := 0; i < 10; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+		msg, err := r.Next(ctx)
+		cancel()
+		require.NoError(t, err)
+		require.NotNil(t, msg)
+
+		// Verify message key
+		require.Equal(t, "key", msg.Key())
+
+		// Verify message payload
+		expectedPayload := fmt.Sprintf("message-%d", i)
+		require.Equal(t, []byte(expectedPayload), msg.Payload())
+	}
+
+	// Verify no more messages
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+	msg, err := r.Next(ctx)
+	require.Error(t, err)
+	require.Nil(t, msg)
 }
