@@ -35,7 +35,7 @@ fi
 TEST_CMD="$TEST_CMD -timeout=5m -tags extensible_load_manager -v -run TestBlueGreenMigrationTestSuite ./pulsar"
 
 $TEST_CMD 2>&1 | tee $TEST_LOG
-retval=$?
+retval=${PIPESTATUS[0]}
 if [ $retval -ne 0 ]; then
     # Make it easier to find out which test failed
     echo "Tests failed"
