@@ -161,6 +161,10 @@ type partitionConsumer struct {
 	startMessageID  atomicMessageID
 	lastDequeuedMsg *trackingMessageID
 
+	// This is used to track the seeking message id during the seek operation.
+	// It will be set to nil after seek completes and reconnected.
+	seekMessageID atomicMessageID
+
 	currentQueueSize       uAtomic.Int32
 	scaleReceiverQueueHint uAtomic.Bool
 	incomingMessages       uAtomic.Int32
@@ -365,6 +369,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		maxQueueSize:               int32(options.receiverQueueSize),
 		queueCh:                    make(chan []*message, options.receiverQueueSize),
 		startMessageID:             atomicMessageID{msgID: options.startMessageID},
+		seekMessageID:              atomicMessageID{msgID: nil},
 		connectedCh:                make(chan struct{}),
 		messageCh:                  messageCh,
 		connectClosedCh:            make(chan *connectionClosed, 1),
@@ -1023,7 +1028,7 @@ func (pc *partitionConsumer) requestSeek(msgID *messageID) error {
 	// 2. The startMessageID is reset to ensure accurate judgment when calling hasNext next time.
 	//    Since the messages in the queue are cleared here reconnection won't reset startMessageId.
 	pc.lastDequeuedMsg = nil
-	pc.startMessageID.set(toTrackingMessageID(msgID))
+	pc.seekMessageID.set(toTrackingMessageID(msgID))
 	pc.clearQueueAndGetNextMessage()
 	return nil
 }
@@ -1478,6 +1483,11 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 
 func (pc *partitionConsumer) messageShouldBeDiscarded(msgID *trackingMessageID) bool {
 	if pc.startMessageID.get() == nil {
+		return false
+	}
+
+	// if we start at latest message, we should never discard
+	if pc.startMessageID.get().equal(latestMessageID) {
 		return false
 	}
 
@@ -1977,7 +1987,12 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		KeySharedMeta:              keySharedMeta,
 	}
 
-	pc.startMessageID.set(pc.clearReceiverQueue())
+	if seekMsgID := pc.seekMessageID.get(); seekMsgID != nil {
+		pc.startMessageID.set(seekMsgID)
+		pc.seekMessageID.set(nil) // Reset seekMessageID to nil to avoid persisting state across reconnects
+	} else {
+		pc.startMessageID.set(pc.clearReceiverQueue())
+	}
 	if pc.options.subscriptionMode != Durable {
 		// For regular subscriptions the broker will determine the restarting point
 		cmdSubscribe.StartMessageId = convertToMessageIDData(pc.startMessageID.get())
