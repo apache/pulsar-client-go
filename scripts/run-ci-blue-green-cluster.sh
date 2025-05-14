@@ -17,6 +17,7 @@
 # under the License.
 
 set -x
+set -o pipefail
 
 TEST_LOG=/tmp/test-log-$(date +%s).log
 
@@ -35,7 +36,7 @@ fi
 TEST_CMD="$TEST_CMD -timeout=5m -tags extensible_load_manager -v -run TestBlueGreenMigrationTestSuite ./pulsar"
 
 $TEST_CMD 2>&1 | tee $TEST_LOG
-retval=${PIPESTATUS[0]}
+retval=$?
 if [ $retval -ne 0 ]; then
     # Make it easier to find out which test failed
     echo "Tests failed"

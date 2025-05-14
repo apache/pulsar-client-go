@@ -18,6 +18,7 @@
 
 
 set -x
+set -o pipefail
 
 scripts/pulsar-test-service-start.sh
 
@@ -44,7 +45,7 @@ fi
 TEST_CMD="$TEST_CMD -timeout=20m -v ./..."
 
 $TEST_CMD 2>&1 | tee $TEST_LOG
-retval=${PIPESTATUS[0]}
+retval=$?
 if [ $retval -ne 0 ]; then
     # Make it easier to find out which test failed
     echo "Tests failed"
