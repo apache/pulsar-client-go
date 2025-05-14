@@ -91,7 +91,7 @@ func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 	}
 
 	hosts := uri.ServiceHosts
-	var addresses []*url.URL
+	addresses := []*url.URL{}
 	for _, host := range hosts {
 		hostURL := uri.URL.Scheme + "://" + host
 		u, err := url.Parse(hostURL)
