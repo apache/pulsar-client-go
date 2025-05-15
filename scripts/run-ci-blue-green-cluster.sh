@@ -17,6 +17,7 @@
 # under the License.
 
 set -x
+set -o pipefail
 
 TEST_LOG=/tmp/test-log-$(date +%s).log
 

@@ -61,4 +61,12 @@ jobs:
         with:
           go-version: ${{ matrix.go-version }}
       - name: Run Tests
+        id: run-tests
         run: make test GO_VERSION=${{ matrix.go-version }}
+      - name: Upload logs on failure
+        if: failure() && steps.run-tests.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs-${{ matrix.go-version }}
+          path: logs/
+          retention-days: 7

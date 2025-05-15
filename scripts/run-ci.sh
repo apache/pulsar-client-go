@@ -18,6 +18,7 @@
 
 
 set -x
+set -o pipefail
 
 scripts/pulsar-test-service-start.sh
 

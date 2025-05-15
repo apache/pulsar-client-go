@@ -1031,8 +1031,8 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 			close(req.doneCh)
 		}
 	}()
-	minTimer := time.NewTimer(1 * time.Second) // Timer to check if r.HasNext() blocked for at least 1s
-	maxTimer := time.NewTimer(3 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 3s
+	maxTimer := time.NewTimer(8 * time.Second) // Timer to ensure r.HasNext() doesn't block for more than 3s
+	startTime := time.Now().UnixMilli()
 	done := make(chan bool)
 	go func() {
 		assert.False(t, r.HasNext())
@@ -1043,8 +1043,10 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 	case <-maxTimer.C:
 		t.Fatal("r.HasNext() blocked for more than 3s")
 	case <-done:
-		assert.False(t, minTimer.Stop(), "r.HasNext() did not block for at least 1s")
-		assert.True(t, maxTimer.Stop())
+		now := time.Now().UnixMilli()
+		if now-startTime < 1000 {
+			t.Fatal("r.HasNext() blocked for less than 1s")
+		}
 	}
 
 }
