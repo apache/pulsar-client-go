@@ -58,6 +58,18 @@ func createClient() Client {
 	return client
 }
 
+func createHTTPLookupClient() Client {
+	// create client
+	lookupURL := "http://localhost:8080"
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	return client
+}
+
 func TestBytesSchema(t *testing.T) {
 	client := createClient()
 	defer client.Close()
@@ -152,6 +164,54 @@ func TestJsonSchema(t *testing.T) {
 	consumerJS = NewJSONSchema(exampleSchemaDef, nil) // test this legacy function
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       "jsonTopic",
+		SubscriptionName:            "sub-1",
+		Schema:                      consumerJS,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	err = msg.GetSchemaValue(&s)
+	assert.Nil(t, err)
+	assert.Equal(t, s.ID, 100)
+	assert.Equal(t, s.Name, "pulsar")
+
+	defer consumer.Close()
+}
+
+func TestHTTPLookupJsonSchema(t *testing.T) {
+	client := createHTTPLookupClient()
+	defer client.Close()
+
+	properties := make(map[string]string)
+	properties["pulsar"] = "hello"
+	jsonSchemaWithProperties := NewJSONSchema(exampleSchemaDef, properties)
+	producer1, err := client.CreateProducer(ProducerOptions{
+		Topic:  "httpLookupJsonTopic",
+		Schema: jsonSchemaWithProperties,
+	})
+	assert.Nil(t, err)
+
+	_, err = producer1.Send(context.Background(), &ProducerMessage{
+		Value: &testJSON{
+			ID:   100,
+			Name: "pulsar",
+		},
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	producer1.Close()
+
+	//create consumer
+	var s testJSON
+
+	consumerJS, err := NewJSONSchemaWithValidation(exampleSchemaDef, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, consumerJS)
+	consumerJS = NewJSONSchema(exampleSchemaDef, nil) // test this legacy function
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       "httpLookupJsonTopic",
 		SubscriptionName:            "sub-1",
 		Schema:                      consumerJS,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
@@ -303,6 +363,50 @@ func TestAvroSchema(t *testing.T) {
 	asConsumer := NewAvroSchema(exampleSchemaDef, nil)
 	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       "avro-topic",
+		SubscriptionName:            "sub-1",
+		Schema:                      asConsumer,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	err = msg.GetSchemaValue(&unobj)
+	assert.Nil(t, err)
+	assert.Equal(t, unobj.ID, 100)
+	assert.Equal(t, unobj.Name, "pulsar")
+	defer consumer.Close()
+}
+
+func TestHTTPLookupAvroSchema(t *testing.T) {
+	client := createHTTPLookupClient()
+	defer client.Close()
+
+	// create producer
+	asProducer, err := NewAvroSchemaWithValidation(exampleSchemaDef, nil)
+	assert.Nil(t, err)
+	assert.NotNil(t, asProducer)
+	asProducer = NewAvroSchema(exampleSchemaDef, nil)
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  "httpLookup-avro-topic",
+		Schema: asProducer,
+	})
+	assert.Nil(t, err)
+	if _, err := producer.Send(context.Background(), &ProducerMessage{
+		Value: testAvro{
+			ID:   100,
+			Name: "pulsar",
+		},
+	}); err != nil {
+		log.Fatal(err)
+	}
+
+	//create consumer
+	unobj := testAvro{}
+
+	asConsumer := NewAvroSchema(exampleSchemaDef, nil)
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       "httpLookup-avro-topic",
 		SubscriptionName:            "sub-1",
 		Schema:                      asConsumer,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
