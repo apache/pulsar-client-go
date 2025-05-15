@@ -61,23 +61,23 @@ container:
 test: container test_standalone test_clustered test_extensible_load_manager
 
 test_standalone: container
-	docker run -v /var/run/docker.sock:/var/run/docker.sock ${DOCKER_TEST_ARGS} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci.sh"
+	docker run -v /var/run/docker.sock:/var/run/docker.sock -v $(shell pwd)/logs:/pulsar/logs ${DOCKER_TEST_ARGS} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci.sh"
 
 test_clustered: container
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/clustered/docker-compose.yml up -d
 	until curl http://localhost:8080/metrics > /dev/null 2>&1; do sleep 1; done
-	docker run --network=clustered_pulsar ${DOCKER_TEST_ARGS} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-clustered.sh"
+	docker run --network=clustered_pulsar -v $(shell pwd)/logs:/pulsar/logs ${DOCKER_TEST_ARGS} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-clustered.sh"
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/clustered/docker-compose.yml down
 
 test_extensible_load_manager: container
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/extensible-load-manager/docker-compose.yml up -d
 	until curl http://localhost:8080/metrics > /dev/null 2>&1; do sleep 1; done
-	docker run --network=extensible-load-manager_pulsar ${DOCKER_TEST_ARGS} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-extensible-load-manager.sh"
+	docker run --network=extensible-load-manager_pulsar -v $(shell pwd)/logs:/pulsar/logs ${DOCKER_TEST_ARGS} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-extensible-load-manager.sh"
 
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/blue-green/docker-compose.yml up -d
 	until curl http://localhost:8081/metrics > /dev/null 2>&1 ; do sleep 1; done
 
-	docker run --network=extensible-load-manager_pulsar ${DOCKER_TEST_ARGS} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-blue-green-cluster.sh"
+	docker run --network=extensible-load-manager_pulsar -v $(shell pwd)/logs:/pulsar/logs ${DOCKER_TEST_ARGS} bash -c "cd /pulsar/pulsar-client-go && ./scripts/run-ci-blue-green-cluster.sh"
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/blue-green/docker-compose.yml down
 	PULSAR_VERSION=${PULSAR_VERSION} docker compose -f integration-tests/extensible-load-manager/docker-compose.yml down
 
