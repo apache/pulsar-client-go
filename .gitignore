@@ -11,8 +11,8 @@
 *.out
 coverage.html
 
-perf/perf
-pulsar-perf
-bin
-
+perf/perf/
+pulsar-perf/
+bin/
+logs/
 vendor/
