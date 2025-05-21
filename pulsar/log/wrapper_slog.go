@@ -20,6 +20,7 @@
 package log
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 )
@@ -29,39 +30,55 @@ type slogWrapper struct {
 }
 
 func (s *slogWrapper) Debug(args ...any) {
-	message := s.tryDetermineMessage(args...)
-	s.logger.Debug(message)
+	if s.logger.Handler().Enabled(context.Background(), slog.LevelDebug) {
+		message := s.tryDetermineMessage(args...)
+		s.logger.Debug(message)
+	}
 }
 
 func (s *slogWrapper) Info(args ...any) {
-	message := s.tryDetermineMessage(args...)
-	s.logger.Info(message)
+	if s.logger.Handler().Enabled(context.Background(), slog.LevelInfo) {
+		message := s.tryDetermineMessage(args...)
+		s.logger.Info(message)
+	}
 }
 
 func (s *slogWrapper) Error(args ...any) {
-	message := s.tryDetermineMessage(args...)
-	s.logger.Error(message)
+	if s.logger.Handler().Enabled(context.Background(), slog.LevelError) {
+		message := s.tryDetermineMessage(args...)
+		s.logger.Error(message)
+	}
 }
 
 func (s *slogWrapper) Warn(args ...any) {
-	message := s.tryDetermineMessage(args...)
-	s.logger.Warn(message)
+	if s.logger.Handler().Enabled(context.Background(), slog.LevelWarn) {
+		message := s.tryDetermineMessage(args...)
+		s.logger.Warn(message)
+	}
 }
 
 func (s *slogWrapper) Debugf(format string, args ...any) {
-	s.logger.Debug(fmt.Sprintf(format, args...))
+	if s.logger.Handler().Enabled(context.Background(), slog.LevelDebug) {
+		s.logger.Debug(fmt.Sprintf(format, args...))
+	}
 }
 
 func (s *slogWrapper) Infof(format string, args ...any) {
-	s.logger.Info(fmt.Sprintf(format, args...))
+	if s.logger.Handler().Enabled(context.Background(), slog.LevelInfo) {
+		s.logger.Info(fmt.Sprintf(format, args...))
+	}
 }
 
 func (s *slogWrapper) Warnf(format string, args ...any) {
-	s.logger.Warn(fmt.Sprintf(format, args...))
+	if s.logger.Handler().Enabled(context.Background(), slog.LevelWarn) {
+		s.logger.Warn(fmt.Sprintf(format, args...))
+	}
 }
 
 func (s *slogWrapper) Errorf(format string, args ...any) {
-	s.logger.Error(fmt.Sprintf(format, args...))
+	if s.logger.Handler().Enabled(context.Background(), slog.LevelError) {
+		s.logger.Error(fmt.Sprintf(format, args...))
+	}
 }
 
 func (s *slogWrapper) SubLogger(fields Fields) Logger {
