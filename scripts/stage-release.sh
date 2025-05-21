@@ -18,25 +18,21 @@
 
 set -e -x
 
-if [ $# -eq 0 ]; then
-    echo "Required argument with destination directory"
+if [ $# -ne 2 ]; then
+    echo "Usage: $0 <version> <destination_directory>"
     exit 1
 fi
 
-if [ -z "$VERSION" ]; then
-    echo "VERSION is not defined. Please set the VERSION environment variable."
-    exit 1
-fi
+VERSION=$1
 
-
-DEST_PATH=$1
+DEST_PATH=$2
 DEST_PATH="$(cd "$DEST_PATH" && pwd)"
 
-pushd $(dirname "$0")
+pushd "$(dirname "$0")"
 REPO_PATH=$(git rev-parse --show-toplevel)
 popd
 
-pushd $REPO_PATH
+pushd "$REPO_PATH"
 git archive --format=tar.gz --output="$DEST_PATH/apache-pulsar-client-go-$VERSION-src.tar.gz" HEAD
 popd
 

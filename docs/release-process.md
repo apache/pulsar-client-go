@@ -51,10 +51,10 @@ git push origin v0.X.0-candidate-1
 
 3. Build and inspect an artifact.
 
-Stage and sigh the release artifacts.
+Stage and sign the release artifacts.
 
 ```bash
-$ VERSION=0.x.0 ./scripts/stage-release.sh .
+$ ./scripts/stage-release.sh 0.X.0 .
 ```
 
 Checkout repo for uploading artifacts
