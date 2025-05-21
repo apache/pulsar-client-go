@@ -16,7 +16,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-set -e -x
+set -euo pipefail -x
 
 if [ $# -ne 2 ]; then
     echo "Usage: $0 <version> <destination_directory>"
@@ -37,7 +37,7 @@ git archive --format=tar.gz --output="$DEST_PATH/apache-pulsar-client-go-$VERSIO
 popd
 
 # Sign all files
-cd $DEST_PATH
+cd "$DEST_PATH"
 gpg -b --armor apache-pulsar-client-go-$VERSION-src.tar.gz
 shasum -a 512 apache-pulsar-client-go-$VERSION-src.tar.gz > apache-pulsar-client-go-$VERSION-src.tar.gz.sha512
 
