@@ -1743,14 +1743,21 @@ func (i *pendingItem) done(err error) {
 	}
 
 	i.isDone = true
-	// return the buffer to the pool after all callbacks have been called.
-	defer buffersPool.Put(i.buffer)
+
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
 
 	if i.cancel != nil {
 		i.cancel()
+	}
+
+	if err == nil {
+		// Buffer is returned after executing all the callbacks and only if the
+		// pending item is successful because that is the only state that ensure
+		// a finality of the buffer at that time (an erroneuous item might still
+		// be in the connection sending queue).
+		buffersPool.Put(i.buffer)
 	}
 }
 
