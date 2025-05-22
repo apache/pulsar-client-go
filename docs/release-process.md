@@ -51,19 +51,10 @@ git push origin v0.X.0-candidate-1
 
 3. Build and inspect an artifact.
 
-Generate a release candidate package.
+Stage and sign the release artifacts.
 
 ```bash
-$ tar -zcvf apache-pulsar-client-go-0.X.0-src.tar.gz .
-```
-
-4. Sign and stage the artifacts 
-
-The src artifact need to be signed and uploaded to the dist SVN repository for staging.
-
-```
-$ gpg -b --armor apache-pulsar-client-go-0.X.0-src.tar.gz
-$ shasum -a 512 apache-pulsar-client-go-0.X.0-src.tar.gz > apache-pulsar-client-go-0.X.0-src.tar.gz.sha512 
+$ ./scripts/stage-release.sh 0.X.0 .
 ```
 
 Checkout repo for uploading artifacts
