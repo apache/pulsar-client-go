@@ -16,7 +16,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-set -euo pipefail -x
+set -euo pipefail
 
 if [ $# -ne 2 ]; then
     echo "Usage: $0 <version> <destination_directory>"
