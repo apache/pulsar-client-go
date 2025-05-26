@@ -5,12 +5,11 @@ In general, you need to perform the following steps:
 1. Create a release branch.
 2. Update the version and tag of a package.
 3. Build and inspect an artifact.
-4. Sign and stage the artifacts.
-5. Write a release note.
-6. Run a vote.
-7. Promote the release.
-8. Update the release note.
-9. Announce the release.
+4. Write a release note.
+5. Run a vote.
+6. Promote the release.
+7. Update the release note.
+8. Announce the release.
 
 ### Requirements
 - [Creating GPG keys to sign release artifacts](https://pulsar.apache.org/contribute/create-gpg-keys/)
@@ -78,13 +77,13 @@ $ svn ci -m 'Staging artifacts and signature for Pulsar Client Go release 0.X.0-
 
 Since this needs to be merged in master, we need to follow the regular process and create a Pull Request on GitHub.
 
-5. Write a release note and update `CHANGELOG.md`.
+4. Write a release note and update `CHANGELOG.md`.
 
 Check the milestone in GitHub associated with the release. 
 
 In the released item, add the list of the most important changes that happened in the release and a link to the associated milestone, with the complete list of all the changes. 
 
-6. Run a vote.
+5. Run a vote.
 
 Send an email to the Pulsar Dev mailing list:
 
@@ -127,7 +126,7 @@ The vote should be open for at least 72 hours (3 days). Votes from Pulsar PMC me
 
 If the release is approved here, we can then proceed to the next step.
 
-7. Promote the release.
+6. Promote the release.
 
 ```
 $ git checkout branch-0.X.0
@@ -155,11 +154,13 @@ svn ls https://dist.apache.org/repos/dist/release/pulsar | grep client-go
 svn rm https://dist.apache.org/repos/dist/release/pulsar/pulsar-client-go/pulsar-client-go-0.X.0
 ```
 
-8. Update the release note.
+7. Update the release note.
 
 Add the release note to [Pulsar Client Go](https://github.com/apache/pulsar-client-go/releases)
 
-9. Announce the release.
+Add the release note to the [Pulsar Website](https://pulsar.apache.org/release-notes/client-go/). Here is an example PR: https://github.com/apache/pulsar-site/pull/1016
+
+8. Announce the release.
 
 Once the release process is available , you can announce the release and send an email as below:
 
