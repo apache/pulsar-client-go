@@ -22,10 +22,6 @@ import (
 	"time"
 )
 
-func init() {
-	rand.Seed(time.Now().UnixNano())
-}
-
 // Policy parameterize the following options in the reconnection logic to
 // allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)
 type Policy interface {
@@ -43,10 +39,11 @@ type Policy interface {
 // It uses an exponential backoff with jitter. The jitter represents up to 20 percents of the delay.
 type DefaultBackoff struct {
 	backoff time.Duration
+	rnd     *rand.Rand
 }
 
 func NewDefaultBackoff() Policy {
-	return &DefaultBackoff{}
+	return &DefaultBackoff{rnd: rand.New(rand.NewSource(time.Now().UnixNano()))}
 }
 func NewDefaultBackoffWithInitialBackOff(backoff time.Duration) Policy {
 	return &DefaultBackoff{backoff: backoff / 2}
@@ -66,7 +63,7 @@ func (b *DefaultBackoff) Next() time.Duration {
 	} else if b.backoff.Nanoseconds() > maxBackoff.Nanoseconds() {
 		b.backoff = maxBackoff
 	}
-	jitter := rand.Float64() * float64(b.backoff) * jitterPercentage
+	jitter := b.rnd.Float64() * float64(b.backoff) * jitterPercentage
 
 	return b.backoff + time.Duration(jitter)
 }
