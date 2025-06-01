@@ -383,6 +383,30 @@ type Topics interface {
 	// @param data
 	//        list of replication cluster id
 	SetReplicationClusters(topic utils.TopicName, data []string) error
+
+	// GetOffloadPolicies returns the offload configuration for a topic
+	//
+	// @param topic
+	//        topicName struct
+	// @param applied
+	//        when set to true, function will try to find policy applied to this topic
+	//        in namespace level, if no policy set in topic level
+	GetOffloadPolicies(topic utils.TopicName, applied bool) (*utils.OffloadPolicies, error)
+
+	// SetOffloadPolicies sets the offload policy for a topic
+	//
+	// @param topic
+	//        topicName struct
+	// @param policy
+	//        Pointer to the OffloadPolicies struct with fields set according to the used
+	//        tiered storage configuration
+	SetOffloadPolicies(topic utils.TopicName, policy *utils.OffloadPolicies) error
+
+	// DeleteOffloadPolicies removes the offload configuration on a topic
+	//
+	// @param topic
+	//        topicName struct
+	DeleteOffloadPolicies(topic utils.TopicName) error
 }
 
 type topics struct {
@@ -916,4 +940,23 @@ func (t *topics) GetReplicationClusters(topic utils.TopicName) ([]string, error)
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
 	err := t.pulsar.Client.Get(endpoint, &data)
 	return data, err
+}
+
+func (t *topics) GetOffloadPolicies(topic utils.TopicName, applied bool) (*utils.OffloadPolicies, error) {
+	var policy utils.OffloadPolicies
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
+	_, err := t.pulsar.Client.GetWithQueryParams(endpoint, &policy, map[string]string{
+		"applied": strconv.FormatBool(applied),
+	}, true)
+	return &policy, err
+}
+
+func (t *topics) SetOffloadPolicies(topic utils.TopicName, policy *utils.OffloadPolicies) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
+	return t.pulsar.Client.Post(endpoint, policy)
+}
+
+func (t *topics) DeleteOffloadPolicies(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
+	return t.pulsar.Client.Delete(endpoint)
 }
