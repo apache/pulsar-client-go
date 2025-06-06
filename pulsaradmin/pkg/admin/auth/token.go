@@ -36,7 +36,7 @@ const (
 
 type Token struct {
 	Token string `json:"token"`
-	File string `json:"file"`
+	File  string `json:"file"`
 }
 
 type TokenAuthProvider struct {
