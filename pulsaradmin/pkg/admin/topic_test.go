@@ -212,7 +212,8 @@ func TestPartitionState(t *testing.T) {
 	assert.Equal(t, publisher.IsSupportsPartialProducer, false)
 	assert.Equal(t, publisher.ProducerName, producerName)
 	assert.Contains(t, publisher.Address, "127.0.0.1")
-	assert.Contains(t, publisher.ClientVersion, "Pulsar Go version")
+	assert.Contains(t, publisher.ClientVersion, "Pulsar-Go-version")
+	assert.NotContains(t, publisher.ClientVersion, " ")
 
 	sub := topicState.Subscriptions[subName]
 	assert.Equal(t, sub.BytesOutCounter, int64(0))
@@ -244,7 +245,8 @@ func TestPartitionState(t *testing.T) {
 	assert.Equal(t, consumerState.ChunkedMessageRate, float64(0))
 	assert.Equal(t, consumerState.AvgMessagesPerEntry, int(0))
 	assert.Contains(t, consumerState.Address, "127.0.0.1")
-	assert.Contains(t, consumerState.ClientVersion, "Pulsar Go version")
+	assert.Contains(t, consumerState.ClientVersion, "Pulsar-Go-version")
+	assert.NotContains(t, consumerState.ClientVersion, " ")
 	assert.Equal(t, consumerState.LastAckedTimestamp, int64(0))
 	assert.Equal(t, consumerState.LastConsumedTimestamp, int64(0))
 	assert.True(t, consumerState.LastConsumedFlowTimestamp > 0)
