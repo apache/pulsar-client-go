@@ -51,6 +51,12 @@ type Topics interface {
 	// GetProperties returns the properties of a topic
 	GetProperties(topic utils.TopicName) (map[string]string, error)
 
+	// UpdateProperties updates the properties of a topic
+	UpdateProperties(topic utils.TopicName, properties map[string]string) error
+
+	// RemoveProperty removes a property with the given key of a topic
+	RemoveProperty(topic utils.TopicName, key string) error
+
 	// Delete a topic, this function can delete both partitioned or non-partitioned topic
 	//
 	// @param topic
@@ -431,6 +437,16 @@ func (t *topics) GetProperties(topic utils.TopicName) (map[string]string, error)
 	var properties map[string]string
 	err := t.pulsar.Client.Get(endpoint, &properties)
 	return properties, err
+}
+
+func (t *topics) UpdateProperties(topic utils.TopicName, properties map[string]string) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "properties")
+	return t.pulsar.Client.Put(endpoint, properties)
+}
+
+func (t *topics) RemoveProperty(topic utils.TopicName, key string) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "properties")
+	return t.pulsar.Client.DeleteWithQueryParams(endpoint, map[string]string{"key": key})
 }
 
 func (t *topics) Delete(topic utils.TopicName, force bool, nonPartitioned bool) error {

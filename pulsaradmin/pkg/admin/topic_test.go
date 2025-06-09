@@ -65,37 +65,63 @@ func TestCreateTopic(t *testing.T) {
 	t.Error("Couldn't find topic: " + topic)
 }
 
-func TestTopics_CreateWithProperties(t *testing.T) {
+func TestTopics_Properties(t *testing.T) {
+	t.Run("NonPartitioned", func(t *testing.T) {
+		internalTestTopicsProperties(t, 0)
+	})
+	t.Run("Partitioned", func(t *testing.T) {
+		internalTestTopicsProperties(t, 4)
+	})
+}
+
+func verifyTopicProperties(t *testing.T, admin Client, topic *utils.TopicName,
+	expected map[string]string) {
+	properties, err := admin.Topics().GetProperties(*topic)
+	assert.NoError(t, err)
+	assert.Equal(t, expected, properties)
+}
+
+func internalTestTopicsProperties(t *testing.T, partitions int) {
 	topic := newTopicName()
 	cfg := &config.Config{}
 	admin, err := New(cfg)
 	assert.NoError(t, err)
 	assert.NotNil(t, admin)
 
-	// Create non-partition topic
 	topicName, err := utils.GetTopicName(topic)
 	assert.NoError(t, err)
-	err = admin.Topics().CreateWithProperties(*topicName, 0, map[string]string{
+	err = admin.Topics().CreateWithProperties(*topicName, partitions, map[string]string{
 		"key1": "value1",
 	})
 	assert.NoError(t, err)
+	verifyTopicProperties(t, admin, topicName, map[string]string{"key1": "value1"})
 
 	properties, err := admin.Topics().GetProperties(*topicName)
 	assert.NoError(t, err)
 	assert.Equal(t, properties["key1"], "value1")
 
-	// Create partition topic
-	topic = newTopicName()
-	topicName, err = utils.GetTopicName(topic)
-	assert.NoError(t, err)
-	err = admin.Topics().CreateWithProperties(*topicName, 4, map[string]string{
+	newProperties := map[string]string{
+		"key1": "value1-updated",
 		"key2": "value2",
-	})
+	}
+	err = admin.Topics().UpdateProperties(*topicName, newProperties)
 	assert.NoError(t, err)
+	verifyTopicProperties(t, admin, topicName, newProperties)
 
-	properties, err = admin.Topics().GetProperties(*topicName)
+	err = admin.Topics().UpdateProperties(*topicName, map[string]string{"key3": "value3"})
 	assert.NoError(t, err)
-	assert.Equal(t, properties["key2"], "value2")
+	verifyTopicProperties(t, admin, topicName, map[string]string{
+		"key1": "value1-updated",
+		"key2": "value2",
+		"key3": "value3",
+	})
+
+	err = admin.Topics().RemoveProperty(*topicName, "key1")
+	assert.NoError(t, err)
+	verifyTopicProperties(t, admin, topicName, map[string]string{
+		"key2": "value2",
+		"key3": "value3",
+	})
 }
 
 func TestPartitionState(t *testing.T) {
