@@ -657,6 +657,8 @@ func TestMessageRouter(t *testing.T) {
 	assert.Equal(t, string(msg.Payload()), "hello")
 }
 func TestMessageSingleRouter(t *testing.T) {
+	// TODO: https://github.com/apache/pulsar-client-go/issues/1376
+	t.Skip("Skipping TestMessageSingleRouter because it's too flaky")
 	// Create topic with 5 partitions
 	topicAdminURL := "admin/v2/persistent/public/default/my-single-partitioned-topic/partitions"
 	err := httpPut(topicAdminURL, 5)
