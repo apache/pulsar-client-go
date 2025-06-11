@@ -26,3 +26,7 @@ import (
 func TestInitVersion(t *testing.T) {
 	assert.NotEmpty(t, Version, "version string should not be empty")
 }
+
+func TestVersionHasNoSpaces(t *testing.T) {
+	assert.NotContains(t, Version, " ", "version string should not contain any white space")
+}

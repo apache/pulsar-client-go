@@ -40,11 +40,11 @@ func init() {
 		for _, dep := range buildInfo.Deps {
 			if dep.Path == pulsarClientGoModulePath {
 				Version = semver.Canonical(dep.Version)
-				ClientVersionString = "Pulsar Go " + Version
+				ClientVersionString = "Pulsar-Go-" + Version
 				return
 			}
 		}
 	}
 	Version = "unknown"
-	ClientVersionString = "Pulsar Go version unknown"
+	ClientVersionString = "Pulsar-Go-version-unknown"
 }
