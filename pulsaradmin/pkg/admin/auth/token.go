@@ -36,6 +36,7 @@ const (
 
 type Token struct {
 	Token string `json:"token"`
+	File  string `json:"file"`
 }
 
 type TokenAuthProvider struct {
@@ -78,7 +79,13 @@ func NewAuthenticationTokenFromAuthParams(encodedAuthParam string,
 			tokenAuthProvider, err = NewAuthenticationToken(encodedAuthParam, transport)
 		}
 	} else {
-		tokenAuthProvider, err = NewAuthenticationToken(tokenJSON.Token, transport)
+		if tokenJSON.File != "" {
+			tokenAuthProvider, err = NewAuthenticationTokenFromFile(tokenJSON.File, transport)
+		} else if tokenJSON.Token != "" {
+			tokenAuthProvider, err = NewAuthenticationToken(tokenJSON.Token, transport)
+		} else {
+			return nil, errors.New("unsupported token json auth param")
+		}
 	}
 	return tokenAuthProvider, err
 }
