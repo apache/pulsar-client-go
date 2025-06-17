@@ -839,7 +839,7 @@ type pendingItem struct {
 	sync.Mutex
 	ctx           context.Context
 	cancel        context.CancelFunc
-	buffer        internal.Buffer
+	buffer        internal.SharedBuffer
 	sequenceID    uint64
 	createdAt     time.Time
 	sentAt        time.Time
@@ -898,16 +898,18 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 	default:
 		now := time.Now()
 		ctx, cancel := context.WithCancel(context.Background())
+		sharedBuffer := internal.NewSharedBuffer(buffer, &buffersPool)
+		sharedBuffer.Borrow()
 		p.pendingQueue.Put(&pendingItem{
 			ctx:          ctx,
 			cancel:       cancel,
 			createdAt:    now,
 			sentAt:       now,
-			buffer:       buffer,
+			buffer:       sharedBuffer,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(ctx, buffer)
+		p._getConn().WriteData(ctx, sharedBuffer)
 	}
 }
 
@@ -1743,21 +1745,14 @@ func (i *pendingItem) done(err error) {
 	}
 
 	i.isDone = true
-
+	// return the buffer to the pool after all callbacks have been called.
+	defer i.buffer.Recycle()
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
 
 	if i.cancel != nil {
 		i.cancel()
-	}
-
-	if err == nil {
-		// Buffer is returned after executing all the callbacks and only if the
-		// pending item is successful because that is the only state that ensure
-		// a finality of the buffer at that time (an erroneuous item might still
-		// be in the connection sending queue).
-		buffersPool.Put(i.buffer)
 	}
 }
 

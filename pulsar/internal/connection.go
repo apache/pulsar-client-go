@@ -79,7 +79,7 @@ type ConnectionListener interface {
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	SendRequestNoWait(req *pb.BaseCommand) error
-	WriteData(ctx context.Context, data Buffer)
+	WriteData(ctx context.Context, data SharedBuffer)
 	RegisterListener(id uint64, listener ConnectionListener) error
 	UnregisterListener(id uint64)
 	AddConsumeHandler(id uint64, handler ConsumerHandler) error
@@ -132,7 +132,7 @@ type request struct {
 
 type dataRequest struct {
 	ctx  context.Context
-	data Buffer
+	data SharedBuffer
 }
 
 type connection struct {
@@ -433,6 +433,9 @@ func (c *connection) run() {
 			}
 			c.internalWriteData(req.ctx, req.data)
 
+			// Write request is fully processed so we can release the buffer.
+			req.data.Recycle()
+
 		case <-pingSendTicker.C:
 			c.sendPing()
 		}
@@ -456,10 +459,23 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 	}
 }
 
-func (c *connection) WriteData(ctx context.Context, data Buffer) {
+func (c *connection) WriteData(ctx context.Context, data SharedBuffer) {
+	// Make sure to delay the recycling of the buffer to after the write request
+	// is done.
+	data.Borrow()
+
+	written := false
+	defer func() {
+		if !written {
+			// Buffer has failed to be written and can now be reused.
+			data.Recycle()
+		}
+	}()
+
 	select {
 	case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 		// Channel is not full
+		written = true
 		return
 	case <-ctx.Done():
 		c.log.Debug("Write data context cancelled")
@@ -472,6 +488,7 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 		select {
 		case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 			// Successfully wrote on the channel
+			written = true
 			return
 		case <-ctx.Done():
 			c.log.Debug("Write data context cancelled")

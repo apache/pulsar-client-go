@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,4 +34,45 @@ func TestBuffer(t *testing.T) {
 	assert.Equal(t, uint32(5), b.ReadableBytes())
 	assert.Equal(t, uint32(1019), b.WritableBytes())
 	assert.Equal(t, uint32(1024), b.Capacity())
+}
+
+func TestSharedBuffer_Borrow_increasesReferences(t *testing.T) {
+	b := NewSharedBuffer(NewBuffer(1024), &sync.Pool{})
+
+	b.Borrow()
+	assert.EqualValues(t, 1, b.refs.Load())
+
+	b.Borrow()
+	assert.EqualValues(t, 2, b.refs.Load())
+}
+
+func TestSharedBuffer_Recycle_putsBufferBackInPoolOnlyOnce(t *testing.T) {
+	pool := &capturingPool{}
+	b := NewSharedBuffer(NewBuffer(1024), pool)
+
+	b.Borrow()
+	b.Recycle()
+	b.Recycle()
+
+	assert.NotNil(t, pool.Get())
+	assert.Nil(t, pool.Get())
+}
+
+// --- Helpers
+
+type capturingPool struct {
+	values []any
+}
+
+func (p *capturingPool) Get() any {
+	if len(p.values) > 0 {
+		value := p.values[0]
+		p.values = p.values[1:]
+		return value
+	}
+	return nil
+}
+
+func (p *capturingPool) Put(value any) {
+	p.values = append(p.values, value)
 }

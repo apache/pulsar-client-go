@@ -19,6 +19,8 @@ package internal
 
 import (
 	"encoding/binary"
+	"sync"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -216,4 +218,47 @@ func (b *buffer) Put(writerIdx uint32, s []byte) {
 func (b *buffer) Clear() {
 	b.readerIdx = 0
 	b.writerIdx = 0
+}
+
+type BufferPool interface {
+	Get() any
+	Put(any)
+}
+
+var _ BufferPool = &sync.Pool{}
+
+// SharedBuffer is a wrapper of the `Buffer` interface that synchronizes several
+// asynchronous routines when recycling the buffer. Only once all of them are
+// done, the buffer will be released in the pool.
+type SharedBuffer struct {
+	Buffer
+	pool BufferPool
+	refs *atomic.Int64
+}
+
+func NewSharedBuffer(buffer Buffer, pool BufferPool) SharedBuffer {
+	return SharedBuffer{
+		Buffer: buffer,
+		pool:   pool,
+		refs:   &atomic.Int64{},
+	}
+}
+
+// Borrow is called before sending the buffer to another asynchronous routine.
+func (b SharedBuffer) Borrow() {
+	if b.refs != nil {
+		b.refs.Add(1)
+	}
+}
+
+// Recycle is called by each routine using the buffer. Only once all of them
+// have called the function, the buffer will return in the pool.
+func (b SharedBuffer) Recycle() {
+	if b.refs == nil {
+		return
+	}
+
+	if currentReferences := b.refs.Add(-1); currentReferences == 0 && b.pool != nil {
+		b.pool.Put(b.Buffer)
+	}
 }
