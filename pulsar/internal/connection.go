@@ -150,6 +150,7 @@ type connection struct {
 	logicalAddr  *url.URL
 	physicalAddr *url.URL
 
+	bufferPool      BufferPool
 	writeBufferLock sync.Mutex
 	writeBuffer     Buffer
 	reader          *connectionReader
@@ -199,6 +200,7 @@ func newConnection(opts connectionOptions) *connection {
 		keepAliveInterval:    opts.keepAliveInterval,
 		logicalAddr:          opts.logicalAddr,
 		physicalAddr:         opts.physicalAddr,
+		bufferPool:           GetDefaultBufferPool(),
 		writeBuffer:          NewBuffer(4096),
 		log:                  opts.logger.SubLogger(log.Fields{"remote_addr": opts.physicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
@@ -433,6 +435,9 @@ func (c *connection) run() {
 			}
 			c.internalWriteData(req.ctx, req.data)
 
+			// Write request is fully processed so we can release the buffer.
+			c.bufferPool.Put(req.data)
+
 		case <-pingSendTicker.C:
 			c.sendPing()
 		}
@@ -457,9 +462,18 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 }
 
 func (c *connection) WriteData(ctx context.Context, data Buffer) {
+	written := false
+	defer func() {
+		if !written {
+			// Buffer has failed to be written and can now be reused.
+			c.bufferPool.Put(data)
+		}
+	}()
+
 	select {
 	case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 		// Channel is not full
+		written = true
 		return
 	case <-ctx.Done():
 		c.log.Debug("Write data context cancelled")
@@ -472,6 +486,7 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 		select {
 		case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 			// Successfully wrote on the channel
+			written = true
 			return
 		case <-ctx.Done():
 			c.log.Debug("Write data context cancelled")

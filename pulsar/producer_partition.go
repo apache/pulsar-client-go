@@ -69,7 +69,6 @@ var (
 	ErrProducerBlockedQuotaExceeded = newError(ProducerBlockedQuotaExceededException, "producer blocked")
 	ErrProducerFenced               = newError(ProducerFenced, "producer fenced")
 
-	buffersPool     sync.Pool
 	sendRequestPool *sync.Pool
 )
 
@@ -125,6 +124,7 @@ type partitionProducer struct {
 	ctx                  context.Context
 	cancelFunc           context.CancelFunc
 	backOffPolicyFunc    func() backoff.Policy
+	bufferPool           internal.BufferPool
 }
 
 type schemaCache struct {
@@ -199,6 +199,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		ctx:               ctx,
 		cancelFunc:        cancelFunc,
 		backOffPolicyFunc: boFunc,
+		bufferPool:        internal.GetDefaultBufferPool(),
 	}
 	if p.options.DisableBatching {
 		p.batchFlushTicker.Stop()
@@ -394,7 +395,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			pi.sentAt = time.Now()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			p._getConn().WriteData(pi.ctx, pi.buffer)
+			p._getConn().WriteData(pi.ctx, p.bufferPool.Clone(pi.buffer))
 
 			if pi == lastViewItem {
 				break
@@ -413,11 +414,7 @@ func (cc *connectionClosed) HasURL() bool {
 }
 
 func (p *partitionProducer) GetBuffer() internal.Buffer {
-	b, ok := buffersPool.Get().(internal.Buffer)
-	if ok {
-		b.Clear()
-	}
-	return b
+	return p.bufferPool.Get()
 }
 
 func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProducer) {
@@ -907,7 +904,7 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(ctx, buffer)
+		p._getConn().WriteData(ctx, p.bufferPool.Clone(buffer))
 	}
 }
 
@@ -991,7 +988,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 			}
 
 			// flag the sending has completed with error, flush make no effect
-			pi.done(ErrSendTimeout)
+			pi.done(ErrSendTimeout, p.bufferPool)
 			pi.Unlock()
 
 			// finally reached the last view item, current iteration ends
@@ -1427,7 +1424,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	}
 
 	// Mark this pending item as done
-	pi.done(nil)
+	pi.done(nil, p.bufferPool)
 }
 
 func (p *partitionProducer) internalClose(req *closeProducer) {
@@ -1498,7 +1495,7 @@ func (p *partitionProducer) failPendingMessages(err error) {
 		}
 
 		// flag the sending has completed with error, flush make no effect
-		pi.done(err)
+		pi.done(err, p.bufferPool)
 		pi.Unlock()
 
 		// finally reached the last view item, current iteration ends
@@ -1737,27 +1734,20 @@ type flushRequest struct {
 	err    error
 }
 
-func (i *pendingItem) done(err error) {
+func (i *pendingItem) done(err error, bufferPool internal.BufferPool) {
 	if i.isDone {
 		return
 	}
 
 	i.isDone = true
-
+	// return the buffer to the pool after all callbacks have been called.
+	defer bufferPool.Put(i.buffer)
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
 
 	if i.cancel != nil {
 		i.cancel()
-	}
-
-	if err == nil {
-		// Buffer is returned after executing all the callbacks and only if the
-		// pending item is successful because that is the only state that ensure
-		// a finality of the buffer at that time (an erroneuous item might still
-		// be in the connection sending queue).
-		buffersPool.Put(i.buffer)
 	}
 }
 

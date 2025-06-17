@@ -19,9 +19,16 @@ package internal
 
 import (
 	"encoding/binary"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 )
+
+var defaultBufferPool BufferPool = newBufferPool(&sync.Pool{})
+
+func GetDefaultBufferPool() BufferPool {
+	return defaultBufferPool
+}
 
 // Buffer is a variable-sized buffer of bytes with Read and Write methods.
 // The zero value for Buffer is an empty buffer ready to use.
@@ -216,4 +223,47 @@ func (b *buffer) Put(writerIdx uint32, s []byte) {
 func (b *buffer) Clear() {
 	b.readerIdx = 0
 	b.writerIdx = 0
+}
+
+type BufferPool interface {
+	// Get returns a cleared buffer if any is available, otherwise nil.
+	Get() Buffer
+
+	// Put puts the buffer back to the pool and available for other routines.
+	Put(Buffer)
+
+	// Clone attempts to create a clone using a buffer from the pool, or returns
+	// a new one if necessary.
+	Clone(Buffer) Buffer
+}
+
+type synchronizedBufferPool struct {
+	pool *sync.Pool
+}
+
+var _ BufferPool = synchronizedBufferPool{}
+
+func newBufferPool(pool *sync.Pool) synchronizedBufferPool {
+	return synchronizedBufferPool{pool: pool}
+}
+
+func (p synchronizedBufferPool) Get() Buffer {
+	buffer, ok := p.pool.Get().(Buffer)
+	if ok {
+		buffer.Clear()
+	}
+	return buffer
+}
+
+func (p synchronizedBufferPool) Put(buffer Buffer) {
+	p.pool.Put(buffer)
+}
+
+func (p synchronizedBufferPool) Clone(b Buffer) Buffer {
+	newBuffer := p.Get()
+	if newBuffer == nil {
+		newBuffer = &buffer{}
+	}
+	newBuffer.Write(b.ReadableSlice())
+	return newBuffer
 }

@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -33,4 +34,66 @@ func TestBuffer(t *testing.T) {
 	assert.Equal(t, uint32(5), b.ReadableBytes())
 	assert.Equal(t, uint32(1019), b.WritableBytes())
 	assert.Equal(t, uint32(1024), b.Capacity())
+}
+
+func TestSynchronizedBufferPool_Clone_returnsNewlyAllocatedBuffer(t *testing.T) {
+	pool := newBufferPool(&sync.Pool{})
+
+	buffer := NewBuffer(1024)
+	buffer.Write([]byte{1, 2, 3})
+
+	res := pool.Clone(buffer)
+	assert.Equal(t, []byte{1, 2, 3}, res.ReadableSlice())
+}
+
+func TestSynchronizedBufferPool_Clone_returnsRecycledBuffer(t *testing.T) {
+	pool := newBufferPool(&sync.Pool{})
+
+	for range 100 {
+		buffer := NewBuffer(1024)
+		buffer.Write([]byte{1, 2, 3})
+		pool.Put(buffer)
+	}
+
+	buffer := NewBuffer(1024)
+	buffer.Write([]byte{1, 2, 3})
+
+	res := pool.Clone(buffer)
+	assert.Equal(t, []byte{1, 2, 3}, res.ReadableSlice())
+}
+
+// BenchmarkBufferPool_Clone demonstrates the cloning of a buffer without
+// allocation if the pool is filled making the process very efficient.
+func BenchmarkBufferPool_Clone(b *testing.B) {
+	pool := GetDefaultBufferPool()
+	buffer := NewBuffer(1024)
+	buffer.Write(make([]byte, 1024))
+
+	for range b.N {
+		newBuffer := pool.Clone(buffer)
+		pool.Put(newBuffer)
+	}
+}
+
+// --- Helpers
+
+type capturingPool struct {
+	buffers []Buffer
+}
+
+func (p *capturingPool) Get() Buffer {
+	if len(p.buffers) > 0 {
+		value := p.buffers[0]
+		p.buffers = p.buffers[1:]
+		return value
+	}
+	return nil
+}
+
+func (p *capturingPool) Put(value Buffer) {
+	p.buffers = append(p.buffers, value)
+}
+
+func (p *capturingPool) Clone(value Buffer) Buffer {
+	return value
 }
