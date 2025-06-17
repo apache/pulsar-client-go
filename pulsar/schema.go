@@ -61,6 +61,27 @@ const (
 	ProtoNative = 20              //Protobuf native message encoding and decoding
 )
 
+var HTTPSchemaTypeMap = map[string]SchemaType{
+	"NONE":            BYTES,
+	"STRING":          STRING,
+	"JSON":            JSON,
+	"PROTOBUF":        PROTOBUF,
+	"AVRO":            AVRO,
+	"BOOLEAN":         BOOLEAN,
+	"INT8":            INT8,
+	"INT16":           INT16,
+	"INT32":           INT32,
+	"INT64":           INT64,
+	"FLOAT":           FLOAT,
+	"DOUBLE":          DOUBLE,
+	"KEYVALUE":        KeyValue,
+	"BYTES":           BYTES,
+	"AUTO":            AUTO,
+	"AUTOCONSUME":     AutoConsume,
+	"AUTOPUBLISH":     AutoPublish,
+	"PROTOBUF_NATIVE": ProtoNative,
+}
+
 // Encapsulates data around the schema definition
 type SchemaInfo struct {
 	Name       string
