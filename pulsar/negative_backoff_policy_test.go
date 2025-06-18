@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -27,9 +28,10 @@ import (
 func TestDefaultNackBackoffPolicy_Next(t *testing.T) {
 	defaultNackBackoff := new(defaultNackBackoffPolicy)
 
-	res0 := defaultNackBackoff.Next(0)
-	assert.Equal(t, 1*time.Second, res0)
-
-	res5 := defaultNackBackoff.Next(5)
-	assert.Equal(t, 32*time.Second, res5)
+	assert.Equal(t, 1*time.Second, defaultNackBackoff.Next(0))
+	assert.Equal(t, 32*time.Second, defaultNackBackoff.Next(5))
+	assert.Equal(t, 10*time.Minute, defaultNackBackoff.Next(1000))
+	assert.Equal(t, 10*time.Minute, defaultNackBackoff.Next(math.MaxUint8))
+	assert.Equal(t, 10*time.Minute, defaultNackBackoff.Next(math.MaxUint16))
+	assert.Equal(t, 10*time.Minute, defaultNackBackoff.Next(math.MaxUint32))
 }
