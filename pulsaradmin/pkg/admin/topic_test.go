@@ -24,8 +24,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/stretchr/testify/assert"
+
+	"github.com/apache/pulsar-client-go/pulsar"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -550,4 +552,92 @@ func TestRetention(t *testing.T) {
 		10*time.Second,
 		100*time.Millisecond,
 	)
+}
+
+func TestSetOffloadPolicies(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	tests := []struct {
+		name      string
+		errReason string
+		policy    *utils.OffloadPolicies
+	}{
+		{
+			name: "Set invalid empty offload policy",
+			errReason: "The driver is not supported, support value: S3,aws-s3," +
+				"google-cloud-storage,filesystem,azureblob,aliyun-oss",
+			policy: &utils.OffloadPolicies{},
+		},
+		{
+			name:      "Set invalid S3 offload policy",
+			errReason: "The bucket must be specified for namespace offload.",
+			policy: &utils.OffloadPolicies{
+				ManagedLedgerOffloadDriver: "S3",
+			},
+		},
+		{
+			name:      "Set valid filesystem offload policy",
+			errReason: "",
+			policy: &utils.OffloadPolicies{
+				ManagedLedgerOffloadDriver:         "filesystem",
+				OffloadersDirectory:                "/tmp",
+				ManagedLedgerOffloadedReadPriority: "BOOKKEEPER_FIRST",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := admin.Topics().SetOffloadPolicies(*topicName, tt.policy)
+			if tt.errReason == "" {
+				assert.Equal(t, nil, err)
+			}
+			if err != nil {
+				restError := err.(rest.Error)
+				assert.Equal(t, tt.errReason, restError.Reason)
+			}
+		})
+	}
+}
+
+func TestGetAndDeleteOffloadPolicies(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// set simple filesystem offload policy and get it
+	err = admin.Topics().SetOffloadPolicies(*topicName, &utils.OffloadPolicies{
+		ManagedLedgerOffloadDriver:         "filesystem",
+		OffloadersDirectory:                "/var/tmp",
+		ManagedLedgerOffloadedReadPriority: "TIERED_STORAGE_FIRST",
+	})
+	assert.Equal(t, nil, err)
+	offload, err := admin.Topics().GetOffloadPolicies(*topicName, false)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, "filesystem", offload.ManagedLedgerOffloadDriver)
+	assert.Equal(t, "/var/tmp", offload.OffloadersDirectory)
+	assert.Equal(t, "TIERED_STORAGE_FIRST", offload.ManagedLedgerOffloadedReadPriority)
+
+	// delete previously set filesystem offload policy
+	err = admin.Topics().DeleteOffloadPolicies(*topicName)
+	assert.Equal(t, nil, err)
+	offload, err = admin.Topics().GetOffloadPolicies(*topicName, false)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, "", offload.ManagedLedgerOffloadDriver)
+
 }

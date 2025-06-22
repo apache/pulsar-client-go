@@ -20,11 +20,12 @@ package admin
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func ptr(n int) *int {
@@ -340,4 +341,83 @@ func TestNamespaces_GetOffloadThresholdInSeconds(t *testing.T) {
 	assert.Equal(t, nil, err)
 	expected := int64(60)
 	assert.Equal(t, expected, offloadThresholdInSeconds)
+}
+
+func TestNamespaces_SetOffloadPolicies(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	tests := []struct {
+		name      string
+		errReason string
+		policy    *utils.OffloadPolicies
+	}{
+		{
+			name: "Set invalid empty offload policy",
+			errReason: "The driver is not supported, support value: S3,aws-s3," +
+				"google-cloud-storage,filesystem,azureblob,aliyun-oss",
+			policy: &utils.OffloadPolicies{},
+		},
+		{
+			name:      "Set invalid S3 offload policy",
+			errReason: "The bucket must be specified for namespace offload.",
+			policy: &utils.OffloadPolicies{
+				ManagedLedgerOffloadDriver: "S3",
+			},
+		},
+		{
+			name:      "Set valid filesystem offload policy",
+			errReason: "",
+			policy: &utils.OffloadPolicies{
+				ManagedLedgerOffloadDriver:         "filesystem",
+				OffloadersDirectory:                "/tmp",
+				ManagedLedgerOffloadedReadPriority: "BOOKKEEPER_FIRST",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := admin.Namespaces().SetOffloadPolicies(*namespace, tt.policy)
+			if tt.errReason == "" {
+				assert.Equal(t, nil, err)
+			}
+			if err != nil {
+				restError := err.(rest.Error)
+				assert.Equal(t, tt.errReason, restError.Reason)
+			}
+		})
+	}
+}
+
+func TestNamespaces_GetAndDeleteOffloadPolicies(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// set simple filesystem offload policy and get it
+	err = admin.Namespaces().SetOffloadPolicies(*namespace, &utils.OffloadPolicies{
+		ManagedLedgerOffloadDriver:         "filesystem",
+		OffloadersDirectory:                "/var/tmp",
+		ManagedLedgerOffloadedReadPriority: "TIERED_STORAGE_FIRST",
+	})
+	assert.Equal(t, nil, err)
+	offload, err := admin.Namespaces().GetOffloadPolicies(*namespace)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, "filesystem", offload.ManagedLedgerOffloadDriver)
+	assert.Equal(t, "/var/tmp", offload.OffloadersDirectory)
+	assert.Equal(t, "TIERED_STORAGE_FIRST", offload.ManagedLedgerOffloadedReadPriority)
+
+	// delete previously set filesystem offload policy
+	err = admin.Namespaces().DeleteOffloadPolicies(*namespace)
+	assert.Equal(t, nil, err)
+	offload, err = admin.Namespaces().GetOffloadPolicies(*namespace)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, "", offload.ManagedLedgerOffloadDriver)
 }
