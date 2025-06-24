@@ -396,6 +396,18 @@ func (c *connection) failLeftRequestsWhenClose() {
 	}
 }
 
+func (c *connection) drainWriteRequests() {
+	for {
+		select {
+		case req := <-c.writeRequestsCh:
+			c.bufferPool.Put(req.data)
+
+		default:
+			return
+		}
+	}
+}
+
 func (c *connection) run() {
 	pingSendTicker := time.NewTicker(c.keepAliveInterval)
 	pingCheckTicker := time.NewTicker(c.keepAliveInterval)
@@ -423,6 +435,7 @@ func (c *connection) run() {
 		select {
 		case <-c.closeCh:
 			c.failLeftRequestsWhenClose()
+			c.drainWriteRequests()
 			return
 		case req := <-c.incomingRequestsCh:
 			if req == nil {
