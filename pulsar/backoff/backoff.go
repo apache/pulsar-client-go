@@ -43,10 +43,13 @@ type DefaultBackoff struct {
 }
 
 func NewDefaultBackoff() Policy {
-	return &DefaultBackoff{rnd: rand.New(rand.NewSource(time.Now().UnixNano()))}
+	return NewDefaultBackoffWithInitialBackOff(0)
 }
 func NewDefaultBackoffWithInitialBackOff(backoff time.Duration) Policy {
-	return &DefaultBackoff{backoff: backoff / 2}
+	return &DefaultBackoff{
+		rnd:     rand.New(rand.NewSource(time.Now().UnixNano())),
+		backoff: backoff / 2,
+	}
 }
 
 const maxBackoff = 60 * time.Second
