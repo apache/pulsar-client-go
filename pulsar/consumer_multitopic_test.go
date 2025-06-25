@@ -332,7 +332,7 @@ func (dummyConnection) SendRequestNoWait(_ *pb.BaseCommand) error {
 	return nil
 }
 
-func (dummyConnection) WriteData(_ context.Context, _ internal.Buffer) {
+func (dummyConnection) WriteData(_ context.Context, _ *internal.SharedBuffer) {
 }
 
 func (dummyConnection) RegisterListener(_ uint64, _ internal.ConnectionListener) error {

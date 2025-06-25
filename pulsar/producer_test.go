@@ -2607,3 +2607,32 @@ func TestSelectConnectionForSameProducer(t *testing.T) {
 
 	client.Close()
 }
+
+func TestProducerPutsBufferBackInPool(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	testProducer, err := client.CreateProducer(ProducerOptions{Topic: newTopicName()})
+	assert.NoError(t, err)
+	defer testProducer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for range 100 {
+		// Due to the sync.Pool not keeping all buffers, we need a few to make
+		// sure there is at least one available at the end
+		_, err = testProducer.Send(ctx, &ProducerMessage{Payload: []byte{42}})
+		assert.NoError(t, err)
+
+		if buffer := internal.GetDefaultBufferPool().Get(); buffer != nil {
+			// Ok!
+			return
+		}
+	}
+
+	t.Fatal("no buffer has been recycled")
+}

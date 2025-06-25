@@ -38,7 +38,7 @@ func TestConnection_WriteData_recyclesBufferOnContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	c.WriteData(ctx, NewBuffer(1024))
+	c.WriteData(ctx, NewSharedBuffer(NewBuffer(1024)))
 	assert.NotNil(t, pool.Get())
 }
 
@@ -49,7 +49,7 @@ func TestConnection_WriteData_recyclesBufferOnConnectionClosed(t *testing.T) {
 	c.state.Store(connectionClosed)
 	c.bufferPool = pool
 
-	c.WriteData(context.Background(), NewBuffer(1024))
+	c.WriteData(context.Background(), NewSharedBuffer(NewBuffer(1024)))
 	assert.NotNil(t, pool.Get())
 }
 
@@ -58,7 +58,7 @@ func TestConnection_WriteData_doNotRecyclesBufferWhenWritten(t *testing.T) {
 	c := makeTestConnection()
 	c.bufferPool = pool
 
-	c.WriteData(context.Background(), NewBuffer(1024))
+	c.WriteData(context.Background(), NewSharedBuffer(NewBuffer(1024)))
 	assert.Nil(t, pool.Get())
 }
 
@@ -67,7 +67,7 @@ func TestConnection_run_recyclesBufferOnceDone(t *testing.T) {
 	c := makeTestConnection()
 	c.bufferPool = pool
 
-	c.writeRequestsCh <- &dataRequest{ctx: context.Background(), data: NewBuffer(1024)}
+	c.writeRequestsCh <- &dataRequest{ctx: context.Background(), data: NewSharedBuffer(NewBuffer(1024))}
 	close(c.writeRequestsCh)
 
 	c.run()
@@ -82,7 +82,7 @@ func TestConnection_run_recyclesBufferEvenOnContextCanceled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	c.writeRequestsCh <- &dataRequest{ctx: ctx, data: NewBuffer(1024)}
+	c.writeRequestsCh <- &dataRequest{ctx: ctx, data: NewSharedBuffer(NewBuffer(1024))}
 	close(c.writeRequestsCh)
 
 	c.run()

@@ -20,6 +20,7 @@ package internal
 import (
 	"encoding/binary"
 	"sync"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -227,14 +228,10 @@ func (b *buffer) Clear() {
 
 type BufferPool interface {
 	// Get returns a cleared buffer if any is available, otherwise nil.
-	Get() Buffer
+	Get() *SharedBuffer
 
 	// Put puts the buffer back to the pool and available for other routines.
-	Put(Buffer)
-
-	// Clone attempts to create a clone using a buffer from the pool, or returns
-	// a new one if necessary.
-	Clone(Buffer) Buffer
+	Put(*SharedBuffer)
 }
 
 type synchronizedBufferPool struct {
@@ -247,23 +244,43 @@ func newBufferPool(pool *sync.Pool) synchronizedBufferPool {
 	return synchronizedBufferPool{pool: pool}
 }
 
-func (p synchronizedBufferPool) Get() Buffer {
+func (p synchronizedBufferPool) Get() *SharedBuffer {
 	buffer, ok := p.pool.Get().(Buffer)
 	if ok {
 		buffer.Clear()
+		return NewSharedBuffer(buffer)
 	}
-	return buffer
+	return nil
 }
 
-func (p synchronizedBufferPool) Put(buffer Buffer) {
-	p.pool.Put(buffer)
+func (p synchronizedBufferPool) Put(buffer *SharedBuffer) {
+	if !buffer.isCurrentlyShared.CompareAndSwap(true, false) {
+		// When swapping fails, it means that a previous go routine has already
+		// tried to recycle the buffer, indicating that the sharing is not there
+		// anymore and the buffer can safely be reused.
+		p.pool.Put(buffer)
+	}
 }
 
-func (p synchronizedBufferPool) Clone(b Buffer) Buffer {
-	newBuffer := p.Get()
-	if newBuffer == nil {
-		newBuffer = &buffer{}
+// SharedBuffer is a wrapper around a buffer that can keep track of a shared
+// reference of the buffer to later recycle it only when both references are
+// done with it.
+type SharedBuffer struct {
+	Buffer
+	isCurrentlyShared atomic.Bool
+}
+
+func NewSharedBuffer(buffer Buffer) *SharedBuffer {
+	return &SharedBuffer{Buffer: buffer}
+}
+
+// Retain creates a new shared buffer backed by the same buffer but that will be
+// retained by the pool until the shared reference is also done.
+func (b *SharedBuffer) Retain() *SharedBuffer {
+	newBuffer := &SharedBuffer{
+		Buffer:            b.Buffer,
+		isCurrentlyShared: atomic.Bool{},
 	}
-	newBuffer.Write(b.ReadableSlice())
+	newBuffer.isCurrentlyShared.Store(true)
 	return newBuffer
 }

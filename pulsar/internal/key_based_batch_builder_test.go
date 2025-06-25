@@ -33,7 +33,7 @@ import (
 type mockBufferPool struct {
 }
 
-func (m *mockBufferPool) GetBuffer() Buffer {
+func (m *mockBufferPool) GetBuffer() *SharedBuffer {
 	return nil
 }
 

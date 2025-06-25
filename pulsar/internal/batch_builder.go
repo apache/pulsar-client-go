@@ -30,7 +30,7 @@ import (
 )
 
 type BuffersPool interface {
-	GetBuffer() Buffer
+	GetBuffer() *SharedBuffer
 }
 
 // BatcherBuilderProvider defines func which returns the BatchBuilder.
@@ -71,7 +71,7 @@ type BatchBuilder interface {
 }
 
 type FlushBatch struct {
-	BatchData  Buffer
+	BatchData  *SharedBuffer
 	SequenceID uint64
 	Callbacks  []interface{}
 	Error      error
@@ -271,7 +271,7 @@ func (bc *batchContainer) Flush() *FlushBatch {
 
 	buffer := bc.buffersPool.GetBuffer()
 	if buffer == nil {
-		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
+		buffer = NewSharedBuffer(NewBuffer(int(uncompressedSize * 3 / 2)))
 	}
 
 	sequenceID := uint64(0)

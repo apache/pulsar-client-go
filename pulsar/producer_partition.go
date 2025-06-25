@@ -393,9 +393,12 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			// when resending pending batches, we update the sendAt timestamp to record the metric.
 			pi.Lock()
 			pi.sentAt = time.Now()
+			// Buffer is sent again to the connection to be processed in an
+			// asynchronous routine so we need to retain it again.
+			pi.buffer = pi.buffer.Retain()
 			pi.Unlock()
 			p.pendingQueue.Put(pi)
-			p._getConn().WriteData(pi.ctx, p.bufferPool.Clone(pi.buffer))
+			p._getConn().WriteData(pi.ctx, pi.buffer)
 
 			if pi == lastViewItem {
 				break
@@ -413,7 +416,7 @@ func (cc *connectionClosed) HasURL() bool {
 	return len(cc.assignedBrokerURL) > 0
 }
 
-func (p *partitionProducer) GetBuffer() internal.Buffer {
+func (p *partitionProducer) GetBuffer() *internal.SharedBuffer {
 	return p.bufferPool.Get()
 }
 
@@ -795,7 +798,7 @@ func (p *partitionProducer) internalSingleSend(
 
 	buffer := p.GetBuffer()
 	if buffer == nil {
-		buffer = internal.NewBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
+		buffer = internal.NewSharedBuffer(internal.NewBuffer(int(payloadBuf.ReadableBytes() * 3 / 2)))
 	}
 
 	sid := *mm.SequenceId
@@ -836,7 +839,7 @@ type pendingItem struct {
 	sync.Mutex
 	ctx           context.Context
 	cancel        context.CancelFunc
-	buffer        internal.Buffer
+	buffer        *internal.SharedBuffer
 	sequenceID    uint64
 	createdAt     time.Time
 	sentAt        time.Time
@@ -883,7 +886,7 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 	p.writeData(batchData, sequenceID, callbacks)
 }
 
-func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64, callbacks []interface{}) {
+func (p *partitionProducer) writeData(buffer *internal.SharedBuffer, sequenceID uint64, callbacks []interface{}) {
 	select {
 	case <-p.ctx.Done():
 		for _, cb := range callbacks {
@@ -893,6 +896,11 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		}
 		return
 	default:
+		// As the buffer will be sent to the connection in an asynchronous
+		// routine, we need to announce it to recycle later only when we are
+		// done in both the connection and the producer.
+		buffer = buffer.Retain()
+
 		now := time.Now()
 		ctx, cancel := context.WithCancel(context.Background())
 		p.pendingQueue.Put(&pendingItem{
@@ -904,7 +912,8 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(ctx, p.bufferPool.Clone(buffer))
+
+		p._getConn().WriteData(ctx, buffer)
 	}
 }
 

@@ -36,52 +36,58 @@ func TestBuffer(t *testing.T) {
 	assert.Equal(t, uint32(1024), b.Capacity())
 }
 
-func TestSynchronizedBufferPool_Clone_returnsNewlyAllocatedBuffer(t *testing.T) {
+func TestSynchronizedBufferPool_Get_returnsNilWhenEmpty(t *testing.T) {
 	pool := newBufferPool(&sync.Pool{})
-
-	buffer := NewBuffer(1024)
-	buffer.Write([]byte{1, 2, 3})
-
-	res := pool.Clone(buffer)
-	assert.Equal(t, []byte{1, 2, 3}, res.ReadableSlice())
+	assert.Nil(t, pool.Get())
 }
 
-func TestSynchronizedBufferPool_Clone_returnsRecycledBuffer(t *testing.T) {
+func TestSynchronizedBufferPool_Put_marksBufferAsNotSharedAnymore(t *testing.T) {
+	buffer := NewSharedBuffer(NewBuffer(1024)).Retain()
+	assert.True(t, buffer.isCurrentlyShared.Load())
+
+	pool := newBufferPool(&sync.Pool{})
+	pool.Put(buffer)
+	assert.False(t, buffer.isCurrentlyShared.Load())
+}
+
+func TestSynchronizedBufferPool_Put_recyclesSharedBuffer(t *testing.T) {
 	pool := newBufferPool(&sync.Pool{})
 
 	for range 100 {
-		buffer := NewBuffer(1024)
-		buffer.Write([]byte{1, 2, 3})
+		buffer := NewSharedBuffer(NewBuffer(1024)).Retain()
 		pool.Put(buffer)
+		pool.Put(buffer)
+
+		if res := pool.Get(); res != nil {
+			return
+		}
 	}
 
-	buffer := NewBuffer(1024)
-	buffer.Write([]byte{1, 2, 3})
-
-	res := pool.Clone(buffer)
-	assert.Equal(t, []byte{1, 2, 3}, res.ReadableSlice())
+	t.Fatal("pool is not recycling buffers")
 }
 
-// BenchmarkBufferPool_Clone demonstrates the cloning of a buffer without
-// allocation if the pool is filled making the process very efficient.
-func BenchmarkBufferPool_Clone(b *testing.B) {
-	pool := GetDefaultBufferPool()
-	buffer := NewBuffer(1024)
-	buffer.Write(make([]byte, 1024))
+func TestSynchronizedBufferPool_Put_recyclesBuffer(t *testing.T) {
+	pool := newBufferPool(&sync.Pool{})
 
-	for range b.N {
-		newBuffer := pool.Clone(buffer)
-		pool.Put(newBuffer)
+	for range 100 {
+		buffer := NewSharedBuffer(NewBuffer(1024))
+		pool.Put(buffer)
+
+		if res := pool.Get(); res != nil {
+			return
+		}
 	}
+
+	t.Fatal("pool is not recycling buffers")
 }
 
 // --- Helpers
 
 type capturingPool struct {
-	buffers []Buffer
+	buffers []*SharedBuffer
 }
 
-func (p *capturingPool) Get() Buffer {
+func (p *capturingPool) Get() *SharedBuffer {
 	if len(p.buffers) > 0 {
 		value := p.buffers[0]
 		p.buffers = p.buffers[1:]
@@ -90,10 +96,6 @@ func (p *capturingPool) Get() Buffer {
 	return nil
 }
 
-func (p *capturingPool) Put(value Buffer) {
+func (p *capturingPool) Put(value *SharedBuffer) {
 	p.buffers = append(p.buffers, value)
-}
-
-func (p *capturingPool) Clone(value Buffer) Buffer {
-	return value
 }
