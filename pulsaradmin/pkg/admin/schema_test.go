@@ -133,12 +133,12 @@ func TestSchemas_CreateSchemaBySchemaInfo(t *testing.T) {
 	compatibility, err := admin.Schemas().TestCompatibilityWithSchemaInfo(topic, schemaInfo)
 	assert.NoError(t, err)
 	assert.Equal(t, compatibility.IsCompatibility, true)
-	assert.Equal(t, compatibility.SchemaCompatibilityStrategy, utils.SchemaCompatibilityStrategy("FULL"))
+	assert.Equal(t, compatibility.SchemaCompatibilityStrategy, utils.SchemaAutoUpdateCompatibilityStrategy("FULL"))
 
 	compatibility, err = admin.Schemas().TestCompatibilityWithPostSchemaPayload(topic, schemaPayload)
 	assert.NoError(t, err)
 	assert.Equal(t, compatibility.IsCompatibility, true)
-	assert.Equal(t, compatibility.SchemaCompatibilityStrategy, utils.SchemaCompatibilityStrategy("FULL"))
+	assert.Equal(t, compatibility.SchemaCompatibilityStrategy, utils.SchemaAutoUpdateCompatibilityStrategy("FULL"))
 
 	err = admin.Schemas().ForceDeleteSchema(topic)
 	assert.NoError(t, err)

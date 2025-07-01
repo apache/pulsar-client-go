@@ -19,20 +19,20 @@ package utils
 
 import "github.com/pkg/errors"
 
-type SchemaCompatibilityStrategy string
+type SchemaAutoUpdateCompatibilityStrategy string
 
 const (
-	AutoUpdateDisabled SchemaCompatibilityStrategy = "AutoUpdateDisabled"
-	Backward           SchemaCompatibilityStrategy = "Backward"
-	Forward            SchemaCompatibilityStrategy = "Forward"
-	Full               SchemaCompatibilityStrategy = "Full"
-	AlwaysCompatible   SchemaCompatibilityStrategy = "AlwaysCompatible"
-	BackwardTransitive SchemaCompatibilityStrategy = "BackwardTransitive"
-	ForwardTransitive  SchemaCompatibilityStrategy = "ForwardTransitive"
-	FullTransitive     SchemaCompatibilityStrategy = "FullTransitive"
+	AutoUpdateDisabled SchemaAutoUpdateCompatibilityStrategy = "AutoUpdateDisabled"
+	Backward           SchemaAutoUpdateCompatibilityStrategy = "Backward"
+	Forward            SchemaAutoUpdateCompatibilityStrategy = "Forward"
+	Full               SchemaAutoUpdateCompatibilityStrategy = "Full"
+	AlwaysCompatible   SchemaAutoUpdateCompatibilityStrategy = "AlwaysCompatible"
+	BackwardTransitive SchemaAutoUpdateCompatibilityStrategy = "BackwardTransitive"
+	ForwardTransitive  SchemaAutoUpdateCompatibilityStrategy = "ForwardTransitive"
+	FullTransitive     SchemaAutoUpdateCompatibilityStrategy = "FullTransitive"
 )
 
-func ParseSchemaAutoUpdateCompatibilityStrategy(str string) (SchemaCompatibilityStrategy, error) {
+func ParseSchemaAutoUpdateCompatibilityStrategy(str string) (SchemaAutoUpdateCompatibilityStrategy, error) {
 	switch str {
 	case "AutoUpdateDisabled":
 		return AutoUpdateDisabled, nil
@@ -55,6 +55,6 @@ func ParseSchemaAutoUpdateCompatibilityStrategy(str string) (SchemaCompatibility
 	}
 }
 
-func (s SchemaCompatibilityStrategy) String() string {
+func (s SchemaAutoUpdateCompatibilityStrategy) String() string {
 	return string(s)
 }
