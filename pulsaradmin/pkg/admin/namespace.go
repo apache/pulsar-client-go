@@ -90,21 +90,22 @@ type Namespaces interface {
 	// GetSchemaValidationEnforced returns schema validation enforced for namespace
 	GetSchemaValidationEnforced(namespace utils.NameSpaceName) (bool, error)
 
-	// SetSchemaAutoUpdateCompatibilityStrategy sets the strategy used to check the a new schema provided
+	// SetSchemaAutoUpdateCompatibilityStrategy sets the strategy used to check the new schema provided
 	// by a producer is compatible with the current schema before it is installed
 	SetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName,
 		strategy utils.SchemaAutoUpdateCompatibilityStrategy) error
 
-	// GetSchemaAutoUpdateCompatibilityStrategy returns the strategy used to check the a new schema provided
+	// GetSchemaAutoUpdateCompatibilityStrategy returns the strategy used to check the new schema provided
 	// by a producer is compatible with the current schema before it is installed
-	GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName) (utils.SchemaAutoUpdateCompatibilityStrategy, error)
+	GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName) (
+		utils.SchemaAutoUpdateCompatibilityStrategy, error)
 
-	// SetSchemaCompatibilityStrategy sets the strategy used to check the a new schema provided
+	// SetSchemaCompatibilityStrategy sets the strategy used to check the new schema provided
 	// by a producer is compatible with the current schema before it is installed
 	SetSchemaCompatibilityStrategy(namespace utils.NameSpaceName,
 		strategy utils.SchemaCompatibilityStrategy) error
 
-	// GetSchemaCompatibilityStrategy returns the strategy used to check the a new schema provided
+	// GetSchemaCompatibilityStrategy returns the strategy used to check the new schema provided
 	// by a producer is compatible with the current schema before it is installed
 	GetSchemaCompatibilityStrategy(namespace utils.NameSpaceName) (utils.SchemaCompatibilityStrategy, error)
 
