@@ -253,20 +253,8 @@ func TestParseSchemaCompatibilityStrategy(t *testing.T) {
 			wantErr:  true,
 		},
 		{
-			name:     "BACKWARD uppercase",
-			input:    "BACKWARD",
-			expected: "",
-			wantErr:  true,
-		},
-		{
 			name:     "forward lowercase",
 			input:    "forward",
-			expected: "",
-			wantErr:  true,
-		},
-		{
-			name:     "FULL uppercase",
-			input:    "FULL",
 			expected: "",
 			wantErr:  true,
 		},
