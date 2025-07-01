@@ -99,6 +99,15 @@ type Namespaces interface {
 	// by a producer is compatible with the current schema before it is installed
 	GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.NameSpaceName) (utils.SchemaAutoUpdateCompatibilityStrategy, error)
 
+	// SetSchemaCompatibilityStrategy sets the strategy used to check the a new schema provided
+	// by a producer is compatible with the current schema before it is installed
+	SetSchemaCompatibilityStrategy(namespace utils.NameSpaceName,
+		strategy utils.SchemaCompatibilityStrategy) error
+
+	// GetSchemaCompatibilityStrategy returns the strategy used to check the a new schema provided
+	// by a producer is compatible with the current schema before it is installed
+	GetSchemaCompatibilityStrategy(namespace utils.NameSpaceName) (utils.SchemaCompatibilityStrategy, error)
+
 	// ClearOffloadDeleteLag clears the offload deletion lag for a namespace.
 	ClearOffloadDeleteLag(namespace utils.NameSpaceName) error
 
@@ -510,6 +519,26 @@ func (n *namespaces) GetSchemaAutoUpdateCompatibilityStrategy(namespace utils.Na
 		return "", err
 	}
 	s, err := utils.ParseSchemaAutoUpdateCompatibilityStrategy(strings.ReplaceAll(string(b), "\"", ""))
+	if err != nil {
+		return "", err
+	}
+	return s, nil
+}
+
+func (n *namespaces) SetSchemaCompatibilityStrategy(namespace utils.NameSpaceName,
+	strategy utils.SchemaCompatibilityStrategy) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "schemaCompatibilityStrategy")
+	return n.pulsar.Client.Put(endpoint, strategy.String())
+}
+
+func (n *namespaces) GetSchemaCompatibilityStrategy(namespace utils.NameSpaceName) (
+	utils.SchemaCompatibilityStrategy, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "schemaCompatibilityStrategy")
+	b, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
+	if err != nil {
+		return "", err
+	}
+	s, err := utils.ParseSchemaCompatibilityStrategy(strings.ReplaceAll(string(b), "\"", ""))
 	if err != nil {
 		return "", err
 	}

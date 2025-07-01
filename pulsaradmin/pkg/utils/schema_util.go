@@ -49,8 +49,8 @@ type GetAllSchemasResponse struct {
 }
 
 type IsCompatibility struct {
-	IsCompatibility             bool                                  `json:"compatibility"`
-	SchemaCompatibilityStrategy SchemaAutoUpdateCompatibilityStrategy `json:"schemaCompatibilityStrategy"`
+	IsCompatibility             bool                        `json:"compatibility"`
+	SchemaCompatibilityStrategy SchemaCompatibilityStrategy `json:"schemaCompatibilityStrategy"`
 }
 
 func ConvertGetSchemaResponseToSchemaInfo(tn *TopicName, response GetSchemaResponse) *SchemaInfo {
