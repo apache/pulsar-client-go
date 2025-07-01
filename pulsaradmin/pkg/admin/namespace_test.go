@@ -19,6 +19,7 @@ package admin
 
 import (
 	"testing"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
@@ -468,6 +469,9 @@ func TestNamespaces_GetSchemaCompatibilityStrategy(t *testing.T) {
 			t.Skipf("Skipping test due to connection error: %v", err)
 		}
 
+		// Wait for the strategy to be set
+		time.Sleep(5 * time.Second)
+
 		// Get and verify the strategy
 		retrievedStrategy, err := admin.Namespaces().GetSchemaCompatibilityStrategy(*namespace)
 		if err != nil {
@@ -481,6 +485,9 @@ func TestNamespaces_GetSchemaCompatibilityStrategy(t *testing.T) {
 	if err != nil {
 		t.Skipf("Skipping test due to connection error: %v", err)
 	}
+
+	// Wait for the strategy to be set
+	time.Sleep(5 * time.Second)
 
 	defaultStrategy, err := admin.Namespaces().GetSchemaCompatibilityStrategy(*namespace)
 	if err != nil {
