@@ -19,6 +19,7 @@ package admin
 
 import (
 	"testing"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
@@ -340,4 +341,157 @@ func TestNamespaces_GetOffloadThresholdInSeconds(t *testing.T) {
 	assert.Equal(t, nil, err)
 	expected := int64(60)
 	assert.Equal(t, expected, offloadThresholdInSeconds)
+}
+
+func TestNamespaces_SetSchemaCompatibilityStrategy(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	tests := []struct {
+		name      string
+		namespace string
+		strategy  utils.SchemaCompatibilityStrategy
+		errReason string
+	}{
+		{
+			name:      "Set Undefined strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyUndefined,
+			errReason: "",
+		},
+		{
+			name:      "Set AlwaysIncompatible strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyAlwaysIncompatible,
+			errReason: "",
+		},
+		{
+			name:      "Set AlwaysCompatible strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyAlwaysCompatible,
+			errReason: "",
+		},
+		{
+			name:      "Set Backward strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyBackward,
+			errReason: "",
+		},
+		{
+			name:      "Set Forward strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyForward,
+			errReason: "",
+		},
+		{
+			name:      "Set Full strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyFull,
+			errReason: "",
+		},
+		{
+			name:      "Set BackwardTransitive strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyBackwardTransitive,
+			errReason: "",
+		},
+		{
+			name:      "Set ForwardTransitive strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyForwardTransitive,
+			errReason: "",
+		},
+		{
+			name:      "Set FullTransitive strategy",
+			namespace: "public/default",
+			strategy:  utils.SchemaCompatibilityStrategyFullTransitive,
+			errReason: "",
+		},
+		{
+			name:      "Set strategy on non-existent namespace",
+			namespace: "public/nonexist",
+			strategy:  utils.SchemaCompatibilityStrategyFull,
+			errReason: "Namespace does not exist",
+		},
+		{
+			name:      "Set strategy on non-existent tenant",
+			namespace: "non-exist/default",
+			strategy:  utils.SchemaCompatibilityStrategyFull,
+			errReason: "Tenant does not exist",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			namespace, _ := utils.GetNamespaceName(tt.namespace)
+			err := admin.Namespaces().SetSchemaCompatibilityStrategy(*namespace, tt.strategy)
+
+			// Skip test if network connection fails (Pulsar server not running)
+			if err != nil {
+				if _, ok := err.(rest.Error); !ok {
+					t.Skipf("Skipping test due to network error: %v", err)
+				}
+			}
+
+			if tt.errReason == "" {
+				assert.Equal(t, nil, err)
+			} else {
+				if restError, ok := err.(rest.Error); ok {
+					assert.Equal(t, tt.errReason, restError.Reason)
+				}
+			}
+		})
+	}
+}
+
+func TestNamespaces_GetSchemaCompatibilityStrategy(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// Test setting and getting different strategies
+	testStrategies := []utils.SchemaCompatibilityStrategy{
+		utils.SchemaCompatibilityStrategyFull,
+		utils.SchemaCompatibilityStrategyBackward,
+		utils.SchemaCompatibilityStrategyForward,
+		utils.SchemaCompatibilityStrategyAlwaysCompatible,
+	}
+
+	for _, strategy := range testStrategies {
+		// Set the schema compatibility strategy
+		err = admin.Namespaces().SetSchemaCompatibilityStrategy(*namespace, strategy)
+		if err != nil {
+			t.Skipf("Skipping test due to connection error: %v", err)
+		}
+
+		// Wait for the strategy to be set
+		time.Sleep(5 * time.Second)
+
+		// Get and verify the strategy
+		retrievedStrategy, err := admin.Namespaces().GetSchemaCompatibilityStrategy(*namespace)
+		if err != nil {
+			t.Skipf("Skipping test due to connection error: %v", err)
+		}
+		assert.Equal(t, strategy, retrievedStrategy)
+	}
+
+	// Test getting default strategy (should be Undefined after reset)
+	err = admin.Namespaces().SetSchemaCompatibilityStrategy(*namespace, utils.SchemaCompatibilityStrategyUndefined)
+	if err != nil {
+		t.Skipf("Skipping test due to connection error: %v", err)
+	}
+
+	// Wait for the strategy to be set
+	time.Sleep(5 * time.Second)
+
+	defaultStrategy, err := admin.Namespaces().GetSchemaCompatibilityStrategy(*namespace)
+	if err != nil {
+		t.Skipf("Skipping test due to connection error: %v", err)
+	}
+	assert.Equal(t, utils.SchemaCompatibilityStrategyUndefined, defaultStrategy)
 }

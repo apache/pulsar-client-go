@@ -17,22 +17,24 @@
 
 package utils
 
-import "github.com/pkg/errors"
-
-type SchemaCompatibilityStrategy string
-
-const (
-	AutoUpdateDisabled SchemaCompatibilityStrategy = "AutoUpdateDisabled"
-	Backward           SchemaCompatibilityStrategy = "Backward"
-	Forward            SchemaCompatibilityStrategy = "Forward"
-	Full               SchemaCompatibilityStrategy = "Full"
-	AlwaysCompatible   SchemaCompatibilityStrategy = "AlwaysCompatible"
-	BackwardTransitive SchemaCompatibilityStrategy = "BackwardTransitive"
-	ForwardTransitive  SchemaCompatibilityStrategy = "ForwardTransitive"
-	FullTransitive     SchemaCompatibilityStrategy = "FullTransitive"
+import (
+	"github.com/pkg/errors"
 )
 
-func ParseSchemaAutoUpdateCompatibilityStrategy(str string) (SchemaCompatibilityStrategy, error) {
+type SchemaAutoUpdateCompatibilityStrategy string
+
+const (
+	AutoUpdateDisabled SchemaAutoUpdateCompatibilityStrategy = "AutoUpdateDisabled"
+	Backward           SchemaAutoUpdateCompatibilityStrategy = "Backward"
+	Forward            SchemaAutoUpdateCompatibilityStrategy = "Forward"
+	Full               SchemaAutoUpdateCompatibilityStrategy = "Full"
+	AlwaysCompatible   SchemaAutoUpdateCompatibilityStrategy = "AlwaysCompatible"
+	BackwardTransitive SchemaAutoUpdateCompatibilityStrategy = "BackwardTransitive"
+	ForwardTransitive  SchemaAutoUpdateCompatibilityStrategy = "ForwardTransitive"
+	FullTransitive     SchemaAutoUpdateCompatibilityStrategy = "FullTransitive"
+)
+
+func ParseSchemaAutoUpdateCompatibilityStrategy(str string) (SchemaAutoUpdateCompatibilityStrategy, error) {
 	switch str {
 	case "AutoUpdateDisabled":
 		return AutoUpdateDisabled, nil
@@ -51,7 +53,50 @@ func ParseSchemaAutoUpdateCompatibilityStrategy(str string) (SchemaCompatibility
 	case "FullTransitive":
 		return FullTransitive, nil
 	default:
-		return "", errors.Errorf("Invalid auth strategy %s", str)
+		return "", errors.Errorf("Invalid schema auto update compatibility strategy %s", str)
+	}
+}
+
+func (s SchemaAutoUpdateCompatibilityStrategy) String() string {
+	return string(s)
+}
+
+type SchemaCompatibilityStrategy string
+
+const (
+	SchemaCompatibilityStrategyUndefined          SchemaCompatibilityStrategy = "UNDEFINED"
+	SchemaCompatibilityStrategyAlwaysIncompatible SchemaCompatibilityStrategy = "ALWAYS_INCOMPATIBLE"
+	SchemaCompatibilityStrategyAlwaysCompatible   SchemaCompatibilityStrategy = "ALWAYS_COMPATIBLE"
+	SchemaCompatibilityStrategyBackward           SchemaCompatibilityStrategy = "BACKWARD"
+	SchemaCompatibilityStrategyForward            SchemaCompatibilityStrategy = "FORWARD"
+	SchemaCompatibilityStrategyFull               SchemaCompatibilityStrategy = "FULL"
+	SchemaCompatibilityStrategyBackwardTransitive SchemaCompatibilityStrategy = "BACKWARD_TRANSITIVE"
+	SchemaCompatibilityStrategyForwardTransitive  SchemaCompatibilityStrategy = "FORWARD_TRANSITIVE"
+	SchemaCompatibilityStrategyFullTransitive     SchemaCompatibilityStrategy = "FULL_TRANSITIVE"
+)
+
+func ParseSchemaCompatibilityStrategy(str string) (SchemaCompatibilityStrategy, error) {
+	switch str {
+	case "UNDEFINED":
+		return SchemaCompatibilityStrategyUndefined, nil
+	case "ALWAYS_INCOMPATIBLE":
+		return SchemaCompatibilityStrategyAlwaysIncompatible, nil
+	case "ALWAYS_COMPATIBLE":
+		return SchemaCompatibilityStrategyAlwaysCompatible, nil
+	case "BACKWARD":
+		return SchemaCompatibilityStrategyBackward, nil
+	case "FORWARD":
+		return SchemaCompatibilityStrategyForward, nil
+	case "FULL":
+		return SchemaCompatibilityStrategyFull, nil
+	case "BACKWARD_TRANSITIVE":
+		return SchemaCompatibilityStrategyBackwardTransitive, nil
+	case "FORWARD_TRANSITIVE":
+		return SchemaCompatibilityStrategyForwardTransitive, nil
+	case "FULL_TRANSITIVE":
+		return SchemaCompatibilityStrategyFullTransitive, nil
+	default:
+		return "", errors.Errorf("Invalid schema compatibility strategy %s", str)
 	}
 }
 

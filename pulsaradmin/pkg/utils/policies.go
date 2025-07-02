@@ -47,33 +47,36 @@ type Policies struct {
 	PublishMaxMessageRate       map[string]PublishRate            `json:"publishMaxMessageRate"`
 	ClusterSubscribeRate        map[string]SubscribeRate          `json:"clusterSubscribeRate"`
 	TopicAutoCreationConfig     *TopicAutoCreationConfig          `json:"autoTopicCreationOverride"`
-	SchemaCompatibilityStrategy SchemaCompatibilityStrategy       `json:"schema_auto_update_compatibility_strategy"`
-	AuthPolicies                AuthPolicies                      `json:"auth_policies"`
-	SubscriptionAuthMode        SubscriptionAuthMode              `json:"subscription_auth_mode"`
-	IsAllowAutoUpdateSchema     *bool                             `json:"is_allow_auto_update_schema"`
+	//nolint:lll
+	SchemaAutoUpdateCompatibilityStrategy SchemaAutoUpdateCompatibilityStrategy `json:"schema_auto_update_compatibility_strategy"`
+	SchemaCompatibilityStrategy           SchemaCompatibilityStrategy           `json:"schema_compatibility_strategy"`
+	AuthPolicies                          AuthPolicies                          `json:"auth_policies"`
+	SubscriptionAuthMode                  SubscriptionAuthMode                  `json:"subscription_auth_mode"`
+	IsAllowAutoUpdateSchema               *bool                                 `json:"is_allow_auto_update_schema"`
 }
 
 func NewDefaultPolicies() *Policies {
 	return &Policies{
-		AuthPolicies:                *NewAuthPolicies(),
-		ReplicationClusters:         make([]string, 0, 10),
-		BacklogQuotaMap:             make(map[BacklogQuotaType]BacklogQuota),
-		TopicDispatchRate:           make(map[string]DispatchRate),
-		SubscriptionDispatchRate:    make(map[string]DispatchRate),
-		ReplicatorDispatchRate:      make(map[string]DispatchRate),
-		PublishMaxMessageRate:       make(map[string]PublishRate),
-		ClusterSubscribeRate:        make(map[string]SubscribeRate),
-		LatencyStatsSampleRate:      make(map[string]int),
-		MessageTTLInSeconds:         nil,
-		Deleted:                     false,
-		EncryptionRequired:          false,
-		SubscriptionAuthMode:        None,
-		MaxProducersPerTopic:        nil,
-		MaxConsumersPerSubscription: nil,
-		MaxConsumersPerTopic:        nil,
-		CompactionThreshold:         nil,
-		OffloadThreshold:            -1,
-		SchemaCompatibilityStrategy: Full,
-		SchemaValidationEnforced:    false,
+		AuthPolicies:                          *NewAuthPolicies(),
+		ReplicationClusters:                   make([]string, 0, 10),
+		BacklogQuotaMap:                       make(map[BacklogQuotaType]BacklogQuota),
+		TopicDispatchRate:                     make(map[string]DispatchRate),
+		SubscriptionDispatchRate:              make(map[string]DispatchRate),
+		ReplicatorDispatchRate:                make(map[string]DispatchRate),
+		PublishMaxMessageRate:                 make(map[string]PublishRate),
+		ClusterSubscribeRate:                  make(map[string]SubscribeRate),
+		LatencyStatsSampleRate:                make(map[string]int),
+		MessageTTLInSeconds:                   nil,
+		Deleted:                               false,
+		EncryptionRequired:                    false,
+		SubscriptionAuthMode:                  None,
+		MaxProducersPerTopic:                  nil,
+		MaxConsumersPerSubscription:           nil,
+		MaxConsumersPerTopic:                  nil,
+		CompactionThreshold:                   nil,
+		OffloadThreshold:                      -1,
+		SchemaCompatibilityStrategy:           SchemaCompatibilityStrategyUndefined,
+		SchemaAutoUpdateCompatibilityStrategy: Full,
+		SchemaValidationEnforced:              false,
 	}
 }
