@@ -147,7 +147,7 @@ func (t *transactionHandler) runEventsLoop() {
 
 func (t *transactionHandler) reconnectToBroker() {
 	var delayReconnectTime time.Duration
-	var defaultBackoff = backoff.DefaultBackoff{}
+	var defaultBackoff = backoff.NewDefaultBackoff()
 
 	opFn := func() (struct{}, error) {
 		if t.getState() == txnHandlerClosed {
