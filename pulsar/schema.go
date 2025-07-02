@@ -26,6 +26,7 @@ import (
 	"sync"
 	"unsafe"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	log "github.com/sirupsen/logrus"
 
 	"github.com/hamba/avro/v2"
@@ -35,30 +36,27 @@ import (
 	"google.golang.org/protobuf/types/descriptorpb"
 )
 
-type SchemaType int
+type SchemaType internal.SchemaType
 
 const (
-	NONE        SchemaType = iota //No schema defined
-	STRING                        //Simple String encoding with UTF-8
-	JSON                          //JSON object encoding and validation
-	PROTOBUF                      //Protobuf message encoding and decoding
-	AVRO                          //Serialize and deserialize via Avro
-	BOOLEAN                       //
-	INT8                          //A 8-byte integer.
-	INT16                         //A 16-byte integer.
-	INT32                         //A 32-byte integer.
-	INT64                         //A 64-byte integer.
-	FLOAT                         //A float number.
-	DOUBLE                        //A double number
-	_                             //
-	_                             //
-	_                             //
-	KeyValue                      //A Schema that contains Key Schema and Value Schema.
-	BYTES       = 0               //A bytes array.
-	AUTO        = -2              //
-	AutoConsume = -3              //Auto Consume Type.
-	AutoPublish = -4              // Auto Publish Type.
-	ProtoNative = 20              //Protobuf native message encoding and decoding
+	NONE        = SchemaType(internal.NONE)
+	STRING      = SchemaType(internal.STRING)
+	JSON        = SchemaType(internal.JSON)
+	PROTOBUF    = SchemaType(internal.PROTOBUF)
+	AVRO        = SchemaType(internal.AVRO)
+	BOOLEAN     = SchemaType(internal.BOOLEAN)
+	INT8        = SchemaType(internal.INT8)
+	INT16       = SchemaType(internal.INT16)
+	INT32       = SchemaType(internal.INT32)
+	INT64       = SchemaType(internal.INT64)
+	FLOAT       = SchemaType(internal.FLOAT)
+	DOUBLE      = SchemaType(internal.DOUBLE)
+	KeyValue    = SchemaType(internal.KeyValue)
+	BYTES       = SchemaType(internal.BYTES)
+	AUTO        = SchemaType(internal.AUTO)
+	AutoConsume = SchemaType(internal.AutoConsume)
+	AutoPublish = SchemaType(internal.AutoPublish)
+	ProtoNative = SchemaType(internal.ProtoNative)
 )
 
 // Encapsulates data around the schema definition

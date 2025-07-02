@@ -18,9 +18,11 @@
 package internal
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 
 	"google.golang.org/protobuf/proto"
 
@@ -32,6 +34,13 @@ import (
 type LookupResult struct {
 	LogicalAddr  *url.URL
 	PhysicalAddr *url.URL
+}
+
+// LookupSchema return lookup schema result
+type LookupSchema struct {
+	SchemaType SchemaType
+	Data       []byte
+	Properties map[string]string
 }
 
 // GetTopicsOfNamespaceMode for CommandGetTopicsOfNamespace_Mode
@@ -62,7 +71,7 @@ type LookupService interface {
 	GetTopicsOfNamespace(namespace string, mode GetTopicsOfNamespaceMode) ([]string, error)
 
 	// GetSchema returns schema for a given version.
-	GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error)
+	GetSchema(topic string, schemaVersion []byte) (*LookupSchema, error)
 
 	GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error)
 
@@ -97,7 +106,7 @@ func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResol
 	}
 }
 
-func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *pb.Schema, err error) {
+func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (*LookupSchema, error) {
 	id := ls.rpcClient.NewRequestID()
 	req := &pb.CommandGetSchema{
 		RequestId:     proto.Uint64(id),
@@ -106,12 +115,23 @@ func (ls *lookupService) GetSchema(topic string, schemaVersion []byte) (schema *
 	}
 	res, err := ls.rpcClient.RequestToAnyBroker(id, pb.BaseCommand_GET_SCHEMA, req)
 	if err != nil {
-		return nil, err
+		return &LookupSchema{}, err
 	}
 	if res.Response.Error != nil {
-		return nil, errors.New(res.Response.GetError().String())
+		return &LookupSchema{}, errors.New(res.Response.GetError().String())
 	}
-	return res.Response.GetSchemaResponse.Schema, nil
+
+	//	deserialize pbSchema and convert it to LookupSchema struct
+	pbSchema := res.Response.GetSchemaResponse.Schema
+	if pbSchema == nil {
+		err = fmt.Errorf("schema not found for topic: [ %v ], schema version : [ %v ]", topic, schemaVersion)
+		return &LookupSchema{}, err
+	}
+	return &LookupSchema{
+		SchemaType: SchemaType(int(*pbSchema.Type)),
+		Data:       pbSchema.SchemaData,
+		Properties: ConvertToStringMap(pbSchema.Properties),
+	}, nil
 }
 
 func (ls *lookupService) GetBrokerAddress(brokerServiceURL string, proxyThroughServiceURL bool) (*LookupResult, error) {
@@ -273,6 +293,8 @@ const HTTPAdminServiceV1Format string = "/admin/%s/partitions"
 const HTTPAdminServiceV2Format string = "/admin/v2/%s/partitions"
 const HTTPTopicUnderNamespaceV1 string = "/admin/namespaces/%s/destinations?mode=%s"
 const HTTPTopicUnderNamespaceV2 string = "/admin/v2/namespaces/%s/topics?mode=%s"
+const HTTPSchemaV2 string = "/admin/v2/schemas/%s/schema"
+const HTTPSchemaWithVersionV2 string = "/admin/v2/schemas/%s/schema/%d"
 
 type httpLookupData struct {
 	BrokerURL    string `json:"brokerUrl"`
@@ -287,6 +309,12 @@ type httpLookupService struct {
 	tlsEnabled          bool
 	log                 log.Logger
 	metrics             *Metrics
+}
+
+type httpLookupSchema struct {
+	HTTPSchemaType string            `json:"type"`
+	Data           string            `json:"data"`
+	Properties     map[string]string `json:"properties"`
 }
 
 func (h *httpLookupService) GetBrokerAddress(brokerServiceURL string, _ bool) (*LookupResult, error) {
@@ -371,8 +399,42 @@ func (h *httpLookupService) GetTopicsOfNamespace(namespace string, mode GetTopic
 	return topics, nil
 }
 
-func (h *httpLookupService) GetSchema(_ string, _ []byte) (schema *pb.Schema, err error) {
-	return nil, errors.New("GetSchema is not supported by httpLookupService")
+func (h *httpLookupService) GetSchema(topic string, schemaVersion []byte) (*LookupSchema, error) {
+	topicName, err := ParseTopicName(topic)
+	if err != nil {
+		return nil, err
+	}
+	topicRestPath := fmt.Sprintf("%s/%s", topicName.Namespace, topicName.Topic)
+	var path string
+	if schemaVersion != nil {
+		path = fmt.Sprintf(HTTPSchemaWithVersionV2, topicRestPath, int64(binary.BigEndian.Uint64(schemaVersion)))
+	} else {
+		path = fmt.Sprintf(HTTPSchemaV2, topicRestPath)
+	}
+	lookupSchema := &httpLookupSchema{}
+	if err := h.httpClient.Get(path, &lookupSchema, nil); err != nil {
+		if strings.HasPrefix(err.Error(), "Code: 404") {
+			err = fmt.Errorf("schema not found for topic: [ %v ], schema version : [ %v ]", topic, schemaVersion)
+		}
+		h.log.Errorf("schema [ %v ] request error, schema version : [ %v ]", topic, schemaVersion)
+		return &LookupSchema{}, err
+	}
+
+	//	deserialize httpSchema and convert it to LookupSchema struct
+	schemaType, exists := HTTPSchemaTypeMap[strings.ToUpper(lookupSchema.HTTPSchemaType)]
+	if !exists {
+		err = fmt.Errorf("unsupported schema type [%s] for topic: [ %v ], schema version : [ %v ]",
+			lookupSchema.HTTPSchemaType,
+			topic,
+			schemaVersion,
+		)
+		return nil, err
+	}
+	return &LookupSchema{
+		SchemaType: schemaType,
+		Data:       []byte(lookupSchema.Data),
+		Properties: lookupSchema.Properties,
+	}, nil
 }
 
 func (h *httpLookupService) ServiceNameResolver() *ServiceNameResolver {
