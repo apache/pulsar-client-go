@@ -25,14 +25,14 @@ import (
 )
 
 func TestBackoff_NextMinValue(t *testing.T) {
-	backoff := &DefaultBackoff{}
+	backoff := NewDefaultBackoff()
 	delay := backoff.Next()
 	assert.GreaterOrEqual(t, int64(delay), int64(100*time.Millisecond))
 	assert.LessOrEqual(t, int64(delay), int64(120*time.Millisecond))
 }
 
 func TestBackoff_NextExponentialBackoff(t *testing.T) {
-	backoff := &DefaultBackoff{}
+	backoff := NewDefaultBackoff()
 	previousDelay := backoff.Next()
 	// the last value before capping to the max value is 51.2 s (.1, .2, .4, .8, 1.6, 3.2, 6.4, 12.8, 25.6, 51.2)
 	for previousDelay < 51*time.Second {
@@ -47,7 +47,7 @@ func TestBackoff_NextExponentialBackoff(t *testing.T) {
 }
 
 func TestBackoff_NextMaxValue(t *testing.T) {
-	backoff := &DefaultBackoff{}
+	backoff := NewDefaultBackoff()
 	var delay time.Duration
 	for delay < maxBackoff {
 		delay = backoff.Next()
