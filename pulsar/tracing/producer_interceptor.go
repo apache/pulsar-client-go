@@ -15,45 +15,28 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsartracing
+package tracing
 
 import (
 	"context"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const toPrefix = "To__"
 
-type ProducerInterceptor struct {
-}
+type ProducerInterceptor struct{}
 
 func (t *ProducerInterceptor) BeforeSend(producer pulsar.Producer, message *pulsar.ProducerMessage) {
-	buildAndInjectSpan(message, producer).Finish()
-}
-
-func (t *ProducerInterceptor) OnSendAcknowledgement(_ pulsar.Producer,
-	_ *pulsar.ProducerMessage,
-	_ pulsar.MessageID) {
-}
-
-func buildAndInjectSpan(message *pulsar.ProducerMessage, producer pulsar.Producer) opentracing.Span {
-	tracer := opentracing.GlobalTracer()
-	spanContext := ExtractSpanContextFromProducerMessage(message)
-
-	var span opentracing.Span
-
-	var startSpanOptions []opentracing.StartSpanOption
-	if spanContext != nil {
-		startSpanOptions = []opentracing.StartSpanOption{opentracing.FollowsFrom(spanContext)}
-	}
-
-	span = tracer.StartSpan(toPrefix+producer.Topic(), startSpanOptions...)
-
+	ctx := ExtractSpanContextFromProducerMessage(context.Background(), message)
+	tracer := otel.Tracer(componentName)
+	ctx, span := tracer.Start(ctx, toPrefix+producer.Topic(), trace.WithSpanKind(trace.SpanKindProducer))
 	enrichProducerSpan(message, producer, span)
+	InjectProducerMessageSpanContext(ctx, message)
+	span.End()
+}
 
-	InjectProducerMessageSpanContext(opentracing.ContextWithSpan(context.Background(), span), message)
-
-	return span
+func (t *ProducerInterceptor) OnSendAcknowledgement(_ pulsar.Producer, _ *pulsar.ProducerMessage, _ pulsar.MessageID) {
 }
