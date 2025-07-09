@@ -2347,7 +2347,7 @@ func TestProducerSendWithContext(t *testing.T) {
 	// Make ctx be canceled to invalidate the context immediately
 	cancel()
 	_, err = producer.Send(ctx, &ProducerMessage{
-		Payload: make([]byte, 1024*1024),
+		Payload: make([]byte, 1024),
 	})
 	//  producer.Send should fail and return err context.Canceled
 	assert.True(t, errors.Is(err, context.Canceled))
@@ -2606,4 +2606,96 @@ func TestSelectConnectionForSameProducer(t *testing.T) {
 	}
 
 	client.Close()
+}
+
+func TestProducerKeepReconnectingAndThenCallSendAsync(t *testing.T) {
+	testProducerKeepReconnectingAndThenCallSendAsync(t, false)
+	testProducerKeepReconnectingAndThenCallSendAsync(t, true)
+}
+
+func testProducerKeepReconnectingAndThenCallSendAsync(t *testing.T, isDisableBatching bool) {
+	t.Helper()
+
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	defer c.Terminate(context.Background())
+
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 5 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	var testProducer Producer
+	require.Eventually(t, func() bool {
+		testProducer, err = client.CreateProducer(ProducerOptions{
+			Topic:               newTopicName(),
+			Schema:              NewBytesSchema(nil),
+			SendTimeout:         3 * time.Second,
+			DisableBatching:     isDisableBatching,
+			BatchingMaxMessages: 5,
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+
+	numMessages := 10
+	// Send 10 messages synchronously
+	for i := 0; i < numMessages; i++ {
+		send, err := testProducer.Send(context.Background(), &ProducerMessage{Payload: []byte("test")})
+		require.NoError(t, err)
+		require.NotNil(t, send)
+	}
+
+	// Send 10 messages asynchronously
+	errs := make(chan error, numMessages)
+	for i := 0; i < numMessages; i++ {
+		testProducer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: []byte("test"),
+		}, func(id MessageID, producerMessage *ProducerMessage, err error) {
+			errs <- err
+		})
+	}
+
+	for i := 0; i < numMessages; i++ {
+		select {
+		case <-time.After(10 * time.Second):
+			t.Fatal("test timeout")
+		case err := <-errs:
+			require.NoError(t, err)
+		}
+	}
+
+	// stop pulsar server
+	timeout := 10 * time.Second
+	err = c.Stop(context.Background(), &timeout)
+	require.NoError(t, err)
+
+	finalErr := make(chan error, 1)
+	// send again
+	testProducer.SendAsync(context.Background(), &ProducerMessage{
+		Payload: []byte("test"),
+	}, func(_ MessageID, _ *ProducerMessage, err error) {
+		finalErr <- err
+	})
+	select {
+	case <-time.After(10 * time.Second):
+		t.Fatal("test timeout")
+	case err = <-finalErr:
+		// should get a timeout error
+		require.ErrorIs(t, err, ErrSendTimeout)
+	}
 }
