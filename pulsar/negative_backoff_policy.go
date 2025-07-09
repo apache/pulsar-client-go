@@ -47,5 +47,5 @@ func (nbp *defaultNackBackoffPolicy) Next(redeliveryCount uint32) time.Duration 
 		backoff = float64(maxNackTime)
 	}
 
-	return time.Duration(math.Min(math.Abs(backoff), float64(maxNackTime)))
+	return time.Duration(math.Min(backoff, float64(maxNackTime)))
 }
