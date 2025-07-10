@@ -15,44 +15,28 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsartracing
+package tracing
 
 import (
 	"context"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const fromPrefix = "From__"
 
-type ConsumerInterceptor struct {
-}
+type ConsumerInterceptor struct{}
 
 func (t *ConsumerInterceptor) BeforeConsume(message pulsar.ConsumerMessage) {
-	buildAndInjectChildSpan(message).Finish()
-}
-
-func (t *ConsumerInterceptor) OnAcknowledge(_ pulsar.Consumer, _ pulsar.MessageID) {}
-
-func (t *ConsumerInterceptor) OnNegativeAcksSend(_ pulsar.Consumer, _ []pulsar.MessageID) {
-}
-
-func buildAndInjectChildSpan(message pulsar.ConsumerMessage) opentracing.Span {
-	tracer := opentracing.GlobalTracer()
-	parentContext := ExtractSpanContextFromConsumerMessage(message)
-
-	var span opentracing.Span
-
-	var startSpanOptions []opentracing.StartSpanOption
-	if parentContext != nil {
-		startSpanOptions = []opentracing.StartSpanOption{opentracing.FollowsFrom(parentContext)}
-	}
-
-	span = tracer.StartSpan(fromPrefix+message.Topic()+"__"+message.Subscription(), startSpanOptions...)
-
+	ctx := ExtractSpanContextFromConsumerMessage(context.Background(), message)
+	tracer := otel.Tracer(componentName)
+	ctx, span := tracer.Start(ctx, fromPrefix+message.Topic()+"__"+message.Subscription(), trace.WithSpanKind(trace.SpanKindConsumer))
 	enrichConsumerSpan(&message, span)
-	InjectConsumerMessageSpanContext(opentracing.ContextWithSpan(context.Background(), span), message)
-
-	return span
+	InjectConsumerMessageSpanContext(ctx, message)
+	span.End()
 }
+
+func (t *ConsumerInterceptor) OnAcknowledge(_ pulsar.Consumer, _ pulsar.MessageID)        {}
+func (t *ConsumerInterceptor) OnNegativeAcksSend(_ pulsar.Consumer, _ []pulsar.MessageID) {}
