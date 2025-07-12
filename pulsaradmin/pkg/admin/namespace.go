@@ -307,7 +307,7 @@ type Namespaces interface {
 	RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error
 
 	// UpdateProperties updates the properties of a namespace
-	UpdateProperties(namespace utils.NameSpaceName) error
+	UpdateProperties(namespace utils.NameSpaceName, properties map[string]string) error
 
 	// GetProperties returns the properties of a namespace
 	GetProperties(namespace utils.NameSpaceName) (map[string]string, error)
@@ -985,14 +985,14 @@ func (n *namespaces) UpdateProperties(namespace utils.NameSpaceName, properties 
 	return n.pulsar.Client.Put(endpoint, properties)
 }
 
-func (n *namespaces) GetProperties(namespace utils.NameSpaceName) (properties map[string]string, error) {
+func (n *namespaces) GetProperties(namespace utils.NameSpaceName) (map[string]string, error) {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "properties")
-	var properties := make(map[string]string)
+	properties := make(map[string]string)
 	err := n.pulsar.Client.Get(endpoint, &properties)
 	return properties, err
 }
 
-func (n *namespaces) RemoveProperties(namespace utils.NameSpaceName) (error) {
+func (n *namespaces) RemoveProperties(namespace utils.NameSpaceName) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "properties")
 	return n.pulsar.Client.Delete(endpoint)
 }
