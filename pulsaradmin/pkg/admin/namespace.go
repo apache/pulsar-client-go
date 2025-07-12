@@ -305,6 +305,15 @@ type Namespaces interface {
 	// RemoveSubscriptionExpirationTime removes subscription expiration time from a namespace,
 	// defaulting to broker settings
 	RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error
+
+	// UpdateProperties updates the properties of a namespace
+	UpdateProperties(namespace utils.NameSpaceName, properties map[string]string) error
+
+	// GetProperties returns the properties of a namespace
+	GetProperties(namespace utils.NameSpaceName) (map[string]string, error)
+
+	// RemoveProperties clears the properties of a namespace
+	RemoveProperties(namespace utils.NameSpaceName) error
 }
 
 type namespaces struct {
@@ -968,5 +977,22 @@ func (n *namespaces) SetSubscriptionExpirationTime(namespace utils.NameSpaceName
 
 func (n *namespaces) RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
+	return n.pulsar.Client.Delete(endpoint)
+}
+
+func (n *namespaces) UpdateProperties(namespace utils.NameSpaceName, properties map[string]string) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "properties")
+	return n.pulsar.Client.Put(endpoint, properties)
+}
+
+func (n *namespaces) GetProperties(namespace utils.NameSpaceName) (map[string]string, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "properties")
+	properties := make(map[string]string)
+	err := n.pulsar.Client.Get(endpoint, &properties)
+	return properties, err
+}
+
+func (n *namespaces) RemoveProperties(namespace utils.NameSpaceName) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "properties")
 	return n.pulsar.Client.Delete(endpoint)
 }

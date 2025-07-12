@@ -495,3 +495,31 @@ func TestNamespaces_GetSchemaCompatibilityStrategy(t *testing.T) {
 	}
 	assert.Equal(t, utils.SchemaCompatibilityStrategyUndefined, defaultStrategy)
 }
+
+func TestNamespaces_Properties(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, err := utils.GetNamespaceName("public/default")
+	assert.Equal(t, err, nil)
+
+	// Namespace properties are expected to be set and retrieved successfully
+	properties := map[string]string{
+		"key-1": "value-1",
+	}
+	err = admin.Namespaces().UpdateProperties(*namespace, properties)
+	assert.Equal(t, err, nil)
+
+	actualProperties, err := admin.Namespaces().GetProperties(*namespace)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, actualProperties, properties)
+
+	// All namespace properties are expected to be deleted successfully
+	err = admin.Namespaces().RemoveProperties(*namespace)
+	assert.Equal(t, err, nil)
+	actualPropertiesAfterRemoveCall, err := admin.Namespaces().GetProperties(*namespace)
+	assert.Equal(t, err, nil)
+	assert.Equal(t, actualPropertiesAfterRemoveCall, map[string]string{})
+}
