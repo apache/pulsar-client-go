@@ -1581,7 +1581,10 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	// send 10 messages
 	for i := 0; i < 10; i++ {
 		if _, err := producer.Send(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Payload:     []byte(fmt.Sprintf("hello-%d", i)),
+			Key:         fmt.Sprintf("key-%d", i),
+			OrderingKey: fmt.Sprintf("key-%d", i),
+			EventTime:   time.Now(),
 		}); err != nil {
 			log.Fatal(err)
 		}
@@ -1623,10 +1626,18 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 		assert.True(t, regex.MatchString(msg.ProducerName()))
 
 		// check original messageId
+		assert.NotEmpty(t, msg.Properties()[SysPropertyOriginMessageID])
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
 
 		// check original topic
-		assert.NotEmpty(t, msg.Properties()[SysPropertyRealTopic])
+		assert.Contains(t, msg.Properties()[SysPropertyRealTopic], topic)
+
+		// check original key
+		assert.NotEmpty(t, msg.Key())
+		assert.NotEmpty(t, msg.OrderingKey())
+
+		// check original event time
+		assert.NotEqual(t, 0, msg.EventTime())
 	}
 
 	// No more messages on the DLQ
@@ -1855,7 +1866,12 @@ func TestRLQ(t *testing.T) {
 	defer producer.Close()
 
 	for i := 0; i < N; i++ {
-		_, err = producer.Send(ctx, &ProducerMessage{Payload: []byte(fmt.Sprintf("MESSAGE_%d", i))})
+		_, err = producer.Send(ctx, &ProducerMessage{
+			Payload:     []byte(fmt.Sprintf("MESSAGE_%d", i)),
+			Key:         fmt.Sprintf("key-%d", i),
+			OrderingKey: fmt.Sprintf("key-%d", i),
+			EventTime:   time.Now(),
+		})
 		assert.Nil(t, err)
 	}
 
@@ -1902,6 +1918,19 @@ func TestRLQ(t *testing.T) {
 	dlqReceived := 0
 	for dlqReceived < N {
 		msg, err := dlqConsumer.Receive(ctx)
+		// check original messageId
+		assert.NotEmpty(t, msg.Properties()[SysPropertyOriginMessageID])
+		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
+
+		// check original topic
+		assert.Contains(t, msg.Properties()[SysPropertyRealTopic], topic)
+
+		// check original key
+		assert.NotEmpty(t, msg.Key())
+		assert.NotEmpty(t, msg.OrderingKey())
+
+		// check original event time
+		assert.NotEqual(t, 0, msg.EventTime())
 		assert.Nil(t, err)
 		dlqConsumer.Ack(msg)
 		dlqReceived++

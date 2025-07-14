@@ -111,21 +111,11 @@ func (r *dlqRouter) run() {
 			producer := r.getProducer(cm.Consumer.(*consumer).options.Schema)
 			msg := cm.Message.(*message)
 			msgID := msg.ID()
-
-			// properties associated with original message
-			properties := msg.Properties()
-
-			// include orinal message id in string format in properties
-			properties[PropertyOriginMessageID] = msgID.String()
-
-			// include original topic name of the message in properties
-			properties[SysPropertyRealTopic] = msg.Topic()
-
 			producer.SendAsync(context.Background(), &ProducerMessage{
 				Payload:             msg.Payload(),
 				Key:                 msg.Key(),
 				OrderingKey:         msg.OrderingKey(),
-				Properties:          properties,
+				Properties:          msg.Properties(),
 				EventTime:           msg.EventTime(),
 				ReplicationClusters: msg.replicationClusters,
 			}, func(_ MessageID, _ *ProducerMessage, err error) {
