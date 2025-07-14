@@ -1580,12 +1580,26 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	defer producer.Close()
 
 	// send 10 messages
+	eventTimeList := make([]time.Time, 10)
+	msgIDList := make([]string, 10)
+	msgKeyList := make([]string, 10)
 	for i := 0; i < 10; i++ {
-		if _, err := producer.Send(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}); err != nil {
+		eventTime := time.Now()
+		eventTimeList[i] = eventTime
+		msgKeyList[i] = fmt.Sprintf("key-%d", i)
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload:     []byte(fmt.Sprintf("hello-%d", i)),
+			Key:         fmt.Sprintf("key-%d", i),
+			OrderingKey: fmt.Sprintf("key-%d", i),
+			EventTime:   eventTime,
+			Properties: map[string]string{
+				"key": fmt.Sprintf("key-%d", i),
+			},
+		})
+		if err != nil {
 			log.Fatal(err)
 		}
+		msgIDList[i] = msgID.String()
 	}
 
 	// receive 10 messages and only ack half-of-them
@@ -1624,10 +1638,27 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 		assert.True(t, regex.MatchString(msg.ProducerName()))
 
 		// check original messageId
+		assert.NotEmpty(t, msg.Properties()[SysPropertyOriginMessageID])
+		assert.Equal(t, msgIDList[expectedMsgIdx], msg.Properties()[SysPropertyOriginMessageID])
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
+		assert.Equal(t, msgIDList[expectedMsgIdx], msg.Properties()[PropertyOriginMessageID])
 
 		// check original topic
-		assert.NotEmpty(t, msg.Properties()[SysPropertyRealTopic])
+		assert.Contains(t, msg.Properties()[SysPropertyRealTopic], topic)
+
+		// check original key
+		assert.NotEmpty(t, msg.Key())
+		assert.Equal(t, msgKeyList[expectedMsgIdx], msg.Key())
+		assert.NotEmpty(t, msg.OrderingKey())
+		assert.Equal(t, msgKeyList[expectedMsgIdx], msg.OrderingKey())
+		assert.NotEmpty(t, msg.Properties()["key"])
+		assert.Equal(t, msg.Key(), msg.Properties()["key"])
+
+		//	check original event time
+		//	Broker will ignore event time microsecond(us) level precision,
+		//	so that we need to check eventTime precision in millisecond level
+		assert.NotEqual(t, 0, msg.EventTime())
+		assert.True(t, eventTimeList[expectedMsgIdx].Sub(msg.EventTime()).Abs() < 2*time.Millisecond)
 	}
 
 	// No more messages on the DLQ
@@ -1855,9 +1886,24 @@ func TestRLQ(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
+	eventTimeList := make([]time.Time, N)
+	msgIDList := make([]string, N)
+	msgKeyList := make([]string, N)
 	for i := 0; i < N; i++ {
-		_, err = producer.Send(ctx, &ProducerMessage{Payload: []byte(fmt.Sprintf("MESSAGE_%d", i))})
+		eventTime := time.Now()
+		eventTimeList[i] = eventTime
+		msgKeyList[i] = fmt.Sprintf("key-%d", i)
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload:     []byte(fmt.Sprintf("MESSAGE_%d", i)),
+			Key:         fmt.Sprintf("key-%d", i),
+			OrderingKey: fmt.Sprintf("key-%d", i),
+			EventTime:   eventTime,
+			Properties: map[string]string{
+				"key": fmt.Sprintf("key-%d", i),
+			},
+		})
 		assert.Nil(t, err)
+		msgIDList[i] = msgID.String()
 	}
 
 	// 2. Create consumer on the Retry Topic to reconsume N messages (maxRedeliveries+1) times
@@ -1903,6 +1949,33 @@ func TestRLQ(t *testing.T) {
 	dlqReceived := 0
 	for dlqReceived < N {
 		msg, err := dlqConsumer.Receive(ctx)
+		//	check original messageId
+		//	we create a topic with three partitions,
+		//	so that messages maybe not be received as the same order as we produced
+		assert.NotEmpty(t, msg.Properties()[SysPropertyOriginMessageID])
+		assert.Contains(t, msgIDList, msg.Properties()[SysPropertyOriginMessageID])
+		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
+		assert.Contains(t, msgIDList, msg.Properties()[PropertyOriginMessageID])
+
+		// check original topic
+		assert.Contains(t, msg.Properties()[SysPropertyRealTopic], topic)
+
+		// check original key
+		assert.NotEmpty(t, msg.Key())
+		assert.Contains(t, msgKeyList, msg.Key())
+		assert.NotEmpty(t, msg.OrderingKey())
+		assert.Contains(t, msgKeyList, msg.OrderingKey())
+		assert.NotEmpty(t, msg.Properties()["key"])
+		assert.Equal(t, msg.Key(), msg.Properties()["key"])
+
+		// check original event time
+		assert.NotEqual(t, 0, msg.EventTime())
+		//	check original event time
+		//	Broker will ignore event time microsecond(us) level precision,
+		//	so that we need to check eventTime precision in millisecond level
+		assert.LessOrEqual(t, eventTimeList[0].Add(-2*time.Millisecond), msg.EventTime())
+		assert.LessOrEqual(t, msg.EventTime(), eventTimeList[N-1].Add(2*time.Millisecond))
+
 		assert.Nil(t, err)
 		dlqConsumer.Ack(msg)
 		dlqReceived++
