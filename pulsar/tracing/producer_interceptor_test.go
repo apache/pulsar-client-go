@@ -15,60 +15,50 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsartracing
+package tracing
 
 import (
 	"context"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/opentracing/opentracing-go"
-	"github.com/opentracing/opentracing-go/mocktracer"
 	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 func TestProducerBuildAndInjectSpan(t *testing.T) {
-	tracer := mocktracer.New()
-	opentracing.SetGlobalTracer(tracer)
+	exporter := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(
+		sdktrace.WithSyncer(exporter),
+	)
+	otel.SetTracerProvider(provider)
 
 	message := &pulsar.ProducerMessage{
 		Properties: map[string]string{},
 	}
 
-	span := buildAndInjectSpan(message, &mockProducer{})
-	assert.NotNil(t, span)
-	assert.True(t, len(message.Properties) > 0)
+	producer := &mockProducer{}
+	interceptor := &ProducerInterceptor{}
+	interceptor.BeforeSend(producer, message)
+
+	spans := exporter.GetSpans()
+	assert.NotEmpty(t, spans)
+	span := spans[0]
+	assert.Contains(t, span.Name, "To__")
 }
 
-type mockProducer struct {
-}
+type mockProducer struct{}
 
-func (p *mockProducer) Topic() string {
-	return ""
-}
-
-func (p *mockProducer) Name() string {
-	return ""
-}
-
+func (p *mockProducer) Topic() string { return "test-topic" }
+func (p *mockProducer) Name() string  { return "" }
 func (p *mockProducer) Send(context.Context, *pulsar.ProducerMessage) (pulsar.MessageID, error) {
 	return nil, nil
 }
-
-func (p *mockProducer) SendAsync(context.Context, *pulsar.ProducerMessage,
-	func(pulsar.MessageID, *pulsar.ProducerMessage, error)) {
+func (p *mockProducer) SendAsync(context.Context, *pulsar.ProducerMessage, func(pulsar.MessageID, *pulsar.ProducerMessage, error)) {
 }
-
-func (p *mockProducer) LastSequenceID() int64 {
-	return 0
-}
-
-func (p *mockProducer) Flush() error {
-	return nil
-}
-
-func (p *mockProducer) FlushWithCtx(_ context.Context) error {
-	return nil
-}
-
-func (p *mockProducer) Close() {}
+func (p *mockProducer) LastSequenceID() int64                { return 0 }
+func (p *mockProducer) Flush() error                         { return nil }
+func (p *mockProducer) FlushWithCtx(_ context.Context) error { return nil }
+func (p *mockProducer) Close()                               {}

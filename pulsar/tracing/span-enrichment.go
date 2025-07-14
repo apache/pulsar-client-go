@@ -15,36 +15,42 @@
 // specific language governing permissions and limitations
 // under the License.
 
-package pulsartracing
+package tracing
 
 import (
 	"github.com/apache/pulsar-client-go/pulsar"
-	"github.com/opentracing/opentracing-go"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/trace"
 )
 
-func enrichConsumerSpan(message *pulsar.ConsumerMessage, span opentracing.Span) {
-	spanCommonTags(span)
+const componentName = "pulsar-client-go"
 
+func enrichConsumerSpan(message *pulsar.ConsumerMessage, span trace.Span) {
+	spanCommonAttributes(span)
 	for k, v := range message.Properties() {
-		span.SetTag(k, v)
+		span.SetAttributes(attribute.String(k, v))
 	}
-	span.SetTag("message_bus.destination", message.Topic())
-	span.SetTag("messageId", message.ID())
-	span.SetTag("subscription", message.Subscription())
+	span.SetAttributes(
+		attribute.String("topic", message.Topic()),
+		attribute.String("messageId", message.ID().String()),
+		attribute.String("subscription", message.Subscription()),
+	)
 }
 
-func enrichProducerSpan(message *pulsar.ProducerMessage, producer pulsar.Producer, span opentracing.Span) {
-	spanCommonTags(span)
-
+func enrichProducerSpan(message *pulsar.ProducerMessage, producer pulsar.Producer, span trace.Span) {
+	spanCommonAttributes(span)
 	for k, v := range message.Properties {
-		span.SetTag(k, v)
+		span.SetAttributes(attribute.String(k, v))
 	}
-	span.SetTag("span.kind", "producer")
-	span.SetTag("message_bus.destination", producer.Topic())
-	span.SetTag("sequenceId", producer.LastSequenceID())
+	span.SetAttributes(
+		attribute.String("topic", producer.Topic()),
+		attribute.Int64("sequenceId", producer.LastSequenceID()),
+	)
 }
 
-func spanCommonTags(span opentracing.Span) {
-	span.SetTag("component", "pulsar-client-go")
-	span.SetTag("peer.service", "pulsar-broker")
+func spanCommonAttributes(span trace.Span) {
+	span.SetAttributes(
+		attribute.String("component", "pulsar-client-go"),
+		attribute.String("peer.service", "pulsar-broker"),
+	)
 }
