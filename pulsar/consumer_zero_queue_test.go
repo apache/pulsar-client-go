@@ -31,6 +31,26 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+func TestRetryEnableZeroQueueConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	// create consumer
+	_, err = client.Subscribe(ConsumerOptions{
+		Topic:                   topic,
+		SubscriptionName:        "my-sub",
+		RetryEnable:             true,
+		EnableZeroQueueConsumer: true,
+	})
+	assert.Error(t, err, "ZeroQueueConsumer is not supported with RetryEnable")
+}
+
 func TestNormalZeroQueueConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
