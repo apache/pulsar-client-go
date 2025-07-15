@@ -48,7 +48,7 @@ func TestRetryEnableZeroQueueConsumer(t *testing.T) {
 		RetryEnable:             true,
 		EnableZeroQueueConsumer: true,
 	})
-	assert.Error(t, err, "ZeroQueueConsumer is not supported with RetryEnable")
+	assert.ErrorContains(t, err, "ZeroQueueConsumer is not supported with RetryEnable")
 }
 
 func TestNormalZeroQueueConsumer(t *testing.T) {
