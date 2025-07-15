@@ -74,6 +74,11 @@ type consumer struct {
 }
 
 func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
+
+	if options.RetryEnable && options.EnableZeroQueueConsumer {
+		return nil, newError(InvalidConfiguration, "ZeroQueueConsumer is not supported with RetryEnable")
+	}
+
 	if options.Topic == "" && options.Topics == nil && options.TopicsPattern == "" {
 		return nil, newError(TopicNotFound, "topic is required")
 	}
