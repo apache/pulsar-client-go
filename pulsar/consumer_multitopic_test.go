@@ -354,7 +354,7 @@ func (dummyConnection) ID() string {
 }
 
 func (dummyConnection) GetMaxMessageSize() int32 {
-	return 0
+	return 5 * 1024 * 1024 // 5MB
 }
 
 func (dummyConnection) Close() {

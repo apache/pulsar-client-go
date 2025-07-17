@@ -69,7 +69,7 @@ var (
 	ErrProducerBlockedQuotaExceeded = newError(ProducerBlockedQuotaExceededException, "producer blocked")
 	ErrProducerFenced               = newError(ProducerFenced, "producer fenced")
 
-	buffersPool     sync.Pool
+	buffersPool     internal.BuffersPool
 	sendRequestPool *sync.Pool
 )
 
@@ -86,6 +86,7 @@ func init() {
 			return &sendRequest{}
 		},
 	}
+	buffersPool = internal.NewBufferPool()
 }
 
 type partitionProducer struct {
@@ -96,7 +97,7 @@ type partitionProducer struct {
 	topic  string
 	log    log.Logger
 
-	conn         uAtomic.Value
+	conn         atomic.Pointer[internal.Connection]
 	cnxKeySuffix int32
 
 	options                  *ProducerOptions
@@ -393,6 +394,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			pi.Lock()
 			pi.sentAt = time.Now()
 			pi.Unlock()
+			pi.buffer.Retain() // Retain for writing to the connection
 			p.pendingQueue.Put(pi)
 			p._getConn().WriteData(pi.ctx, pi.buffer)
 
@@ -412,12 +414,12 @@ func (cc *connectionClosed) HasURL() bool {
 	return len(cc.assignedBrokerURL) > 0
 }
 
-func (p *partitionProducer) GetBuffer() internal.Buffer {
-	b, ok := buffersPool.Get().(internal.Buffer)
-	if ok {
-		b.Clear()
-	}
-	return b
+func (p *partitionProducer) GetBuffer(initSize int) internal.Buffer {
+	return buffersPool.GetBuffer(initSize)
+}
+
+func (p *partitionProducer) Put(buf internal.Buffer) {
+	buffersPool.Put(buf)
 }
 
 func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProducer) {
@@ -796,10 +798,7 @@ func (p *partitionProducer) internalSingleSend(
 	payloadBuf := internal.NewBuffer(len(compressedPayload))
 	payloadBuf.Write(compressedPayload)
 
-	buffer := p.GetBuffer()
-	if buffer == nil {
-		buffer = internal.NewBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
-	}
+	buffer := p.GetBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
 
 	sid := *mm.SequenceId
 	var useTxn bool
@@ -898,6 +897,7 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 	default:
 		now := time.Now()
 		ctx, cancel := context.WithCancel(context.Background())
+		buffer.Retain()
 		p.pendingQueue.Put(&pendingItem{
 			ctx:          ctx,
 			cancel:       cancel,
@@ -1744,7 +1744,7 @@ func (i *pendingItem) done(err error) {
 
 	i.isDone = true
 	// return the buffer to the pool after all callbacks have been called.
-	defer buffersPool.Put(i.buffer)
+	defer i.buffer.Release()
 	if i.flushCallback != nil {
 		i.flushCallback(err)
 	}
@@ -1757,16 +1757,16 @@ func (i *pendingItem) done(err error) {
 // _setConn sets the internal connection field of this partition producer atomically.
 // Note: should only be called by this partition producer when a new connection is available.
 func (p *partitionProducer) _setConn(conn internal.Connection) {
-	p.conn.Store(conn)
+	p.conn.Store(&conn)
 }
 
 // _getConn returns internal connection field of this partition producer atomically.
 // Note: should only be called by this partition producer before attempting to use the connection
 func (p *partitionProducer) _getConn() internal.Connection {
-	// Invariant: p.conn must be non-nil for the lifetime of the partitionProducer.
+	// Invariant: The conn must be non-nil for the lifetime of the partitionProducer.
 	//            For this reason we leave this cast unchecked and panic() if the
 	//            invariant is broken
-	return p.conn.Load().(internal.Connection)
+	return *p.conn.Load()
 }
 
 type chunkRecorder struct {

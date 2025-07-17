@@ -385,12 +385,19 @@ func (c *connection) failLeftRequestsWhenClose() {
 		// if other requests come in after the nil message
 		// then the RPC client will time out
 		ch <- nil
+		c.writeRequestsCh <- nil
 	}()
 	for req := range ch {
 		if nil == req {
 			break // we have drained the requests
 		}
 		c.internalSendRequest(req)
+	}
+	for req := range c.writeRequestsCh {
+		if nil == req {
+			break
+		}
+		req.data.Release()
 	}
 }
 
@@ -432,6 +439,7 @@ func (c *connection) run() {
 				return
 			}
 			c.internalWriteData(req.ctx, req.data)
+			req.data.Release()
 
 		case <-pingSendTicker.C:
 			c.sendPing()
@@ -457,9 +465,16 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 }
 
 func (c *connection) WriteData(ctx context.Context, data Buffer) {
+	writeToQueue := false
+	defer func() {
+		if !writeToQueue {
+			data.Release()
+		}
+	}()
 	select {
 	case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 		// Channel is not full
+		writeToQueue = true
 		return
 	case <-ctx.Done():
 		c.log.Debug("Write data context cancelled")
@@ -472,6 +487,7 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 		select {
 		case c.writeRequestsCh <- &dataRequest{ctx: ctx, data: data}:
 			// Successfully wrote on the channel
+			writeToQueue = true
 			return
 		case <-ctx.Done():
 			c.log.Debug("Write data context cancelled")

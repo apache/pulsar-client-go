@@ -19,6 +19,7 @@ package internal
 
 import (
 	"bytes"
+	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -29,9 +30,9 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-type BuffersPool interface {
-	GetBuffer() Buffer
-}
+var (
+	DebugGetBufferFromBatchBuilder = atomic.Int64{}
+)
 
 // BatcherBuilderProvider defines func which returns the BatchBuilder.
 type BatcherBuilderProvider func(
@@ -269,10 +270,7 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	uncompressedSize := bc.buffer.ReadableBytes()
 	bc.msgMetadata.UncompressedSize = &uncompressedSize
 
-	buffer := bc.buffersPool.GetBuffer()
-	if buffer == nil {
-		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
-	}
+	buffer := bc.buffersPool.GetBuffer(int(uncompressedSize * 3 / 2))
 
 	sequenceID := uint64(0)
 	var err error

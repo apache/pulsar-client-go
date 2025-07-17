@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	"os"
 	"strconv"
@@ -46,6 +47,8 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
+
+	_ "net/http/pprof"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -2606,4 +2609,127 @@ func TestSelectConnectionForSameProducer(t *testing.T) {
 	}
 
 	client.Close()
+}
+
+type mockConn struct {
+	*dummyConnection
+	realConn internal.Connection
+
+	l       sync.Mutex
+	buffers []internal.Buffer
+}
+
+func (m *mockConn) WriteData(_ context.Context, buffer internal.Buffer) {
+	m.l.Lock()
+	m.buffers = append(m.buffers, buffer)
+	m.l.Unlock()
+}
+
+func (m *mockConn) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error)) {
+	m.realConn.SendRequest(requestID, req, callback)
+}
+
+func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+	topicName := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 10,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	reconnectNum := uint(1)
+	p, err := client.CreateProducer(ProducerOptions{
+		Topic:                topicName,
+		MaxReconnectToBroker: &reconnectNum,
+	})
+	assert.NoError(t, err)
+	pp := p.(*producer).producers[0].(*partitionProducer)
+
+	conn := &mockConn{
+		dummyConnection: &dummyConnection{},
+		buffers:         make([]internal.Buffer, 0),
+		realConn:        pp._getConn(),
+	}
+
+	pp._setConn(conn)
+
+	ctx := context.Background()
+	pp.SendAsync(ctx, &ProducerMessage{
+		Payload: []byte("test"),
+	}, nil)
+
+	go func() {
+		log.Info("Starting Prometheus metrics at http://localhost:", 8800, "/metrics")
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":"+strconv.Itoa(8800), nil)
+	}()
+
+	assert.Eventually(t, func() bool {
+		return len(conn.buffers) != 0
+	}, 5*time.Second, 100*time.Millisecond)
+
+	pp.failPendingMessages(errors.New("expected error"))
+
+	assert.Equal(t, 1, len(conn.buffers), "Expected one buffer to be sent")
+	b := conn.buffers[0]
+	assert.Equal(t, int64(1), b.RefCnt(), "Expected buffer to have a reference count of 1 after sending")
+
+	time.Sleep(1 * time.Hour)
+
+}
+
+func TestReconnect(t *testing.T) {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
+
+	go func() {
+		log.Info("Starting Prometheus metrics at http://localhost:", 8800, "/metrics")
+		http.Handle("/metrics", promhttp.Handler())
+		http.ListenAndServe(":"+strconv.Itoa(8800), nil)
+	}()
+	topicName := newTopicName()
+
+	for i := 0; i < 10; i++ {
+		topicName = topicName + strconv.Itoa(i)
+		client, err := NewClient(ClientOptions{
+			URL:                     serviceURL,
+			MaxConnectionsPerBroker: 10,
+			OperationTimeout:        3 * time.Second,
+		})
+		assert.NoError(t, err)
+
+		reconnectNum := uint(1)
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:                topicName,
+			MaxReconnectToBroker: &reconnectNum,
+			BatchingMaxMessages:  10,
+		})
+		assert.NoError(t, err)
+
+		for j := 0; j < 1000; j++ {
+			p.SendAsync(t.Context(), &ProducerMessage{
+				Payload: []byte("test"),
+			}, nil)
+		}
+
+		p.Close()
+		client.Close()
+
+	}
+
+	cc, _ := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 10,
+	})
+
+	time.Sleep(1 * time.Hour)
+
+	cc.Close()
+
 }
