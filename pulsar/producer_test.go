@@ -18,10 +18,10 @@
 package pulsar
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"net/http"
 	"os"
 	"strconv"
@@ -30,6 +30,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -2630,9 +2632,6 @@ func (m *mockConn) SendRequest(requestID uint64, req *pb.BaseCommand, callback f
 }
 
 func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
 	topicName := newTopicName()
 
 	client, err := NewClient(ClientOptions{
@@ -2650,6 +2649,7 @@ func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 	assert.NoError(t, err)
 	pp := p.(*producer).producers[0].(*partitionProducer)
 
+	// Create a mock connection that tracks written buffers
 	conn := &mockConn{
 		dummyConnection: &dummyConnection{},
 		buffers:         make([]internal.Buffer, 0),
@@ -2663,43 +2663,62 @@ func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 		Payload: []byte("test"),
 	}, nil)
 
-	go func() {
-		log.Info("Starting Prometheus metrics at http://localhost:", 8800, "/metrics")
-		http.Handle("/metrics", promhttp.Handler())
-		http.ListenAndServe(":"+strconv.Itoa(8800), nil)
-	}()
-
+	// Wait for the buffer to be written to the connection
 	assert.Eventually(t, func() bool {
 		return len(conn.buffers) != 0
 	}, 5*time.Second, 100*time.Millisecond)
 
+	// Simulate connection failure and verify buffer retention
 	pp.failPendingMessages(errors.New("expected error"))
 
 	assert.Equal(t, 1, len(conn.buffers), "Expected one buffer to be sent")
 	b := conn.buffers[0]
 	assert.Equal(t, int64(1), b.RefCnt(), "Expected buffer to have a reference count of 1 after sending")
-
-	time.Sleep(1 * time.Hour)
-
 }
 
-func TestReconnect(t *testing.T) {
-	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
-	}()
+func getSendingBuffersCount() (float64, error) {
+	resp, err := http.Get("http://localhost:8801/metrics")
+	if err != nil {
+		return 0, fmt.Errorf("failed to fetch metrics: %v", err)
+	}
+	defer resp.Body.Close()
 
+	scanner := bufio.NewScanner(resp.Body)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.Contains(line, "pulsar_client_sending_buffers_count{client=\"go\"}") {
+			// Parse the metric line to extract the value
+			// Format: pulsar_client_sending_buffers_count{client="go"} 5
+			parts := strings.Fields(line)
+			if len(parts) >= 2 {
+				var value float64
+				_, err := fmt.Sscanf(parts[len(parts)-1], "%f", &value)
+				if err != nil {
+					return 0, fmt.Errorf("failed to parse metric value: %v", err)
+				}
+				return value, nil
+			}
+		}
+	}
+
+	return 0, fmt.Errorf("sending_buffers_count metric not found")
+}
+
+func TestSendingBuffersCleanupAfterMultipleReconnections(t *testing.T) {
+	// Start a Prometheus metrics server to expose buffer metrics
 	go func() {
-		log.Info("Starting Prometheus metrics at http://localhost:", 8800, "/metrics")
+		log.Info("Starting Prometheus metrics at http://localhost:", 8801, "/metrics")
 		http.Handle("/metrics", promhttp.Handler())
-		http.ListenAndServe(":"+strconv.Itoa(8800), nil)
+		http.ListenAndServe(":8801", nil)
 	}()
 	topicName := newTopicName()
 
+	// Create multiple producers and send messages to generate sending buffers
 	for i := 0; i < 10; i++ {
 		topicName = topicName + strconv.Itoa(i)
 		client, err := NewClient(ClientOptions{
 			URL:                     serviceURL,
-			MaxConnectionsPerBroker: 10,
+			MaxConnectionsPerBroker: 1,
 			OperationTimeout:        3 * time.Second,
 		})
 		assert.NoError(t, err)
@@ -2712,24 +2731,31 @@ func TestReconnect(t *testing.T) {
 		})
 		assert.NoError(t, err)
 
+		// Send many messages asynchronously without waiting for completion
+		// This generates a lot of sending buffers that need to be cleaned up
 		for j := 0; j < 1000; j++ {
 			p.SendAsync(t.Context(), &ProducerMessage{
 				Payload: []byte("test"),
 			}, nil)
 		}
+		// Intentionally not wait for the send result to generate a lot of sending buffers
 
 		p.Close()
-		client.Close()
-
+		client.Close() // Close the client to trigger cleanup of sending buffers in the connection
 	}
 
-	cc, _ := NewClient(ClientOptions{
+	// Start a client to expose the metrics
+	c, _ := NewClient(ClientOptions{
 		URL:                     serviceURL,
-		MaxConnectionsPerBroker: 10,
+		MaxConnectionsPerBroker: 1,
 	})
 
-	time.Sleep(1 * time.Hour)
+	time.Sleep(1 * time.Second)
 
-	cc.Close()
+	// Verify that all sending buffers have been cleaned up
+	sendingBuffersCbt, err := getSendingBuffersCount()
+	assert.NoError(t, err)
+	assert.Equal(t, float64(0), sendingBuffersCbt, "Expected no sending buffers after closing the client")
 
+	c.Close()
 }

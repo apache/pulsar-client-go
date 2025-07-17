@@ -888,6 +888,7 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64, callbacks []interface{}) {
 	select {
 	case <-p.ctx.Done():
+		buffer.Release()
 		for _, cb := range callbacks {
 			if sr, ok := cb.(*sendRequest); ok {
 				sr.done(nil, ErrProducerClosed)

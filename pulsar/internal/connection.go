@@ -479,6 +479,9 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 	case <-ctx.Done():
 		c.log.Debug("Write data context cancelled")
 		return
+	case <-c.closeCh:
+		c.log.Debug("Write data connection closed")
+		return
 	default:
 		// Channel full, fallback to probe if connection is closed
 	}
@@ -491,6 +494,9 @@ func (c *connection) WriteData(ctx context.Context, data Buffer) {
 			return
 		case <-ctx.Done():
 			c.log.Debug("Write data context cancelled")
+			return
+		case <-c.closeCh:
+			c.log.Debug("Write data connection closed")
 			return
 		case <-time.After(100 * time.Millisecond):
 			// The channel is either:
@@ -512,6 +518,8 @@ func (c *connection) internalWriteData(ctx context.Context, data Buffer) {
 
 	select {
 	case <-ctx.Done():
+		return
+	case <-c.closeCh:
 		return
 	default:
 		if _, err := c.cnx.Write(data.ReadableSlice()); err != nil {
