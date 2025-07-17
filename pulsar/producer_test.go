@@ -2734,7 +2734,7 @@ func TestSendingBuffersCleanupAfterMultipleReconnections(t *testing.T) {
 		// Send many messages asynchronously without waiting for completion
 		// This generates a lot of sending buffers that need to be cleaned up
 		for j := 0; j < 1000; j++ {
-			p.SendAsync(t.Context(), &ProducerMessage{
+			p.SendAsync(context.Background(), &ProducerMessage{
 				Payload: []byte("test"),
 			}, nil)
 		}
