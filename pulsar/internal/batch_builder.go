@@ -19,7 +19,6 @@ package internal
 
 import (
 	"bytes"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -28,10 +27,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
-)
-
-var (
-	DebugGetBufferFromBatchBuilder = atomic.Int64{}
 )
 
 // BatcherBuilderProvider defines func which returns the BatchBuilder.

@@ -364,7 +364,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		p.batchBuilder, err = provider(p.options.BatchingMaxMessages, p.options.BatchingMaxSize,
 			maxMessageSize, p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
-			p,
+			buffersPool,
 			p.log,
 			p.encryptor)
 		if err != nil {
@@ -412,14 +412,6 @@ type connectionClosed struct {
 
 func (cc *connectionClosed) HasURL() bool {
 	return len(cc.assignedBrokerURL) > 0
-}
-
-func (p *partitionProducer) GetBuffer(initSize int) internal.Buffer {
-	return buffersPool.GetBuffer(initSize)
-}
-
-func (p *partitionProducer) Put(buf internal.Buffer) {
-	buffersPool.Put(buf)
 }
 
 func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProducer) {
@@ -798,7 +790,7 @@ func (p *partitionProducer) internalSingleSend(
 	payloadBuf := internal.NewBuffer(len(compressedPayload))
 	payloadBuf.Write(compressedPayload)
 
-	buffer := p.GetBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
+	buffer := buffersPool.GetBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
 
 	sid := *mm.SequenceId
 	var useTxn bool
