@@ -18,7 +18,6 @@
 package pulsar
 
 import (
-	"bufio"
 	"context"
 	"errors"
 	"fmt"
