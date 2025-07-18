@@ -30,13 +30,6 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type mockBufferPool struct {
-}
-
-func (m *mockBufferPool) GetBuffer() Buffer {
-	return nil
-}
-
 type mockEncryptor struct {
 }
 
@@ -53,7 +46,7 @@ func TestKeyBasedBatcherOrdering(t *testing.T) {
 		1,
 		pb.CompressionType_NONE,
 		compression.Level(0),
-		&mockBufferPool{},
+		&bufferPoolImpl{},
 		log.NewLoggerWithLogrus(logrus.StandardLogger()),
 		&mockEncryptor{},
 	)

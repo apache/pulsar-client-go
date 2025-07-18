@@ -2378,7 +2378,9 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 		})
 	}
 	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
-	partitionProducerImp.pendingQueue.Put(&pendingItem{})
+	partitionProducerImp.pendingQueue.Put(&pendingItem{
+		buffer: buffersPool.GetBuffer(0),
+	})
 	testProducer.Close()
 	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
 }
@@ -2606,4 +2608,63 @@ func TestSelectConnectionForSameProducer(t *testing.T) {
 	}
 
 	client.Close()
+}
+
+type mockConn struct {
+	*dummyConnection
+	realConn internal.Connection
+
+	l       sync.Mutex
+	buffers []internal.Buffer
+}
+
+func (m *mockConn) WriteData(_ context.Context, buffer internal.Buffer) {
+	m.l.Lock()
+	m.buffers = append(m.buffers, buffer)
+	m.l.Unlock()
+}
+
+func (m *mockConn) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error)) {
+	m.realConn.SendRequest(requestID, req, callback)
+}
+
+func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
+	topicName := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	p, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.NoError(t, err)
+	pp := p.(*producer).producers[0].(*partitionProducer)
+
+	// Create a mock connection that tracks written buffers
+	conn := &mockConn{
+		dummyConnection: &dummyConnection{},
+		buffers:         make([]internal.Buffer, 0),
+		realConn:        pp._getConn(),
+	}
+
+	pp._setConn(conn)
+
+	pp.SendAsync(context.Background(), &ProducerMessage{
+		Payload: []byte("test"),
+	}, nil)
+
+	// Wait for the buffer to be written to the connection
+	assert.Eventually(t, func() bool {
+		return len(conn.buffers) != 0
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// Simulate connection failure and verify buffer retention
+	pp.failPendingMessages(errors.New("expected error"))
+
+	assert.Equal(t, 1, len(conn.buffers), "Expected one buffer to be sent")
+	b := conn.buffers[0]
+	assert.Equal(t, int64(1), b.RefCnt(), "Expected buffer to have a reference count of 1 after sending")
 }
