@@ -2383,7 +2383,9 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 		})
 	}
 	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
-	partitionProducerImp.pendingQueue.Put(&pendingItem{})
+	partitionProducerImp.pendingQueue.Put(&pendingItem{
+		buffer: buffersPool.GetBuffer(0),
+	})
 	testProducer.Close()
 	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
 }
