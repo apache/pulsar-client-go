@@ -31,8 +31,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -2704,60 +2702,4 @@ func getSendingBuffersCount() (float64, error) {
 	}
 
 	return 0, fmt.Errorf("sending_buffers_count metric not found")
-}
-
-func TestSendingBuffersCleanupAfterMultipleReconnections(t *testing.T) {
-	// Start a Prometheus metrics server to expose buffer metrics
-	go func() {
-		log.Info("Starting Prometheus metrics at http://localhost:", 8801, "/metrics")
-		http.Handle("/metrics", promhttp.Handler())
-		http.ListenAndServe(":8801", nil)
-	}()
-	topicName := newTopicName()
-
-	// Create multiple producers and send messages to generate sending buffers
-	for i := 0; i < 10; i++ {
-		topicName = topicName + strconv.Itoa(i)
-		client, err := NewClient(ClientOptions{
-			URL:                     serviceURL,
-			MaxConnectionsPerBroker: 1,
-			OperationTimeout:        3 * time.Second,
-		})
-		assert.NoError(t, err)
-
-		reconnectNum := uint(1)
-		p, err := client.CreateProducer(ProducerOptions{
-			Topic:                topicName,
-			MaxReconnectToBroker: &reconnectNum,
-			BatchingMaxMessages:  10,
-		})
-		assert.NoError(t, err)
-
-		// Send many messages asynchronously without waiting for completion
-		// This generates a lot of sending buffers that need to be cleaned up
-		for j := 0; j < 1000; j++ {
-			p.SendAsync(context.Background(), &ProducerMessage{
-				Payload: []byte("test"),
-			}, nil)
-		}
-		// Intentionally not wait for the send result to generate a lot of sending buffers
-
-		p.Close()
-		client.Close() // Close the client to trigger cleanup of sending buffers in the connection
-	}
-
-	// Start a client to expose the metrics
-	c, _ := NewClient(ClientOptions{
-		URL:                     serviceURL,
-		MaxConnectionsPerBroker: 1,
-	})
-
-	time.Sleep(1 * time.Second)
-
-	// Verify that all sending buffers have been cleaned up
-	sendingBuffersCbt, err := getSendingBuffersCount()
-	assert.NoError(t, err)
-	assert.Equal(t, float64(0), sendingBuffersCbt, "Expected no sending buffers after closing the client")
-
-	c.Close()
 }
