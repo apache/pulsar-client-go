@@ -46,8 +46,6 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
-
-	_ "net/http/pprof"
 )
 
 func TestInvalidURL(t *testing.T) {
@@ -2634,16 +2632,13 @@ func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 	topicName := newTopicName()
 
 	client, err := NewClient(ClientOptions{
-		URL:                     serviceURL,
-		MaxConnectionsPerBroker: 10,
+		URL: serviceURL,
 	})
 	assert.NoError(t, err)
 	defer client.Close()
 
-	reconnectNum := uint(1)
 	p, err := client.CreateProducer(ProducerOptions{
-		Topic:                topicName,
-		MaxReconnectToBroker: &reconnectNum,
+		Topic: topicName,
 	})
 	assert.NoError(t, err)
 	pp := p.(*producer).producers[0].(*partitionProducer)
@@ -2657,8 +2652,7 @@ func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 
 	pp._setConn(conn)
 
-	ctx := context.Background()
-	pp.SendAsync(ctx, &ProducerMessage{
+	pp.SendAsync(context.Background(), &ProducerMessage{
 		Payload: []byte("test"),
 	}, nil)
 
