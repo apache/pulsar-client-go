@@ -2675,31 +2675,3 @@ func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 	b := conn.buffers[0]
 	assert.Equal(t, int64(1), b.RefCnt(), "Expected buffer to have a reference count of 1 after sending")
 }
-
-func getSendingBuffersCount() (float64, error) {
-	resp, err := http.Get("http://localhost:8801/metrics")
-	if err != nil {
-		return 0, fmt.Errorf("failed to fetch metrics: %v", err)
-	}
-	defer resp.Body.Close()
-
-	scanner := bufio.NewScanner(resp.Body)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if strings.Contains(line, "pulsar_client_sending_buffers_count{client=\"go\"}") {
-			// Parse the metric line to extract the value
-			// Format: pulsar_client_sending_buffers_count{client="go"} 5
-			parts := strings.Fields(line)
-			if len(parts) >= 2 {
-				var value float64
-				_, err := fmt.Sscanf(parts[len(parts)-1], "%f", &value)
-				if err != nil {
-					return 0, fmt.Errorf("failed to parse metric value: %v", err)
-				}
-				return value, nil
-			}
-		}
-	}
-
-	return 0, fmt.Errorf("sending_buffers_count metric not found")
-}
