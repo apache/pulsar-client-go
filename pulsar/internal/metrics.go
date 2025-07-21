@@ -26,7 +26,7 @@ var (
 		"client": "go",
 	}
 
-	SendingBuffersCount = prometheus.NewGauge(prometheus.GaugeOpts{
+	sendingBuffersCount = prometheus.NewGauge(prometheus.GaugeOpts{
 		Name:        "pulsar_client_sending_buffers_count",
 		Help:        "Number of sending buffers",
 		ConstLabels: defaultConstLabels,
@@ -548,7 +548,7 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 			metrics.RPCRequestCount = are.ExistingCollector.(prometheus.Counter)
 		}
 	}
-	_ = registerer.Register(SendingBuffersCount)
+	_ = registerer.Register(sendingBuffersCount)
 	return metrics
 }
 

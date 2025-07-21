@@ -95,7 +95,7 @@ func NewBufferPool() BuffersPool {
 }
 
 func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
-	SendingBuffersCount.Inc()
+	sendingBuffersCount.Inc()
 	b, ok := p.Get().(*buffer)
 	if ok {
 		b.Clear()
@@ -112,7 +112,7 @@ func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
 }
 
 func (p *bufferPoolImpl) Put(buf Buffer) {
-	SendingBuffersCount.Dec()
+	sendingBuffersCount.Dec()
 	if b, ok := buf.(*buffer); ok {
 		p.Pool.Put(b)
 	}
