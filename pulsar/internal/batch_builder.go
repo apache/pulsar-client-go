@@ -29,10 +29,6 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
-type BuffersPool interface {
-	GetBuffer() Buffer
-}
-
 // BatcherBuilderProvider defines func which returns the BatchBuilder.
 type BatcherBuilderProvider func(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
@@ -269,10 +265,7 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	uncompressedSize := bc.buffer.ReadableBytes()
 	bc.msgMetadata.UncompressedSize = &uncompressedSize
 
-	buffer := bc.buffersPool.GetBuffer()
-	if buffer == nil {
-		buffer = NewBuffer(int(uncompressedSize * 3 / 2))
-	}
+	buffer := bc.buffersPool.GetBuffer(int(uncompressedSize * 3 / 2))
 
 	sequenceID := uint64(0)
 	var err error

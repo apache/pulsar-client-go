@@ -19,9 +19,16 @@ package internal
 
 import (
 	"encoding/binary"
+	"sync"
+	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 )
+
+type BuffersPool interface {
+	GetBuffer(initSize int) Buffer
+	Put(buf Buffer)
+}
 
 // Buffer is a variable-sized buffer of bytes with Read and Write methods.
 // The zero value for Buffer is an empty buffer ready to use.
@@ -69,8 +76,46 @@ type Buffer interface {
 	Resize(newSize uint32)
 	ResizeIfNeeded(spaceNeeded uint32)
 
+	Retain()
+	Release()
+	RefCnt() int64
+
 	// Clear will clear the current buffer data.
 	Clear()
+}
+
+type bufferPoolImpl struct {
+	sync.Pool
+}
+
+func NewBufferPool() BuffersPool {
+	return &bufferPoolImpl{
+		Pool: sync.Pool{},
+	}
+}
+
+func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
+	sendingBuffersCount.Inc()
+	b, ok := p.Get().(*buffer)
+	if ok {
+		b.Clear()
+	} else {
+		b = &buffer{
+			data:      make([]byte, initSize),
+			readerIdx: 0,
+			writerIdx: 0,
+		}
+	}
+	b.pool = p
+	b.Retain()
+	return b
+}
+
+func (p *bufferPoolImpl) Put(buf Buffer) {
+	sendingBuffersCount.Dec()
+	if b, ok := buf.(*buffer); ok {
+		p.Pool.Put(b)
+	}
 }
 
 type buffer struct {
@@ -78,6 +123,9 @@ type buffer struct {
 
 	readerIdx uint32
 	writerIdx uint32
+
+	refCnt atomic.Int64
+	pool   BuffersPool
 }
 
 // NewBuffer creates and initializes a new Buffer using buf as its initial contents.
@@ -213,7 +261,24 @@ func (b *buffer) Put(writerIdx uint32, s []byte) {
 	copy(b.data[writerIdx:], s)
 }
 
+func (b *buffer) Retain() {
+	b.refCnt.Add(1)
+}
+
+func (b *buffer) Release() {
+	if b.refCnt.Add(-1) == 0 {
+		if b.pool != nil {
+			b.pool.Put(b)
+		}
+	}
+}
+
+func (b *buffer) RefCnt() int64 {
+	return b.refCnt.Load()
+}
+
 func (b *buffer) Clear() {
 	b.readerIdx = 0
 	b.writerIdx = 0
+	b.refCnt.Store(0)
 }
