@@ -24,28 +24,23 @@ cd $SRC_DIR
 
 IMAGE_NAME=pulsar-client-go-test:latest
 
-export PULSAR_MEM="-Xms1g -Xmx1g -XX:MaxDirectMemorySize=1g"
-export PULSAR_STANDALONE_USE_ZOOKEEPER=1
-
 if [[ -f /.dockerenv ]]; then
     # When running tests inside docker
     PULSAR_ADMIN=/pulsar/bin/pulsar-admin
     cat /pulsar/conf/standalone.conf
     /pulsar/bin/pulsar-daemon start standalone --no-functions-worker --no-stream-storage
 else
-#    docker build -t ${IMAGE_NAME} .
-#
-#    docker kill pulsar-client-go-test || true
-#    docker run -d --rm --name pulsar-client-go-test \
-#                -p 8080:8080 \
-#                -p 6650:6650 \
-#                -p 8443:8443 \
-#                -p 6651:6651 \
-#                -e PULSAR_MEM="${PULSAR_MEM}" \
-#                -e PULSAR_STANDALONE_USE_ZOOKEEPER=${PULSAR_STANDALONE_USE_ZOOKEEPER} \
-#                ${IMAGE_NAME} \
-#                /pulsar/bin/pulsar standalone \
-#                    --no-functions-worker --no-stream-storage
+    docker build -t ${IMAGE_NAME} .
+
+    docker kill pulsar-client-go-test || true
+    docker run -d --rm --name pulsar-client-go-test \
+                -p 8080:8080 \
+                -p 6650:6650 \
+                -p 8443:8443 \
+                -p 6651:6651 \
+                ${IMAGE_NAME} \
+                /pulsar/bin/pulsar standalone \
+                    --no-functions-worker --no-stream-storage
 
     PULSAR_ADMIN="docker exec -it pulsar-client-go-test /pulsar/bin/pulsar-admin"
 fi
@@ -54,8 +49,6 @@ echo "-- Wait for Pulsar service to be ready"
 until curl http://localhost:8080/metrics > /dev/null 2>&1 ; do sleep 1; done
 
 echo "-- Pulsar service is ready -- Configure permissions"
-
-sleep 20
 
 $PULSAR_ADMIN tenants update public -r anonymous
 $PULSAR_ADMIN namespaces grant-permission public/default \
