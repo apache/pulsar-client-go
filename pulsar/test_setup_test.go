@@ -68,8 +68,19 @@ func startMetricsServer() error {
 		}
 	}()
 
-	// Wait a bit for server to start
-	time.Sleep(100 * time.Millisecond)
+	// Wait for server to start with a retry mechanism
+	timeout := time.Now().Add(5 * time.Second)
+	for {
+		conn, err := net.Dial("tcp", addr)
+		if err == nil {
+			conn.Close()
+			break
+		}
+		if time.Now().After(timeout) {
+			return fmt.Errorf("server did not start within the timeout period: %v", err)
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 	return nil
 }
 
@@ -105,7 +116,8 @@ func getMetricValue(metricName string) (float64, error) {
 		if strings.HasPrefix(strings.TrimSpace(line), "#") {
 			continue
 		}
-		if strings.Contains(line, metricName) {
+		if strings.HasPrefix(line, metricName) && (len(line) == len(metricName) ||
+			line[len(metricName)] == '{' || line[len(metricName)] == ' ') {
 			// Parse the metric line to extract the value
 			// Format: metric_name{label="value",label2="value2"} 10
 			parts := strings.Fields(line)

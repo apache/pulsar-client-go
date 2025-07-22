@@ -5190,14 +5190,14 @@ func TestAckIDListWillIncreaseAckCounterMetrics(t *testing.T) {
 
 	assert.NoError(t, err)
 
-	msgIds := make([]MessageID, 10)
+	msgIDs := make([]MessageID, 10)
 	for i := 0; i < 10; i++ {
 		msg, err := c.Receive(context.Background())
 		assert.NoError(t, err)
-		msgIds[i] = msg.ID()
+		msgIDs[i] = msg.ID()
 	}
 
-	err = c.AckIDList(msgIds)
+	err = c.AckIDList(msgIDs)
 	assert.NoError(t, err)
 
 	ackCnt, err := getMetricValue("pulsar_client_consumer_acks")
