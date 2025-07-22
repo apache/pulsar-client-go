@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -5164,8 +5165,12 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 func TestAckIDListWillIncreaseAckCounterMetrics(t *testing.T) {
 	topicName := newTopicName()
 
+	// Create a custom metrics registry
+	registry := prometheus.NewRegistry()
+
 	client, err := NewClient(ClientOptions{
-		URL: serviceURL,
+		URL:               serviceURL,
+		MetricsRegisterer: registry,
 	})
 	assert.NoError(t, err)
 	defer client.Close()
@@ -5200,7 +5205,18 @@ func TestAckIDListWillIncreaseAckCounterMetrics(t *testing.T) {
 	err = c.AckIDList(msgIDs)
 	assert.NoError(t, err)
 
-	ackCnt, err := getMetricValue("pulsar_client_consumer_acks")
+	// Get metrics directly from the registry
+	metrics, err := registry.Gather()
 	assert.NoError(t, err)
-	assert.Equal(t, float64(10), ackCnt)
+
+	var ackCount float64
+	for _, metric := range metrics {
+		if metric.GetName() == "pulsar_client_consumer_acks" {
+			for _, m := range metric.GetMetric() {
+				ackCount += m.GetCounter().GetValue()
+			}
+		}
+	}
+
+	assert.Equal(t, float64(10), ackCount)
 }
