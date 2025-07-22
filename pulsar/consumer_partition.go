@@ -746,6 +746,8 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 	pendingAcks := make(map[position]*bitset.BitSet)
 	validMsgIDs := make([]MessageID, 0, len(msgIDs))
 
+	pc.metrics.AcksCounter.Add(float64(len(msgIDs)))
+
 	// They might be complete after the whole for loop
 	for _, msgID := range msgIDs {
 		if msgID.PartitionIdx() != pc.partitionIdx {
@@ -760,6 +762,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 				position := newPosition(msgID)
 				if convertedMsgID.ack() {
 					pendingAcks[position] = nil
+					pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-convertedMsgID.receivedTime.UnixNano()) / 1.0e9)
 				} else if pc.options.enableBatchIndexAck {
 					pendingAcks[position] = convertedMsgID.tracker.getAckBitSet()
 				}

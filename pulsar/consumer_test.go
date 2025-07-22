@@ -5160,3 +5160,47 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 			"The consumer uses a different connection when reconnecting")
 	}
 }
+
+func TestAckIDListWillIncreaseAckCounterMetrics(t *testing.T) {
+	topicName := newTopicName()
+
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	p, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	assert.NoError(t, err)
+
+	for i := 0; i < 10; i++ {
+		_, err = p.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		})
+		assert.NoError(t, err)
+	}
+
+	c, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topicName,
+		SubscriptionName:            "my-sub",
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+
+	assert.NoError(t, err)
+
+	msgIds := make([]MessageID, 10)
+	for i := 0; i < 10; i++ {
+		msg, err := c.Receive(context.Background())
+		assert.NoError(t, err)
+		msgIds[i] = msg.ID()
+	}
+
+	err = c.AckIDList(msgIds)
+	assert.NoError(t, err)
+
+	ackCnt, err := getMetricValue("pulsar_client_consumer_acks")
+	assert.NoError(t, err)
+	assert.Equal(t, float64(10), ackCnt)
+}
