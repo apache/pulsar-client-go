@@ -4857,8 +4857,30 @@ func TestAckIDList(t *testing.T) {
 	}
 }
 
+func getAckCount(registry *prometheus.Registry) (int, error) {
+	metrics, err := registry.Gather()
+	if err != nil {
+		return 0, err
+	}
+
+	var ackCount float64
+	for _, metric := range metrics {
+		if metric.GetName() == "pulsar_client_consumer_acks" {
+			for _, m := range metric.GetMetric() {
+				ackCount += m.GetCounter().GetValue()
+			}
+		}
+	}
+	return int(ackCount), nil
+}
+
 func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
-	client, err := NewClient(ClientOptions{URL: lookupURL})
+	// Create a custom metrics registry
+	registry := prometheus.NewRegistry()
+	client, err := NewClient(ClientOptions{
+		URL:               lookupURL,
+		MetricsRegisterer: registry,
+	})
 	assert.Nil(t, err)
 	defer client.Close()
 
@@ -4887,6 +4909,10 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 		msgIDs[i] = msgs[ackedIndexes[i]].ID()
 	}
 	assert.Nil(t, consumer.AckIDList(msgIDs))
+	ackCnt, err := getAckCount(registry)
+	expectedAckCnt := len(msgIDs)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedAckCnt, ackCnt)
 	consumer.Close()
 
 	consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
@@ -4901,6 +4927,10 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 			msgIDs = append(msgIDs, originalMsgIDs[i])
 		}
 		assert.Nil(t, consumer.AckIDList(msgIDs))
+		expectedAckCnt = expectedAckCnt + len(msgIDs)
+		ackCnt, err = getAckCount(registry)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedAckCnt, ackCnt)
 		consumer.Close()
 
 		consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
@@ -4921,6 +4951,10 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 	} else {
 		assert.Fail(t, "AckIDList should return AckError")
 	}
+
+	ackCnt, err = getAckCount(registry)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedAckCnt, ackCnt)
 }
 
 func createSharedConsumer(t *testing.T, client Client, topic string, enableBatchIndexAck bool) Consumer {
@@ -5160,63 +5194,4 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 		assert.Equal(t, conn.ID(), partitionConsumerImpl._getConn().ID(),
 			"The consumer uses a different connection when reconnecting")
 	}
-}
-
-func TestAckIDListWillIncreaseAckCounterMetrics(t *testing.T) {
-	topicName := newTopicName()
-
-	// Create a custom metrics registry
-	registry := prometheus.NewRegistry()
-
-	client, err := NewClient(ClientOptions{
-		URL:               serviceURL,
-		MetricsRegisterer: registry,
-	})
-	assert.NoError(t, err)
-	defer client.Close()
-
-	p, err := client.CreateProducer(ProducerOptions{
-		Topic: topicName,
-	})
-	assert.NoError(t, err)
-
-	for i := 0; i < 10; i++ {
-		_, err = p.Send(context.Background(), &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("msg-%d", i)),
-		})
-		assert.NoError(t, err)
-	}
-
-	c, err := client.Subscribe(ConsumerOptions{
-		Topic:                       topicName,
-		SubscriptionName:            "my-sub",
-		SubscriptionInitialPosition: SubscriptionPositionEarliest,
-	})
-
-	assert.NoError(t, err)
-
-	msgIDs := make([]MessageID, 10)
-	for i := 0; i < 10; i++ {
-		msg, err := c.Receive(context.Background())
-		assert.NoError(t, err)
-		msgIDs[i] = msg.ID()
-	}
-
-	err = c.AckIDList(msgIDs)
-	assert.NoError(t, err)
-
-	// Get metrics directly from the registry
-	metrics, err := registry.Gather()
-	assert.NoError(t, err)
-
-	var ackCount float64
-	for _, metric := range metrics {
-		if metric.GetName() == "pulsar_client_consumer_acks" {
-			for _, m := range metric.GetMetric() {
-				ackCount += m.GetCounter().GetValue()
-			}
-		}
-	}
-
-	assert.Equal(t, float64(10), ackCount)
 }

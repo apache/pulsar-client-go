@@ -746,8 +746,6 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 	pendingAcks := make(map[position]*bitset.BitSet)
 	validMsgIDs := make([]MessageID, 0, len(msgIDs))
 
-	pc.metrics.AcksCounter.Add(float64(len(msgIDs)))
-
 	// They might be complete after the whole for loop
 	for _, msgID := range msgIDs {
 		if msgID.PartitionIdx() != pc.partitionIdx {
@@ -787,6 +785,8 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return toAckError(map[error][]MessageID{errors.New("consumer state is closed"): validMsgIDs})
 	}
+
+	pc.metrics.AcksCounter.Add(float64(len(validMsgIDs)))
 
 	req := &ackListRequest{
 		errCh:  make(chan error),
