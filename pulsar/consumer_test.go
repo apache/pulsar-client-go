@@ -4954,7 +4954,7 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 
 	ackCnt, err = getAckCount(registry)
 	assert.NoError(t, err)
-	assert.Equal(t, expectedAckCnt, ackCnt)
+	assert.Equal(t, expectedAckCnt, ackCnt) // The Ack Counter shouldn't be increased.
 }
 
 func createSharedConsumer(t *testing.T, client Client, topic string, enableBatchIndexAck bool) Consumer {
