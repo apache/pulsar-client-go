@@ -760,6 +760,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 				position := newPosition(msgID)
 				if convertedMsgID.ack() {
 					pendingAcks[position] = nil
+					pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-convertedMsgID.receivedTime.UnixNano()) / 1.0e9)
 				} else if pc.options.enableBatchIndexAck {
 					pendingAcks[position] = convertedMsgID.tracker.getAckBitSet()
 				}
@@ -784,6 +785,8 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 		pc.log.WithField("state", state).Error("Failed to ack by closing or closed consumer")
 		return toAckError(map[error][]MessageID{errors.New("consumer state is closed"): validMsgIDs})
 	}
+
+	pc.metrics.AcksCounter.Add(float64(len(validMsgIDs)))
 
 	req := &ackListRequest{
 		errCh:  make(chan error),

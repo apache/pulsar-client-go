@@ -33,6 +33,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -4856,8 +4857,30 @@ func TestAckIDList(t *testing.T) {
 	}
 }
 
+func getAckCount(registry *prometheus.Registry) (int, error) {
+	metrics, err := registry.Gather()
+	if err != nil {
+		return 0, err
+	}
+
+	var ackCount float64
+	for _, metric := range metrics {
+		if metric.GetName() == "pulsar_client_consumer_acks" {
+			for _, m := range metric.GetMetric() {
+				ackCount += m.GetCounter().GetValue()
+			}
+		}
+	}
+	return int(ackCount), nil
+}
+
 func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
-	client, err := NewClient(ClientOptions{URL: lookupURL})
+	// Create a custom metrics registry
+	registry := prometheus.NewRegistry()
+	client, err := NewClient(ClientOptions{
+		URL:               lookupURL,
+		MetricsRegisterer: registry,
+	})
 	assert.Nil(t, err)
 	defer client.Close()
 
@@ -4886,6 +4909,10 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 		msgIDs[i] = msgs[ackedIndexes[i]].ID()
 	}
 	assert.Nil(t, consumer.AckIDList(msgIDs))
+	ackCnt, err := getAckCount(registry)
+	expectedAckCnt := len(msgIDs)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedAckCnt, ackCnt)
 	consumer.Close()
 
 	consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
@@ -4900,6 +4927,10 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 			msgIDs = append(msgIDs, originalMsgIDs[i])
 		}
 		assert.Nil(t, consumer.AckIDList(msgIDs))
+		expectedAckCnt = expectedAckCnt + len(msgIDs)
+		ackCnt, err = getAckCount(registry)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedAckCnt, ackCnt)
 		consumer.Close()
 
 		consumer = createSharedConsumer(t, client, topic, enableBatchIndexAck)
@@ -4920,6 +4951,10 @@ func runAckIDListTest(t *testing.T, enableBatchIndexAck bool) {
 	} else {
 		assert.Fail(t, "AckIDList should return AckError")
 	}
+
+	ackCnt, err = getAckCount(registry)
+	assert.NoError(t, err)
+	assert.Equal(t, expectedAckCnt, ackCnt) // The Ack Counter shouldn't be increased.
 }
 
 func createSharedConsumer(t *testing.T, client Client, topic string, enableBatchIndexAck bool) Consumer {
