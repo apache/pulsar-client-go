@@ -129,6 +129,7 @@ services:
       - clusterMigrationCheckDurationSeconds=1
       - brokerServiceCompactionThresholdInBytes=1000000
       - PULSAR_PREFIX_defaultNumberOfNamespaceBundles=1
+      - PULSAR_PREFIX_topicLevelPoliciesEnabled=true
     depends_on:
       zookeeper:
         condition: service_healthy
@@ -168,6 +169,7 @@ services:
       - clusterMigrationCheckDurationSeconds=1
       - brokerServiceCompactionThresholdInBytes=1000000
       - PULSAR_PREFIX_defaultNumberOfNamespaceBundles=1
+      - PULSAR_PREFIX_topicLevelPoliciesEnabled=true
     depends_on:
       zookeeper:
         condition: service_healthy
