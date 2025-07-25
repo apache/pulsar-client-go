@@ -17,6 +17,7 @@
 
 package utils
 
+//nolint:lll
 type OffloadPolicies struct {
 	ManagedLedgerOffloadDriver                        string            `json:"managedLedgerOffloadDriver,omitempty"`
 	ManagedLedgerOffloadMaxThreads                    int               `json:"managedLedgerOffloadMaxThreads,omitempty"`

@@ -475,7 +475,8 @@ type Topics interface {
 	GetAutoSubscriptionCreation(utils.TopicName) (*utils.AutoSubscriptionCreationOverride, error)
 
 	// SetAutoSubscriptionCreation Set auto subscription creation override for a topic
-	SetAutoSubscriptionCreation(utils.TopicName, utils.AutoSubscriptionCreationOverride) error
+	SetAutoSubscriptionCreation(utils.TopicName,
+		utils.AutoSubscriptionCreationOverride) error
 
 	// RemoveAutoSubscriptionCreation Remove auto subscription creation override for a topic
 	RemoveAutoSubscriptionCreation(utils.TopicName) error
@@ -484,7 +485,8 @@ type Topics interface {
 	GetSchemaCompatibilityStrategy(utils.TopicName) (utils.SchemaCompatibilityStrategy, error)
 
 	// SetSchemaCompatibilityStrategy Set schema compatibility strategy for a topic
-	SetSchemaCompatibilityStrategy(utils.TopicName, utils.SchemaCompatibilityStrategy) error
+	SetSchemaCompatibilityStrategy(utils.TopicName,
+		utils.SchemaCompatibilityStrategy) error
 
 	// RemoveSchemaCompatibilityStrategy Remove schema compatibility strategy for a topic
 	RemoveSchemaCompatibilityStrategy(utils.TopicName) error
@@ -1169,23 +1171,6 @@ func (t *topics) RemoveReplicatorDispatchRate(topic utils.TopicName) error {
 	return t.pulsar.Client.Delete(endpoint)
 }
 
-func (t *topics) GetOffloadPolicies(topic utils.TopicName) (*utils.OffloadPolicies, error) {
-	var offloadPolicies utils.OffloadPolicies
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
-	err := t.pulsar.Client.Get(endpoint, &offloadPolicies)
-	return &offloadPolicies, err
-}
-
-func (t *topics) SetOffloadPolicies(topic utils.TopicName, offloadPolicies utils.OffloadPolicies) error {
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
-	return t.pulsar.Client.Post(endpoint, &offloadPolicies)
-}
-
-func (t *topics) RemoveOffloadPolicies(topic utils.TopicName) error {
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
-	return t.pulsar.Client.Delete(endpoint)
-}
-
 func (t *topics) GetAutoSubscriptionCreation(topic utils.TopicName) (*utils.AutoSubscriptionCreationOverride, error) {
 	var autoSubCreation utils.AutoSubscriptionCreationOverride
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "autoSubscriptionCreation")
@@ -1217,5 +1202,22 @@ func (t *topics) SetSchemaCompatibilityStrategy(topic utils.TopicName, strategy 
 
 func (t *topics) RemoveSchemaCompatibilityStrategy(topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaCompatibilityStrategy")
+	return t.pulsar.Client.Delete(endpoint)
+}
+
+func (t *topics) GetOffloadPolicies(topic utils.TopicName) (*utils.OffloadPolicies, error) {
+	var offloadPolicies utils.OffloadPolicies
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
+	err := t.pulsar.Client.Get(endpoint, &offloadPolicies)
+	return &offloadPolicies, err
+}
+
+func (t *topics) SetOffloadPolicies(topic utils.TopicName, offloadPolicies utils.OffloadPolicies) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
+	return t.pulsar.Client.Post(endpoint, &offloadPolicies)
+}
+
+func (t *topics) RemoveOffloadPolicies(topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
 	return t.pulsar.Client.Delete(endpoint)
 }
