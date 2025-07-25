@@ -1178,7 +1178,8 @@ func (t *topics) GetAutoSubscriptionCreation(topic utils.TopicName) (*utils.Auto
 	return &autoSubCreation, err
 }
 
-func (t *topics) SetAutoSubscriptionCreation(topic utils.TopicName, autoSubCreation utils.AutoSubscriptionCreationOverride) error {
+func (t *topics) SetAutoSubscriptionCreation(topic utils.TopicName,
+	autoSubCreation utils.AutoSubscriptionCreationOverride) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "autoSubscriptionCreation")
 	return t.pulsar.Client.Post(endpoint, &autoSubCreation)
 }
@@ -1195,7 +1196,8 @@ func (t *topics) GetSchemaCompatibilityStrategy(topic utils.TopicName) (utils.Sc
 	return strategy, err
 }
 
-func (t *topics) SetSchemaCompatibilityStrategy(topic utils.TopicName, strategy utils.SchemaCompatibilityStrategy) error {
+func (t *topics) SetSchemaCompatibilityStrategy(topic utils.TopicName,
+	strategy utils.SchemaCompatibilityStrategy) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaCompatibilityStrategy")
 	return t.pulsar.Client.Put(endpoint, strategy)
 }
