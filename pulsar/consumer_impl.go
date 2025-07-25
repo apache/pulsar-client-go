@@ -642,6 +642,7 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 			payLoad:    msg.Payload(),
 			properties: props,
 			msgID:      msgID,
+			eventTime:  msg.EventTime(),
 		},
 	}
 	if uint32(reconsumeTimes) > c.dlq.policy.MaxDeliveries {
@@ -655,6 +656,7 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 				OrderingKey:  msg.OrderingKey(),
 				Properties:   props,
 				DeliverAfter: delay,
+				EventTime:    msg.EventTime(),
 			},
 		}
 	}
