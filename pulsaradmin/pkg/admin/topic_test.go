@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"testing"
 	"time"
 
@@ -546,6 +547,615 @@ func TestRetention(t *testing.T) {
 			return err == nil &&
 				topicRetentionPolicy.RetentionSizeInMB == int64(0) &&
 				topicRetentionPolicy.RetentionTimeInMinutes == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestSubscribeRate(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default subscribe rate (adapt to actual server behavior)
+	initialSubscribeRate, err := admin.Topics().GetSubscribeRate(*topicName)
+	assert.NoError(t, err)
+	// Store initial values for later comparison instead of assuming specific defaults
+	initialConsumerRate := initialSubscribeRate.SubscribeThrottlingRatePerConsumer
+	initialRatePeriod := initialSubscribeRate.RatePeriodInSecond
+
+	// Set new subscribe rate
+	newSubscribeRate := utils.SubscribeRate{
+		SubscribeThrottlingRatePerConsumer: 10,
+		RatePeriodInSecond:                 60,
+	}
+	err = admin.Topics().SetSubscribeRate(*topicName, newSubscribeRate)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			subscribeRate, err := admin.Topics().GetSubscribeRate(*topicName)
+			return err == nil &&
+				subscribeRate.SubscribeThrottlingRatePerConsumer == 10 &&
+				subscribeRate.RatePeriodInSecond == 60
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove subscribe rate policy
+	err = admin.Topics().RemoveSubscribeRate(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			subscribeRate, err := admin.Topics().GetSubscribeRate(*topicName)
+			return err == nil &&
+				subscribeRate.SubscribeThrottlingRatePerConsumer == initialConsumerRate &&
+				subscribeRate.RatePeriodInSecond == initialRatePeriod
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestSubscriptionDispatchRate(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default subscription dispatch rate (adapt to actual server behavior)
+	initialDispatchRate, err := admin.Topics().GetSubscriptionDispatchRate(*topicName)
+	assert.NoError(t, err)
+	// Store initial values for later comparison instead of assuming specific defaults
+	initialMsgRate := initialDispatchRate.DispatchThrottlingRateInMsg
+	initialByteRate := initialDispatchRate.DispatchThrottlingRateInByte
+	initialRatePeriod := initialDispatchRate.RatePeriodInSecond
+	initialRelativeToPublish := initialDispatchRate.RelativeToPublishRate
+
+	// Set new subscription dispatch rate
+	newDispatchRate := utils.DispatchRateData{
+		DispatchThrottlingRateInMsg:  1000,
+		DispatchThrottlingRateInByte: 1048576, // 1MB
+		RatePeriodInSecond:           30,
+		RelativeToPublishRate:        true,
+	}
+	err = admin.Topics().SetSubscriptionDispatchRate(*topicName, newDispatchRate)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			dispatchRate, err := admin.Topics().GetSubscriptionDispatchRate(*topicName)
+			return err == nil &&
+				dispatchRate.DispatchThrottlingRateInMsg == 1000 &&
+				dispatchRate.DispatchThrottlingRateInByte == 1048576 &&
+				dispatchRate.RatePeriodInSecond == 30 &&
+				dispatchRate.RelativeToPublishRate == true
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove subscription dispatch rate policy
+	err = admin.Topics().RemoveSubscriptionDispatchRate(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			dispatchRate, err := admin.Topics().GetSubscriptionDispatchRate(*topicName)
+			return err == nil &&
+				dispatchRate.DispatchThrottlingRateInMsg == initialMsgRate &&
+				dispatchRate.DispatchThrottlingRateInByte == initialByteRate &&
+				dispatchRate.RatePeriodInSecond == initialRatePeriod &&
+				dispatchRate.RelativeToPublishRate == initialRelativeToPublish
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestMaxConsumersPerSubscription(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default max consumers per subscription
+	maxConsumers, err := admin.Topics().GetMaxConsumersPerSubscription(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, maxConsumers)
+
+	// Set new max consumers per subscription
+	err = admin.Topics().SetMaxConsumersPerSubscription(*topicName, 10)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			maxConsumers, err = admin.Topics().GetMaxConsumersPerSubscription(*topicName)
+			return err == nil && maxConsumers == 10
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove max consumers per subscription policy
+	err = admin.Topics().RemoveMaxConsumersPerSubscription(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			maxConsumers, err = admin.Topics().GetMaxConsumersPerSubscription(*topicName)
+			return err == nil && maxConsumers == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestMaxMessageSize(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default max message size
+	maxMessageSize, err := admin.Topics().GetMaxMessageSize(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, maxMessageSize)
+
+	// Set new max message size (1MB)
+	err = admin.Topics().SetMaxMessageSize(*topicName, 1048576)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			maxMessageSize, err = admin.Topics().GetMaxMessageSize(*topicName)
+			return err == nil && maxMessageSize == 1048576
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove max message size policy
+	err = admin.Topics().RemoveMaxMessageSize(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			maxMessageSize, err = admin.Topics().GetMaxMessageSize(*topicName)
+			return err == nil && maxMessageSize == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestMaxSubscriptionsPerTopic(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default max subscriptions per topic
+	maxSubscriptions, err := admin.Topics().GetMaxSubscriptionsPerTopic(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, maxSubscriptions)
+
+	// Set new max subscriptions per topic
+	err = admin.Topics().SetMaxSubscriptionsPerTopic(*topicName, 100)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			maxSubscriptions, err = admin.Topics().GetMaxSubscriptionsPerTopic(*topicName)
+			return err == nil && maxSubscriptions == 100
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove max subscriptions per topic policy
+	err = admin.Topics().RemoveMaxSubscriptionsPerTopic(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			maxSubscriptions, err = admin.Topics().GetMaxSubscriptionsPerTopic(*topicName)
+			return err == nil && maxSubscriptions == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestSchemaValidationEnforced(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default schema validation enforced
+	schemaValidationEnforced, err := admin.Topics().GetSchemaValidationEnforced(*topicName)
+	if err != nil {
+		// Skip test if API is not available (e.g., 405 Method Not Allowed)
+		if strings.Contains(err.Error(), "405") || strings.Contains(err.Error(), "Method Not Allowed") {
+			t.Skip("SchemaValidationEnforced API not available on this Pulsar version")
+			return
+		}
+		assert.NoError(t, err)
+	}
+	initialValidationEnforced := schemaValidationEnforced
+
+	// Set schema validation enforced to true
+	err = admin.Topics().SetSchemaValidationEnforced(*topicName, true)
+	if err != nil {
+		// Skip test if API is not available
+		if strings.Contains(err.Error(), "405") || strings.Contains(err.Error(), "Method Not Allowed") {
+			t.Skip("SetSchemaValidationEnforced API not available on this Pulsar version")
+			return
+		}
+		assert.NoError(t, err)
+	}
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			schemaValidationEnforced, err := admin.Topics().GetSchemaValidationEnforced(*topicName)
+			return err == nil && schemaValidationEnforced == true
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove schema validation enforced policy
+	err = admin.Topics().RemoveSchemaValidationEnforced(*topicName)
+	if err != nil {
+		// Skip removal check if API is not available
+		if strings.Contains(err.Error(), "405") || strings.Contains(err.Error(), "Method Not Allowed") {
+			t.Skip("RemoveSchemaValidationEnforced API not available on this Pulsar version")
+			return
+		}
+		assert.NoError(t, err)
+	}
+	assert.Eventually(
+		t,
+		func() bool {
+			schemaValidationEnforced, err := admin.Topics().GetSchemaValidationEnforced(*topicName)
+			return err == nil && schemaValidationEnforced == initialValidationEnforced
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestDeduplicationSnapshotInterval(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default deduplication snapshot interval
+	interval, err := admin.Topics().GetDeduplicationSnapshotInterval(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, interval)
+
+	// Set new deduplication snapshot interval
+	err = admin.Topics().SetDeduplicationSnapshotInterval(*topicName, 1000)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			interval, err = admin.Topics().GetDeduplicationSnapshotInterval(*topicName)
+			return err == nil && interval == 1000
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove deduplication snapshot interval policy
+	err = admin.Topics().RemoveDeduplicationSnapshotInterval(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			interval, err = admin.Topics().GetDeduplicationSnapshotInterval(*topicName)
+			return err == nil && interval == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestReplicatorDispatchRate(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default replicator dispatch rate (adapt to actual server behavior)
+	initialDispatchRate, err := admin.Topics().GetReplicatorDispatchRate(*topicName)
+	assert.NoError(t, err)
+	// Store initial values for later comparison instead of assuming specific defaults
+	initialMsgRate := initialDispatchRate.DispatchThrottlingRateInMsg
+	initialByteRate := initialDispatchRate.DispatchThrottlingRateInByte
+	initialRatePeriod := initialDispatchRate.RatePeriodInSecond
+	initialRelativeToPublish := initialDispatchRate.RelativeToPublishRate
+
+	// Set new replicator dispatch rate
+	newDispatchRate := utils.DispatchRateData{
+		DispatchThrottlingRateInMsg:  500,
+		DispatchThrottlingRateInByte: 524288, // 512KB
+		RatePeriodInSecond:           60,
+		RelativeToPublishRate:        true,
+	}
+	err = admin.Topics().SetReplicatorDispatchRate(*topicName, newDispatchRate)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			dispatchRate, err := admin.Topics().GetReplicatorDispatchRate(*topicName)
+			return err == nil &&
+				dispatchRate.DispatchThrottlingRateInMsg == 500 &&
+				dispatchRate.DispatchThrottlingRateInByte == 524288 &&
+				dispatchRate.RatePeriodInSecond == 60 &&
+				dispatchRate.RelativeToPublishRate == true
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove replicator dispatch rate policy
+	err = admin.Topics().RemoveReplicatorDispatchRate(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			dispatchRate, err := admin.Topics().GetReplicatorDispatchRate(*topicName)
+			return err == nil &&
+				dispatchRate.DispatchThrottlingRateInMsg == initialMsgRate &&
+				dispatchRate.DispatchThrottlingRateInByte == initialByteRate &&
+				dispatchRate.RatePeriodInSecond == initialRatePeriod &&
+				dispatchRate.RelativeToPublishRate == initialRelativeToPublish
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestOffloadPolicies(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default offload policies
+	offloadPolicies, err := admin.Topics().GetOffloadPolicies(*topicName)
+	assert.NoError(t, err)
+	// Default values should be empty/default
+	assert.Equal(t, "", offloadPolicies.ManagedLedgerOffloadDriver)
+	assert.Equal(t, 0, offloadPolicies.ManagedLedgerOffloadMaxThreads)
+
+	// Set new offload policies
+	newOffloadPolicies := utils.OffloadPolicies{
+		ManagedLedgerOffloadDriver:                        "aws-s3",
+		ManagedLedgerOffloadMaxThreads:                    4,
+		ManagedLedgerOffloadThresholdInBytes:              1073741824, // 1GB
+		ManagedLedgerOffloadDeletionLagInMillis:           3600000,    // 1 hour
+		ManagedLedgerOffloadAutoTriggerSizeThresholdBytes: 2147483648, // 2GB
+		S3ManagedLedgerOffloadBucket:                      "test-bucket",
+		S3ManagedLedgerOffloadRegion:                      "us-west-2",
+		S3ManagedLedgerOffloadServiceEndpoint:             "https://s3.amazonaws.com",
+	}
+	err = admin.Topics().SetOffloadPolicies(*topicName, newOffloadPolicies)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			offloadPolicies, err = admin.Topics().GetOffloadPolicies(*topicName)
+			return err == nil &&
+				offloadPolicies.ManagedLedgerOffloadDriver == "aws-s3" &&
+				offloadPolicies.ManagedLedgerOffloadMaxThreads == 4 &&
+				offloadPolicies.ManagedLedgerOffloadThresholdInBytes == 1073741824 &&
+				offloadPolicies.S3ManagedLedgerOffloadBucket == "test-bucket"
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove offload policies
+	err = admin.Topics().RemoveOffloadPolicies(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			offloadPolicies, err = admin.Topics().GetOffloadPolicies(*topicName)
+			return err == nil &&
+				offloadPolicies.ManagedLedgerOffloadDriver == "" &&
+				offloadPolicies.ManagedLedgerOffloadMaxThreads == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestAutoSubscriptionCreation(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default auto subscription creation
+	autoSubCreation, err := admin.Topics().GetAutoSubscriptionCreation(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, false, autoSubCreation.AllowAutoSubscriptionCreation)
+
+	// Set auto subscription creation to true
+	newAutoSubCreation := utils.AutoSubscriptionCreationOverride{
+		AllowAutoSubscriptionCreation: true,
+	}
+	err = admin.Topics().SetAutoSubscriptionCreation(*topicName, newAutoSubCreation)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			autoSubCreation, err = admin.Topics().GetAutoSubscriptionCreation(*topicName)
+			return err == nil &&
+				autoSubCreation.AllowAutoSubscriptionCreation == true
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove auto subscription creation policy
+	err = admin.Topics().RemoveAutoSubscriptionCreation(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			autoSubCreation, err = admin.Topics().GetAutoSubscriptionCreation(*topicName)
+			return err == nil &&
+				autoSubCreation.AllowAutoSubscriptionCreation == false
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestSchemaCompatibilityStrategy(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default schema compatibility strategy (adapt to actual server behavior)
+	initialStrategy, err := admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
+	assert.NoError(t, err)
+	// Server may return empty string instead of "UNDEFINED"
+
+	// Set new schema compatibility strategy
+	err = admin.Topics().SetSchemaCompatibilityStrategy(*topicName, utils.SchemaCompatibilityStrategyBackward)
+	assert.NoError(t, err)
+
+	// topic policy is an async operation,
+	// so we need to wait for a while to get current value
+	assert.Eventually(
+		t,
+		func() bool {
+			strategy, err := admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
+			return err == nil &&
+				strategy == utils.SchemaCompatibilityStrategyBackward
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove schema compatibility strategy policy
+	err = admin.Topics().RemoveSchemaCompatibilityStrategy(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			strategy, err := admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
+			return err == nil &&
+				strategy == initialStrategy
 		},
 		10*time.Second,
 		100*time.Millisecond,

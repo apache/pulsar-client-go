@@ -130,6 +130,7 @@ services:
       - loadBalancerDebugModeEnabled=true
       - brokerServiceCompactionThresholdInBytes=1000000
       - PULSAR_PREFIX_defaultNumberOfNamespaceBundles=1
+      - PULSAR_PREFIX_topicLevelPoliciesEnabled=true
     depends_on:
       green-zookeeper:
         condition: service_healthy
@@ -163,6 +164,7 @@ services:
       - loadBalancerDebugModeEnabled=true
       - brokerServiceCompactionThresholdInBytes=1000000
       - PULSAR_PREFIX_defaultNumberOfNamespaceBundles=1
+      - PULSAR_PREFIX_topicLevelPoliciesEnabled=true
     depends_on:
       green-zookeeper:
         condition: service_healthy
