@@ -2047,6 +2047,73 @@ func TestRLQWithCustomProperties(t *testing.T) {
 	assert.Nil(t, checkMsg)
 }
 
+// Test function to test Retry Logic with Custom Properties and Event Time
+func TestRLQWithCustomPropertiesEventTime(t *testing.T) {
+	topic := newTopicName()
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/partitions"
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
+
+	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
+	maxRedeliveries := 2
+	ctx := context.Background()
+
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// 1. Create producer and send a message with custom event time
+	producer, err := client.CreateProducer(ProducerOptions{Topic: topic})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	expectedEventTime := timeFromUnixTimestampMillis(uint64(1565161612000)) // Custom event time
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload:   []byte("MESSAGE_WITH_EVENT_TIME"),
+		EventTime: expectedEventTime,
+	})
+	assert.Nil(t, err)
+
+	// 2. Create consumer on the Retry Topic
+	rlqConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            subName,
+		Type:                        Shared,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+		DLQ: &DLQPolicy{
+			MaxDeliveries: uint32(maxRedeliveries),
+		},
+		RetryEnable:         true,
+		NackRedeliveryDelay: 1 * time.Second,
+	})
+	assert.Nil(t, err)
+	defer rlqConsumer.Close()
+
+	// 3. Receive the original message and verify event time
+	msg, err := rlqConsumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, expectedEventTime.Unix(), msg.EventTime().Unix(), "Original message should have the expected event time")
+
+	// 4. ReconsumeLater with custom properties and verify event time is preserved
+	customProps := map[string]string{
+		"custom-key-1": "custom-value-1",
+	}
+	rlqConsumer.ReconsumeLaterWithCustomProperties(msg, customProps, 1*time.Second)
+
+	// 5. Receive the reconsumed message and verify event time is preserved
+	retryMsg, err := rlqConsumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.Equal(t, expectedEventTime.Unix(), retryMsg.EventTime().Unix(), "Reconsumed message should preserve the original event time")
+
+	// 6. Verify custom properties are also preserved
+	msgProps := retryMsg.Properties()
+	value, ok := msgProps["custom-key-1"]
+	assert.True(t, ok, "Custom property should be present")
+	assert.Equal(t, "custom-value-1", value, "Custom property value should match")
+
+	// 7. Clean up - ack the message to avoid further redeliveries
+	rlqConsumer.Ack(retryMsg)
+}
+
 func TestAckWithResponse(t *testing.T) {
 	now := time.Now().Unix()
 	topic01 := fmt.Sprintf("persistent://public/default/topic-%d-01", now)
