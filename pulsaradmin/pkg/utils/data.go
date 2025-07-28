@@ -486,6 +486,27 @@ type DelayedDeliveryCmdData struct {
 type DelayedDeliveryData struct {
 	TickTime float64 `json:"tickTime"`
 	Active   bool    `json:"active"`
+	// MaxDelayInMillis is optional and was added for enhanced delayed delivery support
+	// Default value 0 means no maximum delay limit (backward compatible)
+	MaxDelayInMillis int64 `json:"maxDelayInMillis,omitempty"`
+}
+
+// NewDelayedDeliveryData creates a DelayedDeliveryData with backward compatible defaults
+func NewDelayedDeliveryData(tickTime float64, active bool) *DelayedDeliveryData {
+	return &DelayedDeliveryData{
+		TickTime: tickTime,
+		Active:   active,
+		// MaxDelayInMillis is left as 0 (no limit) for backward compatibility
+	}
+}
+
+// NewDelayedDeliveryDataWithMaxDelay creates a DelayedDeliveryData with max delay limit
+func NewDelayedDeliveryDataWithMaxDelay(tickTime float64, active bool, maxDelayMs int64) *DelayedDeliveryData {
+	return &DelayedDeliveryData{
+		TickTime:         tickTime,
+		Active:           active,
+		MaxDelayInMillis: maxDelayMs,
+	}
 }
 
 type DispatchRateData struct {
