@@ -2091,7 +2091,8 @@ func TestRLQWithCustomPropertiesEventTime(t *testing.T) {
 	// 3. Receive the original message and verify event time
 	msg, err := rlqConsumer.Receive(ctx)
 	assert.Nil(t, err)
-	assert.Equal(t, expectedEventTime.Unix(), msg.EventTime().Unix(), "Original message should have the expected event time")
+	assert.Equal(t, expectedEventTime.Unix(), msg.EventTime().Unix(),
+		"Original message should have the expected event time")
 
 	// 4. ReconsumeLater with custom properties and verify event time is preserved
 	customProps := map[string]string{
@@ -2102,7 +2103,8 @@ func TestRLQWithCustomPropertiesEventTime(t *testing.T) {
 	// 5. Receive the reconsumed message and verify event time is preserved
 	retryMsg, err := rlqConsumer.Receive(ctx)
 	assert.Nil(t, err)
-	assert.Equal(t, expectedEventTime.Unix(), retryMsg.EventTime().Unix(), "Reconsumed message should preserve the original event time")
+	assert.Equal(t, expectedEventTime.Unix(), retryMsg.EventTime().Unix(),
+		"Reconsumed message should preserve the original event time")
 
 	// 6. Verify custom properties are also preserved
 	msgProps := retryMsg.Properties()
