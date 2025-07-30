@@ -32,7 +32,7 @@ func TestNewRPCClient_InvalidURL_ShouldNotPanic(t *testing.T) {
 	// This should not panic and should return an error
 	_, err := NewRPCClient(invalidURL, nil, 0, log.DefaultNopLogger(), nil, "", nil, nil, nil)
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Invalid URL scheme")
+	assert.Contains(t, err.Error(), "invalid URL scheme")
 }
 
 func TestLookupService_InvalidURL_ShouldNotPanic(t *testing.T) {
@@ -44,7 +44,7 @@ func TestLookupService_InvalidURL_ShouldNotPanic(t *testing.T) {
 	// Test that LookupService doesn't panic with invalid URL
 	_, err = rpcClient.LookupService("invalid://url")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Invalid URL scheme")
+	assert.Contains(t, err.Error(), "invalid URL scheme")
 }
 
 func TestLookupService_InvalidScheme_ShouldNotPanic(t *testing.T) {
@@ -56,5 +56,5 @@ func TestLookupService_InvalidScheme_ShouldNotPanic(t *testing.T) {
 	// Test that LookupService doesn't panic with invalid scheme
 	_, err = rpcClient.LookupService("ftp://localhost:21")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Invalid URL scheme")
+	assert.Contains(t, err.Error(), "invalid URL scheme")
 }
