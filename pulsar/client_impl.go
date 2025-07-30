@@ -171,10 +171,16 @@ func newClient(options ClientOptions) (Client, error) {
 		tlsEnabled:       tlsConfig != nil,
 	}
 
-	c.rpcClient = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger, metrics,
+	c.rpcClient, err = internal.NewRPCClient(url, c.cnxPool, operationTimeout, logger, metrics,
 		options.ListenerName, tlsConfig, authProvider, toKeyValues(options.LookupProperties))
+	if err != nil {
+		return nil, err
+	}
 
-	c.lookupService = c.rpcClient.LookupService("")
+	c.lookupService, err = c.rpcClient.LookupService("")
+	if err != nil {
+		return nil, err
+	}
 
 	c.handlers = internal.NewClientHandlers()
 

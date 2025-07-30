@@ -74,7 +74,7 @@ type RPCClient interface {
 
 	RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
-	LookupService(URL string) LookupService
+	LookupService(URL string) (LookupService, error)
 }
 
 type rpcClient struct {
@@ -96,7 +96,7 @@ type rpcClient struct {
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
-	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider, lookupProperties []*pb.KeyValue) RPCClient {
+	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider, lookupProperties []*pb.KeyValue) (RPCClient, error) {
 	c := rpcClient{
 		pool:                pool,
 		requestTimeout:      requestTimeout,
@@ -110,11 +110,11 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 	}
 	lookupService, err := c.NewLookupService(serviceURL)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create lookup service: %w", err)
 	}
 	c.lookupService = lookupService
 
-	return &c
+	return &c, nil
 }
 
 func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
@@ -220,29 +220,28 @@ func (c *rpcClient) NewConsumerID() uint64 {
 	return atomic.AddUint64(&c.consumerIDGenerator, 1)
 }
 
-func (c *rpcClient) LookupService(URL string) LookupService {
+func (c *rpcClient) LookupService(URL string) (LookupService, error) {
 	if URL == "" {
-		return c.lookupService
+		return c.lookupService, nil
 	}
 	c.urlLookupServiceMapLock.Lock()
 	defer c.urlLookupServiceMapLock.Unlock()
 	lookupService, ok := c.urlLookupServiceMap[URL]
 	if ok {
-		return lookupService
+		return lookupService, nil
 	}
 
 	serviceURL, err := url.Parse(URL)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to parse URL '%s': %w", URL, err)
 	}
 
 	lookupService, err = c.NewLookupService(serviceURL)
 	if err != nil {
-		panic(err)
+		return nil, fmt.Errorf("failed to create lookup service for URL '%s': %w", URL, err)
 	}
 	c.urlLookupServiceMap[URL] = lookupService
-	return lookupService
-
+	return lookupService, nil
 }
 
 func (c *rpcClient) NewLookupService(url *url.URL) (LookupService, error) {
@@ -263,7 +262,7 @@ func (c *rpcClient) NewLookupService(url *url.URL) (LookupService, error) {
 		return NewHTTPLookupService(
 			httpClient, url, serviceNameResolver, c.tlsConfig != nil, c.log, c.metrics), nil
 	default:
-		panic(fmt.Sprintf("Invalid URL scheme '%s'", url.Scheme))
+		return nil, fmt.Errorf("Invalid URL scheme '%s'", url.Scheme)
 	}
 }
 

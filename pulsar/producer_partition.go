@@ -244,7 +244,11 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 
 func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
 	if len(brokerServiceURL) == 0 {
-		lr, err := p.client.rpcClient.LookupService(p.redirectedClusterURI).Lookup(p.topic)
+		lookupService, err := p.client.rpcClient.LookupService(p.redirectedClusterURI)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get lookup service: %w", err)
+		}
+		lr, err := lookupService.Lookup(p.topic)
 		if err != nil {
 			p.log.WithError(err).Warn("Failed to lookup topic")
 			return nil, err
@@ -253,8 +257,11 @@ func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.Look
 		p.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	return p.client.rpcClient.LookupService(p.redirectedClusterURI).
-		GetBrokerAddress(brokerServiceURL, p._getConn().IsProxied())
+	lookupService, err := p.client.rpcClient.LookupService(p.redirectedClusterURI)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get lookup service: %w", err)
+	}
+	return lookupService.GetBrokerAddress(brokerServiceURL, p._getConn().IsProxied())
 }
 
 func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
