@@ -20,6 +20,11 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"github.com/docker/docker/api/types/container"
+	"github.com/docker/go-connections/nat"
+	"github.com/stretchr/testify/require"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 	"log"
 	"testing"
 	"time"
@@ -114,6 +119,111 @@ func TestNormalZeroQueueConsumer(t *testing.T) {
 	}
 	err = consumer.Unsubscribe()
 	assert.Nil(t, err)
+}
+func TestReconnectConsumer(t *testing.T) {
+
+	req := testcontainers.ContainerRequest{
+		Name:         "pulsar-test",
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		HostConfigModifier: func(config *container.HostConfig) {
+			config.PortBindings = map[nat.Port][]nat.PortBinding{
+				"6650/tcp": {{HostIP: "0.0.0.0", HostPort: "6659"}},
+				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8089"}},
+			}
+		},
+		Cmd: []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+		Reuse:            true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL: endpoint,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+	var consumer Consumer
+	require.Eventually(t, func() bool {
+		consumer, err = client.Subscribe(ConsumerOptions{
+			Topic:                   topic,
+			SubscriptionName:        "my-sub",
+			EnableZeroQueueConsumer: true,
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+
+	assert.Nil(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
+		})
+		assert.Nil(t, err)
+		log.Printf("send message: %s", msg.String())
+	}
+
+	go func() {
+		time.Sleep(3 * time.Second)
+		log.Println("Simulating broker restart...")
+		// Simulate a broker restart by stopping the pulsar container
+		time := 5 * time.Second
+		err = c.Stop(context.Background(), &time)
+		assert.Nil(t, err)
+		err = c.Start(context.Background())
+		assert.Nil(t, err)
+		log.Println("Broker restarted")
+	}()
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		expectProperties := map[string]string{
+			"key-1": "pulsar-1",
+		}
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
+		// ack message
+		consumer.Ack(msg)
+		log.Printf("receive message: %s", msg.ID().String())
+		time.Sleep(5 * time.Second)
+	}
+	err = consumer.Unsubscribe()
+	assert.Nil(t, err)
+	consumer.Close()
+	producer.Close()
+	defer c.Terminate(ctx)
 }
 
 func TestMultipleConsumer(t *testing.T) {
