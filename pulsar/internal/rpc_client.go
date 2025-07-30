@@ -96,7 +96,8 @@ type rpcClient struct {
 
 func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
-	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider, lookupProperties []*pb.KeyValue) (RPCClient, error) {
+	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider,
+	lookupProperties []*pb.KeyValue) (RPCClient, error) {
 	c := rpcClient{
 		pool:                pool,
 		requestTimeout:      requestTimeout,
@@ -262,7 +263,7 @@ func (c *rpcClient) NewLookupService(url *url.URL) (LookupService, error) {
 		return NewHTTPLookupService(
 			httpClient, url, serviceNameResolver, c.tlsConfig != nil, c.log, c.metrics), nil
 	default:
-		return nil, fmt.Errorf("Invalid URL scheme '%s'", url.Scheme)
+		return nil, fmt.Errorf("invalid URL scheme '%s'", url.Scheme)
 	}
 }
 
