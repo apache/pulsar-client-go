@@ -1934,7 +1934,11 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 
 func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
 	if len(brokerServiceURL) == 0 {
-		lr, err := pc.client.rpcClient.LookupService(pc.redirectedClusterURI).Lookup(pc.topic)
+		lookupService, err := pc.client.rpcClient.LookupService(pc.redirectedClusterURI)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get lookup service: %w", err)
+		}
+		lr, err := lookupService.Lookup(pc.topic)
 		if err != nil {
 			pc.log.WithError(err).Warn("Failed to lookup topic")
 			return nil, err

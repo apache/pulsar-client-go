@@ -82,8 +82,8 @@ func (c *mockedLookupRPCClient) RequestToHost(_ *ServiceNameResolver, requestID 
 	return c.RequestToAnyBroker(requestID, cmdType, message)
 }
 
-func (c *mockedLookupRPCClient) LookupService(_ string) LookupService {
-	return nil
+func (c *mockedLookupRPCClient) LookupService(_ string) (LookupService, error) {
+	return nil, nil
 }
 
 func (c *mockedLookupRPCClient) Request(logicalAddr *url.URL, physicalAddr *url.URL, _ uint64,
@@ -521,8 +521,8 @@ func (m *mockedPartitionedTopicMetadataRPCClient) RequestToHost(_ *ServiceNameRe
 	return m.RequestToAnyBroker(requestID, cmdType, message)
 }
 
-func (m *mockedPartitionedTopicMetadataRPCClient) LookupService(_ string) LookupService {
-	return nil
+func (m *mockedPartitionedTopicMetadataRPCClient) LookupService(_ string) (LookupService, error) {
+	return nil, nil
 }
 
 func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
