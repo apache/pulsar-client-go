@@ -20,14 +20,15 @@ package pulsar
 import (
 	"context"
 	"fmt"
+	"log"
+	"testing"
+	"time"
+
 	"github.com/docker/docker/api/types/container"
 	"github.com/docker/go-connections/nat"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
-	"log"
-	"testing"
-	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsaradmin"
