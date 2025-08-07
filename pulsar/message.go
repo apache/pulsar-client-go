@@ -40,7 +40,7 @@ type ProducerMessage struct {
 
 	// EventTime set the event time for a given message
 	// By default, messages don't have an event time associated, while the publish
-	// time will be be always present.
+	// time will be always present.
 	// Set the event time to a non-zero timestamp to explicitly declare the time
 	// that the event "happened", as opposed to when the message is being published.
 	EventTime time.Time
