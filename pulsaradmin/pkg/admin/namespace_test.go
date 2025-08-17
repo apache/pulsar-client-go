@@ -32,6 +32,10 @@ func ptr(n int) *int {
 	return &n
 }
 
+func boolPtr(b bool) *bool {
+	return &b
+}
+
 func TestSetTopicAutoCreation(t *testing.T) {
 	config := &config.Config{}
 	admin, err := New(config)
@@ -48,7 +52,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			name:      "Set partitioned type topic auto creation",
 			namespace: "public/default",
 			config: utils.TopicAutoCreationConfig{
-				Allow:      true,
+				Allow:      boolPtr(true),
 				Type:       utils.Partitioned,
 				Partitions: ptr(3),
 			},
@@ -58,7 +62,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			name:      "Set partitioned type topic auto creation without partitions",
 			namespace: "public/default",
 			config: utils.TopicAutoCreationConfig{
-				Allow: true,
+				Allow: boolPtr(true),
 				Type:  utils.Partitioned,
 			},
 			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
@@ -68,7 +72,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			name:      "Set partitioned type topic auto creation with partitions < 1",
 			namespace: "public/default",
 			config: utils.TopicAutoCreationConfig{
-				Allow:      true,
+				Allow:      boolPtr(true),
 				Type:       utils.Partitioned,
 				Partitions: ptr(-1),
 			},
@@ -79,7 +83,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			name:      "Set non-partitioned type topic auto creation",
 			namespace: "public/default",
 			config: utils.TopicAutoCreationConfig{
-				Allow: true,
+				Allow: boolPtr(true),
 				Type:  utils.NonPartitioned,
 			},
 			errReason: "",
@@ -88,7 +92,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			name:      "Set non-partitioned type topic auto creation with partitions",
 			namespace: "public/default",
 			config: utils.TopicAutoCreationConfig{
-				Allow:      true,
+				Allow:      boolPtr(true),
 				Type:       utils.NonPartitioned,
 				Partitions: ptr(3),
 			},
@@ -99,7 +103,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			name:      "Disable topic auto creation",
 			namespace: "public/default",
 			config: utils.TopicAutoCreationConfig{
-				Allow: false,
+				Allow: boolPtr(false),
 			},
 			errReason: "",
 		},
@@ -107,7 +111,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			name:      "Set topic auto creation on a non-exist namespace",
 			namespace: "public/nonexist",
 			config: utils.TopicAutoCreationConfig{
-				Allow: true,
+				Allow: boolPtr(true),
 				Type:  utils.NonPartitioned,
 			},
 			errReason: "Namespace does not exist",
@@ -116,7 +120,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			name:      "Set topic auto creation on a non-exist tenant",
 			namespace: "non-exist/default",
 			config: utils.TopicAutoCreationConfig{
-				Allow: true,
+				Allow: boolPtr(true),
 				Type:  utils.NonPartitioned,
 			},
 			errReason: "Tenant does not exist",
@@ -150,14 +154,14 @@ func TestGetTopicAutoCreation(t *testing.T) {
 
 	// set the topic auto creation config and get it
 	err = admin.Namespaces().SetTopicAutoCreation(*namespace, utils.TopicAutoCreationConfig{
-		Allow: true,
+		Allow: boolPtr(true),
 		Type:  utils.NonPartitioned,
 	})
 	assert.Equal(t, nil, err)
 	topicAutoCreation, err := admin.Namespaces().GetTopicAutoCreation(*namespace)
 	assert.Equal(t, nil, err)
 	expected := utils.TopicAutoCreationConfig{
-		Allow: true,
+		Allow: boolPtr(true),
 		Type:  utils.NonPartitioned,
 	}
 	assert.Equal(t, expected, *topicAutoCreation)
@@ -169,7 +173,7 @@ func TestGetTopicAutoCreation(t *testing.T) {
 	topicAutoCreation, err = admin.Namespaces().GetTopicAutoCreation(*namespace)
 	assert.Equal(t, nil, err)
 	expected = utils.TopicAutoCreationConfig{
-		Allow: false,
+		Allow: nil,
 		Type:  "",
 	}
 	assert.Equal(t, expected, *topicAutoCreation)
