@@ -313,6 +313,8 @@ func GetCompressionProvider(
 		return compression.NewZLibProvider()
 	case pb.CompressionType_ZSTD:
 		return compression.NewZStdProvider(level)
+	case pb.CompressionType_SNAPPY:
+		return compression.NewSnappyProvider()
 	default:
 		panic("unsupported compression type")
 	}
