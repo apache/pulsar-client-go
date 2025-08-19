@@ -245,6 +245,7 @@ func TestProducerCompression(t *testing.T) {
 		{"zlib", ZLib},
 		{"lz4", LZ4},
 		{"zstd", ZSTD},
+		{"snappy", SNAPPY},
 	}
 
 	for _, provider := range providers {

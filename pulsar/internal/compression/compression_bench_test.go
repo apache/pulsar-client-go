@@ -72,6 +72,7 @@ var benchmarkProviders = []testProvider{
 	{"zstd-cgo-level-fastest", newCGoZStdProvider(Faster), nil},
 	{"zstd-cgo-level-default", newCGoZStdProvider(Default), nil},
 	{"zstd-cgo-level-best", newCGoZStdProvider(Better), nil},
+	{"snappy", NewSnappyProvider(), nil},
 }
 
 func BenchmarkCompression(b *testing.B) {

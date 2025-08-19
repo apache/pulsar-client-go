@@ -2242,6 +2242,8 @@ func (pc *partitionConsumer) initializeCompressionProvider(
 		return compression.NewLz4Provider(), nil
 	case pb.CompressionType_ZSTD:
 		return compression.NewZStdProvider(compression.Default), nil
+	case pb.CompressionType_SNAPPY:
+		return compression.NewSnappyProvider(), nil
 	}
 
 	return nil, fmt.Errorf("unsupported compression type: %v", compressionType)

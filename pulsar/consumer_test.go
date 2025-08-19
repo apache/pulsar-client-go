@@ -1293,6 +1293,98 @@ func TestConsumerCompression(t *testing.T) {
 	}
 }
 
+func TestConsumerMultiCompressions(t *testing.T) {
+	type testProvider struct {
+		name            string
+		compressionType CompressionType
+	}
+
+	providers := []testProvider{
+		{"zlib", ZLib},
+		{"lz4", LZ4},
+		{"zstd", ZSTD},
+		{"snappy", SNAPPY},
+	}
+
+	for _, provider := range providers {
+		p := provider
+		t.Run(p.name, func(t *testing.T) {
+			client, err := NewClient(ClientOptions{
+				URL: lookupURL,
+			})
+
+			assert.Nil(t, err)
+			defer client.Close()
+
+			batchTopic, nonBatchTopic := newTopicName(), newTopicName()
+			ctx := context.Background()
+
+			// enable batching
+			batchProducer, err := client.CreateProducer(ProducerOptions{
+				Topic:           batchTopic,
+				CompressionType: p.compressionType,
+				DisableBatching: false,
+			})
+			assert.Nil(t, err)
+			defer batchProducer.Close()
+
+			batchConsumer, err := client.Subscribe(ConsumerOptions{
+				Topic:            batchTopic,
+				SubscriptionName: "sub-1",
+			})
+			assert.Nil(t, err)
+			defer batchConsumer.Close()
+
+			const N = 100
+			for i := 0; i < N; i++ {
+				batchProducer.SendAsync(ctx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("msg-content-%d-batching-enabled", i)),
+				}, func(_ MessageID, _ *ProducerMessage, err error) {
+					assert.Nil(t, err)
+				})
+			}
+
+			for i := 0; i < N; i++ {
+				msg, err := batchConsumer.Receive(ctx)
+				assert.Nil(t, err)
+				assert.Equal(t, fmt.Sprintf("msg-content-%d-batching-enabled", i), string(msg.Payload()))
+				batchConsumer.Ack(msg)
+			}
+
+			// disable batching
+			nonBatchProducer, err := client.CreateProducer(ProducerOptions{
+				Topic:           nonBatchTopic,
+				CompressionType: p.compressionType,
+				DisableBatching: true,
+			})
+			assert.Nil(t, err)
+			defer nonBatchProducer.Close()
+
+			nonBatchConsumer, err := client.Subscribe(ConsumerOptions{
+				Topic:            nonBatchTopic,
+				SubscriptionName: "sub-1",
+			})
+			assert.Nil(t, err)
+			defer nonBatchConsumer.Close()
+
+			for i := 0; i < N; i++ {
+				if _, err := nonBatchProducer.Send(ctx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("msg-content-%d-batching-disabled", i)),
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			for i := 0; i < N; i++ {
+				msg, err := nonBatchConsumer.Receive(ctx)
+				assert.Nil(t, err)
+				assert.Equal(t, fmt.Sprintf("msg-content-%d-batching-disabled", i), string(msg.Payload()))
+				nonBatchConsumer.Ack(msg)
+			}
+		})
+	}
+}
+
 func TestConsumerCompressionWithBatches(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
