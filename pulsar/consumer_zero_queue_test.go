@@ -149,8 +149,10 @@ func TestReconnectConsumer(t *testing.T) {
 		URL: endpoint,
 	})
 	assert.Nil(t, err)
+	adminEndpoint, err := c.PortEndpoint(context.Background(), "8080", "http")
+	assert.Nil(t, err)
 	admin, err := pulsaradmin.NewClient(&config.Config{
-		WebServiceURL: "http://localhost:8089",
+		WebServiceURL: adminEndpoint,
 	})
 	assert.Nil(t, err)
 
