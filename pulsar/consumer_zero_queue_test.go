@@ -148,6 +148,7 @@ func TestReconnectConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: endpoint,
 	})
+	assert.Nil(t, err)
 	admin, err := pulsaradmin.NewClient(&config.Config{
 		WebServiceURL: "http://localhost:8089",
 	})
