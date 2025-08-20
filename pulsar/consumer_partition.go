@@ -1607,6 +1607,26 @@ func (pc *partitionConsumer) dispatcher() {
 			if !pc.isSeeking.Load() {
 				if pc.dlq.shouldSendToDlq(&nextMessage) {
 					// pass the message to the DLQ router
+					// we need to create a new ConsumerMessage and add dlq related metadata properties
+					properties := make(map[string]string)
+					properties[SysPropertyRealTopic] = messages[0].Topic()
+					properties[SysPropertyOriginMessageID] = messages[0].msgID.String()
+					properties[PropertyOriginMessageID] = messages[0].msgID.String()
+					for key, value := range messages[0].properties {
+						properties[key] = value
+					}
+					nextMessage = ConsumerMessage{
+						Consumer: pc.parentConsumer,
+						// Copy msgID so that dlq/rlq router can ack this msg after successfully sent to new topic
+						Message: &message{
+							payLoad:     messages[0].Payload(),
+							key:         messages[0].Key(),
+							orderingKey: messages[0].OrderingKey(),
+							properties:  properties,
+							eventTime:   messages[0].EventTime(),
+							msgID:       messages[0].msgID,
+						},
+					}
 					pc.metrics.DlqCounter.Inc()
 					messageCh = pc.dlq.Chan()
 				} else {
@@ -2223,6 +2243,8 @@ func (pc *partitionConsumer) initializeCompressionProvider(
 		return compression.NewLz4Provider(), nil
 	case pb.CompressionType_ZSTD:
 		return compression.NewZStdProvider(compression.Default), nil
+	case pb.CompressionType_SNAPPY:
+		return compression.NewSnappyProvider(), nil
 	}
 
 	return nil, fmt.Errorf("unsupported compression type: %v", compressionType)

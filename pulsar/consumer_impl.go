@@ -633,17 +633,21 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 	} else {
 		props[SysPropertyRealTopic] = msg.Topic()
 		props[SysPropertyOriginMessageID] = msgID.messageID.String()
+		props[PropertyOriginMessageID] = msgID.messageID.String()
 	}
 	props[SysPropertyReconsumeTimes] = strconv.Itoa(reconsumeTimes)
 	props[SysPropertyDelayTime] = fmt.Sprintf("%d", int64(delay)/1e6)
 
 	consumerMsg := ConsumerMessage{
 		Consumer: c,
+		// Copy msgID so that dlq/rlq router can ack this msg after successfully sent to new topic
 		Message: &message{
-			payLoad:    msg.Payload(),
-			properties: props,
-			msgID:      msgID,
-			eventTime:  msg.EventTime(),
+			payLoad:     msg.Payload(),
+			key:         msg.Key(),
+			orderingKey: msg.OrderingKey(),
+			properties:  props,
+			eventTime:   msg.EventTime(),
+			msgID:       msgID,
 		},
 	}
 	if uint32(reconsumeTimes) > c.dlq.policy.MaxDeliveries {

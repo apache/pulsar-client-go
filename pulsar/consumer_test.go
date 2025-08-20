@@ -1367,6 +1367,98 @@ func TestConsumerCompression(t *testing.T) {
 	}
 }
 
+func TestConsumerMultiCompressions(t *testing.T) {
+	type testProvider struct {
+		name            string
+		compressionType CompressionType
+	}
+
+	providers := []testProvider{
+		{"zlib", ZLib},
+		{"lz4", LZ4},
+		{"zstd", ZSTD},
+		{"snappy", SNAPPY},
+	}
+
+	for _, provider := range providers {
+		p := provider
+		t.Run(p.name, func(t *testing.T) {
+			client, err := NewClient(ClientOptions{
+				URL: lookupURL,
+			})
+
+			assert.Nil(t, err)
+			defer client.Close()
+
+			batchTopic, nonBatchTopic := newTopicName(), newTopicName()
+			ctx := context.Background()
+
+			// enable batching
+			batchProducer, err := client.CreateProducer(ProducerOptions{
+				Topic:           batchTopic,
+				CompressionType: p.compressionType,
+				DisableBatching: false,
+			})
+			assert.Nil(t, err)
+			defer batchProducer.Close()
+
+			batchConsumer, err := client.Subscribe(ConsumerOptions{
+				Topic:            batchTopic,
+				SubscriptionName: "sub-1",
+			})
+			assert.Nil(t, err)
+			defer batchConsumer.Close()
+
+			const N = 100
+			for i := 0; i < N; i++ {
+				batchProducer.SendAsync(ctx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("msg-content-%d-batching-enabled", i)),
+				}, func(_ MessageID, _ *ProducerMessage, err error) {
+					assert.Nil(t, err)
+				})
+			}
+
+			for i := 0; i < N; i++ {
+				msg, err := batchConsumer.Receive(ctx)
+				assert.Nil(t, err)
+				assert.Equal(t, fmt.Sprintf("msg-content-%d-batching-enabled", i), string(msg.Payload()))
+				batchConsumer.Ack(msg)
+			}
+
+			// disable batching
+			nonBatchProducer, err := client.CreateProducer(ProducerOptions{
+				Topic:           nonBatchTopic,
+				CompressionType: p.compressionType,
+				DisableBatching: true,
+			})
+			assert.Nil(t, err)
+			defer nonBatchProducer.Close()
+
+			nonBatchConsumer, err := client.Subscribe(ConsumerOptions{
+				Topic:            nonBatchTopic,
+				SubscriptionName: "sub-1",
+			})
+			assert.Nil(t, err)
+			defer nonBatchConsumer.Close()
+
+			for i := 0; i < N; i++ {
+				if _, err := nonBatchProducer.Send(ctx, &ProducerMessage{
+					Payload: []byte(fmt.Sprintf("msg-content-%d-batching-disabled", i)),
+				}); err != nil {
+					t.Fatal(err)
+				}
+			}
+
+			for i := 0; i < N; i++ {
+				msg, err := nonBatchConsumer.Receive(ctx)
+				assert.Nil(t, err)
+				assert.Equal(t, fmt.Sprintf("msg-content-%d-batching-disabled", i), string(msg.Payload()))
+				nonBatchConsumer.Ack(msg)
+			}
+		})
+	}
+}
+
 func TestConsumerCompressionWithBatches(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -1654,12 +1746,26 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 	defer producer.Close()
 
 	// send 10 messages
+	eventTimeList := make([]time.Time, 10)
+	msgIDList := make([]string, 10)
+	msgKeyList := make([]string, 10)
 	for i := 0; i < 10; i++ {
-		if _, err := producer.Send(ctx, &ProducerMessage{
-			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}); err != nil {
+		eventTime := time.Now()
+		eventTimeList[i] = eventTime
+		msgKeyList[i] = fmt.Sprintf("key-%d", i)
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload:     []byte(fmt.Sprintf("hello-%d", i)),
+			Key:         fmt.Sprintf("key-%d", i),
+			OrderingKey: fmt.Sprintf("key-%d", i),
+			EventTime:   eventTime,
+			Properties: map[string]string{
+				"key": fmt.Sprintf("key-%d", i),
+			},
+		})
+		if err != nil {
 			log.Fatal(err)
 		}
+		msgIDList[i] = msgID.String()
 	}
 
 	// receive 10 messages and only ack half-of-them
@@ -1698,10 +1804,27 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 		assert.True(t, regex.MatchString(msg.ProducerName()))
 
 		// check original messageId
+		assert.NotEmpty(t, msg.Properties()[SysPropertyOriginMessageID])
+		assert.Equal(t, msgIDList[expectedMsgIdx], msg.Properties()[SysPropertyOriginMessageID])
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
+		assert.Equal(t, msgIDList[expectedMsgIdx], msg.Properties()[PropertyOriginMessageID])
 
 		// check original topic
-		assert.NotEmpty(t, msg.Properties()[SysPropertyRealTopic])
+		assert.Contains(t, msg.Properties()[SysPropertyRealTopic], topic)
+
+		// check original key
+		assert.NotEmpty(t, msg.Key())
+		assert.Equal(t, msgKeyList[expectedMsgIdx], msg.Key())
+		assert.NotEmpty(t, msg.OrderingKey())
+		assert.Equal(t, msgKeyList[expectedMsgIdx], msg.OrderingKey())
+		assert.NotEmpty(t, msg.Properties()["key"])
+		assert.Equal(t, msg.Key(), msg.Properties()["key"])
+
+		//	check original event time
+		//	Broker will ignore event time microsecond(us) level precision,
+		//	so that we need to check eventTime precision in millisecond level
+		assert.NotEqual(t, 0, msg.EventTime())
+		assert.True(t, eventTimeList[expectedMsgIdx].Sub(msg.EventTime()).Abs() < 2*time.Millisecond)
 	}
 
 	// No more messages on the DLQ
@@ -1929,9 +2052,24 @@ func TestRLQ(t *testing.T) {
 	assert.Nil(t, err)
 	defer producer.Close()
 
+	eventTimeList := make([]time.Time, N)
+	msgIDList := make([]string, N)
+	msgKeyList := make([]string, N)
 	for i := 0; i < N; i++ {
-		_, err = producer.Send(ctx, &ProducerMessage{Payload: []byte(fmt.Sprintf("MESSAGE_%d", i))})
+		eventTime := time.Now()
+		eventTimeList[i] = eventTime
+		msgKeyList[i] = fmt.Sprintf("key-%d", i)
+		msgID, err := producer.Send(ctx, &ProducerMessage{
+			Payload:     []byte(fmt.Sprintf("MESSAGE_%d", i)),
+			Key:         fmt.Sprintf("key-%d", i),
+			OrderingKey: fmt.Sprintf("key-%d", i),
+			EventTime:   eventTime,
+			Properties: map[string]string{
+				"key": fmt.Sprintf("key-%d", i),
+			},
+		})
 		assert.Nil(t, err)
+		msgIDList[i] = msgID.String()
 	}
 
 	// 2. Create consumer on the Retry Topic to reconsume N messages (maxRedeliveries+1) times
@@ -1977,6 +2115,33 @@ func TestRLQ(t *testing.T) {
 	dlqReceived := 0
 	for dlqReceived < N {
 		msg, err := dlqConsumer.Receive(ctx)
+		//	check original messageId
+		//	we create a topic with three partitions,
+		//	so that messages maybe not be received as the same order as we produced
+		assert.NotEmpty(t, msg.Properties()[SysPropertyOriginMessageID])
+		assert.Contains(t, msgIDList, msg.Properties()[SysPropertyOriginMessageID])
+		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
+		assert.Contains(t, msgIDList, msg.Properties()[PropertyOriginMessageID])
+
+		// check original topic
+		assert.Contains(t, msg.Properties()[SysPropertyRealTopic], topic)
+
+		// check original key
+		assert.NotEmpty(t, msg.Key())
+		assert.Contains(t, msgKeyList, msg.Key())
+		assert.NotEmpty(t, msg.OrderingKey())
+		assert.Contains(t, msgKeyList, msg.OrderingKey())
+		assert.NotEmpty(t, msg.Properties()["key"])
+		assert.Equal(t, msg.Key(), msg.Properties()["key"])
+
+		// check original event time
+		assert.NotEqual(t, 0, msg.EventTime())
+		//	check original event time
+		//	Broker will ignore event time microsecond(us) level precision,
+		//	so that we need to check eventTime precision in millisecond level
+		assert.LessOrEqual(t, eventTimeList[0].Add(-2*time.Millisecond), msg.EventTime())
+		assert.LessOrEqual(t, msg.EventTime(), eventTimeList[N-1].Add(2*time.Millisecond))
+
 		assert.Nil(t, err)
 		dlqConsumer.Ack(msg)
 		dlqReceived++
