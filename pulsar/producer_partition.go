@@ -372,6 +372,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			maxMessageSize, p.producerName, p.producerID, pb.CompressionType(p.options.CompressionType),
 			compression.Level(p.options.CompressionLevel),
 			buffersPool,
+			p.client.metrics,
 			p.log,
 			p.encryptor)
 		if err != nil {
@@ -797,7 +798,7 @@ func (p *partitionProducer) internalSingleSend(
 	payloadBuf := internal.NewBuffer(len(compressedPayload))
 	payloadBuf.Write(compressedPayload)
 
-	buffer := buffersPool.GetBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
+	buffer := buffersPool.GetBuffer(int(payloadBuf.ReadableBytes()*3/2), p.client.metrics.SendingBuffersCount)
 
 	sid := *mm.SequenceId
 	var useTxn bool

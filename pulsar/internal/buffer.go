@@ -22,11 +22,12 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 )
 
 type BuffersPool interface {
-	GetBuffer(initSize int) Buffer
+	GetBuffer(initSize int, countMetric prometheus.Gauge) Buffer
 	Put(buf Buffer)
 }
 
@@ -94,16 +95,16 @@ func NewBufferPool() BuffersPool {
 	}
 }
 
-func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
-	sendingBuffersCount.Inc()
+func (p *bufferPoolImpl) GetBuffer(initSize int, countMetric prometheus.Gauge) Buffer {
 	b, ok := p.Get().(*buffer)
 	if ok {
 		b.Clear()
 	} else {
 		b = &buffer{
-			data:      make([]byte, initSize),
-			readerIdx: 0,
-			writerIdx: 0,
+			data:        make([]byte, initSize),
+			readerIdx:   0,
+			writerIdx:   0,
+			countMetric: countMetric,
 		}
 	}
 	b.pool = p
@@ -112,8 +113,8 @@ func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
 }
 
 func (p *bufferPoolImpl) Put(buf Buffer) {
-	sendingBuffersCount.Dec()
 	if b, ok := buf.(*buffer); ok {
+		b.countMetric.Inc()
 		p.Pool.Put(b)
 	}
 }
@@ -124,8 +125,9 @@ type buffer struct {
 	readerIdx uint32
 	writerIdx uint32
 
-	refCnt atomic.Int64
-	pool   BuffersPool
+	refCnt      atomic.Int64
+	pool        BuffersPool
+	countMetric prometheus.Gauge
 }
 
 // NewBuffer creates and initializes a new Buffer using buf as its initial contents.
@@ -269,6 +271,7 @@ func (b *buffer) Release() {
 	if b.refCnt.Add(-1) == 0 {
 		if b.pool != nil {
 			b.pool.Put(b)
+			b.countMetric.Dec()
 		}
 	}
 }
