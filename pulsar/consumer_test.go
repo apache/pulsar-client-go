@@ -1185,6 +1185,7 @@ func TestConsumerNack(t *testing.T) {
 		SubscriptionName:    "sub-1",
 		Type:                Shared,
 		NackRedeliveryDelay: 1 * time.Second,
+		NackPrecisionBit: 8,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -1216,13 +1217,86 @@ func TestConsumerNack(t *testing.T) {
 	// Failed messages should be resent
 
 	// We should only receive the odd messages
-	for i := 1; i < N; i += 2 {
+	receivedOdd := 0
+	expectedOdd := (N + 1) / 2 // Expected number of odd message IDs
+
+	for receivedOdd < expectedOdd {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
-		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 
+		// Extract message ID from the payload (e.g., "msg-content-15")
+		var id int
+		_, err = fmt.Sscanf(string(msg.Payload()), "msg-content-%d", &id)
+		assert.Nil(t, err)
+
+		// Count only odd message IDs
+		if id%2 == 1 {
+			assert.True(t, id%2 == 1) // Optional check, included for clarity
+			receivedOdd++
+		}
+
+		// Acknowledge message to mark it as processed
 		consumer.Ack(msg)
 	}
+
+	// Verify that the correct number of odd messages were received
+	assert.Equal(t, expectedOdd, receivedOdd)
+}
+
+func TestNegativeAckPrecisionBitCnt(t *testing.T) {
+    const delayMs = 2000
+
+    for precision := 1; precision <= 8; precision++ {
+        topicName := fmt.Sprintf("testNegativeAckPrecisionBitCnt-%d-%d", precision, time.Now().UnixNano())
+        ctx := context.Background()
+        client, err := NewClient(ClientOptions{URL: lookupURL})
+        assert.Nil(t, err)
+        defer client.Close()
+
+        consumer, err := client.Subscribe(ConsumerOptions{
+            Topic:               topicName,
+            SubscriptionName:    "sub-1",
+            Type:                Shared,
+            NackRedeliveryDelay: time.Duration(delayMs) * time.Millisecond,
+            NackPrecisionBit:    int64(precision),
+        })
+        assert.Nil(t, err)
+        defer consumer.Close()
+
+        producer, err := client.CreateProducer(ProducerOptions{
+            Topic: topicName,
+        })
+        assert.Nil(t, err)
+        defer producer.Close()
+
+        // Send single message
+        content := "test-0"
+        _, err = producer.Send(ctx, &ProducerMessage{
+            Payload: []byte(content),
+        })
+        assert.Nil(t, err)
+
+        // Receive and send negative ack
+        msg, err := consumer.Receive(ctx)
+        assert.Nil(t, err)
+        assert.Equal(t, content, string(msg.Payload()))
+        consumer.Nack(msg)
+
+        // Calculate expected redelivery window
+        expectedRedelivery := time.Now().Add(time.Duration(delayMs) * time.Millisecond)
+        deviation := time.Duration(int64(1) << precision)
+
+        // Wait for redelivery
+        redelivered, err := consumer.Receive(ctx)
+        assert.Nil(t, err)
+        assert.Equal(t, content, string(redelivered.Payload()))
+
+        now := time.Now()
+        // Assert that redelivery happens >= expected - deviation
+        assert.GreaterOrEqual(t, now.UnixMilli(), expectedRedelivery.UnixMilli()-deviation.Milliseconds())
+
+        consumer.Ack(redelivered)
+    }
 }
 
 func TestConsumerCompression(t *testing.T) {

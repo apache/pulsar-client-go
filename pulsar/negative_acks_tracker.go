@@ -21,6 +21,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2/roaring64"
+	"github.com/emirpasic/gods/trees/avltree"
 	log "github.com/apache/pulsar-client-go/pulsar/log"
 )
 
@@ -28,12 +30,15 @@ type redeliveryConsumer interface {
 	Redeliver(msgIDs []messageID)
 }
 
+type LedgerId = int64
+
 type negativeAcksTracker struct {
 	sync.Mutex
 
 	doneCh       chan interface{}
 	doneOnce     sync.Once
-	negativeAcks map[messageID]time.Time
+	negativeAcks *avltree.Tree
+	nackPrecisionBit int64
 	rc           redeliveryConsumer
 	nackBackoff  NackBackoffPolicy
 	tick         *time.Ticker
@@ -42,14 +47,26 @@ type negativeAcksTracker struct {
 }
 
 func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
-	nackBackoffPolicy NackBackoffPolicy, logger log.Logger) *negativeAcksTracker {
+	nackBackoffPolicy NackBackoffPolicy, logger log.Logger, nackPrecisionBit int64) *negativeAcksTracker {
 
 	t := &negativeAcksTracker{
 		doneCh:       make(chan interface{}),
-		negativeAcks: make(map[messageID]time.Time),
+		negativeAcks: avltree.NewWith(func(a, b interface{}) int {
+			// compare time.Time
+			timeA := a.(time.Time)
+			timeB := b.(time.Time)
+			if timeA.Before(timeB) {
+				return -1
+			}
+			if timeA.After(timeB) {
+				return 1
+			}
+			return 0
+    	}),
 		rc:           rc,
 		nackBackoff:  nackBackoffPolicy,
 		log:          logger,
+		nackPrecisionBit: nackPrecisionBit,
 	}
 
 	if nackBackoffPolicy != nil {
@@ -65,6 +82,14 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 	return t
 }
 
+func trimLowerBit(ts int64, precisionBit int64) int64 {
+	if precisionBit <= 0 {
+		return ts
+	}
+	mask := ^((int64(1) << precisionBit) - 1)
+	return ts & mask
+}
+
 func (t *negativeAcksTracker) Add(msgID *messageID) {
 	// Always clear up the batch index since we want to track the nack
 	// for the entire batch
@@ -77,14 +102,20 @@ func (t *negativeAcksTracker) Add(msgID *messageID) {
 	t.Lock()
 	defer t.Unlock()
 
-	_, present := t.negativeAcks[batchMsgID]
-	if present {
-		// The batch is already being tracked
-		return
-	}
-
 	targetTime := time.Now().Add(t.delay)
-	t.negativeAcks[batchMsgID] = targetTime
+	trimmedTime := time.UnixMilli(trimLowerBit(targetTime.UnixMilli(), t.nackPrecisionBit))
+	// try get trimmedTime
+	value, exists := t.negativeAcks.Get(trimmedTime)
+	if !exists {
+		newMap := make(map[LedgerId]*roaring64.Bitmap)
+		t.negativeAcks.Put(trimmedTime, newMap)
+		value = newMap
+	}
+	bitmapMap := value.(map[LedgerId]*roaring64.Bitmap)
+	if _, exists := bitmapMap[batchMsgID.ledgerID]; !exists {
+		bitmapMap[batchMsgID.ledgerID] = roaring64.NewBitmap()
+	}
+	bitmapMap[batchMsgID.ledgerID].Add(uint64(batchMsgID.entryID))
 }
 
 func (t *negativeAcksTracker) AddMessage(msg Message) {
@@ -103,14 +134,20 @@ func (t *negativeAcksTracker) AddMessage(msg Message) {
 	t.Lock()
 	defer t.Unlock()
 
-	_, present := t.negativeAcks[batchMsgID]
-	if present {
-		// The batch is already being tracked
-		return
-	}
-
 	targetTime := time.Now().Add(nackBackoffDelay)
-	t.negativeAcks[batchMsgID] = targetTime
+	trimmedTime := time.UnixMilli(trimLowerBit(targetTime.UnixMilli(), t.nackPrecisionBit))
+	// try get trimmedTime
+	value, exists := t.negativeAcks.Get(trimmedTime)
+	if !exists {
+		newMap := make(map[LedgerId]*roaring64.Bitmap)
+		t.negativeAcks.Put(trimmedTime, newMap)
+		value = newMap
+	}
+	bitmapMap := value.(map[LedgerId]*roaring64.Bitmap)
+	if _, exists := bitmapMap[batchMsgID.ledgerID]; !exists {
+		bitmapMap[batchMsgID.ledgerID] = roaring64.NewBitmap()
+	}
+	bitmapMap[batchMsgID.ledgerID].Add(uint64(batchMsgID.entryID))
 }
 
 func (t *negativeAcksTracker) track() {
@@ -127,13 +164,28 @@ func (t *negativeAcksTracker) track() {
 
 				t.Lock()
 
-				for msgID, targetTime := range t.negativeAcks {
-					t.log.Debugf("MsgId: %v -- targetTime: %v -- now: %v", msgID, targetTime, now)
-					if targetTime.Before(now) {
-						t.log.Debugf("Adding MsgId: %v", msgID)
-						msgIDs = append(msgIDs, msgID)
-						delete(t.negativeAcks, msgID)
+				iterator := t.negativeAcks.Iterator()
+				for iterator.Next() {
+					targetTime := iterator.Key().(time.Time)
+					// because use ordered map, so we can early break 
+					if targetTime.After(now) {
+						break
 					}
+
+					ledgerMap := iterator.Value().(map[LedgerId]*roaring64.Bitmap)
+					for ledgerID, entrySet := range ledgerMap {
+						for _, entryID := range entrySet.ToArray() {
+							msgID := messageID{
+								ledgerID: ledgerID,
+								entryID:  int64(entryID),
+								batchIdx: 0,
+							}
+							msgIDs = append(msgIDs, msgID)
+						}
+					}
+
+					// Safe deletion during iteration
+					t.negativeAcks.Remove(targetTime)
 				}
 
 				t.Unlock()

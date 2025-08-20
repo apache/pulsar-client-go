@@ -452,6 +452,7 @@ func newPartitionConsumerOpts(topic, consumerName string, idx int, options Consu
 		receiverQueueSize:           options.ReceiverQueueSize,
 		nackRedeliveryDelay:         nackRedeliveryDelay,
 		nackBackoffPolicy:           options.NackBackoffPolicy,
+		nackPrecisionBit:            options.NackPrecisionBit,
 		metadata:                    options.Properties,
 		subProperties:               options.SubscriptionProperties,
 		replicateSubscriptionState:  options.ReplicateSubscriptionState,
