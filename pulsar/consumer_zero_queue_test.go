@@ -148,6 +148,10 @@ func TestReconnectConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: endpoint,
 	})
+	admin, err := pulsaradmin.NewClient(&config.Config{
+		WebServiceURL: "http://localhost:8089",
+	})
+	assert.Nil(t, err)
 
 	assert.Nil(t, err)
 	defer client.Close()
@@ -189,20 +193,25 @@ func TestReconnectConsumer(t *testing.T) {
 		log.Printf("send message: %s", msg.String())
 	}
 
+	ch := make(chan struct{})
+
 	go func() {
 		time.Sleep(3 * time.Second)
-		log.Println("Simulating broker restart...")
+		log.Println("unloading topic")
 		// Simulate a broker restart by stopping the pulsar container
-		time := 5 * time.Second
-		err = c.Stop(context.Background(), &time)
+		topicName, err := utils.GetTopicName(topic)
 		assert.Nil(t, err)
-		err = c.Start(context.Background())
+		err = admin.Topics().Unload(*topicName)
 		assert.Nil(t, err)
-		log.Println("Broker restarted")
+		log.Println("unloaded topic")
+		ch <- struct{}{}
 	}()
 
 	// receive 10 messages
 	for i := 0; i < 10; i++ {
+		if i == 3 {
+			<-ch
+		}
 		msg, err := consumer.Receive(context.Background())
 		if err != nil {
 			log.Fatal(err)
@@ -218,7 +227,6 @@ func TestReconnectConsumer(t *testing.T) {
 		// ack message
 		consumer.Ack(msg)
 		log.Printf("receive message: %s", msg.ID().String())
-		time.Sleep(5 * time.Second)
 	}
 	err = consumer.Unsubscribe()
 	assert.Nil(t, err)
