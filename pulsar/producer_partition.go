@@ -798,7 +798,10 @@ func (p *partitionProducer) internalSingleSend(
 	payloadBuf := internal.NewBuffer(len(compressedPayload))
 	payloadBuf.Write(compressedPayload)
 
-	buffer := buffersPool.GetBuffer(int(payloadBuf.ReadableBytes()*3/2), p.client.metrics.SendingBuffersCount)
+	buffer := buffersPool.GetBuffer(int(payloadBuf.ReadableBytes() * 3 / 2))
+	bufferCount := p.client.metrics.SendingBuffersCount
+	bufferCount.Inc()
+	buffer.SetReleaseCallback(func() { bufferCount.Dec() })
 
 	sid := *mm.SequenceId
 	var useTxn bool

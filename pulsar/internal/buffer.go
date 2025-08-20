@@ -22,12 +22,11 @@ import (
 	"sync"
 	"sync/atomic"
 
-	"github.com/prometheus/client_golang/prometheus"
 	log "github.com/sirupsen/logrus"
 )
 
 type BuffersPool interface {
-	GetBuffer(initSize int, countMetric prometheus.Gauge) Buffer
+	GetBuffer(initSize int) Buffer
 	Put(buf Buffer)
 }
 
@@ -77,9 +76,15 @@ type Buffer interface {
 	Resize(newSize uint32)
 	ResizeIfNeeded(spaceNeeded uint32)
 
+	// Retain increases the reference count
 	Retain()
+	// Release decreases the reference count and returns the buffer to the pool
+	// if it's associated with a buffer pool and the count reaches zero.
 	Release()
+	// RefCnt returns the current reference count of the buffer.
 	RefCnt() int64
+	// SetReleaseCallback sets a callback function that will be called when the buffer is returned to a pool.
+	SetReleaseCallback(cb func())
 
 	// Clear will clear the current buffer data.
 	Clear()
@@ -95,15 +100,17 @@ func NewBufferPool() BuffersPool {
 	}
 }
 
-func (p *bufferPoolImpl) GetBuffer(initSize int, countMetric prometheus.Gauge) Buffer {
+func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
 	b, ok := p.Get().(*buffer)
 	if ok {
 		b.Clear()
 	} else {
-		b = NewBuffer(initSize).(*buffer)
+		b = &buffer{
+			data:      make([]byte, initSize),
+			readerIdx: 0,
+			writerIdx: 0,
+		}
 	}
-	b.countMetric = countMetric
-	b.countMetric.Inc()
 	b.pool = p
 	b.Retain()
 	return b
@@ -111,9 +118,11 @@ func (p *bufferPoolImpl) GetBuffer(initSize int, countMetric prometheus.Gauge) B
 
 func (p *bufferPoolImpl) Put(buf Buffer) {
 	if b, ok := buf.(*buffer); ok {
+		// Get the callback before putting back to the pool because it might be reset
+		cb := b.releaseCallback
 		p.Pool.Put(b)
-		if b.countMetric != nil {
-			b.countMetric.Dec()
+		if cb != nil {
+			cb()
 		}
 	}
 }
@@ -124,9 +133,9 @@ type buffer struct {
 	readerIdx uint32
 	writerIdx uint32
 
-	refCnt      atomic.Int64
-	pool        BuffersPool
-	countMetric prometheus.Gauge
+	refCnt          atomic.Int64
+	pool            BuffersPool
+	releaseCallback func()
 }
 
 // NewBuffer creates and initializes a new Buffer using buf as its initial contents.
@@ -276,6 +285,10 @@ func (b *buffer) Release() {
 
 func (b *buffer) RefCnt() int64 {
 	return b.refCnt.Load()
+}
+
+func (b *buffer) SetReleaseCallback(cb func()) {
+	b.releaseCallback = cb
 }
 
 func (b *buffer) Clear() {

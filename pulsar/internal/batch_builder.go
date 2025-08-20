@@ -267,7 +267,10 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	uncompressedSize := bc.buffer.ReadableBytes()
 	bc.msgMetadata.UncompressedSize = &uncompressedSize
 
-	buffer := bc.buffersPool.GetBuffer(int(uncompressedSize*3/2), bc.metrics.SendingBuffersCount)
+	buffer := bc.buffersPool.GetBuffer(int(uncompressedSize * 3 / 2))
+	bufferCount := bc.metrics.SendingBuffersCount
+	bufferCount.Inc()
+	buffer.SetReleaseCallback(func() { bufferCount.Dec() })
 
 	sequenceID := uint64(0)
 	var err error

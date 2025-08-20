@@ -2354,12 +2354,12 @@ func TestProducerSendWithContext(t *testing.T) {
 }
 
 func TestFailPendingMessageWithClose(t *testing.T) {
-	c, err := NewClient(ClientOptions{
+	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
 	assert.NoError(t, err)
-	defer c.Close()
-	testProducer, err := c.CreateProducer(ProducerOptions{
+	defer client.Close()
+	testProducer, err := client.CreateProducer(ProducerOptions{
 		Topic:                   newTopicName(),
 		DisableBlockIfQueueFull: false,
 		BatchingMaxPublishDelay: 100000,
@@ -2379,7 +2379,7 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 	}
 	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
 	partitionProducerImp.pendingQueue.Put(&pendingItem{
-		buffer: buffersPool.GetBuffer(0, c.(*client).metrics.SendingBuffersCount),
+		buffer: buffersPool.GetBuffer(0),
 	})
 	testProducer.Close()
 	assert.Equal(t, 0, partitionProducerImp.pendingQueue.Size())
