@@ -118,7 +118,8 @@ func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
 
 func (p *bufferPoolImpl) Put(buf Buffer) {
 	if b, ok := buf.(*buffer); ok {
-		// Get the callback before putting back to the pool because it might be reset
+		// Get the callback before putting back to the pool because it might be reset after the
+		// buffer is returned to the pool and reused in GetBuffer.
 		cb := b.releaseCallback
 		p.Pool.Put(b)
 		if cb != nil {
@@ -133,8 +134,12 @@ type buffer struct {
 	readerIdx uint32
 	writerIdx uint32
 
-	refCnt          atomic.Int64
-	pool            BuffersPool
+	refCnt atomic.Int64
+	pool   BuffersPool
+
+	// releaseCallback is an optional function that is called when the buffer is released back to the pool.
+	// It allows custom cleanup or notification logic to be executed after the buffer is returned.
+	// The callback is invoked in bufferPoolImpl.Put, after the buffer is put back into the pool.
 	releaseCallback func()
 }
 
