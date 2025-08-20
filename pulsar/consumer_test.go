@@ -1244,7 +1244,7 @@ func TestConsumerNack(t *testing.T) {
 }
 
 func TestNegativeAckPrecisionBitCnt(t *testing.T) {
-    const delayMs = 2000
+    const delay = 1 * time.Second
 
     for precision := 1; precision <= 8; precision++ {
         topicName := fmt.Sprintf("testNegativeAckPrecisionBitCnt-%d-%d", precision, time.Now().UnixNano())
@@ -1257,7 +1257,7 @@ func TestNegativeAckPrecisionBitCnt(t *testing.T) {
             Topic:               topicName,
             SubscriptionName:    "sub-1",
             Type:                Shared,
-            NackRedeliveryDelay: time.Duration(delayMs) * time.Millisecond,
+            NackRedeliveryDelay: delay,
             NackPrecisionBit:    int64(precision),
         })
         assert.Nil(t, err)
@@ -1283,8 +1283,8 @@ func TestNegativeAckPrecisionBitCnt(t *testing.T) {
         consumer.Nack(msg)
 
         // Calculate expected redelivery window
-        expectedRedelivery := time.Now().Add(time.Duration(delayMs) * time.Millisecond)
-        deviation := time.Duration(int64(1) << precision)
+        expectedRedelivery := time.Now().Add(delay)
+        deviation := time.Duration(int64(1) << precision) * time.Millisecond
 
         // Wait for redelivery
         redelivered, err := consumer.Receive(ctx)
