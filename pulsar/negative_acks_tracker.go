@@ -22,35 +22,35 @@ import (
 	"time"
 
 	"github.com/RoaringBitmap/roaring/v2/roaring64"
-	"github.com/emirpasic/gods/trees/avltree"
 	log "github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/emirpasic/gods/trees/avltree"
 )
 
 type redeliveryConsumer interface {
 	Redeliver(msgIDs []messageID)
 }
 
-type LedgerId = int64
+type LedgerID = int64
 
 type negativeAcksTracker struct {
 	sync.Mutex
 
-	doneCh       chan interface{}
-	doneOnce     sync.Once
-	negativeAcks *avltree.Tree
+	doneCh           chan interface{}
+	doneOnce         sync.Once
+	negativeAcks     *avltree.Tree
 	nackPrecisionBit int64
-	rc           redeliveryConsumer
-	nackBackoff  NackBackoffPolicy
-	tick         *time.Ticker
-	delay        time.Duration
-	log          log.Logger
+	rc               redeliveryConsumer
+	nackBackoff      NackBackoffPolicy
+	tick             *time.Ticker
+	delay            time.Duration
+	log              log.Logger
 }
 
 func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 	nackBackoffPolicy NackBackoffPolicy, logger log.Logger, nackPrecisionBit int64) *negativeAcksTracker {
 
 	t := &negativeAcksTracker{
-		doneCh:       make(chan interface{}),
+		doneCh: make(chan interface{}),
 		negativeAcks: avltree.NewWith(func(a, b interface{}) int {
 			// compare time.Time
 			timeA := a.(time.Time)
@@ -62,10 +62,10 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 				return 1
 			}
 			return 0
-    	}),
-		rc:           rc,
-		nackBackoff:  nackBackoffPolicy,
-		log:          logger,
+		}),
+		rc:               rc,
+		nackBackoff:      nackBackoffPolicy,
+		log:              logger,
 		nackPrecisionBit: nackPrecisionBit,
 	}
 
@@ -107,11 +107,11 @@ func (t *negativeAcksTracker) Add(msgID *messageID) {
 	// try get trimmedTime
 	value, exists := t.negativeAcks.Get(trimmedTime)
 	if !exists {
-		newMap := make(map[LedgerId]*roaring64.Bitmap)
+		newMap := make(map[LedgerID]*roaring64.Bitmap)
 		t.negativeAcks.Put(trimmedTime, newMap)
 		value = newMap
 	}
-	bitmapMap := value.(map[LedgerId]*roaring64.Bitmap)
+	bitmapMap := value.(map[LedgerID]*roaring64.Bitmap)
 	if _, exists := bitmapMap[batchMsgID.ledgerID]; !exists {
 		bitmapMap[batchMsgID.ledgerID] = roaring64.NewBitmap()
 	}
@@ -139,11 +139,11 @@ func (t *negativeAcksTracker) AddMessage(msg Message) {
 	// try get trimmedTime
 	value, exists := t.negativeAcks.Get(trimmedTime)
 	if !exists {
-		newMap := make(map[LedgerId]*roaring64.Bitmap)
+		newMap := make(map[LedgerID]*roaring64.Bitmap)
 		t.negativeAcks.Put(trimmedTime, newMap)
 		value = newMap
 	}
-	bitmapMap := value.(map[LedgerId]*roaring64.Bitmap)
+	bitmapMap := value.(map[LedgerID]*roaring64.Bitmap)
 	if _, exists := bitmapMap[batchMsgID.ledgerID]; !exists {
 		bitmapMap[batchMsgID.ledgerID] = roaring64.NewBitmap()
 	}
@@ -167,12 +167,12 @@ func (t *negativeAcksTracker) track() {
 				iterator := t.negativeAcks.Iterator()
 				for iterator.Next() {
 					targetTime := iterator.Key().(time.Time)
-					// because use ordered map, so we can early break 
+					// because use ordered map, so we can early break
 					if targetTime.After(now) {
 						break
 					}
 
-					ledgerMap := iterator.Value().(map[LedgerId]*roaring64.Bitmap)
+					ledgerMap := iterator.Value().(map[LedgerID]*roaring64.Bitmap)
 					for ledgerID, entrySet := range ledgerMap {
 						for _, entryID := range entrySet.ToArray() {
 							msgID := messageID{

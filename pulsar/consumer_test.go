@@ -1185,7 +1185,7 @@ func TestConsumerNack(t *testing.T) {
 		SubscriptionName:    "sub-1",
 		Type:                Shared,
 		NackRedeliveryDelay: 1 * time.Second,
-		NackPrecisionBit: 8,
+		NackPrecisionBit:    8,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -1244,59 +1244,59 @@ func TestConsumerNack(t *testing.T) {
 }
 
 func TestNegativeAckPrecisionBitCnt(t *testing.T) {
-    const delay = 1 * time.Second
+	const delay = 1 * time.Second
 
-    for precision := 1; precision <= 8; precision++ {
-        topicName := fmt.Sprintf("testNegativeAckPrecisionBitCnt-%d-%d", precision, time.Now().UnixNano())
-        ctx := context.Background()
-        client, err := NewClient(ClientOptions{URL: lookupURL})
-        assert.Nil(t, err)
-        defer client.Close()
+	for precision := 1; precision <= 8; precision++ {
+		topicName := fmt.Sprintf("testNegativeAckPrecisionBitCnt-%d-%d", precision, time.Now().UnixNano())
+		ctx := context.Background()
+		client, err := NewClient(ClientOptions{URL: lookupURL})
+		assert.Nil(t, err)
+		defer client.Close()
 
-        consumer, err := client.Subscribe(ConsumerOptions{
-            Topic:               topicName,
-            SubscriptionName:    "sub-1",
-            Type:                Shared,
-            NackRedeliveryDelay: delay,
-            NackPrecisionBit:    int64(precision),
-        })
-        assert.Nil(t, err)
-        defer consumer.Close()
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:               topicName,
+			SubscriptionName:    "sub-1",
+			Type:                Shared,
+			NackRedeliveryDelay: delay,
+			NackPrecisionBit:    int64(precision),
+		})
+		assert.Nil(t, err)
+		defer consumer.Close()
 
-        producer, err := client.CreateProducer(ProducerOptions{
-            Topic: topicName,
-        })
-        assert.Nil(t, err)
-        defer producer.Close()
+		producer, err := client.CreateProducer(ProducerOptions{
+			Topic: topicName,
+		})
+		assert.Nil(t, err)
+		defer producer.Close()
 
-        // Send single message
-        content := "test-0"
-        _, err = producer.Send(ctx, &ProducerMessage{
-            Payload: []byte(content),
-        })
-        assert.Nil(t, err)
+		// Send single message
+		content := "test-0"
+		_, err = producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(content),
+		})
+		assert.Nil(t, err)
 
-        // Receive and send negative ack
-        msg, err := consumer.Receive(ctx)
-        assert.Nil(t, err)
-        assert.Equal(t, content, string(msg.Payload()))
-        consumer.Nack(msg)
+		// Receive and send negative ack
+		msg, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, content, string(msg.Payload()))
+		consumer.Nack(msg)
 
-        // Calculate expected redelivery window
-        expectedRedelivery := time.Now().Add(delay)
-        deviation := time.Duration(int64(1) << precision) * time.Millisecond
+		// Calculate expected redelivery window
+		expectedRedelivery := time.Now().Add(delay)
+		deviation := time.Duration(int64(1)<<precision) * time.Millisecond
 
-        // Wait for redelivery
-        redelivered, err := consumer.Receive(ctx)
-        assert.Nil(t, err)
-        assert.Equal(t, content, string(redelivered.Payload()))
+		// Wait for redelivery
+		redelivered, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, content, string(redelivered.Payload()))
 
-        now := time.Now()
-        // Assert that redelivery happens >= expected - deviation
-        assert.GreaterOrEqual(t, now.UnixMilli(), expectedRedelivery.UnixMilli()-deviation.Milliseconds())
+		now := time.Now()
+		// Assert that redelivery happens >= expected - deviation
+		assert.GreaterOrEqual(t, now.UnixMilli(), expectedRedelivery.UnixMilli()-deviation.Milliseconds())
 
-        consumer.Ack(redelivered)
-    }
+		consumer.Ack(redelivered)
+	}
 }
 
 func TestConsumerCompression(t *testing.T) {
