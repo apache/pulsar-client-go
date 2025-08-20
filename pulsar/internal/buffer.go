@@ -100,13 +100,10 @@ func (p *bufferPoolImpl) GetBuffer(initSize int, countMetric prometheus.Gauge) B
 	if ok {
 		b.Clear()
 	} else {
-		b = &buffer{
-			data:        make([]byte, initSize),
-			readerIdx:   0,
-			writerIdx:   0,
-			countMetric: countMetric,
-		}
+		b = NewBuffer(initSize).(*buffer)
 	}
+	b.countMetric = countMetric
+	b.countMetric.Inc()
 	b.pool = p
 	b.Retain()
 	return b
@@ -114,8 +111,10 @@ func (p *bufferPoolImpl) GetBuffer(initSize int, countMetric prometheus.Gauge) B
 
 func (p *bufferPoolImpl) Put(buf Buffer) {
 	if b, ok := buf.(*buffer); ok {
-		b.countMetric.Inc()
 		p.Pool.Put(b)
+		if b.countMetric != nil {
+			b.countMetric.Dec()
+		}
 	}
 }
 
@@ -271,7 +270,6 @@ func (b *buffer) Release() {
 	if b.refCnt.Add(-1) == 0 {
 		if b.pool != nil {
 			b.pool.Put(b)
-			b.countMetric.Dec()
 		}
 	}
 }
