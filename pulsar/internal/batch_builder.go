@@ -33,7 +33,7 @@ import (
 type BatcherBuilderProvider func(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
+	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error)
 
 // BatchBuilder is a interface of batch builders
@@ -100,6 +100,7 @@ type batchContainer struct {
 
 	compressionProvider compression.Provider
 	buffersPool         BuffersPool
+	metrics             *Metrics
 
 	log log.Logger
 
@@ -110,7 +111,7 @@ type batchContainer struct {
 func newBatchContainer(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
+	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
 ) batchContainer {
 
 	bc := batchContainer{
@@ -133,6 +134,7 @@ func newBatchContainer(
 		callbacks:           []interface{}{},
 		compressionProvider: GetCompressionProvider(compressionType, level),
 		buffersPool:         bufferPool,
+		metrics:             metrics,
 		log:                 logger,
 		encryptor:           encryptor,
 	}
@@ -148,12 +150,12 @@ func newBatchContainer(
 func NewBatchBuilder(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, logger log.Logger, encryptor crypto.Encryptor,
+	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
 		maxMessages, maxBatchSize, maxMessageSize, producerName, producerID, compressionType,
-		level, bufferPool, logger, encryptor,
+		level, bufferPool, metrics, logger, encryptor,
 	)
 
 	return &bc, nil
@@ -266,6 +268,9 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	bc.msgMetadata.UncompressedSize = &uncompressedSize
 
 	buffer := bc.buffersPool.GetBuffer(int(uncompressedSize * 3 / 2))
+	bufferCount := bc.metrics.SendingBuffersCount
+	bufferCount.Inc()
+	buffer.SetReleaseCallback(func() { bufferCount.Dec() })
 
 	sequenceID := uint64(0)
 	var err error
