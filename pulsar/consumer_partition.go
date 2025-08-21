@@ -123,9 +123,10 @@ type partitionConsumerOpts struct {
 	expireTimeOfIncompleteChunk time.Duration
 	autoAckIncompleteChunk      bool
 	// in failover mode, this callback will be called when consumer change
-	consumerEventListener ConsumerEventListener
-	enableBatchIndexAck   bool
-	ackGroupingOptions    *AckGroupingOptions
+	consumerEventListener   ConsumerEventListener
+	enableBatchIndexAck     bool
+	ackGroupingOptions      *AckGroupingOptions
+	enableZeroQueueConsumer bool
 }
 
 type ConsumerEventListener interface {
@@ -1665,7 +1666,7 @@ func (pc *partitionConsumer) dispatcher() {
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
 			// send initial permits
-			if err := pc.internalFlow(initialPermits); err != nil {
+			if err := pc.internalFlow(initialPermits); err != nil && !pc.options.enableZeroQueueConsumer {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
 			}
 
@@ -1922,6 +1923,10 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
 			bo.Reset()
+			if pc.options.enableZeroQueueConsumer {
+				pc.log.Info("zeroQueueConsumer reconnect, reset availablePermits")
+				pc.availablePermits.inc()
+			}
 			return struct{}{}, nil
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")

@@ -473,6 +473,7 @@ func newPartitionConsumerOpts(topic, consumerName string, idx int, options Consu
 		enableBatchIndexAck:         options.EnableBatchIndexAcknowledgment,
 		ackGroupingOptions:          options.AckGroupingOptions,
 		autoReceiverQueueSize:       options.EnableAutoScaledReceiverQueueSize,
+		enableZeroQueueConsumer:     options.EnableZeroQueueConsumer,
 	}
 }
 
