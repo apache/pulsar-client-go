@@ -16,3 +16,4 @@ pulsar-perf
 bin
 
 vendor/
+logs/

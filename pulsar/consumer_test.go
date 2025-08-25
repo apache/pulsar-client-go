@@ -5230,7 +5230,7 @@ func sendMessages(t *testing.T, client Client, topic string, startIndex int, num
 			}
 		}
 	}
-	assert.Nil(t, producer.Flush())
+	assert.Nil(t, producer.FlushWithCtx(ctx))
 }
 
 func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message {
@@ -5276,10 +5276,10 @@ func TestAckResponseNotBlocked(t *testing.T) {
 			}
 		})
 		if i%100 == 99 {
-			assert.Nil(t, producer.Flush())
+			assert.Nil(t, producer.FlushWithCtx(ctx))
 		}
 	}
-	producer.Flush()
+	producer.FlushWithCtx(ctx)
 	producer.Close()
 
 	// Set a small receiver queue size to trigger ack response blocking if the internal `queueCh`
