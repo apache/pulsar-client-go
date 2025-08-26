@@ -53,7 +53,7 @@ jobs:
       - uses: actions/checkout@v3
       - name: Check for Docker images
         id: check_images
-        run: echo "::set-output name=images::$(docker images -q | wc -l)"
+        run: echo "{name}={images::$(docker images -q | wc -l)}" >> $GITHUB_OUTPUT
       - name: Clean Docker cache if images exist
         if: ${{ steps.check_images.outputs.images > 0 }}
         run: docker rmi $(docker images -q) -f && df -h        
