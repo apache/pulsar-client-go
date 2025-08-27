@@ -20,7 +20,6 @@ package internal
 import (
 	"strconv"
 	"strings"
-	"sync/atomic"
 	"time"
 
 	"google.golang.org/protobuf/proto"
@@ -35,16 +34,6 @@ func TimestampMillis(t time.Time) uint64 {
 		return 0
 	}
 	return uint64(t.UnixNano()) / uint64(time.Millisecond)
-}
-
-// GetAndAdd perform atomic read and update
-func GetAndAdd(n *uint64, diff uint64) uint64 {
-	for {
-		v := atomic.LoadUint64(n)
-		if atomic.CompareAndSwapUint64(n, v, v+diff) {
-			return v
-		}
-	}
 }
 
 func ParseRelativeTimeInSeconds(relativeTime string) (time.Duration, error) {
