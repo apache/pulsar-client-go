@@ -839,15 +839,15 @@ func (p *partitionProducer) internalSingleSend(
 
 type pendingItem struct {
 	sync.Mutex
-	ctx           context.Context
-	cancel        context.CancelFunc
-	buffer        internal.Buffer
-	sequenceID    uint64
-	createdAt     time.Time
-	sentAt        time.Time
-	sendRequests  []interface{}
-	isDone        bool
-	flushCallback func(err error)
+	ctx            context.Context
+	cancel         context.CancelFunc
+	buffer         internal.Buffer
+	sequenceID     uint64
+	createdAt      time.Time
+	sentAt         time.Time
+	sendRequests   []interface{}
+	isDone         bool
+	flushCallbacks []func(err error)
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
@@ -1064,10 +1064,10 @@ func (p *partitionProducer) internalFlush(fr *flushRequest) {
 		return
 	}
 
-	pi.flushCallback = func(err error) {
+	pi.flushCallbacks = append(pi.flushCallbacks, func(err error) {
 		fr.err = err
 		close(fr.doneCh)
-	}
+	})
 }
 
 // clearPendingSendRequests makes sure to push forward previous sending requests
@@ -1749,8 +1749,8 @@ func (i *pendingItem) done(err error) {
 	i.isDone = true
 	// return the buffer to the pool after all callbacks have been called.
 	defer i.buffer.Release()
-	if i.flushCallback != nil {
-		i.flushCallback(err)
+	for _, callback := range i.flushCallbacks {
+		callback(err)
 	}
 
 	if i.cancel != nil {

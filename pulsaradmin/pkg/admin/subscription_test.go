@@ -126,7 +126,7 @@ func TestPeekMessageForPartitionedTopic(t *testing.T) {
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}, nil)
 	}
-	err = producer.Flush()
+	err = producer.FlushWithCtx(ctx)
 	if err != nil {
 		return
 	}
