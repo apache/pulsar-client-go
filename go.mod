@@ -6,9 +6,11 @@ require (
 	github.com/99designs/keyring v1.2.1
 	github.com/AthenZ/athenz v1.12.13
 	github.com/DataDog/zstd v1.5.0
-	github.com/bits-and-blooms/bitset v1.4.0
+	github.com/RoaringBitmap/roaring/v2 v2.8.0
+	github.com/bits-and-blooms/bitset v1.12.0
 	github.com/bmizerany/perks v0.0.0-20141205001514-d9a9656a3a4b
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc
+	github.com/emirpasic/gods v1.18.1
 	github.com/golang-jwt/jwt/v5 v5.2.2
 	github.com/golang/protobuf v1.5.4
 	github.com/google/uuid v1.6.0
@@ -78,6 +80,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/morikuni/aec v1.0.0 // indirect
+	github.com/mschoch/smat v0.2.0 // indirect
 	github.com/mtibben/percent v0.2.1 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nxadm/tail v1.4.8 // indirect
