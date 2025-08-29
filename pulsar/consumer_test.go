@@ -1965,6 +1965,7 @@ func TestRLQ(t *testing.T) {
 	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
+	consumerName := "my-consumer"
 	maxRedeliveries := 2
 	N := 100
 	ctx := context.Background()
@@ -2002,6 +2003,7 @@ func TestRLQ(t *testing.T) {
 	rlqConsumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            subName,
+		Name:                        consumerName,
 		Type:                        Shared,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 		DLQ: &DLQPolicy{
@@ -2067,6 +2069,10 @@ func TestRLQ(t *testing.T) {
 		//	so that we need to check eventTime precision in millisecond level
 		assert.LessOrEqual(t, eventTimeList[0].Add(-2*time.Millisecond), msg.EventTime())
 		assert.LessOrEqual(t, msg.EventTime(), eventTimeList[N-1].Add(2*time.Millisecond))
+
+		// check dlq produceName
+		regex := regexp.MustCompile(fmt.Sprintf("%s-%s-%s-[a-z]{5}-DLQ", topic, subName, consumerName))
+		assert.True(t, regex.MatchString(msg.ProducerName()))
 
 		assert.Nil(t, err)
 		dlqConsumer.Ack(msg)
@@ -2360,6 +2366,7 @@ func TestRLQMultiTopics(t *testing.T) {
 	topics := []string{topic01, topic02}
 
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
+	consumerName := "my-consumer"
 	maxRedeliveries := 2
 	N := 100
 	ctx := context.Background()
@@ -2372,6 +2379,7 @@ func TestRLQMultiTopics(t *testing.T) {
 	rlqConsumer, err := client.Subscribe(ConsumerOptions{
 		Topics:                      topics,
 		SubscriptionName:            subName,
+		Name:                        consumerName,
 		Type:                        Shared,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 		DLQ:                         &DLQPolicy{MaxDeliveries: uint32(maxRedeliveries)},
@@ -2426,9 +2434,12 @@ func TestRLQMultiTopics(t *testing.T) {
 
 	// 3. Create consumer on the DLQ topic to verify the routing
 	dlqReceived := 0
+	// check dlq produceName
+	regex := regexp.MustCompile(fmt.Sprintf("%s-%s-%s-[a-z]{5}-DLQ", "", subName, consumerName))
 	for dlqReceived < 2*N {
 		msg, err := dlqConsumer.Receive(ctx)
 		assert.Nil(t, err)
+		assert.True(t, regex.MatchString(msg.ProducerName()))
 		dlqConsumer.Ack(msg)
 		dlqReceived++
 	}

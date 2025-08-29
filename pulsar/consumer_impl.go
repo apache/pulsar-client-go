@@ -181,7 +181,15 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		}
 	}
 
-	dlq, err := newDlqRouter(client, options.DLQ, options.Topic, options.SubscriptionName, options.Name,
+	var sourceTopic string
+	if options.RetryEnable && len(options.Topics) == 2 && options.Topics[1] == options.DLQ.RetryLetterTopic {
+		//	when RetryEnable=true, options.Topic and RetryLetterTopic will be appended to the options.Topics
+		//	we need to try to find previous options.Topic from options.Topics
+		sourceTopic = options.Topics[0]
+	} else {
+		sourceTopic = options.Topic
+	}
+	dlq, err := newDlqRouter(client, options.DLQ, sourceTopic, options.SubscriptionName, options.Name,
 		options.BackOffPolicyFunc, client.log)
 	if err != nil {
 		return nil, err
