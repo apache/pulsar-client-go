@@ -57,6 +57,9 @@ type Client interface {
 	ResourceQuotas() ResourceQuotas
 	FunctionsWorker() FunctionsWorker
 	Packages() Packages
+	Transactions() Transactions
+	Proxy() Proxy
+	LoadBalancer() LoadBalancer
 }
 
 type pulsarClient struct {

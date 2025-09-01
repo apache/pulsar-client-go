@@ -341,3 +341,102 @@ func TestNamespaces_GetOffloadThresholdInSeconds(t *testing.T) {
 	expected := int64(60)
 	assert.Equal(t, expected, offloadThresholdInSeconds)
 }
+
+
+func TestNamespaces_DeduplicationStatus(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace := "public/default"
+
+	// set deduplication status and get it
+	err = admin.Namespaces().SetDeduplicationStatus(namespace, true)
+	assert.Equal(t, nil, err)
+	status, err := admin.Namespaces().GetDeduplicationStatus(namespace)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, true, status)
+
+	// set to false and verify
+	err = admin.Namespaces().SetDeduplicationStatus(namespace, false)
+	assert.Equal(t, nil, err)
+	status, err = admin.Namespaces().GetDeduplicationStatus(namespace)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, false, status)
+}
+
+func TestNamespaces_EncryptionRequiredStatus(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// set encryption required status and get it
+	err = admin.Namespaces().SetEncryptionRequiredStatus(*namespace, true)
+	assert.Equal(t, nil, err)
+	status, err := admin.Namespaces().GetEncryptionRequiredStatus(*namespace)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, true, status)
+
+	// set to false and verify
+	err = admin.Namespaces().SetEncryptionRequiredStatus(*namespace, false)
+	assert.Equal(t, nil, err)
+	status, err = admin.Namespaces().GetEncryptionRequiredStatus(*namespace)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, false, status)
+}
+
+func TestNamespaces_SubscriptionAuthMode(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// set subscription auth mode and get it
+	err = admin.Namespaces().SetSubscriptionAuthMode(*namespace, utils.Prefix)
+	assert.Equal(t, nil, err)
+	mode, err := admin.Namespaces().GetSubscriptionAuthMode(*namespace)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, utils.Prefix, mode)
+
+	// set to None and verify
+	err = admin.Namespaces().SetSubscriptionAuthMode(*namespace, utils.None)
+	assert.Equal(t, nil, err)
+	mode, err = admin.Namespaces().GetSubscriptionAuthMode(*namespace)
+	assert.Equal(t, nil, err)
+	assert.Equal(t, utils.None, mode)
+}
+
+func TestNamespaces_GetBundles(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// get bundles for namespace
+	bundles, err := admin.Namespaces().GetBundles(*namespace)
+	assert.Equal(t, nil, err)
+	assert.NotNil(t, bundles)
+	assert.NotEmpty(t, bundles.Boundaries)
+}
+
+func TestNamespaces_GetNamespaceStats(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// get namespace stats
+	stats, err := admin.Namespaces().GetNamespaceStats(*namespace)
+	assert.Equal(t, nil, err)
+	assert.NotNil(t, stats)
+}

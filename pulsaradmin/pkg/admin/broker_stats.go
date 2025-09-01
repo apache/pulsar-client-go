@@ -37,6 +37,15 @@ type BrokerStats interface {
 
 	// GetAllocatorStats returns stats from broker
 	GetAllocatorStats(allocatorName string) (*utils.AllocatorStats, error)
+
+	// GetFunctionsMetrics returns Functions metrics from broker
+	GetFunctionsMetrics() ([]utils.Metrics, error)
+
+	// GetBrokerResourceAvailability returns broker resource availability
+	GetBrokerResourceAvailability(namespace string) (map[string]utils.ResourceUsage, error)
+
+	// GetPendingBookieOpsStats returns pending bookie operations stats
+	GetPendingBookieOpsStats() (map[string]interface{}, error)
 }
 
 type brokerStats struct {
@@ -102,4 +111,25 @@ func (bs *brokerStats) GetAllocatorStats(allocatorName string) (*utils.Allocator
 		return nil, err
 	}
 	return &allocatorStats, nil
+}
+
+func (bs *brokerStats) GetFunctionsMetrics() ([]utils.Metrics, error) {
+	endpoint := bs.pulsar.endpoint(bs.basePath, "/functions-metrics")
+	var metrics []utils.Metrics
+	err := bs.pulsar.Client.Get(endpoint, &metrics)
+	return metrics, err
+}
+
+func (bs *brokerStats) GetBrokerResourceAvailability(namespace string) (map[string]utils.ResourceUsage, error) {
+	var resources map[string]utils.ResourceUsage
+	endpoint := bs.pulsar.endpoint(bs.basePath, "/broker-resource-availability", namespace)
+	err := bs.pulsar.Client.Get(endpoint, &resources)
+	return resources, err
+}
+
+func (bs *brokerStats) GetPendingBookieOpsStats() (map[string]interface{}, error) {
+	var stats map[string]interface{}
+	endpoint := bs.pulsar.endpoint(bs.basePath, "/pending-bookie-ops-stats")
+	err := bs.pulsar.Client.Get(endpoint, &stats)
+	return stats, err
 }

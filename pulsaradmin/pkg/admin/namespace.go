@@ -166,6 +166,9 @@ type Namespaces interface {
 	// When deduplication is enabled, the broker will prevent to store the same Message multiple times
 	SetDeduplicationStatus(namespace string, enableDeduplication bool) error
 
+	// GetDeduplicationStatus returns the deduplication status for all topics within a namespace
+	GetDeduplicationStatus(namespace string) (bool, error)
+
 	// SetPersistence sets the persistence configuration for all the topics on a namespace
 	SetPersistence(namespace string, persistence utils.PersistencePolicies) error
 
@@ -212,8 +215,14 @@ type Namespaces interface {
 	// SetSubscriptionAuthMode sets the given subscription auth mode on all topics on a namespace
 	SetSubscriptionAuthMode(namespace utils.NameSpaceName, mode utils.SubscriptionAuthMode) error
 
+	// GetSubscriptionAuthMode returns the subscription auth mode for a namespace
+	GetSubscriptionAuthMode(namespace utils.NameSpaceName) (utils.SubscriptionAuthMode, error)
+
 	// SetEncryptionRequiredStatus sets the encryption required status for all topics within a namespace
 	SetEncryptionRequiredStatus(namespace utils.NameSpaceName, encrypt bool) error
+
+	// GetEncryptionRequiredStatus returns the encryption required status for all topics within a namespace
+	GetEncryptionRequiredStatus(namespace utils.NameSpaceName) (bool, error)
 
 	// UnsubscribeNamespace unsubscribe the given subscription on all topics on a namespace
 	UnsubscribeNamespace(namespace utils.NameSpaceName, sName string) error
@@ -295,6 +304,12 @@ type Namespaces interface {
 	// RemoveSubscriptionExpirationTime removes subscription expiration time from a namespace,
 	// defaulting to broker settings
 	RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error
+
+	// GetBundles returns the bundles for a namespace
+	GetBundles(namespace utils.NameSpaceName) (*utils.BundlesData, error)
+
+	// GetNamespaceStats returns stats for a namespace
+	GetNamespaceStats(namespace utils.NameSpaceName) (map[string]interface{}, error)
 }
 
 type namespaces struct {
@@ -939,4 +954,49 @@ func (n *namespaces) SetSubscriptionExpirationTime(namespace utils.NameSpaceName
 func (n *namespaces) RemoveSubscriptionExpirationTime(namespace utils.NameSpaceName) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionExpirationTime")
 	return n.pulsar.Client.Delete(endpoint)
+}
+
+func (n *namespaces) GetDeduplicationStatus(namespace string) (bool, error) {
+	var result bool
+	nsName, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return false, err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "deduplication")
+	err = n.pulsar.Client.Get(endpoint, &result)
+	return result, err
+}
+
+func (n *namespaces) GetSubscriptionAuthMode(namespace utils.NameSpaceName) (utils.SubscriptionAuthMode, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "subscriptionAuthMode")
+	data, err := n.pulsar.Client.GetWithQueryParams(endpoint, nil, nil, false)
+	if err != nil {
+		return "", err
+	}
+	mode, err := utils.ParseSubscriptionAuthMode(strings.ReplaceAll(string(data), "\"", ""))
+	if err != nil {
+		return "", err
+	}
+	return mode, nil
+}
+
+func (n *namespaces) GetEncryptionRequiredStatus(namespace utils.NameSpaceName) (bool, error) {
+	var result bool
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "encryptionRequired")
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
+}
+
+func (n *namespaces) GetBundles(namespace utils.NameSpaceName) (*utils.BundlesData, error) {
+	var result utils.BundlesData
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "bundles")
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return &result, err
+}
+
+func (n *namespaces) GetNamespaceStats(namespace utils.NameSpaceName) (map[string]interface{}, error) {
+	var result map[string]interface{}
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "stats")
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
 }
