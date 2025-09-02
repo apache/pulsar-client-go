@@ -75,6 +75,14 @@ type DLQPolicy struct {
 	// DeadLetterTopic specifies the name of the topic where the failing messages will be sent.
 	DeadLetterTopic string
 
+	// DeadLetterTopicProducerName specifies a name for the producer specifically for the DQL topic.
+	// If not assigned, the system will generate a globally unique name which can be access with
+	// Producer.ProducerName().
+	// When specifying a name, it is up to the user to ensure that, for a given topic, the producer name is unique
+	// across all Pulsar's clusters. Brokers will enforce that only a single producer a given name can be publishing on
+	// a topic.
+	DeadLetterTopicProducerName string
+
 	// ProducerOptions is the producer options to produce messages to the DLQ and RLQ topic
 	ProducerOptions ProducerOptions
 

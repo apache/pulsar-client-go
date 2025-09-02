@@ -161,8 +161,10 @@ func (r *dlqRouter) getProducer(schema Schema) Producer {
 		opt := r.policy.ProducerOptions
 		opt.Topic = r.policy.DeadLetterTopic
 		opt.Schema = schema
-		if opt.Name == "" {
+		if r.policy.DeadLetterTopicProducerName == "" {
 			opt.Name = fmt.Sprintf("%s-%s-%s-%s-DLQ", r.topicName, r.subscriptionName, r.consumerName, generateRandomName())
+		} else {
+			opt.Name = r.policy.DeadLetterTopicProducerName
 		}
 		opt.initialSubscriptionName = r.policy.InitialSubscriptionName
 
