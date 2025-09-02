@@ -449,6 +449,78 @@ func TestFlushInProducer(t *testing.T) {
 	assert.Equal(t, msgCount, numOfMessages)
 }
 
+// TestConcurrentFlushInProducer validates that concurrent flushes don't create a deadlock
+func TestConcurrentFlushInProducer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topicName := "test-concurrent-flushes-in-producer"
+	subName := "subscription-name"
+	ctx := context.Background()
+
+	// set batch message number numOfMessages, and max delay 10s
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: subName,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	expectedMsgCount := 100
+
+	var wg sync.WaitGroup
+
+	wg.Add(expectedMsgCount)
+
+	errs := make(chan error, expectedMsgCount*2)
+
+	// Each message in sent and flushed concurrently
+	for range expectedMsgCount {
+		go func() {
+			defer wg.Done()
+			producer.SendAsync(ctx, &ProducerMessage{
+				Payload: []byte("anythingWorksInThatPayload"),
+			}, func(_ MessageID, _ *ProducerMessage, e error) {
+				errs <- e
+			})
+
+			errs <- producer.FlushWithCtx(ctx)
+		}()
+	}
+
+	// Wait for all concurrent async publications and flushes to complete
+	wg.Wait()
+
+	// Make sure that there were no error publishing or flushing
+	close(errs)
+	var errElementCount int
+	for e := range errs {
+		errElementCount++
+		assert.Nil(t, e)
+	}
+	assert.Equal(t, errElementCount, expectedMsgCount*2)
+
+	// Make sure all messages were processed successfully
+	var receivedMsgCount int
+	for range expectedMsgCount {
+		_, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		receivedMsgCount++
+	}
+
+	assert.Equal(t, receivedMsgCount, expectedMsgCount)
+}
+
 func TestFlushInPartitionedProducer(t *testing.T) {
 	topicName := "public/default/partition-testFlushInPartitionedProducer"
 

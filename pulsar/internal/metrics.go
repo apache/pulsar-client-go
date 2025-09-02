@@ -21,27 +21,16 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var (
-	defaultConstLabels = map[string]string{
-		"client": "go",
-	}
-
-	sendingBuffersCount = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name:        "pulsar_client_sending_buffers_count",
-		Help:        "Number of sending buffers",
-		ConstLabels: defaultConstLabels,
-	})
-)
-
 type Metrics struct {
-	metricsLevel      int
-	messagesPublished *prometheus.CounterVec
-	bytesPublished    *prometheus.CounterVec
-	messagesPending   *prometheus.GaugeVec
-	bytesPending      *prometheus.GaugeVec
-	publishErrors     *prometheus.CounterVec
-	publishLatency    *prometheus.HistogramVec
-	publishRPCLatency *prometheus.HistogramVec
+	metricsLevel        int
+	messagesPublished   *prometheus.CounterVec
+	bytesPublished      *prometheus.CounterVec
+	messagesPending     *prometheus.GaugeVec
+	bytesPending        *prometheus.GaugeVec
+	publishErrors       *prometheus.CounterVec
+	publishLatency      *prometheus.HistogramVec
+	publishRPCLatency   *prometheus.HistogramVec
+	SendingBuffersCount prometheus.Gauge
 
 	messagesReceived   *prometheus.CounterVec
 	bytesReceived      *prometheus.CounterVec
@@ -111,10 +100,7 @@ type LeveledMetrics struct {
 // NewMetricsProvider returns metrics registered to registerer.
 func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]string,
 	registerer prometheus.Registerer) *Metrics {
-	constLabels := make(map[string]string)
-	for k, v := range defaultConstLabels {
-		constLabels[k] = v
-	}
+	constLabels := map[string]string{"client": "go"}
 	for k, v := range userDefinedLabels {
 		constLabels[k] = v
 	}
@@ -179,6 +165,12 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 			ConstLabels: constLabels,
 			Buckets:     []float64{.0005, .001, .005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5, 10},
 		}, metricsLevelLabels),
+
+		SendingBuffersCount: prometheus.NewGauge(prometheus.GaugeOpts{
+			Name:        "pulsar_client_sending_buffers_count",
+			Help:        "Number of sending buffers",
+			ConstLabels: constLabels,
+		}),
 
 		producersOpened: prometheus.NewCounterVec(prometheus.CounterOpts{
 			Name:        "pulsar_client_producers_opened",
@@ -548,7 +540,7 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 			metrics.RPCRequestCount = are.ExistingCollector.(prometheus.Counter)
 		}
 	}
-	_ = registerer.Register(sendingBuffersCount)
+	_ = registerer.Register(metrics.SendingBuffersCount)
 	return metrics
 }
 

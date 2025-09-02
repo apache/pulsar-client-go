@@ -76,9 +76,15 @@ type Buffer interface {
 	Resize(newSize uint32)
 	ResizeIfNeeded(spaceNeeded uint32)
 
+	// Retain increases the reference count
 	Retain()
+	// Release decreases the reference count and returns the buffer to the pool
+	// if it's associated with a buffer pool and the count reaches zero.
 	Release()
+	// RefCnt returns the current reference count of the buffer.
 	RefCnt() int64
+	// SetReleaseCallback sets a callback function that will be called when the buffer is returned to a pool.
+	SetReleaseCallback(cb func())
 
 	// Clear will clear the current buffer data.
 	Clear()
@@ -95,7 +101,6 @@ func NewBufferPool() BuffersPool {
 }
 
 func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
-	sendingBuffersCount.Inc()
 	b, ok := p.Get().(*buffer)
 	if ok {
 		b.Clear()
@@ -112,9 +117,14 @@ func (p *bufferPoolImpl) GetBuffer(initSize int) Buffer {
 }
 
 func (p *bufferPoolImpl) Put(buf Buffer) {
-	sendingBuffersCount.Dec()
 	if b, ok := buf.(*buffer); ok {
+		// Get the callback before putting back to the pool because it might be reset after the
+		// buffer is returned to the pool and reused in GetBuffer.
+		cb := b.releaseCallback
 		p.Pool.Put(b)
+		if cb != nil {
+			cb()
+		}
 	}
 }
 
@@ -126,6 +136,11 @@ type buffer struct {
 
 	refCnt atomic.Int64
 	pool   BuffersPool
+
+	// releaseCallback is an optional function that is called when the buffer is released back to the pool.
+	// It allows custom cleanup or notification logic to be executed after the buffer is returned.
+	// The callback is invoked in bufferPoolImpl.Put, after the buffer is put back into the pool.
+	releaseCallback func()
 }
 
 // NewBuffer creates and initializes a new Buffer using buf as its initial contents.
@@ -275,6 +290,10 @@ func (b *buffer) Release() {
 
 func (b *buffer) RefCnt() int64 {
 	return b.refCnt.Load()
+}
+
+func (b *buffer) SetReleaseCallback(cb func()) {
+	b.releaseCallback = cb
 }
 
 func (b *buffer) Clear() {

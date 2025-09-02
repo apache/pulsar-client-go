@@ -25,6 +25,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/sirupsen/logrus"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/protobuf/proto"
@@ -47,6 +48,7 @@ func TestKeyBasedBatcherOrdering(t *testing.T) {
 		pb.CompressionType_NONE,
 		compression.Level(0),
 		&bufferPoolImpl{},
+		NewMetricsProvider(2, map[string]string{}, prometheus.DefaultRegisterer),
 		log.NewLoggerWithLogrus(logrus.StandardLogger()),
 		&mockEncryptor{},
 	)
