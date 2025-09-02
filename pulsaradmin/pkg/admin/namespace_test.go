@@ -523,3 +523,79 @@ func TestNamespaces_Properties(t *testing.T) {
 	assert.Equal(t, err, nil)
 	assert.Equal(t, actualPropertiesAfterRemoveCall, map[string]string{})
 }
+
+func TestNamespaces_SetMaxTopicsPerNamespace(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	tests := []struct {
+		name      string
+		namespace string
+		maxTopics int
+		errReason string
+	}{
+		{
+			name:      "Set valid max topics per namespace",
+			namespace: "public/default",
+			maxTopics: 100,
+			errReason: "",
+		},
+		{
+			name:      "Set invalid max topics per namespace",
+			namespace: "public/default",
+			maxTopics: -1,
+			errReason: "maxTopicsPerNamespace must be 0 or more",
+		},
+		{
+			name:      "Set valid max topics per namespace: 0",
+			namespace: "public/default",
+			maxTopics: 0,
+			errReason: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			namespace, _ := utils.GetNamespaceName(tt.namespace)
+			err := admin.Namespaces().SetMaxTopicsPerNamespace(*namespace, tt.maxTopics)
+			if tt.errReason == "" {
+				assert.Equal(t, nil, err)
+
+				err = admin.Namespaces().RemoveMaxTopicsPerNamespace(*namespace)
+				assert.Equal(t, nil, err)
+			}
+			if err != nil {
+				restError := err.(rest.Error)
+				assert.Equal(t, tt.errReason, restError.Reason)
+			}
+		})
+	}
+}
+
+func TestNamespaces_GetMaxTopicsPerNamespace(t *testing.T) {
+
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// set the max topics per namespace and get it
+	err = admin.Namespaces().SetMaxTopicsPerNamespace(*namespace, 100)
+	assert.Equal(t, nil, err)
+	maxTopics, err := admin.Namespaces().GetMaxTopicsPerNamespace(*namespace)
+	assert.Equal(t, nil, err)
+	expected := 100
+	assert.Equal(t, expected, maxTopics)
+
+	// remove the max topics per namespace and get it
+	err = admin.Namespaces().RemoveMaxTopicsPerNamespace(*namespace)
+	assert.Equal(t, nil, err)
+
+	maxTopics, err = admin.Namespaces().GetMaxTopicsPerNamespace(*namespace)
+	assert.Equal(t, nil, err)
+	expected = 0
+	assert.Equal(t, expected, maxTopics)
+}
