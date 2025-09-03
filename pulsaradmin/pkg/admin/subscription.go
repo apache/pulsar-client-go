@@ -283,9 +283,8 @@ func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, e
 
 	if isBatch {
 		return getIndividualMsgsFromBatch(topic, ID, payload, properties)
-	} else {
-		return []*utils.Message{utils.NewMessage(topic.String(), *ID, payload, properties)}, nil
 	}
+	return []*utils.Message{utils.NewMessage(topic.String(), *ID, payload, properties)}, nil
 }
 
 func getIndividualMsgsFromBatch(topic utils.TopicName, msgID *utils.MessageID, data []byte,
