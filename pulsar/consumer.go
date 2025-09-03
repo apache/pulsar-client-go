@@ -75,7 +75,7 @@ type DLQPolicy struct {
 	// DeadLetterTopic specifies the name of the topic where the failing messages will be sent.
 	DeadLetterTopic string
 
-	// DeadLetterTopicProducerName specifies a name for the producer specifically for the DQL topic.
+	// DeadLetterTopicProducerName specifies a name for the producer specifically for the DLQ topic.
 	// If not assigned, the system will generate a globally unique name which can be access with
 	// Producer.ProducerName().
 	// When specifying a name, it is up to the user to ensure that, for a given topic, the producer name is unique
