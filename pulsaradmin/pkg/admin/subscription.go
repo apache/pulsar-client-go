@@ -256,6 +256,7 @@ func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, e
 	}
 
 	properties := make(map[string]string)
+	isBatch := false
 	for k := range resp.Header {
 		switch {
 		case k == PublishTimeHeader:
@@ -268,7 +269,7 @@ func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, e
 			if h != "" {
 				properties[BatchHeader] = h
 			}
-			return getIndividualMsgsFromBatch(topic, ID, payload, properties)
+			isBatch = true
 		case k == PropertyHeader:
 			propJSON := resp.Header.Get(k)
 			if err := json.Unmarshal([]byte(propJSON), &properties); err != nil {
@@ -280,7 +281,11 @@ func handleResp(topic utils.TopicName, resp *http.Response) ([]*utils.Message, e
 		}
 	}
 
-	return []*utils.Message{utils.NewMessage(topic.String(), *ID, payload, properties)}, nil
+	if isBatch {
+		return getIndividualMsgsFromBatch(topic, ID, payload, properties)
+	} else {
+		return []*utils.Message{utils.NewMessage(topic.String(), *ID, payload, properties)}, nil
+	}
 }
 
 func getIndividualMsgsFromBatch(topic utils.TopicName, msgID *utils.MessageID, data []byte,
