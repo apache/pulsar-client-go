@@ -2023,7 +2023,6 @@ func TestWithDeadLetterTopicDeadLetterTopicProducerName(t *testing.T) {
 
 	assert.Nil(t, err)
 	assert.NotNil(t, msg)
-	assert.Nil(t, err)
 	regex := regexp.MustCompile(fmt.Sprintf("%s-%s-%s-[a-z]{5}-DLQ", topic, subscriptionName, consumerName))
 	assert.True(t, regex.MatchString(msg.ProducerName()))
 }
