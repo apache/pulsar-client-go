@@ -1930,7 +1930,7 @@ func TestWithoutDeadLetterTopicDeadLetterTopicProducerName(t *testing.T) {
 	assert.Nil(t, err)
 	defer dlqConsumer.Close()
 
-	// Validate the name of the RLQ producer
+	// Validate the name of the DLQ producer
 	msg, err = dlqConsumer.Receive(ctx)
 	defer dlqConsumer.Nack(msg)
 
@@ -2017,7 +2017,7 @@ func TestWithDeadLetterTopicDeadLetterTopicProducerName(t *testing.T) {
 	assert.Nil(t, err)
 	defer dlqConsumer.Close()
 
-	// Validate the name of the RLQ producer
+	// Validate the name of the DLQ producer
 	msg, err = dlqConsumer.Receive(ctx)
 	defer dlqConsumer.Nack(msg)
 
