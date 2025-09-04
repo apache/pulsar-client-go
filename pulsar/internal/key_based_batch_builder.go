@@ -86,14 +86,14 @@ func (h *keyBasedBatches) Val(key string) *batchContainer {
 func NewKeyBasedBatchBuilder(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
+	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor, sequenceIDGenerator *SequenceIDGenerator,
 ) (BatchBuilder, error) {
 
 	bb := &keyBasedBatchContainer{
 		batches: newKeyBasedBatches(),
 		batchContainer: newBatchContainer(
 			maxMessages, maxBatchSize, maxMessageSize, producerName, producerID,
-			compressionType, level, bufferPool, metrics, logger, encryptor,
+			compressionType, level, bufferPool, metrics, logger, encryptor, sequenceIDGenerator,
 		),
 		compressionType: compressionType,
 		level:           level,
@@ -108,7 +108,7 @@ func NewKeyBasedBatchBuilder(
 
 // IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch
 func (bc *keyBasedBatchContainer) IsFull() bool {
-	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize)
+	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize) || bc.estimatedSize >= uint32(bc.maxBatchSize)
 }
 
 func (bc *keyBasedBatchContainer) IsMultiBatches() bool {
@@ -123,18 +123,20 @@ func (bc *keyBasedBatchContainer) hasSpace(payload []byte) bool {
 		return true
 	}
 	msgSize := uint32(len(payload))
-	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize)
+	return bc.numMessages+1 <= bc.maxMessages && bc.buffer.ReadableBytes()+msgSize <= uint32(bc.maxBatchSize) &&
+		bc.estimatedSize+msgSize <= uint32(bc.maxBatchSize)
 }
 
 // Add will add single message to key-based batch with message key.
 func (bc *keyBasedBatchContainer) Add(
-	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
+	metadata *pb.SingleMessageMetadata,
 	payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time,
 	schemaVersion []byte, multiSchemaEnabled bool,
 	useTxn bool,
 	mostSigBits uint64,
 	leastSigBits uint64,
+	customSequenceID *int64,
 ) bool {
 	if replicateTo != nil && bc.numMessages != 0 {
 		// If the current batch is not empty and we're trying to set the replication clusters,
@@ -155,7 +157,7 @@ func (bc *keyBasedBatchContainer) Add(
 		// create batchContainer for new key
 		t := newBatchContainer(
 			bc.maxMessages, bc.maxBatchSize, bc.maxMessageSize, bc.producerName, bc.producerID,
-			bc.compressionType, bc.level, bc.buffersPool, bc.metrics, bc.log, bc.encryptor,
+			bc.compressionType, bc.level, bc.buffersPool, bc.metrics, bc.log, bc.encryptor, bc.sequenceIDGenerator,
 		)
 		batchPart = &t
 		bc.batches.Add(msgKey, &t)
@@ -163,14 +165,14 @@ func (bc *keyBasedBatchContainer) Add(
 
 	// add message to batch container
 	add := batchPart.Add(
-		metadata, sequenceIDGenerator, payload, callback, replicateTo,
+		metadata, payload, callback, replicateTo,
 		deliverAt,
-		schemaVersion, multiSchemaEnabled, useTxn, mostSigBits, leastSigBits,
+		schemaVersion, multiSchemaEnabled, useTxn, mostSigBits, leastSigBits, customSequenceID,
 	)
 	if !add {
 		return false
 	}
-	addSingleMessageToBatch(bc.buffer, metadata, payload)
+	bc.messageBatch.Append(metadata, payload, customSequenceID)
 
 	bc.numMessages++
 	bc.callbacks = append(bc.callbacks, callback)
