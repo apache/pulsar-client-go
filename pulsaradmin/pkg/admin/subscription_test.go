@@ -193,6 +193,8 @@ func TestPeekMessageWithProperties(t *testing.T) {
 		assert.Equal(t, "VALUE2", msg.Properties["KEY2"])
 		assert.Equal(t, "VaLuE3", msg.Properties["KeY3"])
 		assert.Equal(t, "good at playing basketball", msg.Properties["details=man"])
+		// Standard pulsar property, always expected
+		assert.NotEmpty(t, msg.Properties["publish-time"])
 	}
 }
 
