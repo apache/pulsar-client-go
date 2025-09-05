@@ -208,7 +208,7 @@ func TestPeekMessagesWithProperties(t *testing.T) {
 			numberOfMessagesToSend := numberOfMessagesToWaitFor
 			if tc.batched {
 				// If batched send one extra message to cause the batch to be sent immediately
-				numberOfMessagesToSend += 1
+				numberOfMessagesToSend++
 			}
 			wg.Add(numberOfMessagesToWaitFor)
 
@@ -216,7 +216,7 @@ func TestPeekMessagesWithProperties(t *testing.T) {
 				producer.SendAsync(ctx, &pulsar.ProducerMessage{
 					Payload:    []byte("test-message"),
 					Properties: props,
-				}, func(id pulsar.MessageID, _ *pulsar.ProducerMessage, err error) {
+				}, func(_ pulsar.MessageID, _ *pulsar.ProducerMessage, err error) {
 					assert.Nil(t, err)
 					if i < numberOfMessagesToWaitFor {
 						wg.Done()
