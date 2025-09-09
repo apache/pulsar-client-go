@@ -33,7 +33,8 @@ import (
 type BatcherBuilderProvider func(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor, sequenceIDGenerator *SequenceIDGenerator,
+	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
+	sequenceIDGenerator *SequenceIDGenerator,
 ) (BatchBuilder, error)
 
 // BatchBuilder is a interface of batch builders
@@ -158,7 +159,8 @@ type batchContainer struct {
 func newBatchContainer(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor, sequenceIDGenerator *SequenceIDGenerator,
+	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
+	sequenceIDGenerator *SequenceIDGenerator,
 ) batchContainer {
 
 	bc := batchContainer{
@@ -198,7 +200,8 @@ func newBatchContainer(
 func NewBatchBuilder(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor, sequenceIDGenerator *SequenceIDGenerator,
+	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
+	sequenceIDGenerator *SequenceIDGenerator,
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
@@ -211,7 +214,9 @@ func NewBatchBuilder(
 
 // IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch
 func (bc *batchContainer) IsFull() bool {
-	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize) || bc.estimatedSize >= uint32(bc.maxBatchSize)
+	return bc.numMessages >= bc.maxMessages ||
+		bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize) ||
+		bc.estimatedSize >= uint32(bc.maxBatchSize)
 }
 
 // hasSpace should return true if and only if the batch container can accommodate another message of length payload.
@@ -305,6 +310,12 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	bc.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bc.numMessages))
 	bc.cmdSend.Send.NumMessages = proto.Int32(int32(bc.numMessages))
 
+	bc.messageBatch.AssignSequenceIDs(bc.sequenceIDGenerator)
+	sequenceID := *bc.messageBatch.entries[0].smm.SequenceId
+	bc.msgMetadata.SequenceId = proto.Uint64(sequenceID)
+	bc.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
+	bc.messageBatch.FlushTo(bc.buffer)
+
 	uncompressedSize := bc.buffer.ReadableBytes()
 	bc.msgMetadata.UncompressedSize = &uncompressedSize
 
@@ -312,12 +323,6 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	bufferCount := bc.metrics.SendingBuffersCount
 	bufferCount.Inc()
 	buffer.SetReleaseCallback(func() { bufferCount.Dec() })
-
-	bc.messageBatch.AssignSequenceIDs(bc.sequenceIDGenerator)
-	sequenceID := *bc.messageBatch.entries[0].smm.SequenceId
-	bc.msgMetadata.SequenceId = proto.Uint64(sequenceID)
-	bc.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
-	bc.messageBatch.FlushTo(bc.buffer)
 
 	var err error
 	if err = serializeMessage(

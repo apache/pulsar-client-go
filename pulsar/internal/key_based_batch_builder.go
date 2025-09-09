@@ -86,7 +86,8 @@ func (h *keyBasedBatches) Val(key string) *batchContainer {
 func NewKeyBasedBatchBuilder(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
-	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor, sequenceIDGenerator *SequenceIDGenerator,
+	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
+	sequenceIDGenerator *SequenceIDGenerator,
 ) (BatchBuilder, error) {
 
 	bb := &keyBasedBatchContainer{
@@ -108,7 +109,9 @@ func NewKeyBasedBatchBuilder(
 
 // IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch
 func (bc *keyBasedBatchContainer) IsFull() bool {
-	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize) || bc.estimatedSize >= uint32(bc.maxBatchSize)
+	return bc.numMessages >= bc.maxMessages ||
+		bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize) ||
+		bc.estimatedSize >= uint32(bc.maxBatchSize)
 }
 
 func (bc *keyBasedBatchContainer) IsMultiBatches() bool {
