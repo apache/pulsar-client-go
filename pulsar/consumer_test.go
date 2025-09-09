@@ -1853,6 +1853,180 @@ func TestDeadLetterTopicWithInitialSubscription(t *testing.T) {
 
 }
 
+func TestWithoutDeadLetterTopicDeadLetterTopicProducerName(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/" + newTopicName()
+	subscriptionName := "default"
+	consumerName := "my-consumer"
+
+	dlqTopic := fmt.Sprintf("%s-%s-DLQ", topic, subscriptionName)
+	rlqTopic := fmt.Sprintf("%s-%s-RLQ", topic, subscriptionName)
+
+	producerName := "producer-name"
+	RLQProducerName := "rlq-producer-name"
+	DLQProducerName := "dlq-producer-name"
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               topic,
+		SubscriptionName:    subscriptionName,
+		NackRedeliveryDelay: 1 * time.Millisecond,
+		Type:                Shared,
+		DLQ: &DLQPolicy{
+			MaxDeliveries:               1,
+			RetryLetterTopic:            rlqTopic,
+			DeadLetterTopic:             dlqTopic,
+			DeadLetterTopicProducerName: DLQProducerName,
+			ProducerOptions: ProducerOptions{
+				Topic: rlqTopic,
+				Name:  RLQProducerName,
+			},
+		},
+		Name:        consumerName,
+		RetryEnable: true,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Name:  producerName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload: []byte("hello-0"),
+	})
+	assert.Nil(t, err)
+
+	// Validate the name of the original producer
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+	assert.Equal(t, msg.ProducerName(), producerName)
+	consumer.ReconsumeLater(msg, 0)
+
+	// Validate the name of the RLQ producer
+	msg, err = consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+	assert.Equal(t, msg.ProducerName(), RLQProducerName)
+	consumer.Nack(msg)
+
+	// Create DLQ consumer
+	dlqConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            dlqTopic,
+		SubscriptionName: subscriptionName,
+	})
+	assert.Nil(t, err)
+	defer dlqConsumer.Close()
+
+	// Validate the name of the DLQ producer
+	msg, err = dlqConsumer.Receive(ctx)
+	defer dlqConsumer.Nack(msg)
+
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+	assert.Nil(t, err)
+	assert.Equal(t, msg.ProducerName(), DLQProducerName)
+}
+
+func TestWithDeadLetterTopicDeadLetterTopicProducerName(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "persistent://public/default/" + newTopicName()
+	subscriptionName := "default"
+	consumerName := "my-consumer"
+
+	dlqTopic := fmt.Sprintf("%s-%s-DLQ", topic, subscriptionName)
+	rlqTopic := fmt.Sprintf("%s-%s-RLQ", topic, subscriptionName)
+
+	producerName := "producer-name"
+	RLQProducerName := "rlq-producer-name"
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               topic,
+		SubscriptionName:    subscriptionName,
+		NackRedeliveryDelay: 1 * time.Millisecond,
+		Type:                Shared,
+		DLQ: &DLQPolicy{
+			MaxDeliveries:    1,
+			RetryLetterTopic: rlqTopic,
+			DeadLetterTopic:  dlqTopic,
+			// Set no producer name for the DLQ explicitly
+			DeadLetterTopicProducerName: "",
+			ProducerOptions: ProducerOptions{
+				Topic: rlqTopic,
+				Name:  RLQProducerName,
+			},
+		},
+		Name:        consumerName,
+		RetryEnable: true,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Name:  producerName,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload: []byte("hello-0"),
+	})
+	assert.Nil(t, err)
+
+	// Validate the name of the original producer
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+	assert.Equal(t, msg.ProducerName(), producerName)
+	consumer.ReconsumeLater(msg, 0)
+
+	// Validate the name of the RLQ producer
+	msg, err = consumer.Receive(ctx)
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+	assert.Equal(t, msg.ProducerName(), RLQProducerName)
+	consumer.Nack(msg)
+
+	// Create DLQ consumer
+	dlqConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            dlqTopic,
+		SubscriptionName: subscriptionName,
+	})
+	assert.Nil(t, err)
+	defer dlqConsumer.Close()
+
+	// Validate the name of the DLQ producer
+	msg, err = dlqConsumer.Receive(ctx)
+	defer dlqConsumer.Nack(msg)
+
+	assert.Nil(t, err)
+	assert.NotNil(t, msg)
+	regex := regexp.MustCompile(fmt.Sprintf("%s-%s-%s-[a-z]{5}-DLQ", topic, subscriptionName, consumerName))
+	assert.True(t, regex.MatchString(msg.ProducerName()))
+}
+
 func TestDLQMultiTopics(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -1965,6 +2139,7 @@ func TestRLQ(t *testing.T) {
 	makeHTTPCall(t, http.MethodPut, testURL, "3")
 
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
+	consumerName := "my-consumer"
 	maxRedeliveries := 2
 	N := 100
 	ctx := context.Background()
@@ -2002,6 +2177,7 @@ func TestRLQ(t *testing.T) {
 	rlqConsumer, err := client.Subscribe(ConsumerOptions{
 		Topic:                       topic,
 		SubscriptionName:            subName,
+		Name:                        consumerName,
 		Type:                        Shared,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 		DLQ: &DLQPolicy{
@@ -2067,6 +2243,10 @@ func TestRLQ(t *testing.T) {
 		//	so that we need to check eventTime precision in millisecond level
 		assert.LessOrEqual(t, eventTimeList[0].Add(-2*time.Millisecond), msg.EventTime())
 		assert.LessOrEqual(t, msg.EventTime(), eventTimeList[N-1].Add(2*time.Millisecond))
+
+		// check dlq produceName
+		regex := regexp.MustCompile(fmt.Sprintf("%s-%s-%s-[a-z]{5}-DLQ", topic, subName, consumerName))
+		assert.True(t, regex.MatchString(msg.ProducerName()))
 
 		assert.Nil(t, err)
 		dlqConsumer.Ack(msg)
@@ -2360,6 +2540,7 @@ func TestRLQMultiTopics(t *testing.T) {
 	topics := []string{topic01, topic02}
 
 	subName := fmt.Sprintf("sub01-%d", time.Now().Unix())
+	consumerName := "my-consumer"
 	maxRedeliveries := 2
 	N := 100
 	ctx := context.Background()
@@ -2372,6 +2553,7 @@ func TestRLQMultiTopics(t *testing.T) {
 	rlqConsumer, err := client.Subscribe(ConsumerOptions{
 		Topics:                      topics,
 		SubscriptionName:            subName,
+		Name:                        consumerName,
 		Type:                        Shared,
 		SubscriptionInitialPosition: SubscriptionPositionEarliest,
 		DLQ:                         &DLQPolicy{MaxDeliveries: uint32(maxRedeliveries)},
@@ -2426,9 +2608,12 @@ func TestRLQMultiTopics(t *testing.T) {
 
 	// 3. Create consumer on the DLQ topic to verify the routing
 	dlqReceived := 0
+	// check dlq produceName
+	regex := regexp.MustCompile(fmt.Sprintf("%s-%s-%s-[a-z]{5}-DLQ", "", subName, consumerName))
 	for dlqReceived < 2*N {
 		msg, err := dlqConsumer.Receive(ctx)
 		assert.Nil(t, err)
+		assert.True(t, regex.MatchString(msg.ProducerName()))
 		dlqConsumer.Ack(msg)
 		dlqReceived++
 	}
@@ -5230,7 +5415,7 @@ func sendMessages(t *testing.T, client Client, topic string, startIndex int, num
 			}
 		}
 	}
-	assert.Nil(t, producer.Flush())
+	assert.Nil(t, producer.FlushWithCtx(ctx))
 }
 
 func receiveMessages(t *testing.T, consumer Consumer, numMessages int) []Message {
@@ -5276,10 +5461,10 @@ func TestAckResponseNotBlocked(t *testing.T) {
 			}
 		})
 		if i%100 == 99 {
-			assert.Nil(t, producer.Flush())
+			assert.Nil(t, producer.FlushWithCtx(ctx))
 		}
 	}
-	producer.Flush()
+	producer.FlushWithCtx(ctx)
 	producer.Close()
 
 	// Set a small receiver queue size to trigger ack response blocking if the internal `queueCh`

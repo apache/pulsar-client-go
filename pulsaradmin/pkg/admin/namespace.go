@@ -154,6 +154,16 @@ type Namespaces interface {
 	// GetMaxProducersPerTopic returns the maxProducersPerTopic for a namespace.
 	GetMaxProducersPerTopic(namespace utils.NameSpaceName) (int, error)
 
+	// SetMaxTopicsPerNamespace sets maxTopicsPerNamespace for a namespace.
+	SetMaxTopicsPerNamespace(namespace utils.NameSpaceName, max int) error
+
+	// GetMaxTopicsPerNamespace returns the maxTopicsPerNamespace for a namespace.
+	GetMaxTopicsPerNamespace(namespace utils.NameSpaceName) (int, error)
+
+	// RemoveMaxTopicsPerNamespace removes maxTopicsPerNamespace configuration for a namespace,
+	// defaulting to broker settings
+	RemoveMaxTopicsPerNamespace(namespace utils.NameSpaceName) error
+
 	// GetNamespaceReplicationClusters returns the replication clusters for a namespace
 	GetNamespaceReplicationClusters(namespace string) ([]string, error)
 
@@ -994,5 +1004,22 @@ func (n *namespaces) GetProperties(namespace utils.NameSpaceName) (map[string]st
 
 func (n *namespaces) RemoveProperties(namespace utils.NameSpaceName) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "properties")
+	return n.pulsar.Client.Delete(endpoint)
+}
+
+func (n *namespaces) SetMaxTopicsPerNamespace(namespace utils.NameSpaceName, max int) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxTopicsPerNamespace")
+	return n.pulsar.Client.Post(endpoint, max)
+}
+
+func (n *namespaces) GetMaxTopicsPerNamespace(namespace utils.NameSpaceName) (int, error) {
+	var result int
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxTopicsPerNamespace")
+	err := n.pulsar.Client.Get(endpoint, &result)
+	return result, err
+}
+
+func (n *namespaces) RemoveMaxTopicsPerNamespace(namespace utils.NameSpaceName) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxTopicsPerNamespace")
 	return n.pulsar.Client.Delete(endpoint)
 }
