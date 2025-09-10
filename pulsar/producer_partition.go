@@ -568,7 +568,13 @@ func (p *partitionProducer) runEventsLoop() {
 			if !ok {
 				return
 			}
-			p.internalSend(data)
+			// Check if the request context is done before processing
+			select {
+			case <-data.ctx.Done():
+				data.done(nil, ErrContextExpired)
+			default:
+				p.internalSend(data)
+			}
 		case cmd, ok := <-p.cmdChan:
 			// when doClose() is call, p.dataChan will be closed, cmd will be nil
 			if !ok {
@@ -608,6 +614,14 @@ func runCallback(cb func(MessageID, *ProducerMessage, error), id MessageID, msg 
 
 func (p *partitionProducer) internalSend(sr *sendRequest) {
 	p.log.Debug("Received send request: ", *sr.msg)
+
+	// Check if context is already done
+	select {
+	case <-sr.ctx.Done():
+		sr.done(nil, ErrContextExpired)
+		return
+	default:
+	}
 
 	if sr.sendAsBatch {
 		smm := p.genSingleMessageMetadataInBatch(sr.msg, int(sr.uncompressedSize))
@@ -899,8 +913,36 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		}
 		return
 	default:
+		// Check if any callback has a context that is already done
+		for _, cb := range callbacks {
+			if sr, ok := cb.(*sendRequest); ok {
+				select {
+				case <-sr.ctx.Done():
+					buffer.Release()
+					for _, callback := range callbacks {
+						if req, ok := callback.(*sendRequest); ok {
+							req.done(nil, ErrContextExpired)
+						}
+					}
+					return
+				default:
+				}
+			}
+		}
+
 		now := time.Now()
-		ctx, cancel := context.WithCancel(context.Background())
+		// Use the context from the first send request if available
+		var ctx context.Context
+		var cancel context.CancelFunc
+		if len(callbacks) > 0 {
+			if sr, ok := callbacks[0].(*sendRequest); ok && sr.ctx != nil {
+				ctx, cancel = context.WithCancel(sr.ctx)
+			} else {
+				ctx, cancel = context.WithCancel(context.Background())
+			}
+		} else {
+			ctx, cancel = context.WithCancel(context.Background())
+		}
 		buffer.Retain()
 		p.pendingQueue.Put(&pendingItem{
 			ctx:          ctx,
@@ -1081,7 +1123,13 @@ func (p *partitionProducer) clearPendingSendRequests() {
 	for i := 0; i < sizeBeforeFlushing; i++ {
 		select {
 		case pendingData := <-p.dataChan:
-			p.internalSend(pendingData)
+			// Check if the request context is done before processing
+			select {
+			case <-pendingData.ctx.Done():
+				pendingData.done(nil, ErrContextExpired)
+			default:
+				p.internalSend(pendingData)
+			}
 
 		default:
 			return
