@@ -219,6 +219,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	} else {
 		p.userProvidedProducerName = false
 	}
+	p.setProducerState(producerConnecting)
 	err := p.grabCnx("")
 	if err != nil {
 		p.batchFlushTicker.Stop()
@@ -266,7 +267,10 @@ func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.Look
 }
 
 func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
-	p.setProducerState(producerConnecting)
+	if !p.casProducerState(producerReady, producerConnecting) && p.isClosingOrClosed() {
+		// closing or closed
+		return ErrProducerClosed
+	}
 	lr, err := p.lookupTopic(assignedBrokerURL)
 	if err != nil {
 		return err
@@ -397,7 +401,9 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		p._getConn().WriteData(pi.ctx, pi.buffer)
 	})
 
-	p.setProducerState(producerReady)
+	if !p.casProducerState(producerConnecting, producerReady) && p.isClosingOrClosed() {
+		return ErrProducerClosed
+	}
 	return nil
 }
 
