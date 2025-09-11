@@ -1247,7 +1247,7 @@ func (p *partitionProducer) updateMetaData(sr *sendRequest) {
 	if !sr.sendAsBatch {
 		// update sequence id for metadata, make the size of msgMetadata more accurate
 		// batch sending will update sequence ID in the BatchBuilder
-		p.updateMetadataSeqID(sr.mm, sr.msg) // We shouldn't update the seq ID here!
+		p.updateMetadataSeqID(sr.mm, sr.msg)
 	}
 
 	sr.deliverAt = deliverAt
