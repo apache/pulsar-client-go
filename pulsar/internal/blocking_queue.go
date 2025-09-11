@@ -46,6 +46,9 @@ type BlockingQueue interface {
 
 	// ReadableSlice returns a new view of the readable items in the queue
 	ReadableSlice() []interface{}
+
+	// Iterate iterates the items in the queue
+	Iterate(func(item interface{}))
 }
 
 type blockingQueue struct {
@@ -58,6 +61,20 @@ type blockingQueue struct {
 	mutex      sync.Mutex
 	isNotEmpty *sync.Cond
 	isNotFull  *sync.Cond
+}
+
+func (bq *blockingQueue) Iterate(f func(item interface{})) {
+	bq.mutex.Lock()
+	defer bq.mutex.Unlock()
+
+	readIdx := bq.headIdx
+	for i := 0; i < bq.size; i++ {
+		f(bq.items[readIdx])
+		readIdx++
+		if readIdx == bq.maxSize {
+			readIdx = 0
+		}
+	}
 }
 
 // NewBlockingQueue init block queue and returns a BlockingQueue
