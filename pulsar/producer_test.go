@@ -2839,7 +2839,7 @@ func testSendAsyncCouldTimeoutWhileReconnecting(t *testing.T, isDisableBatching 
 	// Test the SendAsync could be timeout if the producer is reconnecting
 
 	finalErr := make(chan error, 1)
-	testProducer.SendAsync(t.Context(), &ProducerMessage{
+	testProducer.SendAsync(context.Background(), &ProducerMessage{
 		Payload: []byte("test"),
 	}, func(_ MessageID, _ *ProducerMessage, err error) {
 		finalErr <- err
@@ -2867,7 +2867,7 @@ func testSendAsyncCouldTimeoutWhileReconnecting(t *testing.T, isDisableBatching 
 
 	time.Sleep(3 * time.Second)
 	finalErr = make(chan error, 1)
-	testProducer.SendAsync(t.Context(), &ProducerMessage{
+	testProducer.SendAsync(context.Background(), &ProducerMessage{
 		Payload: []byte("test"),
 	}, func(_ MessageID, _ *ProducerMessage, err error) {
 		finalErr <- err
