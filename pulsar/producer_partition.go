@@ -906,7 +906,7 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		buffer.Retain()
 		conn := p._getConn()
 		if p.getProducerState() == producerReady {
-			// If the producer in reconnecting, we should not write to the connection.
+			// If the producer is reconnecting, we should not write to the connection.
 			// We just need to push the buffer to the pending queue, it will be sent during the reconnecting.
 			conn.WriteData(ctx, buffer)
 		} else {
@@ -1247,7 +1247,7 @@ func (p *partitionProducer) updateMetaData(sr *sendRequest) {
 	if !sr.sendAsBatch {
 		// update sequence id for metadata, make the size of msgMetadata more accurate
 		// batch sending will update sequence ID in the BatchBuilder
-		p.updateMetadataSeqID(sr.mm, sr.msg)
+		p.updateMetadataSeqID(sr.mm, sr.msg) // We shouldn't update the seq ID here!
 	}
 
 	sr.deliverAt = deliverAt
