@@ -235,6 +235,15 @@ type Producer interface {
 	// This call is blocked when the `maxPendingMessages` becomes full (default: 1000)
 	// The callback will report back the message being published and
 	// the eventual error in publishing
+	// The context passed in the call is only used for the duration of the SendAsync call itself
+	// (i.e., to control blocking when the queue is full), and not for the entire message lifetime.
+	// Once SendAsync returns, the message lifetime is controlled by the SendTimeout configuration.
+	// Example:
+	// producer.SendAsync(ctx, &pulsar.ProducerMessage{
+	//     Payload: myPayload,
+	// }, func(msgID pulsar.MessageID, message *pulsar.ProducerMessage, err error) {
+	//     // handle publish result
+	// })
 	SendAsync(context.Context, *ProducerMessage, func(MessageID, *ProducerMessage, error))
 
 	// LastSequenceID get the last sequence id that was published by this producer.
