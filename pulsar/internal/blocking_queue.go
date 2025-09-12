@@ -24,7 +24,11 @@ import (
 // BlockingQueue is a interface of block queue
 type BlockingQueue interface {
 	// Put enqueue one item, block if the queue is full
+	// This is currently used for the internal testing
 	Put(item interface{})
+
+	// PutUnsafe enqueue one item without locking the queue, block if the queue is full
+	PutUnsafe(item interface{})
 
 	// Take dequeue one item, block until it's available
 	Take() interface{}
@@ -47,8 +51,16 @@ type BlockingQueue interface {
 	// ReadableSlice returns a new view of the readable items in the queue
 	ReadableSlice() []interface{}
 
-	// Iterate iterates the items in the queue
-	Iterate(func(item interface{}))
+	// IterateUnsafe iterates the items in the queue without blocking the queue
+	IterateUnsafe(func(item interface{}))
+
+	// Lock locks the queue for manual control
+	// Users must call Unlock() after finishing their operations
+	Lock()
+
+	// Unlock unlocks the queue
+	// Must be called after Lock() to release the lock
+	Unlock()
 }
 
 type blockingQueue struct {
@@ -63,10 +75,7 @@ type blockingQueue struct {
 	isNotFull  *sync.Cond
 }
 
-func (bq *blockingQueue) Iterate(f func(item interface{})) {
-	bq.mutex.Lock()
-	defer bq.mutex.Unlock()
-
+func (bq *blockingQueue) IterateUnsafe(f func(item interface{})) {
 	readIdx := bq.headIdx
 	for i := 0; i < bq.size; i++ {
 		f(bq.items[readIdx])
@@ -93,9 +102,12 @@ func NewBlockingQueue(maxSize int) BlockingQueue {
 }
 
 func (bq *blockingQueue) Put(item interface{}) {
-	bq.mutex.Lock()
-	defer bq.mutex.Unlock()
+	bq.Lock()
+	defer bq.Unlock()
+	bq.PutUnsafe(item)
+}
 
+func (bq *blockingQueue) PutUnsafe(item interface{}) {
 	for bq.size == bq.maxSize {
 		bq.isNotFull.Wait()
 	}
@@ -208,4 +220,12 @@ func (bq *blockingQueue) ReadableSlice() []interface{} {
 	}
 
 	return res
+}
+
+func (bq *blockingQueue) Lock() {
+	bq.mutex.Lock()
+}
+
+func (bq *blockingQueue) Unlock() {
+	bq.mutex.Unlock()
 }

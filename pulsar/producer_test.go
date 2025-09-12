@@ -2527,6 +2527,15 @@ func (pqw *pendingQueueWrapper) Put(item interface{}) {
 	pqw.pendingQueue.Put(item)
 }
 
+func (pqw *pendingQueueWrapper) PutUnsafe(item interface{}) {
+	pi := item.(*pendingItem)
+	writerIdx := pi.buffer.WriterIndex()
+	buf := internal.NewBuffer(int(writerIdx))
+	buf.Write(pi.buffer.Get(0, writerIdx))
+	*pqw.writtenBuffers = append(*pqw.writtenBuffers, buf)
+	pqw.pendingQueue.PutUnsafe(item)
+}
+
 func (pqw *pendingQueueWrapper) Take() interface{} {
 	return pqw.pendingQueue.Take()
 }
@@ -2555,8 +2564,16 @@ func (pqw *pendingQueueWrapper) ReadableSlice() []interface{} {
 	return pqw.pendingQueue.ReadableSlice()
 }
 
-func (pqw *pendingQueueWrapper) Iterate(f func(item interface{})) {
-	pqw.pendingQueue.Iterate(f)
+func (pqw *pendingQueueWrapper) IterateUnsafe(f func(item interface{})) {
+	pqw.pendingQueue.IterateUnsafe(f)
+}
+
+func (pqw *pendingQueueWrapper) Lock() {
+	pqw.pendingQueue.Lock()
+}
+
+func (pqw *pendingQueueWrapper) Unlock() {
+	pqw.pendingQueue.Unlock()
 }
 
 func TestDisableReplication(t *testing.T) {

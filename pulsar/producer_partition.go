@@ -391,7 +391,9 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		"epoch": atomic.LoadUint64(&p.epoch),
 	}).Info("Connected producer")
 
-	p.pendingQueue.Iterate(func(item any) {
+	p.pendingQueue.Lock()
+	defer p.pendingQueue.Unlock()
+	p.pendingQueue.IterateUnsafe(func(item any) {
 		pi := item.(*pendingItem)
 		// when resending pending batches, we update the sendAt timestamp to record the metric.
 		pi.Lock()
@@ -904,6 +906,8 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		now := time.Now()
 		ctx, cancel := context.WithCancel(context.Background())
 		buffer.Retain()
+		p.pendingQueue.Lock()
+		defer p.pendingQueue.Unlock()
 		conn := p._getConn()
 		if p.getProducerState() == producerReady {
 			// If the producer is reconnecting, we should not write to the connection.
@@ -912,7 +916,7 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		} else {
 			p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
 		}
-		p.pendingQueue.Put(&pendingItem{
+		p.pendingQueue.PutUnsafe(&pendingItem{
 			ctx:          ctx,
 			cancel:       cancel,
 			createdAt:    now,
