@@ -148,3 +148,101 @@ func TestBlockingQueue_ReadableSlice(t *testing.T) {
 	assert.Equal(t, items[1], 3)
 	assert.Equal(t, items[2], 4)
 }
+
+func TestBlockingQueueIterate(t *testing.T) {
+	bq := NewBlockingQueue(5)
+
+	// Add some items
+	bq.PutUnsafe("item1")
+	bq.PutUnsafe("item2")
+	bq.PutUnsafe("item3")
+
+	// Test iteration
+	items := make([]interface{}, 0)
+	bq.IterateUnsafe(func(item interface{}) {
+		items = append(items, item)
+	})
+
+	assert.Equal(t, 3, len(items))
+	assert.Equal(t, "item1", items[0])
+	assert.Equal(t, "item2", items[1])
+	assert.Equal(t, "item3", items[2])
+}
+
+func TestBlockingQueueIteratePartial(t *testing.T) {
+	bq := NewBlockingQueue(5)
+
+	// Add some items
+	bq.PutUnsafe("item1")
+	bq.PutUnsafe("item2")
+	bq.PutUnsafe("item3")
+
+	// Test partial iteration (first 2 items only)
+	items := make([]interface{}, 0)
+	bq.IterateUnsafe(func(item interface{}) {
+		if len(items) < 2 {
+			items = append(items, item)
+		}
+	})
+
+	assert.Equal(t, 2, len(items))
+	assert.Equal(t, "item1", items[0])
+	assert.Equal(t, "item2", items[1])
+}
+
+func TestBlockingQueueIterateCircularBuffer(t *testing.T) {
+	bq := NewBlockingQueue(3)
+
+	// Fill the queue to test circular buffer behavior
+	bq.PutUnsafe("item1")
+	bq.PutUnsafe("item2")
+	bq.PutUnsafe("item3")
+
+	// Remove one item to create space
+	bq.Poll()
+
+	// Add another item to test wrapping
+	bq.PutUnsafe("item4")
+
+	// Test iteration with circular buffer
+	items := make([]interface{}, 0)
+	bq.IterateUnsafe(func(item interface{}) {
+		items = append(items, item)
+	})
+
+	assert.Equal(t, 3, len(items))
+	assert.Equal(t, "item2", items[0])
+	assert.Equal(t, "item3", items[1])
+	assert.Equal(t, "item4", items[2])
+}
+
+func TestBlockingQueueIterateEmpty(t *testing.T) {
+	bq := NewBlockingQueue(5)
+
+	// Test iteration on empty queue
+	items := make([]interface{}, 0)
+	bq.IterateUnsafe(func(item interface{}) {
+		items = append(items, item)
+	})
+
+	assert.Equal(t, 0, len(items))
+}
+
+func TestBlockingQueueManualLock(t *testing.T) {
+	bq := NewBlockingQueue(5)
+
+	// Test manual locking for batch PutUnsafe operations
+	bq.Lock()
+
+	bq.PutUnsafe("item1")
+	bq.PutUnsafe("item2")
+	bq.PutUnsafe("item3")
+
+	// Unlock
+	bq.Unlock()
+
+	// Verify all items were added
+	assert.Equal(t, 3, bq.Size())
+	assert.Equal(t, "item1", bq.Peek())
+	assert.Equal(t, "item3", bq.PeekLast())
+}

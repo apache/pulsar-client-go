@@ -47,6 +47,7 @@ type producerState int32
 const (
 	// producer states
 	producerInit = iota
+	producerConnecting
 	producerReady
 	producerClosing
 	producerClosed
@@ -218,6 +219,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	} else {
 		p.userProvidedProducerName = false
 	}
+	p.setProducerState(producerConnecting)
 	err := p.grabCnx("")
 	if err != nil {
 		p.batchFlushTicker.Stop()
@@ -265,6 +267,10 @@ func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.Look
 }
 
 func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
+	if !p.casProducerState(producerReady, producerConnecting) && p.isClosingOrClosed() {
+		// closing or closed
+		return ErrProducerClosed
+	}
 	lr, err := p.lookupTopic(assignedBrokerURL)
 	if err != nil {
 		return err
@@ -385,31 +391,20 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		"epoch": atomic.LoadUint64(&p.epoch),
 	}).Info("Connected producer")
 
-	pendingItems := p.pendingQueue.ReadableSlice()
-	viewSize := len(pendingItems)
-	if viewSize > 0 {
-		p.log.Infof("Resending %d pending batches", viewSize)
-		lastViewItem := pendingItems[viewSize-1].(*pendingItem)
+	p.pendingQueue.Lock()
+	defer p.pendingQueue.Unlock()
+	p.pendingQueue.IterateUnsafe(func(item any) {
+		pi := item.(*pendingItem)
+		// when resending pending batches, we update the sendAt timestamp to record the metric.
+		pi.Lock()
+		pi.sentAt = time.Now()
+		pi.Unlock()
+		pi.buffer.Retain() // Retain for writing to the connection
+		p._getConn().WriteData(pi.ctx, pi.buffer)
+	})
 
-		// iterate at most pending items
-		for i := 0; i < viewSize; i++ {
-			item := p.pendingQueue.Poll()
-			if item == nil {
-				continue
-			}
-			pi := item.(*pendingItem)
-			// when resending pending batches, we update the sendAt timestamp to record the metric.
-			pi.Lock()
-			pi.sentAt = time.Now()
-			pi.Unlock()
-			pi.buffer.Retain() // Retain for writing to the connection
-			p.pendingQueue.Put(pi)
-			p._getConn().WriteData(pi.ctx, pi.buffer)
-
-			if pi == lastViewItem {
-				break
-			}
-		}
+	if !p.casProducerState(producerConnecting, producerReady) && p.isClosingOrClosed() {
+		return ErrProducerClosed
 	}
 	return nil
 }
@@ -495,9 +490,9 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			return struct{}{}, nil
 		}
 
-		if p.getProducerState() != producerReady {
+		if p.isClosingOrClosed() {
 			// Producer is already closing
-			p.log.Info("producer state not ready, exit reconnect")
+			p.log.Info("producer state is in closing or closed, exit reconnect")
 			return struct{}{}, nil
 		}
 
@@ -561,6 +556,18 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 }
 
 func (p *partitionProducer) runEventsLoop() {
+	go func() {
+		for {
+			select {
+			case connectionClosed := <-p.connectClosedCh:
+				p.log.Info("runEventsLoop will reconnect in producer")
+				p.reconnectToBroker(connectionClosed)
+			case <-p.ctx.Done():
+				p.log.Info("Producer is shutting down. Close the reconnect event loop")
+				return
+			}
+		}
+	}()
 	for {
 		select {
 		case data, ok := <-p.dataChan:
@@ -581,9 +588,6 @@ func (p *partitionProducer) runEventsLoop() {
 				p.internalClose(v)
 				return
 			}
-		case connectionClosed := <-p.connectClosedCh:
-			p.log.Info("runEventsLoop will reconnect in producer")
-			p.reconnectToBroker(connectionClosed)
 		case <-p.batchFlushTicker.C:
 			p.internalFlushCurrentBatch()
 		}
@@ -902,7 +906,17 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		now := time.Now()
 		ctx, cancel := context.WithCancel(context.Background())
 		buffer.Retain()
-		p.pendingQueue.Put(&pendingItem{
+		p.pendingQueue.Lock()
+		defer p.pendingQueue.Unlock()
+		conn := p._getConn()
+		if p.getProducerState() == producerReady {
+			// If the producer is reconnecting, we should not write to the connection.
+			// We just need to push the buffer to the pending queue, it will be sent during the reconnecting.
+			conn.WriteData(ctx, buffer)
+		} else {
+			p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
+		}
+		p.pendingQueue.PutUnsafe(&pendingItem{
 			ctx:          ctx,
 			cancel:       cancel,
 			createdAt:    now,
@@ -911,7 +925,6 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
-		p._getConn().WriteData(ctx, buffer)
 	}
 }
 
@@ -924,8 +937,7 @@ func (p *partitionProducer) failTimeoutMessages() {
 	defer t.Stop()
 
 	for range t.C {
-		state := p.getProducerState()
-		if state == producerClosing || state == producerClosed {
+		if p.isClosingOrClosed() {
 			return
 		}
 
@@ -1323,8 +1335,13 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
-	if p.getProducerState() != producerReady {
+	if p.isClosingOrClosed() {
 		sr.done(nil, ErrProducerClosed)
+		return
+	}
+
+	if err := ctx.Err(); err != nil {
+		sr.done(nil, ctx.Err())
 		return
 	}
 
@@ -1356,7 +1373,13 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
-	p.dataChan <- sr
+	select {
+	case <-ctx.Done():
+		sr.done(nil, ctx.Err())
+		return
+	case p.dataChan <- sr:
+		return
+	}
 }
 
 func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt) {
@@ -1441,7 +1464,7 @@ func (p *partitionProducer) internalClose(req *closeProducer) {
 }
 
 func (p *partitionProducer) doClose(reason error) {
-	if !p.casProducerState(producerReady, producerClosing) {
+	if !p.casProducerState(producerReady, producerClosing) && !p.casProducerState(producerConnecting, producerClosing) {
 		return
 	}
 
@@ -1522,7 +1545,7 @@ func (p *partitionProducer) Flush() error {
 }
 
 func (p *partitionProducer) FlushWithCtx(ctx context.Context) error {
-	if p.getProducerState() != producerReady {
+	if p.isClosingOrClosed() {
 		return ErrProducerClosed
 	}
 
@@ -1549,6 +1572,11 @@ func (p *partitionProducer) getProducerState() producerState {
 	return producerState(p.state.Load())
 }
 
+func (p *partitionProducer) isClosingOrClosed() bool {
+	state := p.getProducerState()
+	return state == producerClosing || state == producerClosed
+}
+
 func (p *partitionProducer) setProducerState(state producerState) {
 	p.state.Swap(int32(state))
 }
@@ -1560,8 +1588,8 @@ func (p *partitionProducer) casProducerState(oldState, newState producerState) b
 }
 
 func (p *partitionProducer) Close() {
-	if p.getProducerState() != producerReady {
-		// Producer is closing
+	if p.isClosingOrClosed() {
+		// Producer is closing or closed
 		return
 	}
 
