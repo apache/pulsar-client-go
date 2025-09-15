@@ -1229,11 +1229,8 @@ func TestConsumerNack(t *testing.T) {
 		_, err = fmt.Sscanf(string(msg.Payload()), "msg-content-%d", &id)
 		assert.Nil(t, err)
 
-		// Count only odd message IDs
-		if id%2 == 1 {
-			assert.True(t, id%2 == 1) // Optional check, included for clarity
-			receivedOdd++
-		}
+		assert.True(t, id%2 == 1)
+		receivedOdd++
 
 		// Acknowledge message to mark it as processed
 		consumer.Ack(msg)

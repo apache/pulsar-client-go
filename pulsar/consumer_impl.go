@@ -121,6 +121,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.NackBackoffPolicy = new(defaultNackBackoffPolicy)
 	}
 
+	if options.NackPrecisionBit <= 0 {
+		options.NackPrecisionBit = 8
+	}
+
 	// did the user pass in a message channel?
 	messageCh := options.MessageChannel
 	if options.MessageChannel == nil {

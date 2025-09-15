@@ -90,19 +90,11 @@ func trimLowerBit(ts int64, precisionBit int64) int64 {
 	return ts & mask
 }
 
-func (t *negativeAcksTracker) Add(msgID *messageID) {
-	// Always clear up the batch index since we want to track the nack
-	// for the entire batch
-	batchMsgID := messageID{
-		ledgerID: msgID.ledgerID,
-		entryID:  msgID.entryID,
-		batchIdx: 0,
-	}
-
+func putNackEntry(t *negativeAcksTracker, batchMsgID *messageID, delay time.Duration) {
 	t.Lock()
 	defer t.Unlock()
 
-	targetTime := time.Now().Add(t.delay)
+	targetTime := time.Now().Add(delay)
 	trimmedTime := time.UnixMilli(trimLowerBit(targetTime.UnixMilli(), t.nackPrecisionBit))
 	// try get trimmedTime
 	value, exists := t.negativeAcks.Get(trimmedTime)
@@ -118,6 +110,18 @@ func (t *negativeAcksTracker) Add(msgID *messageID) {
 	bitmapMap[batchMsgID.ledgerID].Add(uint64(batchMsgID.entryID))
 }
 
+func (t *negativeAcksTracker) Add(msgID *messageID) {
+	// Always clear up the batch index since we want to track the nack
+	// for the entire batch
+	batchMsgID := messageID{
+		ledgerID: msgID.ledgerID,
+		entryID:  msgID.entryID,
+		batchIdx: 0,
+	}
+
+	putNackEntry(t, &batchMsgID, t.delay)
+}
+
 func (t *negativeAcksTracker) AddMessage(msg Message) {
 	nackBackoffDelay := t.nackBackoff.Next(msg.RedeliveryCount())
 
@@ -131,23 +135,7 @@ func (t *negativeAcksTracker) AddMessage(msg Message) {
 		batchIdx: 0,
 	}
 
-	t.Lock()
-	defer t.Unlock()
-
-	targetTime := time.Now().Add(nackBackoffDelay)
-	trimmedTime := time.UnixMilli(trimLowerBit(targetTime.UnixMilli(), t.nackPrecisionBit))
-	// try get trimmedTime
-	value, exists := t.negativeAcks.Get(trimmedTime)
-	if !exists {
-		newMap := make(map[LedgerID]*roaring64.Bitmap)
-		t.negativeAcks.Put(trimmedTime, newMap)
-		value = newMap
-	}
-	bitmapMap := value.(map[LedgerID]*roaring64.Bitmap)
-	if _, exists := bitmapMap[batchMsgID.ledgerID]; !exists {
-		bitmapMap[batchMsgID.ledgerID] = roaring64.NewBitmap()
-	}
-	bitmapMap[batchMsgID.ledgerID].Add(uint64(batchMsgID.entryID))
+	putNackEntry(t, &batchMsgID, nackBackoffDelay)
 }
 
 func (t *negativeAcksTracker) track() {
