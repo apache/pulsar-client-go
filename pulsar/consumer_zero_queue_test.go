@@ -115,7 +115,8 @@ func TestNormalZeroQueueConsumer(t *testing.T) {
 		assert.Equal(t, "pulsar", msg.Key())
 		assert.Equal(t, expectProperties, msg.Properties())
 		// ack message
-		consumer.Ack(msg)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
 		log.Printf("receive message: %s", msg.ID().String())
 	}
 	err = consumer.Unsubscribe()
@@ -228,7 +229,8 @@ func TestReconnectConsumer(t *testing.T) {
 		assert.Equal(t, "pulsar", msg.Key())
 		assert.Equal(t, expectProperties, msg.Properties())
 		// ack message
-		consumer.Ack(msg)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
 		log.Printf("receive message: %s", msg.ID().String())
 	}
 	err = consumer.Unsubscribe()
@@ -341,7 +343,7 @@ func TestPartitionZeroQueueConsumer(t *testing.T) {
 	assert.Nil(t, consumer)
 	assert.Error(t, err, "ZeroQueueConsumer is not supported for partitioned topics")
 }
-func TestOnePartitionZeroQueueConsumer(t *testing.T) {
+func TestSpecifiedPartitionZeroQueueConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -350,17 +352,65 @@ func TestOnePartitionZeroQueueConsumer(t *testing.T) {
 	defer client.Close()
 
 	topic := newTopicName()
-	err = createPartitionedTopic(topic, 1)
+	ctx := context.Background()
+	err = createPartitionedTopic(topic, 2)
+	assert.Nil(t, err)
+	topics, err := client.TopicPartitions(topic)
 	assert.Nil(t, err)
 
 	// create consumer
 	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                   topic,
+		Topic:                   topics[1],
 		SubscriptionName:        "my-sub",
 		EnableZeroQueueConsumer: true,
 	})
-	assert.Nil(t, consumer)
-	assert.Error(t, err, "ZeroQueueConsumer is not supported for partitioned topics")
+	assert.Nil(t, err)
+	_, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
+	defer consumer.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topics[1],
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
+		})
+		assert.Nil(t, err)
+		log.Printf("send message: %s", msg.String())
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		expectProperties := map[string]string{
+			"key-1": "pulsar-1",
+		}
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
+		// ack message
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
+		log.Printf("receive message: %s", msg.ID().String())
+	}
+	err = consumer.Unsubscribe()
+	assert.Nil(t, err)
 }
 
 func TestZeroQueueConsumerGetLastMessageIDs(t *testing.T) {
@@ -576,7 +626,8 @@ func TestZeroQueueConsumer_Nack(t *testing.T) {
 
 		if i%2 == 0 {
 			// Only acks even messages
-			consumer.Ack(msg)
+			err = consumer.Ack(msg)
+			assert.Nil(t, err)
 		} else {
 			// Fails to process odd messages
 			consumer.Nack(msg)
@@ -591,7 +642,8 @@ func TestZeroQueueConsumer_Nack(t *testing.T) {
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 
-		consumer.Ack(msg)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
 	}
 }
 
@@ -641,7 +693,8 @@ func TestZeroQueueConsumer_Seek(t *testing.T) {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
-		consumer.Ack(msg)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
 	}
 
 	err = consumer.Seek(seekID)
@@ -698,7 +751,8 @@ func TestZeroQueueConsumer_SeekByTime(t *testing.T) {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
-		consumer.Ack(msg)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
 	}
 
 	currentTimestamp := time.Now()
@@ -711,6 +765,7 @@ func TestZeroQueueConsumer_SeekByTime(t *testing.T) {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
 		assert.Equal(t, fmt.Sprintf("hello-%d", i), string(msg.Payload()))
-		consumer.Ack(msg)
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
 	}
 }

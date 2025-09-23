@@ -66,7 +66,11 @@ func newZeroConsumer(client *client, options ConsumerOptions, topic string,
 		consumerName:              options.Name,
 		metrics:                   client.metrics.GetLeveledMetrics(topic),
 	}
-	opts := newPartitionConsumerOpts(zc.topic, zc.consumerName, 0, zc.options)
+	tn, err := internal.ParseTopicName(topic)
+	if err != nil {
+		return nil, err
+	}
+	opts := newPartitionConsumerOpts(zc.topic, zc.consumerName, tn.Partition, zc.options)
 	conn, err := newPartitionConsumer(zc, zc.client, opts, zc.messageCh, zc.dlq, zc.metrics)
 	if err != nil {
 		return nil, err
@@ -142,11 +146,11 @@ func (z *zeroQueueConsumer) Ack(m Message) error {
 
 func (z *zeroQueueConsumer) checkMsgIDPartition(msgID MessageID) error {
 	partition := msgID.PartitionIdx()
-	if partition != 0 {
-		z.log.Errorf("invalid partition index %d expected a partition equal to 0",
-			partition)
-		return fmt.Errorf("invalid partition index %d expected a partition equal to 0",
-			partition)
+	if partition != z.pc.partitionIdx {
+		z.log.Errorf("invalid partition index %d expected a partition equal to %d",
+			partition, z.pc.partitionIdx)
+		return fmt.Errorf("invalid partition index %d expected a partition equal to %d",
+			partition, z.pc.partitionIdx)
 	}
 	return nil
 }
