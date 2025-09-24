@@ -242,12 +242,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		partition := partitions[partitionIdx]
 
 		go func(partitionIdx int, partition string) {
-			idx := partitionIdx
-			if newNumPartitions == 1 {
-				// for single partition topic, we need to use -1 as partitionIdx, keep the same with Java client.
-				idx = -1
-			}
-			prod, e := newPartitionProducer(p.client, partition, p.options, idx, p.metrics)
+			prod, e := newPartitionProducer(p.client, partition, p.options, partitionIdx, p.metrics)
 			c <- ProducerError{
 				partition: partitionIdx,
 				prod:      prod,

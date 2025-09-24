@@ -119,7 +119,6 @@ func TestSimpleProducer(t *testing.T) {
 
 		assert.NoError(t, err)
 		assert.NotNil(t, ID)
-		assert.Equal(t, int32(-1), ID.PartitionIdx())
 	}
 
 	_, err = producer.Send(context.Background(), nil)

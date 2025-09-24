@@ -146,7 +146,7 @@ func (z *zeroQueueConsumer) Ack(m Message) error {
 
 func (z *zeroQueueConsumer) checkMsgIDPartition(msgID MessageID) error {
 	partition := msgID.PartitionIdx()
-	if partition != z.pc.partitionIdx {
+	if partition != 0 && partition != -1 {
 		z.log.Errorf("invalid partition index %d expected a partition equal to %d",
 			partition, z.pc.partitionIdx)
 		return fmt.Errorf("invalid partition index %d expected a partition equal to %d",
