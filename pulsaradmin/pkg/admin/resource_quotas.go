@@ -18,24 +18,41 @@
 package admin
 
 import (
+	"context"
+
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 type ResourceQuotas interface {
-	// Get default resource quota for new resource bundles.
+	// GetDefaultResourceQuota returns default resource quota for new resource bundles.
 	GetDefaultResourceQuota() (*utils.ResourceQuota, error)
 
-	// Set default resource quota for new namespace bundles.
+	// GetDefaultResourceQuotaWithContext returns default resource quota for new resource bundles.
+	GetDefaultResourceQuotaWithContext(ctx context.Context) (*utils.ResourceQuota, error)
+
+	// SetDefaultResourceQuota sets default resource quota for new namespace bundles.
 	SetDefaultResourceQuota(quota utils.ResourceQuota) error
 
-	// Get resource quota of a namespace bundle.
+	// SetDefaultResourceQuotaWithContext sets default resource quota for new namespace bundles.
+	SetDefaultResourceQuotaWithContext(ctx context.Context, quota utils.ResourceQuota) error
+
+	// GetNamespaceBundleResourceQuota returns resource quota of a namespace bundle.
 	GetNamespaceBundleResourceQuota(namespace, bundle string) (*utils.ResourceQuota, error)
 
-	// Set resource quota for a namespace bundle.
+	// GetNamespaceBundleResourceQuotaWithContext returns resource quota of a namespace bundle.
+	GetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string) (*utils.ResourceQuota, error)
+
+	// SetNamespaceBundleResourceQuota sets resource quota for a namespace bundle.
 	SetNamespaceBundleResourceQuota(namespace, bundle string, quota utils.ResourceQuota) error
 
-	// Reset resource quota for a namespace bundle to default value.
+	// SetNamespaceBundleResourceQuotaWithContext sets resource quota for a namespace bundle.
+	SetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string, quota utils.ResourceQuota) error
+
+	// ResetNamespaceBundleResourceQuota resets resource quota for a namespace bundle to default value.
 	ResetNamespaceBundleResourceQuota(namespace, bundle string) error
+
+	// ResetNamespaceBundleResourceQuotaWithContext resets resource quota for a namespace bundle to default value.
+	ResetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string) error
 }
 
 type resource struct {
@@ -51,9 +68,13 @@ func (c *pulsarClient) ResourceQuotas() ResourceQuotas {
 }
 
 func (r *resource) GetDefaultResourceQuota() (*utils.ResourceQuota, error) {
+	return r.GetDefaultResourceQuotaWithContext(context.Background())
+}
+
+func (r *resource) GetDefaultResourceQuotaWithContext(ctx context.Context) (*utils.ResourceQuota, error) {
 	endpoint := r.pulsar.endpoint(r.basePath)
 	var quota utils.ResourceQuota
-	err := r.pulsar.Client.Get(endpoint, &quota)
+	err := r.pulsar.Client.Get(ctx, endpoint, &quota)
 	if err != nil {
 		return nil, err
 	}
@@ -61,14 +82,22 @@ func (r *resource) GetDefaultResourceQuota() (*utils.ResourceQuota, error) {
 }
 
 func (r *resource) SetDefaultResourceQuota(quota utils.ResourceQuota) error {
+	return r.SetDefaultResourceQuotaWithContext(context.Background(), quota)
+}
+
+func (r *resource) SetDefaultResourceQuotaWithContext(ctx context.Context, quota utils.ResourceQuota) error {
 	endpoint := r.pulsar.endpoint(r.basePath)
-	return r.pulsar.Client.Post(endpoint, &quota)
+	return r.pulsar.Client.Post(ctx, endpoint, &quota)
 }
 
 func (r *resource) GetNamespaceBundleResourceQuota(namespace, bundle string) (*utils.ResourceQuota, error) {
+	return r.GetNamespaceBundleResourceQuotaWithContext(context.Background(), namespace, bundle)
+}
+
+func (r *resource) GetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string) (*utils.ResourceQuota, error) {
 	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
 	var quota utils.ResourceQuota
-	err := r.pulsar.Client.Get(endpoint, &quota)
+	err := r.pulsar.Client.Get(ctx, endpoint, &quota)
 	if err != nil {
 		return nil, err
 	}
@@ -76,11 +105,19 @@ func (r *resource) GetNamespaceBundleResourceQuota(namespace, bundle string) (*u
 }
 
 func (r *resource) SetNamespaceBundleResourceQuota(namespace, bundle string, quota utils.ResourceQuota) error {
+	return r.SetNamespaceBundleResourceQuotaWithContext(context.Background(), namespace, bundle, quota)
+}
+
+func (r *resource) SetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string, quota utils.ResourceQuota) error {
 	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
-	return r.pulsar.Client.Post(endpoint, &quota)
+	return r.pulsar.Client.Post(ctx, endpoint, &quota)
 }
 
 func (r *resource) ResetNamespaceBundleResourceQuota(namespace, bundle string) error {
+	return r.ResetNamespaceBundleResourceQuotaWithContext(context.Background(), namespace, bundle)
+}
+
+func (r *resource) ResetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string) error {
 	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
-	return r.pulsar.Client.Delete(endpoint)
+	return r.pulsar.Client.Delete(ctx, endpoint)
 }
