@@ -104,7 +104,7 @@ type partitionConsumerOpts struct {
 	autoReceiverQueueSize       bool
 	nackRedeliveryDelay         time.Duration
 	nackBackoffPolicy           NackBackoffPolicy
-	nackPrecisionBit            int64
+	nackPrecisionBit            *int64
 	metadata                    map[string]string
 	subProperties               map[string]string
 	replicateSubscriptionState  bool

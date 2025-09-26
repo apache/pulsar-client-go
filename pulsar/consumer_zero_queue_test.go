@@ -553,7 +553,6 @@ func TestZeroQueueConsumer_Nack(t *testing.T) {
 		Type:                    Shared,
 		NackRedeliveryDelay:     1 * time.Second,
 		EnableZeroQueueConsumer: true,
-		NackPrecisionBit:        8,
 	})
 	assert.Nil(t, err)
 	_, ok := consumer.(*zeroQueueConsumer)

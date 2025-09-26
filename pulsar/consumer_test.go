@@ -1185,7 +1185,6 @@ func TestConsumerNack(t *testing.T) {
 		SubscriptionName:    "sub-1",
 		Type:                Shared,
 		NackRedeliveryDelay: 1 * time.Second,
-		NackPrecisionBit:    8,
 	})
 	assert.Nil(t, err)
 	defer consumer.Close()
@@ -1217,27 +1216,13 @@ func TestConsumerNack(t *testing.T) {
 	// Failed messages should be resent
 
 	// We should only receive the odd messages
-	receivedOdd := 0
-	expectedOdd := (N + 1) / 2 // Expected number of odd message IDs
-
-	for receivedOdd < expectedOdd {
+	for i := 1; i < N; i += 2 {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
+		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 
-		// Extract message ID from the payload (e.g., "msg-content-15")
-		var id int
-		_, err = fmt.Sscanf(string(msg.Payload()), "msg-content-%d", &id)
-		assert.Nil(t, err)
-
-		assert.True(t, id%2 == 1)
-		receivedOdd++
-
-		// Acknowledge message to mark it as processed
 		consumer.Ack(msg)
 	}
-
-	// Verify that the correct number of odd messages were received
-	assert.Equal(t, expectedOdd, receivedOdd)
 }
 
 func TestNegativeAckPrecisionBitCnt(t *testing.T) {
@@ -1250,12 +1235,13 @@ func TestNegativeAckPrecisionBitCnt(t *testing.T) {
 		assert.Nil(t, err)
 		defer client.Close()
 
+		precision := int64(precision)
 		consumer, err := client.Subscribe(ConsumerOptions{
 			Topic:               topicName,
 			SubscriptionName:    "sub-1",
 			Type:                Shared,
 			NackRedeliveryDelay: delay,
-			NackPrecisionBit:    int64(precision),
+			NackPrecisionBit:    &precision,
 		})
 		assert.Nil(t, err)
 		defer consumer.Close()

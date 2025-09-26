@@ -38,7 +38,7 @@ type negativeAcksTracker struct {
 	doneCh           chan interface{}
 	doneOnce         sync.Once
 	negativeAcks     *avltree.Tree
-	nackPrecisionBit int64
+	nackPrecisionBit *int64
 	rc               redeliveryConsumer
 	nackBackoff      NackBackoffPolicy
 	tick             *time.Ticker
@@ -47,21 +47,26 @@ type negativeAcksTracker struct {
 }
 
 func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
-	nackBackoffPolicy NackBackoffPolicy, logger log.Logger, nackPrecisionBit int64) *negativeAcksTracker {
+	nackBackoffPolicy NackBackoffPolicy, logger log.Logger, nackPrecisionBit *int64) *negativeAcksTracker {
 
 	t := &negativeAcksTracker{
 		doneCh: make(chan interface{}),
 		negativeAcks: avltree.NewWith(func(a, b interface{}) int {
-			// compare time.Time
-			timeA := a.(time.Time)
-			timeB := b.(time.Time)
+			// Perform type assertions and handle invalid types.
+			timeA, okA := a.(time.Time)
+			timeB, okB := b.(time.Time)
+
+			if !okA || !okB {
+				panic("invalid type: both values must be of type time.Time")
+			}
+
+			// Compare the two time.Time values.
 			if timeA.Before(timeB) {
 				return -1
-			}
-			if timeA.After(timeB) {
+			} else if timeA.After(timeB) {
 				return 1
 			}
-			return 0
+			return 0 // Equal times.
 		}),
 		rc:               rc,
 		nackBackoff:      nackBackoffPolicy,
@@ -95,7 +100,7 @@ func putNackEntry(t *negativeAcksTracker, batchMsgID *messageID, delay time.Dura
 	defer t.Unlock()
 
 	targetTime := time.Now().Add(delay)
-	trimmedTime := time.UnixMilli(trimLowerBit(targetTime.UnixMilli(), t.nackPrecisionBit))
+	trimmedTime := time.UnixMilli(trimLowerBit(targetTime.UnixMilli(), *t.nackPrecisionBit))
 	// try get trimmedTime
 	value, exists := t.negativeAcks.Get(trimmedTime)
 	if !exists {
@@ -103,7 +108,11 @@ func putNackEntry(t *negativeAcksTracker, batchMsgID *messageID, delay time.Dura
 		t.negativeAcks.Put(trimmedTime, newMap)
 		value = newMap
 	}
-	bitmapMap := value.(map[LedgerID]*roaring64.Bitmap)
+	bitmapMap, ok := value.(map[LedgerID]*roaring64.Bitmap)
+	if !ok {
+		t.log.Errorf("negativeAcksTracker: value for time %v is not of expected type map[LedgerID]*roaring64.Bitmap", trimmedTime)
+		return
+	}
 	if _, exists := bitmapMap[batchMsgID.ledgerID]; !exists {
 		bitmapMap[batchMsgID.ledgerID] = roaring64.NewBitmap()
 	}

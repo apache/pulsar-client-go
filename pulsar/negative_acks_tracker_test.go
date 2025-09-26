@@ -80,7 +80,7 @@ func (nmc *nackMockedConsumer) Wait() <-chan messageID {
 
 func TestNacksTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(nil)
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger(), 8)
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger(), nil)
 
 	nacks.Add(&messageID{
 		ledgerID: 1,
@@ -113,7 +113,7 @@ func TestNacksTracker(t *testing.T) {
 
 func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(nil)
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger(), 8)
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger(), nil)
 
 	nacks.Add(&messageID{
 		ledgerID: 1,
@@ -156,7 +156,7 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 
 func TestNackBackoffTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(new(defaultNackBackoffPolicy))
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, new(defaultNackBackoffPolicy), log.DefaultNopLogger(), 8)
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, new(defaultNackBackoffPolicy), log.DefaultNopLogger(), nil)
 
 	nacks.AddMessage(new(mockMessage1))
 	nacks.AddMessage(new(mockMessage2))
