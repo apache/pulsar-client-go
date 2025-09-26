@@ -63,7 +63,7 @@ type Packages interface {
 	// @param contact
 	//        contact information of a package
 	// @param properties
-	// 		  external infromations of a package
+	// 		  external informations of a package
 	Upload(packageURL, filePath, description, contact string, properties map[string]string) error
 
 	// UploadWithContext uploads Function/Connector Package
@@ -78,7 +78,7 @@ type Packages interface {
 	// @param contact
 	//        contact information of a package
 	// @param properties
-	// 		  external infromations of a package
+	// 		  external informations of a package
 	UploadWithContext(ctx context.Context, packageURL, filePath, description, contact string, properties map[string]string) error
 
 	// List lists all the packages with the given type in a namespace
@@ -93,10 +93,10 @@ type Packages interface {
 	// ListVersionsWithContext lists all the versions of a package
 	ListVersionsWithContext(ctx context.Context, packageURL string) ([]string, error)
 
-	// Delete the specified package
+	// Delete deletes the specified package
 	Delete(packageURL string) error
 
-	// DeleteWithContext the specified package
+	// DeleteWithContext deletes the specified package
 	DeleteWithContext(ctx context.Context, packageURL string) error
 
 	// GetMetadata returns a package metadata information
