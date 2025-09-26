@@ -586,28 +586,13 @@ func TestZeroQueueConsumer_Nack(t *testing.T) {
 	// Failed messages should be resent
 
 	// We should only receive the odd messages
-	receivedOdd := 0
-	expectedOdd := (N + 1) / 2
-
-	for receivedOdd < expectedOdd {
+	for i := 1; i < N; i += 2 {
 		msg, err := consumer.Receive(ctx)
 		assert.Nil(t, err)
-
-		// Extract message ID
-		var id int
-		_, err = fmt.Sscanf(string(msg.Payload()), "msg-content-%d", &id)
-		assert.Nil(t, err)
-
-		// Only accept odd message IDs
-		if id%2 == 1 {
-			receivedOdd++
-		}
+		assert.Equal(t, fmt.Sprintf("msg-content-%d", i), string(msg.Payload()))
 
 		consumer.Ack(msg)
 	}
-
-	// Assert we received the expected count of odd messages
-	assert.Equal(t, expectedOdd, receivedOdd)
 }
 
 func TestZeroQueueConsumer_Seek(t *testing.T) {
