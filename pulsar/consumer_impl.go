@@ -121,6 +121,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.NackBackoffPolicy = new(defaultNackBackoffPolicy)
 	}
 
+	if options.NackPrecisionBit == nil || *options.NackPrecisionBit < 0 {
+		options.NackPrecisionBit = &defaultNackPrecisionBit
+	}
+
 	// did the user pass in a message channel?
 	messageCh := options.MessageChannel
 	if options.MessageChannel == nil {
@@ -460,6 +464,7 @@ func newPartitionConsumerOpts(topic, consumerName string, idx int, options Consu
 		receiverQueueSize:           options.ReceiverQueueSize,
 		nackRedeliveryDelay:         nackRedeliveryDelay,
 		nackBackoffPolicy:           options.NackBackoffPolicy,
+		nackPrecisionBit:            options.NackPrecisionBit,
 		metadata:                    options.Properties,
 		subProperties:               options.SubscriptionProperties,
 		replicateSubscriptionState:  options.ReplicateSubscriptionState,
