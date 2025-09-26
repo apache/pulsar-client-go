@@ -18,6 +18,7 @@
 package admin
 
 import (
+	"context"
 	"fmt"
 	"strconv"
 
@@ -78,6 +79,10 @@ func (c *pulsarClient) Schemas() Schema {
 }
 
 func (s *schemas) GetSchemaInfo(topic string) (*utils.SchemaInfo, error) {
+	return s.GetSchemaInfoWithContext(context.Background(), topic)
+}
+
+func (s *schemas) GetSchemaInfoWithContext(ctx context.Context, topic string) (*utils.SchemaInfo, error) {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return nil, err
@@ -86,7 +91,7 @@ func (s *schemas) GetSchemaInfo(topic string) (*utils.SchemaInfo, error) {
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schema")
 
-	err = s.pulsar.Client.Get(endpoint, &response)
+	err = s.pulsar.Client.Get(ctx, endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -96,6 +101,10 @@ func (s *schemas) GetSchemaInfo(topic string) (*utils.SchemaInfo, error) {
 }
 
 func (s *schemas) GetSchemaInfoWithVersion(topic string) (*utils.SchemaInfoWithVersion, error) {
+	return s.GetSchemaInfoWithVersionWithContext(context.Background(), topic)
+}
+
+func (s *schemas) GetSchemaInfoWithVersionWithContext(ctx context.Context, topic string) (*utils.SchemaInfoWithVersion, error) {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return nil, err
@@ -104,7 +113,7 @@ func (s *schemas) GetSchemaInfoWithVersion(topic string) (*utils.SchemaInfoWithV
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schema")
 
-	err = s.pulsar.Client.Get(endpoint, &response)
+	err = s.pulsar.Client.Get(ctx, endpoint, &response)
 	if err != nil {
 		fmt.Println("err:", err.Error())
 		return nil, err
@@ -115,6 +124,10 @@ func (s *schemas) GetSchemaInfoWithVersion(topic string) (*utils.SchemaInfoWithV
 }
 
 func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*utils.SchemaInfo, error) {
+	return s.GetSchemaInfoByVersionWithContext(context.Background(), topic, version)
+}
+
+func (s *schemas) GetSchemaInfoByVersionWithContext(ctx context.Context, topic string, version int64) (*utils.SchemaInfo, error) {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return nil, err
@@ -124,7 +137,7 @@ func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*utils.Sc
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(), topicName.GetLocalName(),
 		"schema", strconv.FormatInt(version, 10))
 
-	err = s.pulsar.Client.Get(endpoint, &response)
+	err = s.pulsar.Client.Get(ctx, endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -134,6 +147,10 @@ func (s *schemas) GetSchemaInfoByVersion(topic string, version int64) (*utils.Sc
 }
 
 func (s *schemas) GetAllSchemas(topic string) ([]*utils.SchemaInfoWithVersion, error) {
+	return s.GetAllSchemasWithContext(context.Background(), topic)
+}
+
+func (s *schemas) GetAllSchemasWithContext(ctx context.Context, topic string) ([]*utils.SchemaInfoWithVersion, error) {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return nil, err
@@ -142,7 +159,7 @@ func (s *schemas) GetAllSchemas(topic string) ([]*utils.SchemaInfoWithVersion, e
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schemas")
 
-	err = s.pulsar.Client.Get(endpoint, &response)
+	err = s.pulsar.Client.Get(ctx, endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -152,14 +169,22 @@ func (s *schemas) GetAllSchemas(topic string) ([]*utils.SchemaInfoWithVersion, e
 }
 
 func (s *schemas) DeleteSchema(topic string) error {
-	return s.delete(topic, false)
+	return s.DeleteSchemaWithContext(context.Background(), topic)
+}
+
+func (s *schemas) DeleteSchemaWithContext(ctx context.Context, topic string) error {
+	return s.delete(ctx, topic, false)
 }
 
 func (s *schemas) ForceDeleteSchema(topic string) error {
-	return s.delete(topic, true)
+	return s.ForceDeleteSchemaWithContext(context.Background(), topic)
 }
 
-func (s *schemas) delete(topic string, force bool) error {
+func (s *schemas) ForceDeleteSchemaWithContext(ctx context.Context, topic string) error {
+	return s.delete(ctx, topic, true)
+}
+
+func (s *schemas) delete(ctx context.Context, topic string, force bool) error {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return err
@@ -171,10 +196,14 @@ func (s *schemas) delete(topic string, force bool) error {
 	queryParams := make(map[string]string)
 	queryParams["force"] = strconv.FormatBool(force)
 
-	return s.pulsar.Client.DeleteWithQueryParams(endpoint, queryParams)
+	return s.pulsar.Client.DeleteWithQueryParams(ctx, endpoint, queryParams)
 }
 
 func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload utils.PostSchemaPayload) error {
+	return s.CreateSchemaByPayloadWithContext(context.Background(), topic, schemaPayload)
+}
+
+func (s *schemas) CreateSchemaByPayloadWithContext(ctx context.Context, topic string, schemaPayload utils.PostSchemaPayload) error {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return err
@@ -183,20 +212,32 @@ func (s *schemas) CreateSchemaByPayload(topic string, schemaPayload utils.PostSc
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "schema")
 
-	return s.pulsar.Client.Post(endpoint, &schemaPayload)
+	return s.pulsar.Client.Post(ctx, endpoint, &schemaPayload)
 }
 
 func (s *schemas) CreateSchemaBySchemaInfo(topic string, schemaInfo utils.SchemaInfo) error {
+	return s.CreateSchemaBySchemaInfoWithContext(context.Background(), topic, schemaInfo)
+}
+
+func (s *schemas) CreateSchemaBySchemaInfoWithContext(ctx context.Context, topic string, schemaInfo utils.SchemaInfo) error {
 	schemaPayload := utils.ConvertSchemaInfoToPostSchemaPayload(schemaInfo)
 	return s.CreateSchemaByPayload(topic, schemaPayload)
 }
 
 func (s *schemas) GetVersionBySchemaInfo(topic string, schemaInfo utils.SchemaInfo) (int64, error) {
+	return s.GetVersionBySchemaInfoWithContext(context.Background(), topic, schemaInfo)
+}
+
+func (s *schemas) GetVersionBySchemaInfoWithContext(ctx context.Context, topic string, schemaInfo utils.SchemaInfo) (int64, error) {
 	schemaPayload := utils.ConvertSchemaInfoToPostSchemaPayload(schemaInfo)
 	return s.GetVersionByPayload(topic, schemaPayload)
 }
 
 func (s *schemas) GetVersionByPayload(topic string, schemaPayload utils.PostSchemaPayload) (int64, error) {
+	return s.GetVersionByPayloadWithContext(context.Background(), topic, schemaPayload)
+}
+
+func (s *schemas) GetVersionByPayloadWithContext(ctx context.Context, topic string, schemaPayload utils.PostSchemaPayload) (int64, error) {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
 		return 0, err
@@ -206,17 +247,27 @@ func (s *schemas) GetVersionByPayload(topic string, schemaPayload utils.PostSche
 	}{}
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "version")
-	err = s.pulsar.Client.PostWithObj(endpoint, &schemaPayload, &version)
+	err = s.pulsar.Client.PostWithObj(ctx, endpoint, &schemaPayload, &version)
 	return version.Version, err
 }
 
 func (s *schemas) TestCompatibilityWithSchemaInfo(topic string,
 	schemaInfo utils.SchemaInfo) (*utils.IsCompatibility, error) {
+	return s.TestCompatibilityWithSchemaInfoWithContext(context.Background(), topic, schemaInfo)
+}
+
+func (s *schemas) TestCompatibilityWithSchemaInfoWithContext(ctx context.Context, topic string,
+	schemaInfo utils.SchemaInfo) (*utils.IsCompatibility, error) {
 	schemaPayload := utils.ConvertSchemaInfoToPostSchemaPayload(schemaInfo)
-	return s.TestCompatibilityWithPostSchemaPayload(topic, schemaPayload)
+	return s.TestCompatibilityWithPostSchemaPayloadWithContext(ctx, topic, schemaPayload)
 }
 
 func (s *schemas) TestCompatibilityWithPostSchemaPayload(topic string,
+	schemaPayload utils.PostSchemaPayload) (*utils.IsCompatibility, error) {
+	return s.TestCompatibilityWithPostSchemaPayloadWithContext(context.Background(), topic, schemaPayload)
+}
+
+func (s *schemas) TestCompatibilityWithPostSchemaPayloadWithContext(ctx context.Context, topic string,
 	schemaPayload utils.PostSchemaPayload) (*utils.IsCompatibility, error) {
 	topicName, err := utils.GetTopicName(topic)
 	if err != nil {
@@ -225,6 +276,6 @@ func (s *schemas) TestCompatibilityWithPostSchemaPayload(topic string,
 	var isCompatibility utils.IsCompatibility
 	endpoint := s.pulsar.endpoint(s.basePath, topicName.GetTenant(), topicName.GetNamespace(),
 		topicName.GetLocalName(), "compatibility")
-	err = s.pulsar.Client.PostWithObj(endpoint, &schemaPayload, &isCompatibility)
+	err = s.pulsar.Client.PostWithObj(ctx, endpoint, &schemaPayload, &isCompatibility)
 	return &isCompatibility, err
 }
