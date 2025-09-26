@@ -37,14 +37,14 @@ import (
 
 // Packages is admin interface for functions management
 type Packages interface {
-	// Download Function/Connector Package
+	// Download downloads Function/Connector Package
 	// @param destinationFile
 	//        file where data should be downloaded to
 	// @param packageURL
 	//        the package URL
 	Download(packageURL, destinationFile string) error
 
-	// Download Function/Connector Package
+	// DownloadWithContext downloads Function/Connector Package
 	// @param ctx
 	//        context used for the request
 	// @param destinationFile
@@ -53,7 +53,7 @@ type Packages interface {
 	//        the package URL
 	DownloadWithContext(ctx context.Context, packageURL, destinationFile string) error
 
-	// Upload Function/Connector Package
+	// Upload uploads Function/Connector Package
 	// @param filePath
 	//        file where data should be uploaded to
 	// @param packageURL
@@ -66,7 +66,7 @@ type Packages interface {
 	// 		  external infromations of a package
 	Upload(packageURL, filePath, description, contact string, properties map[string]string) error
 
-	// Upload Function/Connector Package
+	// UploadWithContext uploads Function/Connector Package
 	// @param ctx
 	//        context used for the request
 	// @param filePath
@@ -81,34 +81,34 @@ type Packages interface {
 	// 		  external infromations of a package
 	UploadWithContext(ctx context.Context, packageURL, filePath, description, contact string, properties map[string]string) error
 
-	// List all the packages with the given type in a namespace
+	// List lists all the packages with the given type in a namespace
 	List(typeName, namespace string) ([]string, error)
 
-	// List all the packages with the given type in a namespace
+	// ListWithContext lists all the packages with the given type in a namespace
 	ListWithContext(ctx context.Context, typeName, namespace string) ([]string, error)
 
-	// ListVersions list all the versions of a package
+	// ListVersions lists all the versions of a package
 	ListVersions(packageURL string) ([]string, error)
 
-	// ListVersions list all the versions of a package
+	// ListVersionsWithContext lists all the versions of a package
 	ListVersionsWithContext(ctx context.Context, packageURL string) ([]string, error)
 
 	// Delete the specified package
 	Delete(packageURL string) error
 
-	// Delete the specified package
+	// DeleteWithContext the specified package
 	DeleteWithContext(ctx context.Context, packageURL string) error
 
-	// GetMetadata get a package metadata information
+	// GetMetadata returns a package metadata information
 	GetMetadata(packageURL string) (utils.PackageMetadata, error)
 
-	// GetMetadata get a package metadata information
+	// GetMetadataWithContext returns a package metadata information
 	GetMetadataWithContext(ctx context.Context, packageURL string) (utils.PackageMetadata, error)
 
-	// UpdateMetadata update a package metadata information
+	// UpdateMetadata updates a package metadata information
 	UpdateMetadata(packageURL, description, contact string, properties map[string]string) error
 
-	// UpdateMetadata update a package metadata information
+	// UpdateMetadataWithContext updates a package metadata information
 	UpdateMetadataWithContext(ctx context.Context, packageURL, description, contact string, properties map[string]string) error
 }
 
