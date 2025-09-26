@@ -110,7 +110,8 @@ func putNackEntry(t *negativeAcksTracker, batchMsgID *messageID, delay time.Dura
 	}
 	bitmapMap, ok := value.(map[LedgerID]*roaring64.Bitmap)
 	if !ok {
-		t.log.Errorf("negativeAcksTracker: value for time %v is not of expected type map[LedgerID]*roaring64.Bitmap", trimmedTime)
+		t.log.Errorf("negativeAcksTracker: value for time %v is not of expected type map[LedgerID]*roaring64.Bitmap",
+			trimmedTime)
 		return
 	}
 	if _, exists := bitmapMap[batchMsgID.ledgerID]; !exists {
@@ -202,3 +203,5 @@ func (t *negativeAcksTracker) Close() {
 		t.doneCh <- nil
 	})
 }
+
+var defaultNackPrecisionBit = int64(8)
