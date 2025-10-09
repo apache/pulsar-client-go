@@ -64,13 +64,23 @@ type Sources interface {
 	UpdateSource(config *utils.SourceConfig, fileName string, options *utils.UpdateOptions) error
 
 	// UpdateSource updates the configuration for a source.
-	UpdateSourceWithContext(ctx context.Context, config *utils.SourceConfig, fileName string, options *utils.UpdateOptions) error
+	UpdateSourceWithContext(
+		ctx context.Context,
+		config *utils.SourceConfig,
+		fileName string,
+		options *utils.UpdateOptions,
+	) error
 
 	// UpdateSourceWithURL updates a source by providing url from which fun-pkg can be downloaded. supported url: http/file
 	UpdateSourceWithURL(config *utils.SourceConfig, pkgURL string, options *utils.UpdateOptions) error
 
 	// UpdateSourceWithURL updates a source by providing url from which fun-pkg can be downloaded. supported url: http/file
-	UpdateSourceWithURLWithContext(ctx context.Context, config *utils.SourceConfig, pkgURL string, options *utils.UpdateOptions) error
+	UpdateSourceWithURLWithContext(
+		ctx context.Context,
+		config *utils.SourceConfig,
+		pkgURL string,
+		options *utils.UpdateOptions,
+	) error
 
 	// DeleteSource deletes an existing source
 	DeleteSource(tenant, namespace, source string) error
@@ -88,7 +98,13 @@ type Sources interface {
 	GetSourceStatusWithID(tenant, namespace, source string, id int) (utils.SourceInstanceStatusData, error)
 
 	// GetSourceStatusWithID returns the current status of a source instance.
-	GetSourceStatusWithIDWithContext(ctx context.Context, tenant, namespace, source string, id int) (utils.SourceInstanceStatusData, error)
+	GetSourceStatusWithIDWithContext(
+		ctx context.Context,
+		tenant,
+		namespace,
+		source string,
+		id int,
+	) (utils.SourceInstanceStatusData, error)
 
 	// RestartSource restarts all source instances
 	RestartSource(tenant, namespace, source string) error
@@ -173,7 +189,7 @@ func (s *sources) ListSources(tenant, namespace string) ([]string, error) {
 func (s *sources) ListSourcesWithContext(ctx context.Context, tenant, namespace string) ([]string, error) {
 	var sources []string
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace)
-	err := s.pulsar.Client.Get(ctx, endpoint, &sources)
+	err := s.pulsar.Client.GetWithContext(ctx, endpoint, &sources)
 	return sources, err
 }
 
@@ -181,10 +197,15 @@ func (s *sources) GetSource(tenant, namespace, source string) (utils.SourceConfi
 	return s.GetSourceWithContext(context.Background(), tenant, namespace, source)
 }
 
-func (s *sources) GetSourceWithContext(ctx context.Context, tenant, namespace, source string) (utils.SourceConfig, error) {
+func (s *sources) GetSourceWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	source string,
+) (utils.SourceConfig, error) {
 	var sourceConfig utils.SourceConfig
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	err := s.pulsar.Client.Get(ctx, endpoint, &sourceConfig)
+	err := s.pulsar.Client.GetWithContext(ctx, endpoint, &sourceConfig)
 	return sourceConfig, err
 }
 
@@ -242,7 +263,7 @@ func (s *sources) CreateSourceWithContext(ctx context.Context, config *utils.Sou
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PostWithMultiPart(ctx, endpoint, nil, bodyBuf, contentType)
+	err = s.pulsar.Client.PostWithMultiPartWithContext(ctx, endpoint, nil, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -291,7 +312,7 @@ func (s *sources) CreateSourceWithURLWithContext(ctx context.Context, config *ut
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PostWithMultiPart(ctx, endpoint, nil, bodyBuf, contentType)
+	err = s.pulsar.Client.PostWithMultiPartWithContext(ctx, endpoint, nil, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -303,7 +324,12 @@ func (s *sources) UpdateSource(config *utils.SourceConfig, fileName string, upda
 	return s.UpdateSourceWithContext(context.Background(), config, fileName, updateOptions)
 }
 
-func (s *sources) UpdateSourceWithContext(ctx context.Context, config *utils.SourceConfig, fileName string, updateOptions *utils.UpdateOptions) error {
+func (s *sources) UpdateSourceWithContext(
+	ctx context.Context,
+	config *utils.SourceConfig,
+	fileName string,
+	updateOptions *utils.UpdateOptions,
+) error {
 	endpoint := s.pulsar.endpoint(s.basePath, config.Tenant, config.Namespace, config.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -454,17 +480,22 @@ func (s *sources) DeleteSource(tenant, namespace, source string) error {
 
 func (s *sources) DeleteSourceWithContext(ctx context.Context, tenant, namespace, source string) error {
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	return s.pulsar.Client.Delete(ctx, endpoint)
+	return s.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (s *sources) GetSourceStatus(tenant, namespace, source string) (utils.SourceStatus, error) {
 	return s.GetSourceStatusWithContext(context.Background(), tenant, namespace, source)
 }
 
-func (s *sources) GetSourceStatusWithContext(ctx context.Context, tenant, namespace, source string) (utils.SourceStatus, error) {
+func (s *sources) GetSourceStatusWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	source string,
+) (utils.SourceStatus, error) {
 	var sourceStatus utils.SourceStatus
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	err := s.pulsar.Client.Get(ctx, endpoint+"/status", &sourceStatus)
+	err := s.pulsar.Client.GetWithContext(ctx, endpoint+"/status", &sourceStatus)
 	return sourceStatus, err
 }
 
@@ -478,7 +509,7 @@ func (s *sources) GetSourceStatusWithIDWithContext(ctx context.Context, tenant, 
 	var sourceInstanceStatusData utils.SourceInstanceStatusData
 	instanceID := fmt.Sprintf("%d", id)
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source, instanceID)
-	err := s.pulsar.Client.Get(ctx, endpoint+"/status", &sourceInstanceStatusData)
+	err := s.pulsar.Client.GetWithContext(ctx, endpoint+"/status", &sourceInstanceStatusData)
 	return sourceInstanceStatusData, err
 }
 
@@ -488,18 +519,24 @@ func (s *sources) RestartSource(tenant, namespace, source string) error {
 
 func (s *sources) RestartSourceWithContext(ctx context.Context, tenant, namespace, source string) error {
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	return s.pulsar.Client.Post(ctx, endpoint+"/restart", nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint+"/restart", nil)
 }
 
 func (s *sources) RestartSourceWithID(tenant, namespace, source string, instanceID int) error {
 	return s.RestartSourceWithIDWithContext(context.Background(), tenant, namespace, source, instanceID)
 }
 
-func (s *sources) RestartSourceWithIDWithContext(ctx context.Context, tenant, namespace, source string, instanceID int) error {
+func (s *sources) RestartSourceWithIDWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	source string,
+	instanceID int,
+) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source, id)
 
-	return s.pulsar.Client.Post(ctx, endpoint+"/restart", nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint+"/restart", nil)
 }
 
 func (s *sources) StopSource(tenant, namespace, source string) error {
@@ -508,18 +545,24 @@ func (s *sources) StopSource(tenant, namespace, source string) error {
 
 func (s *sources) StopSourceWithContext(ctx context.Context, tenant, namespace, source string) error {
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	return s.pulsar.Client.Post(ctx, endpoint+"/stop", nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint+"/stop", nil)
 }
 
 func (s *sources) StopSourceWithID(tenant, namespace, source string, instanceID int) error {
 	return s.StopSourceWithIDWithContext(context.Background(), tenant, namespace, source, instanceID)
 }
 
-func (s *sources) StopSourceWithIDWithContext(ctx context.Context, tenant, namespace, source string, instanceID int) error {
+func (s *sources) StopSourceWithIDWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	source string,
+	instanceID int,
+) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source, id)
 
-	return s.pulsar.Client.Post(ctx, endpoint+"/stop", nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint+"/stop", nil)
 }
 
 func (s *sources) StartSource(tenant, namespace, source string) error {
@@ -528,18 +571,24 @@ func (s *sources) StartSource(tenant, namespace, source string) error {
 
 func (s *sources) StartSourceWithContext(ctx context.Context, tenant, namespace, source string) error {
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source)
-	return s.pulsar.Client.Post(ctx, endpoint+"/start", nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint+"/start", nil)
 }
 
 func (s *sources) StartSourceWithID(tenant, namespace, source string, instanceID int) error {
 	return s.StartSourceWithIDWithContext(context.Background(), tenant, namespace, source, instanceID)
 }
 
-func (s *sources) StartSourceWithIDWithContext(ctx context.Context, tenant, namespace, source string, instanceID int) error {
+func (s *sources) StartSourceWithIDWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	source string,
+	instanceID int,
+) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := s.pulsar.endpoint(s.basePath, tenant, namespace, source, id)
 
-	return s.pulsar.Client.Post(ctx, endpoint+"/start", nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint+"/start", nil)
 }
 
 func (s *sources) GetBuiltInSources() ([]*utils.ConnectorDefinition, error) {
@@ -549,7 +598,7 @@ func (s *sources) GetBuiltInSources() ([]*utils.ConnectorDefinition, error) {
 func (s *sources) GetBuiltInSourcesWithContext(ctx context.Context) ([]*utils.ConnectorDefinition, error) {
 	var connectorDefinition []*utils.ConnectorDefinition
 	endpoint := s.pulsar.endpoint(s.basePath, "builtinsources")
-	err := s.pulsar.Client.Get(ctx, endpoint, &connectorDefinition)
+	err := s.pulsar.Client.GetWithContext(ctx, endpoint, &connectorDefinition)
 	return connectorDefinition, err
 }
 
@@ -559,5 +608,5 @@ func (s *sources) ReloadBuiltInSources() error {
 
 func (s *sources) ReloadBuiltInSourcesWithContext(ctx context.Context) error {
 	endpoint := s.pulsar.endpoint(s.basePath, "reloadBuiltInSources")
-	return s.pulsar.Client.Post(ctx, endpoint, nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint, nil)
 }

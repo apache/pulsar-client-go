@@ -76,7 +76,7 @@ func (bs *brokerStats) GetMetrics() ([]utils.Metrics, error) {
 func (bs *brokerStats) GetMetricsWithContext(ctx context.Context) ([]utils.Metrics, error) {
 	endpoint := bs.pulsar.endpoint(bs.basePath, "/metrics")
 	var response []utils.Metrics
-	err := bs.pulsar.Client.Get(ctx, endpoint, &response)
+	err := bs.pulsar.Client.GetWithContext(ctx, endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -91,7 +91,7 @@ func (bs *brokerStats) GetMBeans() ([]utils.Metrics, error) {
 func (bs *brokerStats) GetMBeansWithContext(ctx context.Context) ([]utils.Metrics, error) {
 	endpoint := bs.pulsar.endpoint(bs.basePath, "/mbeans")
 	var response []utils.Metrics
-	err := bs.pulsar.Client.Get(ctx, endpoint, &response)
+	err := bs.pulsar.Client.GetWithContext(ctx, endpoint, &response)
 	if err != nil {
 		return nil, err
 	}
@@ -105,7 +105,7 @@ func (bs *brokerStats) GetTopics() (string, error) {
 
 func (bs *brokerStats) GetTopicsWithContext(ctx context.Context) (string, error) {
 	endpoint := bs.pulsar.endpoint(bs.basePath, "/topics")
-	buf, err := bs.pulsar.Client.GetWithQueryParams(ctx, endpoint, nil, nil, false)
+	buf, err := bs.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, nil, nil, false)
 	if err != nil {
 		return "", err
 	}
@@ -120,7 +120,7 @@ func (bs *brokerStats) GetLoadReport() (*utils.LocalBrokerData, error) {
 func (bs *brokerStats) GetLoadReportWithContext(ctx context.Context) (*utils.LocalBrokerData, error) {
 	endpoint := bs.pulsar.endpoint(bs.basePath, "/load-report")
 	response := utils.NewLocalBrokerData()
-	err := bs.pulsar.Client.Get(ctx, endpoint, &response)
+	err := bs.pulsar.Client.GetWithContext(ctx, endpoint, &response)
 	if err != nil {
 		return nil, nil
 	}
@@ -131,10 +131,13 @@ func (bs *brokerStats) GetAllocatorStats(allocatorName string) (*utils.Allocator
 	return bs.GetAllocatorStatsWithContext(context.Background(), allocatorName)
 }
 
-func (bs *brokerStats) GetAllocatorStatsWithContext(ctx context.Context, allocatorName string) (*utils.AllocatorStats, error) {
+func (bs *brokerStats) GetAllocatorStatsWithContext(
+	ctx context.Context,
+	allocatorName string,
+) (*utils.AllocatorStats, error) {
 	endpoint := bs.pulsar.endpoint(bs.basePath, "/allocator-stats", allocatorName)
 	var allocatorStats utils.AllocatorStats
-	err := bs.pulsar.Client.Get(ctx, endpoint, &allocatorStats)
+	err := bs.pulsar.Client.GetWithContext(ctx, endpoint, &allocatorStats)
 	if err != nil {
 		return nil, err
 	}

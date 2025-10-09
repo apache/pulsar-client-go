@@ -46,7 +46,12 @@ type ResourceQuotas interface {
 	SetNamespaceBundleResourceQuota(namespace, bundle string, quota utils.ResourceQuota) error
 
 	// SetNamespaceBundleResourceQuotaWithContext sets resource quota for a namespace bundle.
-	SetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string, quota utils.ResourceQuota) error
+	SetNamespaceBundleResourceQuotaWithContext(
+		ctx context.Context,
+		namespace,
+		bundle string,
+		quota utils.ResourceQuota,
+	) error
 
 	// ResetNamespaceBundleResourceQuota resets resource quota for a namespace bundle to default value.
 	ResetNamespaceBundleResourceQuota(namespace, bundle string) error
@@ -74,7 +79,7 @@ func (r *resource) GetDefaultResourceQuota() (*utils.ResourceQuota, error) {
 func (r *resource) GetDefaultResourceQuotaWithContext(ctx context.Context) (*utils.ResourceQuota, error) {
 	endpoint := r.pulsar.endpoint(r.basePath)
 	var quota utils.ResourceQuota
-	err := r.pulsar.Client.Get(ctx, endpoint, &quota)
+	err := r.pulsar.Client.GetWithContext(ctx, endpoint, &quota)
 	if err != nil {
 		return nil, err
 	}
@@ -87,17 +92,21 @@ func (r *resource) SetDefaultResourceQuota(quota utils.ResourceQuota) error {
 
 func (r *resource) SetDefaultResourceQuotaWithContext(ctx context.Context, quota utils.ResourceQuota) error {
 	endpoint := r.pulsar.endpoint(r.basePath)
-	return r.pulsar.Client.Post(ctx, endpoint, &quota)
+	return r.pulsar.Client.PostWithContext(ctx, endpoint, &quota)
 }
 
 func (r *resource) GetNamespaceBundleResourceQuota(namespace, bundle string) (*utils.ResourceQuota, error) {
 	return r.GetNamespaceBundleResourceQuotaWithContext(context.Background(), namespace, bundle)
 }
 
-func (r *resource) GetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string) (*utils.ResourceQuota, error) {
+func (r *resource) GetNamespaceBundleResourceQuotaWithContext(
+	ctx context.Context,
+	namespace,
+	bundle string,
+) (*utils.ResourceQuota, error) {
 	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
 	var quota utils.ResourceQuota
-	err := r.pulsar.Client.Get(ctx, endpoint, &quota)
+	err := r.pulsar.Client.GetWithContext(ctx, endpoint, &quota)
 	if err != nil {
 		return nil, err
 	}
@@ -108,9 +117,14 @@ func (r *resource) SetNamespaceBundleResourceQuota(namespace, bundle string, quo
 	return r.SetNamespaceBundleResourceQuotaWithContext(context.Background(), namespace, bundle, quota)
 }
 
-func (r *resource) SetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string, quota utils.ResourceQuota) error {
+func (r *resource) SetNamespaceBundleResourceQuotaWithContext(
+	ctx context.Context,
+	namespace,
+	bundle string,
+	quota utils.ResourceQuota,
+) error {
 	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
-	return r.pulsar.Client.Post(ctx, endpoint, &quota)
+	return r.pulsar.Client.PostWithContext(ctx, endpoint, &quota)
 }
 
 func (r *resource) ResetNamespaceBundleResourceQuota(namespace, bundle string) error {
@@ -119,5 +133,5 @@ func (r *resource) ResetNamespaceBundleResourceQuota(namespace, bundle string) e
 
 func (r *resource) ResetNamespaceBundleResourceQuotaWithContext(ctx context.Context, namespace, bundle string) error {
 	endpoint := r.pulsar.endpoint(r.basePath, namespace, bundle)
-	return r.pulsar.Client.Delete(ctx, endpoint)
+	return r.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }

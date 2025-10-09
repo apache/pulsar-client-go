@@ -75,7 +75,7 @@ func (c *tenants) Create(data utils.TenantData) error {
 
 func (c *tenants) CreateWithContext(ctx context.Context, data utils.TenantData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, data.Name)
-	return c.pulsar.Client.Put(ctx, endpoint, &data)
+	return c.pulsar.Client.PutWithContext(ctx, endpoint, &data)
 }
 
 func (c *tenants) Delete(name string) error {
@@ -84,7 +84,7 @@ func (c *tenants) Delete(name string) error {
 
 func (c *tenants) DeleteWithContext(ctx context.Context, name string) error {
 	endpoint := c.pulsar.endpoint(c.basePath, name)
-	return c.pulsar.Client.Delete(ctx, endpoint)
+	return c.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (c *tenants) Update(data utils.TenantData) error {
@@ -93,7 +93,7 @@ func (c *tenants) Update(data utils.TenantData) error {
 
 func (c *tenants) UpdateWithContext(ctx context.Context, data utils.TenantData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, data.Name)
-	return c.pulsar.Client.Post(ctx, endpoint, &data)
+	return c.pulsar.Client.PostWithContext(ctx, endpoint, &data)
 }
 
 func (c *tenants) List() ([]string, error) {
@@ -103,7 +103,7 @@ func (c *tenants) List() ([]string, error) {
 func (c *tenants) ListWithContext(ctx context.Context) ([]string, error) {
 	var tenantList []string
 	endpoint := c.pulsar.endpoint(c.basePath, "")
-	err := c.pulsar.Client.Get(ctx, endpoint, &tenantList)
+	err := c.pulsar.Client.GetWithContext(ctx, endpoint, &tenantList)
 	return tenantList, err
 }
 
@@ -114,6 +114,6 @@ func (c *tenants) Get(name string) (utils.TenantData, error) {
 func (c *tenants) GetWithContext(ctx context.Context, name string) (utils.TenantData, error) {
 	var data utils.TenantData
 	endpoint := c.pulsar.endpoint(c.basePath, name)
-	err := c.pulsar.Client.Get(ctx, endpoint, &data)
+	err := c.pulsar.Client.GetWithContext(ctx, endpoint, &data)
 	return data, err
 }

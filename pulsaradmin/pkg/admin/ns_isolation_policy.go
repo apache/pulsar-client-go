@@ -28,7 +28,12 @@ type NsIsolationPolicy interface {
 	CreateNamespaceIsolationPolicy(cluster, policyName string, namespaceIsolationData utils.NamespaceIsolationData) error
 
 	// CreateNamespaceIsolationPolicyWithContext creates a namespace isolation policy for a cluster
-	CreateNamespaceIsolationPolicyWithContext(ctx context.Context, cluster, policyName string, namespaceIsolationData utils.NamespaceIsolationData) error
+	CreateNamespaceIsolationPolicyWithContext(
+		ctx context.Context,
+		cluster,
+		policyName string,
+		namespaceIsolationData utils.NamespaceIsolationData,
+	) error
 
 	// DeleteNamespaceIsolationPolicy deletes a namespace isolation policy for a cluster
 	DeleteNamespaceIsolationPolicy(cluster, policyName string) error
@@ -40,25 +45,42 @@ type NsIsolationPolicy interface {
 	GetNamespaceIsolationPolicy(cluster, policyName string) (*utils.NamespaceIsolationData, error)
 
 	// GetNamespaceIsolationPolicyWithContext returns a single namespace isolation policy for a cluster
-	GetNamespaceIsolationPolicyWithContext(ctx context.Context, cluster, policyName string) (*utils.NamespaceIsolationData, error)
+	GetNamespaceIsolationPolicyWithContext(
+		ctx context.Context,
+		cluster,
+		policyName string,
+	) (*utils.NamespaceIsolationData, error)
 
 	// GetNamespaceIsolationPolicies returns the namespace isolation policies of a cluster
 	GetNamespaceIsolationPolicies(cluster string) (map[string]utils.NamespaceIsolationData, error)
 
 	// GetNamespaceIsolationPoliciesWithContext returns the namespace isolation policies of a cluster
-	GetNamespaceIsolationPoliciesWithContext(ctx context.Context, cluster string) (map[string]utils.NamespaceIsolationData, error)
+	GetNamespaceIsolationPoliciesWithContext(
+		ctx context.Context,
+		cluster string,
+	) (map[string]utils.NamespaceIsolationData, error)
 
-	// GetBrokersWithNamespaceIsolationPolicy returns list of active brokers with namespace-isolation policies attached to it.
+	// GetBrokersWithNamespaceIsolationPolicy returns list of active brokers
+	// with namespace-isolation policies attached to it.
 	GetBrokersWithNamespaceIsolationPolicy(cluster string) ([]utils.BrokerNamespaceIsolationData, error)
 
-	// GetBrokersWithNamespaceIsolationPolicyWithContext returns list of active brokers with namespace-isolation policies attached to it.
-	GetBrokersWithNamespaceIsolationPolicyWithContext(ctx context.Context, cluster string) ([]utils.BrokerNamespaceIsolationData, error)
+	// GetBrokersWithNamespaceIsolationPolicyWithContext returns list of active brokers
+	// with namespace-isolation policies attached to it.
+	GetBrokersWithNamespaceIsolationPolicyWithContext(
+		ctx context.Context,
+		cluster string,
+	) ([]utils.BrokerNamespaceIsolationData, error)
 
 	// GetBrokerWithNamespaceIsolationPolicy returns active broker with namespace-isolation policies attached to it.
 	GetBrokerWithNamespaceIsolationPolicy(cluster, broker string) (*utils.BrokerNamespaceIsolationData, error)
 
-	// GetBrokerWithNamespaceIsolationPolicyWithContext returns active broker with namespace-isolation policies attached to it.
-	GetBrokerWithNamespaceIsolationPolicyWithContext(ctx context.Context, cluster, broker string) (*utils.BrokerNamespaceIsolationData, error)
+	// GetBrokerWithNamespaceIsolationPolicyWithContext returns active broker
+	// with namespace-isolation policies attached to it.
+	GetBrokerWithNamespaceIsolationPolicyWithContext(
+		ctx context.Context,
+		cluster,
+		broker string,
+	) (*utils.BrokerNamespaceIsolationData, error)
 }
 
 type nsIsolationPolicy struct {
@@ -86,16 +108,20 @@ func (n *nsIsolationPolicy) CreateNamespaceIsolationPolicyWithContext(ctx contex
 func (n *nsIsolationPolicy) setNamespaceIsolationPolicy(ctx context.Context, cluster, policyName string,
 	namespaceIsolationData utils.NamespaceIsolationData) error {
 	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", policyName)
-	return n.pulsar.Client.Post(ctx, endpoint, &namespaceIsolationData)
+	return n.pulsar.Client.PostWithContext(ctx, endpoint, &namespaceIsolationData)
 }
 
 func (n *nsIsolationPolicy) DeleteNamespaceIsolationPolicy(cluster, policyName string) error {
 	return n.DeleteNamespaceIsolationPolicyWithContext(context.Background(), cluster, policyName)
 }
 
-func (n *nsIsolationPolicy) DeleteNamespaceIsolationPolicyWithContext(ctx context.Context, cluster, policyName string) error {
+func (n *nsIsolationPolicy) DeleteNamespaceIsolationPolicyWithContext(
+	ctx context.Context,
+	cluster,
+	policyName string,
+) error {
 	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", policyName)
-	return n.pulsar.Client.Delete(ctx, endpoint)
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (n *nsIsolationPolicy) GetNamespaceIsolationPolicy(cluster, policyName string) (
@@ -107,7 +133,7 @@ func (n *nsIsolationPolicy) GetNamespaceIsolationPolicyWithContext(ctx context.C
 	*utils.NamespaceIsolationData, error) {
 	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", policyName)
 	var nsIsolationData utils.NamespaceIsolationData
-	err := n.pulsar.Client.Get(ctx, endpoint, &nsIsolationData)
+	err := n.pulsar.Client.GetWithContext(ctx, endpoint, &nsIsolationData)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +149,7 @@ func (n *nsIsolationPolicy) GetNamespaceIsolationPoliciesWithContext(ctx context
 	map[string]utils.NamespaceIsolationData, error) {
 	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies")
 	var tmpMap map[string]utils.NamespaceIsolationData
-	err := n.pulsar.Client.Get(ctx, endpoint, &tmpMap)
+	err := n.pulsar.Client.GetWithContext(ctx, endpoint, &tmpMap)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +165,7 @@ func (n *nsIsolationPolicy) GetBrokersWithNamespaceIsolationPolicyWithContext(ct
 	[]utils.BrokerNamespaceIsolationData, error) {
 	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", "brokers")
 	var res []utils.BrokerNamespaceIsolationData
-	err := n.pulsar.Client.Get(ctx, endpoint, &res)
+	err := n.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +181,7 @@ func (n *nsIsolationPolicy) GetBrokerWithNamespaceIsolationPolicyWithContext(ctx
 	broker string) (*utils.BrokerNamespaceIsolationData, error) {
 	endpoint := n.pulsar.endpoint(n.basePath, cluster, "namespaceIsolationPolicies", "brokers", broker)
 	var brokerNamespaceIsolationData utils.BrokerNamespaceIsolationData
-	err := n.pulsar.Client.Get(ctx, endpoint, &brokerNamespaceIsolationData)
+	err := n.pulsar.Client.GetWithContext(ctx, endpoint, &brokerNamespaceIsolationData)
 	if err != nil {
 		return nil, err
 	}

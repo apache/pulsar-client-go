@@ -184,7 +184,13 @@ type Functions interface {
 	GetFunctionStatsWithInstanceID(tenant, namespace, name string, instanceID int) (utils.FunctionInstanceStatsData, error)
 
 	// GetFunctionStatsWithInstanceIDWithContext gets the current stats of a function instance
-	GetFunctionStatsWithInstanceIDWithContext(ctx context.Context, tenant, namespace, name string, instanceID int) (utils.FunctionInstanceStatsData, error)
+	GetFunctionStatsWithInstanceIDWithContext(
+		ctx context.Context,
+		tenant,
+		namespace,
+		name string,
+		instanceID int,
+	) (utils.FunctionInstanceStatsData, error)
 
 	// GetFunctionState fetches the current state associated with a Pulsar Function
 	//
@@ -208,13 +214,26 @@ type Functions interface {
 	TriggerFunction(tenant, namespace, name, topic, triggerValue, triggerFile string) (string, error)
 
 	// TriggerFunctionWithContext triggers the function by writing to the input topic
-	TriggerFunctionWithContext(ctx context.Context, tenant, namespace, name, topic, triggerValue, triggerFile string) (string, error)
+	TriggerFunctionWithContext(
+		ctx context.Context,
+		tenant,
+		namespace,
+		name,
+		topic,
+		triggerValue,
+		triggerFile string,
+	) (string, error)
 
 	// UpdateFunction updates the configuration for a function.
 	UpdateFunction(functionConfig *utils.FunctionConfig, fileName string, updateOptions *utils.UpdateOptions) error
 
 	// UpdateFunctionWithContext updates the configuration for a function.
-	UpdateFunctionWithContext(ctx context.Context, functionConfig *utils.FunctionConfig, fileName string, updateOptions *utils.UpdateOptions) error
+	UpdateFunctionWithContext(
+		ctx context.Context,
+		functionConfig *utils.FunctionConfig,
+		fileName string,
+		updateOptions *utils.UpdateOptions,
+	) error
 
 	// UpdateFunctionWithURL updates the configuration for a function.
 	//
@@ -230,7 +249,12 @@ type Functions interface {
 	// eg:
 	// File: file:/dir/fileName.jar
 	// Http: http://www.repo.com/fileName.jar
-	UpdateFunctionWithURLWithContext(ctx context.Context, functionConfig *utils.FunctionConfig, pkgURL string, updateOptions *utils.UpdateOptions) error
+	UpdateFunctionWithURLWithContext(
+		ctx context.Context,
+		functionConfig *utils.FunctionConfig,
+		pkgURL string,
+		updateOptions *utils.UpdateOptions,
+	) error
 
 	// Upload function to Pulsar
 	Upload(sourceFile, path string) error
@@ -321,7 +345,7 @@ func (f *functions) CreateFuncWithContext(ctx context.Context, funcConf *utils.F
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = f.pulsar.Client.PostWithMultiPart(ctx, endpoint, nil, bodyBuf, contentType)
+	err = f.pulsar.Client.PostWithMultiPartWithContext(ctx, endpoint, nil, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -333,7 +357,11 @@ func (f *functions) CreateFuncWithURL(funcConf *utils.FunctionConfig, pkgURL str
 	return f.CreateFuncWithURLWithContext(context.Background(), funcConf, pkgURL)
 }
 
-func (f *functions) CreateFuncWithURLWithContext(ctx context.Context, funcConf *utils.FunctionConfig, pkgURL string) error {
+func (f *functions) CreateFuncWithURLWithContext(
+	ctx context.Context,
+	funcConf *utils.FunctionConfig,
+	pkgURL string,
+) error {
 	endpoint := f.pulsar.endpoint(f.basePath, funcConf.Tenant, funcConf.Namespace, funcConf.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -370,7 +398,7 @@ func (f *functions) CreateFuncWithURLWithContext(ctx context.Context, funcConf *
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = f.pulsar.Client.PostWithMultiPart(ctx, endpoint, nil, bodyBuf, contentType)
+	err = f.pulsar.Client.PostWithMultiPartWithContext(ctx, endpoint, nil, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -384,18 +412,24 @@ func (f *functions) StopFunction(tenant, namespace, name string) error {
 
 func (f *functions) StopFunctionWithContext(ctx context.Context, tenant, namespace, name string) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	return f.pulsar.Client.Post(ctx, endpoint+"/stop", nil)
+	return f.pulsar.Client.PostWithContext(ctx, endpoint+"/stop", nil)
 }
 
 func (f *functions) StopFunctionWithID(tenant, namespace, name string, instanceID int) error {
 	return f.StopFunctionWithIDWithContext(context.Background(), tenant, namespace, name, instanceID)
 }
 
-func (f *functions) StopFunctionWithIDWithContext(ctx context.Context, tenant, namespace, name string, instanceID int) error {
+func (f *functions) StopFunctionWithIDWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name string,
+	instanceID int,
+) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, id)
 
-	return f.pulsar.Client.Post(ctx, endpoint+"/stop", nil)
+	return f.pulsar.Client.PostWithContext(ctx, endpoint+"/stop", nil)
 }
 
 func (f *functions) DeleteFunction(tenant, namespace, name string) error {
@@ -404,7 +438,7 @@ func (f *functions) DeleteFunction(tenant, namespace, name string) error {
 
 func (f *functions) DeleteFunctionWithContext(ctx context.Context, tenant, namespace, name string) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	return f.pulsar.Client.Delete(ctx, endpoint)
+	return f.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (f *functions) DownloadFunction(path, destinationFile string) error {
@@ -428,7 +462,7 @@ func (f *functions) DownloadFunctionWithContext(ctx context.Context, path, desti
 	tmpMap := make(map[string]string)
 	tmpMap["path"] = path
 
-	_, err = f.pulsar.Client.GetWithOptions(ctx, endpoint, nil, tmpMap, false, file)
+	_, err = f.pulsar.Client.GetWithOptionsWithContext(ctx, endpoint, nil, tmpMap, false, file)
 	if err != nil {
 		return err
 	}
@@ -439,7 +473,13 @@ func (f *functions) DownloadFunctionByNs(destinationFile, tenant, namespace, fun
 	return f.DownloadFunctionByNsWithContext(context.Background(), destinationFile, tenant, namespace, function)
 }
 
-func (f *functions) DownloadFunctionByNsWithContext(ctx context.Context, destinationFile, tenant, namespace, function string) error {
+func (f *functions) DownloadFunctionByNsWithContext(
+	ctx context.Context,
+	destinationFile,
+	tenant,
+	namespace,
+	function string,
+) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, function, "download")
 	_, err := os.Open(destinationFile)
 	if err != nil {
@@ -453,7 +493,7 @@ func (f *functions) DownloadFunctionByNsWithContext(ctx context.Context, destina
 		return err
 	}
 
-	_, err = f.pulsar.Client.GetWithOptions(ctx, endpoint, nil, nil, false, file)
+	_, err = f.pulsar.Client.GetWithOptionsWithContext(ctx, endpoint, nil, nil, false, file)
 	if err != nil {
 		return err
 	}
@@ -467,18 +507,24 @@ func (f *functions) StartFunction(tenant, namespace, name string) error {
 
 func (f *functions) StartFunctionWithContext(ctx context.Context, tenant, namespace, name string) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	return f.pulsar.Client.Post(ctx, endpoint+"/start", nil)
+	return f.pulsar.Client.PostWithContext(ctx, endpoint+"/start", nil)
 }
 
 func (f *functions) StartFunctionWithID(tenant, namespace, name string, instanceID int) error {
 	return f.StartFunctionWithIDWithContext(context.Background(), tenant, namespace, name, instanceID)
 }
 
-func (f *functions) StartFunctionWithIDWithContext(ctx context.Context, tenant, namespace, name string, instanceID int) error {
+func (f *functions) StartFunctionWithIDWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name string,
+	instanceID int,
+) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, id)
 
-	return f.pulsar.Client.Post(ctx, endpoint+"/start", nil)
+	return f.pulsar.Client.PostWithContext(ctx, endpoint+"/start", nil)
 }
 
 func (f *functions) RestartFunction(tenant, namespace, name string) error {
@@ -487,18 +533,24 @@ func (f *functions) RestartFunction(tenant, namespace, name string) error {
 
 func (f *functions) RestartFunctionWithContext(ctx context.Context, tenant, namespace, name string) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	return f.pulsar.Client.Post(ctx, endpoint+"/restart", nil)
+	return f.pulsar.Client.PostWithContext(ctx, endpoint+"/restart", nil)
 }
 
 func (f *functions) RestartFunctionWithID(tenant, namespace, name string, instanceID int) error {
 	return f.RestartFunctionWithIDWithContext(context.Background(), tenant, namespace, name, instanceID)
 }
 
-func (f *functions) RestartFunctionWithIDWithContext(ctx context.Context, tenant, namespace, name string, instanceID int) error {
+func (f *functions) RestartFunctionWithIDWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name string,
+	instanceID int,
+) error {
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, id)
 
-	return f.pulsar.Client.Post(ctx, endpoint+"/restart", nil)
+	return f.pulsar.Client.PostWithContext(ctx, endpoint+"/restart", nil)
 }
 
 func (f *functions) GetFunctions(tenant, namespace string) ([]string, error) {
@@ -508,7 +560,7 @@ func (f *functions) GetFunctions(tenant, namespace string) ([]string, error) {
 func (f *functions) GetFunctionsWithContext(ctx context.Context, tenant, namespace string) ([]string, error) {
 	var functions []string
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace)
-	err := f.pulsar.Client.Get(ctx, endpoint, &functions)
+	err := f.pulsar.Client.GetWithContext(ctx, endpoint, &functions)
 	return functions, err
 }
 
@@ -516,10 +568,15 @@ func (f *functions) GetFunction(tenant, namespace, name string) (utils.FunctionC
 	return f.GetFunctionWithContext(context.Background(), tenant, namespace, name)
 }
 
-func (f *functions) GetFunctionWithContext(ctx context.Context, tenant, namespace, name string) (utils.FunctionConfig, error) {
+func (f *functions) GetFunctionWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name string,
+) (utils.FunctionConfig, error) {
 	var functionConfig utils.FunctionConfig
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	err := f.pulsar.Client.Get(ctx, endpoint, &functionConfig)
+	err := f.pulsar.Client.GetWithContext(ctx, endpoint, &functionConfig)
 	return functionConfig, err
 }
 
@@ -528,8 +585,12 @@ func (f *functions) UpdateFunction(functionConfig *utils.FunctionConfig, fileNam
 	return f.UpdateFunctionWithContext(context.Background(), functionConfig, fileName, updateOptions)
 }
 
-func (f *functions) UpdateFunctionWithContext(ctx context.Context, functionConfig *utils.FunctionConfig, fileName string,
-	updateOptions *utils.UpdateOptions) error {
+func (f *functions) UpdateFunctionWithContext(
+	ctx context.Context,
+	functionConfig *utils.FunctionConfig,
+	fileName string,
+	updateOptions *utils.UpdateOptions,
+) error {
 	endpoint := f.pulsar.endpoint(f.basePath, functionConfig.Tenant, functionConfig.Namespace, functionConfig.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -609,8 +670,12 @@ func (f *functions) UpdateFunctionWithURL(functionConfig *utils.FunctionConfig, 
 	return f.UpdateFunctionWithURLWithContext(context.Background(), functionConfig, pkgURL, updateOptions)
 }
 
-func (f *functions) UpdateFunctionWithURLWithContext(ctx context.Context, functionConfig *utils.FunctionConfig, pkgURL string,
-	updateOptions *utils.UpdateOptions) error {
+func (f *functions) UpdateFunctionWithURLWithContext(
+	ctx context.Context,
+	functionConfig *utils.FunctionConfig,
+	pkgURL string,
+	updateOptions *utils.UpdateOptions,
+) error {
 	endpoint := f.pulsar.endpoint(f.basePath, functionConfig.Tenant, functionConfig.Namespace, functionConfig.Name)
 	// buffer to store our request as bytes
 	bodyBuf := bytes.NewBufferString("")
@@ -678,10 +743,15 @@ func (f *functions) GetFunctionStatus(tenant, namespace, name string) (utils.Fun
 	return f.GetFunctionStatusWithContext(context.Background(), tenant, namespace, name)
 }
 
-func (f *functions) GetFunctionStatusWithContext(ctx context.Context, tenant, namespace, name string) (utils.FunctionStatus, error) {
+func (f *functions) GetFunctionStatusWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name string,
+) (utils.FunctionStatus, error) {
 	var functionStatus utils.FunctionStatus
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	err := f.pulsar.Client.Get(ctx, endpoint+"/status", &functionStatus)
+	err := f.pulsar.Client.GetWithContext(ctx, endpoint+"/status", &functionStatus)
 	return functionStatus, err
 }
 
@@ -695,7 +765,7 @@ func (f *functions) GetFunctionStatusWithInstanceIDWithContext(ctx context.Conte
 	var functionInstanceStatusData utils.FunctionInstanceStatusData
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, id)
-	err := f.pulsar.Client.Get(ctx, endpoint+"/status", &functionInstanceStatusData)
+	err := f.pulsar.Client.GetWithContext(ctx, endpoint+"/status", &functionInstanceStatusData)
 	return functionInstanceStatusData, err
 }
 
@@ -703,10 +773,15 @@ func (f *functions) GetFunctionStats(tenant, namespace, name string) (utils.Func
 	return f.GetFunctionStatsWithContext(context.Background(), tenant, namespace, name)
 }
 
-func (f *functions) GetFunctionStatsWithContext(ctx context.Context, tenant, namespace, name string) (utils.FunctionStats, error) {
+func (f *functions) GetFunctionStatsWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name string,
+) (utils.FunctionStats, error) {
 	var functionStats utils.FunctionStats
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name)
-	err := f.pulsar.Client.Get(ctx, endpoint+"/stats", &functionStats)
+	err := f.pulsar.Client.GetWithContext(ctx, endpoint+"/stats", &functionStats)
 	return functionStats, err
 }
 
@@ -720,7 +795,7 @@ func (f *functions) GetFunctionStatsWithInstanceIDWithContext(ctx context.Contex
 	var functionInstanceStatsData utils.FunctionInstanceStatsData
 	id := fmt.Sprintf("%d", instanceID)
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, id)
-	err := f.pulsar.Client.Get(ctx, endpoint+"/stats", &functionInstanceStatsData)
+	err := f.pulsar.Client.GetWithContext(ctx, endpoint+"/stats", &functionInstanceStatsData)
 	return functionInstanceStatsData, err
 }
 
@@ -728,10 +803,16 @@ func (f *functions) GetFunctionState(tenant, namespace, name, key string) (utils
 	return f.GetFunctionStateWithContext(context.Background(), tenant, namespace, name, key)
 }
 
-func (f *functions) GetFunctionStateWithContext(ctx context.Context, tenant, namespace, name, key string) (utils.FunctionState, error) {
+func (f *functions) GetFunctionStateWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name,
+	key string,
+) (utils.FunctionState, error) {
 	var functionState utils.FunctionState
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, "state", key)
-	err := f.pulsar.Client.Get(ctx, endpoint, &functionState)
+	err := f.pulsar.Client.GetWithContext(ctx, endpoint, &functionState)
 	return functionState, err
 }
 
@@ -739,7 +820,13 @@ func (f *functions) PutFunctionState(tenant, namespace, name string, state utils
 	return f.PutFunctionStateWithContext(context.Background(), tenant, namespace, name, state)
 }
 
-func (f *functions) PutFunctionStateWithContext(ctx context.Context, tenant, namespace, name string, state utils.FunctionState) error {
+func (f *functions) PutFunctionStateWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name string,
+	state utils.FunctionState,
+) error {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, "state", state.Key)
 
 	// buffer to store our request as bytes
@@ -772,7 +859,7 @@ func (f *functions) PutFunctionStateWithContext(ctx context.Context, tenant, nam
 
 	contentType := multiPartWriter.FormDataContentType()
 
-	err = f.pulsar.Client.PostWithMultiPart(ctx, endpoint, nil, bodyBuf, contentType)
+	err = f.pulsar.Client.PostWithMultiPartWithContext(ctx, endpoint, nil, bodyBuf, contentType)
 
 	if err != nil {
 		return err
@@ -785,7 +872,15 @@ func (f *functions) TriggerFunction(tenant, namespace, name, topic, triggerValue
 	return f.TriggerFunctionWithContext(context.Background(), tenant, namespace, name, topic, triggerValue, triggerFile)
 }
 
-func (f *functions) TriggerFunctionWithContext(ctx context.Context, tenant, namespace, name, topic, triggerValue, triggerFile string) (string, error) {
+func (f *functions) TriggerFunctionWithContext(
+	ctx context.Context,
+	tenant,
+	namespace,
+	name,
+	topic,
+	triggerValue,
+	triggerFile string,
+) (string, error) {
 	endpoint := f.pulsar.endpoint(f.basePath, tenant, namespace, name, "trigger")
 
 	// buffer to store our request as bytes
@@ -845,7 +940,7 @@ func (f *functions) TriggerFunctionWithContext(ctx context.Context, tenant, name
 
 	contentType := multiPartWriter.FormDataContentType()
 	var str string
-	err := f.pulsar.Client.PostWithMultiPart(ctx, endpoint, &str, bodyBuf, contentType)
+	err := f.pulsar.Client.PostWithMultiPartWithContext(ctx, endpoint, &str, bodyBuf, contentType)
 	if err != nil {
 		return "", err
 	}
@@ -884,5 +979,5 @@ func (f *functions) UploadWithContext(ctx context.Context, sourceFile, path stri
 	if err != nil {
 		return err
 	}
-	return f.pulsar.Client.PostWithMultiPart(ctx, endpoint, nil, &b, w.FormDataContentType())
+	return f.pulsar.Client.PostWithMultiPartWithContext(ctx, endpoint, nil, &b, w.FormDataContentType())
 }

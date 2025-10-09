@@ -76,7 +76,7 @@ func (w *worker) GetFunctionsStats() ([]*utils.WorkerFunctionInstanceStats, erro
 func (w *worker) GetFunctionsStatsWithContext(ctx context.Context) ([]*utils.WorkerFunctionInstanceStats, error) {
 	endpoint := w.pulsar.endpoint(w.workerStatsPath, "functionsmetrics")
 	var workerStats []*utils.WorkerFunctionInstanceStats
-	err := w.pulsar.Client.Get(ctx, endpoint, &workerStats)
+	err := w.pulsar.Client.GetWithContext(ctx, endpoint, &workerStats)
 	if err != nil {
 		return nil, err
 	}
@@ -90,7 +90,7 @@ func (w *worker) GetMetrics() ([]*utils.Metrics, error) {
 func (w *worker) GetMetricsWithContext(ctx context.Context) ([]*utils.Metrics, error) {
 	endpoint := w.pulsar.endpoint(w.workerStatsPath, "metrics")
 	var metrics []*utils.Metrics
-	err := w.pulsar.Client.Get(ctx, endpoint, &metrics)
+	err := w.pulsar.Client.GetWithContext(ctx, endpoint, &metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -104,7 +104,7 @@ func (w *worker) GetCluster() ([]*utils.WorkerInfo, error) {
 func (w *worker) GetClusterWithContext(ctx context.Context) ([]*utils.WorkerInfo, error) {
 	endpoint := w.pulsar.endpoint(w.workerPath, "cluster")
 	var workersInfo []*utils.WorkerInfo
-	err := w.pulsar.Client.Get(ctx, endpoint, &workersInfo)
+	err := w.pulsar.Client.GetWithContext(ctx, endpoint, &workersInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +118,7 @@ func (w *worker) GetClusterLeader() (*utils.WorkerInfo, error) {
 func (w *worker) GetClusterLeaderWithContext(ctx context.Context) (*utils.WorkerInfo, error) {
 	endpoint := w.pulsar.endpoint(w.workerPath, "cluster", "leader")
 	var workerInfo utils.WorkerInfo
-	err := w.pulsar.Client.Get(ctx, endpoint, &workerInfo)
+	err := w.pulsar.Client.GetWithContext(ctx, endpoint, &workerInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -132,7 +132,7 @@ func (w *worker) GetAssignments() (map[string][]string, error) {
 func (w *worker) GetAssignmentsWithContext(ctx context.Context) (map[string][]string, error) {
 	endpoint := w.pulsar.endpoint(w.workerPath, "assignments")
 	var assignments map[string][]string
-	err := w.pulsar.Client.Get(ctx, endpoint, &assignments)
+	err := w.pulsar.Client.GetWithContext(ctx, endpoint, &assignments)
 	if err != nil {
 		return nil, err
 	}

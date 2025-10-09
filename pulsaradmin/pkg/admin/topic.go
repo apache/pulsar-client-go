@@ -71,7 +71,12 @@ type Topics interface {
 	//        when setting to 0, it will create a non-partitioned topic
 	// @param meta
 	//        topic properties
-	CreateWithPropertiesWithContext(ctx context.Context, topic utils.TopicName, partitions int, meta map[string]string) error
+	CreateWithPropertiesWithContext(
+		ctx context.Context,
+		topic utils.TopicName,
+		partitions int,
+		meta map[string]string,
+	) error
 
 	// GetProperties returns the properties of a topic
 	GetProperties(topic utils.TopicName) (map[string]string, error)
@@ -275,7 +280,11 @@ type Topics interface {
 	//        topicName struct
 	// @param option
 	//        request option, e.g. get_precise_backlog or subscription_backlog_size
-	GetStatsWithOptionWithContext(ctx context.Context, topic utils.TopicName, option utils.GetStatsOptions) (utils.TopicStats, error)
+	GetStatsWithOptionWithContext(
+		ctx context.Context,
+		topic utils.TopicName,
+		option utils.GetStatsOptions,
+	) (utils.TopicStats, error)
 
 	// GetInternalStats returns the internal stats for the topic.
 	GetInternalStats(utils.TopicName) (utils.PersistentTopicInternalStats, error)
@@ -303,7 +312,11 @@ type Topics interface {
 	//        topicName struct
 	// @param perPartition
 	//        flag to get stats per partition
-	GetPartitionedStatsWithContext(ctx context.Context, topic utils.TopicName, perPartition bool) (utils.PartitionedTopicStats, error)
+	GetPartitionedStatsWithContext(
+		ctx context.Context,
+		topic utils.TopicName,
+		perPartition bool,
+	) (utils.PartitionedTopicStats, error)
 
 	// GetPartitionedStatsWithOption returns the stats for the partitioned topic
 	//
@@ -727,7 +740,11 @@ type Topics interface {
 	// @param applied
 	//        when set to true, function will try to find policy applied to this topic
 	//        in namespace or broker level, if no policy set in topic level
-	GetBacklogQuotaMapWithContext(ctx context.Context, topic utils.TopicName, applied bool) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
+	GetBacklogQuotaMapWithContext(
+		ctx context.Context,
+		topic utils.TopicName,
+		applied bool,
+	) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
 
 	// SetBacklogQuota sets a backlog quota for a topic
 	SetBacklogQuota(utils.TopicName, utils.BacklogQuota, utils.BacklogQuotaType) error
@@ -759,7 +776,11 @@ type Topics interface {
 	// @param applied
 	//        when set to true, function will try to find policy applied to this topic
 	//        in namespace or broker level, if no policy set in topic level
-	GetInactiveTopicPoliciesWithContext(ctx context.Context, topic utils.TopicName, applied bool) (utils.InactiveTopicPolicies, error)
+	GetInactiveTopicPoliciesWithContext(
+		ctx context.Context,
+		topic utils.TopicName,
+		applied bool,
+	) (utils.InactiveTopicPolicies, error)
 
 	// RemoveInactiveTopicPolicies removes inactive topic policies from a topic
 	RemoveInactiveTopicPolicies(utils.TopicName) error
@@ -963,7 +984,10 @@ type Topics interface {
 	GetAutoSubscriptionCreation(utils.TopicName) (*utils.AutoSubscriptionCreationOverride, error)
 
 	// GetAutoSubscriptionCreationWithContext returns auto subscription creation override for a topic
-	GetAutoSubscriptionCreationWithContext(context.Context, utils.TopicName) (*utils.AutoSubscriptionCreationOverride, error)
+	GetAutoSubscriptionCreationWithContext(
+		context.Context,
+		utils.TopicName,
+	) (*utils.AutoSubscriptionCreationOverride, error)
 
 	// SetAutoSubscriptionCreation sets auto subscription creation override for a topic
 	SetAutoSubscriptionCreation(utils.TopicName,
@@ -1034,11 +1058,16 @@ func (t *topics) CreateWithProperties(topic utils.TopicName, partitions int, met
 	return t.CreateWithPropertiesWithContext(context.Background(), topic, partitions, meta)
 }
 
-func (t *topics) CreateWithPropertiesWithContext(ctx context.Context, topic utils.TopicName, partitions int, meta map[string]string) error {
+func (t *topics) CreateWithPropertiesWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	partitions int,
+	meta map[string]string,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitions")
 	if partitions == 0 {
 		endpoint = t.pulsar.endpoint(t.basePath, topic.GetRestPath())
-		return t.pulsar.Client.Put(ctx, endpoint, meta)
+		return t.pulsar.Client.PutWithContext(ctx, endpoint, meta)
 	}
 	data := struct {
 		Meta       map[string]string `json:"properties"`
@@ -1057,7 +1086,7 @@ func (t *topics) GetProperties(topic utils.TopicName) (map[string]string, error)
 func (t *topics) GetPropertiesWithContext(ctx context.Context, topic utils.TopicName) (map[string]string, error) {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "properties")
 	var properties map[string]string
-	err := t.pulsar.Client.Get(ctx, endpoint, &properties)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &properties)
 	return properties, err
 }
 
@@ -1065,9 +1094,13 @@ func (t *topics) UpdateProperties(topic utils.TopicName, properties map[string]s
 	return t.UpdatePropertiesWithContext(context.Background(), topic, properties)
 }
 
-func (t *topics) UpdatePropertiesWithContext(ctx context.Context, topic utils.TopicName, properties map[string]string) error {
+func (t *topics) UpdatePropertiesWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	properties map[string]string,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "properties")
-	return t.pulsar.Client.Put(ctx, endpoint, properties)
+	return t.pulsar.Client.PutWithContext(ctx, endpoint, properties)
 }
 
 func (t *topics) RemoveProperty(topic utils.TopicName, key string) error {
@@ -1076,7 +1109,7 @@ func (t *topics) RemoveProperty(topic utils.TopicName, key string) error {
 
 func (t *topics) RemovePropertyWithContext(ctx context.Context, topic utils.TopicName, key string) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "properties")
-	return t.pulsar.Client.DeleteWithQueryParams(ctx, endpoint, map[string]string{"key": key})
+	return t.pulsar.Client.DeleteWithQueryParamsWithContext(ctx, endpoint, map[string]string{"key": key})
 }
 
 func (t *topics) Delete(topic utils.TopicName, force bool, nonPartitioned bool) error {
@@ -1091,7 +1124,7 @@ func (t *topics) DeleteWithContext(ctx context.Context, topic utils.TopicName, f
 	params := map[string]string{
 		"force": strconv.FormatBool(force),
 	}
-	return t.pulsar.Client.DeleteWithQueryParams(ctx, endpoint, params)
+	return t.pulsar.Client.DeleteWithQueryParamsWithContext(ctx, endpoint, params)
 }
 
 func (t *topics) Update(topic utils.TopicName, partitions int) error {
@@ -1100,17 +1133,20 @@ func (t *topics) Update(topic utils.TopicName, partitions int) error {
 
 func (t *topics) UpdateWithContext(ctx context.Context, topic utils.TopicName, partitions int) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitions")
-	return t.pulsar.Client.Post(ctx, endpoint, partitions)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, partitions)
 }
 
 func (t *topics) GetMetadata(topic utils.TopicName) (utils.PartitionedTopicMetadata, error) {
 	return t.GetMetadataWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetMetadataWithContext(ctx context.Context, topic utils.TopicName) (utils.PartitionedTopicMetadata, error) {
+func (t *topics) GetMetadataWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (utils.PartitionedTopicMetadata, error) {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitions")
 	var partitionedMeta utils.PartitionedTopicMetadata
-	err := t.pulsar.Client.Get(ctx, endpoint, &partitionedMeta)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &partitionedMeta)
 	return partitionedMeta, err
 }
 
@@ -1158,7 +1194,7 @@ func (t *topics) ListWithContext(ctx context.Context, namespace utils.NameSpaceN
 
 func (t *topics) getTopics(ctx context.Context, endpoint string, out chan<- []string, err chan<- error) {
 	var topics []string
-	err <- t.pulsar.Client.Get(ctx, endpoint, &topics)
+	err <- t.pulsar.Client.GetWithContext(ctx, endpoint, &topics)
 	out <- topics
 }
 
@@ -1166,10 +1202,13 @@ func (t *topics) GetInternalInfo(topic utils.TopicName) (utils.ManagedLedgerInfo
 	return t.GetInternalInfoWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetInternalInfoWithContext(ctx context.Context, topic utils.TopicName) (utils.ManagedLedgerInfo, error) {
+func (t *topics) GetInternalInfoWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (utils.ManagedLedgerInfo, error) {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "internal-info")
 	var info utils.ManagedLedgerInfo
-	err := t.pulsar.Client.Get(ctx, endpoint, &info)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &info)
 	return info, err
 }
 
@@ -1177,10 +1216,13 @@ func (t *topics) GetPermissions(topic utils.TopicName) (map[string][]utils.AuthA
 	return t.GetPermissionsWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetPermissionsWithContext(ctx context.Context, topic utils.TopicName) (map[string][]utils.AuthAction, error) {
+func (t *topics) GetPermissionsWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (map[string][]utils.AuthAction, error) {
 	var permissions map[string][]utils.AuthAction
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "permissions")
-	err := t.pulsar.Client.Get(ctx, endpoint, &permissions)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &permissions)
 	return permissions, err
 }
 
@@ -1188,13 +1230,18 @@ func (t *topics) GrantPermission(topic utils.TopicName, role string, action []ut
 	return t.GrantPermissionWithContext(context.Background(), topic, role, action)
 }
 
-func (t *topics) GrantPermissionWithContext(ctx context.Context, topic utils.TopicName, role string, action []utils.AuthAction) error {
+func (t *topics) GrantPermissionWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	role string,
+	action []utils.AuthAction,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
 	s := []string{}
 	for _, v := range action {
 		s = append(s, v.String())
 	}
-	return t.pulsar.Client.Post(ctx, endpoint, s)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, s)
 }
 
 func (t *topics) RevokePermission(topic utils.TopicName, role string) error {
@@ -1203,7 +1250,7 @@ func (t *topics) RevokePermission(topic utils.TopicName, role string) error {
 
 func (t *topics) RevokePermissionWithContext(ctx context.Context, topic utils.TopicName, role string) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) Lookup(topic utils.TopicName) (utils.LookupData, error) {
@@ -1213,7 +1260,7 @@ func (t *topics) Lookup(topic utils.TopicName) (utils.LookupData, error) {
 func (t *topics) LookupWithContext(ctx context.Context, topic utils.TopicName) (utils.LookupData, error) {
 	var lookup utils.LookupData
 	endpoint := fmt.Sprintf("%s/%s", t.lookupPath, topic.GetRestPath())
-	err := t.pulsar.Client.Get(ctx, endpoint, &lookup)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &lookup)
 	return lookup, err
 }
 
@@ -1223,7 +1270,7 @@ func (t *topics) GetBundleRange(topic utils.TopicName) (string, error) {
 
 func (t *topics) GetBundleRangeWithContext(ctx context.Context, topic utils.TopicName) (string, error) {
 	endpoint := fmt.Sprintf("%s/%s/%s", t.lookupPath, topic.GetRestPath(), "bundle")
-	data, err := t.pulsar.Client.GetWithQueryParams(ctx, endpoint, nil, nil, false)
+	data, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, nil, nil, false)
 	return string(data), err
 }
 
@@ -1234,7 +1281,7 @@ func (t *topics) GetLastMessageID(topic utils.TopicName) (utils.MessageID, error
 func (t *topics) GetLastMessageIDWithContext(ctx context.Context, topic utils.TopicName) (utils.MessageID, error) {
 	var messageID utils.MessageID
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "lastMessageId")
-	err := t.pulsar.Client.Get(ctx, endpoint, &messageID)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &messageID)
 	return messageID, err
 }
 
@@ -1242,10 +1289,14 @@ func (t *topics) GetMessageID(topic utils.TopicName, timestamp int64) (utils.Mes
 	return t.GetMessageIDWithContext(context.Background(), topic, timestamp)
 }
 
-func (t *topics) GetMessageIDWithContext(ctx context.Context, topic utils.TopicName, timestamp int64) (utils.MessageID, error) {
+func (t *topics) GetMessageIDWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	timestamp int64,
+) (utils.MessageID, error) {
 	var messageID utils.MessageID
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageid", strconv.FormatInt(timestamp, 10))
-	err := t.pulsar.Client.Get(ctx, endpoint, &messageID)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &messageID)
 	return messageID, err
 }
 
@@ -1256,7 +1307,7 @@ func (t *topics) GetStats(topic utils.TopicName) (utils.TopicStats, error) {
 func (t *topics) GetStatsWithContext(ctx context.Context, topic utils.TopicName) (utils.TopicStats, error) {
 	var stats utils.TopicStats
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "stats")
-	err := t.pulsar.Client.Get(ctx, endpoint, &stats)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &stats)
 	return stats, err
 }
 
@@ -1264,7 +1315,11 @@ func (t *topics) GetStatsWithOption(topic utils.TopicName, option utils.GetStats
 	return t.GetStatsWithOptionWithContext(context.Background(), topic, option)
 }
 
-func (t *topics) GetStatsWithOptionWithContext(ctx context.Context, topic utils.TopicName, option utils.GetStatsOptions) (utils.TopicStats, error) {
+func (t *topics) GetStatsWithOptionWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	option utils.GetStatsOptions,
+) (utils.TopicStats, error) {
 	var stats utils.TopicStats
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "stats")
 	params := map[string]string{
@@ -1274,7 +1329,7 @@ func (t *topics) GetStatsWithOptionWithContext(ctx context.Context, topic utils.
 		"excludePublishers":        strconv.FormatBool(option.ExcludePublishers),
 		"excludeConsumers":         strconv.FormatBool(option.ExcludeConsumers),
 	}
-	_, err := t.pulsar.Client.GetWithQueryParams(ctx, endpoint, &stats, params, true)
+	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &stats, params, true)
 	return stats, err
 }
 
@@ -1282,10 +1337,13 @@ func (t *topics) GetInternalStats(topic utils.TopicName) (utils.PersistentTopicI
 	return t.GetInternalStatsWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetInternalStatsWithContext(ctx context.Context, topic utils.TopicName) (utils.PersistentTopicInternalStats, error) {
+func (t *topics) GetInternalStatsWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (utils.PersistentTopicInternalStats, error) {
 	var stats utils.PersistentTopicInternalStats
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "internalStats")
-	err := t.pulsar.Client.Get(ctx, endpoint, &stats)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &stats)
 	return stats, err
 }
 
@@ -1293,13 +1351,17 @@ func (t *topics) GetPartitionedStats(topic utils.TopicName, perPartition bool) (
 	return t.GetPartitionedStatsWithContext(context.Background(), topic, perPartition)
 }
 
-func (t *topics) GetPartitionedStatsWithContext(ctx context.Context, topic utils.TopicName, perPartition bool) (utils.PartitionedTopicStats, error) {
+func (t *topics) GetPartitionedStatsWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	perPartition bool,
+) (utils.PartitionedTopicStats, error) {
 	var stats utils.PartitionedTopicStats
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "partitioned-stats")
 	params := map[string]string{
 		"perPartition": strconv.FormatBool(perPartition),
 	}
-	_, err := t.pulsar.Client.GetWithQueryParams(ctx, endpoint, &stats, params, true)
+	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &stats, params, true)
 	return stats, err
 }
 
@@ -1320,7 +1382,7 @@ func (t *topics) GetPartitionedStatsWithOptionWithContext(ctx context.Context, t
 		"excludePublishers":        strconv.FormatBool(option.ExcludePublishers),
 		"excludeConsumers":         strconv.FormatBool(option.ExcludeConsumers),
 	}
-	_, err := t.pulsar.Client.GetWithQueryParams(ctx, endpoint, &stats, params, true)
+	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &stats, params, true)
 	return stats, err
 }
 
@@ -1331,7 +1393,7 @@ func (t *topics) Terminate(topic utils.TopicName) (utils.MessageID, error) {
 func (t *topics) TerminateWithContext(ctx context.Context, topic utils.TopicName) (utils.MessageID, error) {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "terminate")
 	var messageID utils.MessageID
-	err := t.pulsar.Client.PostWithObj(ctx, endpoint, nil, &messageID)
+	err := t.pulsar.Client.PostWithObjWithContext(ctx, endpoint, nil, &messageID)
 	return messageID, err
 }
 
@@ -1341,17 +1403,20 @@ func (t *topics) Offload(topic utils.TopicName, messageID utils.MessageID) error
 
 func (t *topics) OffloadWithContext(ctx context.Context, topic utils.TopicName, messageID utils.MessageID) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offload")
-	return t.pulsar.Client.Put(ctx, endpoint, messageID)
+	return t.pulsar.Client.PutWithContext(ctx, endpoint, messageID)
 }
 
 func (t *topics) OffloadStatus(topic utils.TopicName) (utils.OffloadProcessStatus, error) {
 	return t.OffloadStatusWithContext(context.Background(), topic)
 }
 
-func (t *topics) OffloadStatusWithContext(ctx context.Context, topic utils.TopicName) (utils.OffloadProcessStatus, error) {
+func (t *topics) OffloadStatusWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (utils.OffloadProcessStatus, error) {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offload")
 	var status utils.OffloadProcessStatus
-	err := t.pulsar.Client.Get(ctx, endpoint, &status)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &status)
 	return status, err
 }
 
@@ -1361,7 +1426,7 @@ func (t *topics) Unload(topic utils.TopicName) error {
 
 func (t *topics) UnloadWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "unload")
-	return t.pulsar.Client.Put(ctx, endpoint, nil)
+	return t.pulsar.Client.PutWithContext(ctx, endpoint, nil)
 }
 
 func (t *topics) Compact(topic utils.TopicName) error {
@@ -1370,17 +1435,20 @@ func (t *topics) Compact(topic utils.TopicName) error {
 
 func (t *topics) CompactWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compaction")
-	return t.pulsar.Client.Put(ctx, endpoint, nil)
+	return t.pulsar.Client.PutWithContext(ctx, endpoint, nil)
 }
 
 func (t *topics) CompactStatus(topic utils.TopicName) (utils.LongRunningProcessStatus, error) {
 	return t.CompactStatusWithContext(context.Background(), topic)
 }
 
-func (t *topics) CompactStatusWithContext(ctx context.Context, topic utils.TopicName) (utils.LongRunningProcessStatus, error) {
+func (t *topics) CompactStatusWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (utils.LongRunningProcessStatus, error) {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compaction")
 	var status utils.LongRunningProcessStatus
-	err := t.pulsar.Client.Get(ctx, endpoint, &status)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &status)
 	return status, err
 }
 
@@ -1391,7 +1459,7 @@ func (t *topics) GetMessageTTL(topic utils.TopicName) (int, error) {
 func (t *topics) GetMessageTTLWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
 	var ttl int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
-	err := t.pulsar.Client.Get(ctx, endpoint, &ttl)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &ttl)
 	return ttl, err
 }
 
@@ -1403,7 +1471,7 @@ func (t *topics) SetMessageTTLWithContext(ctx context.Context, topic utils.Topic
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
 	var params = make(map[string]string)
 	params["messageTTL"] = strconv.Itoa(messageTTL)
-	err := t.pulsar.Client.PostWithQueryParams(ctx, endpoint, nil, params)
+	err := t.pulsar.Client.PostWithQueryParamsWithContext(ctx, endpoint, nil, params)
 	return err
 }
 
@@ -1415,7 +1483,7 @@ func (t *topics) RemoveMessageTTLWithContext(ctx context.Context, topic utils.To
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
 	var params = make(map[string]string)
 	params["messageTTL"] = strconv.Itoa(0)
-	err := t.pulsar.Client.DeleteWithQueryParams(ctx, endpoint, params)
+	err := t.pulsar.Client.DeleteWithQueryParamsWithContext(ctx, endpoint, params)
 	return err
 }
 
@@ -1426,7 +1494,7 @@ func (t *topics) GetMaxProducers(topic utils.TopicName) (int, error) {
 func (t *topics) GetMaxProducersWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
 	var maxProducers int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
-	err := t.pulsar.Client.Get(ctx, endpoint, &maxProducers)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxProducers)
 	return maxProducers, err
 }
 
@@ -1436,7 +1504,7 @@ func (t *topics) SetMaxProducers(topic utils.TopicName, maxProducers int) error 
 
 func (t *topics) SetMaxProducersWithContext(ctx context.Context, topic utils.TopicName, maxProducers int) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
-	err := t.pulsar.Client.Post(ctx, endpoint, &maxProducers)
+	err := t.pulsar.Client.PostWithContext(ctx, endpoint, &maxProducers)
 	return err
 }
 
@@ -1446,7 +1514,7 @@ func (t *topics) RemoveMaxProducers(topic utils.TopicName) error {
 
 func (t *topics) RemoveMaxProducersWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
-	err := t.pulsar.Client.Delete(ctx, endpoint)
+	err := t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 	return err
 }
 
@@ -1457,7 +1525,7 @@ func (t *topics) GetMaxConsumers(topic utils.TopicName) (int, error) {
 func (t *topics) GetMaxConsumersWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
 	var maxConsumers int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
-	err := t.pulsar.Client.Get(ctx, endpoint, &maxConsumers)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxConsumers)
 	return maxConsumers, err
 }
 
@@ -1467,7 +1535,7 @@ func (t *topics) SetMaxConsumers(topic utils.TopicName, maxConsumers int) error 
 
 func (t *topics) SetMaxConsumersWithContext(ctx context.Context, topic utils.TopicName, maxConsumers int) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
-	err := t.pulsar.Client.Post(ctx, endpoint, &maxConsumers)
+	err := t.pulsar.Client.PostWithContext(ctx, endpoint, &maxConsumers)
 	return err
 }
 
@@ -1477,7 +1545,7 @@ func (t *topics) RemoveMaxConsumers(topic utils.TopicName) error {
 
 func (t *topics) RemoveMaxConsumersWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
-	err := t.pulsar.Client.Delete(ctx, endpoint)
+	err := t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 	return err
 }
 
@@ -1488,7 +1556,7 @@ func (t *topics) GetMaxUnackMessagesPerConsumer(topic utils.TopicName) (int, err
 func (t *topics) GetMaxUnackMessagesPerConsumerWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
 	var maxNum int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
-	err := t.pulsar.Client.Get(ctx, endpoint, &maxNum)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxNum)
 	return maxNum, err
 }
 
@@ -1496,9 +1564,13 @@ func (t *topics) SetMaxUnackMessagesPerConsumer(topic utils.TopicName, maxUnacke
 	return t.SetMaxUnackMessagesPerConsumerWithContext(context.Background(), topic, maxUnackedNum)
 }
 
-func (t *topics) SetMaxUnackMessagesPerConsumerWithContext(ctx context.Context, topic utils.TopicName, maxUnackedNum int) error {
+func (t *topics) SetMaxUnackMessagesPerConsumerWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	maxUnackedNum int,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
-	return t.pulsar.Client.Post(ctx, endpoint, &maxUnackedNum)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &maxUnackedNum)
 }
 
 func (t *topics) RemoveMaxUnackMessagesPerConsumer(topic utils.TopicName) error {
@@ -1507,17 +1579,20 @@ func (t *topics) RemoveMaxUnackMessagesPerConsumer(topic utils.TopicName) error 
 
 func (t *topics) RemoveMaxUnackMessagesPerConsumerWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetMaxUnackMessagesPerSubscription(topic utils.TopicName) (int, error) {
 	return t.GetMaxUnackMessagesPerSubscriptionWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetMaxUnackMessagesPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
+func (t *topics) GetMaxUnackMessagesPerSubscriptionWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (int, error) {
 	var maxNum int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnSubscription")
-	err := t.pulsar.Client.Get(ctx, endpoint, &maxNum)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxNum)
 	return maxNum, err
 }
 
@@ -1525,9 +1600,13 @@ func (t *topics) SetMaxUnackMessagesPerSubscription(topic utils.TopicName, maxUn
 	return t.SetMaxUnackMessagesPerSubscriptionWithContext(context.Background(), topic, maxUnackedNum)
 }
 
-func (t *topics) SetMaxUnackMessagesPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName, maxUnackedNum int) error {
+func (t *topics) SetMaxUnackMessagesPerSubscriptionWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	maxUnackedNum int,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnSubscription")
-	return t.pulsar.Client.Post(ctx, endpoint, &maxUnackedNum)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &maxUnackedNum)
 }
 
 func (t *topics) RemoveMaxUnackMessagesPerSubscription(topic utils.TopicName) error {
@@ -1536,7 +1615,7 @@ func (t *topics) RemoveMaxUnackMessagesPerSubscription(topic utils.TopicName) er
 
 func (t *topics) RemoveMaxUnackMessagesPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnSubscription")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetPersistence(topic utils.TopicName) (*utils.PersistenceData, error) {
@@ -1546,7 +1625,7 @@ func (t *topics) GetPersistence(topic utils.TopicName) (*utils.PersistenceData, 
 func (t *topics) GetPersistenceWithContext(ctx context.Context, topic utils.TopicName) (*utils.PersistenceData, error) {
 	var persistenceData utils.PersistenceData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "persistence")
-	err := t.pulsar.Client.Get(ctx, endpoint, &persistenceData)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &persistenceData)
 	return &persistenceData, err
 }
 
@@ -1554,9 +1633,13 @@ func (t *topics) SetPersistence(topic utils.TopicName, persistenceData utils.Per
 	return t.SetPersistenceWithContext(context.Background(), topic, persistenceData)
 }
 
-func (t *topics) SetPersistenceWithContext(ctx context.Context, topic utils.TopicName, persistenceData utils.PersistenceData) error {
+func (t *topics) SetPersistenceWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	persistenceData utils.PersistenceData,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "persistence")
-	return t.pulsar.Client.Post(ctx, endpoint, &persistenceData)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &persistenceData)
 }
 
 func (t *topics) RemovePersistence(topic utils.TopicName) error {
@@ -1565,17 +1648,20 @@ func (t *topics) RemovePersistence(topic utils.TopicName) error {
 
 func (t *topics) RemovePersistenceWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "persistence")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetDelayedDelivery(topic utils.TopicName) (*utils.DelayedDeliveryData, error) {
 	return t.GetDelayedDeliveryWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetDelayedDeliveryWithContext(ctx context.Context, topic utils.TopicName) (*utils.DelayedDeliveryData, error) {
+func (t *topics) GetDelayedDeliveryWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (*utils.DelayedDeliveryData, error) {
 	var delayedDeliveryData utils.DelayedDeliveryData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
-	err := t.pulsar.Client.Get(ctx, endpoint, &delayedDeliveryData)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &delayedDeliveryData)
 	return &delayedDeliveryData, err
 }
 
@@ -1583,9 +1669,13 @@ func (t *topics) SetDelayedDelivery(topic utils.TopicName, delayedDeliveryData u
 	return t.SetDelayedDeliveryWithContext(context.Background(), topic, delayedDeliveryData)
 }
 
-func (t *topics) SetDelayedDeliveryWithContext(ctx context.Context, topic utils.TopicName, delayedDeliveryData utils.DelayedDeliveryData) error {
+func (t *topics) SetDelayedDeliveryWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	delayedDeliveryData utils.DelayedDeliveryData,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
-	return t.pulsar.Client.Post(ctx, endpoint, &delayedDeliveryData)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &delayedDeliveryData)
 }
 
 func (t *topics) RemoveDelayedDelivery(topic utils.TopicName) error {
@@ -1594,17 +1684,20 @@ func (t *topics) RemoveDelayedDelivery(topic utils.TopicName) error {
 
 func (t *topics) RemoveDelayedDeliveryWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetDispatchRate(topic utils.TopicName) (*utils.DispatchRateData, error) {
 	return t.GetDispatchRateWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetDispatchRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.DispatchRateData, error) {
+func (t *topics) GetDispatchRateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (*utils.DispatchRateData, error) {
 	var dispatchRateData utils.DispatchRateData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
-	err := t.pulsar.Client.Get(ctx, endpoint, &dispatchRateData)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &dispatchRateData)
 	return &dispatchRateData, err
 }
 
@@ -1612,9 +1705,13 @@ func (t *topics) SetDispatchRate(topic utils.TopicName, dispatchRateData utils.D
 	return t.SetDispatchRateWithContext(context.Background(), topic, dispatchRateData)
 }
 
-func (t *topics) SetDispatchRateWithContext(ctx context.Context, topic utils.TopicName, dispatchRateData utils.DispatchRateData) error {
+func (t *topics) SetDispatchRateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	dispatchRateData utils.DispatchRateData,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
-	return t.pulsar.Client.Post(ctx, endpoint, &dispatchRateData)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &dispatchRateData)
 }
 
 func (t *topics) RemoveDispatchRate(topic utils.TopicName) error {
@@ -1623,7 +1720,7 @@ func (t *topics) RemoveDispatchRate(topic utils.TopicName) error {
 
 func (t *topics) RemoveDispatchRateWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetPublishRate(topic utils.TopicName) (*utils.PublishRateData, error) {
@@ -1633,7 +1730,7 @@ func (t *topics) GetPublishRate(topic utils.TopicName) (*utils.PublishRateData, 
 func (t *topics) GetPublishRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.PublishRateData, error) {
 	var publishRateData utils.PublishRateData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "publishRate")
-	err := t.pulsar.Client.Get(ctx, endpoint, &publishRateData)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &publishRateData)
 	return &publishRateData, err
 }
 
@@ -1641,9 +1738,13 @@ func (t *topics) SetPublishRate(topic utils.TopicName, publishRateData utils.Pub
 	return t.SetPublishRateWithContext(context.Background(), topic, publishRateData)
 }
 
-func (t *topics) SetPublishRateWithContext(ctx context.Context, topic utils.TopicName, publishRateData utils.PublishRateData) error {
+func (t *topics) SetPublishRateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	publishRateData utils.PublishRateData,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "publishRate")
-	return t.pulsar.Client.Post(ctx, endpoint, &publishRateData)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &publishRateData)
 }
 
 func (t *topics) RemovePublishRate(topic utils.TopicName) error {
@@ -1652,7 +1753,7 @@ func (t *topics) RemovePublishRate(topic utils.TopicName) error {
 
 func (t *topics) RemovePublishRateWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "publishRate")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetDeduplicationStatus(topic utils.TopicName) (bool, error) {
@@ -1662,7 +1763,7 @@ func (t *topics) GetDeduplicationStatus(topic utils.TopicName) (bool, error) {
 func (t *topics) GetDeduplicationStatusWithContext(ctx context.Context, topic utils.TopicName) (bool, error) {
 	var enabled bool
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
-	err := t.pulsar.Client.Get(ctx, endpoint, &enabled)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &enabled)
 	return enabled, err
 }
 
@@ -1672,7 +1773,7 @@ func (t *topics) SetDeduplicationStatus(topic utils.TopicName, enabled bool) err
 
 func (t *topics) SetDeduplicationStatusWithContext(ctx context.Context, topic utils.TopicName, enabled bool) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
-	return t.pulsar.Client.Post(ctx, endpoint, enabled)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, enabled)
 }
 
 func (t *topics) RemoveDeduplicationStatus(topic utils.TopicName) error {
@@ -1681,17 +1782,21 @@ func (t *topics) RemoveDeduplicationStatus(topic utils.TopicName) error {
 
 func (t *topics) RemoveDeduplicationStatusWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetRetention(topic utils.TopicName, applied bool) (*utils.RetentionPolicies, error) {
 	return t.GetRetentionWithContext(context.Background(), topic, applied)
 }
 
-func (t *topics) GetRetentionWithContext(ctx context.Context, topic utils.TopicName, applied bool) (*utils.RetentionPolicies, error) {
+func (t *topics) GetRetentionWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	applied bool,
+) (*utils.RetentionPolicies, error) {
 	var policy utils.RetentionPolicies
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
-	_, err := t.pulsar.Client.GetWithQueryParams(ctx, endpoint, &policy, map[string]string{
+	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &policy, map[string]string{
 		"applied": strconv.FormatBool(applied),
 	}, true)
 	return &policy, err
@@ -1703,26 +1808,34 @@ func (t *topics) RemoveRetention(topic utils.TopicName) error {
 
 func (t *topics) RemoveRetentionWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) SetRetention(topic utils.TopicName, data utils.RetentionPolicies) error {
 	return t.SetRetentionWithContext(context.Background(), topic, data)
 }
 
-func (t *topics) SetRetentionWithContext(ctx context.Context, topic utils.TopicName, data utils.RetentionPolicies) error {
+func (t *topics) SetRetentionWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	data utils.RetentionPolicies,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
-	return t.pulsar.Client.Post(ctx, endpoint, data)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, data)
 }
 
 func (t *topics) GetCompactionThreshold(topic utils.TopicName, applied bool) (int64, error) {
 	return t.GetCompactionThresholdWithContext(context.Background(), topic, applied)
 }
 
-func (t *topics) GetCompactionThresholdWithContext(ctx context.Context, topic utils.TopicName, applied bool) (int64, error) {
+func (t *topics) GetCompactionThresholdWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	applied bool,
+) (int64, error) {
 	var threshold int64
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
-	_, err := t.pulsar.Client.GetWithQueryParams(ctx, endpoint, &threshold, map[string]string{
+	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &threshold, map[string]string{
 		"applied": strconv.FormatBool(applied),
 	}, true)
 	return threshold, err
@@ -1734,7 +1847,7 @@ func (t *topics) SetCompactionThreshold(topic utils.TopicName, threshold int64) 
 
 func (t *topics) SetCompactionThresholdWithContext(ctx context.Context, topic utils.TopicName, threshold int64) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
-	err := t.pulsar.Client.Post(ctx, endpoint, threshold)
+	err := t.pulsar.Client.PostWithContext(ctx, endpoint, threshold)
 	return err
 }
 
@@ -1744,7 +1857,7 @@ func (t *topics) RemoveCompactionThreshold(topic utils.TopicName) error {
 
 func (t *topics) RemoveCompactionThresholdWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
-	err := t.pulsar.Client.Delete(ctx, endpoint)
+	err := t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 	return err
 }
 
@@ -1753,13 +1866,17 @@ func (t *topics) GetBacklogQuotaMap(topic utils.TopicName, applied bool) (map[ut
 	return t.GetBacklogQuotaMapWithContext(context.Background(), topic, applied)
 }
 
-func (t *topics) GetBacklogQuotaMapWithContext(ctx context.Context, topic utils.TopicName, applied bool) (map[utils.BacklogQuotaType]utils.BacklogQuota,
+func (t *topics) GetBacklogQuotaMapWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	applied bool,
+) (map[utils.BacklogQuotaType]utils.BacklogQuota,
 	error) {
 	var backlogQuotaMap map[utils.BacklogQuotaType]utils.BacklogQuota
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "backlogQuotaMap")
 
 	queryParams := map[string]string{"applied": strconv.FormatBool(applied)}
-	_, err := t.pulsar.Client.GetWithQueryParams(ctx, endpoint, &backlogQuotaMap, queryParams, true)
+	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &backlogQuotaMap, queryParams, true)
 
 	return backlogQuotaMap, err
 }
@@ -1774,16 +1891,20 @@ func (t *topics) SetBacklogQuotaWithContext(ctx context.Context, topic utils.Top
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "backlogQuota")
 	params := make(map[string]string)
 	params["backlogQuotaType"] = string(backlogQuotaType)
-	return t.pulsar.Client.PostWithQueryParams(ctx, endpoint, &backlogQuota, params)
+	return t.pulsar.Client.PostWithQueryParamsWithContext(ctx, endpoint, &backlogQuota, params)
 }
 
 func (t *topics) RemoveBacklogQuota(topic utils.TopicName, backlogQuotaType utils.BacklogQuotaType) error {
 	return t.RemoveBacklogQuotaWithContext(context.Background(), topic, backlogQuotaType)
 }
 
-func (t *topics) RemoveBacklogQuotaWithContext(ctx context.Context, topic utils.TopicName, backlogQuotaType utils.BacklogQuotaType) error {
+func (t *topics) RemoveBacklogQuotaWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	backlogQuotaType utils.BacklogQuotaType,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "backlogQuota")
-	return t.pulsar.Client.DeleteWithQueryParams(ctx, endpoint, map[string]string{
+	return t.pulsar.Client.DeleteWithQueryParamsWithContext(ctx, endpoint, map[string]string{
 		"backlogQuotaType": string(backlogQuotaType),
 	})
 }
@@ -1792,10 +1913,14 @@ func (t *topics) GetInactiveTopicPolicies(topic utils.TopicName, applied bool) (
 	return t.GetInactiveTopicPoliciesWithContext(context.Background(), topic, applied)
 }
 
-func (t *topics) GetInactiveTopicPoliciesWithContext(ctx context.Context, topic utils.TopicName, applied bool) (utils.InactiveTopicPolicies, error) {
+func (t *topics) GetInactiveTopicPoliciesWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	applied bool,
+) (utils.InactiveTopicPolicies, error) {
 	var out utils.InactiveTopicPolicies
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "inactiveTopicPolicies")
-	_, err := t.pulsar.Client.GetWithQueryParams(ctx, endpoint, &out, map[string]string{
+	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &out, map[string]string{
 		"applied": strconv.FormatBool(applied),
 	}, true)
 	return out, err
@@ -1807,16 +1932,20 @@ func (t *topics) RemoveInactiveTopicPolicies(topic utils.TopicName) error {
 
 func (t *topics) RemoveInactiveTopicPoliciesWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "inactiveTopicPolicies")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) SetInactiveTopicPolicies(topic utils.TopicName, data utils.InactiveTopicPolicies) error {
 	return t.SetInactiveTopicPoliciesWithContext(context.Background(), topic, data)
 }
 
-func (t *topics) SetInactiveTopicPoliciesWithContext(ctx context.Context, topic utils.TopicName, data utils.InactiveTopicPolicies) error {
+func (t *topics) SetInactiveTopicPoliciesWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	data utils.InactiveTopicPolicies,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "inactiveTopicPolicies")
-	return t.pulsar.Client.Post(ctx, endpoint, data)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, data)
 }
 
 func (t *topics) SetReplicationClusters(topic utils.TopicName, data []string) error {
@@ -1825,7 +1954,7 @@ func (t *topics) SetReplicationClusters(topic utils.TopicName, data []string) er
 
 func (t *topics) SetReplicationClustersWithContext(ctx context.Context, topic utils.TopicName, data []string) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
-	return t.pulsar.Client.Post(ctx, endpoint, data)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, data)
 }
 
 func (t *topics) GetReplicationClusters(topic utils.TopicName) ([]string, error) {
@@ -1835,7 +1964,7 @@ func (t *topics) GetReplicationClusters(topic utils.TopicName) ([]string, error)
 func (t *topics) GetReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) ([]string, error) {
 	var data []string
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
-	err := t.pulsar.Client.Get(ctx, endpoint, &data)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &data)
 	return data, err
 }
 
@@ -1846,7 +1975,7 @@ func (t *topics) GetSubscribeRate(topic utils.TopicName) (*utils.SubscribeRate, 
 func (t *topics) GetSubscribeRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.SubscribeRate, error) {
 	var subscribeRate utils.SubscribeRate
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscribeRate")
-	err := t.pulsar.Client.Get(ctx, endpoint, &subscribeRate)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &subscribeRate)
 	return &subscribeRate, err
 }
 
@@ -1854,9 +1983,13 @@ func (t *topics) SetSubscribeRate(topic utils.TopicName, subscribeRate utils.Sub
 	return t.SetSubscribeRateWithContext(context.Background(), topic, subscribeRate)
 }
 
-func (t *topics) SetSubscribeRateWithContext(ctx context.Context, topic utils.TopicName, subscribeRate utils.SubscribeRate) error {
+func (t *topics) SetSubscribeRateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	subscribeRate utils.SubscribeRate,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscribeRate")
-	return t.pulsar.Client.Post(ctx, endpoint, &subscribeRate)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &subscribeRate)
 }
 
 func (t *topics) RemoveSubscribeRate(topic utils.TopicName) error {
@@ -1865,17 +1998,20 @@ func (t *topics) RemoveSubscribeRate(topic utils.TopicName) error {
 
 func (t *topics) RemoveSubscribeRateWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscribeRate")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetSubscriptionDispatchRate(topic utils.TopicName) (*utils.DispatchRateData, error) {
 	return t.GetSubscriptionDispatchRateWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetSubscriptionDispatchRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.DispatchRateData, error) {
+func (t *topics) GetSubscriptionDispatchRateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (*utils.DispatchRateData, error) {
 	var dispatchRate utils.DispatchRateData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscriptionDispatchRate")
-	err := t.pulsar.Client.Get(ctx, endpoint, &dispatchRate)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &dispatchRate)
 	return &dispatchRate, err
 }
 
@@ -1883,9 +2019,13 @@ func (t *topics) SetSubscriptionDispatchRate(topic utils.TopicName, dispatchRate
 	return t.SetSubscriptionDispatchRateWithContext(context.Background(), topic, dispatchRate)
 }
 
-func (t *topics) SetSubscriptionDispatchRateWithContext(ctx context.Context, topic utils.TopicName, dispatchRate utils.DispatchRateData) error {
+func (t *topics) SetSubscriptionDispatchRateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	dispatchRate utils.DispatchRateData,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscriptionDispatchRate")
-	return t.pulsar.Client.Post(ctx, endpoint, &dispatchRate)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &dispatchRate)
 }
 
 func (t *topics) RemoveSubscriptionDispatchRate(topic utils.TopicName) error {
@@ -1894,7 +2034,7 @@ func (t *topics) RemoveSubscriptionDispatchRate(topic utils.TopicName) error {
 
 func (t *topics) RemoveSubscriptionDispatchRateWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscriptionDispatchRate")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetMaxConsumersPerSubscription(topic utils.TopicName) (int, error) {
@@ -1904,7 +2044,7 @@ func (t *topics) GetMaxConsumersPerSubscription(topic utils.TopicName) (int, err
 func (t *topics) GetMaxConsumersPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
 	var maxConsumers int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumersPerSubscription")
-	err := t.pulsar.Client.Get(ctx, endpoint, &maxConsumers)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxConsumers)
 	return maxConsumers, err
 }
 
@@ -1912,9 +2052,13 @@ func (t *topics) SetMaxConsumersPerSubscription(topic utils.TopicName, maxConsum
 	return t.SetMaxConsumersPerSubscriptionWithContext(context.Background(), topic, maxConsumers)
 }
 
-func (t *topics) SetMaxConsumersPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName, maxConsumers int) error {
+func (t *topics) SetMaxConsumersPerSubscriptionWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	maxConsumers int,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumersPerSubscription")
-	return t.pulsar.Client.Post(ctx, endpoint, &maxConsumers)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &maxConsumers)
 }
 
 func (t *topics) RemoveMaxConsumersPerSubscription(topic utils.TopicName) error {
@@ -1923,7 +2067,7 @@ func (t *topics) RemoveMaxConsumersPerSubscription(topic utils.TopicName) error 
 
 func (t *topics) RemoveMaxConsumersPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumersPerSubscription")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetMaxMessageSize(topic utils.TopicName) (int, error) {
@@ -1933,7 +2077,7 @@ func (t *topics) GetMaxMessageSize(topic utils.TopicName) (int, error) {
 func (t *topics) GetMaxMessageSizeWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
 	var maxMessageSize int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxMessageSize")
-	err := t.pulsar.Client.Get(ctx, endpoint, &maxMessageSize)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxMessageSize)
 	return maxMessageSize, err
 }
 
@@ -1943,7 +2087,7 @@ func (t *topics) SetMaxMessageSize(topic utils.TopicName, maxMessageSize int) er
 
 func (t *topics) SetMaxMessageSizeWithContext(ctx context.Context, topic utils.TopicName, maxMessageSize int) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxMessageSize")
-	return t.pulsar.Client.Post(ctx, endpoint, &maxMessageSize)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &maxMessageSize)
 }
 
 func (t *topics) RemoveMaxMessageSize(topic utils.TopicName) error {
@@ -1952,7 +2096,7 @@ func (t *topics) RemoveMaxMessageSize(topic utils.TopicName) error {
 
 func (t *topics) RemoveMaxMessageSizeWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxMessageSize")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetMaxSubscriptionsPerTopic(topic utils.TopicName) (int, error) {
@@ -1962,7 +2106,7 @@ func (t *topics) GetMaxSubscriptionsPerTopic(topic utils.TopicName) (int, error)
 func (t *topics) GetMaxSubscriptionsPerTopicWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
 	var maxSubscriptions int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxSubscriptionsPerTopic")
-	err := t.pulsar.Client.Get(ctx, endpoint, &maxSubscriptions)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxSubscriptions)
 	return maxSubscriptions, err
 }
 
@@ -1970,9 +2114,13 @@ func (t *topics) SetMaxSubscriptionsPerTopic(topic utils.TopicName, maxSubscript
 	return t.SetMaxSubscriptionsPerTopicWithContext(context.Background(), topic, maxSubscriptions)
 }
 
-func (t *topics) SetMaxSubscriptionsPerTopicWithContext(ctx context.Context, topic utils.TopicName, maxSubscriptions int) error {
+func (t *topics) SetMaxSubscriptionsPerTopicWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	maxSubscriptions int,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxSubscriptionsPerTopic")
-	return t.pulsar.Client.Post(ctx, endpoint, &maxSubscriptions)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &maxSubscriptions)
 }
 
 func (t *topics) RemoveMaxSubscriptionsPerTopic(topic utils.TopicName) error {
@@ -1981,7 +2129,7 @@ func (t *topics) RemoveMaxSubscriptionsPerTopic(topic utils.TopicName) error {
 
 func (t *topics) RemoveMaxSubscriptionsPerTopicWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxSubscriptionsPerTopic")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetSchemaValidationEnforced(topic utils.TopicName) (bool, error) {
@@ -1991,7 +2139,7 @@ func (t *topics) GetSchemaValidationEnforced(topic utils.TopicName) (bool, error
 func (t *topics) GetSchemaValidationEnforcedWithContext(ctx context.Context, topic utils.TopicName) (bool, error) {
 	var enabled bool
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaValidationEnforced")
-	err := t.pulsar.Client.Get(ctx, endpoint, &enabled)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &enabled)
 	return enabled, err
 }
 
@@ -1999,9 +2147,13 @@ func (t *topics) SetSchemaValidationEnforced(topic utils.TopicName, enabled bool
 	return t.SetSchemaValidationEnforcedWithContext(context.Background(), topic, enabled)
 }
 
-func (t *topics) SetSchemaValidationEnforcedWithContext(ctx context.Context, topic utils.TopicName, enabled bool) error {
+func (t *topics) SetSchemaValidationEnforcedWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	enabled bool,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaValidationEnforced")
-	return t.pulsar.Client.Post(ctx, endpoint, enabled)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, enabled)
 }
 
 func (t *topics) RemoveSchemaValidationEnforced(topic utils.TopicName) error {
@@ -2010,7 +2162,7 @@ func (t *topics) RemoveSchemaValidationEnforced(topic utils.TopicName) error {
 
 func (t *topics) RemoveSchemaValidationEnforcedWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaValidationEnforced")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetDeduplicationSnapshotInterval(topic utils.TopicName) (int, error) {
@@ -2020,7 +2172,7 @@ func (t *topics) GetDeduplicationSnapshotInterval(topic utils.TopicName) (int, e
 func (t *topics) GetDeduplicationSnapshotIntervalWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
 	var interval int
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationSnapshotInterval")
-	err := t.pulsar.Client.Get(ctx, endpoint, &interval)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &interval)
 	return interval, err
 }
 
@@ -2028,9 +2180,13 @@ func (t *topics) SetDeduplicationSnapshotInterval(topic utils.TopicName, interva
 	return t.SetDeduplicationSnapshotIntervalWithContext(context.Background(), topic, interval)
 }
 
-func (t *topics) SetDeduplicationSnapshotIntervalWithContext(ctx context.Context, topic utils.TopicName, interval int) error {
+func (t *topics) SetDeduplicationSnapshotIntervalWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	interval int,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationSnapshotInterval")
-	return t.pulsar.Client.Post(ctx, endpoint, &interval)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &interval)
 }
 
 func (t *topics) RemoveDeduplicationSnapshotInterval(topic utils.TopicName) error {
@@ -2039,17 +2195,20 @@ func (t *topics) RemoveDeduplicationSnapshotInterval(topic utils.TopicName) erro
 
 func (t *topics) RemoveDeduplicationSnapshotIntervalWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationSnapshotInterval")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetReplicatorDispatchRate(topic utils.TopicName) (*utils.DispatchRateData, error) {
 	return t.GetReplicatorDispatchRateWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetReplicatorDispatchRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.DispatchRateData, error) {
+func (t *topics) GetReplicatorDispatchRateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (*utils.DispatchRateData, error) {
 	var dispatchRate utils.DispatchRateData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replicatorDispatchRate")
-	err := t.pulsar.Client.Get(ctx, endpoint, &dispatchRate)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &dispatchRate)
 	return &dispatchRate, err
 }
 
@@ -2057,9 +2216,13 @@ func (t *topics) SetReplicatorDispatchRate(topic utils.TopicName, dispatchRate u
 	return t.SetReplicatorDispatchRateWithContext(context.Background(), topic, dispatchRate)
 }
 
-func (t *topics) SetReplicatorDispatchRateWithContext(ctx context.Context, topic utils.TopicName, dispatchRate utils.DispatchRateData) error {
+func (t *topics) SetReplicatorDispatchRateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	dispatchRate utils.DispatchRateData,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replicatorDispatchRate")
-	return t.pulsar.Client.Post(ctx, endpoint, &dispatchRate)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &dispatchRate)
 }
 
 func (t *topics) RemoveReplicatorDispatchRate(topic utils.TopicName) error {
@@ -2068,17 +2231,20 @@ func (t *topics) RemoveReplicatorDispatchRate(topic utils.TopicName) error {
 
 func (t *topics) RemoveReplicatorDispatchRateWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replicatorDispatchRate")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetAutoSubscriptionCreation(topic utils.TopicName) (*utils.AutoSubscriptionCreationOverride, error) {
 	return t.GetAutoSubscriptionCreationWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetAutoSubscriptionCreationWithContext(ctx context.Context, topic utils.TopicName) (*utils.AutoSubscriptionCreationOverride, error) {
+func (t *topics) GetAutoSubscriptionCreationWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (*utils.AutoSubscriptionCreationOverride, error) {
 	var autoSubCreation utils.AutoSubscriptionCreationOverride
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "autoSubscriptionCreation")
-	err := t.pulsar.Client.Get(ctx, endpoint, &autoSubCreation)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &autoSubCreation)
 	return &autoSubCreation, err
 }
 
@@ -2090,7 +2256,7 @@ func (t *topics) SetAutoSubscriptionCreation(topic utils.TopicName,
 func (t *topics) SetAutoSubscriptionCreationWithContext(ctx context.Context, topic utils.TopicName,
 	autoSubCreation utils.AutoSubscriptionCreationOverride) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "autoSubscriptionCreation")
-	return t.pulsar.Client.Post(ctx, endpoint, &autoSubCreation)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &autoSubCreation)
 }
 
 func (t *topics) RemoveAutoSubscriptionCreation(topic utils.TopicName) error {
@@ -2099,17 +2265,20 @@ func (t *topics) RemoveAutoSubscriptionCreation(topic utils.TopicName) error {
 
 func (t *topics) RemoveAutoSubscriptionCreationWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "autoSubscriptionCreation")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetSchemaCompatibilityStrategy(topic utils.TopicName) (utils.SchemaCompatibilityStrategy, error) {
 	return t.GetSchemaCompatibilityStrategyWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetSchemaCompatibilityStrategyWithContext(ctx context.Context, topic utils.TopicName) (utils.SchemaCompatibilityStrategy, error) {
+func (t *topics) GetSchemaCompatibilityStrategyWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (utils.SchemaCompatibilityStrategy, error) {
 	var strategy utils.SchemaCompatibilityStrategy
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaCompatibilityStrategy")
-	err := t.pulsar.Client.Get(ctx, endpoint, &strategy)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &strategy)
 	return strategy, err
 }
 
@@ -2121,7 +2290,7 @@ func (t *topics) SetSchemaCompatibilityStrategy(topic utils.TopicName,
 func (t *topics) SetSchemaCompatibilityStrategyWithContext(ctx context.Context, topic utils.TopicName,
 	strategy utils.SchemaCompatibilityStrategy) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaCompatibilityStrategy")
-	return t.pulsar.Client.Put(ctx, endpoint, strategy)
+	return t.pulsar.Client.PutWithContext(ctx, endpoint, strategy)
 }
 
 func (t *topics) RemoveSchemaCompatibilityStrategy(topic utils.TopicName) error {
@@ -2130,17 +2299,20 @@ func (t *topics) RemoveSchemaCompatibilityStrategy(topic utils.TopicName) error 
 
 func (t *topics) RemoveSchemaCompatibilityStrategyWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaCompatibilityStrategy")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetOffloadPolicies(topic utils.TopicName) (*utils.OffloadPolicies, error) {
 	return t.GetOffloadPoliciesWithContext(context.Background(), topic)
 }
 
-func (t *topics) GetOffloadPoliciesWithContext(ctx context.Context, topic utils.TopicName) (*utils.OffloadPolicies, error) {
+func (t *topics) GetOffloadPoliciesWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+) (*utils.OffloadPolicies, error) {
 	var offloadPolicies utils.OffloadPolicies
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
-	err := t.pulsar.Client.Get(ctx, endpoint, &offloadPolicies)
+	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &offloadPolicies)
 	return &offloadPolicies, err
 }
 
@@ -2148,9 +2320,13 @@ func (t *topics) SetOffloadPolicies(topic utils.TopicName, offloadPolicies utils
 	return t.SetOffloadPoliciesWithContext(context.Background(), topic, offloadPolicies)
 }
 
-func (t *topics) SetOffloadPoliciesWithContext(ctx context.Context, topic utils.TopicName, offloadPolicies utils.OffloadPolicies) error {
+func (t *topics) SetOffloadPoliciesWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	offloadPolicies utils.OffloadPolicies,
+) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
-	return t.pulsar.Client.Post(ctx, endpoint, &offloadPolicies)
+	return t.pulsar.Client.PostWithContext(ctx, endpoint, &offloadPolicies)
 }
 
 func (t *topics) RemoveOffloadPolicies(topic utils.TopicName) error {
@@ -2159,5 +2335,5 @@ func (t *topics) RemoveOffloadPolicies(topic utils.TopicName) error {
 
 func (t *topics) RemoveOffloadPoliciesWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
-	return t.pulsar.Client.Delete(ctx, endpoint)
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }

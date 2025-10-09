@@ -50,7 +50,11 @@ type Brokers interface {
 	GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils.NamespaceOwnershipStatus, error)
 
 	// GetOwnedNamespaces returns the map of owned namespaces and their status from a single broker in the cluster
-	GetOwnedNamespacesWithContext(ctx context.Context, cluster, brokerURL string) (map[string]utils.NamespaceOwnershipStatus, error)
+	GetOwnedNamespacesWithContext(
+		ctx context.Context,
+		cluster,
+		brokerURL string,
+	) (map[string]utils.NamespaceOwnershipStatus, error)
 
 	// UpdateDynamicConfiguration updates dynamic configuration value in to Zk that triggers watch on
 	// brokers and all brokers can update {@link ServiceConfiguration} value locally
@@ -125,7 +129,7 @@ func (b *broker) GetActiveBrokers(cluster string) ([]string, error) {
 func (b *broker) GetActiveBrokersWithContext(ctx context.Context, cluster string) ([]string, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, cluster)
 	var res []string
-	err := b.pulsar.Client.Get(ctx, endpoint, &res)
+	err := b.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +143,7 @@ func (b *broker) GetListActiveBrokers() ([]string, error) {
 func (b *broker) GetListActiveBrokersWithContext(ctx context.Context) ([]string, error) {
 	endpoint := b.pulsar.endpoint(b.basePath)
 	var res []string
-	err := b.pulsar.Client.Get(ctx, endpoint, &res)
+	err := b.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +157,7 @@ func (b *broker) GetDynamicConfigurationNames() ([]string, error) {
 func (b *broker) GetDynamicConfigurationNamesWithContext(ctx context.Context) ([]string, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/")
 	var res []string
-	err := b.pulsar.Client.Get(ctx, endpoint, &res)
+	err := b.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -164,10 +168,14 @@ func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils
 	return b.GetOwnedNamespacesWithContext(context.TODO(), cluster, brokerURL)
 }
 
-func (b *broker) GetOwnedNamespacesWithContext(ctx context.Context, cluster, brokerURL string) (map[string]utils.NamespaceOwnershipStatus, error) {
+func (b *broker) GetOwnedNamespacesWithContext(
+	ctx context.Context,
+	cluster,
+	brokerURL string,
+) (map[string]utils.NamespaceOwnershipStatus, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, cluster, brokerURL, "ownedNamespaces")
 	var res map[string]utils.NamespaceOwnershipStatus
-	err := b.pulsar.Client.Get(ctx, endpoint, &res)
+	err := b.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -181,7 +189,7 @@ func (b *broker) UpdateDynamicConfiguration(configName, configValue string) erro
 func (b *broker) UpdateDynamicConfigurationWithContext(ctx context.Context, configName, configValue string) error {
 	value := fmt.Sprintf("/configuration/%s/%s", configName, configValue)
 	endpoint := b.pulsar.endpointWithFullPath(b.basePath, value)
-	return b.pulsar.Client.Post(ctx, endpoint, nil)
+	return b.pulsar.Client.PostWithContext(ctx, endpoint, nil)
 }
 
 func (b *broker) DeleteDynamicConfiguration(configName string) error {
@@ -190,7 +198,7 @@ func (b *broker) DeleteDynamicConfiguration(configName string) error {
 
 func (b *broker) DeleteDynamicConfigurationWithContext(ctx context.Context, configName string) error {
 	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", configName)
-	return b.pulsar.Client.Delete(ctx, endpoint)
+	return b.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (b *broker) GetRuntimeConfigurations() (map[string]string, error) {
@@ -200,7 +208,7 @@ func (b *broker) GetRuntimeConfigurations() (map[string]string, error) {
 func (b *broker) GetRuntimeConfigurationsWithContext(ctx context.Context) (map[string]string, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", "runtime")
 	var res map[string]string
-	err := b.pulsar.Client.Get(ctx, endpoint, &res)
+	err := b.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -211,10 +219,12 @@ func (b *broker) GetInternalConfigurationData() (*utils.InternalConfigurationDat
 	return b.GetInternalConfigurationDataWithContext(context.Background())
 }
 
-func (b *broker) GetInternalConfigurationDataWithContext(ctx context.Context) (*utils.InternalConfigurationData, error) {
+func (b *broker) GetInternalConfigurationDataWithContext(
+	ctx context.Context,
+) (*utils.InternalConfigurationData, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, "/internal-configuration")
 	var res utils.InternalConfigurationData
-	err := b.pulsar.Client.Get(ctx, endpoint, &res)
+	err := b.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -228,7 +238,7 @@ func (b *broker) GetAllDynamicConfigurations() (map[string]string, error) {
 func (b *broker) GetAllDynamicConfigurationsWithContext(ctx context.Context) (map[string]string, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, "/configuration/", "values")
 	var res map[string]string
-	err := b.pulsar.Client.Get(ctx, endpoint, &res)
+	err := b.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	if err != nil {
 		return nil, err
 	}
@@ -250,7 +260,7 @@ func (b *broker) HealthCheckWithTopicVersion(topicVersion utils.TopicVersion) er
 func (b *broker) HealthCheckWithTopicVersionWithContext(ctx context.Context, topicVersion utils.TopicVersion) error {
 	endpoint := b.pulsar.endpoint(b.basePath, "/health")
 
-	buf, err := b.pulsar.Client.GetWithQueryParams(ctx, endpoint, nil, map[string]string{
+	buf, err := b.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, nil, map[string]string{
 		"topicVersion": topicVersion.String(),
 	}, false)
 	if err != nil {
@@ -270,7 +280,7 @@ func (b *broker) GetLeaderBroker() (utils.BrokerInfo, error) {
 func (b *broker) GetLeaderBrokerWithContext(ctx context.Context) (utils.BrokerInfo, error) {
 	endpoint := b.pulsar.endpoint(b.basePath, "/leaderBroker")
 	var brokerInfo utils.BrokerInfo
-	err := b.pulsar.Client.Get(ctx, endpoint, &brokerInfo)
+	err := b.pulsar.Client.GetWithContext(ctx, endpoint, &brokerInfo)
 	if err != nil {
 		return brokerInfo, err
 	}

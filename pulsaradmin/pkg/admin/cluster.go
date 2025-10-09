@@ -117,7 +117,7 @@ func (c *clusters) List() ([]string, error) {
 
 func (c *clusters) ListWithContext(ctx context.Context) ([]string, error) {
 	var clusters []string
-	err := c.pulsar.Client.Get(ctx, c.pulsar.endpoint(c.basePath), &clusters)
+	err := c.pulsar.Client.GetWithContext(ctx, c.pulsar.endpoint(c.basePath), &clusters)
 	return clusters, err
 }
 
@@ -128,7 +128,7 @@ func (c *clusters) Get(name string) (utils.ClusterData, error) {
 func (c *clusters) GetWithContext(ctx context.Context, name string) (utils.ClusterData, error) {
 	cdata := utils.ClusterData{}
 	endpoint := c.pulsar.endpoint(c.basePath, name)
-	err := c.pulsar.Client.Get(ctx, endpoint, &cdata)
+	err := c.pulsar.Client.GetWithContext(ctx, endpoint, &cdata)
 	return cdata, err
 }
 
@@ -138,7 +138,7 @@ func (c *clusters) Create(cdata utils.ClusterData) error {
 
 func (c *clusters) CreateWithContext(ctx context.Context, cdata utils.ClusterData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, cdata.Name)
-	return c.pulsar.Client.Put(ctx, endpoint, &cdata)
+	return c.pulsar.Client.PutWithContext(ctx, endpoint, &cdata)
 }
 
 func (c *clusters) Delete(name string) error {
@@ -147,7 +147,7 @@ func (c *clusters) Delete(name string) error {
 
 func (c *clusters) DeleteWithContext(ctx context.Context, name string) error {
 	endpoint := c.pulsar.endpoint(c.basePath, name)
-	return c.pulsar.Client.Delete(ctx, endpoint)
+	return c.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (c *clusters) Update(cdata utils.ClusterData) error {
@@ -156,7 +156,7 @@ func (c *clusters) Update(cdata utils.ClusterData) error {
 
 func (c *clusters) UpdateWithContext(ctx context.Context, cdata utils.ClusterData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, cdata.Name)
-	return c.pulsar.Client.Post(ctx, endpoint, &cdata)
+	return c.pulsar.Client.PostWithContext(ctx, endpoint, &cdata)
 }
 
 func (c *clusters) GetPeerClusters(name string) ([]string, error) {
@@ -166,7 +166,7 @@ func (c *clusters) GetPeerClusters(name string) ([]string, error) {
 func (c *clusters) GetPeerClustersWithContext(ctx context.Context, name string) ([]string, error) {
 	var peerClusters []string
 	endpoint := c.pulsar.endpoint(c.basePath, name, "peers")
-	err := c.pulsar.Client.Get(ctx, endpoint, &peerClusters)
+	err := c.pulsar.Client.GetWithContext(ctx, endpoint, &peerClusters)
 	return peerClusters, err
 }
 
@@ -176,7 +176,7 @@ func (c *clusters) UpdatePeerClusters(cluster string, peerClusters []string) err
 
 func (c *clusters) UpdatePeerClustersWithContext(ctx context.Context, cluster string, peerClusters []string) error {
 	endpoint := c.pulsar.endpoint(c.basePath, cluster, "peers")
-	return c.pulsar.Client.Post(ctx, endpoint, peerClusters)
+	return c.pulsar.Client.PostWithContext(ctx, endpoint, peerClusters)
 }
 
 func (c *clusters) CreateFailureDomain(data utils.FailureDomainData) error {
@@ -185,38 +185,47 @@ func (c *clusters) CreateFailureDomain(data utils.FailureDomainData) error {
 
 func (c *clusters) CreateFailureDomainWithContext(ctx context.Context, data utils.FailureDomainData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.pulsar.Client.Post(ctx, endpoint, &data)
+	return c.pulsar.Client.PostWithContext(ctx, endpoint, &data)
 }
 
 func (c *clusters) GetFailureDomain(clusterName string, domainName string) (utils.FailureDomainData, error) {
 	return c.GetFailureDomainWithContext(context.Background(), clusterName, domainName)
 }
 
-func (c *clusters) GetFailureDomainWithContext(ctx context.Context, clusterName string, domainName string) (utils.FailureDomainData, error) {
+func (c *clusters) GetFailureDomainWithContext(
+	ctx context.Context,
+	clusterName string,
+	domainName string,
+) (utils.FailureDomainData, error) {
 	var res utils.FailureDomainData
 	endpoint := c.pulsar.endpoint(c.basePath, clusterName, "failureDomains", domainName)
-	err := c.pulsar.Client.Get(ctx, endpoint, &res)
+	err := c.pulsar.Client.GetWithContext(ctx, endpoint, &res)
 	return res, err
 }
 
-func (c *clusters) ListFailureDomains(clusterName string) (utils.FailureDomainMap, error) {
+func (c *clusters) ListFailureDomains(
+	clusterName string,
+) (utils.FailureDomainMap, error) {
 	return c.ListFailureDomainsWithContext(context.Background(), clusterName)
 }
 
-func (c *clusters) ListFailureDomainsWithContext(ctx context.Context, clusterName string) (utils.FailureDomainMap, error) {
+func (c *clusters) ListFailureDomainsWithContext(
+	ctx context.Context,
+	clusterName string,
+) (utils.FailureDomainMap, error) {
 	var domainData utils.FailureDomainMap
 	endpoint := c.pulsar.endpoint(c.basePath, clusterName, "failureDomains")
-	err := c.pulsar.Client.Get(ctx, endpoint, &domainData)
+	err := c.pulsar.Client.GetWithContext(ctx, endpoint, &domainData)
 	return domainData, err
 }
 
 func (c *clusters) DeleteFailureDomain(data utils.FailureDomainData) error {
-	return c.DeleteFailureDomainWithContext(context.TODO(), data)
+	return c.DeleteFailureDomainWithContext(context.Background(), data)
 }
 
 func (c *clusters) DeleteFailureDomainWithContext(ctx context.Context, data utils.FailureDomainData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.pulsar.Client.Delete(ctx, endpoint)
+	return c.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (c *clusters) UpdateFailureDomain(data utils.FailureDomainData) error {
@@ -225,5 +234,5 @@ func (c *clusters) UpdateFailureDomain(data utils.FailureDomainData) error {
 
 func (c *clusters) UpdateFailureDomainWithContext(ctx context.Context, data utils.FailureDomainData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, data.ClusterName, "failureDomains", data.DomainName)
-	return c.pulsar.Client.Post(ctx, endpoint, &data)
+	return c.pulsar.Client.PostWithContext(ctx, endpoint, &data)
 }

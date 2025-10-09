@@ -44,7 +44,8 @@ type Subscriptions interface {
 	// Delete deletes a persistent subscription from a topic. There should not be any active consumers on the subscription
 	Delete(utils.TopicName, string) error
 
-	// DeleteWithContext deletes a persistent subscription from a topic. There should not be any active consumers on the subscription
+	// DeleteWithContext deletes a persistent subscription from a topic.
+	// There should not be any active consumers on the subscription
 	DeleteWithContext(context.Context, utils.TopicName, string) error
 
 	// ForceDelete deletes a subscription forcefully
@@ -64,7 +65,7 @@ type Subscriptions interface {
 	// messageID reset subscription to messageId (or previous nearest messageId if given messageId is not valid)
 	ResetCursorToMessageID(utils.TopicName, string, utils.MessageID) error
 
-	// ResetCursorToMessageIDWithContext resets cursor position on a topic subscriptio
+	// ResetCursorToMessageIDWithContext resets cursor position on a topic subscription
 	// @param
 	// messageID reset subscription to messageId (or previous nearest messageId if given messageId is not valid)
 	ResetCursorToMessageIDWithContext(context.Context, utils.TopicName, string, utils.MessageID) error
@@ -94,7 +95,8 @@ type Subscriptions interface {
 	// ExpireMessages expires all messages older than given N (expireTimeInSeconds) seconds for a given subscription
 	ExpireMessages(utils.TopicName, string, int64) error
 
-	// ExpireMessagesWithContext expires all messages older than given N (expireTimeInSeconds) seconds for a given subscription
+	// ExpireMessagesWithContext expires all messages older than given N (expireTimeInSeconds) seconds
+	// for a given subscription
 	ExpireMessagesWithContext(context.Context, utils.TopicName, string, int64) error
 
 	// ExpireAllMessages expires all messages older than given N (expireTimeInSeconds) seconds for all
@@ -121,7 +123,12 @@ type Subscriptions interface {
 	GetMessagesByID(topic utils.TopicName, ledgerID, entryID int64) ([]*utils.Message, error)
 
 	// GetMessagesByIDWithContext gets messages by its ledgerID and entryID
-	GetMessagesByIDWithContext(ctx context.Context, topic utils.TopicName, ledgerID, entryID int64) ([]*utils.Message, error)
+	GetMessagesByIDWithContext(
+		ctx context.Context,
+		topic utils.TopicName,
+		ledgerID,
+		entryID int64,
+	) ([]*utils.Message, error)
 }
 
 type subscriptions struct {
@@ -143,16 +150,21 @@ func (s *subscriptions) Create(topic utils.TopicName, sName string, messageID ut
 	return s.CreateWithContext(context.Background(), topic, sName, messageID)
 }
 
-func (s *subscriptions) CreateWithContext(ctx context.Context, topic utils.TopicName, sName string, messageID utils.MessageID) error {
+func (s *subscriptions) CreateWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	sName string,
+	messageID utils.MessageID,
+) error {
 	endpoint := s.pulsar.endpoint(s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName))
-	return s.pulsar.Client.Put(ctx, endpoint, messageID)
+	return s.pulsar.Client.PutWithContext(ctx, endpoint, messageID)
 }
 
 func (s *subscriptions) delete(ctx context.Context, topic utils.TopicName, subName string, force bool) error {
 	endpoint := s.pulsar.endpoint(s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(subName))
 	queryParams := make(map[string]string)
 	queryParams["force"] = strconv.FormatBool(force)
-	return s.pulsar.Client.DeleteWithQueryParams(ctx, endpoint, queryParams)
+	return s.pulsar.Client.DeleteWithQueryParamsWithContext(ctx, endpoint, queryParams)
 }
 
 func (s *subscriptions) Delete(topic utils.TopicName, sName string) error {
@@ -178,27 +190,37 @@ func (s *subscriptions) List(topic utils.TopicName) ([]string, error) {
 func (s *subscriptions) ListWithContext(ctx context.Context, topic utils.TopicName) ([]string, error) {
 	endpoint := s.pulsar.endpoint(s.basePath, topic.GetRestPath(), "subscriptions")
 	var list []string
-	return list, s.pulsar.Client.Get(ctx, endpoint, &list)
+	return list, s.pulsar.Client.GetWithContext(ctx, endpoint, &list)
 }
 
 func (s *subscriptions) ResetCursorToMessageID(topic utils.TopicName, sName string, id utils.MessageID) error {
 	return s.ResetCursorToMessageIDWithContext(context.Background(), topic, sName, id)
 }
 
-func (s *subscriptions) ResetCursorToMessageIDWithContext(ctx context.Context, topic utils.TopicName, sName string, id utils.MessageID) error {
+func (s *subscriptions) ResetCursorToMessageIDWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	sName string,
+	id utils.MessageID,
+) error {
 	endpoint := s.pulsar.endpoint(s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName), "resetcursor")
-	return s.pulsar.Client.Post(ctx, endpoint, id)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint, id)
 }
 
 func (s *subscriptions) ResetCursorToTimestamp(topic utils.TopicName, sName string, timestamp int64) error {
 	return s.ResetCursorToTimestampWithContext(context.Background(), topic, sName, timestamp)
 }
 
-func (s *subscriptions) ResetCursorToTimestampWithContext(ctx context.Context, topic utils.TopicName, sName string, timestamp int64) error {
+func (s *subscriptions) ResetCursorToTimestampWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	sName string,
+	timestamp int64,
+) error {
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName),
 		"resetcursor", strconv.FormatInt(timestamp, 10))
-	return s.pulsar.Client.Post(ctx, endpoint, nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint, nil)
 }
 
 func (s *subscriptions) ClearBacklog(topic utils.TopicName, sName string) error {
@@ -208,29 +230,38 @@ func (s *subscriptions) ClearBacklog(topic utils.TopicName, sName string) error 
 func (s *subscriptions) ClearBacklogWithContext(ctx context.Context, topic utils.TopicName, sName string) error {
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName), "skip_all")
-	return s.pulsar.Client.Post(ctx, endpoint, nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint, nil)
 }
 
 func (s *subscriptions) SkipMessages(topic utils.TopicName, sName string, n int64) error {
 	return s.SkipMessagesWithContext(context.Background(), topic, sName, n)
 }
 
-func (s *subscriptions) SkipMessagesWithContext(ctx context.Context, topic utils.TopicName, sName string, n int64) error {
+func (s *subscriptions) SkipMessagesWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	sName string,
+	n int64,
+) error {
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName),
 		"skip", strconv.FormatInt(n, 10))
-	return s.pulsar.Client.Post(ctx, endpoint, nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint, nil)
 }
 
 func (s *subscriptions) ExpireMessages(topic utils.TopicName, sName string, expire int64) error {
 	return s.ExpireMessagesWithContext(context.Background(), topic, sName, expire)
 }
 
-func (s *subscriptions) ExpireMessagesWithContext(ctx context.Context, topic utils.TopicName, sName string, expire int64) error {
+func (s *subscriptions) ExpireMessagesWithContext(
+	ctx context.Context, topic utils.TopicName,
+	sName string,
+	expire int64,
+) error {
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), s.SubPath, url.PathEscape(sName),
 		"expireMessages", strconv.FormatInt(expire, 10))
-	return s.pulsar.Client.Post(ctx, endpoint, nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint, nil)
 }
 
 func (s *subscriptions) ExpireAllMessages(topic utils.TopicName, expire int64) error {
@@ -241,14 +272,19 @@ func (s *subscriptions) ExpireAllMessagesWithContext(ctx context.Context, topic 
 	endpoint := s.pulsar.endpoint(
 		s.basePath, topic.GetRestPath(), "all_subscription",
 		"expireMessages", strconv.FormatInt(expire, 10))
-	return s.pulsar.Client.Post(ctx, endpoint, nil)
+	return s.pulsar.Client.PostWithContext(ctx, endpoint, nil)
 }
 
 func (s *subscriptions) PeekMessages(topic utils.TopicName, sName string, n int) ([]*utils.Message, error) {
 	return s.PeekMessagesWithContext(context.Background(), topic, sName, n)
 }
 
-func (s *subscriptions) PeekMessagesWithContext(ctx context.Context, topic utils.TopicName, sName string, n int) ([]*utils.Message, error) {
+func (s *subscriptions) PeekMessagesWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	sName string,
+	n int,
+) ([]*utils.Message, error) {
 	var msgs []*utils.Message
 
 	count := 1
@@ -265,11 +301,16 @@ func (s *subscriptions) PeekMessagesWithContext(ctx context.Context, topic utils
 	return msgs, nil
 }
 
-func (s *subscriptions) peekNthMessage(ctx context.Context, topic utils.TopicName, sName string, pos int) ([]*utils.Message, error) {
+func (s *subscriptions) peekNthMessage(
+	ctx context.Context,
+	topic utils.TopicName,
+	sName string,
+	pos int,
+) ([]*utils.Message, error) {
 	endpoint := s.pulsar.endpoint(s.basePath, topic.GetRestPath(), "subscription", url.PathEscape(sName),
 		"position", strconv.Itoa(pos))
 
-	resp, err := s.pulsar.Client.MakeRequest(ctx, http.MethodGet, endpoint)
+	resp, err := s.pulsar.Client.MakeRequestWithContext(ctx, http.MethodGet, endpoint)
 	if err != nil {
 		return nil, err
 	}
@@ -282,8 +323,13 @@ func (s *subscriptions) GetMessageByID(topic utils.TopicName, ledgerID, entryID 
 	return s.GetMessageByIDWithContext(context.Background(), topic, ledgerID, entryID)
 }
 
-func (s *subscriptions) GetMessageByIDWithContext(ctx context.Context, topic utils.TopicName, ledgerID, entryID int64) (*utils.Message, error) {
-	messages, err := s.GetMessagesByID(topic, ledgerID, entryID)
+func (s *subscriptions) GetMessageByIDWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	ledgerID,
+	entryID int64,
+) (*utils.Message, error) {
+	messages, err := s.GetMessagesByIDWithContext(ctx, topic, ledgerID, entryID)
 	if err != nil {
 		return nil, err
 	}
@@ -298,12 +344,17 @@ func (s *subscriptions) GetMessagesByID(topic utils.TopicName, ledgerID, entryID
 	return s.GetMessagesByIDWithContext(context.Background(), topic, ledgerID, entryID)
 }
 
-func (s *subscriptions) GetMessagesByIDWithContext(ctx context.Context, topic utils.TopicName, ledgerID, entryID int64) ([]*utils.Message, error) {
+func (s *subscriptions) GetMessagesByIDWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	ledgerID,
+	entryID int64,
+) ([]*utils.Message, error) {
 	ledgerIDStr := strconv.FormatInt(ledgerID, 10)
 	entryIDStr := strconv.FormatInt(entryID, 10)
 
 	endpoint := s.pulsar.endpoint(s.basePath, topic.GetRestPath(), "ledger", ledgerIDStr, "entry", entryIDStr)
-	resp, err := s.pulsar.Client.MakeRequest(ctx, http.MethodGet, endpoint)
+	resp, err := s.pulsar.Client.MakeRequestWithContext(ctx, http.MethodGet, endpoint)
 	if err != nil {
 		return nil, err
 	}
