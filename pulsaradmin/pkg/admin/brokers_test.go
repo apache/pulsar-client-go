@@ -18,6 +18,7 @@
 package admin
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/url"
@@ -123,7 +124,7 @@ func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
 	value := `{"key/123":"https://example.com/"}`
 	encoded := url.QueryEscape(value)
 
-	resp, err := client.MakeRequestWithURL(http.MethodPost, &url.URL{
+	resp, err := client.MakeRequestWithURLWithContext(context.Background(), http.MethodPost, &url.URL{
 		Scheme: u.Scheme,
 		User:   u.User,
 		Host:   u.Host,

@@ -18,25 +18,42 @@
 package admin
 
 import (
+	"context"
+
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
 
 // Tenants is admin interface for tenants management
 type Tenants interface {
-	// Create a new tenant
+	// Create creates a new tenant
 	Create(utils.TenantData) error
 
-	// Delete an existing tenant
+	// CreateWithContext creates a new tenant
+	CreateWithContext(context.Context, utils.TenantData) error
+
+	// Delete deletes an existing tenant
 	Delete(string) error
 
-	// Update the admins for a tenant
+	// DeleteWithContext deletes an existing tenant
+	DeleteWithContext(context.Context, string) error
+
+	// Update updates the admins for a tenant
 	Update(utils.TenantData) error
+
+	// UpdateWithContext updates the admins for a tenant
+	UpdateWithContext(context.Context, utils.TenantData) error
 
 	// List returns the list of tenants
 	List() ([]string, error)
 
+	// ListWithContext returns the list of tenants
+	ListWithContext(context.Context) ([]string, error)
+
 	// Get returns the config of the tenant.
 	Get(string) (utils.TenantData, error)
+
+	// GetWithContext returns the config of the tenant.
+	GetWithContext(context.Context, string) (utils.TenantData, error)
 }
 
 type tenants struct {
@@ -53,30 +70,50 @@ func (c *pulsarClient) Tenants() Tenants {
 }
 
 func (c *tenants) Create(data utils.TenantData) error {
+	return c.CreateWithContext(context.Background(), data)
+}
+
+func (c *tenants) CreateWithContext(ctx context.Context, data utils.TenantData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, data.Name)
-	return c.pulsar.Client.Put(endpoint, &data)
+	return c.pulsar.Client.PutWithContext(ctx, endpoint, &data)
 }
 
 func (c *tenants) Delete(name string) error {
+	return c.DeleteWithContext(context.Background(), name)
+}
+
+func (c *tenants) DeleteWithContext(ctx context.Context, name string) error {
 	endpoint := c.pulsar.endpoint(c.basePath, name)
-	return c.pulsar.Client.Delete(endpoint)
+	return c.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (c *tenants) Update(data utils.TenantData) error {
+	return c.UpdateWithContext(context.Background(), data)
+}
+
+func (c *tenants) UpdateWithContext(ctx context.Context, data utils.TenantData) error {
 	endpoint := c.pulsar.endpoint(c.basePath, data.Name)
-	return c.pulsar.Client.Post(endpoint, &data)
+	return c.pulsar.Client.PostWithContext(ctx, endpoint, &data)
 }
 
 func (c *tenants) List() ([]string, error) {
+	return c.ListWithContext(context.Background())
+}
+
+func (c *tenants) ListWithContext(ctx context.Context) ([]string, error) {
 	var tenantList []string
 	endpoint := c.pulsar.endpoint(c.basePath, "")
-	err := c.pulsar.Client.Get(endpoint, &tenantList)
+	err := c.pulsar.Client.GetWithContext(ctx, endpoint, &tenantList)
 	return tenantList, err
 }
 
 func (c *tenants) Get(name string) (utils.TenantData, error) {
+	return c.GetWithContext(context.Background(), name)
+}
+
+func (c *tenants) GetWithContext(ctx context.Context, name string) (utils.TenantData, error) {
 	var data utils.TenantData
 	endpoint := c.pulsar.endpoint(c.basePath, name)
-	err := c.pulsar.Client.Get(endpoint, &data)
+	err := c.pulsar.Client.GetWithContext(ctx, endpoint, &data)
 	return data, err
 }

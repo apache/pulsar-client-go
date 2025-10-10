@@ -19,6 +19,7 @@ package rest
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -67,8 +68,8 @@ func (c *Client) newRequest(method, path string) (*request, error) {
 	return req, nil
 }
 
-func (c *Client) doRequest(r *request) (*http.Response, error) {
-	req, err := r.toHTTP()
+func (c *Client) doRequest(ctx context.Context, r *request) (*http.Response, error) {
+	req, err := r.toHTTP(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -91,12 +92,17 @@ func (c *Client) doRequest(r *request) (*http.Response, error) {
 
 // MakeRequest can make a simple request and handle the response by yourself
 func (c *Client) MakeRequest(method, endpoint string) (*http.Response, error) {
+	return c.MakeRequestWithContext(context.Background(), method, endpoint)
+}
+
+// MakeRequestWithContext can make a simple request and handle the response by yourself
+func (c *Client) MakeRequestWithContext(ctx context.Context, method, endpoint string) (*http.Response, error) {
 	req, err := c.newRequest(method, endpoint)
 	if err != nil {
 		return nil, err
 	}
 
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return nil, err
 	}
@@ -105,12 +111,20 @@ func (c *Client) MakeRequest(method, endpoint string) (*http.Response, error) {
 }
 
 func (c *Client) MakeRequestWithURL(method string, urlOpt *url.URL) (*http.Response, error) {
+	return c.MakeRequestWithURLWithContext(context.Background(), method, urlOpt)
+}
+
+func (c *Client) MakeRequestWithURLWithContext(
+	ctx context.Context,
+	method string,
+	urlOpt *url.URL,
+) (*http.Response, error) {
 	req := &request{
 		method: method,
 		url:    urlOpt,
 		params: make(url.Values),
 	}
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return nil, err
 	}
@@ -119,17 +133,41 @@ func (c *Client) MakeRequestWithURL(method string, urlOpt *url.URL) (*http.Respo
 }
 
 func (c *Client) Get(endpoint string, obj interface{}) error {
-	_, err := c.GetWithQueryParams(endpoint, obj, nil, true)
+	return c.GetWithContext(context.Background(), endpoint, obj)
+}
+
+func (c *Client) GetWithContext(ctx context.Context, endpoint string, obj interface{}) error {
+	_, err := c.GetWithQueryParamsWithContext(ctx, endpoint, obj, nil, true)
 	return err
 }
 
 func (c *Client) GetWithQueryParams(endpoint string, obj interface{}, params map[string]string,
 	decode bool) ([]byte, error) {
-	return c.GetWithOptions(endpoint, obj, params, decode, nil)
+	return c.GetWithQueryParamsWithContext(context.Background(), endpoint, obj, params, decode)
+}
+
+func (c *Client) GetWithQueryParamsWithContext(
+	ctx context.Context,
+	endpoint string,
+	obj interface{},
+	params map[string]string,
+	decode bool,
+) ([]byte, error) {
+	return c.GetWithOptionsWithContext(ctx, endpoint, obj, params, decode, nil)
 }
 
 func (c *Client) GetWithOptions(endpoint string, obj interface{}, params map[string]string,
 	decode bool, file io.Writer) ([]byte, error) {
+	return c.GetWithOptionsWithContext(context.Background(), endpoint, obj, params, decode, file)
+}
+
+func (c *Client) GetWithOptionsWithContext(
+	ctx context.Context,
+	endpoint string,
+	obj interface{},
+	params map[string]string,
+	decode bool, file io.Writer,
+) ([]byte, error) {
 
 	req, err := c.newRequest(http.MethodGet, endpoint)
 	if err != nil {
@@ -145,7 +183,7 @@ func (c *Client) GetWithOptions(endpoint string, obj interface{}, params map[str
 	}
 
 	//nolint:bodyclose
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return nil, err
 	}
@@ -181,14 +219,44 @@ func (c *Client) useragent() string {
 }
 
 func (c *Client) Put(endpoint string, in interface{}) error {
-	return c.PutWithQueryParams(endpoint, in, nil, nil)
+	return c.PutWithContext(context.Background(), endpoint, in)
+}
+
+func (c *Client) PutWithContext(ctx context.Context, endpoint string, in interface{}) error {
+	return c.PutWithQueryParamsWithContext(ctx, endpoint, in, nil, nil)
 }
 
 func (c *Client) PutWithQueryParams(endpoint string, in, obj interface{}, params map[string]string) error {
-	return c.PutWithCustomMediaType(endpoint, in, obj, params, "")
+	return c.PutWithQueryParamsWithContext(context.Background(), endpoint, in, obj, params)
 }
-func (c *Client) PutWithCustomMediaType(endpoint string, in, obj interface{}, params map[string]string,
-	mediaType MediaType) error {
+
+func (c *Client) PutWithQueryParamsWithContext(
+	ctx context.Context,
+	endpoint string,
+	in,
+	obj interface{},
+	params map[string]string,
+) error {
+	return c.PutWithCustomMediaTypeWithContext(ctx, endpoint, in, obj, params, "")
+}
+
+func (c *Client) PutWithCustomMediaType(
+	endpoint string,
+	in, obj interface{},
+	params map[string]string,
+	mediaType MediaType,
+) error {
+	return c.PutWithCustomMediaTypeWithContext(context.Background(), endpoint, in, obj, params, mediaType)
+}
+
+func (c *Client) PutWithCustomMediaTypeWithContext(
+	ctx context.Context,
+	endpoint string,
+	in,
+	obj interface{},
+	params map[string]string,
+	mediaType MediaType,
+) error {
 	req, err := c.newRequest(http.MethodPut, endpoint)
 	if err != nil {
 		return err
@@ -207,7 +275,7 @@ func (c *Client) PutWithCustomMediaType(endpoint string, in, obj interface{}, pa
 	}
 
 	//nolint:bodyclose
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return err
 	}
@@ -222,7 +290,20 @@ func (c *Client) PutWithCustomMediaType(endpoint string, in, obj interface{}, pa
 	return nil
 }
 
-func (c *Client) PutWithMultiPart(endpoint string, body io.Reader, contentType string) error {
+func (c *Client) PutWithMultiPart(
+	endpoint string,
+	body io.Reader,
+	contentType string,
+) error {
+	return c.PutWithMultiPartWithContext(context.Background(), endpoint, body, contentType)
+}
+
+func (c *Client) PutWithMultiPartWithContext(
+	ctx context.Context,
+	endpoint string,
+	body io.Reader,
+	contentType string,
+) error {
 	req, err := c.newRequest(http.MethodPut, endpoint)
 	if err != nil {
 		return err
@@ -231,7 +312,7 @@ func (c *Client) PutWithMultiPart(endpoint string, body io.Reader, contentType s
 	req.contentType = contentType
 
 	//nolint
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return err
 	}
@@ -241,10 +322,22 @@ func (c *Client) PutWithMultiPart(endpoint string, body io.Reader, contentType s
 }
 
 func (c *Client) Delete(endpoint string) error {
-	return c.DeleteWithQueryParams(endpoint, nil)
+	return c.DeleteWithContext(context.Background(), endpoint)
+}
+
+func (c *Client) DeleteWithContext(ctx context.Context, endpoint string) error {
+	return c.DeleteWithQueryParamsWithContext(ctx, endpoint, nil)
 }
 
 func (c *Client) DeleteWithQueryParams(endpoint string, params map[string]string) error {
+	return c.DeleteWithQueryParamsWithContext(context.Background(), endpoint, params)
+}
+
+func (c *Client) DeleteWithQueryParamsWithContext(
+	ctx context.Context,
+	endpoint string,
+	params map[string]string,
+) error {
 	req, err := c.newRequest(http.MethodDelete, endpoint)
 	if err != nil {
 		return err
@@ -259,7 +352,7 @@ func (c *Client) DeleteWithQueryParams(endpoint string, params map[string]string
 	}
 
 	//nolint
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return err
 	}
@@ -269,10 +362,18 @@ func (c *Client) DeleteWithQueryParams(endpoint string, params map[string]string
 }
 
 func (c *Client) Post(endpoint string, in interface{}) error {
-	return c.PostWithObj(endpoint, in, nil)
+	return c.PostWithContext(context.Background(), endpoint, in)
+}
+
+func (c *Client) PostWithContext(ctx context.Context, endpoint string, in interface{}) error {
+	return c.PostWithObjWithContext(ctx, endpoint, in, nil)
 }
 
 func (c *Client) PostWithObj(endpoint string, in, obj interface{}) error {
+	return c.PostWithObjWithContext(context.Background(), endpoint, in, obj)
+}
+
+func (c *Client) PostWithObjWithContext(ctx context.Context, endpoint string, in, obj interface{}) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err
@@ -280,7 +381,7 @@ func (c *Client) PostWithObj(endpoint string, in, obj interface{}) error {
 	req.obj = in
 
 	//nolint
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return err
 	}
@@ -295,6 +396,16 @@ func (c *Client) PostWithObj(endpoint string, in, obj interface{}) error {
 }
 
 func (c *Client) PostWithMultiPart(endpoint string, in interface{}, body io.Reader, contentType string) error {
+	return c.PostWithMultiPartWithContext(context.Background(), endpoint, in, body, contentType)
+}
+
+func (c *Client) PostWithMultiPartWithContext(
+	ctx context.Context,
+	endpoint string,
+	in interface{},
+	body io.Reader,
+	contentType string,
+) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err
@@ -304,7 +415,7 @@ func (c *Client) PostWithMultiPart(endpoint string, in interface{}, body io.Read
 	req.contentType = contentType
 
 	//nolint
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return err
 	}
@@ -314,6 +425,15 @@ func (c *Client) PostWithMultiPart(endpoint string, in interface{}, body io.Read
 }
 
 func (c *Client) PostWithQueryParams(endpoint string, in interface{}, params map[string]string) error {
+	return c.PostWithQueryParamsWithContext(context.Background(), endpoint, in, params)
+}
+
+func (c *Client) PostWithQueryParamsWithContext(
+	ctx context.Context,
+	endpoint string,
+	in interface{},
+	params map[string]string,
+) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err
@@ -329,7 +449,7 @@ func (c *Client) PostWithQueryParams(endpoint string, in interface{}, params map
 		req.params = query
 	}
 	//nolint
-	resp, err := checkSuccessful(c.doRequest(req))
+	resp, err := checkSuccessful(c.doRequest(ctx, req))
 	if err != nil {
 		return err
 	}
@@ -348,7 +468,7 @@ type request struct {
 	body io.Reader
 }
 
-func (r *request) toHTTP() (*http.Request, error) {
+func (r *request) toHTTP(ctx context.Context) (*http.Request, error) {
 	r.url.RawQuery = r.params.Encode()
 
 	// add a request body if there is one
@@ -360,7 +480,7 @@ func (r *request) toHTTP() (*http.Request, error) {
 		r.body = body
 	}
 
-	req, err := http.NewRequest(r.method, r.url.RequestURI(), r.body)
+	req, err := http.NewRequestWithContext(ctx, r.method, r.url.RequestURI(), r.body)
 	if err != nil {
 		return nil, err
 	}

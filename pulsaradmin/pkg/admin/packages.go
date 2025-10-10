@@ -19,6 +19,7 @@ package admin
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -36,14 +37,23 @@ import (
 
 // Packages is admin interface for functions management
 type Packages interface {
-	// Download Function/Connector Package
+	// Download downloads Function/Connector Package
 	// @param destinationFile
 	//        file where data should be downloaded to
 	// @param packageURL
 	//        the package URL
 	Download(packageURL, destinationFile string) error
 
-	// Upload Function/Connector Package
+	// DownloadWithContext downloads Function/Connector Package
+	// @param ctx
+	//        context used for the request
+	// @param destinationFile
+	//        file where data should be downloaded to
+	// @param packageURL
+	//        the package URL
+	DownloadWithContext(ctx context.Context, packageURL, destinationFile string) error
+
+	// Upload uploads Function/Connector Package
 	// @param filePath
 	//        file where data should be uploaded to
 	// @param packageURL
@@ -53,23 +63,66 @@ type Packages interface {
 	// @param contact
 	//        contact information of a package
 	// @param properties
-	// 		  external infromations of a package
+	// 		  external informations of a package
 	Upload(packageURL, filePath, description, contact string, properties map[string]string) error
 
-	// List all the packages with the given type in a namespace
+	// UploadWithContext uploads Function/Connector Package
+	// @param ctx
+	//        context used for the request
+	// @param filePath
+	//        file where data should be uploaded to
+	// @param packageURL
+	//        type://tenant/namespace/packageName@version
+	// @param description
+	//        descriptions of a package
+	// @param contact
+	//        contact information of a package
+	// @param properties
+	// 		  external informations of a package
+	UploadWithContext(
+		ctx context.Context,
+		packageURL,
+		filePath,
+		description,
+		contact string,
+		properties map[string]string,
+	) error
+
+	// List lists all the packages with the given type in a namespace
 	List(typeName, namespace string) ([]string, error)
 
-	// ListVersions list all the versions of a package
+	// ListWithContext lists all the packages with the given type in a namespace
+	ListWithContext(ctx context.Context, typeName, namespace string) ([]string, error)
+
+	// ListVersions lists all the versions of a package
 	ListVersions(packageURL string) ([]string, error)
 
-	// Delete the specified package
+	// ListVersionsWithContext lists all the versions of a package
+	ListVersionsWithContext(ctx context.Context, packageURL string) ([]string, error)
+
+	// Delete deletes the specified package
 	Delete(packageURL string) error
 
-	// GetMetadata get a package metadata information
+	// DeleteWithContext deletes the specified package
+	DeleteWithContext(ctx context.Context, packageURL string) error
+
+	// GetMetadata returns a package metadata information
 	GetMetadata(packageURL string) (utils.PackageMetadata, error)
 
-	// UpdateMetadata update a package metadata information
+	// GetMetadataWithContext returns a package metadata information
+	GetMetadataWithContext(ctx context.Context, packageURL string) (utils.PackageMetadata, error)
+
+	// UpdateMetadata updates a package metadata information
 	UpdateMetadata(packageURL, description, contact string, properties map[string]string) error
+
+	// UpdateMetadataWithContext updates a package metadata information
+	UpdateMetadataWithContext(
+		ctx context.Context,
+		packageURL,
+		description,
+		contact string,
+		properties map[string]string,
+	) error
 }
 
 type packages struct {
@@ -93,6 +146,10 @@ func (c *pulsarClient) Packages() Packages {
 }
 
 func (p packages) Download(packageURL, destinationFile string) error {
+	return p.DownloadWithContext(context.Background(), packageURL, destinationFile)
+}
+
+func (p packages) DownloadWithContext(ctx context.Context, packageURL, destinationFile string) error {
 	packageName, err := utils.GetPackageName(packageURL)
 	if err != nil {
 		return err
@@ -120,7 +177,7 @@ func (p packages) Download(packageURL, destinationFile string) error {
 		return err
 	}
 
-	_, err = p.pulsar.Client.GetWithOptions(endpoint, nil, nil, false, file)
+	_, err = p.pulsar.Client.GetWithOptionsWithContext(ctx, endpoint, nil, nil, false, file)
 	if err != nil {
 		return err
 	}
@@ -128,6 +185,17 @@ func (p packages) Download(packageURL, destinationFile string) error {
 }
 
 func (p packages) Upload(packageURL, filePath, description, contact string, properties map[string]string) error {
+	return p.UploadWithContext(context.Background(), packageURL, filePath, description, contact, properties)
+}
+
+func (p packages) UploadWithContext(
+	ctx context.Context,
+	packageURL,
+	filePath,
+	description,
+	contact string,
+	properties map[string]string,
+) error {
 	if strings.TrimSpace(filePath) == "" {
 		return errors.New("file path is empty")
 	}
@@ -188,7 +256,7 @@ func (p packages) Upload(packageURL, filePath, description, contact string, prop
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = p.pulsar.Client.PostWithMultiPart(endpoint, nil, bodyBuf, contentType)
+	err = p.pulsar.Client.PostWithMultiPartWithContext(ctx, endpoint, nil, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -197,13 +265,21 @@ func (p packages) Upload(packageURL, filePath, description, contact string, prop
 }
 
 func (p packages) List(typeName, namespace string) ([]string, error) {
+	return p.ListWithContext(context.Background(), typeName, namespace)
+}
+
+func (p packages) ListWithContext(ctx context.Context, typeName, namespace string) ([]string, error) {
 	var packageList []string
 	endpoint := p.pulsar.endpoint(p.basePath, typeName, namespace)
-	err := p.pulsar.Client.Get(endpoint, &packageList)
+	err := p.pulsar.Client.GetWithContext(ctx, endpoint, &packageList)
 	return packageList, err
 }
 
 func (p packages) ListVersions(packageURL string) ([]string, error) {
+	return p.ListVersionsWithContext(context.Background(), packageURL)
+}
+
+func (p packages) ListVersionsWithContext(ctx context.Context, packageURL string) ([]string, error) {
 	var versionList []string
 	packageName, err := utils.GetPackageName(packageURL)
 	if err != nil {
@@ -211,11 +287,15 @@ func (p packages) ListVersions(packageURL string) ([]string, error) {
 	}
 	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName())
-	err = p.pulsar.Client.Get(endpoint, &versionList)
+	err = p.pulsar.Client.GetWithContext(ctx, endpoint, &versionList)
 	return versionList, err
 }
 
 func (p packages) Delete(packageURL string) error {
+	return p.DeleteWithContext(context.Background(), packageURL)
+}
+
+func (p packages) DeleteWithContext(ctx context.Context, packageURL string) error {
 	packageName, err := utils.GetPackageName(packageURL)
 	if err != nil {
 		return err
@@ -223,10 +303,14 @@ func (p packages) Delete(packageURL string) error {
 	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion())
 
-	return p.pulsar.Client.Delete(endpoint)
+	return p.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (p packages) GetMetadata(packageURL string) (utils.PackageMetadata, error) {
+	return p.GetMetadataWithContext(context.Background(), packageURL)
+}
+
+func (p packages) GetMetadataWithContext(ctx context.Context, packageURL string) (utils.PackageMetadata, error) {
 	var metadata utils.PackageMetadata
 	packageName, err := utils.GetPackageName(packageURL)
 	if err != nil {
@@ -234,11 +318,21 @@ func (p packages) GetMetadata(packageURL string) (utils.PackageMetadata, error) 
 	}
 	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion(), "metadata")
-	err = p.pulsar.Client.Get(endpoint, &metadata)
+	err = p.pulsar.Client.GetWithContext(ctx, endpoint, &metadata)
 	return metadata, err
 }
 
 func (p packages) UpdateMetadata(packageURL, description, contact string, properties map[string]string) error {
+	return p.UpdateMetadataWithContext(context.Background(), packageURL, description, contact, properties)
+}
+
+func (p packages) UpdateMetadataWithContext(
+	ctx context.Context,
+	packageURL,
+	description,
+	contact string,
+	properties map[string]string,
+) error {
 	metadata := utils.PackageMetadata{
 		Description: description,
 		Contact:     contact,
@@ -251,5 +345,5 @@ func (p packages) UpdateMetadata(packageURL, description, contact string, proper
 	endpoint := p.pulsar.endpoint(p.basePath, string(packageName.GetType()), packageName.GetTenant(),
 		packageName.GetNamespace(), packageName.GetName(), packageName.GetVersion(), "metadata")
 
-	return p.pulsar.Client.Put(endpoint, &metadata)
+	return p.pulsar.Client.PutWithContext(ctx, endpoint, &metadata)
 }
