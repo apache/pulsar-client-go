@@ -165,7 +165,7 @@ func (b *broker) GetDynamicConfigurationNamesWithContext(ctx context.Context) ([
 }
 
 func (b *broker) GetOwnedNamespaces(cluster, brokerURL string) (map[string]utils.NamespaceOwnershipStatus, error) {
-	return b.GetOwnedNamespacesWithContext(context.TODO(), cluster, brokerURL)
+	return b.GetOwnedNamespacesWithContext(context.Background(), cluster, brokerURL)
 }
 
 func (b *broker) GetOwnedNamespacesWithContext(
