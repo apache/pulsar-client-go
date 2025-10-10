@@ -392,7 +392,7 @@ func (s *sinks) UpdateSinkWithContext(
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PutWithMultiPart(ctx, endpoint, bodyBuf, contentType)
+	err = s.pulsar.Client.PutWithMultiPartWithContext(ctx, endpoint, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -465,7 +465,7 @@ func (s *sinks) UpdateSinkWithURLWithContext(
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PutWithMultiPart(ctx, endpoint, bodyBuf, contentType)
+	err = s.pulsar.Client.PutWithMultiPartWithContext(ctx, endpoint, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}

@@ -396,7 +396,7 @@ func (s *sources) UpdateSourceWithContext(
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PutWithMultiPart(ctx, endpoint, bodyBuf, contentType)
+	err = s.pulsar.Client.PutWithMultiPartWithContext(ctx, endpoint, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}
@@ -466,7 +466,7 @@ func (s *sources) UpdateSourceWithURLWithContext(ctx context.Context, config *ut
 	}
 
 	contentType := multiPartWriter.FormDataContentType()
-	err = s.pulsar.Client.PutWithMultiPart(ctx, endpoint, bodyBuf, contentType)
+	err = s.pulsar.Client.PutWithMultiPartWithContext(ctx, endpoint, bodyBuf, contentType)
 	if err != nil {
 		return err
 	}

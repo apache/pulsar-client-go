@@ -146,8 +146,13 @@ func (c *Client) GetWithQueryParams(endpoint string, obj interface{}, params map
 	return c.GetWithQueryParamsWithContext(context.Background(), endpoint, obj, params, decode)
 }
 
-func (c *Client) GetWithQueryParamsWithContext(ctx context.Context, endpoint string, obj interface{}, params map[string]string,
-	decode bool) ([]byte, error) {
+func (c *Client) GetWithQueryParamsWithContext(
+	ctx context.Context,
+	endpoint string,
+	obj interface{},
+	params map[string]string,
+	decode bool,
+) ([]byte, error) {
 	return c.GetWithOptionsWithContext(ctx, endpoint, obj, params, decode, nil)
 }
 
@@ -156,8 +161,13 @@ func (c *Client) GetWithOptions(endpoint string, obj interface{}, params map[str
 	return c.GetWithOptionsWithContext(context.Background(), endpoint, obj, params, decode, file)
 }
 
-func (c *Client) GetWithOptionsWithContext(ctx context.Context, endpoint string, obj interface{}, params map[string]string,
-	decode bool, file io.Writer) ([]byte, error) {
+func (c *Client) GetWithOptionsWithContext(
+	ctx context.Context,
+	endpoint string,
+	obj interface{},
+	params map[string]string,
+	decode bool, file io.Writer,
+) ([]byte, error) {
 
 	req, err := c.newRequest(http.MethodGet, endpoint)
 	if err != nil {
@@ -220,17 +230,33 @@ func (c *Client) PutWithQueryParams(endpoint string, in, obj interface{}, params
 	return c.PutWithQueryParamsWithContext(context.Background(), endpoint, in, obj, params)
 }
 
-func (c *Client) PutWithQueryParamsWithContext(ctx context.Context, endpoint string, in, obj interface{}, params map[string]string) error {
-	return c.PutWithCustomMediaType(ctx, endpoint, in, obj, params, "")
+func (c *Client) PutWithQueryParamsWithContext(
+	ctx context.Context,
+	endpoint string,
+	in,
+	obj interface{},
+	params map[string]string,
+) error {
+	return c.PutWithCustomMediaTypeWithContext(ctx, endpoint, in, obj, params, "")
 }
 
-func (c *Client) PutWithCustomMediaType(ctx context.Context, endpoint string, in, obj interface{}, params map[string]string,
-	mediaType MediaType) error {
+func (c *Client) PutWithCustomMediaType(
+	endpoint string,
+	in, obj interface{},
+	params map[string]string,
+	mediaType MediaType,
+) error {
 	return c.PutWithCustomMediaTypeWithContext(context.Background(), endpoint, in, obj, params, mediaType)
 }
 
-func (c *Client) PutWithCustomMediaTypeWithContext(ctx context.Context, endpoint string, in, obj interface{}, params map[string]string,
-	mediaType MediaType) error {
+func (c *Client) PutWithCustomMediaTypeWithContext(
+	ctx context.Context,
+	endpoint string,
+	in,
+	obj interface{},
+	params map[string]string,
+	mediaType MediaType,
+) error {
 	req, err := c.newRequest(http.MethodPut, endpoint)
 	if err != nil {
 		return err
@@ -264,11 +290,20 @@ func (c *Client) PutWithCustomMediaTypeWithContext(ctx context.Context, endpoint
 	return nil
 }
 
-func (c *Client) PutWithMultiPart(ctx context.Context, endpoint string, body io.Reader, contentType string) error {
+func (c *Client) PutWithMultiPart(
+	endpoint string,
+	body io.Reader,
+	contentType string,
+) error {
 	return c.PutWithMultiPartWithContext(context.Background(), endpoint, body, contentType)
 }
 
-func (c *Client) PutWithMultiPartWithContext(ctx context.Context, endpoint string, body io.Reader, contentType string) error {
+func (c *Client) PutWithMultiPartWithContext(
+	ctx context.Context,
+	endpoint string,
+	body io.Reader,
+	contentType string,
+) error {
 	req, err := c.newRequest(http.MethodPut, endpoint)
 	if err != nil {
 		return err
@@ -298,7 +333,11 @@ func (c *Client) DeleteWithQueryParams(endpoint string, params map[string]string
 	return c.DeleteWithQueryParamsWithContext(context.Background(), endpoint, params)
 }
 
-func (c *Client) DeleteWithQueryParamsWithContext(ctx context.Context, endpoint string, params map[string]string) error {
+func (c *Client) DeleteWithQueryParamsWithContext(
+	ctx context.Context,
+	endpoint string,
+	params map[string]string,
+) error {
 	req, err := c.newRequest(http.MethodDelete, endpoint)
 	if err != nil {
 		return err
@@ -360,7 +399,13 @@ func (c *Client) PostWithMultiPart(endpoint string, in interface{}, body io.Read
 	return c.PostWithMultiPartWithContext(context.Background(), endpoint, in, body, contentType)
 }
 
-func (c *Client) PostWithMultiPartWithContext(ctx context.Context, endpoint string, in interface{}, body io.Reader, contentType string) error {
+func (c *Client) PostWithMultiPartWithContext(
+	ctx context.Context,
+	endpoint string,
+	in interface{},
+	body io.Reader,
+	contentType string,
+) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err
@@ -383,7 +428,12 @@ func (c *Client) PostWithQueryParams(endpoint string, in interface{}, params map
 	return c.PostWithQueryParamsWithContext(context.Background(), endpoint, in, params)
 }
 
-func (c *Client) PostWithQueryParamsWithContext(ctx context.Context, endpoint string, in interface{}, params map[string]string) error {
+func (c *Client) PostWithQueryParamsWithContext(
+	ctx context.Context,
+	endpoint string,
+	in interface{},
+	params map[string]string,
+) error {
 	req, err := c.newRequest(http.MethodPost, endpoint)
 	if err != nil {
 		return err

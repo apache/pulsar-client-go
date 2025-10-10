@@ -1076,7 +1076,7 @@ func (t *topics) CreateWithPropertiesWithContext(
 		Meta:       meta,
 		Partitions: partitions,
 	}
-	return t.pulsar.Client.PutWithCustomMediaType(ctx, endpoint, &data, nil, nil, rest.PartitionedTopicMetaJSON)
+	return t.pulsar.Client.PutWithCustomMediaTypeWithContext(ctx, endpoint, &data, nil, nil, rest.PartitionedTopicMetaJSON)
 }
 
 func (t *topics) GetProperties(topic utils.TopicName) (map[string]string, error) {
