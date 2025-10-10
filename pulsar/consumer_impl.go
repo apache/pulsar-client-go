@@ -23,11 +23,8 @@ import (
 	"fmt"
 	"math/rand"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
-
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -266,11 +263,6 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	}
 
 	if len(partitions) > 1 && options.EnableZeroQueueConsumer {
-		return nil, pkgerrors.New("ZeroQueueConsumer is not supported for partitioned topics")
-	}
-
-	if len(partitions) == 1 && options.EnableZeroQueueConsumer &&
-		strings.Contains(partitions[0], utils.PARTITIONEDTOPICSUFFIX) {
 		return nil, pkgerrors.New("ZeroQueueConsumer is not supported for partitioned topics")
 	}
 
