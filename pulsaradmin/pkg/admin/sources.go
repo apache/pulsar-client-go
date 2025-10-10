@@ -53,11 +53,11 @@ type Sources interface {
 	CreateSourceWithContext(ctx context.Context, config *utils.SourceConfig, fileName string) error
 
 	// CreateSourceWithURL creates a new source by providing url from which fun-pkg can be downloaded.
-	// supported url: http/file
+	// Supported url: http/file
 	CreateSourceWithURL(config *utils.SourceConfig, pkgURL string) error
 
 	// CreateSourceWithURL creates a new source by providing url from which fun-pkg can be downloaded.
-	// supported url: http/file
+	// Supported url: http/file
 	CreateSourceWithURLWithContext(ctx context.Context, config *utils.SourceConfig, pkgURL string) error
 
 	// UpdateSource updates the configuration for a source.

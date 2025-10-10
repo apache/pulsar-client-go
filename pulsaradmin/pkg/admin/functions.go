@@ -41,7 +41,7 @@ type Functions interface {
 	CreateFuncWithContext(ctx context.Context, data *utils.FunctionConfig, fileName string) error
 
 	// CreateFuncWithURL creates a new function by providing url from which fun-pkg can be downloaded.
-	// supported url: http/file
+	// Supported url: http/file
 	// eg:
 	//  File: file:/dir/fileName.jar
 	//  Http: http://www.repo.com/fileName.jar
@@ -53,7 +53,7 @@ type Functions interface {
 	CreateFuncWithURL(data *utils.FunctionConfig, pkgURL string) error
 
 	// CreateFuncWithURLWithContext creates a new function by providing url from which fun-pkg can be downloaded.
-	// supported url: http/file
+	// Supported url: http/file
 	// eg:
 	//  File: file:/dir/fileName.jar
 	//  Http: http://www.repo.com/fileName.jar

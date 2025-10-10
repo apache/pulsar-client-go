@@ -56,7 +56,7 @@ type Sinks interface {
 	CreateSinkWithURL(config *utils.SinkConfig, pkgURL string) error
 
 	// CreateSinkWithURLWithContext creates a new sink by providing url from which fun-pkg can be downloaded.
-	// supported url: http/file
+	// Supported url: http/file
 	CreateSinkWithURLWithContext(ctx context.Context, config *utils.SinkConfig, pkgURL string) error
 
 	// UpdateSink updates the configuration for a sink.
@@ -71,11 +71,11 @@ type Sinks interface {
 	) error
 
 	// UpdateSinkWithURL updates a sink by providing url from which fun-pkg can be downloaded.
-	// supported url: http/file
+	// Supported url: http/file
 	UpdateSinkWithURL(config *utils.SinkConfig, pkgURL string, options *utils.UpdateOptions) error
 
 	// UpdateSinkWithURLWithContext updates a sink by providing url from which fun-pkg can be downloaded.
-	// supported url: http/file
+	// Supported url: http/file
 	UpdateSinkWithURLWithContext(
 		ctx context.Context,
 		config *utils.SinkConfig,
