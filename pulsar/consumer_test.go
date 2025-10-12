@@ -1277,9 +1277,147 @@ func TestNegativeAckPrecisionBitCnt(t *testing.T) {
 		now := time.Now()
 		// Assert that redelivery happens >= expected - deviation
 		assert.GreaterOrEqual(t, now.UnixMilli(), expectedRedelivery.UnixMilli()-deviation.Milliseconds())
+		// since the client ticks at an interval of delay / 3 (i.e., 333 ms in this test),
+		// we add an extra 400 milliseconds to reduce the flaky
+		assert.LessOrEqual(t, now.UnixMilli(), expectedRedelivery.UnixMilli()+400)
 
 		consumer.Ack(redelivered)
 	}
+}
+
+func TestNackPrecisionBitDefaultBehavior(t *testing.T) {
+	// Test that default NackPrecisionBit (8) behaves the same as explicitly setting it to 8
+	// This test uses precise timing to verify that messages within 256ms window are grouped together
+
+	const delay = 300 * time.Millisecond // Tracker scans every 100ms (delay/3)
+	ctx := context.Background()
+
+	// Create two consumers with different topic names to avoid conflicts
+	topicNameDefault := fmt.Sprintf("testNackPrecisionBitDefault-default-%d", time.Now().UnixNano())
+	topicNameExplicit := fmt.Sprintf("testNackPrecisionBitDefault-explicit-%d", time.Now().UnixNano())
+
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// Consumer 1: Default NackPrecisionBit (should be 8)
+	consumerDefault, err := client.Subscribe(ConsumerOptions{
+		Topic:               topicNameDefault,
+		SubscriptionName:    "sub-default",
+		Type:                Shared,
+		NackRedeliveryDelay: delay,
+		// NackPrecisionBit is not set, should use default value of 8
+	})
+	assert.Nil(t, err)
+	defer consumerDefault.Close()
+
+	// Consumer 2: Explicit NackPrecisionBit set to 8
+	consumerExplicit, err := client.Subscribe(ConsumerOptions{
+		Topic:               topicNameExplicit,
+		SubscriptionName:    "sub-explicit",
+		Type:                Shared,
+		NackRedeliveryDelay: delay,
+		NackPrecisionBit:    Ptr(defaultNackPrecisionBit),
+	})
+	assert.Nil(t, err)
+	defer consumerExplicit.Close()
+
+	// Create producers for both topics
+	producerDefault, err := client.CreateProducer(ProducerOptions{
+		Topic: topicNameDefault,
+	})
+	assert.Nil(t, err)
+	defer producerDefault.Close()
+
+	producerExplicit, err := client.CreateProducer(ProducerOptions{
+		Topic: topicNameExplicit,
+	})
+	assert.Nil(t, err)
+	defer producerExplicit.Close()
+
+	// Test function to verify precision bit behavior for a given consumer and producer
+	testPrecisionBitBehavior := func(consumer Consumer, producer Producer, topicName string) {
+		// Wait for next 256ms boundary to align timing
+		now := time.Now()
+		ms := now.UnixMilli()
+		nextBoundary := ((ms / 256) + 1) * 256 // Next 256ms boundary
+		waitTime := time.Duration(nextBoundary-ms) * time.Millisecond
+		time.Sleep(waitTime)
+
+		// Send first message at 256ms boundary
+		content1 := fmt.Sprintf("msg1-%s", topicName)
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(content1),
+		})
+		assert.Nil(t, err)
+
+		// Wait 200ms (within 256ms window)
+		time.Sleep(200 * time.Millisecond)
+
+		// Send second message 200ms after first (still within 256ms window)
+		content2 := fmt.Sprintf("msg2-%s", topicName)
+		_, err = producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(content2),
+		})
+		assert.Nil(t, err)
+
+		// Receive both messages and nack them
+		msg1, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, content1, string(msg1.Payload()))
+		consumer.Nack(msg1)
+
+		msg2, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, content2, string(msg2.Payload()))
+		consumer.Nack(msg2)
+
+		// Record when nacks were sent
+		nackTime := time.Now()
+		expectedRedelivery := nackTime.Add(delay)
+
+		// Wait for redeliveries - both messages should be redelivered together
+		// because they are within the 256ms precision bit window
+		redelivered1, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		redeliveryTime1 := time.Now()
+
+		redelivered2, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		redeliveryTime2 := time.Now()
+
+		// Verify both messages were redelivered
+		assert.True(t, string(redelivered1.Payload()) == content1 || string(redelivered1.Payload()) == content2,
+			"First redelivered message should be one of the original messages")
+		assert.True(t, string(redelivered2.Payload()) == content1 || string(redelivered2.Payload()) == content2,
+			"Second redelivered message should be one of the original messages")
+		assert.NotEqual(t, string(redelivered1.Payload()), string(redelivered2.Payload()),
+			"Redelivered messages should be different")
+
+		// KEY TEST: Both messages should be redelivered simultaneously (within 10ms of each other to reduce flaky)
+		// because 256ms alignment groups both messages in the same redelivery interval
+		timeDiff := redeliveryTime2.Sub(redeliveryTime1)
+		assert.Less(t, timeDiff, 10*time.Millisecond,
+			"Both redelivered messages should arrive simultaneously (within 10ms) due to 256ms alignment "+
+				"placing them in the same redelivery interval")
+
+		// Redelivery should happen within expected window (considering 256ms precision)
+		minExpected := expectedRedelivery.Add(-256 * time.Millisecond)
+		maxExpected := expectedRedelivery.Add(150 * time.Millisecond) // Buffer for test stability
+
+		assert.GreaterOrEqual(t, redeliveryTime1.UnixMilli(), minExpected.UnixMilli(),
+			"Redelivery should happen after minimum expected time")
+		assert.LessOrEqual(t, redeliveryTime2.UnixMilli(), maxExpected.UnixMilli(),
+			"Redelivery should happen before maximum expected time")
+
+		// Acknowledge both messages
+		consumer.Ack(redelivered1)
+		consumer.Ack(redelivered2)
+	}
+
+	// Test both consumers
+	testPrecisionBitBehavior(consumerDefault, producerDefault, "default")
+	testPrecisionBitBehavior(consumerExplicit, producerExplicit, "explicit")
 }
 
 func TestConsumerCompression(t *testing.T) {

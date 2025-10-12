@@ -29,7 +29,7 @@ import (
 
 const testNackDelay = 300 * time.Millisecond
 
-var testNackPrecisionBit = &defaultNackPrecisionBit
+var testNackPrecisionBit = Ptr(defaultNackPrecisionBit)
 
 type nackMockedConsumer struct {
 	ch     chan messageID

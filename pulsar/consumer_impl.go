@@ -121,8 +121,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		options.NackBackoffPolicy = new(defaultNackBackoffPolicy)
 	}
 
-	if options.NackPrecisionBit == nil || *options.NackPrecisionBit < 0 {
-		options.NackPrecisionBit = &defaultNackPrecisionBit
+	if options.NackPrecisionBit == nil {
+		options.NackPrecisionBit = Ptr(defaultNackPrecisionBit)
+	} else if *options.NackPrecisionBit < 0 {
+		return nil, newError(InvalidConfiguration, "NackPrecisionBit cannot be negative")
 	}
 
 	// did the user pass in a message channel?
