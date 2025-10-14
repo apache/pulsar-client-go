@@ -122,7 +122,7 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 	}
 
 	if options.NackPrecisionBit == nil {
-		options.NackPrecisionBit = Ptr(defaultNackPrecisionBit)
+		options.NackPrecisionBit = ptr(defaultNackPrecisionBit)
 	} else if *options.NackPrecisionBit < 0 {
 		return nil, newError(InvalidConfiguration, "NackPrecisionBit cannot be negative")
 	}

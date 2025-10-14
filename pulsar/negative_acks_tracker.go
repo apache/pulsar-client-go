@@ -202,6 +202,6 @@ func (t *negativeAcksTracker) Close() {
 	})
 }
 
-func Ptr[T any](v T) *T { return &v }
+func ptr[T any](v T) *T { return &v }
 
 const defaultNackPrecisionBit = int64(8)
