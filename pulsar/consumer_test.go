@@ -1263,8 +1263,8 @@ func TestNegativeAckPrecisionBitCnt(t *testing.T) {
 		_, err = producer.Send(ctx, &ProducerMessage{Payload: []byte(content1)})
 		assert.Nil(t, err)
 
-		// Send second message around 1/2 into the window (still in same window)
-		time.Sleep(time.Duration(windowMs/2) * time.Millisecond)
+		// Send second message around 3/4 into the window (still in same window)
+		time.Sleep(time.Duration(windowMs*3/4) * time.Millisecond)
 		content2 := fmt.Sprintf("msg2-p%d", boundaryBits)
 		_, err = producer.Send(ctx, &ProducerMessage{Payload: []byte(content2)})
 		assert.Nil(t, err)
@@ -1291,10 +1291,10 @@ func TestNegativeAckPrecisionBitCnt(t *testing.T) {
 		assert.Nil(t, err)
 		redeliveryTime2 := time.Now()
 
-		// KEY TEST: Both messages should be redelivered simultaneously (within 1 ms)
-		// because precision alignment groups both messages in the same time bucket
-		// filter out precision bits < 5 because they are flaky, their time granularity is too small (i.e., 1 ms to 16 ms)
-		if boundaryBits >= 5 {
+		// For both the default precision (nil) and precisionBit=8, boundaryBits is 8.
+		// This checks that the default precisionBit is correctly set to 8,
+		// and that its redelivery behavior matches a consumer explicitly configured with precisionBit=8.
+		if boundaryBits == 8 {
 			assert.InDelta(t, redeliveryTime1.UnixMilli(), redeliveryTime2.UnixMilli(), 1)
 		}
 

@@ -30,7 +30,7 @@ type redeliveryConsumer interface {
 	Redeliver(msgIDs []messageID)
 }
 
-type LedgerID = int64
+type ledgerID = int64
 
 type negativeAcksTracker struct {
 	sync.Mutex
@@ -104,11 +104,11 @@ func putNackEntry(t *negativeAcksTracker, batchMsgID *messageID, delay time.Dura
 	// try get trimmedTime
 	value, exists := t.negativeAcks.Get(trimmedTime)
 	if !exists {
-		newMap := make(map[LedgerID]*roaring64.Bitmap)
+		newMap := make(map[ledgerID]*roaring64.Bitmap)
 		t.negativeAcks.Put(trimmedTime, newMap)
 		value = newMap
 	}
-	bitmapMap, ok := value.(map[LedgerID]*roaring64.Bitmap)
+	bitmapMap, ok := value.(map[ledgerID]*roaring64.Bitmap)
 	if !ok {
 		panic("negativeAcksTracker: value is not of expected type map[LedgerID]*roaring64.Bitmap")
 	}
@@ -168,7 +168,7 @@ func (t *negativeAcksTracker) track() {
 						break
 					}
 
-					ledgerMap := iterator.Value().(map[LedgerID]*roaring64.Bitmap)
+					ledgerMap := iterator.Value().(map[ledgerID]*roaring64.Bitmap)
 					for ledgerID, entrySet := range ledgerMap {
 						for _, entryID := range entrySet.ToArray() {
 							msgID := messageID{
