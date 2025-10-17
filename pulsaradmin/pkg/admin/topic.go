@@ -390,10 +390,10 @@ type Topics interface {
 	// CompactStatusWithContext checks the status of an ongoing compaction for a topic
 	CompactStatusWithContext(context.Context, utils.TopicName) (utils.LongRunningProcessStatus, error)
 
-	// GetMessageTTL returns the message TTL for a topic
+	// GetMessageTTL returns the message TTL for a topic. Returns -1 if not set
 	GetMessageTTL(utils.TopicName) (int, error)
 
-	// GetMessageTTLWithContext returns the message TTL for a topic
+	// GetMessageTTLWithContext returns the message TTL for a topic. Returns -1 if not set
 	GetMessageTTLWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetMessageTTL sets the message TTL for a topic
@@ -420,10 +420,10 @@ type Topics interface {
 	// RemoveMessageTTLWithContext removes the message TTL for a topic
 	RemoveMessageTTLWithContext(context.Context, utils.TopicName) error
 
-	// GetMaxProducers Get max number of producers for a topic
+	// GetMaxProducers Get max number of producers for a topic. Returns -1 if not set
 	GetMaxProducers(utils.TopicName) (int, error)
 
-	// GetMaxProducersWithContext Get max number of producers for a topic
+	// GetMaxProducersWithContext Get max number of producers for a topic. Returns -1 if not set
 	GetMaxProducersWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetMaxProducers sets max number of producers for a topic
@@ -450,10 +450,10 @@ type Topics interface {
 	// RemoveMaxProducersWithContext removes max number of producers for a topic
 	RemoveMaxProducersWithContext(context.Context, utils.TopicName) error
 
-	// GetMaxConsumers returns max number of consumers for a topic
+	// GetMaxConsumers returns max number of consumers for a topic. Returns -1 if not set
 	GetMaxConsumers(utils.TopicName) (int, error)
 
-	// GetMaxConsumersWithContext returns max number of consumers for a topic
+	// GetMaxConsumersWithContext returns max number of consumers for a topic. Returns -1 if not set
 	GetMaxConsumersWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetMaxConsumers sets max number of consumers for a topic
@@ -480,10 +480,11 @@ type Topics interface {
 	// RemoveMaxConsumersWithContext removes max number of consumers for a topic
 	RemoveMaxConsumersWithContext(context.Context, utils.TopicName) error
 
-	// GetMaxUnackMessagesPerConsumer returns max unacked messages policy on consumer for a topic
+	// GetMaxUnackMessagesPerConsumer returns max unacked messages policy on consumer for a topic. Returns -1 if not set
 	GetMaxUnackMessagesPerConsumer(utils.TopicName) (int, error)
 
-	// GetMaxUnackMessagesPerConsumerWithContext returns max unacked messages policy on consumer for a topic
+	// GetMaxUnackMessagesPerConsumerWithContext returns max unacked messages policy on consumer for a topic.
+	// Returns -1 if not set
 	GetMaxUnackMessagesPerConsumerWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetMaxUnackMessagesPerConsumer sets max unacked messages policy on consumer for a topic
@@ -510,10 +511,12 @@ type Topics interface {
 	// RemoveMaxUnackMessagesPerConsumerWithContext removes max unacked messages policy on consumer for a topic
 	RemoveMaxUnackMessagesPerConsumerWithContext(context.Context, utils.TopicName) error
 
-	// GetMaxUnackMessagesPerSubscription returns max unacked messages policy on subscription for a topic
+	// GetMaxUnackMessagesPerSubscription returns max unacked messages policy on subscription for a topic.
+	// Returns -1 if not set
 	GetMaxUnackMessagesPerSubscription(utils.TopicName) (int, error)
 
-	// GetMaxUnackMessagesPerSubscriptionWithContext returns max unacked messages policy on subscription for a topic
+	// GetMaxUnackMessagesPerSubscriptionWithContext returns max unacked messages policy on subscription for a topic.
+	// Returns -1 if not set
 	GetMaxUnackMessagesPerSubscriptionWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetMaxUnackMessagesPerSubscription sets max unacked messages policy on subscription for a topic
@@ -674,7 +677,7 @@ type Topics interface {
 	// SetRetentionWithContext sets the retention policy for a topic
 	SetRetentionWithContext(context.Context, utils.TopicName, utils.RetentionPolicies) error
 
-	// GetCompactionThreshold returns the compaction threshold for a topic.
+	// GetCompactionThreshold returns the compaction threshold for a topic. Returns -1 if not set
 	//
 	// i.e. The maximum number of bytes can have before compaction is triggered.
 	//
@@ -685,7 +688,7 @@ type Topics interface {
 	//        in namespace or broker level, if no policy set in topic level
 	GetCompactionThreshold(topic utils.TopicName, applied bool) (int64, error)
 
-	// GetCompactionThresholdWithContext returns the compaction threshold for a topic.
+	// GetCompactionThresholdWithContext returns the compaction threshold for a topic. Returns -1 if not set
 	//
 	// i.e. The maximum number of bytes can have before compaction is triggered.
 	//
@@ -854,10 +857,10 @@ type Topics interface {
 	// RemoveSubscriptionDispatchRateWithContext removes subscription dispatch rate for a topic
 	RemoveSubscriptionDispatchRateWithContext(context.Context, utils.TopicName) error
 
-	// GetMaxConsumersPerSubscription returns max consumers per subscription for a topic
+	// GetMaxConsumersPerSubscription returns max consumers per subscription for a topic. Returns -1 if not set
 	GetMaxConsumersPerSubscription(utils.TopicName) (int, error)
 
-	// GetMaxConsumersPerSubscriptionWithContext returns max consumers per subscription for a topic
+	// GetMaxConsumersPerSubscriptionWithContext returns max consumers per subscription for a topic. Returns -1 if not set
 	GetMaxConsumersPerSubscriptionWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetMaxConsumersPerSubscription sets max consumers per subscription for a topic
@@ -872,10 +875,10 @@ type Topics interface {
 	// RemoveMaxConsumersPerSubscriptionWithContext removes max consumers per subscription for a topic
 	RemoveMaxConsumersPerSubscriptionWithContext(context.Context, utils.TopicName) error
 
-	// GetMaxMessageSize returns max message size for a topic
+	// GetMaxMessageSize returns max message size for a topic. Returns -1 if not set
 	GetMaxMessageSize(utils.TopicName) (int, error)
 
-	// GetMaxMessageSizeWithContext returns max message size for a topic
+	// GetMaxMessageSizeWithContext returns max message size for a topic. Returns -1 if not set
 	GetMaxMessageSizeWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetMaxMessageSize sets max message size for a topic
@@ -890,10 +893,10 @@ type Topics interface {
 	// RemoveMaxMessageSizeWithContext removes max message size for a topic
 	RemoveMaxMessageSizeWithContext(context.Context, utils.TopicName) error
 
-	// GetMaxSubscriptionsPerTopic returns max subscriptions per topic
+	// GetMaxSubscriptionsPerTopic returns max subscriptions per topic. Returns -1 if not set
 	GetMaxSubscriptionsPerTopic(utils.TopicName) (int, error)
 
-	// GetMaxSubscriptionsPerTopicWithContext returns max subscriptions per topic
+	// GetMaxSubscriptionsPerTopicWithContext returns max subscriptions per topic. Returns -1 if not set
 	GetMaxSubscriptionsPerTopicWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetMaxSubscriptionsPerTopic sets max subscriptions per topic
@@ -926,10 +929,11 @@ type Topics interface {
 	// RemoveSchemaValidationEnforcedWithContext removes schema validation enforced flag for a topic
 	RemoveSchemaValidationEnforcedWithContext(context.Context, utils.TopicName) error
 
-	// GetDeduplicationSnapshotInterval returns deduplication snapshot interval for a topic
+	// GetDeduplicationSnapshotInterval returns deduplication snapshot interval for a topic. Returns -1 if not set
 	GetDeduplicationSnapshotInterval(utils.TopicName) (int, error)
 
-	// GetDeduplicationSnapshotIntervalWithContext returns deduplication snapshot interval for a topic
+	// GetDeduplicationSnapshotIntervalWithContext returns deduplication snapshot interval for a topic.
+	// Returns -1 if not set
 	GetDeduplicationSnapshotIntervalWithContext(context.Context, utils.TopicName) (int, error)
 
 	// SetDeduplicationSnapshotInterval sets deduplication snapshot interval for a topic
@@ -1457,7 +1461,7 @@ func (t *topics) GetMessageTTL(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMessageTTLWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var ttl int
+	var ttl = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &ttl)
 	return ttl, err
@@ -1492,7 +1496,7 @@ func (t *topics) GetMaxProducers(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxProducersWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxProducers int
+	var maxProducers = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxProducers)
 	return maxProducers, err
@@ -1523,7 +1527,7 @@ func (t *topics) GetMaxConsumers(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxConsumersWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxConsumers int
+	var maxConsumers = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxConsumers)
 	return maxConsumers, err
@@ -1554,7 +1558,7 @@ func (t *topics) GetMaxUnackMessagesPerConsumer(topic utils.TopicName) (int, err
 }
 
 func (t *topics) GetMaxUnackMessagesPerConsumerWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxNum int
+	var maxNum = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxNum)
 	return maxNum, err
@@ -1590,7 +1594,7 @@ func (t *topics) GetMaxUnackMessagesPerSubscriptionWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (int, error) {
-	var maxNum int
+	var maxNum = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnSubscription")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxNum)
 	return maxNum, err
@@ -1833,7 +1837,7 @@ func (t *topics) GetCompactionThresholdWithContext(
 	topic utils.TopicName,
 	applied bool,
 ) (int64, error) {
-	var threshold int64
+	var threshold int64 = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
 	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &threshold, map[string]string{
 		"applied": strconv.FormatBool(applied),
@@ -2042,7 +2046,7 @@ func (t *topics) GetMaxConsumersPerSubscription(topic utils.TopicName) (int, err
 }
 
 func (t *topics) GetMaxConsumersPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxConsumers int
+	var maxConsumers = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumersPerSubscription")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxConsumers)
 	return maxConsumers, err
@@ -2075,7 +2079,7 @@ func (t *topics) GetMaxMessageSize(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxMessageSizeWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxMessageSize int
+	var maxMessageSize = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxMessageSize")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxMessageSize)
 	return maxMessageSize, err
@@ -2104,7 +2108,7 @@ func (t *topics) GetMaxSubscriptionsPerTopic(topic utils.TopicName) (int, error)
 }
 
 func (t *topics) GetMaxSubscriptionsPerTopicWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxSubscriptions int
+	var maxSubscriptions = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxSubscriptionsPerTopic")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxSubscriptions)
 	return maxSubscriptions, err
@@ -2170,7 +2174,7 @@ func (t *topics) GetDeduplicationSnapshotInterval(topic utils.TopicName) (int, e
 }
 
 func (t *topics) GetDeduplicationSnapshotIntervalWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var interval int
+	var interval = -1
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationSnapshotInterval")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &interval)
 	return interval, err

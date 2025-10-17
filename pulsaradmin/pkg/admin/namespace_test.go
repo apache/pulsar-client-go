@@ -333,7 +333,11 @@ func TestNamespaces_GetOffloadThresholdInSeconds(t *testing.T) {
 
 	namespace, _ := utils.GetNamespaceName("public/default")
 
-	// set the subscription expiration time and get it
+	// Get default (should be -1)
+	threshold, err := admin.Namespaces().GetOffloadThreshold(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(-1), threshold)
+
 	err = admin.Namespaces().SetOffloadThresholdInSeconds(*namespace,
 		60)
 	assert.Equal(t, nil, err)
@@ -598,4 +602,164 @@ func TestNamespaces_GetMaxTopicsPerNamespace(t *testing.T) {
 	assert.Equal(t, nil, err)
 	expected = 0
 	assert.Equal(t, expected, maxTopics)
+}
+
+func TestNamespaces_MessageTTL(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// Get default (should be -1)
+	ttl, err := admin.Namespaces().GetNamespaceMessageTTL(namespace.String())
+	assert.NoError(t, err)
+	assert.Equal(t, -1, ttl)
+
+	// Set to 0 explicitly
+	err = admin.Namespaces().SetNamespaceMessageTTL(namespace.String(), 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	ttl, err = admin.Namespaces().GetNamespaceMessageTTL(namespace.String())
+	assert.NoError(t, err)
+	assert.Equal(t, 0, ttl)
+
+	// Set to positive value
+	err = admin.Namespaces().SetNamespaceMessageTTL(namespace.String(), 3600)
+	assert.NoError(t, err)
+
+	// Verify returns value
+	ttl, err = admin.Namespaces().GetNamespaceMessageTTL(namespace.String())
+	assert.NoError(t, err)
+	assert.Equal(t, 3600, ttl)
+}
+
+func TestNamespaces_OffloadDeleteLag(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// Get default (should be -1)
+	lag, err := admin.Namespaces().GetOffloadDeleteLag(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(-1), lag)
+
+	// Set to 0 explicitly
+	err = admin.Namespaces().SetOffloadDeleteLag(*namespace, 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	lag, err = admin.Namespaces().GetOffloadDeleteLag(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), lag)
+
+	// Set to positive value
+	err = admin.Namespaces().SetOffloadDeleteLag(*namespace, 1000)
+	assert.NoError(t, err)
+
+	// Verify returns value
+	lag, err = admin.Namespaces().GetOffloadDeleteLag(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1000), lag)
+}
+
+func TestNamespaces_MaxConsumersPerTopic(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// Get default (should be -1)
+	maxConsumers, err := admin.Namespaces().GetMaxConsumersPerTopic(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, -1, maxConsumers)
+
+	// Set to 0 explicitly
+	err = admin.Namespaces().SetMaxConsumersPerTopic(*namespace, 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	maxConsumers, err = admin.Namespaces().GetMaxConsumersPerTopic(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, maxConsumers)
+
+	// Set to positive value
+	err = admin.Namespaces().SetMaxConsumersPerTopic(*namespace, 100)
+	assert.NoError(t, err)
+
+	// Verify returns value
+	maxConsumers, err = admin.Namespaces().GetMaxConsumersPerTopic(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, 100, maxConsumers)
+}
+
+func TestNamespaces_CompactionThreshold(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// Get default (should be -1)
+	threshold, err := admin.Namespaces().GetCompactionThreshold(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(-1), threshold)
+
+	// Set to 0 explicitly
+	err = admin.Namespaces().SetCompactionThreshold(*namespace, 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	threshold, err = admin.Namespaces().GetCompactionThreshold(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(0), threshold)
+
+	// Set to positive value
+	err = admin.Namespaces().SetCompactionThreshold(*namespace, 1024*1024) // 1MB
+	assert.NoError(t, err)
+
+	// Verify returns value
+	threshold, err = admin.Namespaces().GetCompactionThreshold(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, int64(1024*1024), threshold)
+}
+
+func TestNamespaces_MaxProducersPerTopic(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	// Get default (should be -1)
+	maxProducers, err := admin.Namespaces().GetMaxProducersPerTopic(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, -1, maxProducers)
+
+	// Set to 0 explicitly
+	err = admin.Namespaces().SetMaxProducersPerTopic(*namespace, 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	maxProducers, err = admin.Namespaces().GetMaxProducersPerTopic(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, 0, maxProducers)
+
+	// Set to positive value
+	err = admin.Namespaces().SetMaxProducersPerTopic(*namespace, 50)
+	assert.NoError(t, err)
+
+	// Verify returns value
+	maxProducers, err = admin.Namespaces().GetMaxProducersPerTopic(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, 50, maxProducers)
 }

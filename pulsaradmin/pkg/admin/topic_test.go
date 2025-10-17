@@ -477,7 +477,7 @@ func TestMessageTTL(t *testing.T) {
 
 	messageTTL, err := admin.Topics().GetMessageTTL(*topicName)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, messageTTL)
+	assert.Equal(t, -1, messageTTL)
 	err = admin.Topics().SetMessageTTL(*topicName, 600)
 	assert.NoError(t, err)
 	//	topic policy is an async operation,
@@ -497,7 +497,7 @@ func TestMessageTTL(t *testing.T) {
 		t,
 		func() bool {
 			messageTTL, err = admin.Topics().GetMessageTTL(*topicName)
-			return err == nil && messageTTL == 0
+			return err == nil && messageTTL == -1
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -690,7 +690,7 @@ func TestMaxConsumersPerSubscription(t *testing.T) {
 	// Get default max consumers per subscription
 	maxConsumers, err := admin.Topics().GetMaxConsumersPerSubscription(*topicName)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, maxConsumers)
+	assert.Equal(t, -1, maxConsumers)
 
 	// Set new max consumers per subscription
 	err = admin.Topics().SetMaxConsumersPerSubscription(*topicName, 10)
@@ -715,7 +715,7 @@ func TestMaxConsumersPerSubscription(t *testing.T) {
 		t,
 		func() bool {
 			maxConsumers, err = admin.Topics().GetMaxConsumersPerSubscription(*topicName)
-			return err == nil && maxConsumers == 0
+			return err == nil && maxConsumers == -1
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -737,7 +737,7 @@ func TestMaxMessageSize(t *testing.T) {
 	// Get default max message size
 	maxMessageSize, err := admin.Topics().GetMaxMessageSize(*topicName)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, maxMessageSize)
+	assert.Equal(t, -1, maxMessageSize)
 
 	// Set new max message size (1MB)
 	err = admin.Topics().SetMaxMessageSize(*topicName, 1048576)
@@ -762,7 +762,7 @@ func TestMaxMessageSize(t *testing.T) {
 		t,
 		func() bool {
 			maxMessageSize, err = admin.Topics().GetMaxMessageSize(*topicName)
-			return err == nil && maxMessageSize == 0
+			return err == nil && maxMessageSize == -1
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -784,7 +784,7 @@ func TestMaxSubscriptionsPerTopic(t *testing.T) {
 	// Get default max subscriptions per topic
 	maxSubscriptions, err := admin.Topics().GetMaxSubscriptionsPerTopic(*topicName)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, maxSubscriptions)
+	assert.Equal(t, -1, maxSubscriptions)
 
 	// Set new max subscriptions per topic
 	err = admin.Topics().SetMaxSubscriptionsPerTopic(*topicName, 100)
@@ -809,7 +809,7 @@ func TestMaxSubscriptionsPerTopic(t *testing.T) {
 		t,
 		func() bool {
 			maxSubscriptions, err = admin.Topics().GetMaxSubscriptionsPerTopic(*topicName)
-			return err == nil && maxSubscriptions == 0
+			return err == nil && maxSubscriptions == -1
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -899,7 +899,7 @@ func TestDeduplicationSnapshotInterval(t *testing.T) {
 	// Get default deduplication snapshot interval
 	interval, err := admin.Topics().GetDeduplicationSnapshotInterval(*topicName)
 	assert.NoError(t, err)
-	assert.Equal(t, 0, interval)
+	assert.Equal(t, -1, interval)
 
 	// Set new deduplication snapshot interval
 	err = admin.Topics().SetDeduplicationSnapshotInterval(*topicName, 1000)
@@ -924,7 +924,7 @@ func TestDeduplicationSnapshotInterval(t *testing.T) {
 		t,
 		func() bool {
 			interval, err = admin.Topics().GetDeduplicationSnapshotInterval(*topicName)
-			return err == nil && interval == 0
+			return err == nil && interval == -1
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -1160,4 +1160,212 @@ func TestSchemaCompatibilityStrategy(t *testing.T) {
 		10*time.Second,
 		100*time.Millisecond,
 	)
+}
+
+func TestTopics_MaxProducers(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default (should be -1)
+	maxProducers, err := admin.Topics().GetMaxProducers(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, -1, maxProducers)
+
+	// Set to 0 explicitly (unlimited)
+	err = admin.Topics().SetMaxProducers(*topicName, 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	assert.Eventually(
+		t,
+		func() bool {
+			maxProducers, err = admin.Topics().GetMaxProducers(*topicName)
+			return err == nil && maxProducers == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Set to positive value
+	err = admin.Topics().SetMaxProducers(*topicName, 10)
+	assert.NoError(t, err)
+
+	// Verify returns value
+	assert.Eventually(
+		t,
+		func() bool {
+			maxProducers, err = admin.Topics().GetMaxProducers(*topicName)
+			return err == nil && maxProducers == 10
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove
+	err = admin.Topics().RemoveMaxProducers(*topicName)
+	assert.NoError(t, err)
+}
+
+func TestTopics_MaxConsumers(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default (should be -1)
+	maxConsumers, err := admin.Topics().GetMaxConsumers(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, -1, maxConsumers)
+
+	// Set to 0 explicitly
+	err = admin.Topics().SetMaxConsumers(*topicName, 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	assert.Eventually(
+		t,
+		func() bool {
+			maxConsumers, err = admin.Topics().GetMaxConsumers(*topicName)
+			return err == nil && maxConsumers == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Set to positive value
+	err = admin.Topics().SetMaxConsumers(*topicName, 20)
+	assert.NoError(t, err)
+
+	// Verify returns value
+	assert.Eventually(
+		t,
+		func() bool {
+			maxConsumers, err = admin.Topics().GetMaxConsumers(*topicName)
+			return err == nil && maxConsumers == 20
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove
+	err = admin.Topics().RemoveMaxConsumers(*topicName)
+	assert.NoError(t, err)
+}
+
+func TestTopics_MaxUnackMessagesPerConsumer(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default (should be -1)
+	maxUnack, err := admin.Topics().GetMaxUnackMessagesPerConsumer(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, -1, maxUnack)
+
+	// Set to 0 explicitly
+	err = admin.Topics().SetMaxUnackMessagesPerConsumer(*topicName, 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	assert.Eventually(
+		t,
+		func() bool {
+			maxUnack, err = admin.Topics().GetMaxUnackMessagesPerConsumer(*topicName)
+			return err == nil && maxUnack == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Set to positive value
+	err = admin.Topics().SetMaxUnackMessagesPerConsumer(*topicName, 1000)
+	assert.NoError(t, err)
+
+	// Verify returns value
+	assert.Eventually(
+		t,
+		func() bool {
+			maxUnack, err = admin.Topics().GetMaxUnackMessagesPerConsumer(*topicName)
+			return err == nil && maxUnack == 1000
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove
+	err = admin.Topics().RemoveMaxUnackMessagesPerConsumer(*topicName)
+	assert.NoError(t, err)
+}
+
+func TestTopics_MaxUnackMessagesPerSubscription(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Get default (should be -1)
+	maxUnack, err := admin.Topics().GetMaxUnackMessagesPerSubscription(*topicName)
+	assert.NoError(t, err)
+	assert.Equal(t, -1, maxUnack)
+
+	// Set to 0 explicitly
+	err = admin.Topics().SetMaxUnackMessagesPerSubscription(*topicName, 0)
+	assert.NoError(t, err)
+
+	// Verify returns 0
+	assert.Eventually(
+		t,
+		func() bool {
+			maxUnack, err = admin.Topics().GetMaxUnackMessagesPerSubscription(*topicName)
+			return err == nil && maxUnack == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Set to positive value
+	err = admin.Topics().SetMaxUnackMessagesPerSubscription(*topicName, 5000)
+	assert.NoError(t, err)
+
+	// Verify returns value
+	assert.Eventually(
+		t,
+		func() bool {
+			maxUnack, err = admin.Topics().GetMaxUnackMessagesPerSubscription(*topicName)
+			return err == nil && maxUnack == 5000
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove
+	err = admin.Topics().RemoveMaxUnackMessagesPerSubscription(*topicName)
+	assert.NoError(t, err)
 }
