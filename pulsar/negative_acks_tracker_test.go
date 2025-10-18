@@ -29,6 +29,8 @@ import (
 
 const testNackDelay = 300 * time.Millisecond
 
+var testNackPrecisionBit = ptr(defaultNackPrecisionBit)
+
 type nackMockedConsumer struct {
 	ch     chan messageID
 	closed bool
@@ -80,7 +82,7 @@ func (nmc *nackMockedConsumer) Wait() <-chan messageID {
 
 func TestNacksTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(nil)
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger(), testNackPrecisionBit)
 
 	nacks.Add(&messageID{
 		ledgerID: 1,
@@ -113,7 +115,7 @@ func TestNacksTracker(t *testing.T) {
 
 func TestNacksWithBatchesTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(nil)
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger())
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, nil, log.DefaultNopLogger(), testNackPrecisionBit)
 
 	nacks.Add(&messageID{
 		ledgerID: 1,
@@ -156,7 +158,8 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 
 func TestNackBackoffTracker(t *testing.T) {
 	nmc := newNackMockedConsumer(new(defaultNackBackoffPolicy))
-	nacks := newNegativeAcksTracker(nmc, testNackDelay, new(defaultNackBackoffPolicy), log.DefaultNopLogger())
+	nacks := newNegativeAcksTracker(nmc, testNackDelay, new(defaultNackBackoffPolicy), log.DefaultNopLogger(),
+		testNackPrecisionBit)
 
 	nacks.AddMessage(new(mockMessage1))
 	nacks.AddMessage(new(mockMessage2))

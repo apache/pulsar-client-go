@@ -191,6 +191,11 @@ type ConsumerOptions struct {
 	// processed. Default is 1 min. (See `Consumer.Nack()`)
 	NackRedeliveryDelay time.Duration
 
+	// NackPrecisionBit specifies the precision bit for nack redelivery delay.
+	// This is used to trim the lower bits of the nack redelivery delay to reduce memory usage.
+	// Default is 8 bits.
+	NackPrecisionBit *int64
+
 	// Name specifies the consumer name.
 	Name string
 

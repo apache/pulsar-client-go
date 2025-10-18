@@ -1225,6 +1225,102 @@ func TestConsumerNack(t *testing.T) {
 	}
 }
 
+func TestNegativeAckPrecisionBitCnt(t *testing.T) {
+	// Validate behavior across precision bits and default (nil -> 8)
+	const delay = 300 * time.Millisecond // Tracker scans every 100ms (delay/3)
+	ctx := context.Background()
+
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	// Helper to verify behavior for a given NackPrecisionBit and boundary bits.
+	testPrecisionBitBehavior := func(nackPrecisionBit *int64, boundaryBits int64) {
+		// Create topic, consumer and producer inside the function
+		topicName := fmt.Sprintf("testNackPrecisionBit-%d-%d", boundaryBits, time.Now().UnixNano())
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:               topicName,
+			SubscriptionName:    fmt.Sprintf("sub-%d", boundaryBits),
+			Type:                Shared,
+			NackRedeliveryDelay: delay,
+			NackPrecisionBit:    nackPrecisionBit, // can be nil for default behavior
+		})
+		assert.Nil(t, err)
+		defer consumer.Close()
+
+		producer, err := client.CreateProducer(ProducerOptions{Topic: topicName})
+		assert.Nil(t, err)
+		defer producer.Close()
+
+		// Align to the next window boundary based on boundaryBits
+		windowMs := int64(1) << boundaryBits
+		nowMs := time.Now().UnixMilli()
+		nextBoundaryMs := ((nowMs / windowMs) + 1) * windowMs // Next boundary
+		time.Sleep(time.Duration(nextBoundaryMs-nowMs) * time.Millisecond)
+
+		// Send first message at the boundary
+		content1 := fmt.Sprintf("msg1-p%d", boundaryBits)
+		_, err = producer.Send(ctx, &ProducerMessage{Payload: []byte(content1)})
+		assert.Nil(t, err)
+
+		// Send second message around 3/4 into the window (still in same window)
+		time.Sleep(time.Duration(windowMs*3/4) * time.Millisecond)
+		content2 := fmt.Sprintf("msg2-p%d", boundaryBits)
+		_, err = producer.Send(ctx, &ProducerMessage{Payload: []byte(content2)})
+		assert.Nil(t, err)
+
+		// Receive and nack both messages
+		m1, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, content1, string(m1.Payload()))
+		consumer.Nack(m1)
+		m2, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		assert.Equal(t, content2, string(m2.Payload()))
+		consumer.Nack(m2)
+
+		// Expected redelivery window considering precision and tracker tick
+		expected := time.Now().Add(delay)
+		deviation := time.Duration(windowMs) * time.Millisecond
+
+		// Both should be redelivered in the same cycle
+		rm1, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		redeliveryTime1 := time.Now()
+		rm2, err := consumer.Receive(ctx)
+		assert.Nil(t, err)
+		redeliveryTime2 := time.Now()
+
+		// For both the default precision (nil) and precisionBit=8, boundaryBits is 8.
+		// This checks that the default precisionBit is correctly set to 8,
+		// and that its redelivery behavior matches a consumer explicitly configured with precisionBit=8.
+		if boundaryBits == 8 {
+			assert.InDelta(t, redeliveryTime1.UnixMilli(), redeliveryTime2.UnixMilli(), 1)
+		}
+
+		// Redelivery should occur within [expected-window, expected+buffer]
+		minExpected := expected.Add(-deviation)
+		maxExpected := expected.Add(150 * time.Millisecond)
+		assert.GreaterOrEqual(t, redeliveryTime1.UnixMilli(), minExpected.UnixMilli())
+		assert.LessOrEqual(t, redeliveryTime2.UnixMilli(), maxExpected.UnixMilli())
+
+		consumer.Ack(rm1)
+		consumer.Ack(rm2)
+	}
+
+	// Run for precision bits 1...8 with matching boundary bits
+	for bits := int64(1); bits <= int64(8); bits++ {
+		t.Run(fmt.Sprintf("PrecisionBits=%d", bits), func(_ *testing.T) {
+			testPrecisionBitBehavior(ptr(bits), bits)
+		})
+	}
+
+	// Default behavior (nil) should match precision bit 8
+	t.Run("DefaultPrecisionBits=8", func(_ *testing.T) {
+		testPrecisionBitBehavior(nil, int64(8))
+	})
+}
+
 func TestConsumerCompression(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
