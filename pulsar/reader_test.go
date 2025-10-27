@@ -191,7 +191,7 @@ func TestReaderEmptyPayloadNonemptyProps(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		_, err := producer.Send(ctx, &ProducerMessage{
 			Properties: map[string]string{"key": "value"},
-			Payload:    []byte{},
+			Payload:    nil,
 		})
 		assert.NoError(t, err)
 	}
@@ -202,7 +202,7 @@ func TestReaderEmptyPayloadNonemptyProps(t *testing.T) {
 		assert.NoError(t, err)
 
 		assert.Equal(t, map[string]string{"key": "value"}, msg.Properties())
-		assert.Equal(t, []byte{}, msg.Payload())
+		assert.Equal(t, nil, msg.Payload())
 	}
 }
 
