@@ -161,6 +161,51 @@ func TestReader(t *testing.T) {
 	}
 }
 
+func TestReaderEmptyPayloadNonemptyProps(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	// create reader
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:          topic,
+		StartMessageID: EarliestMessageID(),
+	})
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Properties: map[string]string{"key": "value"},
+			Payload: []byte{}},
+		})
+		assert.NoError(t, err)
+	}
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := reader.Next(context.Background())
+		assert.NoError(t, err)
+
+		assert.Equal(t, map[string]string{"key": "value"}, msg.Properties())
+		assert.Equal(t, []byte{}, msg.Payload())
+	}
+}
+
 func TestReaderOnPartitionedTopic(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
