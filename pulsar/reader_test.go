@@ -191,7 +191,7 @@ func TestReaderEmptyPayloadNonemptyProps(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		_, err := producer.Send(ctx, &ProducerMessage{
 			Properties: map[string]string{"key": "value"},
-			Payload: []byte{}},
+			Payload:    []byte{},
 		})
 		assert.NoError(t, err)
 	}
