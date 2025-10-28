@@ -194,12 +194,14 @@ func (c *Client) GetWithOptionsWithContext(
 	defer safeRespClose(resp)
 
 	if obj != nil {
-		if err := decodeJSONBody(resp, &obj); err != nil {
+		body, err := decodeJSONWithBody(resp, &obj)
+		if err != nil {
 			if err == io.EOF {
 				return nil, nil
 			}
 			return nil, err
 		}
+		return body, err
 	} else if !decode {
 		if file != nil {
 			_, err := io.Copy(file, resp.Body)
@@ -535,6 +537,25 @@ func decodeJSONBody(resp *http.Response, out interface{}) error {
 	}
 	dec := json.NewDecoder(resp.Body)
 	return dec.Decode(out)
+}
+
+// decodeJSONBody is used to JSON decode a body AND ALSO return the raw body bytes
+func decodeJSONWithBody(resp *http.Response, out interface{}) ([]byte, error) {
+	// Read the body first so we can return it even after decoding
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(body) == 0 {
+		return nil, nil
+	}
+
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+
+	return body, nil
 }
 
 // safeRespClose is used to close a response body
