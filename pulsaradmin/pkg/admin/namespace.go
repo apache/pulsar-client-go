@@ -94,10 +94,12 @@ type Namespaces interface {
 	// GetNamespaceMessageTTLWithContext returns the message TTL for a namespace. Returns -1 if not set
 	GetNamespaceMessageTTLWithContext(ctx context.Context, namespace string) (int, error)
 
-	// GetRetention returns the retention configuration for a namespace
+	// GetRetention returns the retention configuration for a namespace.
+	// Returns nil if the retention policy is not configured at the namespace level.
 	GetRetention(namespace string) (*utils.RetentionPolicies, error)
 
-	// GetRetentionWithContext returns the retention configuration for a namespace
+	// GetRetentionWithContext returns the retention configuration for a namespace.
+	// Returns nil if the retention policy is not configured at the namespace level.
 	GetRetentionWithContext(ctx context.Context, namespace string) (*utils.RetentionPolicies, error)
 
 	// SetRetention sets the retention configuration for all the topics on a namespace
@@ -132,10 +134,12 @@ type Namespaces interface {
 	// RemoveBacklogQuotaWithContext removes a backlog quota policy from a namespace
 	RemoveBacklogQuotaWithContext(ctx context.Context, namespace string) error
 
-	// GetTopicAutoCreation returns the topic auto-creation config for a namespace
+	// GetTopicAutoCreation returns the topic auto-creation config for a namespace.
+	// Returns nil if the topic auto-creation config is not configured at the namespace level.
 	GetTopicAutoCreation(namespace utils.NameSpaceName) (*utils.TopicAutoCreationConfig, error)
 
-	// GetTopicAutoCreationWithContext returns the topic auto-creation config for a namespace
+	// GetTopicAutoCreationWithContext returns the topic auto-creation config for a namespace.
+	// Returns nil if the topic auto-creation config is not configured at the namespace level.
 	GetTopicAutoCreationWithContext(
 		ctx context.Context,
 		namespace utils.NameSpaceName,
@@ -392,10 +396,12 @@ type Namespaces interface {
 	// SetPersistenceWithContext sets the persistence configuration for all the topics on a namespace
 	SetPersistenceWithContext(ctx context.Context, namespace string, persistence utils.PersistencePolicies) error
 
-	// GetPersistence returns the persistence configuration for a namespace
+	// GetPersistence returns the persistence configuration for a namespace.
+	// Returns nil if the persistence policy is not configured at the namespace level.
 	GetPersistence(namespace string) (*utils.PersistencePolicies, error)
 
-	// GetPersistenceWithContext returns the persistence configuration for a namespace
+	// GetPersistenceWithContext returns the persistence configuration for a namespace.
+	// Returns nil if the persistence policy is not configured at the namespace level.
 	GetPersistenceWithContext(ctx context.Context, namespace string) (*utils.PersistencePolicies, error)
 
 	// SetBookieAffinityGroup sets bookie affinity group for a namespace to isolate namespace write to bookies that are
@@ -416,10 +422,12 @@ type Namespaces interface {
 	// DeleteBookieAffinityGroupWithContext deletes bookie affinity group configured for a namespace
 	DeleteBookieAffinityGroupWithContext(ctx context.Context, namespace string) error
 
-	// GetBookieAffinityGroup returns bookie affinity group configured for a namespace
+	// GetBookieAffinityGroup returns bookie affinity group configured for a namespace.
+	// Returns nil if the bookie affinity group is not configured at the namespace level.
 	GetBookieAffinityGroup(namespace string) (*utils.BookieAffinityGroupData, error)
 
-	// GetBookieAffinityGroupWithContext returns bookie affinity group configured for a namespace
+	// GetBookieAffinityGroupWithContext returns bookie affinity group configured for a namespace.
+	// Returns nil if the bookie affinity group is not configured at the namespace level.
 	GetBookieAffinityGroupWithContext(ctx context.Context, namespace string) (*utils.BookieAffinityGroupData, error)
 
 	// Unload a namespace from the current serving broker
@@ -905,8 +913,11 @@ func (n *namespaces) GetRetentionWithContext(ctx context.Context, namespace stri
 		return nil, err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "retention")
-	err = n.pulsar.Client.GetWithContext(ctx, endpoint, &policy)
-	return &policy, err
+	body, err := n.pulsar.Client.GetBodyWithContext(ctx, endpoint, &policy)
+	if body != nil {
+		return &policy, err
+	}
+	return nil, err
 }
 
 func (n *namespaces) GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuotaType]utils.BacklogQuota, error) {
@@ -970,8 +981,11 @@ func (n *namespaces) GetTopicAutoCreationWithContext(
 ) (*utils.TopicAutoCreationConfig, error) {
 	var topicAutoCreation utils.TopicAutoCreationConfig
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "autoTopicCreation")
-	err := n.pulsar.Client.GetWithContext(ctx, endpoint, &topicAutoCreation)
-	return &topicAutoCreation, err
+	body, err := n.pulsar.Client.GetBodyWithContext(ctx, endpoint, &topicAutoCreation)
+	if body != nil {
+		return &topicAutoCreation, err
+	}
+	return nil, err
 }
 
 func (n *namespaces) SetTopicAutoCreation(namespace utils.NameSpaceName, config utils.TopicAutoCreationConfig) error {
@@ -1463,8 +1477,11 @@ func (n *namespaces) GetBookieAffinityGroupWithContext(
 		return nil, err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence", "bookieAffinity")
-	err = n.pulsar.Client.GetWithContext(ctx, endpoint, &data)
-	return &data, err
+	body, err := n.pulsar.Client.GetBodyWithContext(ctx, endpoint, &data)
+	if body != nil {
+		return &data, err
+	}
+	return nil, err
 }
 
 func (n *namespaces) GetPersistence(namespace string) (*utils.PersistencePolicies, error) {
@@ -1481,8 +1498,11 @@ func (n *namespaces) GetPersistenceWithContext(
 		return nil, err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence")
-	err = n.pulsar.Client.GetWithContext(ctx, endpoint, &persistence)
-	return &persistence, err
+	body, err := n.pulsar.Client.GetBodyWithContext(ctx, endpoint, &persistence)
+	if body != nil {
+		return &persistence, err
+	}
+	return nil, err
 }
 
 func (n *namespaces) Unload(namespace string) error {

@@ -141,6 +141,10 @@ func (c *Client) GetWithContext(ctx context.Context, endpoint string, obj interf
 	return err
 }
 
+func (c *Client) GetBodyWithContext(ctx context.Context, endpoint string, obj interface{}) ([]byte, error) {
+	return c.GetWithQueryParamsWithContext(ctx, endpoint, obj, nil, true)
+}
+
 func (c *Client) GetWithQueryParams(endpoint string, obj interface{}, params map[string]string,
 	decode bool) ([]byte, error) {
 	return c.GetWithQueryParamsWithContext(context.Background(), endpoint, obj, params, decode)

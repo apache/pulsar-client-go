@@ -516,10 +516,10 @@ func TestRetention(t *testing.T) {
 	err = admin.Topics().Create(*topicName, 4)
 	assert.NoError(t, err)
 
+	// Initial state: policy not configured, should return nil
 	topicRetentionPolicy, err := admin.Topics().GetRetention(*topicName, false)
 	assert.NoError(t, err)
-	assert.Equal(t, int64(0), topicRetentionPolicy.RetentionSizeInMB)
-	assert.Equal(t, 0, topicRetentionPolicy.RetentionTimeInMinutes)
+	assert.Nil(t, topicRetentionPolicy, "Expected nil when retention policy is not configured")
 	err = admin.Topics().SetRetention(*topicName, utils.RetentionPolicies{
 		RetentionSizeInMB:      20480,
 		RetentionTimeInMinutes: 1440,
@@ -540,13 +540,12 @@ func TestRetention(t *testing.T) {
 	)
 	err = admin.Topics().RemoveRetention(*topicName)
 	assert.NoError(t, err)
+	// After removal, should return nil (not configured)
 	assert.Eventually(
 		t,
 		func() bool {
 			topicRetentionPolicy, err = admin.Topics().GetRetention(*topicName, false)
-			return err == nil &&
-				topicRetentionPolicy.RetentionSizeInMB == int64(0) &&
-				topicRetentionPolicy.RetentionTimeInMinutes == 0
+			return err == nil && topicRetentionPolicy == nil
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -565,12 +564,10 @@ func TestSubscribeRate(t *testing.T) {
 	err = admin.Topics().Create(*topicName, 4)
 	assert.NoError(t, err)
 
-	// Get default subscribe rate (adapt to actual server behavior)
+	// Initial state: policy not configured, should return nil
 	initialSubscribeRate, err := admin.Topics().GetSubscribeRate(*topicName)
 	assert.NoError(t, err)
-	// Store initial values for later comparison instead of assuming specific defaults
-	initialConsumerRate := initialSubscribeRate.SubscribeThrottlingRatePerConsumer
-	initialRatePeriod := initialSubscribeRate.RatePeriodInSecond
+	assert.Nil(t, initialSubscribeRate, "Expected nil when subscribe rate is not configured")
 
 	// Set new subscribe rate
 	newSubscribeRate := utils.SubscribeRate{
@@ -594,16 +591,14 @@ func TestSubscribeRate(t *testing.T) {
 		100*time.Millisecond,
 	)
 
-	// Remove subscribe rate policy
+	// Remove subscribe rate policy - should return nil
 	err = admin.Topics().RemoveSubscribeRate(*topicName)
 	assert.NoError(t, err)
 	assert.Eventually(
 		t,
 		func() bool {
 			subscribeRate, err := admin.Topics().GetSubscribeRate(*topicName)
-			return err == nil &&
-				subscribeRate.SubscribeThrottlingRatePerConsumer == initialConsumerRate &&
-				subscribeRate.RatePeriodInSecond == initialRatePeriod
+			return err == nil && subscribeRate == nil
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -622,14 +617,10 @@ func TestSubscriptionDispatchRate(t *testing.T) {
 	err = admin.Topics().Create(*topicName, 4)
 	assert.NoError(t, err)
 
-	// Get default subscription dispatch rate (adapt to actual server behavior)
+	// Initial state: policy not configured, should return nil
 	initialDispatchRate, err := admin.Topics().GetSubscriptionDispatchRate(*topicName)
 	assert.NoError(t, err)
-	// Store initial values for later comparison instead of assuming specific defaults
-	initialMsgRate := initialDispatchRate.DispatchThrottlingRateInMsg
-	initialByteRate := initialDispatchRate.DispatchThrottlingRateInByte
-	initialRatePeriod := initialDispatchRate.RatePeriodInSecond
-	initialRelativeToPublish := initialDispatchRate.RelativeToPublishRate
+	assert.Nil(t, initialDispatchRate, "Expected nil when subscription dispatch rate is not configured")
 
 	// Set new subscription dispatch rate
 	newDispatchRate := utils.DispatchRateData{
@@ -657,18 +648,14 @@ func TestSubscriptionDispatchRate(t *testing.T) {
 		100*time.Millisecond,
 	)
 
-	// Remove subscription dispatch rate policy
+	// Remove subscription dispatch rate policy - should return nil
 	err = admin.Topics().RemoveSubscriptionDispatchRate(*topicName)
 	assert.NoError(t, err)
 	assert.Eventually(
 		t,
 		func() bool {
 			dispatchRate, err := admin.Topics().GetSubscriptionDispatchRate(*topicName)
-			return err == nil &&
-				dispatchRate.DispatchThrottlingRateInMsg == initialMsgRate &&
-				dispatchRate.DispatchThrottlingRateInByte == initialByteRate &&
-				dispatchRate.RatePeriodInSecond == initialRatePeriod &&
-				dispatchRate.RelativeToPublishRate == initialRelativeToPublish
+			return err == nil && dispatchRate == nil
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -943,14 +930,10 @@ func TestReplicatorDispatchRate(t *testing.T) {
 	err = admin.Topics().Create(*topicName, 4)
 	assert.NoError(t, err)
 
-	// Get default replicator dispatch rate (adapt to actual server behavior)
+	// Initial state: policy not configured, should return nil
 	initialDispatchRate, err := admin.Topics().GetReplicatorDispatchRate(*topicName)
 	assert.NoError(t, err)
-	// Store initial values for later comparison instead of assuming specific defaults
-	initialMsgRate := initialDispatchRate.DispatchThrottlingRateInMsg
-	initialByteRate := initialDispatchRate.DispatchThrottlingRateInByte
-	initialRatePeriod := initialDispatchRate.RatePeriodInSecond
-	initialRelativeToPublish := initialDispatchRate.RelativeToPublishRate
+	assert.Nil(t, initialDispatchRate, "Expected nil when replicator dispatch rate is not configured")
 
 	// Set new replicator dispatch rate
 	newDispatchRate := utils.DispatchRateData{
@@ -978,18 +961,14 @@ func TestReplicatorDispatchRate(t *testing.T) {
 		100*time.Millisecond,
 	)
 
-	// Remove replicator dispatch rate policy
+	// Remove replicator dispatch rate policy - should return nil
 	err = admin.Topics().RemoveReplicatorDispatchRate(*topicName)
 	assert.NoError(t, err)
 	assert.Eventually(
 		t,
 		func() bool {
 			dispatchRate, err := admin.Topics().GetReplicatorDispatchRate(*topicName)
-			return err == nil &&
-				dispatchRate.DispatchThrottlingRateInMsg == initialMsgRate &&
-				dispatchRate.DispatchThrottlingRateInByte == initialByteRate &&
-				dispatchRate.RatePeriodInSecond == initialRatePeriod &&
-				dispatchRate.RelativeToPublishRate == initialRelativeToPublish
+			return err == nil && dispatchRate == nil
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -1008,12 +987,10 @@ func TestOffloadPolicies(t *testing.T) {
 	err = admin.Topics().Create(*topicName, 4)
 	assert.NoError(t, err)
 
-	// Get default offload policies
+	// Initial state: policy not configured, should return nil
 	offloadPolicies, err := admin.Topics().GetOffloadPolicies(*topicName)
 	assert.NoError(t, err)
-	// Default values should be empty/default
-	assert.Equal(t, "", offloadPolicies.ManagedLedgerOffloadDriver)
-	assert.Equal(t, 0, offloadPolicies.ManagedLedgerOffloadMaxThreads)
+	assert.Nil(t, offloadPolicies, "Expected nil when offload policies are not configured")
 
 	// Set new offload policies
 	newOffloadPolicies := utils.OffloadPolicies{
@@ -1045,16 +1022,14 @@ func TestOffloadPolicies(t *testing.T) {
 		100*time.Millisecond,
 	)
 
-	// Remove offload policies
+	// Remove offload policies - should return nil
 	err = admin.Topics().RemoveOffloadPolicies(*topicName)
 	assert.NoError(t, err)
 	assert.Eventually(
 		t,
 		func() bool {
 			offloadPolicies, err = admin.Topics().GetOffloadPolicies(*topicName)
-			return err == nil &&
-				offloadPolicies.ManagedLedgerOffloadDriver == "" &&
-				offloadPolicies.ManagedLedgerOffloadMaxThreads == 0
+			return err == nil && offloadPolicies == nil
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -1073,10 +1048,10 @@ func TestAutoSubscriptionCreation(t *testing.T) {
 	err = admin.Topics().Create(*topicName, 4)
 	assert.NoError(t, err)
 
-	// Get default auto subscription creation
+	// Initial state: policy not configured, should return nil
 	autoSubCreation, err := admin.Topics().GetAutoSubscriptionCreation(*topicName)
 	assert.NoError(t, err)
-	assert.Equal(t, false, autoSubCreation.AllowAutoSubscriptionCreation)
+	assert.Nil(t, autoSubCreation, "Expected nil when auto subscription creation is not configured")
 
 	// Set auto subscription creation to true
 	newAutoSubCreation := utils.AutoSubscriptionCreationOverride{
@@ -1098,15 +1073,14 @@ func TestAutoSubscriptionCreation(t *testing.T) {
 		100*time.Millisecond,
 	)
 
-	// Remove auto subscription creation policy
+	// Remove auto subscription creation policy - should return nil
 	err = admin.Topics().RemoveAutoSubscriptionCreation(*topicName)
 	assert.NoError(t, err)
 	assert.Eventually(
 		t,
 		func() bool {
 			autoSubCreation, err = admin.Topics().GetAutoSubscriptionCreation(*topicName)
-			return err == nil &&
-				autoSubCreation.AllowAutoSubscriptionCreation == false
+			return err == nil && autoSubCreation == nil
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -1368,4 +1342,215 @@ func TestTopics_MaxUnackMessagesPerSubscription(t *testing.T) {
 	// Remove
 	err = admin.Topics().RemoveMaxUnackMessagesPerSubscription(*topicName)
 	assert.NoError(t, err)
+}
+
+func TestTopics_Persistence(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Initial state: policy not configured, should return nil
+	persistence, err := admin.Topics().GetPersistence(*topicName)
+	assert.NoError(t, err)
+	assert.Nil(t, persistence, "Expected nil when persistence is not configured")
+
+	// Set new persistence policy
+	newPersistence := utils.PersistenceData{
+		BookkeeperEnsemble:             3,
+		BookkeeperWriteQuorum:          2,
+		BookkeeperAckQuorum:            2,
+		ManagedLedgerMaxMarkDeleteRate: 10.0,
+	}
+	err = admin.Topics().SetPersistence(*topicName, newPersistence)
+	assert.NoError(t, err)
+
+	// Verify persistence is set
+	assert.Eventually(
+		t,
+		func() bool {
+			persistence, err = admin.Topics().GetPersistence(*topicName)
+			return err == nil && persistence != nil &&
+				persistence.BookkeeperEnsemble == 3 &&
+				persistence.BookkeeperWriteQuorum == 2
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove persistence policy - should return nil
+	err = admin.Topics().RemovePersistence(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			persistence, err = admin.Topics().GetPersistence(*topicName)
+			return err == nil && persistence == nil
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestTopics_DelayedDelivery(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Initial state: policy not configured, should return nil
+	delayedDelivery, err := admin.Topics().GetDelayedDelivery(*topicName)
+	assert.NoError(t, err)
+	assert.Nil(t, delayedDelivery, "Expected nil when delayed delivery is not configured")
+
+	// Set new delayed delivery policy
+	newDelayedDelivery := utils.DelayedDeliveryData{
+		Active:           true,
+		TickTime:         1000,
+		MaxDelayInMillis: 60000,
+	}
+	err = admin.Topics().SetDelayedDelivery(*topicName, newDelayedDelivery)
+	assert.NoError(t, err)
+
+	// Verify delayed delivery is set
+	assert.Eventually(
+		t,
+		func() bool {
+			delayedDelivery, err = admin.Topics().GetDelayedDelivery(*topicName)
+			return err == nil && delayedDelivery != nil &&
+				delayedDelivery.Active == true &&
+				delayedDelivery.TickTime == 1000
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove delayed delivery policy - should return nil
+	err = admin.Topics().RemoveDelayedDelivery(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			delayedDelivery, err = admin.Topics().GetDelayedDelivery(*topicName)
+			return err == nil && delayedDelivery == nil
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestTopics_DispatchRate(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Initial state: policy not configured, should return nil
+	dispatchRate, err := admin.Topics().GetDispatchRate(*topicName)
+	assert.NoError(t, err)
+	assert.Nil(t, dispatchRate, "Expected nil when dispatch rate is not configured")
+
+	// Set new dispatch rate
+	newDispatchRate := utils.DispatchRateData{
+		DispatchThrottlingRateInMsg:  100,
+		DispatchThrottlingRateInByte: 1048576,
+		RatePeriodInSecond:           60,
+		RelativeToPublishRate:        false,
+	}
+	err = admin.Topics().SetDispatchRate(*topicName, newDispatchRate)
+	assert.NoError(t, err)
+
+	// Verify dispatch rate is set
+	assert.Eventually(
+		t,
+		func() bool {
+			dispatchRate, err = admin.Topics().GetDispatchRate(*topicName)
+			return err == nil && dispatchRate != nil &&
+				dispatchRate.DispatchThrottlingRateInMsg == 100
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove dispatch rate policy - should return nil
+	err = admin.Topics().RemoveDispatchRate(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			dispatchRate, err = admin.Topics().GetDispatchRate(*topicName)
+			return err == nil && dispatchRate == nil
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestTopics_PublishRate(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	// Initial state: policy not configured, should return nil
+	publishRate, err := admin.Topics().GetPublishRate(*topicName)
+	assert.NoError(t, err)
+	assert.Nil(t, publishRate, "Expected nil when publish rate is not configured")
+
+	// Set new publish rate
+	newPublishRate := utils.PublishRateData{
+		PublishThrottlingRateInMsg:  200,
+		PublishThrottlingRateInByte: 2097152,
+	}
+	err = admin.Topics().SetPublishRate(*topicName, newPublishRate)
+	assert.NoError(t, err)
+
+	// Verify publish rate is set
+	assert.Eventually(
+		t,
+		func() bool {
+			publishRate, err = admin.Topics().GetPublishRate(*topicName)
+			return err == nil && publishRate != nil &&
+				publishRate.PublishThrottlingRateInMsg == 200
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	// Remove publish rate policy - should return nil
+	err = admin.Topics().RemovePublishRate(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			publishRate, err = admin.Topics().GetPublishRate(*topicName)
+			return err == nil && publishRate == nil
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
 }
