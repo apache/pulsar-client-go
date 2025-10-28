@@ -1363,9 +1363,9 @@ func TestTopics_Persistence(t *testing.T) {
 
 	// Set new persistence policy
 	newPersistence := utils.PersistenceData{
-		BookkeeperEnsemble:             3,
-		BookkeeperWriteQuorum:          2,
-		BookkeeperAckQuorum:            2,
+		BookkeeperEnsemble:             1,
+		BookkeeperWriteQuorum:          1,
+		BookkeeperAckQuorum:            1,
 		ManagedLedgerMaxMarkDeleteRate: 10.0,
 	}
 	err = admin.Topics().SetPersistence(*topicName, newPersistence)
@@ -1377,8 +1377,8 @@ func TestTopics_Persistence(t *testing.T) {
 		func() bool {
 			persistence, err = admin.Topics().GetPersistence(*topicName)
 			return err == nil && persistence != nil &&
-				persistence.BookkeeperEnsemble == 3 &&
-				persistence.BookkeeperWriteQuorum == 2
+				persistence.BookkeeperEnsemble == 1 &&
+				persistence.BookkeeperWriteQuorum == 1
 		},
 		10*time.Second,
 		100*time.Millisecond,

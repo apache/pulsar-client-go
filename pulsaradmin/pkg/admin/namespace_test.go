@@ -18,6 +18,7 @@
 package admin
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -791,7 +792,12 @@ func TestNamespaces_Retention(t *testing.T) {
 }
 
 func TestNamespaces_BookieAffinityGroup(t *testing.T) {
-	config := &config.Config{}
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	require.NoError(t, err)
+
+	config := &config.Config{
+		Token: string(readFile),
+	}
 	admin, err := New(config)
 	require.NoError(t, err)
 	require.NotNil(t, admin)
@@ -841,9 +847,9 @@ func TestNamespaces_Persistence(t *testing.T) {
 
 	// Set new persistence policy
 	newPersistence := utils.PersistencePolicies{
-		BookkeeperEnsemble:             3,
-		BookkeeperWriteQuorum:          2,
-		BookkeeperAckQuorum:            2,
+		BookkeeperEnsemble:             1,
+		BookkeeperWriteQuorum:          1,
+		BookkeeperAckQuorum:            1,
 		ManagedLedgerMaxMarkDeleteRate: 10.0,
 	}
 	err = admin.Namespaces().SetPersistence(namespaceName, newPersistence)
@@ -853,6 +859,6 @@ func TestNamespaces_Persistence(t *testing.T) {
 	persistence, err = admin.Namespaces().GetPersistence(namespaceName)
 	assert.NoError(t, err)
 	assert.NotNil(t, persistence, "Expected non-nil when persistence is configured")
-	assert.Equal(t, 3, persistence.BookkeeperEnsemble)
-	assert.Equal(t, 2, persistence.BookkeeperWriteQuorum)
+	assert.Equal(t, 1, persistence.BookkeeperEnsemble)
+	assert.Equal(t, 1, persistence.BookkeeperWriteQuorum)
 }
