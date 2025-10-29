@@ -201,7 +201,7 @@ func (c *Client) GetWithOptionsWithContext(
 			}
 			return nil, err
 		}
-		return body, err
+		return body, nil
 	} else if !decode {
 		if file != nil {
 			_, err := io.Copy(file, resp.Body)
