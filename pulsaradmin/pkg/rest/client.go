@@ -539,7 +539,7 @@ func decodeJSONBody(resp *http.Response, out interface{}) error {
 	return dec.Decode(out)
 }
 
-// decodeJSONBody is used to JSON decode a body AND ALSO return the raw body bytes
+// decodeJSONWithBody is used to JSON decode a body AND ALSO return the raw body bytes
 func decodeJSONWithBody(resp *http.Response, out interface{}) ([]byte, error) {
 	// Read the body first so we can return it even after decoding
 	body, err := io.ReadAll(resp.Body)
