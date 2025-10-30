@@ -18,6 +18,7 @@
 package admin
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -156,23 +157,20 @@ func TestGetTopicAutoCreation(t *testing.T) {
 	assert.Equal(t, nil, err)
 	topicAutoCreation, err := admin.Namespaces().GetTopicAutoCreation(*namespace)
 	assert.Equal(t, nil, err)
+	assert.NotNil(t, topicAutoCreation, "Expected non-nil when topic auto creation is configured")
 	expected := utils.TopicAutoCreationConfig{
 		Allow: true,
 		Type:  utils.NonPartitioned,
 	}
 	assert.Equal(t, expected, *topicAutoCreation)
 
-	// remove the topic auto creation config and get it
+	// remove the topic auto creation config and get it - should return nil
 	err = admin.Namespaces().RemoveTopicAutoCreation(*namespace)
 	assert.Equal(t, nil, err)
 
 	topicAutoCreation, err = admin.Namespaces().GetTopicAutoCreation(*namespace)
 	assert.Equal(t, nil, err)
-	expected = utils.TopicAutoCreationConfig{
-		Allow: false,
-		Type:  "",
-	}
-	assert.Equal(t, expected, *topicAutoCreation)
+	assert.Nil(t, topicAutoCreation, "Expected nil when topic auto creation is not configured")
 }
 
 func TestRevokeSubPermission(t *testing.T) {
@@ -762,4 +760,105 @@ func TestNamespaces_MaxProducersPerTopic(t *testing.T) {
 	maxProducers, err = admin.Namespaces().GetMaxProducersPerTopic(*namespace)
 	assert.NoError(t, err)
 	assert.Equal(t, 50, maxProducers)
+}
+
+func TestNamespaces_Retention(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespaceName := "public/default"
+
+	// Initial state: policy not configured, should return nil
+	retention, err := admin.Namespaces().GetRetention(namespaceName)
+	assert.NoError(t, err)
+	assert.Nil(t, retention, "Expected nil when retention is not configured")
+
+	// Set new retention policy
+	newRetention := utils.RetentionPolicies{
+		RetentionSizeInMB:      1024,
+		RetentionTimeInMinutes: 60,
+	}
+	err = admin.Namespaces().SetRetention(namespaceName, newRetention)
+	assert.NoError(t, err)
+
+	// Verify retention is set
+	retention, err = admin.Namespaces().GetRetention(namespaceName)
+	assert.NoError(t, err)
+	assert.NotNil(t, retention, "Expected non-nil when retention is configured")
+	assert.Equal(t, int64(1024), retention.RetentionSizeInMB)
+	assert.Equal(t, 60, retention.RetentionTimeInMinutes)
+}
+
+func TestNamespaces_BookieAffinityGroup(t *testing.T) {
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	require.NoError(t, err)
+
+	config := &config.Config{
+		Token: string(readFile),
+	}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespaceName := "public/default"
+
+	// Initial state: policy not configured, should return nil
+	bookieAffinity, err := admin.Namespaces().GetBookieAffinityGroup(namespaceName)
+	assert.NoError(t, err)
+	assert.Nil(t, bookieAffinity, "Expected nil when bookie affinity group is not configured")
+
+	// Set new bookie affinity group
+	newBookieAffinity := utils.BookieAffinityGroupData{
+		BookkeeperAffinityGroupPrimary:   "primary-group",
+		BookkeeperAffinityGroupSecondary: "secondary-group",
+	}
+	err = admin.Namespaces().SetBookieAffinityGroup(namespaceName, newBookieAffinity)
+	assert.NoError(t, err)
+
+	// Verify bookie affinity group is set
+	bookieAffinity, err = admin.Namespaces().GetBookieAffinityGroup(namespaceName)
+	assert.NoError(t, err)
+	assert.NotNil(t, bookieAffinity, "Expected non-nil when bookie affinity group is configured")
+	assert.Equal(t, "primary-group", bookieAffinity.BookkeeperAffinityGroupPrimary)
+	assert.Equal(t, "secondary-group", bookieAffinity.BookkeeperAffinityGroupSecondary)
+
+	// Remove bookie affinity group - should return nil
+	err = admin.Namespaces().DeleteBookieAffinityGroup(namespaceName)
+	assert.NoError(t, err)
+	bookieAffinity, err = admin.Namespaces().GetBookieAffinityGroup(namespaceName)
+	assert.NoError(t, err)
+	assert.Nil(t, bookieAffinity, "Expected nil after removing bookie affinity group")
+}
+
+func TestNamespaces_Persistence(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespaceName := "public/default"
+
+	// Initial state: policy not configured, should return nil
+	persistence, err := admin.Namespaces().GetPersistence(namespaceName)
+	assert.NoError(t, err)
+	assert.Nil(t, persistence, "Expected nil when persistence is not configured")
+
+	// Set new persistence policy
+	newPersistence := utils.PersistencePolicies{
+		BookkeeperEnsemble:             1,
+		BookkeeperWriteQuorum:          1,
+		BookkeeperAckQuorum:            1,
+		ManagedLedgerMaxMarkDeleteRate: 10.0,
+	}
+	err = admin.Namespaces().SetPersistence(namespaceName, newPersistence)
+	assert.NoError(t, err)
+
+	// Verify persistence is set
+	persistence, err = admin.Namespaces().GetPersistence(namespaceName)
+	assert.NoError(t, err)
+	assert.NotNil(t, persistence, "Expected non-nil when persistence is configured")
+	assert.Equal(t, 1, persistence.BookkeeperEnsemble)
+	assert.Equal(t, 1, persistence.BookkeeperWriteQuorum)
 }

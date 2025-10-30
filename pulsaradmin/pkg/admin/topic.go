@@ -543,10 +543,12 @@ type Topics interface {
 	// RemoveMaxUnackMessagesPerSubscriptionWithContext removes max unacked messages policy on subscription for a topic
 	RemoveMaxUnackMessagesPerSubscriptionWithContext(context.Context, utils.TopicName) error
 
-	// GetPersistence returns the persistence policies for a topic
+	// GetPersistence returns the persistence policies for a topic.
+	// Returns nil if the persistence policy is not configured at the topic level.
 	GetPersistence(utils.TopicName) (*utils.PersistenceData, error)
 
-	// GetPersistenceWithContext returns the persistence policies for a topic
+	// GetPersistenceWithContext returns the persistence policies for a topic.
+	// Returns nil if the persistence policy is not configured at the topic level.
 	GetPersistenceWithContext(context.Context, utils.TopicName) (*utils.PersistenceData, error)
 
 	// SetPersistence sets the persistence policies for a topic
@@ -561,10 +563,12 @@ type Topics interface {
 	// RemovePersistenceWithContext removes the persistence policies for a topic
 	RemovePersistenceWithContext(context.Context, utils.TopicName) error
 
-	// GetDelayedDelivery returns the delayed delivery policy for a topic
+	// GetDelayedDelivery returns the delayed delivery policy for a topic.
+	// Returns nil if the delayed delivery policy is not configured at the topic level.
 	GetDelayedDelivery(utils.TopicName) (*utils.DelayedDeliveryData, error)
 
-	// GetDelayedDeliveryWithContext returns the delayed delivery policy for a topic
+	// GetDelayedDeliveryWithContext returns the delayed delivery policy for a topic.
+	// Returns nil if the delayed delivery policy is not configured at the topic level.
 	GetDelayedDeliveryWithContext(context.Context, utils.TopicName) (*utils.DelayedDeliveryData, error)
 
 	// SetDelayedDelivery sets the delayed delivery policy on a topic
@@ -579,10 +583,12 @@ type Topics interface {
 	// RemoveDelayedDeliveryWithContext removes the delayed delivery policy on a topic
 	RemoveDelayedDeliveryWithContext(context.Context, utils.TopicName) error
 
-	// GetDispatchRate returns message dispatch rate for a topic
+	// GetDispatchRate returns message dispatch rate for a topic.
+	// Returns nil if the dispatch rate is not configured at the topic level.
 	GetDispatchRate(utils.TopicName) (*utils.DispatchRateData, error)
 
-	// GetDispatchRateWithContext returns message dispatch rate for a topic
+	// GetDispatchRateWithContext returns message dispatch rate for a topic.
+	// Returns nil if the dispatch rate is not configured at the topic level.
 	GetDispatchRateWithContext(context.Context, utils.TopicName) (*utils.DispatchRateData, error)
 
 	// SetDispatchRate sets message dispatch rate for a topic
@@ -597,10 +603,12 @@ type Topics interface {
 	// RemoveDispatchRateWithContext removes message dispatch rate for a topic
 	RemoveDispatchRateWithContext(context.Context, utils.TopicName) error
 
-	// GetPublishRate returns message publish rate for a topic
+	// GetPublishRate returns message publish rate for a topic.
+	// Returns nil if the publish rate is not configured at the topic level.
 	GetPublishRate(utils.TopicName) (*utils.PublishRateData, error)
 
-	// GetPublishRateWithContext returns message publish rate for a topic
+	// GetPublishRateWithContext returns message publish rate for a topic.
+	// Returns nil if the publish rate is not configured at the topic level.
 	GetPublishRateWithContext(context.Context, utils.TopicName) (*utils.PublishRateData, error)
 
 	// SetPublishRate sets message publish rate for a topic
@@ -645,7 +653,8 @@ type Topics interface {
 	// RemoveDeduplicationStatusWithContext removes the deduplication policy for a topic
 	RemoveDeduplicationStatusWithContext(context.Context, utils.TopicName) error
 
-	// GetRetention returns the retention configuration for a topic
+	// GetRetention returns the retention configuration for a topic.
+	// Returns nil if the retention policy is not configured at the topic level.
 	//
 	// @param topic
 	//        topicName struct
@@ -654,7 +663,8 @@ type Topics interface {
 	//        in namespace or broker level, if no policy set in topic level
 	GetRetention(topic utils.TopicName, applied bool) (*utils.RetentionPolicies, error)
 
-	// GetRetentionWithContext returns the retention configuration for a topic
+	// GetRetentionWithContext returns the retention configuration for a topic.
+	// Returns nil if the retention policy is not configured at the topic level.
 	//
 	// @param ctx
 	//        context used for the request
@@ -821,10 +831,12 @@ type Topics interface {
 	//        list of replication cluster id
 	SetReplicationClustersWithContext(ctx context.Context, topic utils.TopicName, data []string) error
 
-	// GetSubscribeRate returns subscribe rate configuration for a topic
+	// GetSubscribeRate returns subscribe rate configuration for a topic.
+	// Returns nil if the subscribe rate is not configured at the topic level.
 	GetSubscribeRate(utils.TopicName) (*utils.SubscribeRate, error)
 
-	// GetSubscribeRateWithContext returns subscribe rate configuration for a topic
+	// GetSubscribeRateWithContext returns subscribe rate configuration for a topic.
+	// Returns nil if the subscribe rate is not configured at the topic level.
 	GetSubscribeRateWithContext(context.Context, utils.TopicName) (*utils.SubscribeRate, error)
 
 	// SetSubscribeRate sets subscribe rate configuration for a topic
@@ -839,10 +851,12 @@ type Topics interface {
 	// RemoveSubscribeRateWithContext removes subscribe rate configuration for a topic
 	RemoveSubscribeRateWithContext(context.Context, utils.TopicName) error
 
-	// GetSubscriptionDispatchRate returns subscription dispatch rate for a topic
+	// GetSubscriptionDispatchRate returns subscription dispatch rate for a topic.
+	// Returns nil if the subscription dispatch rate is not configured at the topic level.
 	GetSubscriptionDispatchRate(utils.TopicName) (*utils.DispatchRateData, error)
 
-	// GetSubscriptionDispatchRateWithContext returns subscription dispatch rate for a topic
+	// GetSubscriptionDispatchRateWithContext returns subscription dispatch rate for a topic.
+	// Returns nil if the subscription dispatch rate is not configured at the topic level.
 	GetSubscriptionDispatchRateWithContext(context.Context, utils.TopicName) (*utils.DispatchRateData, error)
 
 	// SetSubscriptionDispatchRate sets subscription dispatch rate for a topic
@@ -948,10 +962,12 @@ type Topics interface {
 	// RemoveDeduplicationSnapshotIntervalWithContext removes deduplication snapshot interval for a topic
 	RemoveDeduplicationSnapshotIntervalWithContext(context.Context, utils.TopicName) error
 
-	// GetReplicatorDispatchRate returns replicator dispatch rate for a topic
+	// GetReplicatorDispatchRate returns replicator dispatch rate for a topic.
+	// Returns nil if the replicator dispatch rate is not configured at the topic level.
 	GetReplicatorDispatchRate(utils.TopicName) (*utils.DispatchRateData, error)
 
-	// GetReplicatorDispatchRateWithContext returns replicator dispatch rate for a topic
+	// GetReplicatorDispatchRateWithContext returns replicator dispatch rate for a topic.
+	// Returns nil if the replicator dispatch rate is not configured at the topic level.
 	GetReplicatorDispatchRateWithContext(context.Context, utils.TopicName) (*utils.DispatchRateData, error)
 
 	// SetReplicatorDispatchRate sets replicator dispatch rate for a topic
@@ -966,10 +982,12 @@ type Topics interface {
 	// RemoveReplicatorDispatchRateWithContext removes replicator dispatch rate for a topic
 	RemoveReplicatorDispatchRateWithContext(context.Context, utils.TopicName) error
 
-	// GetOffloadPolicies returns offload policies for a topic
+	// GetOffloadPolicies returns offload policies for a topic.
+	// Returns nil if the offload policies are not configured at the topic level.
 	GetOffloadPolicies(utils.TopicName) (*utils.OffloadPolicies, error)
 
-	// GetOffloadPoliciesWithContext returns offload policies for a topic
+	// GetOffloadPoliciesWithContext returns offload policies for a topic.
+	// Returns nil if the offload policies are not configured at the topic level.
 	GetOffloadPoliciesWithContext(context.Context, utils.TopicName) (*utils.OffloadPolicies, error)
 
 	// SetOffloadPolicies sets offload policies for a topic
@@ -984,10 +1002,12 @@ type Topics interface {
 	// RemoveOffloadPoliciesWithContext removes offload policies for a topic
 	RemoveOffloadPoliciesWithContext(context.Context, utils.TopicName) error
 
-	// GetAutoSubscriptionCreation returns auto subscription creation override for a topic
+	// GetAutoSubscriptionCreation returns auto subscription creation override for a topic.
+	// Returns nil if the auto subscription creation override is not configured at the topic level.
 	GetAutoSubscriptionCreation(utils.TopicName) (*utils.AutoSubscriptionCreationOverride, error)
 
-	// GetAutoSubscriptionCreationWithContext returns auto subscription creation override for a topic
+	// GetAutoSubscriptionCreationWithContext returns auto subscription creation override for a topic.
+	// Returns nil if the auto subscription creation override is not configured at the topic level.
 	GetAutoSubscriptionCreationWithContext(
 		context.Context,
 		utils.TopicName,
@@ -1629,8 +1649,11 @@ func (t *topics) GetPersistence(topic utils.TopicName) (*utils.PersistenceData, 
 func (t *topics) GetPersistenceWithContext(ctx context.Context, topic utils.TopicName) (*utils.PersistenceData, error) {
 	var persistenceData utils.PersistenceData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "persistence")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &persistenceData)
-	return &persistenceData, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &persistenceData)
+	if body != nil {
+		return &persistenceData, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetPersistence(topic utils.TopicName, persistenceData utils.PersistenceData) error {
@@ -1665,8 +1688,11 @@ func (t *topics) GetDelayedDeliveryWithContext(
 ) (*utils.DelayedDeliveryData, error) {
 	var delayedDeliveryData utils.DelayedDeliveryData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &delayedDeliveryData)
-	return &delayedDeliveryData, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &delayedDeliveryData)
+	if body != nil {
+		return &delayedDeliveryData, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetDelayedDelivery(topic utils.TopicName, delayedDeliveryData utils.DelayedDeliveryData) error {
@@ -1701,8 +1727,11 @@ func (t *topics) GetDispatchRateWithContext(
 ) (*utils.DispatchRateData, error) {
 	var dispatchRateData utils.DispatchRateData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &dispatchRateData)
-	return &dispatchRateData, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &dispatchRateData)
+	if body != nil {
+		return &dispatchRateData, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetDispatchRate(topic utils.TopicName, dispatchRateData utils.DispatchRateData) error {
@@ -1734,8 +1763,11 @@ func (t *topics) GetPublishRate(topic utils.TopicName) (*utils.PublishRateData, 
 func (t *topics) GetPublishRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.PublishRateData, error) {
 	var publishRateData utils.PublishRateData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "publishRate")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &publishRateData)
-	return &publishRateData, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &publishRateData)
+	if body != nil {
+		return &publishRateData, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetPublishRate(topic utils.TopicName, publishRateData utils.PublishRateData) error {
@@ -1800,10 +1832,13 @@ func (t *topics) GetRetentionWithContext(
 ) (*utils.RetentionPolicies, error) {
 	var policy utils.RetentionPolicies
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
-	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &policy, map[string]string{
+	body, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &policy, map[string]string{
 		"applied": strconv.FormatBool(applied),
 	}, true)
-	return &policy, err
+	if body != nil {
+		return &policy, err
+	}
+	return nil, err
 }
 
 func (t *topics) RemoveRetention(topic utils.TopicName) error {
@@ -1979,8 +2014,11 @@ func (t *topics) GetSubscribeRate(topic utils.TopicName) (*utils.SubscribeRate, 
 func (t *topics) GetSubscribeRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.SubscribeRate, error) {
 	var subscribeRate utils.SubscribeRate
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscribeRate")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &subscribeRate)
-	return &subscribeRate, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &subscribeRate)
+	if body != nil {
+		return &subscribeRate, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetSubscribeRate(topic utils.TopicName, subscribeRate utils.SubscribeRate) error {
@@ -2015,8 +2053,11 @@ func (t *topics) GetSubscriptionDispatchRateWithContext(
 ) (*utils.DispatchRateData, error) {
 	var dispatchRate utils.DispatchRateData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscriptionDispatchRate")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &dispatchRate)
-	return &dispatchRate, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &dispatchRate)
+	if body != nil {
+		return &dispatchRate, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetSubscriptionDispatchRate(topic utils.TopicName, dispatchRate utils.DispatchRateData) error {
@@ -2212,8 +2253,11 @@ func (t *topics) GetReplicatorDispatchRateWithContext(
 ) (*utils.DispatchRateData, error) {
 	var dispatchRate utils.DispatchRateData
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replicatorDispatchRate")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &dispatchRate)
-	return &dispatchRate, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &dispatchRate)
+	if body != nil {
+		return &dispatchRate, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetReplicatorDispatchRate(topic utils.TopicName, dispatchRate utils.DispatchRateData) error {
@@ -2248,8 +2292,11 @@ func (t *topics) GetAutoSubscriptionCreationWithContext(
 ) (*utils.AutoSubscriptionCreationOverride, error) {
 	var autoSubCreation utils.AutoSubscriptionCreationOverride
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "autoSubscriptionCreation")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &autoSubCreation)
-	return &autoSubCreation, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &autoSubCreation)
+	if body != nil {
+		return &autoSubCreation, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetAutoSubscriptionCreation(topic utils.TopicName,
@@ -2316,8 +2363,11 @@ func (t *topics) GetOffloadPoliciesWithContext(
 ) (*utils.OffloadPolicies, error) {
 	var offloadPolicies utils.OffloadPolicies
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &offloadPolicies)
-	return &offloadPolicies, err
+	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &offloadPolicies)
+	if body != nil {
+		return &offloadPolicies, err
+	}
+	return nil, err
 }
 
 func (t *topics) SetOffloadPolicies(topic utils.TopicName, offloadPolicies utils.OffloadPolicies) error {
