@@ -292,7 +292,7 @@ func TestUnloadTopicBeforeConsume(t *testing.T) {
 	log.Println("unloading topic")
 	topicName, err := utils.GetTopicName(topic)
 	assert.Nil(t, err)
-	// unload topic to trigger consumer reconnect and send a permits
+	// unload topic to trigger consumer reconnect and send permits
 	err = admin.Topics().Unload(*topicName)
 	assert.Nil(t, err)
 	log.Println("unloaded topic")
