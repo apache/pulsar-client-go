@@ -254,7 +254,6 @@ func TestUnloadTopicBeforeConsume(t *testing.T) {
 	admin, err := pulsaradmin.NewClient(&config.Config{})
 	assert.Nil(t, err)
 
-	assert.Nil(t, err)
 	defer client.Close()
 
 	topic := newTopicName()
