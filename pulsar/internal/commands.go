@@ -75,6 +75,8 @@ type MessageReader struct {
 	buffer Buffer
 	// true if we are parsing a batched message - set after parsing the message metadata
 	batched bool
+	// true if the message has properties - set after parsing the message metadata
+	hasProperties bool
 }
 
 // ReadChecksum
@@ -118,6 +120,10 @@ func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
 		r.batched = true
 	}
 
+	if meta.Properties != nil && len(meta.Properties) > 0 {
+		r.hasProperties = true
+	}
+
 	return &meta, nil
 }
 
@@ -137,6 +143,9 @@ func (r *MessageReader) ReadBrokerMetadata() (*pb.BrokerEntryMetadata, error) {
 
 func (r *MessageReader) ReadMessage() (*pb.SingleMessageMetadata, []byte, error) {
 	if r.buffer.ReadableBytes() == 0 && r.buffer.Capacity() > 0 {
+		if r.hasProperties {
+			return nil, []byte{}, nil
+		}
 		return nil, nil, ErrEOM
 	}
 	if !r.batched {
