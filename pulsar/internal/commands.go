@@ -120,7 +120,7 @@ func (r *MessageReader) ReadMessageMetadata() (*pb.MessageMetadata, error) {
 		r.batched = true
 	}
 
-	if meta.Properties != nil && len(meta.Properties) > 0 {
+	if len(meta.Properties) > 0 {
 		r.hasProperties = true
 	}
 
