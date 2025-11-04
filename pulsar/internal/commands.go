@@ -143,7 +143,7 @@ func (r *MessageReader) ReadBrokerMetadata() (*pb.BrokerEntryMetadata, error) {
 
 func (r *MessageReader) ReadMessage() (*pb.SingleMessageMetadata, []byte, error) {
 	if r.buffer.ReadableBytes() == 0 && r.buffer.Capacity() > 0 {
-		if r.hasProperties {
+		if !r.batched && r.hasProperties {
 			return nil, []byte{}, nil
 		}
 		return nil, nil, ErrEOM
