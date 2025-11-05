@@ -22,6 +22,7 @@ type SchemaInfo struct {
 	Schema     []byte            `json:"schema"`
 	Type       string            `json:"type"`
 	Properties map[string]string `json:"properties"`
+	Timestamp  int64             `json:"timestamp,omitempty"`
 }
 
 type SchemaInfoWithVersion struct {
@@ -64,6 +65,7 @@ func ConvertGetSchemaResponseToSchemaInfo(tn *TopicName, response GetSchemaRespo
 	info.Type = response.Type
 	info.Properties = response.Properties
 	info.Name = tn.GetLocalName()
+	info.Timestamp = response.Timestamp
 
 	return info
 }
