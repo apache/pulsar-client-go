@@ -120,6 +120,8 @@ func TestSchemas_CreateSchemaBySchemaInfo(t *testing.T) {
 	info, err := admin.Schemas().GetSchemaInfo(topic)
 	assert.NoError(t, err)
 	assert.Equal(t, schemaInfo.Type, info.Type)
+	assert.NotNil(t, info.Timestamp)
+	assert.NotZero(t, info.Timestamp)
 
 	version, err := admin.Schemas().GetVersionBySchemaInfo(topic, schemaInfo)
 	assert.NoError(t, err)
