@@ -2906,7 +2906,8 @@ type mockRPCClient struct {
 	internal.RPCClient
 }
 
-func (m *mockRPCClient) RequestOnCnx(_ internal.Connection, _ uint64, _ pb.BaseCommand_Type, _ proto.Message) (*internal.RPCResult, error) {
+func (m *mockRPCClient) RequestOnCnx(_ internal.Connection, _ uint64, _ pb.BaseCommand_Type,
+	_ proto.Message) (*internal.RPCResult, error) {
 	return nil, fmt.Errorf("expected error")
 }
 
@@ -2931,7 +2932,7 @@ func TestPartitionUpdateFailed(t *testing.T) {
 		PartitionsAutoDiscoveryInterval: time.Second * 1,
 	})
 	require.NoError(t, err)
-	_, err = p.Send(t.Context(), &ProducerMessage{
+	_, err = p.Send(context.Background(), &ProducerMessage{
 		Payload: []byte("test"),
 	})
 	require.NoError(t, err)
