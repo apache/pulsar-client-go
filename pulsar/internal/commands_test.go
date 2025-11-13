@@ -98,8 +98,9 @@ func TestReadMessageOldFormat(t *testing.T) {
 	assert.Equal(t, true, ssm == nil)
 	assert.Equal(t, "hello", string(payload))
 
-	_, _, err = reader.ReadMessage()
-	assert.Equal(t, ErrEOM, err)
+	_, payload, err = reader.ReadMessage()
+	assert.Equal(t, []byte{}, payload)
+	assert.Nil(t, err)
 }
 
 func TestReadMessagesBatchSize1(t *testing.T) {
