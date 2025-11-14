@@ -30,6 +30,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsaradmin"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
+	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -1382,7 +1385,7 @@ func TestProducerWithBackoffPolicy(t *testing.T) {
 	assert.Nil(t, err)
 	defer _producer.Close()
 
-	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp := _producer.(*producer).getProducer(0).(*partitionProducer)
 	// 1 s
 	startTime := time.Now()
 	partitionProducerImp.reconnectToBroker(nil)
@@ -2477,7 +2480,7 @@ func TestFailPendingMessageWithClose(t *testing.T) {
 			}
 		})
 	}
-	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp := testProducer.(*producer).getProducer(0).(*partitionProducer)
 	partitionProducerImp.pendingQueue.Put(&pendingItem{
 		buffer: buffersPool.GetBuffer(0),
 	})
@@ -2597,7 +2600,7 @@ func TestDisableReplication(t *testing.T) {
 		writtenBuffers: &writtenBuffers,
 	}
 
-	partitionProducerImp := testProducer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp := testProducer.(*producer).getProducer(0).(*partitionProducer)
 	partitionProducerImp.pendingQueue = pqw
 
 	ID, err := testProducer.Send(context.Background(), &ProducerMessage{
@@ -2718,7 +2721,7 @@ func TestSelectConnectionForSameProducer(t *testing.T) {
 	assert.NoError(t, err)
 	defer _producer.Close()
 
-	partitionProducerImp := _producer.(*producer).producers[0].(*partitionProducer)
+	partitionProducerImp := _producer.(*producer).getProducer(0).(*partitionProducer)
 	conn := partitionProducerImp._getConn()
 
 	for i := 0; i < 5; i++ {
@@ -2762,7 +2765,7 @@ func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 		Topic: topicName,
 	})
 	assert.NoError(t, err)
-	pp := p.(*producer).producers[0].(*partitionProducer)
+	pp := p.(*producer).getProducer(0).(*partitionProducer)
 
 	// Create a mock connection that tracks written buffers
 	conn := &mockConn{
@@ -2897,4 +2900,55 @@ func testSendAsyncCouldTimeoutWhileReconnecting(t *testing.T, isDisableBatching 
 		require.ErrorIs(t, err, ErrSendTimeout)
 	}
 	close(finalErr)
+}
+
+type mockRPCClient struct {
+	internal.RPCClient
+}
+
+func (m *mockRPCClient) RequestOnCnx(_ internal.Connection, _ uint64, _ pb.BaseCommand_Type,
+	_ proto.Message) (*internal.RPCResult, error) {
+	return nil, fmt.Errorf("expected error")
+}
+
+func TestPartitionUpdateFailed(t *testing.T) {
+	topicName := newTopicName()
+
+	admin, err := pulsaradmin.NewClient(&config.Config{
+		WebServiceURL: adminURL,
+	})
+	require.NoError(t, err)
+
+	tn, err := utils.GetTopicName(topicName)
+	require.NoError(t, err)
+	require.NoError(t, admin.Topics().Create(*tn, 1))
+
+	c, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	require.NoError(t, err)
+	p, err := c.CreateProducer(ProducerOptions{
+		Topic:                           topicName,
+		PartitionsAutoDiscoveryInterval: time.Second * 1,
+	})
+	require.NoError(t, err)
+	_, err = p.Send(context.Background(), &ProducerMessage{
+		Payload: []byte("test"),
+	})
+	require.NoError(t, err)
+	c.(*client).rpcClient = &mockRPCClient{
+		RPCClient: c.(*client).rpcClient,
+	}
+
+	require.NoError(t, admin.Topics().Update(*tn, 2))
+
+	// Assert that partition update failed won't affect the existing producers
+	for i := 0; i < 5; i++ {
+		_, err = p.Send(context.Background(), &ProducerMessage{
+			Payload: []byte("test"),
+		})
+		require.NoError(t, err)
+
+		time.Sleep(time.Second * 1)
+	}
 }

@@ -544,7 +544,7 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 		Payload: []byte(fmt.Sprintf("chunk-%s-%d|", uuid, chunkID)),
 	}
 	wholePayload := msg.Payload
-	producerImpl := p.(*producer).producers[0].(*partitionProducer)
+	producerImpl := p.(*producer).getProducer(0).(*partitionProducer)
 	mm := producerImpl.genMetadata(msg, len(wholePayload), time.Now())
 	mm.Uuid = proto.String(uuid)
 	mm.NumChunksFromMsg = proto.Int32(int32(totalChunks))
