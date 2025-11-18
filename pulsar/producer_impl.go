@@ -47,7 +47,6 @@ const (
 )
 
 type producer struct {
-	sync.RWMutex
 	client        *client
 	options       *ProducerOptions
 	topic         string
@@ -192,9 +191,6 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	oldNumPartitions := 0
 	newNumPartitions := len(partitions)
 
-	p.Lock()
-	defer p.Unlock()
-
 	oldProducers := p.getProducers()
 	oldNumPartitions = len(oldProducers)
 
@@ -286,9 +282,6 @@ func (p *producer) Topic() string {
 }
 
 func (p *producer) Name() string {
-	p.RLock()
-	defer p.RUnlock()
-
 	return p.getProducer(0).Name()
 }
 
@@ -307,6 +300,9 @@ func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage,
 
 func (p *producer) getProducer(partition int) Producer {
 	producers := p.getProducers()
+	if len(producers) == 0 {
+		panic("producer has not been initialized properly")
+	}
 	if partition >= len(producers) {
 		// We read the old producers list while the count was already
 		// updated
@@ -330,9 +326,6 @@ func (p *producer) getPartition(msg *ProducerMessage) Producer {
 }
 
 func (p *producer) LastSequenceID() int64 {
-	p.RLock()
-	defer p.RUnlock()
-
 	var maxSeq int64 = -1
 	for _, pp := range p.getProducers() {
 		s := pp.LastSequenceID()
@@ -348,9 +341,6 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) FlushWithCtx(ctx context.Context) error {
-	p.RLock()
-	defer p.RUnlock()
-
 	for _, pp := range p.getProducers() {
 		if err := pp.FlushWithCtx(ctx); err != nil {
 			return err
@@ -363,9 +353,6 @@ func (p *producer) FlushWithCtx(ctx context.Context) error {
 func (p *producer) Close() {
 	p.closeOnce.Do(func() {
 		p.stopDiscovery()
-
-		p.Lock()
-		defer p.Unlock()
 
 		producers := p.getProducers()
 		for _, pp := range producers {
