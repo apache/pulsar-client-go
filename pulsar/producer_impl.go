@@ -23,7 +23,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -48,13 +47,10 @@ const (
 )
 
 type producer struct {
-	sync.RWMutex
 	client        *client
 	options       *ProducerOptions
 	topic         string
-	producers     []Producer
-	producersPtr  unsafe.Pointer
-	numPartitions uint32
+	producers     atomic.Value
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 	closeOnce     sync.Once
 	stopDiscovery func()
@@ -195,10 +191,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	oldNumPartitions := 0
 	newNumPartitions := len(partitions)
 
-	p.Lock()
-	defer p.Unlock()
-
-	oldProducers := p.producers
+	oldProducers := p.getProducers()
 	oldNumPartitions = len(oldProducers)
 
 	if oldProducers != nil {
@@ -213,14 +206,14 @@ func (p *producer) internalCreatePartitionsProducers() error {
 
 	}
 
-	p.producers = make([]Producer, newNumPartitions)
+	producers := make([]Producer, newNumPartitions)
 
 	// When for some reason (eg: forced deletion of sub partition) causes oldNumPartitions> newNumPartitions,
 	// we need to rebuild the cache of new producers, otherwise the array will be out of bounds.
 	if oldProducers != nil && oldNumPartitions < newNumPartitions {
 		// Copy over the existing consumer instances
 		for i := 0; i < oldNumPartitions; i++ {
-			p.producers[i] = oldProducers[i]
+			producers[i] = oldProducers[i]
 		}
 	}
 
@@ -251,20 +244,23 @@ func (p *producer) internalCreatePartitionsProducers() error {
 		}(partitionIdx, partition)
 	}
 
+	var newProducers []Producer
+
 	for i := 0; i < partitionsToAdd; i++ {
 		pe, ok := <-c
 		if ok {
 			if pe.err != nil {
 				err = pe.err
 			} else {
-				p.producers[pe.partition] = pe.prod
+				producers[pe.partition] = pe.prod
+				newProducers = append(newProducers, pe.prod)
 			}
 		}
 	}
 
 	if err != nil {
 		// Since there were some failures, cleanup all the partitions that succeeded in creating the producers
-		for _, producer := range p.producers {
+		for _, producer := range newProducers {
 			if producer != nil {
 				producer.Close()
 			}
@@ -277,8 +273,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	} else {
 		p.metrics.ProducersPartitions.Add(float64(partitionsToAdd))
 	}
-	atomic.StorePointer(&p.producersPtr, unsafe.Pointer(&p.producers))
-	atomic.StoreUint32(&p.numPartitions, uint32(len(p.producers)))
+	p.producers.Store(producers)
 	return nil
 }
 
@@ -287,14 +282,11 @@ func (p *producer) Topic() string {
 }
 
 func (p *producer) Name() string {
-	p.RLock()
-	defer p.RUnlock()
-
-	return p.producers[0].Name()
+	return p.getProducer(0).Name()
 }
 
 func (p *producer) NumPartitions() uint32 {
-	return atomic.LoadUint32(&p.numPartitions)
+	return uint32(len(p.getProducers()))
 }
 
 func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
@@ -306,11 +298,11 @@ func (p *producer) SendAsync(ctx context.Context, msg *ProducerMessage,
 	p.getPartition(msg).SendAsync(ctx, msg, callback)
 }
 
-func (p *producer) getPartition(msg *ProducerMessage) Producer {
-	// Since partitions can only increase, it's ok if the producers list
-	// is updated in between. The numPartition is updated only after the list.
-	partition := p.messageRouter(msg, p)
-	producers := *(*[]Producer)(atomic.LoadPointer(&p.producersPtr))
+func (p *producer) getProducer(partition int) Producer {
+	producers := p.getProducers()
+	if len(producers) == 0 {
+		panic("producer has not been initialized properly")
+	}
 	if partition >= len(producers) {
 		// We read the old producers list while the count was already
 		// updated
@@ -319,12 +311,23 @@ func (p *producer) getPartition(msg *ProducerMessage) Producer {
 	return producers[partition]
 }
 
-func (p *producer) LastSequenceID() int64 {
-	p.RLock()
-	defer p.RUnlock()
+func (p *producer) getProducers() []Producer {
+	if producers := p.producers.Load(); producers != nil {
+		return producers.([]Producer)
+	}
+	return []Producer{}
+}
 
+func (p *producer) getPartition(msg *ProducerMessage) Producer {
+	// Since partitions can only increase, it's ok if the producers list
+	// is updated in between. The numPartition is updated only after the list.
+	partition := p.messageRouter(msg, p)
+	return p.getProducer(partition)
+}
+
+func (p *producer) LastSequenceID() int64 {
 	var maxSeq int64 = -1
-	for _, pp := range p.producers {
+	for _, pp := range p.getProducers() {
 		s := pp.LastSequenceID()
 		if s > maxSeq {
 			maxSeq = s
@@ -338,10 +341,7 @@ func (p *producer) Flush() error {
 }
 
 func (p *producer) FlushWithCtx(ctx context.Context) error {
-	p.RLock()
-	defer p.RUnlock()
-
-	for _, pp := range p.producers {
+	for _, pp := range p.getProducers() {
 		if err := pp.FlushWithCtx(ctx); err != nil {
 			return err
 		}
@@ -354,14 +354,12 @@ func (p *producer) Close() {
 	p.closeOnce.Do(func() {
 		p.stopDiscovery()
 
-		p.Lock()
-		defer p.Unlock()
-
-		for _, pp := range p.producers {
+		producers := p.getProducers()
+		for _, pp := range producers {
 			pp.Close()
 		}
 		p.client.handlers.Del(p)
-		p.metrics.ProducersPartitions.Sub(float64(len(p.producers)))
+		p.metrics.ProducersPartitions.Sub(float64(len(producers)))
 		p.metrics.ProducersClosed.Inc()
 	})
 }
