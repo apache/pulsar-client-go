@@ -23,7 +23,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -52,8 +51,7 @@ type producer struct {
 	client        *client
 	options       *ProducerOptions
 	topic         string
-	producersPtr  unsafe.Pointer
-	numPartitions uint32
+	producers     atomic.Value
 	messageRouter func(*ProducerMessage, TopicMetadata) int
 	closeOnce     sync.Once
 	stopDiscovery func()
@@ -98,12 +96,11 @@ func newProducer(client *client, options *ProducerOptions) (*producer, error) {
 	}
 
 	p := &producer{
-		options:      options,
-		topic:        options.Topic,
-		client:       client,
-		log:          client.log.SubLogger(log.Fields{"topic": options.Topic}),
-		metrics:      client.metrics.GetLeveledMetrics(options.Topic),
-		producersPtr: unsafe.Pointer(&[]Producer{}),
+		options: options,
+		topic:   options.Topic,
+		client:  client,
+		log:     client.log.SubLogger(log.Fields{"topic": options.Topic}),
+		metrics: client.metrics.GetLeveledMetrics(options.Topic),
 	}
 
 	if options.Interceptors == nil {
@@ -280,8 +277,7 @@ func (p *producer) internalCreatePartitionsProducers() error {
 	} else {
 		p.metrics.ProducersPartitions.Add(float64(partitionsToAdd))
 	}
-	atomic.StorePointer(&p.producersPtr, unsafe.Pointer(&producers))
-	atomic.StoreUint32(&p.numPartitions, uint32(len(producers)))
+	p.producers.Store(producers)
 	return nil
 }
 
@@ -297,7 +293,7 @@ func (p *producer) Name() string {
 }
 
 func (p *producer) NumPartitions() uint32 {
-	return atomic.LoadUint32(&p.numPartitions)
+	return uint32(len(p.getProducers()))
 }
 
 func (p *producer) Send(ctx context.Context, msg *ProducerMessage) (MessageID, error) {
@@ -320,7 +316,11 @@ func (p *producer) getProducer(partition int) Producer {
 }
 
 func (p *producer) getProducers() []Producer {
-	return *(*[]Producer)(atomic.LoadPointer(&p.producersPtr))
+	if producers := p.producers.Load(); producers != nil {
+		return producers.([]Producer)
+	} else {
+		return []Producer{}
+	}
 }
 
 func (p *producer) getPartition(msg *ProducerMessage) Producer {
