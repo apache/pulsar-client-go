@@ -318,9 +318,8 @@ func (p *producer) getProducer(partition int) Producer {
 func (p *producer) getProducers() []Producer {
 	if producers := p.producers.Load(); producers != nil {
 		return producers.([]Producer)
-	} else {
-		return []Producer{}
 	}
+	return []Producer{}
 }
 
 func (p *producer) getPartition(msg *ProducerMessage) Producer {
