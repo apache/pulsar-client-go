@@ -62,7 +62,8 @@ type MockGrantProvider struct {
 	keyFile *KeyFile
 }
 
-func (mgp *MockGrantProvider) GetGrant(audience string, opts *ClientCredentialsFlowOptions) (*AuthorizationGrant, error) {
+func (mgp *MockGrantProvider) GetGrant(audience string, opts *ClientCredentialsFlowOptions) (
+	*AuthorizationGrant, error) {
 	scopes := []string{mgp.keyFile.Scope}
 	if opts != nil && len(opts.AdditionalScopes) > 0 {
 		scopes = append(scopes, opts.AdditionalScopes...)
