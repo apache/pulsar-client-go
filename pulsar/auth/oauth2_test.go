@@ -25,6 +25,7 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/apache/pulsar-client-go/oauth2"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -87,7 +88,8 @@ func mockKeyFile(server string) (string, error) {
   "client_id":"client-id",
   "client_secret":"client-secret",
   "client_email":"oauth@test.org",
-  "issuer_url":"%s"
+  "issuer_url":"%s",
+  "scope": "test-scope"
 }`, server))
 	if err != nil {
 		return "", err
@@ -209,4 +211,21 @@ func TestOAuth2KeyFileReloading(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "token-content", string(token))
+}
+
+func TestGrantProviderScopes(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	require.NoError(t, err)
+
+	grantProvider := oauth2.DefaultGrantProvider{}
+	grant, err := grantProvider.GetGrant("test-audience", &oauth2.ClientCredentialsFlowOptions{
+		KeyFile:          kf,
+		AdditionalScopes: []string{"scope1", "scope2"},
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, []string{"scope1", "scope2", "test-scope"}, grant.Scopes)
 }
