@@ -97,13 +97,19 @@ func NewAuthenticationOAuth2WithParams(
 		Audience:       audience,
 	}
 
+	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{})
+	if err != nil {
+		return nil, err
+	}
+
 	p := &OAuth2Provider{
 		clock:            clock2.RealClock{},
 		issuer:           issuer,
 		defaultTransport: transport,
+		flow:             flow,
 	}
 
-	err := p.initCache()
+	err = p.initCache()
 	if err != nil {
 		return nil, err
 	}

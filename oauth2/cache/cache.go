@@ -18,6 +18,7 @@
 package cache
 
 import (
+	"fmt"
 	"sync"
 	"time"
 
@@ -51,6 +52,9 @@ type tokenCache struct {
 
 func NewDefaultTokenCache(audience string,
 	flow *oauth2.ClientCredentialsFlow) (CachingTokenSource, error) {
+	if flow == nil {
+		return nil, fmt.Errorf("flow cannot be nil")
+	}
 	cache := &tokenCache{
 		clock:    clock.RealClock{},
 		audience: audience,
@@ -75,12 +79,15 @@ func (t *tokenCache) Token() (*xoauth2.Token, error) {
 	if err != nil {
 		return nil, err
 	}
+	if grant.Token == nil {
+		return nil, fmt.Errorf("authorization succeeded but no token was returned")
+	}
 	t.token = grant.Token
 
 	return t.token, nil
 }
 
-// InvalidateToken clears the access token (likely due to a response from the resource server).
+// InvalidateToken clears the cached access token (likely due to a response from the resource server).
 func (t *tokenCache) InvalidateToken() error {
 	t.lock.Lock()
 	defer t.lock.Unlock()

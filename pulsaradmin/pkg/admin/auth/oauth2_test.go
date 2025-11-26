@@ -105,7 +105,11 @@ func TestOauth2(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	token, err := auth.(*OAuth2Provider).source.Token()
+	provider, ok := auth.(*OAuth2Provider)
+	if !ok {
+		t.Fatal("unexpected provider type")
+	}
+	token, err := provider.source.Token()
 	if err != nil {
 		t.Fatal(err)
 	}

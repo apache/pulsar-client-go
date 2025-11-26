@@ -70,7 +70,6 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 	default:
 		return nil, fmt.Errorf("unsupported authentication type: %s", params[ConfigParamType])
 	}
-
 }
 
 func NewAuthenticationOAuth2(

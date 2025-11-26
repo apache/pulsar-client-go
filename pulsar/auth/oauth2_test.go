@@ -214,6 +214,8 @@ func TestOAuth2KeyFileReloading(t *testing.T) {
 }
 
 func TestGrantProviderScopes(t *testing.T) {
+	expectedClientID.Store("client-id")
+	expectedClientSecret.Store("client-secret")
 	server := mockOAuthServer()
 	defer server.Close()
 	kf, err := mockKeyFile(server.URL)
