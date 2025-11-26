@@ -19,17 +19,11 @@ package auth
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
-	"path/filepath"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
-
-	"github.com/99designs/keyring"
 	"github.com/apache/pulsar-client-go/oauth2"
 	"github.com/apache/pulsar-client-go/oauth2/cache"
 	clock2 "github.com/apache/pulsar-client-go/oauth2/clock"
-	"github.com/apache/pulsar-client-go/oauth2/store"
 	xoauth2 "golang.org/x/oauth2"
 )
 
@@ -166,7 +160,7 @@ func (o *OAuth2Provider) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.A
 	case oauth2.GrantTypeDeviceCode:
 		return oauth2.NewDefaultDeviceAuthorizationGrantRefresher(o.clock)
 	default:
-		return nil, store.ErrUnsupportedAuthData
+		return nil, oauth2.ErrUnsupportedAuthData
 	}
 }
 
@@ -196,32 +190,3 @@ func (t *transport) RoundTrip(req *http.Request) (*http.Response, error) {
 }
 
 func (t *transport) WrappedRoundTripper() http.RoundTripper { return t.wrapped.Base }
-
-const (
-	serviceName  = "pulsar"
-	keyChainName = "pulsarctl"
-)
-
-func MakeKeyringStore() (store.Store, error) {
-	kr, err := makeKeyring()
-	if err != nil {
-		return nil, err
-	}
-	return store.NewKeyringStore(kr)
-}
-
-func makeKeyring() (keyring.Keyring, error) {
-	return keyring.Open(keyring.Config{
-		AllowedBackends:          keyring.AvailableBackends(),
-		ServiceName:              serviceName,
-		KeychainName:             keyChainName,
-		KeychainTrustApplication: true,
-		FileDir: filepath.Join(fmt.Sprintf(
-			"%s/.config/pulsar", utils.GetConfigPath()), "credentials"),
-		FilePasswordFunc: keyringPrompt,
-	})
-}
-
-func keyringPrompt(_ string) (string, error) {
-	return "", nil
-}

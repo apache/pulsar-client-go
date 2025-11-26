@@ -28,7 +28,6 @@ import (
 	"github.com/apache/pulsar-client-go/oauth2"
 	"github.com/apache/pulsar-client-go/oauth2/cache"
 	"github.com/apache/pulsar-client-go/oauth2/clock"
-	"github.com/apache/pulsar-client-go/oauth2/store"
 )
 
 const (
@@ -125,7 +124,7 @@ func (p *oauth2AuthProvider) getRefresher(t oauth2.AuthorizationGrantType) (oaut
 	case oauth2.GrantTypeDeviceCode:
 		return oauth2.NewDefaultDeviceAuthorizationGrantRefresher(p.clock)
 	default:
-		return nil, store.ErrUnsupportedAuthData
+		return nil, oauth2.ErrUnsupportedAuthData
 	}
 }
 

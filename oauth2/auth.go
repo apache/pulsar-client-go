@@ -18,6 +18,7 @@
 package oauth2
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -54,6 +55,9 @@ const (
 	// GrantTypeDeviceCode represents a device code grant
 	GrantTypeDeviceCode AuthorizationGrantType = "device_code"
 )
+
+// ErrUnsupportedAuthData indicates that stored authentication data is unusable
+var ErrUnsupportedAuthData = errors.New("authentication data is not usable")
 
 // AuthorizationGrant is a credential representing the resource owner's authorization
 // to access its protected resources, and is used by the client to obtain an access token
