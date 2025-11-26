@@ -46,6 +46,7 @@ type ClientCredentialsExchanger interface {
 	ExchangeClientCredentials(req ClientCredentialsExchangeRequest) (*TokenResult, error)
 }
 
+// GrantProvider abstracts the creation of authorization grants from credentials
 type GrantProvider interface {
 	GetGrant(audience string, options *ClientCredentialsFlowOptions) (*AuthorizationGrant, error)
 }
@@ -55,9 +56,12 @@ type ClientCredentialsFlowOptions struct {
 	AdditionalScopes []string
 }
 
+// DefaultGrantProvider provides authorization grants by loading credentials from a key file
 type DefaultGrantProvider struct {
 }
 
+// GetGrant creates an authorization grant by loading credentials from the key file and
+// merging the scopes from both the options and the key file configuration
 func (p *DefaultGrantProvider) GetGrant(audience string, options *ClientCredentialsFlowOptions) (
 	*AuthorizationGrant, error) {
 	credsProvider := NewClientCredentialsProviderFromKeyFile(options.KeyFile)
@@ -77,7 +81,7 @@ func (p *DefaultGrantProvider) GetGrant(audience string, options *ClientCredenti
 	}
 
 	if keyFile.Scope != "" {
-		scopesSplit := strings.Split(keyFile.Scope, " ")
+		scopesSplit := strings.Fields(keyFile.Scope)
 		scopesToAdd = append(scopesToAdd, scopesSplit...)
 	}
 

@@ -81,14 +81,14 @@ func NewAuthenticationOAuth2FromAuthParams(encodedAuthParam string,
 		return nil, err
 	}
 	return NewAuthenticationOAuth2WithParams(paramsJSON.IssuerURL, paramsJSON.ClientID, paramsJSON.Audience,
-		paramsJSON.Scope, transport)
+		paramsJSON.PrivateKey, transport)
 }
 
 func NewAuthenticationOAuth2WithParams(
 	issuerEndpoint,
 	clientID,
 	audience string,
-	_ string,
+	privateKey string,
 	transport http.RoundTripper) (*OAuth2Provider, error) {
 
 	issuer := oauth2.Issuer{
@@ -97,7 +97,7 @@ func NewAuthenticationOAuth2WithParams(
 		Audience:       audience,
 	}
 
-	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{})
+	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{KeyFile: privateKey})
 	if err != nil {
 		return nil, err
 	}
