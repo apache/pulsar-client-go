@@ -30,7 +30,6 @@ import (
 	"github.com/apache/pulsar-client-go/oauth2/cache"
 	clock2 "github.com/apache/pulsar-client-go/oauth2/clock"
 	"github.com/apache/pulsar-client-go/oauth2/store"
-	"github.com/pkg/errors"
 	xoauth2 "golang.org/x/oauth2"
 )
 
@@ -50,20 +49,19 @@ type OAuth2ClientCredentials struct {
 type OAuth2Provider struct {
 	clock            clock2.RealClock
 	issuer           oauth2.Issuer
-	store            store.Store
 	source           cache.CachingTokenSource
 	defaultTransport http.RoundTripper
 	tokenTransport   *transport
+	flow             *oauth2.ClientCredentialsFlow
 }
 
-func NewAuthenticationOAuth2(issuer oauth2.Issuer, store store.Store) (*OAuth2Provider, error) {
+func NewAuthenticationOAuth2(issuer oauth2.Issuer) (*OAuth2Provider, error) {
 	p := &OAuth2Provider{
 		clock:  clock2.RealClock{},
 		issuer: issuer,
-		store:  store,
 	}
 
-	err := p.loadGrant()
+	err := p.initCache()
 	if err != nil {
 		return nil, err
 	}
@@ -80,18 +78,7 @@ func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string
 
 func NewAuthenticationOAuth2WithFlow(
 	issuer oauth2.Issuer, flowOptions oauth2.ClientCredentialsFlowOptions) (Provider, error) {
-	st := store.NewMemoryStore()
 	flow, err := oauth2.NewDefaultClientCredentialsFlow(flowOptions)
-	if err != nil {
-		return nil, err
-	}
-
-	grant, err := flow.Authorize(issuer.Audience)
-	if err != nil {
-		return nil, err
-	}
-
-	err = st.SaveGrant(issuer.Audience, *grant)
 	if err != nil {
 		return nil, err
 	}
@@ -99,10 +86,10 @@ func NewAuthenticationOAuth2WithFlow(
 	p := &OAuth2Provider{
 		clock:  clock2.RealClock{},
 		issuer: issuer,
-		store:  st,
+		flow:   flow,
 	}
 
-	return p, p.loadGrant()
+	return p, p.initCache()
 }
 
 func NewAuthenticationOAuth2FromAuthParams(encodedAuthParam string,
@@ -130,19 +117,13 @@ func NewAuthenticationOAuth2WithParams(
 		Audience:       audience,
 	}
 
-	keyringStore, err := MakeKeyringStore()
-	if err != nil {
-		return nil, err
-	}
-
 	p := &OAuth2Provider{
 		clock:            clock2.RealClock{},
 		issuer:           issuer,
-		store:            keyringStore,
 		defaultTransport: transport,
 	}
 
-	err = p.loadGrant()
+	err := p.initCache()
 	if err != nil {
 		return nil, err
 	}
@@ -150,24 +131,8 @@ func NewAuthenticationOAuth2WithParams(
 	return p, nil
 }
 
-func (o *OAuth2Provider) loadGrant() error {
-	grant, err := o.store.LoadGrant(o.issuer.Audience)
-	if err != nil {
-		if err == store.ErrNoAuthenticationData {
-			return errors.New("oauth2 login required")
-		}
-		return err
-	}
-	return o.initCache(grant)
-}
-
-func (o *OAuth2Provider) initCache(grant *oauth2.AuthorizationGrant) error {
-	refresher, err := o.getRefresher(grant.Type)
-	if err != nil {
-		return err
-	}
-
-	source, err := cache.NewDefaultTokenCache(o.store, o.issuer.Audience, refresher)
+func (o *OAuth2Provider) initCache() error {
+	source, err := cache.NewDefaultTokenCache(o.issuer.Audience, o.flow)
 	if err != nil {
 		return err
 	}

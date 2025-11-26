@@ -44,10 +44,10 @@ const (
 type oauth2AuthProvider struct {
 	clock            clock.Clock
 	issuer           oauth2.Issuer
-	store            store.Store
 	source           cache.CachingTokenSource
 	defaultTransport http.RoundTripper
 	tokenTransport   *transport
+	flow             *oauth2.ClientCredentialsFlow
 }
 
 // NewAuthenticationOAuth2WithParams return a interface of Provider with string map.
@@ -58,8 +58,6 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 		Audience:       params[ConfigParamAudience],
 	}
 
-	// initialize a store of authorization grants
-	st := store.NewMemoryStore()
 	switch params[ConfigParamType] {
 	case ConfigParamTypeClientCredentials:
 		flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
@@ -69,46 +67,26 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 		if err != nil {
 			return nil, err
 		}
-		grant, err := flow.Authorize(issuer.Audience)
-		if err != nil {
-			return nil, err
-		}
-		err = st.SaveGrant(issuer.Audience, *grant)
-		if err != nil {
-			return nil, err
-		}
+		return NewAuthenticationOAuth2(issuer, flow), nil
 	default:
 		return nil, fmt.Errorf("unsupported authentication type: %s", params[ConfigParamType])
 	}
 
-	return NewAuthenticationOAuth2(issuer, st), nil
 }
 
 func NewAuthenticationOAuth2(
 	issuer oauth2.Issuer,
-	store store.Store) Provider {
+	flow *oauth2.ClientCredentialsFlow) Provider {
 
 	return &oauth2AuthProvider{
 		clock:  clock.RealClock{},
 		issuer: issuer,
-		store:  store,
+		flow:   flow,
 	}
 }
 
 func (p *oauth2AuthProvider) Init() error {
-	grant, err := p.store.LoadGrant(p.issuer.Audience)
-	if err != nil {
-		if err == store.ErrNoAuthenticationData {
-			return nil
-		}
-		return err
-	}
-	refresher, err := p.getRefresher(grant.Type)
-	if err != nil {
-		return err
-	}
-
-	source, err := cache.NewDefaultTokenCache(p.store, p.issuer.Audience, refresher)
+	source, err := cache.NewDefaultTokenCache(p.issuer.Audience, p.flow)
 	if err != nil {
 		return err
 	}

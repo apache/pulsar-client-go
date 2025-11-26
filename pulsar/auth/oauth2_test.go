@@ -22,11 +22,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sync/atomic"
 	"testing"
 
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+var expectedClientId atomic.Value
+var expectedClientSecret atomic.Value
 
 // mockOAuthServer will mock a oauth service for the tests
 func mockOAuthServer() *httptest.Server {
@@ -44,7 +49,17 @@ func mockOAuthServer() *httptest.Server {
 }`, server.URL, server.URL, server.URL, server.URL)
 		fmt.Fprintln(writer, s)
 	})
-	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, _ *http.Request) {
+	mockedHandler.HandleFunc("/oauth/token", func(writer http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			http.Error(writer, "invalid form", http.StatusBadRequest)
+			return
+		}
+		clientID := r.FormValue("client_id")
+		clientSecret := r.FormValue("client_secret")
+		if clientID != expectedClientId.Load().(string) || clientSecret != expectedClientSecret.Load().(string) {
+			http.Error(writer, "invalid client credentials", http.StatusUnauthorized)
+			return
+		}
 		fmt.Fprintln(writer, "{\n  \"access_token\": \"token-content\",\n  \"token_type\": \"Bearer\"\n}")
 	})
 	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, _ *http.Request) {
@@ -84,6 +99,8 @@ func mockKeyFile(server string) (string, error) {
 func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 	server := mockOAuthServer()
 	defer server.Close()
+	expectedClientId.Store("client-id")
+	expectedClientSecret.Store("client-secret")
 	kf, err := mockKeyFile(server.URL)
 	defer os.Remove(kf)
 	if err != nil {
@@ -141,4 +158,55 @@ func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 
 		assert.Equal(t, "token-content", string(token))
 	}
+}
+
+func TestOAuth2KeyFileReloading(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	expectedClientId.Store("client-id")
+	expectedClientSecret.Store("client-secret")
+	kf, err := mockKeyFile(server.URL)
+	defer os.Remove(kf)
+	require.NoError(t, err)
+
+	params := map[string]string{
+		ConfigParamType:      ConfigParamTypeClientCredentials,
+		ConfigParamIssuerURL: server.URL,
+		ConfigParamClientID:  "client-id",
+		ConfigParamAudience:  "audience",
+		ConfigParamKeyFile:   fmt.Sprintf("file://%s", kf),
+		ConfigParamScope:     "profile",
+	}
+
+	auth, err := NewAuthenticationOAuth2WithParams(params)
+	require.NoError(t, err)
+	err = auth.Init()
+	require.NoError(t, err)
+
+	token, err := auth.GetData()
+	require.NoError(t, err)
+	assert.Equal(t, "token-content", string(token))
+
+	expectedClientSecret.Store("new-client-secret")
+	_, err = auth.GetData()
+	require.Error(t, err) // The token refresh should be failed after updating the client-secret
+
+	// now update the key file to have different client credentials
+	keyFile, err := os.OpenFile(kf, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
+	require.NoError(t, err)
+	_, err = keyFile.WriteString(fmt.Sprintf(`{
+  "type":"resource",
+  "client_id":"client-id",
+  "client_secret":"new-client-secret",
+  "client_email":"oauth@test.org",
+  "issuer_url":"%s"
+}`, server.URL))
+	require.NoError(t, err)
+	require.NoError(t, keyFile.Close())
+
+	token, err = auth.GetData()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assert.Equal(t, "token-content", string(token))
 }

@@ -25,7 +25,6 @@ import (
 	"testing"
 
 	"github.com/apache/pulsar-client-go/oauth2"
-	"github.com/apache/pulsar-client-go/oauth2/store"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
@@ -99,13 +98,7 @@ func TestOauth2(t *testing.T) {
 		Audience:       server.URL,
 	}
 
-	memoryStore := store.NewMemoryStore()
-	err = saveGrant(memoryStore, kf, issuer.Audience)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	auth, err := NewAuthenticationOAuth2(issuer, memoryStore)
+	auth, err := NewAuthenticationOAuth2(issuer)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,21 +108,4 @@ func TestOauth2(t *testing.T) {
 		t.Fatal(err)
 	}
 	assert.Equal(t, "token-content", token.AccessToken)
-}
-
-func saveGrant(store store.Store, keyFile, audience string) error {
-	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
-		KeyFile:          keyFile,
-		AdditionalScopes: nil,
-	})
-	if err != nil {
-		return err
-	}
-
-	grant, err := flow.Authorize(audience)
-	if err != nil {
-		return err
-	}
-
-	return store.SaveGrant(audience, *grant)
 }

@@ -18,13 +18,10 @@
 package cache
 
 import (
-	"fmt"
 	"sync"
 	"time"
 
 	"github.com/apache/pulsar-client-go/oauth2"
-	"github.com/apache/pulsar-client-go/oauth2/store"
-
 	"github.com/apache/pulsar-client-go/oauth2/clock"
 	xoauth2 "golang.org/x/oauth2"
 )
@@ -43,24 +40,21 @@ const (
 )
 
 // tokenCache implements a cache for the token associated with a specific audience.
-// it interacts with the store when the access token is near expiration or invalidated.
 // it is advisable to use a token cache instance per audience.
 type tokenCache struct {
-	clock     clock.Clock
-	lock      sync.Mutex
-	store     store.Store
-	audience  string
-	refresher oauth2.AuthorizationGrantRefresher
-	token     *xoauth2.Token
+	clock    clock.Clock
+	lock     sync.Mutex
+	audience string
+	token    *xoauth2.Token
+	flow     *oauth2.ClientCredentialsFlow
 }
 
-func NewDefaultTokenCache(store store.Store, audience string,
-	refresher oauth2.AuthorizationGrantRefresher) (CachingTokenSource, error) {
+func NewDefaultTokenCache(audience string,
+	flow *oauth2.ClientCredentialsFlow) (CachingTokenSource, error) {
 	cache := &tokenCache{
-		clock:     clock.RealClock{},
-		store:     store,
-		audience:  audience,
-		refresher: refresher,
+		clock:    clock.RealClock{},
+		audience: audience,
+		flow:     flow,
 	}
 	return cache, nil
 }
@@ -77,56 +71,21 @@ func (t *tokenCache) Token() (*xoauth2.Token, error) {
 		return t.token, nil
 	}
 
-	// load from the store and use the access token if it isn't expired
-	grant, err := t.store.LoadGrant(t.audience)
+	grant, err := t.flow.Authorize(t.audience)
 	if err != nil {
-		return nil, fmt.Errorf("LoadGrant: %w", err)
+		return nil, err
 	}
 	t.token = grant.Token
-	if t.token != nil && t.validateAccessToken(*t.token) {
-		return t.token, nil
-	}
-
-	// obtain and cache a fresh access token
-	grant, err = t.refresher.Refresh(grant)
-	if err != nil {
-		return nil, fmt.Errorf("RefreshGrant: %w", err)
-	}
-	t.token = grant.Token
-	err = t.store.SaveGrant(t.audience, *grant)
-	if err != nil {
-		// TODO log rather than throw
-		return nil, fmt.Errorf("SaveGrant: %w", err)
-	}
 
 	return t.token, nil
 }
 
 // InvalidateToken clears the access token (likely due to a response from the resource server).
-// Note that the token within the grant may contain a refresh token which should survive.
 func (t *tokenCache) InvalidateToken() error {
 	t.lock.Lock()
 	defer t.lock.Unlock()
 
-	previous := t.token
 	t.token = nil
-
-	// clear from the store the access token that was returned earlier (unless the store has since been updated)
-	if previous == nil || previous.AccessToken == "" {
-		return nil
-	}
-	grant, err := t.store.LoadGrant(t.audience)
-	if err != nil {
-		return fmt.Errorf("LoadGrant: %w", err)
-	}
-	if grant.Token != nil && grant.Token.AccessToken == previous.AccessToken {
-		grant.Token.Expiry = time.Unix(0, 0).Add(expiryDelta)
-		err = t.store.SaveGrant(t.audience, *grant)
-		if err != nil {
-			// TODO log rather than throw
-			return fmt.Errorf("SaveGrant: %w", err)
-		}
-	}
 	return nil
 }
 

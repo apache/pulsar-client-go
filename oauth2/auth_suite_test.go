@@ -58,6 +58,20 @@ func (te *MockTokenExchanger) ExchangeDeviceCode(_ context.Context,
 	return te.ReturnsTokens, te.ReturnsError
 }
 
+type MockGrantProvider struct {
+	keyFile *KeyFile
+}
+
+func (mgp *MockGrantProvider) GetGrant(audience string, _ *ClientCredentialsFlowOptions) (*AuthorizationGrant, error) {
+	return &AuthorizationGrant{
+		Type:              GrantTypeClientCredentials,
+		Audience:          audience,
+		ClientCredentials: mgp.keyFile,
+		TokenEndpoint:     oidcEndpoints.TokenEndpoint,
+		Scopes:            []string{mgp.keyFile.Scope},
+	}, nil
+}
+
 var oidcEndpoints = OIDCWellKnownEndpoints{
 	AuthorizationEndpoint:       "http://issuer/auth/authorize",
 	TokenEndpoint:               "http://issuer/auth/token",

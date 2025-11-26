@@ -30,11 +30,10 @@ import (
 // ClientCredentialsFlow takes care of the mechanics needed for getting an access
 // token using the OAuth 2.0 "Client Credentials Flow"
 type ClientCredentialsFlow struct {
-	options                ClientCredentialsFlowOptions
-	oidcWellKnownEndpoints OIDCWellKnownEndpoints
-	keyfile                *KeyFile
-	exchanger              ClientCredentialsExchanger
-	clock                  clock.Clock
+	options       ClientCredentialsFlowOptions
+	exchanger     ClientCredentialsExchanger
+	grantProvider GrantProvider
+	clock         clock.Clock
 }
 
 // ClientCredentialsProvider abstracts getting client credentials
@@ -47,29 +46,19 @@ type ClientCredentialsExchanger interface {
 	ExchangeClientCredentials(req ClientCredentialsExchangeRequest) (*TokenResult, error)
 }
 
+type GrantProvider interface {
+	GetGrant(audience string, options *ClientCredentialsFlowOptions) (*AuthorizationGrant, error)
+}
+
 type ClientCredentialsFlowOptions struct {
 	KeyFile          string
 	AdditionalScopes []string
 }
 
-func newClientCredentialsFlow(
-	options ClientCredentialsFlowOptions,
-	keyfile *KeyFile,
-	oidcWellKnownEndpoints OIDCWellKnownEndpoints,
-	exchanger ClientCredentialsExchanger,
-	clock clock.Clock) *ClientCredentialsFlow {
-	return &ClientCredentialsFlow{
-		options:                options,
-		oidcWellKnownEndpoints: oidcWellKnownEndpoints,
-		keyfile:                keyfile,
-		exchanger:              exchanger,
-		clock:                  clock,
-	}
+type DefaultGrantProvider struct {
 }
 
-// NewDefaultClientCredentialsFlow provides an easy way to build up a default
-// client credentials flow with all the correct configuration.
-func NewDefaultClientCredentialsFlow(options ClientCredentialsFlowOptions) (*ClientCredentialsFlow, error) {
+func (p *DefaultGrantProvider) GetGrant(audience string, options *ClientCredentialsFlowOptions) (*AuthorizationGrant, error) {
 	credsProvider := NewClientCredentialsProviderFromKeyFile(options.KeyFile)
 	keyFile, err := credsProvider.GetClientCredentials()
 	if err != nil {
@@ -80,39 +69,58 @@ func NewDefaultClientCredentialsFlow(options ClientCredentialsFlowOptions) (*Cli
 	if err != nil {
 		return nil, err
 	}
+	// Merge the scopes of the options AdditionalScopes with the scopes read from the keyFile config
+	var scopesToAdd []string
+	if len(options.AdditionalScopes) > 0 {
+		scopesToAdd = append(scopesToAdd, options.AdditionalScopes...)
+	}
+
+	if keyFile.Scope != "" {
+		scopesSplit := strings.Split(keyFile.Scope, " ")
+		scopesToAdd = append(scopesToAdd, scopesSplit...)
+	}
+
+	return &AuthorizationGrant{
+		Type:              GrantTypeClientCredentials,
+		Audience:          audience,
+		ClientID:          keyFile.ClientID,
+		ClientCredentials: keyFile,
+		TokenEndpoint:     wellKnownEndpoints.TokenEndpoint,
+		Scopes:            scopesToAdd,
+	}, nil
+}
+
+func newClientCredentialsFlow(
+	options ClientCredentialsFlowOptions,
+	exchanger ClientCredentialsExchanger,
+	grantProvider GrantProvider,
+	clock clock.Clock) *ClientCredentialsFlow {
+	return &ClientCredentialsFlow{
+		options:       options,
+		exchanger:     exchanger,
+		grantProvider: grantProvider,
+		clock:         clock,
+	}
+}
+
+// NewDefaultClientCredentialsFlow provides an easy way to build up a default
+// client credentials flow with all the correct configuration.
+func NewDefaultClientCredentialsFlow(options ClientCredentialsFlowOptions) (*ClientCredentialsFlow, error) {
 
 	tokenRetriever := NewTokenRetriever(&http.Client{})
 	return newClientCredentialsFlow(
 		options,
-		keyFile,
-		*wellKnownEndpoints,
 		tokenRetriever,
+		&DefaultGrantProvider{},
 		clock.RealClock{}), nil
 }
 
 var _ Flow = &ClientCredentialsFlow{}
 
 func (c *ClientCredentialsFlow) Authorize(audience string) (*AuthorizationGrant, error) {
-	var err error
-
-	// Merge the scopes of the options AdditionalScopes with the scopes read from the keyFile config
-	var scopesToAdd []string
-	if len(c.options.AdditionalScopes) > 0 {
-		scopesToAdd = append(scopesToAdd, c.options.AdditionalScopes...)
-	}
-
-	if c.keyfile.Scope != "" {
-		scopesSplit := strings.Split(c.keyfile.Scope, " ")
-		scopesToAdd = append(scopesToAdd, scopesSplit...)
-	}
-
-	grant := &AuthorizationGrant{
-		Type:              GrantTypeClientCredentials,
-		Audience:          audience,
-		ClientID:          c.keyfile.ClientID,
-		ClientCredentials: c.keyfile,
-		TokenEndpoint:     c.oidcWellKnownEndpoints.TokenEndpoint,
-		Scopes:            scopesToAdd,
+	grant, err := c.grantProvider.GetGrant(audience, &c.options)
+	if err != nil {
+		return nil, err
 	}
 
 	// test the credentials and obtain an initial access token
