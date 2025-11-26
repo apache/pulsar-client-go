@@ -31,7 +31,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-var expectedClientId atomic.Value
+var expectedClientID atomic.Value
 var expectedClientSecret atomic.Value
 
 // mockOAuthServer will mock a oauth service for the tests
@@ -57,7 +57,7 @@ func mockOAuthServer() *httptest.Server {
 		}
 		clientID := r.FormValue("client_id")
 		clientSecret := r.FormValue("client_secret")
-		if clientID != expectedClientId.Load().(string) || clientSecret != expectedClientSecret.Load().(string) {
+		if clientID != expectedClientID.Load().(string) || clientSecret != expectedClientSecret.Load().(string) {
 			http.Error(writer, "invalid client credentials", http.StatusUnauthorized)
 			return
 		}
@@ -101,7 +101,7 @@ func mockKeyFile(server string) (string, error) {
 func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 	server := mockOAuthServer()
 	defer server.Close()
-	expectedClientId.Store("client-id")
+	expectedClientID.Store("client-id")
 	expectedClientSecret.Store("client-secret")
 	kf, err := mockKeyFile(server.URL)
 	defer os.Remove(kf)
@@ -165,7 +165,7 @@ func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 func TestOAuth2KeyFileReloading(t *testing.T) {
 	server := mockOAuthServer()
 	defer server.Close()
-	expectedClientId.Store("client-id")
+	expectedClientID.Store("client-id")
 	expectedClientSecret.Store("client-secret")
 	kf, err := mockKeyFile(server.URL)
 	defer os.Remove(kf)

@@ -98,12 +98,14 @@ func TestOauth2(t *testing.T) {
 		Audience:       server.URL,
 	}
 
-	auth, err := NewAuthenticationOAuth2(issuer)
+	auth, err := NewAuthenticationOAuth2WithFlow(issuer, oauth2.ClientCredentialsFlowOptions{
+		KeyFile: kf,
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	token, err := auth.source.Token()
+	token, err := auth.(*OAuth2Provider).source.Token()
 	if err != nil {
 		t.Fatal(err)
 	}

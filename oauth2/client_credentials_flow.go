@@ -58,7 +58,8 @@ type ClientCredentialsFlowOptions struct {
 type DefaultGrantProvider struct {
 }
 
-func (p *DefaultGrantProvider) GetGrant(audience string, options *ClientCredentialsFlowOptions) (*AuthorizationGrant, error) {
+func (p *DefaultGrantProvider) GetGrant(audience string, options *ClientCredentialsFlowOptions) (
+	*AuthorizationGrant, error) {
 	credsProvider := NewClientCredentialsProviderFromKeyFile(options.KeyFile)
 	keyFile, err := credsProvider.GetClientCredentials()
 	if err != nil {

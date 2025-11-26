@@ -117,17 +117,6 @@ func (p *oauth2AuthProvider) Close() error {
 	return nil
 }
 
-func (p *oauth2AuthProvider) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
-	switch t {
-	case oauth2.GrantTypeClientCredentials:
-		return oauth2.NewDefaultClientCredentialsGrantRefresher(p.clock)
-	case oauth2.GrantTypeDeviceCode:
-		return oauth2.NewDefaultDeviceAuthorizationGrantRefresher(p.clock)
-	default:
-		return nil, oauth2.ErrUnsupportedAuthData
-	}
-}
-
 type transport struct {
 	source  cache.CachingTokenSource
 	wrapped *xoauth2.Transport

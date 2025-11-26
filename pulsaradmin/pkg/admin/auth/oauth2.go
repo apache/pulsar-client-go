@@ -49,20 +49,6 @@ type OAuth2Provider struct {
 	flow             *oauth2.ClientCredentialsFlow
 }
 
-func NewAuthenticationOAuth2(issuer oauth2.Issuer) (*OAuth2Provider, error) {
-	p := &OAuth2Provider{
-		clock:  clock2.RealClock{},
-		issuer: issuer,
-	}
-
-	err := p.initCache()
-	if err != nil {
-		return nil, err
-	}
-
-	return p, nil
-}
-
 // NewAuthenticationOAuth2WithDefaultFlow uses memory to save the grant
 func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string) (Provider, error) {
 	return NewAuthenticationOAuth2WithFlow(issuer, oauth2.ClientCredentialsFlowOptions{
@@ -151,17 +137,6 @@ func (o *OAuth2Provider) WithTransport(tripper http.RoundTripper) {
 
 func (o *OAuth2Provider) Transport() http.RoundTripper {
 	return o.tokenTransport
-}
-
-func (o *OAuth2Provider) getRefresher(t oauth2.AuthorizationGrantType) (oauth2.AuthorizationGrantRefresher, error) {
-	switch t {
-	case oauth2.GrantTypeClientCredentials:
-		return oauth2.NewDefaultClientCredentialsGrantRefresher(o.clock)
-	case oauth2.GrantTypeDeviceCode:
-		return oauth2.NewDefaultDeviceAuthorizationGrantRefresher(o.clock)
-	default:
-		return nil, oauth2.ErrUnsupportedAuthData
-	}
 }
 
 type transport struct {
