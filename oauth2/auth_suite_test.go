@@ -62,13 +62,18 @@ type MockGrantProvider struct {
 	keyFile *KeyFile
 }
 
-func (mgp *MockGrantProvider) GetGrant(audience string, _ *ClientCredentialsFlowOptions) (*AuthorizationGrant, error) {
+func (mgp *MockGrantProvider) GetGrant(audience string, opts *ClientCredentialsFlowOptions) (*AuthorizationGrant, error) {
+	scopes := []string{mgp.keyFile.Scope}
+	if opts != nil && len(opts.AdditionalScopes) > 0 {
+		scopes = append(scopes, opts.AdditionalScopes...)
+	}
 	return &AuthorizationGrant{
 		Type:              GrantTypeClientCredentials,
 		Audience:          audience,
+		ClientID:          mgp.keyFile.ClientID,
 		ClientCredentials: mgp.keyFile,
 		TokenEndpoint:     oidcEndpoints.TokenEndpoint,
-		Scopes:            []string{mgp.keyFile.Scope},
+		Scopes:            scopes,
 	}, nil
 }
 
