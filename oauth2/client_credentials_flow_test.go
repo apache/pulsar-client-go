@@ -54,6 +54,7 @@ var _ = ginkgo.Describe("ClientCredentialsFlow", func() {
 
 		var mockClock clock.Clock
 		var mockTokenExchanger *MockTokenExchanger
+		var mockGrantProvider *MockGrantProvider
 
 		ginkgo.BeforeEach(func() {
 			mockClock = testing.NewFakeClock(time.Unix(0, 0))
@@ -61,18 +62,18 @@ var _ = ginkgo.Describe("ClientCredentialsFlow", func() {
 			mockTokenExchanger = &MockTokenExchanger{
 				ReturnsTokens: &expectedTokens,
 			}
+			mockGrantProvider = &MockGrantProvider{
+				keyFile: &clientCredentials,
+			}
 		})
 
 		ginkgo.It("invokes TokenExchanger with credentials", func() {
-			additionalScope := "additional_scope"
 			provider := newClientCredentialsFlow(
 				ClientCredentialsFlowOptions{
-					KeyFile:          "test_keyfile",
-					AdditionalScopes: []string{additionalScope},
+					KeyFile: "test_keyfile",
 				},
-				&clientCredentials,
-				oidcEndpoints,
 				mockTokenExchanger,
+				mockGrantProvider,
 				mockClock,
 			)
 
@@ -83,7 +84,7 @@ var _ = ginkgo.Describe("ClientCredentialsFlow", func() {
 				ClientID:      clientCredentials.ClientID,
 				ClientSecret:  clientCredentials.ClientSecret,
 				Audience:      "test_audience",
-				Scopes:        []string{additionalScope, clientCredentials.Scope},
+				Scopes:        []string{clientCredentials.Scope},
 			}))
 		})
 
@@ -92,9 +93,8 @@ var _ = ginkgo.Describe("ClientCredentialsFlow", func() {
 				ClientCredentialsFlowOptions{
 					KeyFile: "test_keyfile",
 				},
-				&clientCredentials,
-				oidcEndpoints,
 				mockTokenExchanger,
+				mockGrantProvider,
 				mockClock,
 			)
 
@@ -112,9 +112,8 @@ var _ = ginkgo.Describe("ClientCredentialsFlow", func() {
 				ClientCredentialsFlowOptions{
 					KeyFile: "test_keyfile",
 				},
-				&clientCredentials,
-				oidcEndpoints,
 				mockTokenExchanger,
+				mockGrantProvider,
 				mockClock,
 			)
 
