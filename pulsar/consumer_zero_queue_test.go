@@ -291,7 +291,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		msg, err := consumer.Receive(context.Background())
 		if err != nil {
-			log.Fatal(err)
+			assert.Nil(t, err)
 		}
 
 		expectMsg := fmt.Sprintf("hello-%d", i)
