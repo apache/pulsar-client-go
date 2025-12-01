@@ -21,11 +21,12 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
-	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"math"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 
 	"google.golang.org/protobuf/proto"
 

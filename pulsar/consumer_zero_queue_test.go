@@ -255,6 +255,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 		EnableZeroQueueConsumer: true,
 		Type:                    Shared, // using Shared subscription type to support unack subscription stats
 	})
+	assert.Nil(t, err)
 	ctx := context.Background()
 
 	// create producer
@@ -314,6 +315,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 			"key-1": "pulsar-1",
 		},
 	})
+	assert.Nil(t, err)
 	//	wait for broker send messages to consumer and topic stats update finish
 	time.Sleep(5 * time.Second)
 	topicStats, err := admin.Topics().GetStats(*topicName)

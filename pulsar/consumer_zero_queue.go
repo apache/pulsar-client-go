@@ -20,9 +20,10 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	uAtomic "go.uber.org/atomic"
 	"sync"
 	"time"
+
+	uAtomic "go.uber.org/atomic"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
