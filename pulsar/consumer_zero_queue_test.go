@@ -243,6 +243,103 @@ func TestReconnectConsumer(t *testing.T) {
 	defer c.Terminate(ctx)
 }
 
+func TestReconnectedBrokerSendPermits(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	topic := newTopicName()
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                   topic,
+		SubscriptionName:        "my-sub",
+		EnableZeroQueueConsumer: true,
+		Type:                    Shared, // using Shared subscription type to support unack subscription stats
+	})
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
+		})
+		assert.Nil(t, err)
+		log.Printf("send message: %s", msg.String())
+	}
+
+	admin, err := pulsaradmin.NewClient(&config.Config{})
+	assert.Nil(t, err)
+	log.Println("unloading topic")
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	err = admin.Topics().Unload(*topicName)
+	assert.Nil(t, err)
+	log.Println("unloaded topic")
+	time.Sleep(5 * time.Second) // wait for topic unload finish
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		expectProperties := map[string]string{
+			"key-1": "pulsar-1",
+		}
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
+		// ack message
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
+		log.Printf("receive message: %s", msg.ID().String())
+	}
+	//	send one more message and we do not manually receive it
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("hello-%d", 10)),
+		Key:     "pulsar",
+		Properties: map[string]string{
+			"key-1": "pulsar-1",
+		},
+	})
+	//	wait for broker send messages to consumer and topic stats update finish
+	time.Sleep(5 * time.Second)
+	topicStats, err := admin.Topics().GetStats(*topicName)
+	assert.Nil(t, err)
+	for _, subscriptionStats := range topicStats.Subscriptions {
+		assert.Equal(t, subscriptionStats.MsgBacklog, int64(1))
+		assert.Equal(t, subscriptionStats.Consumers[0].UnAckedMessages, 0)
+	}
+
+	// ack
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	err = consumer.Ack(msg)
+	assert.Nil(t, err)
+
+	// check topic stats
+	time.Sleep(5 * time.Second)
+	topicStats, err = admin.Topics().GetStats(*topicName)
+	assert.Nil(t, err)
+	for _, subscriptionStats := range topicStats.Subscriptions {
+		assert.Equal(t, subscriptionStats.MsgBacklog, int64(0))
+		assert.Equal(t, subscriptionStats.Consumers[0].UnAckedMessages, 0)
+	}
+
+}
+
 func TestUnloadTopicBeforeConsume(t *testing.T) {
 
 	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))

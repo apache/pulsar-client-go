@@ -21,6 +21,7 @@ import (
 	"cmp"
 	"errors"
 	"fmt"
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -313,6 +314,7 @@ type message struct {
 	encryptionContext   *EncryptionContext
 	index               *uint64
 	brokerPublishTime   *time.Time
+	conn                internal.Connection
 }
 
 func (msg *message) Topic() string {
@@ -392,6 +394,10 @@ func (msg *message) BrokerPublishTime() *time.Time {
 
 func (msg *message) size() int {
 	return len(msg.payLoad)
+}
+
+func (msg *message) getConn() internal.Connection {
+	return msg.conn
 }
 
 func newAckTracker(size uint) *ackTracker {

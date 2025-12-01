@@ -124,10 +124,12 @@ type partitionConsumerOpts struct {
 	expireTimeOfIncompleteChunk time.Duration
 	autoAckIncompleteChunk      bool
 	// in failover mode, this callback will be called when consumer change
-	consumerEventListener   ConsumerEventListener
-	enableBatchIndexAck     bool
-	ackGroupingOptions      *AckGroupingOptions
-	enableZeroQueueConsumer bool
+	consumerEventListener      ConsumerEventListener
+	enableBatchIndexAck        bool
+	ackGroupingOptions         *AckGroupingOptions
+	enableZeroQueueConsumer    bool
+	zeroQueueConsumer          *zeroQueueConsumer
+	zeroQueueReconnectedPolicy func(*partitionConsumer, *zeroQueueConsumer)
 }
 
 type ConsumerEventListener interface {
@@ -1393,6 +1395,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				orderingKey:         string(smm.OrderingKey),
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
+				conn:                pc._getConn(),
 			}
 		} else {
 			msg = &message{
@@ -1413,6 +1416,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				orderingKey:         string(msgMeta.GetOrderingKey()),
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
+				conn:                pc._getConn(),
 			}
 		}
 
@@ -1925,9 +1929,8 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
 			bo.Reset()
-			if pc.options.enableZeroQueueConsumer {
-				pc.log.Info("zeroQueueConsumer reconnect, reset availablePermits")
-				pc.availablePermits.inc()
+			if pc.options.enableZeroQueueConsumer && pc.options.zeroQueueReconnectedPolicy != nil {
+				pc.options.zeroQueueReconnectedPolicy(pc, pc.options.zeroQueueConsumer)
 			}
 			return struct{}{}, nil
 		}
