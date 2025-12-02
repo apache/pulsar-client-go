@@ -41,7 +41,7 @@ const (
 	minConnMaxIdleTime                 = 60 * time.Second
 )
 
-var errClientTransactionsNotEnabled = errors.New("transactions are not enabled with the client")
+var ErrClientTransactionsNotEnabled = errors.New("transactions are not enabled with the client")
 
 type client struct {
 	cnxPool          internal.ConnectionPool
@@ -201,7 +201,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 func (c *client) NewTransaction(timeout time.Duration) (Transaction, error) {
 	if c.tcClient == nil {
-		return nil, errClientTransactionsNotEnabled
+		return nil, ErrClientTransactionsNotEnabled
 	}
 
 	id, err := c.tcClient.newTransaction(timeout)
