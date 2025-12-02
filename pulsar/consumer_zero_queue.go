@@ -134,6 +134,7 @@ func (z *zeroQueueConsumer) Receive(ctx context.Context) (Message, error) {
 	for {
 		select {
 		case <-z.closeCh:
+			z.waitingOnReceive.Store(false)
 			return nil, newError(ConsumerClosed, "consumer closed")
 		case cm, ok := <-z.messageCh:
 			if !ok {
@@ -147,6 +148,7 @@ func (z *zeroQueueConsumer) Receive(ctx context.Context) (Message, error) {
 				z.log.WithField("messageID", cm.Message.ID()).Warn("message from old connection discarded after reconnection")
 			}
 		case <-ctx.Done():
+			z.waitingOnReceive.Store(false)
 			return nil, ctx.Err()
 		}
 	}
