@@ -244,18 +244,50 @@ func TestReconnectConsumer(t *testing.T) {
 }
 
 func TestReconnectedBrokerSendPermits(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Name:         "pulsar-test",
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		HostConfigModifier: func(config *container.HostConfig) {
+			config.PortBindings = map[nat.Port][]nat.PortBinding{
+				"6650/tcp": {{HostIP: "0.0.0.0", HostPort: "6659"}},
+				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8089"}},
+			}
+		},
+		Cmd: []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+		Reuse:            true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
 	client, err := NewClient(ClientOptions{
-		URL: lookupURL,
+		URL: endpoint,
 	})
 	assert.Nil(t, err)
+	adminEndpoint, err := c.PortEndpoint(context.Background(), "8080", "http")
+	assert.Nil(t, err)
+	admin, err := pulsaradmin.NewClient(&config.Config{
+		WebServiceURL: adminEndpoint,
+	})
+	assert.Nil(t, err)
+
 	topic := newTopicName()
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                   topic,
-		SubscriptionName:        "my-sub",
-		EnableZeroQueueConsumer: true,
-		Type:                    Shared, // using Shared subscription type to support unack subscription stats
-	})
-	assert.Nil(t, err)
+	var consumer Consumer
+	require.Eventually(t, func() bool {
+		consumer, err = client.Subscribe(ConsumerOptions{
+			Topic:                   topic,
+			SubscriptionName:        "my-sub",
+			EnableZeroQueueConsumer: true,
+			Type:                    Shared, // using Shared subscription type to support unack subscription stats
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
 	ctx := context.Background()
 
 	// create producer
@@ -278,15 +310,13 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 		log.Printf("send message: %s", msg.String())
 	}
 
-	admin, err := pulsaradmin.NewClient(&config.Config{})
-	assert.Nil(t, err)
 	log.Println("unloading topic")
 	topicName, err := utils.GetTopicName(topic)
 	assert.Nil(t, err)
 	err = admin.Topics().Unload(*topicName)
 	assert.Nil(t, err)
 	log.Println("unloaded topic")
-	time.Sleep(15 * time.Second) // wait for topic unload finish
+	time.Sleep(5 * time.Second) // wait for topic unload finish
 
 	// receive 10 messages
 	for i := 0; i < 10; i++ {
@@ -317,7 +347,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	//	wait for broker send messages to consumer and topic stats update finish
-	time.Sleep(15 * time.Second)
+	time.Sleep(10 * time.Second)
 	topicStats, err := admin.Topics().GetStats(*topicName)
 	assert.Nil(t, err)
 	for _, subscriptionStats := range topicStats.Subscriptions {
@@ -332,7 +362,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	assert.Nil(t, err)
 
 	// check topic stats
-	time.Sleep(15 * time.Second)
+	time.Sleep(10 * time.Second)
 	topicStats, err = admin.Topics().GetStats(*topicName)
 	assert.Nil(t, err)
 	for _, subscriptionStats := range topicStats.Subscriptions {
