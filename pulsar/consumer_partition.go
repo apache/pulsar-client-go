@@ -128,8 +128,7 @@ type partitionConsumerOpts struct {
 	enableBatchIndexAck        bool
 	ackGroupingOptions         *AckGroupingOptions
 	enableZeroQueueConsumer    bool
-	zeroQueueConsumer          *zeroQueueConsumer
-	zeroQueueReconnectedPolicy func(*partitionConsumer, *zeroQueueConsumer)
+	zeroQueueReconnectedPolicy func(*partitionConsumer)
 }
 
 type ConsumerEventListener interface {
@@ -1930,7 +1929,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			pc.log.Info("Reconnected consumer to broker")
 			bo.Reset()
 			if pc.options.enableZeroQueueConsumer && pc.options.zeroQueueReconnectedPolicy != nil {
-				pc.options.zeroQueueReconnectedPolicy(pc, pc.options.zeroQueueConsumer)
+				pc.options.zeroQueueReconnectedPolicy(pc)
 			}
 			return struct{}{}, nil
 		}

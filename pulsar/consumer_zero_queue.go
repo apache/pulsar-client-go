@@ -74,9 +74,8 @@ func newZeroConsumer(client *client, options ConsumerOptions, topic string,
 		return nil, err
 	}
 	opts := newPartitionConsumerOpts(zc.topic, zc.consumerName, tn.Partition, zc.options)
-	opts.zeroQueueConsumer = zc
-	opts.zeroQueueReconnectedPolicy = func(pc *partitionConsumer, z *zeroQueueConsumer) {
-		if z.waitingOnReceive.Load() {
+	opts.zeroQueueReconnectedPolicy = func(pc *partitionConsumer) {
+		if zc.waitingOnReceive.Load() {
 			pc.log.Info("zeroQueueConsumer reconnect, reset availablePermits")
 			pc.availablePermits.inc()
 		}
