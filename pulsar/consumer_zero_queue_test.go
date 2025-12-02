@@ -317,7 +317,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	//	wait for broker send messages to consumer and topic stats update finish
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 	topicStats, err := admin.Topics().GetStats(*topicName)
 	assert.Nil(t, err)
 	for _, subscriptionStats := range topicStats.Subscriptions {
@@ -332,7 +332,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	assert.Nil(t, err)
 
 	// check topic stats
-	time.Sleep(5 * time.Second)
+	time.Sleep(10 * time.Second)
 	topicStats, err = admin.Topics().GetStats(*topicName)
 	assert.Nil(t, err)
 	for _, subscriptionStats := range topicStats.Subscriptions {
