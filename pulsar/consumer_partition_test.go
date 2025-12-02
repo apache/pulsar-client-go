@@ -77,6 +77,7 @@ func TestBatchMessageIDNoAckTracker(t *testing.T) {
 		metrics:              newTestMetrics(),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
+	pc._setConn(dummyConnection{})
 	pc.availablePermits = &availablePermits{pc: &pc}
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
 		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
@@ -113,6 +114,7 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 		metrics:              newTestMetrics(),
 		decryptor:            crypto.NewNoopDecryptor(),
 	}
+	pc._setConn(dummyConnection{})
 	pc.availablePermits = &availablePermits{pc: &pc}
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
 		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
