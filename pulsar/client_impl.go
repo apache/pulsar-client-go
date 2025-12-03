@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	"errors"
+
 	"github.com/apache/pulsar-client-go/pulsar/auth"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
@@ -38,6 +40,8 @@ const (
 	defaultConnMaxIdleTime             = 180 * time.Second
 	minConnMaxIdleTime                 = 60 * time.Second
 )
+
+var ErrClientTransactionsNotEnabled = errors.New("transactions are not enabled with the client")
 
 type client struct {
 	cnxPool          internal.ConnectionPool
@@ -196,6 +200,10 @@ func newClient(options ClientOptions) (Client, error) {
 }
 
 func (c *client) NewTransaction(timeout time.Duration) (Transaction, error) {
+	if c.tcClient == nil {
+		return nil, ErrClientTransactionsNotEnabled
+	}
+
 	id, err := c.tcClient.newTransaction(timeout)
 	if err != nil {
 		return nil, err
