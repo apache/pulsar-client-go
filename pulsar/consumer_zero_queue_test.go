@@ -316,7 +316,6 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	err = admin.Topics().Unload(*topicName)
 	assert.Nil(t, err)
 	log.Println("unloaded topic")
-	time.Sleep(5 * time.Second) // wait for topic unload finish
 
 	// receive 10 messages
 	for i := 0; i < 10; i++ {
