@@ -266,8 +266,10 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
 	require.NoError(t, err, "Failed to get the pulsar endpoint")
 
+	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	client, err := NewClient(ClientOptions{
-		URL: endpoint,
+		URL:    endpoint,
+		Logger: plog.NewLoggerWithSlog(sLogger),
 	})
 	assert.Nil(t, err)
 	adminEndpoint, err := c.PortEndpoint(context.Background(), "8080", "http")
