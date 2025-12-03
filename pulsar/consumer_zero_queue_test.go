@@ -346,13 +346,14 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	//	wait for broker send messages to consumer and topic stats update finish
-	time.Sleep(10 * time.Second)
-	topicStats, err := admin.Topics().GetStats(*topicName)
-	assert.Nil(t, err)
-	for _, subscriptionStats := range topicStats.Subscriptions {
-		assert.Equal(t, subscriptionStats.MsgBacklog, int64(1))
-		assert.Equal(t, subscriptionStats.Consumers[0].UnAckedMessages, 0)
-	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		topicStats, err := admin.Topics().GetStats(*topicName)
+		require.Nil(c, err)
+		for _, subscriptionStats := range topicStats.Subscriptions {
+			require.Equal(c, subscriptionStats.MsgBacklog, int64(1))
+			require.Equal(c, subscriptionStats.Consumers[0].UnAckedMessages, 0)
+		}
+	}, 30*time.Second, 1*time.Second)	
 
 	// ack
 	msg, err := consumer.Receive(context.Background())
