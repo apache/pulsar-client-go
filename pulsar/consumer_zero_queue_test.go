@@ -244,22 +244,52 @@ func TestReconnectConsumer(t *testing.T) {
 }
 
 func TestReconnectedBrokerSendPermits(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Name:         "pulsar-test",
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		HostConfigModifier: func(config *container.HostConfig) {
+			config.PortBindings = map[nat.Port][]nat.PortBinding{
+				"6650/tcp": {{HostIP: "0.0.0.0", HostPort: "6659"}},
+				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8089"}},
+			}
+		},
+		Cmd: []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+		Reuse:            true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
 	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
 	client, err := NewClient(ClientOptions{
-		URL:    lookupURL,
+		URL:    endpoint,
 		Logger: plog.NewLoggerWithSlog(sLogger),
 	})
 	assert.Nil(t, err)
-	topic := newTopicName()
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:                   topic,
-		SubscriptionName:        "my-sub",
-		EnableZeroQueueConsumer: true,
-		Type:                    Shared, // using Shared subscription type to support unack subscription stats
+	adminEndpoint, err := c.PortEndpoint(context.Background(), "8080", "http")
+	assert.Nil(t, err)
+	admin, err := pulsaradmin.NewClient(&config.Config{
+		WebServiceURL: adminEndpoint,
 	})
 	assert.Nil(t, err)
-	admin, err := pulsaradmin.NewClient(&config.Config{})
-	assert.Nil(t, err)
+
+	topic := newTopicName()
+	var consumer Consumer
+	require.Eventually(t, func() bool {
+		consumer, err = client.Subscribe(ConsumerOptions{
+			Topic:                   topic,
+			SubscriptionName:        "my-sub",
+			EnableZeroQueueConsumer: true,
+			Type:                    Shared, // using Shared subscription type to support unack subscription stats
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
 	ctx := context.Background()
 
 	// create producer
@@ -335,7 +365,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 			require.Equal(c, subscriptionStats.MsgBacklog, int64(1))
 			require.Equal(c, subscriptionStats.Consumers[0].UnAckedMessages, 0)
 		}
-	}, 60*time.Second, 1*time.Second)
+	}, 30*time.Second, 1*time.Second)
 
 	// ack
 	msg, err := consumer.Receive(context.Background())
@@ -351,7 +381,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 			require.Equal(c, subscriptionStats.MsgBacklog, int64(0))
 			require.Equal(c, subscriptionStats.Consumers[0].UnAckedMessages, 0)
 		}
-	}, 60*time.Second, 1*time.Second)
+	}, 30*time.Second, 1*time.Second)
 
 }
 
