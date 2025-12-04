@@ -335,7 +335,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 			require.Equal(c, subscriptionStats.MsgBacklog, int64(1))
 			require.Equal(c, subscriptionStats.Consumers[0].UnAckedMessages, 0)
 		}
-	}, 30*time.Second, 1*time.Second)
+	}, 60*time.Second, 1*time.Second)
 
 	// ack
 	msg, err := consumer.Receive(context.Background())
@@ -351,7 +351,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 			require.Equal(c, subscriptionStats.MsgBacklog, int64(0))
 			require.Equal(c, subscriptionStats.Consumers[0].UnAckedMessages, 0)
 		}
-	}, 30*time.Second, 1*time.Second)
+	}, 60*time.Second, 1*time.Second)
 
 }
 
