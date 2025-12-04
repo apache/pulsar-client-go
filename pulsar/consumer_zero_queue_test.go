@@ -318,6 +318,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	err = admin.Topics().Unload(*topicName)
 	assert.Nil(t, err)
 	log.Println("unloaded topic")
+	time.Sleep(1 * time.Minute)
 
 	// receive 10 messages
 	for i := 0; i < 10; i++ {
@@ -348,8 +349,11 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	//	wait for broker send messages to consumer and topic stats update finish
+	option := utils.GetStatsOptions{
+		GetPreciseBacklog: true,
+	}
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		topicStats, err := admin.Topics().GetStats(*topicName)
+		topicStats, err := admin.Topics().GetStatsWithOptionWithContext(ctx, *topicName, option)
 		require.Nil(c, err)
 		for _, subscriptionStats := range topicStats.Subscriptions {
 			require.Equal(c, subscriptionStats.MsgBacklog, int64(1))
@@ -365,7 +369,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 
 	// check topic stats
 	require.EventuallyWithT(t, func(c *assert.CollectT) {
-		topicStats, err := admin.Topics().GetStats(*topicName)
+		topicStats, err := admin.Topics().GetStatsWithOptionWithContext(ctx, *topicName, option)
 		require.Nil(c, err)
 		for _, subscriptionStats := range topicStats.Subscriptions {
 			require.Equal(c, subscriptionStats.MsgBacklog, int64(0))
