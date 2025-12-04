@@ -318,7 +318,13 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 	err = admin.Topics().Unload(*topicName)
 	assert.Nil(t, err)
 	log.Println("unloaded topic")
-	time.Sleep(1 * time.Minute)
+	zc, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		reconnectCount := zc.pc.reconnectCount.Load()
+		require.Equal(c, reconnectCount, int32(1))
+	}, 30*time.Second, 1*time.Second)
+	//time.Sleep(1 * time.Minute)
 
 	// receive 10 messages
 	for i := 0; i < 10; i++ {

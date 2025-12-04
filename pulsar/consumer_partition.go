@@ -171,6 +171,7 @@ type partitionConsumer struct {
 	currentQueueSize       uAtomic.Int32
 	scaleReceiverQueueHint uAtomic.Bool
 	incomingMessages       uAtomic.Int32
+	reconnectCount         uAtomic.Int32
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
@@ -1544,6 +1545,7 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
+	pc.reconnectCount.Inc()
 	var assignedBrokerURL string
 	if closeConsumer != nil {
 		assignedBrokerURL = pc.client.selectServiceURL(
