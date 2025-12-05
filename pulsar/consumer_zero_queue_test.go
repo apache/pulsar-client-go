@@ -243,6 +243,148 @@ func TestReconnectConsumer(t *testing.T) {
 	defer c.Terminate(ctx)
 }
 
+func TestReconnectedBrokerSendPermits(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Name:         "pulsar-test",
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		HostConfigModifier: func(config *container.HostConfig) {
+			config.PortBindings = map[nat.Port][]nat.PortBinding{
+				"6650/tcp": {{HostIP: "0.0.0.0", HostPort: "6659"}},
+				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8089"}},
+			}
+		},
+		Cmd: []string{"bin/pulsar", "standalone", "-nfw"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+		Reuse:            true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	client, err := NewClient(ClientOptions{
+		URL:    endpoint,
+		Logger: plog.NewLoggerWithSlog(sLogger),
+	})
+	assert.Nil(t, err)
+	adminEndpoint, err := c.PortEndpoint(context.Background(), "8080", "http")
+	assert.Nil(t, err)
+	admin, err := pulsaradmin.NewClient(&config.Config{
+		WebServiceURL: adminEndpoint,
+	})
+	assert.Nil(t, err)
+
+	topic := newTopicName()
+	var consumer Consumer
+	require.Eventually(t, func() bool {
+		consumer, err = client.Subscribe(ConsumerOptions{
+			Topic:                   topic,
+			SubscriptionName:        "my-sub",
+			EnableZeroQueueConsumer: true,
+			Type:                    Shared, // using Shared subscription type to support unack subscription stats
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	ctx := context.Background()
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: false,
+	})
+	assert.Nil(t, err)
+
+	// send 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			Key:     "pulsar",
+			Properties: map[string]string{
+				"key-1": "pulsar-1",
+			},
+		})
+		assert.Nil(t, err)
+		log.Printf("send message: %s", msg.String())
+	}
+
+	log.Println("unloading topic")
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+	err = admin.Topics().Unload(*topicName)
+	assert.Nil(t, err)
+	log.Println("unloaded topic")
+	zc, ok := consumer.(*zeroQueueConsumer)
+	assert.True(t, ok)
+	// wait for reconnect
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		reconnectCount := zc.pc.reconnectCount.Load()
+		require.Equal(c, reconnectCount, int32(1))
+	}, 30*time.Second, 1*time.Second)
+
+	// receive 10 messages
+	for i := 0; i < 10; i++ {
+		msg, err := consumer.Receive(context.Background())
+		if err != nil {
+			assert.Nil(t, err)
+		}
+
+		expectMsg := fmt.Sprintf("hello-%d", i)
+		expectProperties := map[string]string{
+			"key-1": "pulsar-1",
+		}
+		assert.Equal(t, []byte(expectMsg), msg.Payload())
+		assert.Equal(t, "pulsar", msg.Key())
+		assert.Equal(t, expectProperties, msg.Properties())
+		// ack message
+		err = consumer.Ack(msg)
+		assert.Nil(t, err)
+		log.Printf("receive message: %s", msg.ID().String())
+	}
+	//	send one more message and we do not manually receive it
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Payload: []byte(fmt.Sprintf("hello-%d", 10)),
+		Key:     "pulsar",
+		Properties: map[string]string{
+			"key-1": "pulsar-1",
+		},
+	})
+	assert.Nil(t, err)
+	//	wait for broker send messages to consumer and topic stats update finish
+	option := utils.GetStatsOptions{
+		GetPreciseBacklog: true,
+	}
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		topicStats, err := admin.Topics().GetStatsWithOptionWithContext(ctx, *topicName, option)
+		require.Nil(c, err)
+		for _, subscriptionStats := range topicStats.Subscriptions {
+			require.Equal(c, subscriptionStats.MsgBacklog, int64(1))
+			require.Equal(c, subscriptionStats.Consumers[0].UnAckedMessages, 0)
+		}
+	}, 30*time.Second, 1*time.Second)
+
+	// ack
+	msg, err := consumer.Receive(context.Background())
+	assert.Nil(t, err)
+	err = consumer.Ack(msg)
+	assert.Nil(t, err)
+
+	// check topic stats
+	require.EventuallyWithT(t, func(c *assert.CollectT) {
+		topicStats, err := admin.Topics().GetStatsWithOptionWithContext(ctx, *topicName, option)
+		require.Nil(c, err)
+		for _, subscriptionStats := range topicStats.Subscriptions {
+			require.Equal(c, subscriptionStats.MsgBacklog, int64(0))
+			require.Equal(c, subscriptionStats.Consumers[0].UnAckedMessages, 0)
+		}
+	}, 30*time.Second, 1*time.Second)
+
+}
+
 func TestUnloadTopicBeforeConsume(t *testing.T) {
 
 	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))

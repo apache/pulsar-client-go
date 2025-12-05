@@ -124,10 +124,11 @@ type partitionConsumerOpts struct {
 	expireTimeOfIncompleteChunk time.Duration
 	autoAckIncompleteChunk      bool
 	// in failover mode, this callback will be called when consumer change
-	consumerEventListener   ConsumerEventListener
-	enableBatchIndexAck     bool
-	ackGroupingOptions      *AckGroupingOptions
-	enableZeroQueueConsumer bool
+	consumerEventListener      ConsumerEventListener
+	enableBatchIndexAck        bool
+	ackGroupingOptions         *AckGroupingOptions
+	enableZeroQueueConsumer    bool
+	zeroQueueReconnectedPolicy func(*partitionConsumer)
 }
 
 type ConsumerEventListener interface {
@@ -170,6 +171,7 @@ type partitionConsumer struct {
 	currentQueueSize       uAtomic.Int32
 	scaleReceiverQueueHint uAtomic.Bool
 	incomingMessages       uAtomic.Int32
+	reconnectCount         uAtomic.Int32
 
 	eventsCh        chan interface{}
 	connectedCh     chan struct{}
@@ -1393,6 +1395,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				orderingKey:         string(smm.OrderingKey),
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
+				conn:                pc._getConn(),
 			}
 		} else {
 			msg = &message{
@@ -1413,6 +1416,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				orderingKey:         string(msgMeta.GetOrderingKey()),
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
+				conn:                pc._getConn(),
 			}
 		}
 
@@ -1541,6 +1545,7 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
+	pc.reconnectCount.Inc()
 	var assignedBrokerURL string
 	if closeConsumer != nil {
 		assignedBrokerURL = pc.client.selectServiceURL(
@@ -1925,9 +1930,8 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			// Successfully reconnected
 			pc.log.Info("Reconnected consumer to broker")
 			bo.Reset()
-			if pc.options.enableZeroQueueConsumer {
-				pc.log.Info("zeroQueueConsumer reconnect, reset availablePermits")
-				pc.availablePermits.inc()
+			if pc.options.enableZeroQueueConsumer && pc.options.zeroQueueReconnectedPolicy != nil {
+				pc.options.zeroQueueReconnectedPolicy(pc)
 			}
 			return struct{}{}, nil
 		}

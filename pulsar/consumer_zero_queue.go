@@ -23,6 +23,8 @@ import (
 	"sync"
 	"time"
 
+	uAtomic "go.uber.org/atomic"
+
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/pkg/errors"
@@ -36,6 +38,7 @@ type zeroQueueConsumer struct {
 	pc                        *partitionConsumer
 	consumerName              string
 	disableForceTopicCreation bool
+	waitingOnReceive          uAtomic.Bool
 
 	messageCh chan ConsumerMessage
 
@@ -71,11 +74,17 @@ func newZeroConsumer(client *client, options ConsumerOptions, topic string,
 		return nil, err
 	}
 	opts := newPartitionConsumerOpts(zc.topic, zc.consumerName, tn.Partition, zc.options)
-	conn, err := newPartitionConsumer(zc, zc.client, opts, zc.messageCh, zc.dlq, zc.metrics)
+	opts.zeroQueueReconnectedPolicy = func(pc *partitionConsumer) {
+		if zc.waitingOnReceive.Load() {
+			pc.log.Info("zeroQueueConsumer reconnect, reset availablePermits")
+			pc.availablePermits.inc()
+		}
+	}
+	pc, err := newPartitionConsumer(zc, zc.client, opts, zc.messageCh, zc.dlq, zc.metrics)
 	if err != nil {
 		return nil, err
 	}
-	zc.pc = conn
+	zc.pc = pc
 
 	return zc, nil
 }
@@ -119,17 +128,26 @@ func (z *zeroQueueConsumer) Receive(ctx context.Context) (Message, error) {
 	}
 	z.Lock()
 	defer z.Unlock()
+	z.waitingOnReceive.Store(true)
 	z.pc.availablePermits.inc()
 	for {
 		select {
 		case <-z.closeCh:
+			z.waitingOnReceive.Store(false)
 			return nil, newError(ConsumerClosed, "consumer closed")
 		case cm, ok := <-z.messageCh:
 			if !ok {
 				return nil, newError(ConsumerClosed, "consumer closed")
 			}
-			return cm.Message, nil
+			message, ok := cm.Message.(*message)
+			if ok && message.getConn().ID() == z.pc._getConn().ID() {
+				z.waitingOnReceive.Store(false)
+				return cm.Message, nil
+			} else {
+				z.log.WithField("messageID", cm.Message.ID()).Warn("message from old connection discarded after reconnection")
+			}
 		case <-ctx.Done():
+			z.waitingOnReceive.Store(false)
 			return nil, ctx.Err()
 		}
 	}
