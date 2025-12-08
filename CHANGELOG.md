@@ -37,6 +37,8 @@ All notable changes to this project will be documented in this file.
 * [fix] Fix partition update failure causing existing producers to close ([#1437](https://github.com/apache/pulsar-client-go/pull/1437)) by @RobertIndie
 * [feat] Support reloading OAuth2 key file ([#1441](https://github.com/apache/pulsar-client-go/pull/1441)) by @RobertIndie
 * [chore] Bump `golang.org/x/crypto` from 0.36.0 to 0.45.0 ([#1440](https://github.com/apache/pulsar-client-go/pull/1440)) by @dependabot[bot]
+* [fix] Return error when the client transaction coordinator is nil to p… ([#1444](https://github.com/apache/pulsar-client-go/pull/1444)) by @thomas-bousquet
+* [fix] Enhance zero queue consumer reconnection handling and message permit management ([#1443](https://github.com/apache/pulsar-client-go/pull/1443)) by @crossoverJie
 
 ## New Contributors
 
