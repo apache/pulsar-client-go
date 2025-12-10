@@ -396,6 +396,12 @@ type Namespaces interface {
 	// SetPersistenceWithContext sets the persistence configuration for all the topics on a namespace
 	SetPersistenceWithContext(ctx context.Context, namespace string, persistence utils.PersistencePolicies) error
 
+	// RemovePersistence removes the persistence configuration for a namespace
+	RemovePersistence(namespace string) error
+
+	// RemovePersistenceWithContext removes the persistence configuration for a namespace
+	RemovePersistenceWithContext(ctx context.Context, namespace string) error
+
 	// GetPersistence returns the persistence configuration for a namespace.
 	// Returns nil if the persistence policy is not configured at the namespace level.
 	GetPersistence(namespace string) (*utils.PersistencePolicies, error)
@@ -1431,6 +1437,19 @@ func (n *namespaces) SetPersistenceWithContext(
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence")
 	return n.pulsar.Client.PostWithContext(ctx, endpoint, &persistence)
+}
+
+func (n *namespaces) RemovePersistence(namespace string) error {
+	return n.RemovePersistenceWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemovePersistenceWithContext(ctx context.Context, namespace string) error {
+	nsName, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "persistence")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (n *namespaces) SetBookieAffinityGroup(namespace string, bookieAffinityGroup utils.BookieAffinityGroupData) error {
