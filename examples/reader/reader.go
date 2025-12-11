@@ -19,18 +19,38 @@ package main
 
 import (
 	"context"
-	"fmt"
-	"log"
+	"io"
+	"log/slog"
+	"os"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	pulsarlog "github.com/apache/pulsar-client-go/pulsar/log"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
-	client, err := pulsar.NewClient(pulsar.ClientOptions{URL: "pulsar://localhost:6650"})
-	if err != nil {
-		log.Fatal(err)
+	fileLogger := &lumberjack.Logger{
+		Filename:   "/tmp/pulsar-go-sdk.log",
+		MaxSize:    100,
+		MaxBackups: 5,
+		LocalTime:  true,
 	}
+	// this multiLogger prints logs to both stdout and fileLogger
+	// if we only want to print logs to file, just pass fileLogger to slog.NewJSONHandler()
+	multiLogger := io.MultiWriter(os.Stdout, fileLogger)
+	logger := slog.New(slog.NewJSONHandler(multiLogger, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
 
+	client, err := pulsar.NewClient(pulsar.ClientOptions{
+		URL: "pulsar://localhost:6650",
+		// If we are using a logrus logger or other third-party custom loggers,
+		// we can skip the above slog logger initialization and pass the logger with its corresponding wrapper here.
+		Logger: pulsarlog.NewLoggerWithSlog(logger),
+	})
+	if err != nil {
+		logger.Error("create client err", "error", err)
+		return
+	}
 	defer client.Close()
 
 	reader, err := client.CreateReader(pulsar.ReaderOptions{
@@ -38,17 +58,22 @@ func main() {
 		StartMessageID: pulsar.EarliestMessageID(),
 	})
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("create reader err", "error", err)
+		return
 	}
 	defer reader.Close()
 
 	for reader.HasNext() {
 		msg, err := reader.Next(context.Background())
 		if err != nil {
-			log.Fatal(err)
+			logger.Error("reader receive message err", "error", err)
+			return
 		}
-
-		fmt.Printf("Received message msgId: %#v -- content: '%s'\n",
-			msg.ID(), string(msg.Payload()))
+		logger.Info("Received message",
+			"msgId",
+			msg.ID().String(),
+			"content",
+			string(msg.Payload()),
+		)
 	}
 }
