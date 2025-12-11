@@ -19,7 +19,7 @@ package utils
 
 // Options while updating the sink
 type UpdateOptions struct {
-	UpdateAuthData bool
+	UpdateAuthData bool `json:"updateAuthData"`
 }
 
 func NewUpdateOptions() *UpdateOptions {
