@@ -17,7 +17,7 @@
 
 package utils
 
-// Options while updating the sink
+// Options while updating functions, sources, and sinks
 type UpdateOptions struct {
 	UpdateAuthData bool `json:"updateAuthData"`
 }
