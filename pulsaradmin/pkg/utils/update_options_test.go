@@ -17,13 +17,29 @@
 
 package utils
 
-// Options while updating functions, sources, and sinks
-type UpdateOptions struct {
-	UpdateAuthData bool `json:"updateAuthData"`
+import (
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestUpdateOptionsMarshalJSON(t *testing.T) {
+	opts := UpdateOptions{UpdateAuthData: true}
+
+	data, err := json.Marshal(opts)
+	require.NoError(t, err)
+
+	assert.JSONEq(t, `{"updateAuthData":true}`, string(data))
 }
 
-func NewUpdateOptions() *UpdateOptions {
-	return &UpdateOptions{
-		UpdateAuthData: false,
-	}
+func TestUpdateOptionsUnmarshalJSON(t *testing.T) {
+	payload := `{"updateAuthData":true}`
+
+	var opts UpdateOptions
+	err := json.Unmarshal([]byte(payload), &opts)
+	require.NoError(t, err)
+
+	assert.True(t, opts.UpdateAuthData)
 }
