@@ -861,4 +861,12 @@ func TestNamespaces_Persistence(t *testing.T) {
 	assert.NotNil(t, persistence, "Expected non-nil when persistence is configured")
 	assert.Equal(t, 1, persistence.BookkeeperEnsemble)
 	assert.Equal(t, 1, persistence.BookkeeperWriteQuorum)
+
+	// Remove persistence policy - should return nil
+	err = admin.Namespaces().RemovePersistence(namespaceName)
+	assert.NoError(t, err)
+
+	persistence, err = admin.Namespaces().GetPersistence(namespaceName)
+	assert.NoError(t, err)
+	assert.Nil(t, persistence, "Expected nil after removing persistence configuration")
 }
