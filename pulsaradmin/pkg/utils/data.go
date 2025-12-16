@@ -229,19 +229,21 @@ type NamespacesData struct {
 }
 
 type TopicStats struct {
-	BacklogSize         int64                        `json:"backlogSize"`
-	MsgCounterIn        int64                        `json:"msgInCounter"`
-	MsgCounterOut       int64                        `json:"msgOutCounter"`
-	MsgRateIn           float64                      `json:"msgRateIn"`
-	MsgRateOut          float64                      `json:"msgRateOut"`
-	MsgThroughputIn     float64                      `json:"msgThroughputIn"`
-	MsgThroughputOut    float64                      `json:"msgThroughputOut"`
-	AverageMsgSize      float64                      `json:"averageMsgSize"`
-	StorageSize         int64                        `json:"storageSize"`
-	Publishers          []PublisherStats             `json:"publishers"`
-	Subscriptions       map[string]SubscriptionStats `json:"subscriptions"`
-	Replication         map[string]ReplicatorStats   `json:"replication"`
-	DeDuplicationStatus string                       `json:"deduplicationStatus"`
+	BacklogSize            int64                        `json:"backlogSize"`
+	MsgCounterIn           int64                        `json:"msgInCounter"`
+	MsgCounterOut          int64                        `json:"msgOutCounter"`
+	MsgRateIn              float64                      `json:"msgRateIn"`
+	MsgRateOut             float64                      `json:"msgRateOut"`
+	MsgThroughputIn        float64                      `json:"msgThroughputIn"`
+	MsgThroughputOut       float64                      `json:"msgThroughputOut"`
+	AverageMsgSize         float64                      `json:"averageMsgSize"`
+	StorageSize            int64                        `json:"storageSize"`
+	Publishers             []PublisherStats             `json:"publishers"`
+	Subscriptions          map[string]SubscriptionStats `json:"subscriptions"`
+	Replication            map[string]ReplicatorStats   `json:"replication"`
+	DeDuplicationStatus    string                       `json:"deduplicationStatus"`
+	TopicCreationTimeStamp int64                        `json:"topicCreationTimeStamp,omitempty"`
+	LastPublishTimestamp   int64                        `json:"lastPublishTimestamp,omitempty"`
 }
 
 type ProducerAccessMode string
@@ -410,18 +412,20 @@ type CursorStats struct {
 }
 
 type PartitionedTopicStats struct {
-	MsgRateIn           float64                      `json:"msgRateIn"`
-	MsgRateOut          float64                      `json:"msgRateOut"`
-	MsgThroughputIn     float64                      `json:"msgThroughputIn"`
-	MsgThroughputOut    float64                      `json:"msgThroughputOut"`
-	AverageMsgSize      float64                      `json:"averageMsgSize"`
-	StorageSize         int64                        `json:"storageSize"`
-	Publishers          []PublisherStats             `json:"publishers"`
-	Subscriptions       map[string]SubscriptionStats `json:"subscriptions"`
-	Replication         map[string]ReplicatorStats   `json:"replication"`
-	DeDuplicationStatus string                       `json:"deduplicationStatus"`
-	Metadata            PartitionedTopicMetadata     `json:"metadata"`
-	Partitions          map[string]TopicStats        `json:"partitions"`
+	MsgRateIn              float64                      `json:"msgRateIn"`
+	MsgRateOut             float64                      `json:"msgRateOut"`
+	MsgThroughputIn        float64                      `json:"msgThroughputIn"`
+	MsgThroughputOut       float64                      `json:"msgThroughputOut"`
+	AverageMsgSize         float64                      `json:"averageMsgSize"`
+	StorageSize            int64                        `json:"storageSize"`
+	Publishers             []PublisherStats             `json:"publishers"`
+	Subscriptions          map[string]SubscriptionStats `json:"subscriptions"`
+	Replication            map[string]ReplicatorStats   `json:"replication"`
+	DeDuplicationStatus    string                       `json:"deduplicationStatus"`
+	Metadata               PartitionedTopicMetadata     `json:"metadata"`
+	Partitions             map[string]TopicStats        `json:"partitions"`
+	TopicCreationTimeStamp int64                        `json:"topicCreationTimeStamp,omitempty"`
+	LastPublishTimestamp   int64                        `json:"lastPublishTimestamp,omitempty"`
 }
 
 type SchemaData struct {
