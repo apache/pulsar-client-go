@@ -18,35 +18,52 @@
 package main
 
 import (
-	"fmt"
-	"log"
+	"io"
+	"log/slog"
+	"os"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	pulsarlog "github.com/apache/pulsar-client-go/pulsar/log"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 func main() {
-	client, err := pulsar.NewClient(pulsar.ClientOptions{URL: "pulsar://localhost:6650"})
-	if err != nil {
-		log.Fatal(err)
+	fileLogger := &lumberjack.Logger{
+		Filename:   "/tmp/pulsar-go-sdk.log",
+		MaxSize:    100,
+		MaxBackups: 5,
+		LocalTime:  true,
 	}
+	// this multiLogger prints logs to both stdout and fileLogger
+	// if we only want to print logs to file, just pass fileLogger to slog.NewJSONHandler()
+	multiLogger := io.MultiWriter(os.Stdout, fileLogger)
+	logger := slog.New(slog.NewJSONHandler(multiLogger, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
 
+	client, err := pulsar.NewClient(pulsar.ClientOptions{
+		URL: "pulsar://localhost:6650",
+		// If we are using a logrus logger or other third-party custom loggers,
+		// we can skip the above slog logger initialization and pass the logger with its corresponding wrapper here.
+		Logger: pulsarlog.NewLoggerWithSlog(logger),
+	})
+	if err != nil {
+		logger.Error("create client err", "error", err)
+		return
+	}
 	defer client.Close()
 
 	channel := make(chan pulsar.ConsumerMessage, 100)
-
 	options := pulsar.ConsumerOptions{
 		Topic:            "topic-1",
 		SubscriptionName: "my-subscription",
 		Type:             pulsar.Shared,
 	}
-
 	options.MessageChannel = channel
-
 	consumer, err := client.Subscribe(options)
 	if err != nil {
-		log.Fatal(err)
+		logger.Error("create consumer err", "error", err)
+		return
 	}
-
 	defer consumer.Close()
 
 	// Receive messages from channel. The channel returns a struct which contains message and the consumer from where
@@ -54,9 +71,12 @@ func main() {
 	// shared across multiple consumers as well
 	for cm := range channel {
 		msg := cm.Message
-		fmt.Printf("Received message  msgId: %v -- content: '%s'\n",
-			msg.ID(), string(msg.Payload()))
-
+		logger.Info("Received message",
+			"msgId",
+			msg.ID().String(),
+			"content",
+			string(msg.Payload()),
+		)
 		consumer.Ack(msg)
 	}
 }
