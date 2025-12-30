@@ -176,10 +176,10 @@ guaranteed at-least-once delivery of messages, automatic cursor management for
 subscribers, and cross-datacenter replication.
 
 For Pulsar release details and downloads, visit:
-https://github.com/apache/pulsar-client-go/releases/tag/v0.x.0
+https://pulsar.apache.org/download/#pulsar-go-client
 
 Release Notes are at:
-https://github.com/apache/pulsar-client-go/blob/master/CHANGELOG.md
+https://pulsar.apache.org/release-notes/client-go/
 
 We would like to thank the contributors that made the release possible.
 
