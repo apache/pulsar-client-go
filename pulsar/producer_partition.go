@@ -508,7 +508,6 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			bo.Reset()
 			return struct{}{}, nil
 		}
-		p.log.WithError(err).Error("Failed to create producer at reconnect")
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
@@ -534,6 +533,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			p.doClose(errors.Join(ErrProducerFenced, err))
 			return struct{}{}, nil
 		}
+		p.log.WithError(err).Warn("Failed to reconnect to broker, will retry later.")
 
 		if maxRetry > 0 {
 			maxRetry--
