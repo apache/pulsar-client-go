@@ -186,12 +186,34 @@ func (c *regexConsumer) Ack(msg Message) error {
 	return c.AckID(msg.ID())
 }
 
-func (c *regexConsumer) ReconsumeLater(_ Message, _ time.Duration) {
-	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
+func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
+	c.ReconsumeLaterWithCustomProperties(msg, map[string]string{}, delay)
 }
 
-func (c *regexConsumer) ReconsumeLaterWithCustomProperties(_ Message, _ map[string]string, _ time.Duration) {
-	c.log.Warnf("regexp consumer not support ReconsumeLaterWithCustomProperties yet.")
+func (c *regexConsumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string,
+	delay time.Duration) {
+	names, err := validateTopicNames(msg.Topic())
+	if err != nil {
+		c.log.Errorf("validate msg topic %q failed: %v", msg.Topic(), err)
+		return
+	}
+	if len(names) != 1 {
+		c.log.Errorf("invalid msg topic %q names: %+v ", msg.Topic(), names)
+		return
+	}
+
+	tn := names[0]
+	fqdnTopic := internal.TopicNameWithoutPartitionPart(tn)
+	consumer, ok := c.consumers[fqdnTopic]
+	if !ok {
+		// check to see if the topic with the partition part is in the consumers
+		// this can happen when the consumer is configured to consume from a specific partition
+		if consumer, ok = c.consumers[tn.Name]; !ok {
+			c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
+			return
+		}
+	}
+	consumer.ReconsumeLaterWithCustomProperties(msg, customProperties, delay)
 }
 
 // AckID the consumption of a single message, identified by its MessageID
@@ -454,6 +476,11 @@ func (c *regexConsumer) topics() ([]string, error) {
 	}
 
 	filtered := filterTopics(topics, c.pattern)
+
+	if c.options.RetryEnable {
+		filtered = append(filtered, c.options.DLQ.RetryLetterTopic)
+	}
+
 	return filtered, nil
 }
 
