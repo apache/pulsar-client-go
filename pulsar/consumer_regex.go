@@ -204,6 +204,10 @@ func (c *regexConsumer) ReconsumeLaterWithCustomProperties(msg Message, customPr
 
 	tn := names[0]
 	fqdnTopic := internal.TopicNameWithoutPartitionPart(tn)
+
+	c.consumersLock.Lock()
+	defer c.consumersLock.Unlock()
+
 	consumer, ok := c.consumers[fqdnTopic]
 	if !ok {
 		// check to see if the topic with the partition part is in the consumers
@@ -213,6 +217,7 @@ func (c *regexConsumer) ReconsumeLaterWithCustomProperties(msg Message, customPr
 			return
 		}
 	}
+
 	consumer.ReconsumeLaterWithCustomProperties(msg, customProperties, delay)
 }
 
@@ -477,7 +482,7 @@ func (c *regexConsumer) topics() ([]string, error) {
 
 	filtered := filterTopics(topics, c.pattern)
 
-	if c.options.RetryEnable {
+	if c.options.RetryEnable && c.options.DLQ != nil {
 		filtered = append(filtered, c.options.DLQ.RetryLetterTopic)
 	}
 
