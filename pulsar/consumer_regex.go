@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -483,7 +484,10 @@ func (c *regexConsumer) topics() ([]string, error) {
 	filtered := filterTopics(topics, c.pattern)
 
 	if c.options.RetryEnable && c.options.DLQ != nil {
-		filtered = append(filtered, c.options.DLQ.RetryLetterTopic)
+		retryTopic := c.options.DLQ.RetryLetterTopic
+		if !slices.Contains(filtered, retryTopic) {
+			filtered = append(filtered, retryTopic)
+		}
 	}
 
 	return filtered, nil
