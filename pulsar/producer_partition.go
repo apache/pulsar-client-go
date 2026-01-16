@@ -523,9 +523,10 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		}
 
 		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
-			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
+			//	ProducerBlockedQuotaExceededException is a retryable exception,
+			//	we only fail pending messages but continue trying to reconnect
+			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, will retry reconnecting")
 			p.failPendingMessages(errors.Join(ErrProducerBlockedQuotaExceeded, err))
-			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgProducerFenced) {
