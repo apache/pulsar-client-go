@@ -461,7 +461,7 @@ func (c *regexConsumer) topics() ([]string, error) {
 
 	if c.options.RetryEnable && c.options.DLQ != nil {
 		retryTopic := c.options.DLQ.RetryLetterTopic
-		if !slices.Contains(filtered, retryTopic) {
+		if retryTopic != "" && !slices.Contains(filtered, retryTopic) {
 			filtered = append(filtered, retryTopic)
 		}
 	}
