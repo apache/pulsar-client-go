@@ -28,6 +28,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
 
@@ -521,10 +522,10 @@ func TestRegexConsumerReconsumeLater(t *testing.T) {
 	assert.Nil(t, err)
 	defer client.Close()
 
-	topic1 := fmt.Sprintf("regex-reconsume-topic-%v", time.Now().Nanosecond())
+	topic1 := fmt.Sprintf("regex-reconsume-topic-%v", uuid.NewString())
 	assert.Nil(t, createPartitionedTopic(topic1, 1))
 
-	topic2 := fmt.Sprintf("regex-reconsume-topic-%v", time.Now().Nanosecond())
+	topic2 := fmt.Sprintf("regex-reconsume-topic-%v", uuid.NewString())
 	assert.Nil(t, createPartitionedTopic(topic2, 1))
 
 	topics := []string{topic1, topic2}
