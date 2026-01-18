@@ -28,6 +28,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+	"github.com/google/uuid"
 
 	"github.com/stretchr/testify/assert"
 
@@ -511,5 +512,72 @@ func TestRegexTopicGetLastMessageIDs(t *testing.T) {
 		messages, err := admin.Subscriptions().GetMessagesByID(*topicName, id.LedgerID(), id.EntryID())
 		assert.Nil(t, err)
 		assert.Equal(t, 1, len(messages))
+	}
+}
+
+func TestRegexConsumerReconsumeLater(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic1 := fmt.Sprintf("regex-reconsume-topic-%v", uuid.NewString())
+	assert.Nil(t, createPartitionedTopic(topic1, 1))
+
+	topic2 := fmt.Sprintf("regex-reconsume-topic-%v", uuid.NewString())
+	assert.Nil(t, createPartitionedTopic(topic2, 1))
+
+	topics := []string{topic1, topic2}
+
+	// create consumer
+	topicsPattern := "persistent://public/default/regex-reconsume-topic-.*"
+	consumer, err := client.Subscribe(ConsumerOptions{
+		TopicsPattern:    topicsPattern,
+		SubscriptionName: "my-sub",
+		Type:             Shared,
+		RetryEnable:      true,
+		DLQ: &DLQPolicy{
+			MaxDeliveries: 2,
+		},
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	// produce messages
+	for i, topic := range topics {
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:           topic,
+			DisableBatching: true,
+		})
+		if !assert.Nil(t, err) {
+			t.Fatal()
+		}
+
+		err = genMessages(p, 1, func(_ int) string {
+			return fmt.Sprintf("topic-%d-hello", i+1)
+		})
+		assert.Nil(t, err)
+
+		p.Close()
+	}
+
+	// we should receive one message on each topic, then one retry for each of those
+	for range 2 * len(topics) {
+		func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+
+			msg, err := consumer.Receive(ctx)
+			if !assert.Nil(t, err) {
+				t.Fatal()
+			}
+
+			if strings.HasSuffix(msg.Topic(), RetryTopicSuffix) {
+				assert.Nil(t, consumer.Ack(msg))
+			} else {
+				consumer.ReconsumeLater(msg, time.Second)
+			}
+		}()
 	}
 }

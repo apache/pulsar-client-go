@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -186,12 +187,15 @@ func (c *regexConsumer) Ack(msg Message) error {
 	return c.AckID(msg.ID())
 }
 
-func (c *regexConsumer) ReconsumeLater(_ Message, _ time.Duration) {
-	c.log.Warnf("regexp consumer not support ReconsumeLater yet.")
+func (c *regexConsumer) ReconsumeLater(msg Message, delay time.Duration) {
+	c.ReconsumeLaterWithCustomProperties(msg, map[string]string{}, delay)
 }
 
-func (c *regexConsumer) ReconsumeLaterWithCustomProperties(_ Message, _ map[string]string, _ time.Duration) {
-	c.log.Warnf("regexp consumer not support ReconsumeLaterWithCustomProperties yet.")
+func (c *regexConsumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string,
+	delay time.Duration) {
+	c.consumersLock.Lock()
+	defer c.consumersLock.Unlock()
+	reconsumeLaterWithMultipleTopics(c.consumers, c.log, msg, customProperties, delay)
 }
 
 // AckID the consumption of a single message, identified by its MessageID
@@ -454,6 +458,14 @@ func (c *regexConsumer) topics() ([]string, error) {
 	}
 
 	filtered := filterTopics(topics, c.pattern)
+
+	if c.options.RetryEnable && c.options.DLQ != nil {
+		retryTopic := c.options.DLQ.RetryLetterTopic
+		if retryTopic != "" && !slices.Contains(filtered, retryTopic) {
+			filtered = append(filtered, retryTopic)
+		}
+	}
+
 	return filtered, nil
 }
 

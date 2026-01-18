@@ -30,6 +30,39 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 )
 
+func reconsumeLaterWithMultipleTopics(
+	consumers map[string]Consumer,
+	log log.Logger,
+	msg Message,
+	customProperties map[string]string,
+	delay time.Duration,
+) {
+	names, err := validateTopicNames(msg.Topic())
+	if err != nil {
+		log.Errorf("validate msg topic %q failed: %v", msg.Topic(), err)
+		return
+	}
+	if len(names) != 1 {
+		log.Errorf("invalid msg topic %q names: %+v ", msg.Topic(), names)
+		return
+	}
+
+	tn := names[0]
+	fqdnTopic := internal.TopicNameWithoutPartitionPart(tn)
+
+	consumer, ok := consumers[fqdnTopic]
+	if !ok {
+		// check to see if the topic with the partition part is in the consumers
+		// this can happen when the consumer is configured to consume from a specific partition
+		if consumer, ok = consumers[tn.Name]; !ok {
+			log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
+			return
+		}
+	}
+
+	consumer.ReconsumeLaterWithCustomProperties(msg, customProperties, delay)
+}
+
 type multiTopicConsumer struct {
 	client *client
 
@@ -259,28 +292,7 @@ func (c *multiTopicConsumer) ReconsumeLater(msg Message, delay time.Duration) {
 
 func (c *multiTopicConsumer) ReconsumeLaterWithCustomProperties(msg Message, customProperties map[string]string,
 	delay time.Duration) {
-	names, err := validateTopicNames(msg.Topic())
-	if err != nil {
-		c.log.Errorf("validate msg topic %q failed: %v", msg.Topic(), err)
-		return
-	}
-	if len(names) != 1 {
-		c.log.Errorf("invalid msg topic %q names: %+v ", msg.Topic(), names)
-		return
-	}
-
-	tn := names[0]
-	fqdnTopic := internal.TopicNameWithoutPartitionPart(tn)
-	consumer, ok := c.consumers[fqdnTopic]
-	if !ok {
-		// check to see if the topic with the partition part is in the consumers
-		// this can happen when the consumer is configured to consume from a specific partition
-		if consumer, ok = c.consumers[tn.Name]; !ok {
-			c.log.Warnf("consumer of topic %s not exist unexpectedly", msg.Topic())
-			return
-		}
-	}
-	consumer.ReconsumeLaterWithCustomProperties(msg, customProperties, delay)
+	reconsumeLaterWithMultipleTopics(c.consumers, c.log, msg, customProperties, delay)
 }
 
 func (c *multiTopicConsumer) Nack(msg Message) {
