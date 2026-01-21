@@ -150,19 +150,18 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		oldRetryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
 		oldDlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
 
-		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldRetryTopic); err == nil &&
-			r != nil &&
-			r.Partitions > 0 {
-			retryTopic = oldRetryTopic
-		}
-
-		if r, err := client.lookupService.GetPartitionedTopicMetadata(oldDlqTopic); err == nil &&
-			r != nil &&
-			r.Partitions > 0 {
-			dlqTopic = oldDlqTopic
+		CheckTopicIsExists := func(topic string) bool {
+			r, err := client.lookupService.GetPartitionedTopicMetadata(topic)
+			return err == nil && r != nil && r.Partitions > 0
 		}
 
 		if options.DLQ == nil {
+			if CheckTopicIsExists(oldRetryTopic) {
+				retryTopic = oldRetryTopic
+			}
+			if CheckTopicIsExists(oldDlqTopic) {
+				dlqTopic = oldDlqTopic
+			}
 			options.DLQ = &DLQPolicy{
 				MaxDeliveries:    MaxReconsumeTimes,
 				DeadLetterTopic:  dlqTopic,
@@ -170,12 +169,19 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			}
 		} else {
 			if options.DLQ.DeadLetterTopic == "" {
+				if CheckTopicIsExists(oldDlqTopic) {
+					dlqTopic = oldDlqTopic
+				}
 				options.DLQ.DeadLetterTopic = dlqTopic
 			}
 			if options.DLQ.RetryLetterTopic == "" {
+				if CheckTopicIsExists(oldRetryTopic) {
+					retryTopic = oldRetryTopic
+				}
 				options.DLQ.RetryLetterTopic = retryTopic
 			}
 		}
+
 		if options.Topic != "" && len(options.Topics) == 0 {
 			options.Topics = []string{options.Topic, options.DLQ.RetryLetterTopic}
 			options.Topic = ""
