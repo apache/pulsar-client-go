@@ -44,6 +44,17 @@ type Semaphore interface {
 	// Correct usage of a semaphore is established by programming convention
 	// in the application.
 	Release()
+
+	// MaxPermits return this Semaphore maxPermits size
+	// The value of maxPermits is determined during semaphore initialization,
+	// representing the upper limit of permits that can be Acquire() without invoking Release(),
+	// and it does not change with calls to Acquire() or Release().
+	MaxPermits() int
+
+	// CurrentPermits return this Semaphore current used permits size.
+	// This value will be increased after call Acquire() function,
+	// and will be decreased after call Release() function.
+	CurrentPermits() int
 }
 
 type semaphore struct {
@@ -102,4 +113,12 @@ func (s *semaphore) Release() {
 		// Unblock the next in line to acquire the semaphore
 		s.ch <- true
 	}
+}
+
+func (s *semaphore) MaxPermits() int {
+	return int(s.maxPermits)
+}
+
+func (s *semaphore) CurrentPermits() int {
+	return int(atomic.LoadInt32(&s.permits))
 }

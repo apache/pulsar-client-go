@@ -530,6 +530,39 @@ func TestChunkBlockIfQueueFull(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestChunkBlockIfQueueFullWithoutTimeout(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Name:                "test",
+		Topic:               topic,
+		EnableChunking:      true,
+		DisableBatching:     true,
+		MaxPendingMessages:  1,
+		ChunkMaxMessageSize: 10,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+	defer producer.Close()
+
+	// Large messages will be split into 10 chunks, exceeding the length of pending queue
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(100),
+	})
+	assert.Error(t, err)
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(1),
+	})
+	assert.Nil(t, err)
+}
+
 func createTestMessagePayload(size int) []byte {
 	payload := make([]byte, size)
 	for i := range payload {
@@ -577,4 +610,107 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 		},
 		uint32(internal.MaxMessageSize),
 	)
+}
+
+func TestSemaphoreState(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: adminURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Topic:              topic,
+		DisableBatching:    true,
+		MaxPendingMessages: 1000,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, _producer)
+	defer _producer.Close()
+
+	producerImpl := _producer.(*producer).getProducer(0).(*partitionProducer)
+	producerSemaphore := producerImpl.publishSemaphore
+	assert.Equal(t, 1000, producerSemaphore.MaxPermits())
+	for i := 1; i < 500; i++ {
+		msg := createTestMessagePayload(1000)
+		ID, err := _producer.Send(context.Background(), &ProducerMessage{
+			Payload: msg,
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, ID)
+	}
+	assert.Equal(t, 1000, producerSemaphore.MaxPermits())
+	assert.Equal(t, 0, producerSemaphore.CurrentPermits())
+}
+
+func TestSemaphoreStateWithChunk(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: adminURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		DisableBatching:     true,
+		EnableChunking:      true,
+		ChunkMaxMessageSize: 10,
+		MaxPendingMessages:  1000,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, _producer)
+	defer _producer.Close()
+
+	// test semaphore is recycled properly when using chunk messages
+	producerImpl := _producer.(*producer).getProducer(0).(*partitionProducer)
+	producerSemaphore := producerImpl.publishSemaphore
+	assert.Equal(t, 1000, producerSemaphore.MaxPermits())
+	for i := 1; i < 500; i++ {
+		msg := createTestMessagePayload(1000)
+		ID, err := _producer.Send(context.Background(), &ProducerMessage{
+			Payload: msg,
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, ID)
+	}
+	assert.Equal(t, 1000, producerSemaphore.MaxPermits())
+	assert.Equal(t, 0, producerSemaphore.CurrentPermits())
+}
+
+func TestSemaphoreStateWithChunkAndTimeout(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	topic := newTopicName()
+
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Name:                "test",
+		Topic:               topic,
+		EnableChunking:      true,
+		DisableBatching:     true,
+		MaxPendingMessages:  5,
+		ChunkMaxMessageSize: 10,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, _producer)
+	defer _producer.Close()
+	producerImpl := _producer.(*producer).getProducer(0).(*partitionProducer)
+	producerSemaphore := producerImpl.publishSemaphore
+	assert.Equal(t, 5, producerSemaphore.MaxPermits())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	// Large messages will be split into 11 chunks, exceeding the length of pending queue
+	_, err = _producer.Send(ctx, &ProducerMessage{
+		Payload: createTestMessagePayload(100),
+	})
+	assert.Error(t, err)
+	assert.Equal(t, 5, producerSemaphore.MaxPermits())
+	assert.Equal(t, 0, producerSemaphore.CurrentPermits())
 }
