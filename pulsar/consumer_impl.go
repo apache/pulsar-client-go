@@ -155,6 +155,8 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			return err == nil && r != nil && r.Partitions > 0
 		}
 
+		//If the retryTopic or DLQTopic has already been set,
+		//there is no need to perform GetPartitiondTopicMetadata operation on oldRetroTopic or oldDLQTopic
 		if options.DLQ == nil {
 			if CheckTopicIsExists(oldRetryTopic) {
 				retryTopic = oldRetryTopic
