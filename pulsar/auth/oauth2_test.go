@@ -36,6 +36,11 @@ var expectedClientSecret atomic.Value
 
 // mockOAuthServer will mock a oauth service for the tests
 func mockOAuthServer() *httptest.Server {
+	return mockOAuthServerWithToken("token-content")
+}
+
+// mockOAuthServerWithToken will mock a oauth service for the tests with a custom token.
+func mockOAuthServerWithToken(token string) *httptest.Server {
 	// prepare a port for the mocked server
 	server := httptest.NewUnstartedServer(http.DefaultServeMux)
 
@@ -61,7 +66,7 @@ func mockOAuthServer() *httptest.Server {
 			http.Error(writer, "invalid client credentials", http.StatusUnauthorized)
 			return
 		}
-		fmt.Fprintln(writer, "{\n  \"access_token\": \"token-content\",\n  \"token_type\": \"Bearer\"\n}")
+		fmt.Fprintf(writer, "{\n  \"access_token\": \"%s\",\n  \"token_type\": \"Bearer\"\n}\n", token)
 	})
 	mockedHandler.HandleFunc("/authorize", func(writer http.ResponseWriter, _ *http.Request) {
 		fmt.Fprintln(writer, "true")
@@ -91,6 +96,29 @@ func mockKeyFile(server string) (string, error) {
   "issuer_url":"%s",
   "scope": "test-scope"
 }`, server))
+	if err != nil {
+		return "", err
+	}
+
+	return kf.Name(), nil
+}
+
+func mockKeyFileWithoutIssuer() (string, error) {
+	pwd, err := os.Getwd()
+	if err != nil {
+		return "", err
+	}
+	kf, err := os.CreateTemp(pwd, "test_oauth2")
+	if err != nil {
+		return "", err
+	}
+	_, err = kf.WriteString(`{
+  "type":"resource",
+  "client_id":"client-id",
+  "client_secret":"client-secret",
+  "client_email":"oauth@test.org",
+  "scope": "test-scope"
+}`)
 	if err != nil {
 		return "", err
 	}
@@ -160,6 +188,60 @@ func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 
 		assert.Equal(t, "token-content", string(token))
 	}
+}
+
+func TestOAuth2IssuerOverrideUsesAuthParams(t *testing.T) {
+	expectedClientID.Store("client-id")
+	expectedClientSecret.Store("client-secret")
+	serverFromKeyFile := mockOAuthServerWithToken("token-from-keyfile")
+	defer serverFromKeyFile.Close()
+	serverFromParams := mockOAuthServerWithToken("token-from-params")
+	defer serverFromParams.Close()
+
+	kf, err := mockKeyFile(serverFromKeyFile.URL)
+	defer os.Remove(kf)
+	require.NoError(t, err)
+
+	params := map[string]string{
+		ConfigParamType:      ConfigParamTypeClientCredentials,
+		ConfigParamIssuerURL: serverFromParams.URL,
+		ConfigParamClientID:  "client-id",
+		ConfigParamAudience:  "audience",
+		ConfigParamKeyFile:   kf,
+		ConfigParamScope:     "profile",
+	}
+
+	auth, err := NewAuthenticationOAuth2WithParams(params)
+	require.NoError(t, err)
+	require.NoError(t, auth.Init())
+
+	token, err := auth.GetData()
+	require.NoError(t, err)
+	assert.Equal(t, "token-from-params", string(token))
+}
+
+func TestOAuth2MissingIssuerReturnsError(t *testing.T) {
+	expectedClientID.Store("client-id")
+	expectedClientSecret.Store("client-secret")
+	kf, err := mockKeyFileWithoutIssuer()
+	defer os.Remove(kf)
+	require.NoError(t, err)
+
+	params := map[string]string{
+		ConfigParamType:     ConfigParamTypeClientCredentials,
+		ConfigParamClientID: "client-id",
+		ConfigParamAudience: "audience",
+		ConfigParamKeyFile:  kf,
+		ConfigParamScope:    "profile",
+	}
+
+	auth, err := NewAuthenticationOAuth2WithParams(params)
+	require.NoError(t, err)
+	require.NoError(t, auth.Init())
+
+	_, err = auth.GetData()
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "issuer url is required for client credentials flow")
 }
 
 func TestOAuth2KeyFileReloading(t *testing.T) {
