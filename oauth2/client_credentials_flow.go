@@ -65,16 +65,16 @@ type DefaultGrantProvider struct {
 // merging the scopes from both the options and the key file configuration
 func (p *DefaultGrantProvider) GetGrant(audience string, options *ClientCredentialsFlowOptions) (
 	*AuthorizationGrant, error) {
+	if options == nil {
+		return nil, errors.New("client credentials flow options cannot be nil")
+	}
 	credsProvider := NewClientCredentialsProviderFromKeyFile(options.KeyFile)
 	keyFile, err := credsProvider.GetClientCredentials()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not get client credentials")
 	}
 
-	issuerURL := ""
-	if options != nil {
-		issuerURL = options.IssuerURL
-	}
+	issuerURL := options.IssuerURL
 	if issuerURL == "" {
 		issuerURL = keyFile.IssuerURL
 	}
