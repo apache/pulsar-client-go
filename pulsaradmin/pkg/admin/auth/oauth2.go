@@ -52,7 +52,8 @@ type OAuth2Provider struct {
 // NewAuthenticationOAuth2WithDefaultFlow uses memory to save the grant
 func NewAuthenticationOAuth2WithDefaultFlow(issuer oauth2.Issuer, keyFile string) (Provider, error) {
 	return NewAuthenticationOAuth2WithFlow(issuer, oauth2.ClientCredentialsFlowOptions{
-		KeyFile: keyFile,
+		KeyFile:   keyFile,
+		IssuerURL: issuer.IssuerEndpoint,
 	})
 }
 
@@ -97,7 +98,10 @@ func NewAuthenticationOAuth2WithParams(
 		Audience:       audience,
 	}
 
-	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{KeyFile: privateKey})
+	flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
+		KeyFile:   privateKey,
+		IssuerURL: issuerEndpoint,
+	})
 	if err != nil {
 		return nil, err
 	}

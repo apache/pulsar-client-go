@@ -53,6 +53,7 @@ type GrantProvider interface {
 
 type ClientCredentialsFlowOptions struct {
 	KeyFile          string
+	IssuerURL        string
 	AdditionalScopes []string
 }
 
@@ -64,13 +65,24 @@ type DefaultGrantProvider struct {
 // merging the scopes from both the options and the key file configuration
 func (p *DefaultGrantProvider) GetGrant(audience string, options *ClientCredentialsFlowOptions) (
 	*AuthorizationGrant, error) {
+	if options == nil {
+		return nil, errors.New("client credentials flow options cannot be nil")
+	}
 	credsProvider := NewClientCredentialsProviderFromKeyFile(options.KeyFile)
 	keyFile, err := credsProvider.GetClientCredentials()
 	if err != nil {
 		return nil, errors.Wrap(err, "could not get client credentials")
 	}
 
-	wellKnownEndpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(keyFile.IssuerURL)
+	issuerURL := options.IssuerURL
+	if issuerURL == "" {
+		issuerURL = keyFile.IssuerURL
+	}
+	if issuerURL == "" {
+		return nil, errors.New("issuer url is required for client credentials flow")
+	}
+
+	wellKnownEndpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(issuerURL)
 	if err != nil {
 		return nil, err
 	}
