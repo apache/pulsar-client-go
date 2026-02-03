@@ -150,39 +150,37 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		oldRetryTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + RetryTopicSuffix
 		oldDlqTopic := tn.Domain + "://" + tn.Namespace + "/" + options.SubscriptionName + DlqTopicSuffix
 
-		CheckTopicIsExists := func(topic string) bool {
+		// Check for old topic naming format.
+		// When DLQ policy is not provided, check both old topics for backward compatibility.
+		checkTopicIsExists := func(topic string) bool {
 			r, err := client.lookupService.GetPartitionedTopicMetadata(topic)
 			return err == nil && r != nil && r.Partitions > 0
 		}
-
-		// Check for old topic naming format.
-		// When DLQ policy is not provided, check both old topics for backward compatibility.
-		if options.DLQ == nil {
-			if CheckTopicIsExists(oldRetryTopic) {
-				retryTopic = oldRetryTopic
+		resolveTopic := func(current, old string, new string) string {
+			if current != "" {
+				return current
 			}
-			if CheckTopicIsExists(oldDlqTopic) {
-				dlqTopic = oldDlqTopic
-			}
-			options.DLQ = &DLQPolicy{
-				MaxDeliveries:    MaxReconsumeTimes,
-				DeadLetterTopic:  dlqTopic,
-				RetryLetterTopic: retryTopic,
-			}
-		} else {
-			if options.DLQ.DeadLetterTopic == "" {
-				if CheckTopicIsExists(oldDlqTopic) {
-					dlqTopic = oldDlqTopic
-				}
-				options.DLQ.DeadLetterTopic = dlqTopic
-			}
-			if options.DLQ.RetryLetterTopic == "" {
-				if CheckTopicIsExists(oldRetryTopic) {
-					retryTopic = oldRetryTopic
-				}
-				options.DLQ.RetryLetterTopic = retryTopic
+			if checkTopicIsExists(old) {
+				return old
+			} else {
+				return new
 			}
 		}
+		if options.DLQ == nil {
+			options.DLQ = &DLQPolicy{
+				MaxDeliveries: MaxReconsumeTimes,
+			}
+		}
+		options.DLQ.DeadLetterTopic = resolveTopic(
+			options.DLQ.DeadLetterTopic,
+			oldDlqTopic,
+			dlqTopic,
+		)
+		options.DLQ.RetryLetterTopic = resolveTopic(
+			options.DLQ.RetryLetterTopic,
+			oldRetryTopic,
+			retryTopic,
+		)
 
 		if options.Topic != "" && len(options.Topics) == 0 {
 			options.Topics = []string{options.Topic, options.DLQ.RetryLetterTopic}
