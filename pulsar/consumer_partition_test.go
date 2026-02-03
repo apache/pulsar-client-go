@@ -20,9 +20,11 @@ package pulsar
 import (
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 )
@@ -228,4 +230,120 @@ var rawBatchMessage10 = []byte{
 	0x0a, 0x01, 0x62, 0x12, 0x01, 0x32, 0x18, 0x05,
 	0x28, 0x05, 0x40, 0x09, 0x68, 0x65, 0x6c, 0x6c,
 	0x6f,
+}
+
+// TestMessageReceivedAllMessagesDiscarded verifies that when all messages in a batch
+// are discarded by messageShouldBeDiscarded (because startMessageID is greater than
+// all message IDs), no empty slice is sent to queueCh and no panic occurs.
+// This is the regression test for https://github.com/apache/pulsar-client-go/issues/1454
+func TestMessageReceivedAllMessagesDiscarded(t *testing.T) {
+	pc := partitionConsumer{
+		queueCh:              make(chan []*message, 1),
+		eventsCh:             make(chan interface{}, 1),
+		compressionProviders: sync.Map{},
+		maxQueueSize:         1000,
+		options:              &partitionConsumerOpts{},
+		metrics:              newTestMetrics(),
+		decryptor:            crypto.NewNoopDecryptor(),
+		log:                  log.DefaultNopLogger(),
+	}
+	pc._setConn(dummyConnection{})
+	pc.availablePermits = &availablePermits{pc: &pc}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
+
+	// Set startMessageID to a value greater than the message IDs in the batch.
+	// The raw messages use ledgerID=0, entryID=0 (from nil response), so setting
+	// startMessageID with ledgerID=100 ensures all messages are discarded.
+	pc.startMessageID.set(newTrackingMessageID(100, 0, 0, 0, 0, nil))
+
+	// Use a batch of 10 messages; all should be discarded
+	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
+	err := pc.MessageReceived(nil, headersAndPayload)
+	assert.Nil(t, err)
+
+	// queueCh should be empty since all messages were discarded
+	select {
+	case msgs := <-pc.queueCh:
+		t.Fatalf("expected no messages on queueCh, but got %d", len(msgs))
+	default:
+	}
+}
+
+// TestMessageReceivedSingleMessageDiscarded verifies the same behavior for a
+// single (non-batch) message that gets discarded.
+func TestMessageReceivedSingleMessageDiscarded(t *testing.T) {
+	pc := partitionConsumer{
+		queueCh:              make(chan []*message, 1),
+		eventsCh:             make(chan interface{}, 1),
+		compressionProviders: sync.Map{},
+		maxQueueSize:         1000,
+		options:              &partitionConsumerOpts{},
+		metrics:              newTestMetrics(),
+		decryptor:            crypto.NewNoopDecryptor(),
+		log:                  log.DefaultNopLogger(),
+	}
+	pc._setConn(dummyConnection{})
+	pc.availablePermits = &availablePermits{pc: &pc}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
+
+	pc.startMessageID.set(newTrackingMessageID(100, 0, 0, 0, 0, nil))
+
+	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage1)
+	err := pc.MessageReceived(nil, headersAndPayload)
+	assert.Nil(t, err)
+
+	select {
+	case msgs := <-pc.queueCh:
+		t.Fatalf("expected no messages on queueCh, but got %d", len(msgs))
+	default:
+	}
+}
+
+// TestMessageReceivedAllMessagesDuplicate verifies that when all messages in a batch
+// are detected as duplicates by ackGroupingTracker, no empty slice is sent to queueCh.
+func TestMessageReceivedAllMessagesDuplicate(t *testing.T) {
+	pc := partitionConsumer{
+		queueCh:              make(chan []*message, 1),
+		eventsCh:             make(chan interface{}, 1),
+		compressionProviders: sync.Map{},
+		maxQueueSize:         1000,
+		options:              &partitionConsumerOpts{},
+		metrics:              newTestMetrics(),
+		decryptor:            crypto.NewNoopDecryptor(),
+		log:                  log.DefaultNopLogger(),
+	}
+	pc._setConn(dummyConnection{})
+	pc.availablePermits = &availablePermits{pc: &pc}
+	// Use a timedAckGroupingTracker (MaxSize > 1) so that isDuplicate tracks pending acks
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{
+		MaxSize: 1000,
+		MaxTime: 1 * time.Hour,
+	}, func(id MessageID) {}, nil, nil)
+
+	// First, receive the batch normally to populate the queue
+	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
+	err := pc.MessageReceived(nil, headersAndPayload)
+	assert.Nil(t, err)
+
+	messages := <-pc.queueCh
+	assert.Equal(t, 10, len(messages))
+
+	// Ack all messages so they are recorded in the ack tracker as pending/duplicate
+	for _, m := range messages {
+		pc.ackGroupingTracker.add(m.msgID)
+	}
+
+	// Send the same batch again; all messages should be detected as duplicates
+	headersAndPayload = internal.NewBufferWrapper(rawBatchMessage10)
+	err = pc.MessageReceived(nil, headersAndPayload)
+	assert.Nil(t, err)
+
+	// queueCh should be empty since all messages were duplicates
+	select {
+	case msgs := <-pc.queueCh:
+		t.Fatalf("expected no messages on queueCh, but got %d", len(msgs))
+	default:
+	}
 }
