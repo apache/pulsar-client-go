@@ -320,7 +320,7 @@ func TestMessageReceivedAllMessagesDuplicate(t *testing.T) {
 	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{
 		MaxSize: 1000,
 		MaxTime: 1 * time.Hour,
-	}, func(id MessageID) {}, nil, nil)
+	}, func(_ MessageID) {}, nil, nil)
 
 	// First, receive the batch normally to populate the queue
 	headersAndPayload := internal.NewBufferWrapper(rawBatchMessage10)
