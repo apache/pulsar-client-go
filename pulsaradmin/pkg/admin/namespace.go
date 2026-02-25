@@ -97,7 +97,7 @@ type Namespaces interface {
 	// RemoveNamespaceMessageTTL removes the message TTL configuration for a namespace, defaulting to broker settings
 	RemoveNamespaceMessageTTL(namespace string) error
 
-	// RemoveNamespaceMessageTTLWithContext removes the message TTL configuration for a namespace, defaulting to broker settings
+	// RemoveNamespaceMessageTTLWithContext removes the message TTL for a namespace, defaulting to broker settings
 	RemoveNamespaceMessageTTLWithContext(ctx context.Context, namespace string) error
 
 	// GetRetention returns the retention configuration for a namespace.
