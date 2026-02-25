@@ -1437,6 +1437,11 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		pc.availablePermits.add(skippedMessages)
 	}
 
+	if len(messages) == 0 {
+		pc.log.Warnf("receive %d messages , all filtered", numMsgs)
+		return nil
+	}
+
 	// send messages to the dispatcher
 	pc.queueCh <- messages
 	return nil
