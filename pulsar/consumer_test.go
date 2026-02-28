@@ -5710,3 +5710,40 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 			"The consumer uses a different connection when reconnecting")
 	}
 }
+
+/**
+ * Test that GetPartitionedTopicMetadata is not called when DLQ and Retry topics are provided.
+ */
+func TestConsumerWithDLQRetryTopicNoGetPartitionedTopicMetadata(t *testing.T) {
+
+	type mockLookupService struct {
+		getPartitionedTopicMetadataCalled bool
+		callCount                         int
+	}
+
+	mockLS := &mockLookupService{}
+
+	client, _ := NewClient(ClientOptions{
+		URL:                     serviceURL,
+		MaxConnectionsPerBroker: 10,
+	})
+
+	options1 := ConsumerOptions{
+		Topic:            "persistent://public/default/test-topic",
+		SubscriptionName: "test-subscription",
+		RetryEnable:      true,
+		DLQ: &DLQPolicy{
+			MaxDeliveries:    3,
+			DeadLetterTopic:  "persistent://public/default/my-dlq-topic",   // 用户自定义的 DLQ topic
+			RetryLetterTopic: "persistent://public/default/my-retry-topic", // 用户自定义的 Retry topic
+		},
+	}
+
+	_, _ = client.Subscribe(options1)
+
+	assert.False(t, mockLS.getPartitionedTopicMetadataCalled,
+		"GetPartitionedTopicMetadata should not be called when custom DLQ and Retry topics are provided")
+	assert.Equal(t, 0, mockLS.callCount,
+		"GetPartitionedTopicMetadata call count should be 0 when custom topics are provided")
+
+}
