@@ -106,7 +106,7 @@ type partitionProducer struct {
 	userProvidedProducerName bool
 	producerID               uint64
 	batchBuilder             internal.BatchBuilder
-	sequenceIDGenerator      *uint64
+	sequenceIDGenerator      *internal.SequenceIDGenerator
 	batchFlushTicker         *time.Ticker
 	encryptor                internalcrypto.Encryptor
 	compressionProvider      compression.Provider
@@ -359,8 +359,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 	}
 
 	if p.sequenceIDGenerator == nil {
-		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
-		p.sequenceIDGenerator = &nextSequenceID
+		p.sequenceIDGenerator = internal.NewSequenceIDGenerator(uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1))
 	}
 
 	schemaVersion := res.Response.ProducerSuccess.GetSchemaVersion()
@@ -380,7 +379,8 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 			buffersPool,
 			p.client.metrics,
 			p.log,
-			p.encryptor)
+			p.encryptor,
+			p.sequenceIDGenerator)
 		if err != nil {
 			return err
 		}
@@ -647,8 +647,6 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 	}
 
 	var lhs, rhs int
-	uuid := fmt.Sprintf("%s-%s", p.producerName, strconv.FormatUint(*sr.mm.SequenceId, 10))
-	sr.mm.Uuid = proto.String(uuid)
 	sr.mm.NumChunksFromMsg = proto.Int32(int32(sr.totalChunks))
 	sr.mm.TotalChunkMsgSize = proto.Int32(int32(sr.compressedSize))
 	cr := newChunkRecorder()
@@ -671,7 +669,6 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 			flushImmediately:    sr.flushImmediately,
 			totalChunks:         sr.totalChunks,
 			chunkID:             chunkID,
-			uuid:                uuid,
 			chunkRecorder:       cr,
 			transaction:         sr.transaction,
 			memLimit:            sr.memLimit,
@@ -708,9 +705,9 @@ func addRequestToBatch(smm *pb.SingleMessageMetadata, p *partitionProducer,
 		leastSigBits = txnID.LeastSigBits
 	}
 
-	return p.batchBuilder.Add(smm, p.sequenceIDGenerator, uncompressedPayload, request,
+	return p.batchBuilder.Add(smm, uncompressedPayload, request,
 		msg.ReplicationClusters, deliverAt, schemaVersion, multiSchemaEnabled, useTxn, mostSigBits,
-		leastSigBits)
+		leastSigBits, msg.SequenceID)
 }
 
 func (p *partitionProducer) genMetadata(msg *ProducerMessage,
@@ -746,22 +743,6 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 	return
 }
 
-func (p *partitionProducer) updateMetadataSeqID(mm *pb.MessageMetadata, msg *ProducerMessage) {
-	if msg.SequenceID != nil {
-		mm.SequenceId = proto.Uint64(uint64(*msg.SequenceID))
-	} else {
-		mm.SequenceId = proto.Uint64(internal.GetAndAdd(p.sequenceIDGenerator, 1))
-	}
-}
-
-func (p *partitionProducer) updateSingleMessageMetadataSeqID(smm *pb.SingleMessageMetadata, msg *ProducerMessage) {
-	if msg.SequenceID != nil {
-		smm.SequenceId = proto.Uint64(uint64(*msg.SequenceID))
-	} else {
-		smm.SequenceId = proto.Uint64(internal.GetAndAdd(p.sequenceIDGenerator, 1))
-	}
-}
-
 func (p *partitionProducer) genSingleMessageMetadataInBatch(
 	msg *ProducerMessage,
 	uncompressedSize int,
@@ -786,8 +767,6 @@ func (p *partitionProducer) genSingleMessageMetadataInBatch(
 		smm.Properties = internal.ConvertFromStringMap(msg.Properties)
 	}
 
-	p.updateSingleMessageMetadataSeqID(smm, msg)
-
 	return
 }
 
@@ -807,7 +786,23 @@ func (p *partitionProducer) internalSingleSend(
 	bufferCount.Inc()
 	buffer.SetReleaseCallback(func() { bufferCount.Dec() })
 
-	sid := *mm.SequenceId
+	var sequenceID uint64
+	if sr.mm.SequenceId != nil {
+		sequenceID = *sr.mm.SequenceId
+	} else {
+		if msg.SequenceID != nil {
+			sequenceID = uint64(*msg.SequenceID)
+		} else {
+			sequenceID = p.sequenceIDGenerator.Next()
+		}
+		sr.mm.SequenceId = proto.Uint64(sequenceID)
+	}
+
+	if sr.totalChunks > 1 {
+		uuid := fmt.Sprintf("%s-%s", p.producerName, strconv.FormatUint(sequenceID, 10))
+		sr.mm.Uuid = proto.String(uuid)
+	}
+
 	var useTxn bool
 	var mostSigBits uint64
 	var leastSigBits uint64
@@ -822,7 +817,7 @@ func (p *partitionProducer) internalSingleSend(
 	err := internal.SingleSend(
 		buffer,
 		p.producerID,
-		sid,
+		sequenceID,
 		mm,
 		payloadBuf,
 		p.encryptor,
@@ -838,7 +833,7 @@ func (p *partitionProducer) internalSingleSend(
 		return
 	}
 
-	p.writeData(buffer, sid, []interface{}{sr})
+	p.writeData(buffer, sequenceID, []interface{}{sr})
 }
 
 type pendingItem struct {
@@ -1248,12 +1243,6 @@ func (p *partitionProducer) updateMetaData(sr *sendRequest) {
 		sr.msg.ReplicationClusters == nil &&
 		deliverAt.UnixNano() < 0
 
-	if !sr.sendAsBatch {
-		// update sequence id for metadata, make the size of msgMetadata more accurate
-		// batch sending will update sequence ID in the BatchBuilder
-		p.updateMetadataSeqID(sr.mm, sr.msg)
-	}
-
 	sr.deliverAt = deliverAt
 }
 
@@ -1613,7 +1602,6 @@ type sendRequest struct {
 	flushImmediately bool
 	totalChunks      int
 	chunkID          int
-	uuid             string
 	chunkRecorder    *chunkRecorder
 
 	// resource management
