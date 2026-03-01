@@ -1502,6 +1502,14 @@ func (p *partitionProducer) failPendingMessages(err error) {
 	if viewSize <= 0 {
 		return
 	}
+
+	// fixbug: don't repeated call cb when producer is closed
+	// the cb funciton is calling by pi.sendRequests.done
+	state := p.getProducerState()
+	if state == producerClosing || state == producerClosed {
+		return
+	}
+
 	p.log.Infof("Failing %d messages on closing producer", viewSize)
 	lastViewItem := curViewItems[viewSize-1].(*pendingItem)
 
