@@ -101,6 +101,8 @@ func NewSchema(schemaType SchemaType, schemaData []byte, properties map[string]s
 		s = NewProtoSchema(schemaDef, properties)
 	case AVRO:
 		s = NewAvroSchema(schemaDef, properties)
+	case BOOLEAN:
+		s = NewBooleanSchema(properties)
 	case INT8:
 		s = NewInt8Schema(properties)
 	case INT16:
@@ -169,7 +171,7 @@ func (js *JSONSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (js *JSONSchema) Validate(message []byte) error {
-	return js.Decode(message, nil)
+	return nil
 }
 
 func (js *JSONSchema) GetSchemaInfo() *SchemaInfo {
@@ -219,7 +221,7 @@ func (ps *ProtoSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (ps *ProtoSchema) Validate(message []byte) error {
-	return ps.Decode(message, nil)
+	return nil
 }
 
 func (ps *ProtoSchema) GetSchemaInfo() *SchemaInfo {
@@ -297,7 +299,7 @@ func (ps *ProtoNativeSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (ps *ProtoNativeSchema) Validate(message []byte) error {
-	return ps.Decode(message, nil)
+	return nil
 }
 
 func (ps *ProtoNativeSchema) GetSchemaInfo() *SchemaInfo {
@@ -357,11 +359,48 @@ func (as *AvroSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (as *AvroSchema) Validate(message []byte) error {
-	return as.Decode(message, nil)
+	return nil
 }
 
 func (as *AvroSchema) GetSchemaInfo() *SchemaInfo {
 	return &as.SchemaInfo
+}
+
+var _ Schema = (*BooleanSchema)(nil)
+
+type BooleanSchema struct {
+	SchemaInfo
+}
+
+func NewBooleanSchema(properties map[string]string) *BooleanSchema {
+	boolSchema := new(BooleanSchema)
+	boolSchema.SchemaInfo.Properties = properties
+	boolSchema.SchemaInfo.Name = "Boolean"
+	boolSchema.SchemaInfo.Type = BOOLEAN
+	boolSchema.SchemaInfo.Schema = ""
+	return boolSchema
+}
+
+func (bs *BooleanSchema) Encode(v interface{}) ([]byte, error) {
+	var buf bytes.Buffer
+	err := WriteElements(&buf, v.(bool))
+	return buf.Bytes(), err
+}
+
+func (bs *BooleanSchema) Decode(data []byte, v interface{}) error {
+	buf := bytes.NewReader(data)
+	return ReadElements(buf, v)
+}
+
+func (bs *BooleanSchema) Validate(message []byte) error {
+	if len(message) != 1 {
+		return newError(InvalidMessage, "size of data received by BooleanSchema is not 1")
+	}
+	return nil
+}
+
+func (bs *BooleanSchema) GetSchemaInfo() *SchemaInfo {
+	return &bs.SchemaInfo
 }
 
 type StringSchema struct {
@@ -389,7 +428,7 @@ func (ss *StringSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (ss *StringSchema) Validate(message []byte) error {
-	return ss.Decode(message, nil)
+	return nil
 }
 
 func (ss *StringSchema) GetSchemaInfo() *SchemaInfo {
@@ -419,7 +458,7 @@ func (bs *BytesSchema) Decode(data []byte, v interface{}) error {
 }
 
 func (bs *BytesSchema) Validate(message []byte) error {
-	return bs.Decode(message, nil)
+	return nil
 }
 
 func (bs *BytesSchema) GetSchemaInfo() *SchemaInfo {
