@@ -20,7 +20,7 @@
 IMAGE_NAME = pulsar-client-go-test:latest
 PULSAR_VERSION ?= latest
 PULSAR_IMAGE = apachepulsar/pulsar:$(PULSAR_VERSION)
-GO_VERSION ?= 1.23
+GO_VERSION ?= 1.24
 CONTAINER_ARCH ?= $(shell uname -m | sed s/x86_64/amd64/)
 
 # Golang standard bin directory.
