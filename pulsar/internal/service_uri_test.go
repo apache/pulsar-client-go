@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestInvalidServiceUris(t *testing.T) {
@@ -31,6 +32,8 @@ func TestInvalidServiceUris(t *testing.T) {
 		"pulsar://localhost:xyz/",        // invalid port
 		"pulsar://localhost:-6650/",      // negative port
 		"pulsar://fec0:0:0:ffff::1:6650", // missing brackets
+		"pulsar://[example]:6650",        // invalid hostname
+		"pulsar://fec0::1",               // missing brackets
 	}
 
 	for _, uri := range uris {
@@ -44,15 +47,10 @@ func TestEmptyServiceUriString(t *testing.T) {
 	assert.NotNil(t, err)
 }
 
-func TestNullServiceUrlInstance(t *testing.T) {
-	u, err := NewPulsarServiceURIFromURL(nil)
-	assert.Nil(t, u)
-	assert.NotNil(t, err)
-}
-
 func TestMissingServiceName(t *testing.T) {
 	serviceURI := "//localhost:6650/path/to/namespace"
-	assertServiceURI(t, serviceURI, "", nil, []string{"localhost:6650"}, "/path/to/namespace", "")
+	_, err := NewPulsarServiceURIFromURIString(serviceURI)
+	require.Error(t, err)
 }
 
 func TestEmptyPath(t *testing.T) {

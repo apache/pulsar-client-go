@@ -94,7 +94,7 @@ type rpcClient struct {
 	lookupProperties        []*pb.KeyValue
 }
 
-func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
+func NewRPCClient(serviceURL string, pool ConnectionPool,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
 	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider,
 	lookupProperties []*pb.KeyValue) (RPCClient, error) {
@@ -109,7 +109,7 @@ func NewRPCClient(serviceURL *url.URL, pool ConnectionPool,
 		urlLookupServiceMap: make(map[string]LookupService),
 		lookupProperties:    lookupProperties,
 	}
-	lookupService, err := c.NewLookupService(serviceURL)
+	lookupService, err := c.LookupService(serviceURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create lookup service: %w", err)
 	}
@@ -232,12 +232,7 @@ func (c *rpcClient) LookupService(URL string) (LookupService, error) {
 		return lookupService, nil
 	}
 
-	serviceURL, err := url.Parse(URL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL '%s': %w", URL, err)
-	}
-
-	lookupService, err = c.NewLookupService(serviceURL)
+	lookupService, err := c.newLookupService(URL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create lookup service for URL '%s': %w", URL, err)
 	}
@@ -245,26 +240,30 @@ func (c *rpcClient) LookupService(URL string) (LookupService, error) {
 	return lookupService, nil
 }
 
-func (c *rpcClient) NewLookupService(url *url.URL) (LookupService, error) {
+func (c *rpcClient) newLookupService(serviceURL string) (LookupService, error) {
+	serviceURI, err := NewPulsarServiceURIFromURIString(serviceURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse service URL '%s': %w", serviceURL, err)
+	}
 
-	switch url.Scheme {
-	case "pulsar", "pulsar+ssl":
-		serviceNameResolver := NewPulsarServiceNameResolver(url)
-		return NewLookupService(c, url, serviceNameResolver,
-			c.tlsConfig != nil, c.listenerName, c.lookupProperties, c.log, c.metrics), nil
-	case "http", "https":
-		serviceNameResolver := NewPulsarServiceNameResolver(url)
-		httpClient, err := NewHTTPClient(url, serviceNameResolver, c.tlsConfig,
+	serviceNameResolver, err := NewPulsarServiceNameResolver(serviceURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create service name resolver for URL '%s': %w", serviceURL, err)
+	}
+
+	if serviceURI.IsHTTP() {
+		httpClient, err := NewHTTPClient(serviceNameResolver, c.tlsConfig,
 			c.requestTimeout, c.log, c.metrics, c.authProvider)
 		if err != nil {
 			return nil, err
 		}
 
 		return NewHTTPLookupService(
-			httpClient, url, serviceNameResolver, c.tlsConfig != nil, c.log, c.metrics), nil
-	default:
-		return nil, fmt.Errorf("invalid URL scheme '%s'", url.Scheme)
+			httpClient, serviceNameResolver, c.tlsConfig != nil, c.log, c.metrics), nil
 	}
+
+	return NewLookupService(c, serviceNameResolver,
+		c.tlsConfig != nil, c.listenerName, c.lookupProperties, c.log, c.metrics), nil
 }
 
 func (c *rpcClient) Close() {

@@ -22,6 +22,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"slices"
+	"strconv"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -55,109 +57,106 @@ func NewPulsarServiceURIFromURIString(uri string) (*PulsarServiceURI, error) {
 	return u, nil
 }
 
-func NewPulsarServiceURIFromURL(url *url.URL) (*PulsarServiceURI, error) {
-	u, err := fromURL(url)
-	if err != nil {
-		log.Error(err)
-		return nil, err
+func (p *PulsarServiceURI) UseTLS() bool {
+	return p.ServiceName == HTTPSService || slices.Contains(p.ServiceInfos, SSLService)
+}
+
+func (p *PulsarServiceURI) PrimaryHostName() (string, error) {
+	if len(p.ServiceHosts) > 0 {
+		host, _, err := net.SplitHostPort(p.ServiceHosts[0])
+		if err != nil {
+			return "", err
+		}
+		return host, nil
 	}
-	return u, nil
+
+	return "", errors.New("no hosts available in ServiceHosts")
+}
+
+func (p *PulsarServiceURI) IsHTTP() bool {
+	return strings.HasPrefix(p.ServiceName, HTTPService)
 }
 
 func fromString(uriStr string) (*PulsarServiceURI, error) {
-	if uriStr == "" || len(uriStr) == 0 {
-		return nil, errors.New("service uriStr string is null")
+	if uriStr == "" {
+		return nil, errors.New("service URI cannot be empty")
 	}
-	if strings.Contains(uriStr, "[") && strings.Contains(uriStr, "]") {
-		// deal with ipv6 address
-		hosts := strings.FieldsFunc(uriStr, splitURI)
-		if len(hosts) > 1 {
-			// deal with ipv6 address
-			firstHost := hosts[0]
-			lastHost := hosts[len(hosts)-1]
-			hasPath := strings.Contains(lastHost, "/")
-			path := ""
-			if hasPath {
-				idx := strings.Index(lastHost, "/")
-				path = lastHost[idx:]
-			}
-			firstHost += path
-			url, err := url.Parse(firstHost)
-			if err != nil {
-				return nil, err
-			}
-			serviceURI, err := fromURL(url)
-			if err != nil {
-				return nil, err
-			}
-			var mHosts []string
-			var multiHosts []string
-			mHosts = append(mHosts, serviceURI.ServiceHosts[0])
-			mHosts = append(mHosts, hosts[1:]...)
 
-			for _, v := range mHosts {
-				h, err := validateHostName(serviceURI.ServiceName, serviceURI.ServiceInfos, v)
-				if err == nil {
-					multiHosts = append(multiHosts, h)
-				} else {
-					return nil, err
-				}
-			}
+	// 1. Find first host delimiter (, or ;)
+	firstDelimIdx := strings.IndexFunc(uriStr, splitURI)
 
-			return &PulsarServiceURI{
-				serviceURI.ServiceName,
-				serviceURI.ServiceInfos,
-				multiHosts,
-				serviceURI.servicePath,
-				serviceURI.URL,
-			}, nil
+	var singleHostURI string
+	var additionalHosts string
+
+	if firstDelimIdx >= 0 {
+		remainder := uriStr[firstDelimIdx:]
+		endIdx := strings.IndexAny(remainder, "/?#")
+
+		if endIdx >= 0 {
+			// pulsar://h1:6650,h2:6650/path
+			singleHostURI = uriStr[:firstDelimIdx] + remainder[endIdx:]
+			additionalHosts = remainder[1:endIdx]
+		} else {
+			// pulsar://h1:6650,h2:6650
+			singleHostURI = uriStr[:firstDelimIdx]
+			additionalHosts = remainder[1:]
 		}
+	} else {
+		singleHostURI = uriStr
 	}
 
-	url, err := url.Parse(uriStr)
+	// 2. Parse single-host URI ONLY
+	u, err := url.Parse(singleHostURI)
 	if err != nil {
 		return nil, err
 	}
 
-	return fromURL(url)
-}
-
-func fromURL(url *url.URL) (*PulsarServiceURI, error) {
-	if url == nil {
-		return nil, errors.New("service url instance is null")
+	if u.Host == "" {
+		return nil, errors.New("service host cannot be empty")
 	}
 
-	if url.Host == "" || len(url.Host) == 0 {
-		return nil, errors.New("service host is null")
+	// 3. Parse scheme
+	scheme := strings.ToLower(u.Scheme)
+	if scheme == "" {
+		return nil, errors.New("service scheme cannot be empty")
 	}
 
-	var serviceName string
-	var serviceInfos []string
-	scheme := url.Scheme
-	if scheme != "" {
-		scheme = strings.ToLower(scheme)
-		schemeParts := strings.Split(scheme, "+")
-		serviceName = schemeParts[0]
-		serviceInfos = schemeParts[1:]
+	schemeParts := strings.Split(scheme, "+")
+	serviceName := schemeParts[0]
+	serviceInfos := schemeParts[1:]
+
+	// reject unknown scheme
+	switch serviceName {
+	case BinaryService, HTTPService, HTTPSService:
+	default:
+		return nil, fmt.Errorf("unsupported service name: %s", serviceName)
 	}
 
-	var serviceHosts []string
-	hosts := strings.FieldsFunc(url.Host, splitURI)
-	for _, v := range hosts {
-		h, err := validateHostName(serviceName, serviceInfos, v)
-		if err == nil {
-			serviceHosts = append(serviceHosts, h)
-		} else {
-			return nil, err
+	// 4. Validate first host
+	firstHost, err := validateHostName(serviceName, serviceInfos, u.Host)
+	if err != nil {
+		return nil, err
+	}
+
+	serviceHosts := []string{firstHost}
+
+	// 5. Validate remaining hosts
+	if additionalHosts != "" {
+		for _, h := range strings.FieldsFunc(additionalHosts, splitURI) {
+			host, err := validateHostName(serviceName, serviceInfos, h)
+			if err != nil {
+				return nil, err
+			}
+			serviceHosts = append(serviceHosts, host)
 		}
 	}
 
 	return &PulsarServiceURI{
-		serviceName,
-		serviceInfos,
-		serviceHosts,
-		url.Path,
-		url,
+		ServiceName:  serviceName,
+		ServiceInfos: serviceInfos,
+		ServiceHosts: serviceHosts,
+		servicePath:  u.Path,
+		URL:          u,
 	}, nil
 }
 
@@ -166,42 +165,69 @@ func splitURI(r rune) bool {
 }
 
 func validateHostName(serviceName string, serviceInfos []string, hostname string) (string, error) {
-	uri, err := url.Parse("dummyscheme://" + hostname)
-	if err != nil {
-		return "", err
-	}
-	host := uri.Hostname()
-	if strings.Contains(hostname, "[") && strings.Contains(hostname, "]") {
-		host = fmt.Sprintf("[%s]", host)
-	}
-	if host == "" || uri.Scheme == "" {
-		return "", errors.New("Invalid hostname : " + hostname)
+	// Trim whitespace to avoid accepting accidental invalid inputs
+	hostname = strings.TrimSpace(hostname)
+	if hostname == "" {
+		return "", errors.New("hostname is empty")
 	}
 
-	port := uri.Port()
-	if uri.Port() == "" {
+	var host, port string
+
+	// Attempt to split host and port using the standard library.
+	//
+	// net.SplitHostPort enforces strict host:port syntax:
+	//   - IPv4: "127.0.0.1:6650"
+	//   - IPv6: "[fec0::1]:6650"
+	//
+	// It will fail for:
+	//   - hosts without a port
+	//   - bare IPv6 literals without brackets (e.g. "fec0::1")
+	host, port, err := net.SplitHostPort(hostname)
+	if err != nil {
+		// If the hostname contains ':' but is not bracketed, it is very likely
+		// an invalid IPv6 literal or an invalid host with too many colons.
+		//
+		// Examples rejected here:
+		//   - "fec0::1"
+		//   - "fec0::1:6650"
+		//   - "localhost:6650:6651"
+		if strings.Count(hostname, ":") > 0 && !strings.HasPrefix(hostname, "[") {
+			return "", fmt.Errorf("invalid address (maybe missing brackets for IPv6 or too many colons): %s", hostname)
+		}
+
+		// Otherwise, treat the entire hostname as host without an explicit port.
+		// In this case, we fall back to the default port derived from the service.
+		host = hostname
 		p := getServicePort(serviceName, serviceInfos)
 		if p == -1 {
-			return "", fmt.Errorf("invalid port : %d", p)
+			return "", fmt.Errorf("no port found")
 		}
-		port = fmt.Sprint(p)
+		port = strconv.Itoa(p)
 	}
-	result := host + ":" + port
-	_, _, err = net.SplitHostPort(result)
-	if err != nil {
-		return "", err
+
+	// Remove surrounding brackets if present.
+	//
+	// Note:
+	//   "[fec0::1]" is NOT an IPv6 address itself, but a URI/host syntax
+	//   representation used to disambiguate IPv6 literals when ports are involved.
+	//   We strip brackets here so the address can be validated and normalized.
+	cleanHost := host
+	if len(host) >= 2 && host[0] == '[' && host[len(host)-1] == ']' {
+		cleanHost = host[1 : len(host)-1]
 	}
-	return result, nil
+
+	return net.JoinHostPort(cleanHost, port), nil
 }
 
 func getServicePort(serviceName string, serviceInfos []string) int {
-	switch strings.ToLower(serviceName) {
+	switch serviceName {
 	case BinaryService:
-		if len(serviceInfos) == 0 {
-			return BinaryPort
-		} else if len(serviceInfos) == 1 && strings.ToLower(serviceInfos[0]) == SSLService {
+		if slices.ContainsFunc(serviceInfos, func(s string) bool {
+			return strings.ToLower(s) == SSLService
+		}) {
 			return BinaryTLSPort
 		}
+		return BinaryPort
 	case HTTPService:
 		return HTTPPort
 	case HTTPSService:
