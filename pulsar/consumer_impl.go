@@ -156,15 +156,14 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 			r, err := client.lookupService.GetPartitionedTopicMetadata(topic)
 			return err == nil && r != nil && r.Partitions > 0
 		}
-		resolveTopic := func(current, old string, new string) string {
+		resolveTopic := func(current, old, defaultTopic string) string {
 			if current != "" {
 				return current
 			}
 			if checkTopicIsExists(old) {
 				return old
-			} else {
-				return new
 			}
+			return defaultTopic
 		}
 		if options.DLQ == nil {
 			options.DLQ = &DLQPolicy{
