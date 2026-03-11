@@ -326,6 +326,65 @@ func newTopicName() string {
 	return fmt.Sprintf("my-topic-%v", time.Now().Nanosecond())
 }
 
+func assertTopicSchemaCompatibilityStrategyEventually(
+	t *testing.T,
+	getter func() (utils.SchemaCompatibilityStrategy, error),
+	expected utils.SchemaCompatibilityStrategy,
+) {
+	assert.Eventually(
+		t,
+		func() bool {
+			strategy, err := getter()
+			return err == nil && strategy == expected
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestParseTopicSchemaCompatibilityStrategy(t *testing.T) {
+	testCases := []struct {
+		name     string
+		body     []byte
+		expected utils.SchemaCompatibilityStrategy
+		wantErr  bool
+	}{
+		{
+			name:     "empty body maps to undefined",
+			body:     nil,
+			expected: utils.SchemaCompatibilityStrategyUndefined,
+		},
+		{
+			name:     "empty string maps to undefined",
+			body:     []byte(`""`),
+			expected: utils.SchemaCompatibilityStrategyUndefined,
+		},
+		{
+			name:     "valid strategy is parsed",
+			body:     []byte(`"FULL"`),
+			expected: utils.SchemaCompatibilityStrategyFull,
+		},
+		{
+			name:    "invalid strategy returns error",
+			body:    []byte(`"NOT_A_STRATEGY"`),
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range testCases {
+		t.Run(tt.name, func(t *testing.T) {
+			strategy, err := parseTopicSchemaCompatibilityStrategy(tt.body)
+			if tt.wantErr {
+				assert.Error(t, err)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, tt.expected, strategy)
+		})
+	}
+}
+
 func TestDeleteNonPartitionedTopic(t *testing.T) {
 	randomName := newTopicName()
 	topic := "persistent://public/default/" + randomName
@@ -1089,50 +1148,106 @@ func TestAutoSubscriptionCreation(t *testing.T) {
 
 func TestSchemaCompatibilityStrategy(t *testing.T) {
 	randomName := newTopicName()
-	topic := "persistent://public/default/" + randomName
+	namespace := "public/" + randomName + "-ns"
+	topic := "persistent://" + namespace + "/" + randomName
 	cfg := &config.Config{}
 	admin, err := New(cfg)
 	assert.NoError(t, err)
 	assert.NotNil(t, admin)
+
+	err = admin.Namespaces().CreateNamespace(namespace)
+	assert.NoError(t, err)
+
 	topicName, err := utils.GetTopicName(topic)
 	assert.NoError(t, err)
+	namespaceName, err := utils.GetNamespaceName(namespace)
+	assert.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = admin.Topics().Delete(*topicName, true, false)
+		_ = admin.Namespaces().DeleteNamespace(namespace)
+	})
+
 	err = admin.Topics().Create(*topicName, 4)
 	assert.NoError(t, err)
 
-	// Get default schema compatibility strategy (adapt to actual server behavior)
-	initialStrategy, err := admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
-	assert.NoError(t, err)
-	// Server may return empty string instead of "UNDEFINED"
-
-	// Set new schema compatibility strategy
-	err = admin.Topics().SetSchemaCompatibilityStrategy(*topicName, utils.SchemaCompatibilityStrategyBackward)
+	err = admin.Namespaces().SetSchemaCompatibilityStrategy(*namespaceName, utils.SchemaCompatibilityStrategyFull)
 	assert.NoError(t, err)
 
-	// topic policy is an async operation,
-	// so we need to wait for a while to get current value
 	assert.Eventually(
 		t,
 		func() bool {
-			strategy, err := admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
-			return err == nil &&
-				strategy == utils.SchemaCompatibilityStrategyBackward
+			strategy, err := admin.Namespaces().GetSchemaCompatibilityStrategy(*namespaceName)
+			return err == nil && strategy == utils.SchemaCompatibilityStrategyFull
 		},
 		10*time.Second,
 		100*time.Millisecond,
 	)
 
-	// Remove schema compatibility strategy policy
+	assertTopicSchemaCompatibilityStrategyEventually(
+		t,
+		func() (utils.SchemaCompatibilityStrategy, error) {
+			return admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
+		},
+		utils.SchemaCompatibilityStrategyFull,
+	)
+
+	assertTopicSchemaCompatibilityStrategyEventually(
+		t,
+		func() (utils.SchemaCompatibilityStrategy, error) {
+			return admin.Topics().GetSchemaCompatibilityStrategyApplied(*topicName, true)
+		},
+		utils.SchemaCompatibilityStrategyFull,
+	)
+
+	assertTopicSchemaCompatibilityStrategyEventually(
+		t,
+		func() (utils.SchemaCompatibilityStrategy, error) {
+			return admin.Topics().GetSchemaCompatibilityStrategyAppliedWithContext(
+				context.Background(),
+				*topicName,
+				false,
+			)
+		},
+		utils.SchemaCompatibilityStrategyUndefined,
+	)
+
+	err = admin.Topics().SetSchemaCompatibilityStrategy(*topicName, utils.SchemaCompatibilityStrategyBackward)
+	assert.NoError(t, err)
+
+	assertTopicSchemaCompatibilityStrategyEventually(
+		t,
+		func() (utils.SchemaCompatibilityStrategy, error) {
+			return admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
+		},
+		utils.SchemaCompatibilityStrategyBackward,
+	)
+
+	assertTopicSchemaCompatibilityStrategyEventually(
+		t,
+		func() (utils.SchemaCompatibilityStrategy, error) {
+			return admin.Topics().GetSchemaCompatibilityStrategyApplied(*topicName, false)
+		},
+		utils.SchemaCompatibilityStrategyBackward,
+	)
+
 	err = admin.Topics().RemoveSchemaCompatibilityStrategy(*topicName)
 	assert.NoError(t, err)
-	assert.Eventually(
+
+	assertTopicSchemaCompatibilityStrategyEventually(
 		t,
-		func() bool {
-			strategy, err := admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
-			return err == nil &&
-				strategy == initialStrategy
+		func() (utils.SchemaCompatibilityStrategy, error) {
+			return admin.Topics().GetSchemaCompatibilityStrategy(*topicName)
 		},
-		10*time.Second,
-		100*time.Millisecond,
+		utils.SchemaCompatibilityStrategyFull,
+	)
+
+	assertTopicSchemaCompatibilityStrategyEventually(
+		t,
+		func() (utils.SchemaCompatibilityStrategy, error) {
+			return admin.Topics().GetSchemaCompatibilityStrategyApplied(*topicName, false)
+		},
+		utils.SchemaCompatibilityStrategyUndefined,
 	)
 }
 
