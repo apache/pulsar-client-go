@@ -1276,7 +1276,7 @@ func TestTopics_ReplicationClusters(t *testing.T) {
 		t,
 		func() bool {
 			current, err := admin.Topics().GetReplicationClusters(*topicName)
-			return err == nil && len(current) > 0
+			return err == nil && len(current) == len(targetClusters) && current[0] == targetClusters[0]
 		},
 		10*time.Second,
 		100*time.Millisecond,
@@ -1285,12 +1285,13 @@ func TestTopics_ReplicationClusters(t *testing.T) {
 	err = admin.Topics().RemoveReplicationClusters(*topicName)
 	assert.NoError(t, err)
 
-	// Remove should leave the topic in a readable state (inherited value may vary by environment).
+	// GetReplicationClusters reads topic-level explicit policy.
+	// After delete, it should no longer return the previous override.
 	assert.Eventually(
 		t,
 		func() bool {
-			_, err := admin.Topics().GetReplicationClusters(*topicName)
-			return err == nil
+			current, err := admin.Topics().GetReplicationClusters(*topicName)
+			return err == nil && len(current) == 0
 		},
 		10*time.Second,
 		100*time.Millisecond,
