@@ -34,10 +34,10 @@ func TestResolveBeforeUpdateServiceUrl(t *testing.T) {
 	assert.EqualError(t, err, "no service url is provided yet")
 }
 
-func TestResolveUriBeforeUpdateServiceUrl(t *testing.T) {
+func TestResolveBeforeUpdateServiceUrlReturnsErrorWithoutServiceURL(t *testing.T) {
 	resolver, err := NewPulsarServiceNameResolver("")
 	require.NoError(t, err)
-	u, err := resolver.ResolveHostURI()
+	u, err := resolver.ResolveHost()
 	assert.Nil(t, u)
 	assert.NotNil(t, err)
 	assert.EqualError(t, err, "no service url is provided yet")
@@ -88,19 +88,13 @@ func TestMultipleHostsUrl(t *testing.T) {
 	assert.Equal(t, expectedURI, resolver.GetServiceURI())
 	host1, _ := url.Parse("pulsar://host1:6650")
 	host2, _ := url.Parse("pulsar://host2:6650")
-	host1uri, _ := NewPulsarServiceURIFromURIString("pulsar://host1:6650")
-	host2uri, _ := NewPulsarServiceURIFromURIString("pulsar://host2:6650")
 	assert.Contains(t, resolver.GetAddressList(), host1)
 	assert.Contains(t, resolver.GetAddressList(), host2)
 	hosts := []*url.URL{host1, host2}
-	hosturis := []*PulsarServiceURI{host1uri, host2uri}
 	for i := 0; i < 10; i++ {
 		host, err := resolver.ResolveHost()
 		assert.Nil(t, err)
-		hosturi, err := resolver.ResolveHostURI()
-		assert.Nil(t, err)
 		assert.Contains(t, hosts, host)
-		assert.Contains(t, hosturis, hosturi)
 	}
 }
 
@@ -115,18 +109,28 @@ func TestMultipleHostsTlsUrl(t *testing.T) {
 	assert.Equal(t, expectedURI, resolver.GetServiceURI())
 	host1, _ := url.Parse("pulsar+ssl://host1:6651")
 	host2, _ := url.Parse("pulsar+ssl://host2:6651")
-	host1uri, _ := NewPulsarServiceURIFromURIString("pulsar+ssl://host1:6651")
-	host2uri, _ := NewPulsarServiceURIFromURIString("pulsar+ssl://host2:6651")
 	assert.Contains(t, resolver.GetAddressList(), host1)
 	assert.Contains(t, resolver.GetAddressList(), host2)
 	hosts := []*url.URL{host1, host2}
-	hosturis := []*PulsarServiceURI{host1uri, host2uri}
 	for i := 0; i < 10; i++ {
 		host, err := resolver.ResolveHost()
 		assert.Nil(t, err)
-		hosturi, err := resolver.ResolveHostURI()
-		assert.Nil(t, err)
 		assert.Contains(t, hosts, host)
-		assert.Contains(t, hosturis, hosturi)
 	}
+}
+
+func TestResolveIpv6Host(t *testing.T) {
+	resolver, err := NewPulsarServiceNameResolver("")
+	require.NoError(t, err)
+
+	serviceURL := "pulsar://[fec0:0:0:ffff::1]:6650"
+	err = resolver.UpdateServiceURL(serviceURL)
+	require.NoError(t, err)
+
+	actualHost, err := resolver.ResolveHost()
+	require.NoError(t, err)
+	assert.Equal(t, "pulsar", actualHost.Scheme)
+	assert.Equal(t, "fec0:0:0:ffff::1", actualHost.Hostname())
+	assert.Equal(t, "6650", actualHost.Port())
+	assert.Equal(t, "[fec0:0:0:ffff::1]:6650", actualHost.Host)
 }

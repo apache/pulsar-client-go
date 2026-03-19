@@ -165,12 +165,6 @@ func splitURI(r rune) bool {
 }
 
 func validateHostName(serviceName string, serviceInfos []string, hostname string) (string, error) {
-	// Trim whitespace to avoid accepting accidental invalid inputs
-	hostname = strings.TrimSpace(hostname)
-	if hostname == "" {
-		return "", errors.New("hostname is empty")
-	}
-
 	var host, port string
 
 	// Attempt to split host and port using the standard library.
@@ -183,6 +177,12 @@ func validateHostName(serviceName string, serviceInfos []string, hostname string
 	//   - hosts without a port
 	//   - bare IPv6 literals without brackets (e.g. "fec0::1")
 	host, port, err := net.SplitHostPort(hostname)
+	if err == nil && host == "" {
+		// net.SplitHostPort accepts ":port" with an empty host, but we explicitly
+		// reject such inputs because a non-empty hostname is required.
+		return "", fmt.Errorf("invalid address: host is empty in %q", hostname)
+	}
+
 	if err != nil {
 		// If the hostname contains ':' but is not bracketed, it is very likely
 		// an invalid IPv6 literal or an invalid host with too many colons.

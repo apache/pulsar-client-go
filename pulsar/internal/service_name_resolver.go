@@ -30,7 +30,6 @@ import (
 
 type ServiceNameResolver interface {
 	ResolveHost() (*url.URL, error)
-	ResolveHostURI() (*PulsarServiceURI, error)
 	UpdateServiceURL(serviceURL string) error
 	GetServiceURI() *PulsarServiceURI
 	GetAddressList() []*url.URL
@@ -69,15 +68,6 @@ func (r *pulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
 	idx := (r.CurrentIndex + 1) % int32(len(r.AddressList))
 	r.CurrentIndex = idx
 	return r.AddressList[idx], nil
-}
-
-func (r *pulsarServiceNameResolver) ResolveHostURI() (*PulsarServiceURI, error) {
-	host, err := r.ResolveHost()
-	if err != nil {
-		return nil, err
-	}
-	hostURL := host.Scheme + "://" + host.Hostname() + ":" + host.Port()
-	return NewPulsarServiceURIFromURIString(hostURL)
 }
 
 func (r *pulsarServiceNameResolver) UpdateServiceURL(serviceURL string) error {
