@@ -114,7 +114,11 @@ type TopicPolicies interface {
 	RemoveCompactionThresholdWithContext(context.Context, utils.TopicName) error
 
 	GetBacklogQuotaMap(utils.TopicName, bool) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
-	GetBacklogQuotaMapWithContext(context.Context, utils.TopicName, bool) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
+	GetBacklogQuotaMapWithContext(
+		context.Context,
+		utils.TopicName,
+		bool,
+	) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
 	SetBacklogQuota(utils.TopicName, utils.BacklogQuota, utils.BacklogQuotaType) error
 	SetBacklogQuotaWithContext(context.Context, utils.TopicName, utils.BacklogQuota, utils.BacklogQuotaType) error
 	RemoveBacklogQuota(utils.TopicName, utils.BacklogQuotaType) error
@@ -198,14 +202,22 @@ type TopicPolicies interface {
 	RemoveOffloadPoliciesWithContext(context.Context, utils.TopicName) error
 
 	GetAutoSubscriptionCreation(utils.TopicName, bool) (*utils.AutoSubscriptionCreationOverride, error)
-	GetAutoSubscriptionCreationWithContext(context.Context, utils.TopicName, bool) (*utils.AutoSubscriptionCreationOverride, error)
+	GetAutoSubscriptionCreationWithContext(
+		context.Context,
+		utils.TopicName,
+		bool,
+	) (*utils.AutoSubscriptionCreationOverride, error)
 	SetAutoSubscriptionCreation(utils.TopicName, utils.AutoSubscriptionCreationOverride) error
 	SetAutoSubscriptionCreationWithContext(context.Context, utils.TopicName, utils.AutoSubscriptionCreationOverride) error
 	RemoveAutoSubscriptionCreation(utils.TopicName) error
 	RemoveAutoSubscriptionCreationWithContext(context.Context, utils.TopicName) error
 
 	GetSchemaCompatibilityStrategy(utils.TopicName, bool) (*utils.SchemaCompatibilityStrategy, error)
-	GetSchemaCompatibilityStrategyWithContext(context.Context, utils.TopicName, bool) (*utils.SchemaCompatibilityStrategy, error)
+	GetSchemaCompatibilityStrategyWithContext(
+		context.Context,
+		utils.TopicName,
+		bool,
+	) (*utils.SchemaCompatibilityStrategy, error)
 	SetSchemaCompatibilityStrategy(utils.TopicName, utils.SchemaCompatibilityStrategy) error
 	SetSchemaCompatibilityStrategyWithContext(context.Context, utils.TopicName, utils.SchemaCompatibilityStrategy) error
 	RemoveSchemaCompatibilityStrategy(utils.TopicName) error
@@ -344,7 +356,11 @@ func (t *topicPolicies) GetMessageTTL(topic utils.TopicName, applied bool) (*int
 	return t.GetMessageTTLWithContext(context.Background(), topic, applied)
 }
 
-func (t *topicPolicies) GetMessageTTLWithContext(ctx context.Context, topic utils.TopicName, applied bool) (*int, error) {
+func (t *topicPolicies) GetMessageTTLWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	applied bool,
+) (*int, error) {
 	body, err := t.readPolicyBodyWithContext(ctx, t.topicEndpoint(topic, "messageTTL"), applied)
 	if err != nil {
 		return nil, err

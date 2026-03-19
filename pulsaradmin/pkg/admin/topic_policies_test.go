@@ -153,7 +153,7 @@ func TestTopicPoliciesScopeAndAppliedParams(t *testing.T) {
 }
 
 func TestTopicPoliciesNullDecodingAndLegacyDefaults(t *testing.T) {
-	client, _ := newTopicPolicyTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client, _ := newTopicPolicyTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte("null"))
 		require.NoError(t, err)
 	})
@@ -220,7 +220,7 @@ func TestTopicPoliciesNullDecodingAndLegacyDefaults(t *testing.T) {
 }
 
 func TestLocalTopicPoliciesParityWithTopics(t *testing.T) {
-	client, _ := newTopicPolicyTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+	client, _ := newTopicPolicyTestClient(t, func(w http.ResponseWriter, _ *http.Request) {
 		_, err := w.Write([]byte("600"))
 		require.NoError(t, err)
 	})
