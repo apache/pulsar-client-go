@@ -97,7 +97,10 @@ func main() {
         panic(err)
     }
 
-    topic, _ := utils.GetTopicName("public/dev/topic")
+    topic, err := utils.GetTopicName("public/dev/topic")
+    if err != nil {
+        panic(err)
+    }
 
     admin.Topics().Create(*topic, 3)
 }
@@ -118,7 +121,10 @@ func main() {
         panic(err)
     }
 
-    topic, _ := utils.GetTopicName("persistent://public/default/example")
+    topic, err := utils.GetTopicName("persistent://public/default/example")
+    if err != nil {
+        panic(err)
+    }
 
     localPolicies, err := pulsaradmin.TopicPoliciesOf(admin, false)
     if err != nil {
