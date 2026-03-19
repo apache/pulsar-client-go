@@ -832,6 +832,12 @@ type Topics interface {
 	//        list of replication cluster id
 	SetReplicationClustersWithContext(ctx context.Context, topic utils.TopicName, data []string) error
 
+	// RemoveReplicationClusters removes the replication clusters override on a topic
+	RemoveReplicationClusters(topic utils.TopicName) error
+
+	// RemoveReplicationClustersWithContext removes the replication clusters override on a topic
+	RemoveReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) error
+
 	// GetSubscribeRate returns subscribe rate configuration for a topic.
 	// Returns nil if the subscribe rate is not configured at the topic level.
 	GetSubscribeRate(utils.TopicName) (*utils.SubscribeRate, error)
@@ -2030,6 +2036,15 @@ func (t *topics) GetReplicationClustersWithContext(ctx context.Context, topic ut
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
 	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &data)
 	return data, err
+}
+
+func (t *topics) RemoveReplicationClusters(topic utils.TopicName) error {
+	return t.RemoveReplicationClustersWithContext(context.Background(), topic)
+}
+
+func (t *topics) RemoveReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetSubscribeRate(topic utils.TopicName) (*utils.SubscribeRate, error) {

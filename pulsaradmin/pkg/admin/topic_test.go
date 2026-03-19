@@ -1251,6 +1251,53 @@ func TestSchemaCompatibilityStrategy(t *testing.T) {
 	)
 }
 
+func TestTopics_ReplicationClusters(t *testing.T) {
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 4)
+	assert.NoError(t, err)
+
+	clusters, err := admin.Clusters().List()
+	assert.NoError(t, err)
+	assert.NotEmpty(t, clusters)
+
+	targetClusters := []string{clusters[0]}
+	err = admin.Topics().SetReplicationClusters(*topicName, targetClusters)
+	assert.NoError(t, err)
+
+	assert.Eventually(
+		t,
+		func() bool {
+			current, err := admin.Topics().GetReplicationClusters(*topicName)
+			return err == nil && len(current) == len(targetClusters) && current[0] == targetClusters[0]
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	err = admin.Topics().RemoveReplicationClusters(*topicName)
+	assert.NoError(t, err)
+
+	// GetReplicationClusters reads topic-level explicit policy.
+	// After delete, it should no longer return the previous override.
+	assert.Eventually(
+		t,
+		func() bool {
+			current, err := admin.Topics().GetReplicationClusters(*topicName)
+			return err == nil && len(current) == 0
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
 func TestTopics_MaxProducers(t *testing.T) {
 	randomName := newTopicName()
 	topic := "persistent://public/default/" + randomName
