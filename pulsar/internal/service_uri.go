@@ -252,15 +252,41 @@ func normalizeValidatedHost(hostname, host string) (string, error) {
 func getServicePort(serviceName string, serviceInfos []string) int {
 	switch serviceName {
 	case BinaryService:
-		if slices.ContainsFunc(serviceInfos, func(s string) bool {
-			return strings.ToLower(s) == SSLService
-		}) {
+		// For Pulsar, only the "ssl" modifier is allowed. Any other non-empty
+		// modifier is treated as invalid and causes port resolution to fail.
+		if len(serviceInfos) == 0 {
+			return BinaryPort
+		}
+
+		hasSSL := false
+		for _, info := range serviceInfos {
+			if info == "" {
+				// Ignore empty modifiers if present.
+				continue
+			}
+			if strings.EqualFold(info, SSLService) {
+				hasSSL = true
+				continue
+			}
+			// Unknown modifier: reject to avoid silently accepting typos.
+			return -1
+		}
+
+		if hasSSL {
 			return BinaryTLSPort
 		}
 		return BinaryPort
 	case HTTPService:
+		// HTTP should not have any scheme modifiers; reject if present.
+		if len(serviceInfos) != 0 {
+			return -1
+		}
 		return HTTPPort
 	case HTTPSService:
+		// HTTPS should not have any scheme modifiers; reject if present.
+		if len(serviceInfos) != 0 {
+			return -1
+		}
 		return HTTPSPort
 	}
 	return -1
