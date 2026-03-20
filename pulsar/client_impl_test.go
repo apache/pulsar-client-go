@@ -46,6 +46,12 @@ func TestClient(t *testing.T) {
 	assert.Equal(t, InvalidConfiguration, err.(*Error).Result())
 }
 
+func TestClientInvalidScheme(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: "ftp://localhost:21"})
+	require.Error(t, err)
+	assert.Nil(t, client)
+}
+
 func TestTLSConnectionCAError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL:              serviceURLTLS,

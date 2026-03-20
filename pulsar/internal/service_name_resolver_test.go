@@ -34,15 +34,6 @@ func TestResolveBeforeUpdateServiceUrl(t *testing.T) {
 	assert.EqualError(t, err, "no service url is provided yet")
 }
 
-func TestResolveBeforeUpdateServiceUrlReturnsErrorWithoutServiceURL(t *testing.T) {
-	resolver, err := NewPulsarServiceNameResolver("")
-	require.NoError(t, err)
-	u, err := resolver.ResolveHost()
-	assert.Nil(t, u)
-	assert.NotNil(t, err)
-	assert.EqualError(t, err, "no service url is provided yet")
-}
-
 func TestUpdateInvalidServiceUrl(t *testing.T) {
 	resolver, err := NewPulsarServiceNameResolver("")
 	require.NoError(t, err)

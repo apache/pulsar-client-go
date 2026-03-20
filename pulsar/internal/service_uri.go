@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"net/url"
 	"slices"
 	"strconv"
@@ -46,6 +47,14 @@ type PulsarServiceURI struct {
 	ServiceHosts []string
 	servicePath  string
 	URL          *url.URL
+}
+
+type UnsupportedServiceNameError struct {
+	ServiceName string
+}
+
+func (e *UnsupportedServiceNameError) Error() string {
+	return fmt.Sprintf("unsupported service name: %s", e.ServiceName)
 }
 
 func NewPulsarServiceURIFromURIString(uri string) (*PulsarServiceURI, error) {
@@ -74,7 +83,7 @@ func (p *PulsarServiceURI) PrimaryHostName() (string, error) {
 }
 
 func (p *PulsarServiceURI) IsHTTP() bool {
-	return strings.HasPrefix(p.ServiceName, HTTPService)
+	return p.ServiceName == HTTPService || p.ServiceName == HTTPSService
 }
 
 func fromString(uriStr string) (*PulsarServiceURI, error) {
@@ -82,28 +91,8 @@ func fromString(uriStr string) (*PulsarServiceURI, error) {
 		return nil, errors.New("service URI cannot be empty")
 	}
 
-	// 1. Find first host delimiter (, or ;)
-	firstDelimIdx := strings.IndexFunc(uriStr, splitURI)
-
-	var singleHostURI string
-	var additionalHosts string
-
-	if firstDelimIdx >= 0 {
-		remainder := uriStr[firstDelimIdx:]
-		endIdx := strings.IndexAny(remainder, "/?#")
-
-		if endIdx >= 0 {
-			// pulsar://h1:6650,h2:6650/path
-			singleHostURI = uriStr[:firstDelimIdx] + remainder[endIdx:]
-			additionalHosts = remainder[1:endIdx]
-		} else {
-			// pulsar://h1:6650,h2:6650
-			singleHostURI = uriStr[:firstDelimIdx]
-			additionalHosts = remainder[1:]
-		}
-	} else {
-		singleHostURI = uriStr
-	}
+	// 1. Reduce a multi-host URI to one parseable host while preserving suffixes.
+	singleHostURI, additionalHosts := splitHostURI(uriStr)
 
 	// 2. Parse single-host URI ONLY
 	u, err := url.Parse(singleHostURI)
@@ -129,7 +118,7 @@ func fromString(uriStr string) (*PulsarServiceURI, error) {
 	switch serviceName {
 	case BinaryService, HTTPService, HTTPSService:
 	default:
-		return nil, fmt.Errorf("unsupported service name: %s", serviceName)
+		return nil, &UnsupportedServiceNameError{ServiceName: serviceName}
 	}
 
 	// 4. Validate first host
@@ -164,11 +153,46 @@ func splitURI(r rune) bool {
 	return r == ',' || r == ';'
 }
 
-func validateHostName(serviceName string, serviceInfos []string, hostname string) (string, error) {
-	var host, port string
+func splitHostURI(uriStr string) (string, string) {
+	authorityStart := strings.Index(uriStr, "//")
+	if authorityStart < 0 {
+		return uriStr, ""
+	}
+	authorityStart += 2
 
-	// Attempt to split host and port using the standard library.
-	//
+	authorityEnd := len(uriStr)
+	if authoritySuffixEnd := strings.IndexAny(uriStr[authorityStart:], "/?#"); authoritySuffixEnd >= 0 {
+		authorityEnd = authorityStart + authoritySuffixEnd
+	}
+
+	hostListStart := authorityStart
+	if userInfoEnd := strings.LastIndex(uriStr[authorityStart:authorityEnd], "@"); userInfoEnd >= 0 {
+		hostListStart += userInfoEnd + 1
+	}
+
+	if firstDelim := strings.IndexFunc(uriStr[hostListStart:authorityEnd], splitURI); firstDelim >= 0 {
+		firstDelimIdx := hostListStart + firstDelim
+		return uriStr[:firstDelimIdx] + uriStr[authorityEnd:], uriStr[firstDelimIdx+1 : authorityEnd]
+	}
+
+	return uriStr, ""
+}
+
+func validateHostName(serviceName string, serviceInfos []string, hostname string) (string, error) {
+	host, port, err := splitHostPortOrDefault(serviceName, serviceInfos, hostname)
+	if err != nil {
+		return "", err
+	}
+
+	cleanHost, err := normalizeValidatedHost(hostname, host)
+	if err != nil {
+		return "", err
+	}
+
+	return net.JoinHostPort(cleanHost, port), nil
+}
+
+func splitHostPortOrDefault(serviceName string, serviceInfos []string, hostname string) (string, string, error) {
 	// net.SplitHostPort enforces strict host:port syntax:
 	//   - IPv4: "127.0.0.1:6650"
 	//   - IPv6: "[fec0::1]:6650"
@@ -177,46 +201,52 @@ func validateHostName(serviceName string, serviceInfos []string, hostname string
 	//   - hosts without a port
 	//   - bare IPv6 literals without brackets (e.g. "fec0::1")
 	host, port, err := net.SplitHostPort(hostname)
-	if err == nil && host == "" {
-		// net.SplitHostPort accepts ":port" with an empty host, but we explicitly
-		// reject such inputs because a non-empty hostname is required.
-		return "", fmt.Errorf("invalid address: host is empty in %q", hostname)
+	if err == nil {
+		if host == "" {
+			// net.SplitHostPort accepts ":port" with an empty host, but we explicitly
+			// reject such inputs because a non-empty hostname is required.
+			return "", "", fmt.Errorf("invalid address: host is empty in %q", hostname)
+		}
+		return host, port, nil
 	}
 
-	if err != nil {
-		// If the hostname contains ':' but is not bracketed, it is very likely
-		// an invalid IPv6 literal or an invalid host with too many colons.
-		//
-		// Examples rejected here:
-		//   - "fec0::1"
-		//   - "fec0::1:6650"
-		//   - "localhost:6650:6651"
-		if strings.Count(hostname, ":") > 0 && !strings.HasPrefix(hostname, "[") {
-			return "", fmt.Errorf("invalid address (maybe missing brackets for IPv6 or too many colons): %s", hostname)
-		}
-
-		// Otherwise, treat the entire hostname as host without an explicit port.
-		// In this case, we fall back to the default port derived from the service.
-		host = hostname
-		p := getServicePort(serviceName, serviceInfos)
-		if p == -1 {
-			return "", fmt.Errorf("no port found")
-		}
-		port = strconv.Itoa(p)
-	}
-
-	// Remove surrounding brackets if present.
+	// If the hostname contains ':' but is not bracketed, it is very likely
+	// an invalid IPv6 literal or an invalid host with too many colons.
 	//
-	// Note:
-	//   "[fec0::1]" is NOT an IPv6 address itself, but a URI/host syntax
-	//   representation used to disambiguate IPv6 literals when ports are involved.
-	//   We strip brackets here so the address can be validated and normalized.
-	cleanHost := host
-	if len(host) >= 2 && host[0] == '[' && host[len(host)-1] == ']' {
-		cleanHost = host[1 : len(host)-1]
+	// Examples rejected here:
+	//   - "fec0::1"
+	//   - "fec0::1:6650"
+	//   - "localhost:6650:6651"
+	if strings.Contains(hostname, ":") && !strings.HasPrefix(hostname, "[") {
+		return "", "", fmt.Errorf("invalid address (maybe missing brackets for IPv6 or too many colons): %s", hostname)
 	}
 
-	return net.JoinHostPort(cleanHost, port), nil
+	defaultPort := getServicePort(serviceName, serviceInfos)
+	if defaultPort == -1 {
+		return "", "", fmt.Errorf("no port found")
+	}
+
+	return hostname, strconv.Itoa(defaultPort), nil
+}
+
+func normalizeValidatedHost(hostname, host string) (string, error) {
+	hasOpeningBracket := strings.HasPrefix(hostname, "[")
+	hasClosingBracket := strings.Contains(hostname, "]")
+	if hasOpeningBracket != hasClosingBracket {
+		return "", fmt.Errorf("invalid bracketed host: %s", hostname)
+	}
+
+	cleanHost := strings.TrimPrefix(strings.TrimSuffix(host, "]"), "[")
+	if !hasOpeningBracket {
+		return cleanHost, nil
+	}
+
+	addr, err := netip.ParseAddr(cleanHost)
+	if err != nil || !addr.Is6() {
+		return "", fmt.Errorf("invalid IPv6 address: %s", hostname)
+	}
+
+	return cleanHost, nil
 }
 
 func getServicePort(serviceName string, serviceInfos []string) int {

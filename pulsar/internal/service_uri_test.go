@@ -18,6 +18,7 @@
 package internal
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -51,6 +52,37 @@ func TestMissingServiceName(t *testing.T) {
 	serviceURI := "//localhost:6650/path/to/namespace"
 	_, err := NewPulsarServiceURIFromURIString(serviceURI)
 	require.Error(t, err)
+}
+
+func TestUnsupportedServiceNameError(t *testing.T) {
+	_, err := NewPulsarServiceURIFromURIString("ftp://localhost:21")
+	require.Error(t, err)
+
+	var unsupportedServiceNameErr *UnsupportedServiceNameError
+	require.ErrorAs(t, err, &unsupportedServiceNameErr)
+	assert.Equal(t, "ftp", unsupportedServiceNameErr.ServiceName)
+	assert.True(t, errors.As(err, &unsupportedServiceNameErr))
+}
+
+func TestIsHTTP(t *testing.T) {
+	testCases := []struct {
+		name     string
+		uri      string
+		expected bool
+	}{
+		{name: "pulsar", uri: "pulsar://localhost:6650", expected: false},
+		{name: "pulsar ssl", uri: "pulsar+ssl://localhost:6651", expected: false},
+		{name: "http", uri: "http://localhost", expected: true},
+		{name: "https", uri: "https://localhost", expected: true},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			serviceURI, err := NewPulsarServiceURIFromURIString(tc.uri)
+			require.NoError(t, err)
+			assert.Equal(t, tc.expected, serviceURI.IsHTTP())
+		})
+	}
 }
 
 func TestEmptyPath(t *testing.T) {
@@ -139,6 +171,21 @@ func TestMultipleHostsMixed(t *testing.T) {
 	serviceURI := "pulsar://host1:6640,host2,host3:6660/path/to/namespace"
 	assertServiceURI(t, serviceURI, "pulsar", nil, []string{"host1:6640", "host2:6650", "host3:6660"},
 		"/path/to/namespace", "")
+}
+
+func TestPathQueryAndFragmentDelimitersDoNotSplitHosts(t *testing.T) {
+	serviceURI := "pulsar://host1:6650/path,with;delimiters?param=a,b;c#frag,ment;tail"
+	uri, err := NewPulsarServiceURIFromURIString(serviceURI)
+	require.NoError(t, err)
+	require.NotNil(t, uri)
+	assert.Equal(t, []string{"host1:6650"}, uri.ServiceHosts)
+	assert.Equal(t, "/path,with;delimiters", uri.servicePath)
+	assert.Equal(t, "param=a,b;c", uri.URL.RawQuery)
+	assert.Equal(t, "frag,ment;tail", uri.URL.Fragment)
+}
+
+func TestInvalidBracketedAdditionalHost(t *testing.T) {
+	testInvalidServiceURI(t, "pulsar://host1:6650,[example]:6650/path/to/namespace")
 }
 
 func TestUserInfoWithMultipleHosts(t *testing.T) {
