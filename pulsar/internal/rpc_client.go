@@ -241,17 +241,12 @@ func (c *rpcClient) LookupService(URL string) (LookupService, error) {
 }
 
 func (c *rpcClient) newLookupService(serviceURL string) (LookupService, error) {
-	serviceURI, err := NewPulsarServiceURIFromURIString(serviceURL)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse service URL '%s': %w", serviceURL, err)
-	}
-
 	serviceNameResolver, err := NewPulsarServiceNameResolver(serviceURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create service name resolver for URL '%s': %w", serviceURL, err)
 	}
 
-	if serviceURI.IsHTTP() {
+	if serviceNameResolver.GetServiceURI().IsHTTP() {
 		httpClient, err := NewHTTPClient(serviceNameResolver, c.tlsConfig,
 			c.requestTimeout, c.log, c.metrics, c.authProvider)
 		if err != nil {
