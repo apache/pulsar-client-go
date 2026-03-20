@@ -1561,7 +1561,7 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 		}
 		// Chunked messages rely on TCP to ensure that chunk IDs are strictly increasing within a partition.
 		// If the current chunk ID is greater than ctx.lastChunkedMsgID + 1,
-		// it indicates that the current chunk is corrupted and requires resource cleanup.
+		// it indicates that the current chunk is corrupted and may require resource cleanup.
 		lastChunkedMsgID := -1
 		totalChunks := -1
 		if ctx != nil {
@@ -1584,7 +1584,25 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 			ctx.chunkedMsgBuffer.Clear()
 			pc.chunkedMsgCtxMap.remove(uuid)
 		}
-		pc.AckID(toTrackingMessageID(msgID))
+		// Consider a scenario where MaxPendingChunkedMessage is set to 1,
+		// and we have two messages (A and B), each consisting of three chunks:
+		// A chunks are Chunk-1, Chunk-2, Chunk-6 and B chunks are Chunk-3, Chunk-4, Chunk-5
+		// The consumer receives them in the following order:
+		//     Chunk-1 sequence ID: 0, chunk ID: 0, msgID: 1:1
+		//     Chunk-2 sequence ID: 0, chunk ID: 1, msgID: 1:2
+		//     since MaxPendingChunkedMessage is 1, the context for A is removed
+		//     Chunk-3 sequence ID: 1, chunk ID: 0, msgID: 1:3
+		//     Chunk-4 sequence ID: 1, chunk ID: 1, msgID: 1:4
+		//     Chunk-5 sequence ID: 1, chunk ID: 2, msgID: 1:5
+		//     Chunk-6 sequence ID: 0, chunk ID: 2, msgID: 1:6
+		// If we acknowledge Chunk-6 here, message A would be lost.
+		// This is unexpected, as the user would expect A to be successfully consumed after redelivery.
+		// So the correct logic should be:
+		// If AutoAckIncompleteChunk is true, then acknowledge the message.
+		// Otherwise, do nothing so that the message can be redelivered in the future.
+		if pc.options.autoAckIncompleteChunk {
+			pc.AckID(toTrackingMessageID(msgID))
+		}
 		return nil
 	}
 
