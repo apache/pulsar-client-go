@@ -97,9 +97,49 @@ func main() {
         panic(err)
     }
 
-    topic, _ := utils.GetTopicName("public/dev/topic")
+    topic, err := utils.GetTopicName("public/dev/topic")
+    if err != nil {
+        panic(err)
+    }
 
     admin.Topics().Create(*topic, 3)
+}
+```
+
+- Read scoped topic policies
+
+```go
+import (
+    "github.com/apache/pulsar-client-go/pulsaradmin"
+    "github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
+)
+
+func main() {
+    cfg := &pulsaradmin.Config{}
+    admin, err := pulsaradmin.NewClient(cfg)
+    if err != nil {
+        panic(err)
+    }
+
+    topic, err := utils.GetTopicName("persistent://public/default/example")
+    if err != nil {
+        panic(err)
+    }
+
+    localPolicies, err := pulsaradmin.TopicPoliciesOf(admin, false)
+    if err != nil {
+        panic(err)
+    }
+
+    ttl, err := localPolicies.GetMessageTTL(*topic, false)
+    if err != nil {
+        panic(err)
+    }
+    if ttl == nil {
+        return
+    }
+
+    _, _ = pulsaradmin.TopicPoliciesOf(admin, true)
 }
 ```
 
