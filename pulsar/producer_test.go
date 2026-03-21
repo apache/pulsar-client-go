@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"os"
 	"strconv"
@@ -2951,4 +2952,138 @@ func TestPartitionUpdateFailed(t *testing.T) {
 
 		time.Sleep(time.Second * 1)
 	}
+}
+
+type testReconnectBackoffPolicy struct {
+	curBackoff, minBackoff, maxBackoff time.Duration
+	retryTime                          int
+	lock                               sync.Mutex
+}
+
+func newTestReconnectBackoffPolicy(minBackoff, maxBackoff time.Duration) *testReconnectBackoffPolicy {
+	return &testReconnectBackoffPolicy{
+		curBackoff: 0,
+		minBackoff: minBackoff,
+		maxBackoff: maxBackoff,
+	}
+}
+
+func (b *testReconnectBackoffPolicy) Next() time.Duration {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+
+	// Double the delay each time
+	b.curBackoff += b.curBackoff
+	if b.curBackoff.Nanoseconds() < b.minBackoff.Nanoseconds() {
+		b.curBackoff = b.minBackoff
+	} else if b.curBackoff.Nanoseconds() > b.maxBackoff.Nanoseconds() {
+		b.curBackoff = b.maxBackoff
+	}
+	b.retryTime++
+	return b.curBackoff
+}
+func (b *testReconnectBackoffPolicy) IsMaxBackoffReached() bool {
+	b.lock.Lock()
+	defer b.lock.Unlock()
+	return b.curBackoff >= b.maxBackoff
+}
+
+func (b *testReconnectBackoffPolicy) Reset() {
+}
+
+func (b *testReconnectBackoffPolicy) IsExpectedIntervalFrom() bool {
+	return true
+}
+
+func TestProducerReconnectWhenBacklogQuotaExceed(t *testing.T) {
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+	client, err := NewClient(ClientOptions{
+		URL:    serviceURL,
+		Logger: plog.NewLoggerWithSlog(logger),
+	})
+	defer client.Close()
+	namespace := "public/" + generateRandomName()
+	assert.NoError(t, err)
+	admin, err := pulsaradmin.NewClient(&config.Config{
+		WebServiceURL: adminURL,
+	})
+	assert.NoError(t, err)
+	// Step 1: Create namespace and configure 10KB backlog quota with producer_exception policy
+	// When subscription backlog stats refresh and reach the limit, producer will encounter BlockQuotaExceed exception
+	err = admin.Namespaces().CreateNamespace(namespace)
+	assert.NoError(t, err)
+	err = admin.Namespaces().SetBacklogQuota(
+		namespace,
+		utils.NewBacklogQuota(10*1024, -1, utils.ProducerException),
+		utils.DestinationStorage,
+	)
+	assert.NoError(t, err)
+
+	// Verify backlog quota configuration
+	quotaMap, err := admin.Namespaces().GetBacklogQuotaMap(namespace)
+	assert.NoError(t, err)
+	logger.Info(fmt.Sprintf("quotaMap = %v", quotaMap))
+
+	// Create test topic
+	topicName := namespace + "/test-topic"
+	tn, err := utils.GetTopicName(topicName)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*tn, 1)
+	assert.NoError(t, err)
+
+	// Step 2: Create consumer with small receiver queue size and earliest subscription position
+	// This ensures that by sending a 512KB message (much larger than the 10KB backlog quota),
+	// the producer will quickly reach the backlog quota limit
+	_consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topicName,
+		SubscriptionName:            "my-sub",
+		Type:                        Exclusive,
+		ReceiverQueueSize:           1,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer _consumer.Close()
+
+	// Step 3: Create producer with custom backoff policy to reduce retry interval
+	bo := newTestReconnectBackoffPolicy(100*time.Millisecond, 1*time.Second)
+	_producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topicName,
+		DisableBatching: true,
+		SendTimeout:     5 * time.Minute,
+		BackOffPolicyFunc: func() backoff.Policy {
+			return bo
+		},
+	})
+	assert.NoError(t, err)
+	defer _producer.Close()
+
+	// Step 4: Send 512KB messages and monitor statistics
+	// Limit to 10 iterations to avoid infinite loop in test
+	isReachMaxBackoff := false
+	for i := 0; i < 10; i++ {
+		_producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: make([]byte, 512*1024),
+		}, func(msgId MessageID, _ *ProducerMessage, err error) {
+			if err != nil {
+				logger.Error("sendAsync fail", "time", time.Now().String(), "err", err.Error())
+				return
+			}
+			logger.Info("sendAsync success", "msgId", msgId.String(), "time", time.Now().String())
+		})
+
+		// Get topic statistics for debugging
+		stats, err := admin.Topics().GetPartitionedStats(*tn, false)
+		assert.NoError(t, err)
+		logger.Info("current backlogSize", "backlogSize", stats.Subscriptions["my-sub"].BacklogSize)
+		if bo.IsMaxBackoffReached() {
+			isReachMaxBackoff = true
+			break
+		}
+		time.Sleep(10 * time.Second)
+	}
+
+	// Step 5: Verify that backoff mechanism reaches maximum retry limit
+	// This indicates that producer successfully detected backlog quota limit and triggered reconnection mechanism
+	assert.True(t, isReachMaxBackoff)
 }

@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 
@@ -831,6 +832,12 @@ type Topics interface {
 	//        list of replication cluster id
 	SetReplicationClustersWithContext(ctx context.Context, topic utils.TopicName, data []string) error
 
+	// RemoveReplicationClusters removes the replication clusters override on a topic
+	RemoveReplicationClusters(topic utils.TopicName) error
+
+	// RemoveReplicationClustersWithContext removes the replication clusters override on a topic
+	RemoveReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) error
+
 	// GetSubscribeRate returns subscribe rate configuration for a topic.
 	// Returns nil if the subscribe rate is not configured at the topic level.
 	GetSubscribeRate(utils.TopicName) (*utils.SubscribeRate, error)
@@ -1027,11 +1034,35 @@ type Topics interface {
 	// RemoveAutoSubscriptionCreationWithContext Remove auto subscription creation override for a topic
 	RemoveAutoSubscriptionCreationWithContext(context.Context, utils.TopicName) error
 
-	// GetSchemaCompatibilityStrategy returns schema compatibility strategy for a topic
+	// GetSchemaCompatibilityStrategy returns the applied schema compatibility strategy for a topic.
 	GetSchemaCompatibilityStrategy(utils.TopicName) (utils.SchemaCompatibilityStrategy, error)
 
-	// GetSchemaCompatibilityStrategyWithContext returns schema compatibility strategy for a topic
+	// GetSchemaCompatibilityStrategyWithContext returns the applied schema compatibility strategy for a topic.
 	GetSchemaCompatibilityStrategyWithContext(context.Context, utils.TopicName) (utils.SchemaCompatibilityStrategy, error)
+
+	// GetSchemaCompatibilityStrategyApplied returns schema compatibility strategy for a topic.
+	//
+	// @param topic
+	//        topicName struct
+	// @param applied
+	//        when set to true, function will try to find policy applied to this topic
+	//        in namespace or broker level, if no policy set in topic level
+	GetSchemaCompatibilityStrategyApplied(utils.TopicName, bool) (utils.SchemaCompatibilityStrategy, error)
+
+	// GetSchemaCompatibilityStrategyAppliedWithContext returns schema compatibility strategy for a topic.
+	//
+	// @param ctx
+	//        context used for the request
+	// @param topic
+	//        topicName struct
+	// @param applied
+	//        when set to true, function will try to find policy applied to this topic
+	//        in namespace or broker level, if no policy set in topic level
+	GetSchemaCompatibilityStrategyAppliedWithContext(
+		context.Context,
+		utils.TopicName,
+		bool,
+	) (utils.SchemaCompatibilityStrategy, error)
 
 	// SetSchemaCompatibilityStrategy sets schema compatibility strategy for a topic
 	SetSchemaCompatibilityStrategy(utils.TopicName,
@@ -2007,6 +2038,15 @@ func (t *topics) GetReplicationClustersWithContext(ctx context.Context, topic ut
 	return data, err
 }
 
+func (t *topics) RemoveReplicationClusters(topic utils.TopicName) error {
+	return t.RemoveReplicationClustersWithContext(context.Background(), topic)
+}
+
+func (t *topics) RemoveReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) error {
+	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
+}
+
 func (t *topics) GetSubscribeRate(topic utils.TopicName) (*utils.SubscribeRate, error) {
 	return t.GetSubscribeRateWithContext(context.Background(), topic)
 }
@@ -2320,17 +2360,36 @@ func (t *topics) RemoveAutoSubscriptionCreationWithContext(ctx context.Context, 
 }
 
 func (t *topics) GetSchemaCompatibilityStrategy(topic utils.TopicName) (utils.SchemaCompatibilityStrategy, error) {
-	return t.GetSchemaCompatibilityStrategyWithContext(context.Background(), topic)
+	return t.GetSchemaCompatibilityStrategyApplied(topic, true)
 }
 
 func (t *topics) GetSchemaCompatibilityStrategyWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (utils.SchemaCompatibilityStrategy, error) {
-	var strategy utils.SchemaCompatibilityStrategy
+	return t.GetSchemaCompatibilityStrategyAppliedWithContext(ctx, topic, true)
+}
+
+func (t *topics) GetSchemaCompatibilityStrategyApplied(
+	topic utils.TopicName,
+	applied bool,
+) (utils.SchemaCompatibilityStrategy, error) {
+	return t.GetSchemaCompatibilityStrategyAppliedWithContext(context.Background(), topic, applied)
+}
+
+func (t *topics) GetSchemaCompatibilityStrategyAppliedWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	applied bool,
+) (utils.SchemaCompatibilityStrategy, error) {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaCompatibilityStrategy")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &strategy)
-	return strategy, err
+	body, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, nil, map[string]string{
+		"applied": strconv.FormatBool(applied),
+	}, false)
+	if err != nil {
+		return "", err
+	}
+	return parseTopicSchemaCompatibilityStrategy(body)
 }
 
 func (t *topics) SetSchemaCompatibilityStrategy(topic utils.TopicName,
@@ -2351,6 +2410,15 @@ func (t *topics) RemoveSchemaCompatibilityStrategy(topic utils.TopicName) error 
 func (t *topics) RemoveSchemaCompatibilityStrategyWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaCompatibilityStrategy")
 	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
+}
+
+func parseTopicSchemaCompatibilityStrategy(body []byte) (utils.SchemaCompatibilityStrategy, error) {
+	raw := strings.ReplaceAll(string(body), "\"", "")
+	if raw == "" {
+		return utils.SchemaCompatibilityStrategyUndefined, nil
+	}
+
+	return utils.ParseSchemaCompatibilityStrategy(raw)
 }
 
 func (t *topics) GetOffloadPolicies(topic utils.TopicName) (*utils.OffloadPolicies, error) {
