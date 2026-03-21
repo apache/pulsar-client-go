@@ -59,13 +59,13 @@ type HTTPClient interface {
 	Closable
 }
 
-func NewHTTPClient(serviceURL *url.URL, serviceNameResolver ServiceNameResolver, tlsConfig *TLSOptions,
+func NewHTTPClient(serviceNameResolver ServiceNameResolver, tlsConfig *TLSOptions,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
 	authProvider auth.Provider) (HTTPClient, error) {
 	h := &httpClient{
 		ServiceNameResolver: serviceNameResolver,
 		requestTimeout:      requestTimeout,
-		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceNameResolver.GetServiceURI().URL}),
 		metrics:             metrics,
 	}
 	c := &http.Client{Timeout: requestTimeout}

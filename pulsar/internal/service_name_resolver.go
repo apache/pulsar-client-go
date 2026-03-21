@@ -30,16 +30,13 @@ import (
 
 type ServiceNameResolver interface {
 	ResolveHost() (*url.URL, error)
-	ResolveHostURI() (*PulsarServiceURI, error)
-	UpdateServiceURL(url *url.URL) error
+	UpdateServiceURL(serviceURL string) error
 	GetServiceURI() *PulsarServiceURI
-	GetServiceURL() *url.URL
 	GetAddressList() []*url.URL
 }
 
 type pulsarServiceNameResolver struct {
 	ServiceURI   *PulsarServiceURI
-	ServiceURL   *url.URL
 	CurrentIndex int32
 	AddressList  []*url.URL
 
@@ -47,13 +44,12 @@ type pulsarServiceNameResolver struct {
 	mutex sync.Mutex
 }
 
-func NewPulsarServiceNameResolver(url *url.URL) ServiceNameResolver {
+func NewPulsarServiceNameResolver(serviceURL string) (ServiceNameResolver, error) {
 	r := &pulsarServiceNameResolver{rnd: rand.New(rand.NewSource(time.Now().UnixNano()))}
-	err := r.UpdateServiceURL(url)
-	if err != nil {
-		log.Errorf("create pulsar service name resolver failed : %v", err)
+	if len(serviceURL) > 0 {
+		return r, r.UpdateServiceURL(serviceURL)
 	}
-	return r
+	return r, nil
 }
 
 func (r *pulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
@@ -64,7 +60,7 @@ func (r *pulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
 		return nil, errors.New("no service url is provided yet")
 	}
 	if len(r.AddressList) == 0 {
-		return nil, fmt.Errorf("no hosts found for service url : %v", r.ServiceURL)
+		return nil, fmt.Errorf("no hosts found for service url : %v", r.ServiceURI)
 	}
 	if len(r.AddressList) == 1 {
 		return r.AddressList[0], nil
@@ -74,19 +70,10 @@ func (r *pulsarServiceNameResolver) ResolveHost() (*url.URL, error) {
 	return r.AddressList[idx], nil
 }
 
-func (r *pulsarServiceNameResolver) ResolveHostURI() (*PulsarServiceURI, error) {
-	host, err := r.ResolveHost()
+func (r *pulsarServiceNameResolver) UpdateServiceURL(serviceURL string) error {
+	uri, err := NewPulsarServiceURIFromURIString(serviceURL)
 	if err != nil {
-		return nil, err
-	}
-	hostURL := host.Scheme + "://" + host.Hostname() + ":" + host.Port()
-	return NewPulsarServiceURIFromURIString(hostURL)
-}
-
-func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
-	uri, err := NewPulsarServiceURIFromURL(u)
-	if err != nil {
-		log.Errorf("invalid service-url instance %s provided %v", u, err)
+		log.Errorf("invalid service-url instance %s provided %v", serviceURL, err)
 		return err
 	}
 
@@ -106,7 +93,6 @@ func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 	defer r.mutex.Unlock()
 
 	r.AddressList = addresses
-	r.ServiceURL = u
 	r.ServiceURI = uri
 	r.CurrentIndex = int32(r.rnd.Intn(len(addresses)))
 	return nil
@@ -114,10 +100,6 @@ func (r *pulsarServiceNameResolver) UpdateServiceURL(u *url.URL) error {
 
 func (r *pulsarServiceNameResolver) GetServiceURI() *PulsarServiceURI {
 	return r.ServiceURI
-}
-
-func (r *pulsarServiceNameResolver) GetServiceURL() *url.URL {
-	return r.ServiceURL
 }
 
 func (r *pulsarServiceNameResolver) GetAddressList() []*url.URL {
