@@ -107,6 +107,7 @@ func main() {
 
 ```go
 import (
+    "context"
     "github.com/apache/pulsar-client-go/pulsaradmin"
     "github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 )
@@ -125,7 +126,7 @@ func main() {
         panic(err)
     }
 
-    ttl, err := localPolicies.GetMessageTTL(*topic, false)
+    ttl, err := localPolicies.GetMessageTTL(context.Background(), *topic, false)
     if err != nil {
         panic(err)
     }

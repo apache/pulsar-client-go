@@ -18,6 +18,7 @@
 package admin
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -104,20 +105,20 @@ func TestTopicPoliciesScopeAndAppliedParams(t *testing.T) {
 	globalPolicies, err := TopicPoliciesOf(client, true)
 	require.NoError(t, err)
 
-	ttl, err := localPolicies.GetMessageTTL(*topic, true)
+	ttl, err := localPolicies.GetMessageTTL(context.Background(), *topic, true)
 	require.NoError(t, err)
 	require.NotNil(t, ttl)
 	assert.Equal(t, 10, *ttl)
 
-	ttl, err = globalPolicies.GetMessageTTL(*topic, false)
+	ttl, err = globalPolicies.GetMessageTTL(context.Background(), *topic, false)
 	require.NoError(t, err)
 	require.NotNil(t, ttl)
 	assert.Equal(t, 10, *ttl)
 
-	err = globalPolicies.SetMaxProducers(*topic, 3)
+	err = globalPolicies.SetMaxProducers(context.Background(), *topic, 3)
 	require.NoError(t, err)
 
-	err = globalPolicies.RemoveRetention(*topic)
+	err = globalPolicies.RemoveRetention(context.Background(), *topic)
 	require.NoError(t, err)
 
 	expectedMessageTTLPath := pulsarClient.endpoint("", topic.GetRestPath(), "messageTTL")
@@ -162,31 +163,31 @@ func TestTopicPoliciesNullDecodingAndLegacyDefaults(t *testing.T) {
 	policies, err := TopicPoliciesOf(client, false)
 	require.NoError(t, err)
 
-	ttl, err := policies.GetMessageTTL(*topic, false)
+	ttl, err := policies.GetMessageTTL(context.Background(), *topic, false)
 	require.NoError(t, err)
 	assert.Nil(t, ttl)
 
-	deduplication, err := policies.GetDeduplicationStatus(*topic, false)
+	deduplication, err := policies.GetDeduplicationStatus(context.Background(), *topic, false)
 	require.NoError(t, err)
 	assert.Nil(t, deduplication)
 
-	threshold, err := policies.GetCompactionThreshold(*topic, false)
+	threshold, err := policies.GetCompactionThreshold(context.Background(), *topic, false)
 	require.NoError(t, err)
 	assert.Nil(t, threshold)
 
-	strategy, err := policies.GetSchemaCompatibilityStrategy(*topic, false)
+	strategy, err := policies.GetSchemaCompatibilityStrategy(context.Background(), *topic, false)
 	require.NoError(t, err)
 	assert.Nil(t, strategy)
 
-	inactivePolicies, err := policies.GetInactiveTopicPolicies(*topic, false)
+	inactivePolicies, err := policies.GetInactiveTopicPolicies(context.Background(), *topic, false)
 	require.NoError(t, err)
 	assert.Nil(t, inactivePolicies)
 
-	replicationClusters, err := policies.GetReplicationClusters(*topic, false)
+	replicationClusters, err := policies.GetReplicationClusters(context.Background(), *topic, false)
 	require.NoError(t, err)
 	assert.Nil(t, replicationClusters)
 
-	backlogQuotaMap, err := policies.GetBacklogQuotaMap(*topic, false)
+	backlogQuotaMap, err := policies.GetBacklogQuotaMap(context.Background(), *topic, false)
 	require.NoError(t, err)
 	assert.Nil(t, backlogQuotaMap)
 
@@ -229,7 +230,7 @@ func TestLocalTopicPoliciesParityWithTopics(t *testing.T) {
 	localPolicies, err := TopicPoliciesOf(client, false)
 	require.NoError(t, err)
 
-	newTTL, err := localPolicies.GetMessageTTL(*topic, false)
+	newTTL, err := localPolicies.GetMessageTTL(context.Background(), *topic, false)
 	require.NoError(t, err)
 	require.NotNil(t, newTTL)
 

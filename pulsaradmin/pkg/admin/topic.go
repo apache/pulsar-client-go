@@ -1546,7 +1546,7 @@ func (t *topics) GetMessageTTL(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMessageTTLWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	ttl, err := t.localTopicPolicies().GetMessageTTLWithContext(ctx, topic, false)
+	ttl, err := t.localTopicPolicies().GetMessageTTL(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -1582,7 +1582,7 @@ func (t *topics) GetMaxProducers(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxProducersWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	maxProducers, err := t.localTopicPolicies().GetMaxProducersWithContext(ctx, topic, false)
+	maxProducers, err := t.localTopicPolicies().GetMaxProducers(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -1614,7 +1614,7 @@ func (t *topics) GetMaxConsumers(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxConsumersWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	maxConsumers, err := t.localTopicPolicies().GetMaxConsumersWithContext(ctx, topic, false)
+	maxConsumers, err := t.localTopicPolicies().GetMaxConsumers(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -1646,7 +1646,7 @@ func (t *topics) GetMaxUnackMessagesPerConsumer(topic utils.TopicName) (int, err
 }
 
 func (t *topics) GetMaxUnackMessagesPerConsumerWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	maxNum, err := t.localTopicPolicies().GetMaxUnackMessagesPerConsumerWithContext(ctx, topic, false)
+	maxNum, err := t.localTopicPolicies().GetMaxUnackMessagesPerConsumer(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -1683,7 +1683,7 @@ func (t *topics) GetMaxUnackMessagesPerSubscriptionWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (int, error) {
-	maxNum, err := t.localTopicPolicies().GetMaxUnackMessagesPerSubscriptionWithContext(ctx, topic, false)
+	maxNum, err := t.localTopicPolicies().GetMaxUnackMessagesPerSubscription(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -1717,7 +1717,7 @@ func (t *topics) GetPersistence(topic utils.TopicName) (*utils.PersistenceData, 
 }
 
 func (t *topics) GetPersistenceWithContext(ctx context.Context, topic utils.TopicName) (*utils.PersistenceData, error) {
-	return t.localTopicPolicies().GetPersistenceWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetPersistence(ctx, topic, false)
 }
 
 func (t *topics) SetPersistence(topic utils.TopicName, persistenceData utils.PersistenceData) error {
@@ -1750,7 +1750,7 @@ func (t *topics) GetDelayedDeliveryWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.DelayedDeliveryData, error) {
-	return t.localTopicPolicies().GetDelayedDeliveryWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetDelayedDelivery(ctx, topic, false)
 }
 
 func (t *topics) SetDelayedDelivery(topic utils.TopicName, delayedDeliveryData utils.DelayedDeliveryData) error {
@@ -1783,7 +1783,7 @@ func (t *topics) GetDispatchRateWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.DispatchRateData, error) {
-	return t.localTopicPolicies().GetDispatchRateWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetDispatchRate(ctx, topic, false)
 }
 
 func (t *topics) SetDispatchRate(topic utils.TopicName, dispatchRateData utils.DispatchRateData) error {
@@ -1813,7 +1813,7 @@ func (t *topics) GetPublishRate(topic utils.TopicName) (*utils.PublishRateData, 
 }
 
 func (t *topics) GetPublishRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.PublishRateData, error) {
-	return t.localTopicPolicies().GetPublishRateWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetPublishRate(ctx, topic, false)
 }
 
 func (t *topics) SetPublishRate(topic utils.TopicName, publishRateData utils.PublishRateData) error {
@@ -1843,7 +1843,7 @@ func (t *topics) GetDeduplicationStatus(topic utils.TopicName) (bool, error) {
 }
 
 func (t *topics) GetDeduplicationStatusWithContext(ctx context.Context, topic utils.TopicName) (bool, error) {
-	enabled, err := t.localTopicPolicies().GetDeduplicationStatusWithContext(ctx, topic, false)
+	enabled, err := t.localTopicPolicies().GetDeduplicationStatus(ctx, topic, false)
 	if err != nil {
 		return false, err
 	}
@@ -1877,7 +1877,7 @@ func (t *topics) GetRetentionWithContext(
 	topic utils.TopicName,
 	applied bool,
 ) (*utils.RetentionPolicies, error) {
-	return t.localTopicPolicies().GetRetentionWithContext(ctx, topic, applied)
+	return t.localTopicPolicies().GetRetention(ctx, topic, applied)
 }
 
 func (t *topics) RemoveRetention(topic utils.TopicName) error {
@@ -1911,7 +1911,7 @@ func (t *topics) GetCompactionThresholdWithContext(
 	topic utils.TopicName,
 	applied bool,
 ) (int64, error) {
-	threshold, err := t.localTopicPolicies().GetCompactionThresholdWithContext(ctx, topic, applied)
+	threshold, err := t.localTopicPolicies().GetCompactionThreshold(ctx, topic, applied)
 	if err != nil {
 		return -1, err
 	}
@@ -1949,7 +1949,7 @@ func (t *topics) GetBacklogQuotaMapWithContext(
 	applied bool,
 ) (map[utils.BacklogQuotaType]utils.BacklogQuota,
 	error) {
-	return t.localTopicPolicies().GetBacklogQuotaMapWithContext(ctx, topic, applied)
+	return t.localTopicPolicies().GetBacklogQuotaMap(ctx, topic, applied)
 }
 
 func (t *topics) SetBacklogQuota(topic utils.TopicName, backlogQuota utils.BacklogQuota,
@@ -1989,7 +1989,7 @@ func (t *topics) GetInactiveTopicPoliciesWithContext(
 	topic utils.TopicName,
 	applied bool,
 ) (utils.InactiveTopicPolicies, error) {
-	policies, err := t.localTopicPolicies().GetInactiveTopicPoliciesWithContext(ctx, topic, applied)
+	policies, err := t.localTopicPolicies().GetInactiveTopicPolicies(ctx, topic, applied)
 	if err != nil {
 		return utils.InactiveTopicPolicies{}, err
 	}
@@ -2035,7 +2035,7 @@ func (t *topics) GetReplicationClusters(topic utils.TopicName) ([]string, error)
 }
 
 func (t *topics) GetReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) ([]string, error) {
-	return t.localTopicPolicies().GetReplicationClustersWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetReplicationClusters(ctx, topic, false)
 }
 
 func (t *topics) RemoveReplicationClusters(topic utils.TopicName) error {
@@ -2052,7 +2052,7 @@ func (t *topics) GetSubscribeRate(topic utils.TopicName) (*utils.SubscribeRate, 
 }
 
 func (t *topics) GetSubscribeRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.SubscribeRate, error) {
-	return t.localTopicPolicies().GetSubscribeRateWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetSubscribeRate(ctx, topic, false)
 }
 
 func (t *topics) SetSubscribeRate(topic utils.TopicName, subscribeRate utils.SubscribeRate) error {
@@ -2085,7 +2085,7 @@ func (t *topics) GetSubscriptionDispatchRateWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.DispatchRateData, error) {
-	return t.localTopicPolicies().GetSubscriptionDispatchRateWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetSubscriptionDispatchRate(ctx, topic, false)
 }
 
 func (t *topics) SetSubscriptionDispatchRate(topic utils.TopicName, dispatchRate utils.DispatchRateData) error {
@@ -2115,7 +2115,7 @@ func (t *topics) GetMaxConsumersPerSubscription(topic utils.TopicName) (int, err
 }
 
 func (t *topics) GetMaxConsumersPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	maxConsumers, err := t.localTopicPolicies().GetMaxConsumersPerSubscriptionWithContext(ctx, topic, false)
+	maxConsumers, err := t.localTopicPolicies().GetMaxConsumersPerSubscription(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -2149,7 +2149,7 @@ func (t *topics) GetMaxMessageSize(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxMessageSizeWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	maxMessageSize, err := t.localTopicPolicies().GetMaxMessageSizeWithContext(ctx, topic, false)
+	maxMessageSize, err := t.localTopicPolicies().GetMaxMessageSize(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -2179,7 +2179,7 @@ func (t *topics) GetMaxSubscriptionsPerTopic(topic utils.TopicName) (int, error)
 }
 
 func (t *topics) GetMaxSubscriptionsPerTopicWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	maxSubscriptions, err := t.localTopicPolicies().GetMaxSubscriptionsPerTopicWithContext(ctx, topic, false)
+	maxSubscriptions, err := t.localTopicPolicies().GetMaxSubscriptionsPerTopic(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -2213,7 +2213,7 @@ func (t *topics) GetSchemaValidationEnforced(topic utils.TopicName) (bool, error
 }
 
 func (t *topics) GetSchemaValidationEnforcedWithContext(ctx context.Context, topic utils.TopicName) (bool, error) {
-	enabled, err := t.localTopicPolicies().GetSchemaValidationEnforcedWithContext(ctx, topic, false)
+	enabled, err := t.localTopicPolicies().GetSchemaValidationEnforced(ctx, topic, false)
 	if err != nil {
 		return false, err
 	}
@@ -2247,7 +2247,7 @@ func (t *topics) GetDeduplicationSnapshotInterval(topic utils.TopicName) (int, e
 }
 
 func (t *topics) GetDeduplicationSnapshotIntervalWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	interval, err := t.localTopicPolicies().GetDeduplicationSnapshotIntervalWithContext(ctx, topic, false)
+	interval, err := t.localTopicPolicies().GetDeduplicationSnapshotInterval(ctx, topic, false)
 	if err != nil {
 		return -1, err
 	}
@@ -2284,7 +2284,7 @@ func (t *topics) GetReplicatorDispatchRateWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.DispatchRateData, error) {
-	return t.localTopicPolicies().GetReplicatorDispatchRateWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetReplicatorDispatchRate(ctx, topic, false)
 }
 
 func (t *topics) SetReplicatorDispatchRate(topic utils.TopicName, dispatchRate utils.DispatchRateData) error {
@@ -2317,7 +2317,7 @@ func (t *topics) GetAutoSubscriptionCreationWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.AutoSubscriptionCreationOverride, error) {
-	return t.localTopicPolicies().GetAutoSubscriptionCreationWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetAutoSubscriptionCreation(ctx, topic, false)
 }
 
 func (t *topics) SetAutoSubscriptionCreation(topic utils.TopicName,
@@ -2363,7 +2363,7 @@ func (t *topics) GetSchemaCompatibilityStrategyAppliedWithContext(
 	topic utils.TopicName,
 	applied bool,
 ) (utils.SchemaCompatibilityStrategy, error) {
-	strategy, err := t.localTopicPolicies().GetSchemaCompatibilityStrategyWithContext(ctx, topic, applied)
+	strategy, err := t.localTopicPolicies().GetSchemaCompatibilityStrategy(ctx, topic, applied)
 	if err != nil {
 		return "", err
 	}
@@ -2407,7 +2407,7 @@ func (t *topics) GetOffloadPoliciesWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.OffloadPolicies, error) {
-	return t.localTopicPolicies().GetOffloadPoliciesWithContext(ctx, topic, false)
+	return t.localTopicPolicies().GetOffloadPolicies(ctx, topic, false)
 }
 
 func (t *topics) SetOffloadPolicies(topic utils.TopicName, offloadPolicies utils.OffloadPolicies) error {
