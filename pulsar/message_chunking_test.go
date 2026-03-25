@@ -21,14 +21,17 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"math/rand"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 
 	"google.golang.org/protobuf/proto"
 
@@ -577,4 +580,168 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 		},
 		uint32(internal.MaxMessageSize),
 	)
+}
+
+func TestChunkWithReconnection(t *testing.T) {
+	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	client, err := NewClient(ClientOptions{
+		URL:    lookupURL,
+		Logger: log.NewLoggerWithSlog(sLogger),
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		DisableBatching:     true,
+		EnableChunking:      true,
+		ChunkMaxMessageSize: 100,
+		MaxPendingMessages:  200000,
+		SendTimeout:         60 * time.Second,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	c, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Type:             Exclusive,
+		SubscriptionName: "chunk-subscriber",
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, c)
+	defer c.Close()
+
+	// Reduce publish rate to prevent the producer sending messages too fast
+	url := adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/publishRate"
+	makeHTTPCall(t, http.MethodPost, url, "{\"publishThrottlingRateInMsg\": 1,\"publishThrottlingRateInByte\": 100}")
+	// Need to wait some time to let the rate limiter take effect
+	time.Sleep(2 * time.Second)
+
+	// payload/ChunkMaxMessageSize = 1000/100 = 10 msg, and publishThrottlingRateInMsg = 1
+	// so that this chunk msg will send finish after 10 seconds
+	producer.SendAsync(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(1000),
+	}, func(_ MessageID, _ *ProducerMessage, err error) {
+		assert.Nil(t, err)
+	})
+	assert.NoError(t, err)
+
+	time.Sleep(5 * time.Second)
+	//	trigger topic unload to test sending chunk msg with reconnection
+	url = adminURL + "/" + "admin/v2/persistent/public/default/" + topic + "/unload"
+	makeHTTPCall(t, http.MethodPut, url, "")
+	// Need to wait some time to receive all chunk messages
+	time.Sleep(10 * time.Second)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err := c.Receive(ctx)
+	cancel()
+	assert.NoError(t, err)
+	assert.NotNil(t, msg.ID())
+}
+
+func TestResendChunkMessages(t *testing.T) {
+	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	client, err := NewClient(ClientOptions{
+		URL:    lookupURL,
+		Logger: log.NewLoggerWithSlog(sLogger),
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		DisableBatching:     true,
+		EnableChunking:      true,
+		ChunkMaxMessageSize: 100,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	c, err := client.Subscribe(ConsumerOptions{
+		Topic:                    topic,
+		Type:                     Exclusive,
+		SubscriptionName:         "chunk-subscriber",
+		MaxPendingChunkedMessage: 10,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, c)
+	defer c.Close()
+
+	sendSingleChunk(producer, "0", 0, 2)
+	sendSingleChunk(producer, "0", 0, 2) // Resending the first chunk
+	sendSingleChunk(producer, "1", 0, 3) // This is for testing the interwoven chunked message
+	sendSingleChunk(producer, "1", 1, 3)
+	sendSingleChunk(producer, "1", 0, 3) // Resending the UUID-1 chunked message
+	sendSingleChunk(producer, "0", 1, 2)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err := c.Receive(ctx)
+	cancel()
+	assert.NoError(t, err)
+	assert.Equal(t, "chunk-0-0|chunk-0-1|", string(msg.Payload()))
+	c.Ack(msg)
+
+	sendSingleChunk(producer, "1", 1, 3)
+	sendSingleChunk(producer, "1", 2, 3)
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err = c.Receive(ctx)
+	cancel()
+	assert.NoError(t, err)
+	assert.Equal(t, "chunk-1-0|chunk-1-1|chunk-1-2|", string(msg.Payload()))
+	c.Ack(msg)
+}
+
+func TestResendChunkWithAckHoleMessages(t *testing.T) {
+	sLogger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+	client, err := NewClient(ClientOptions{
+		URL:    lookupURL,
+		Logger: log.NewLoggerWithSlog(sLogger),
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		DisableBatching:     true,
+		EnableChunking:      true,
+		ChunkMaxMessageSize: 100,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, producer)
+
+	c, err := client.Subscribe(ConsumerOptions{
+		Topic:                    topic,
+		Type:                     Exclusive,
+		SubscriptionName:         "chunk-subscriber",
+		MaxPendingChunkedMessage: 10,
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, c)
+	defer c.Close()
+
+	sendSingleChunk(producer, "0", 0, 4)
+	sendSingleChunk(producer, "0", 1, 4)
+	sendSingleChunk(producer, "0", 2, 4)
+	sendSingleChunk(producer, "0", 1, 4) // Resending previous chunk
+	sendSingleChunk(producer, "0", 2, 4)
+	sendSingleChunk(producer, "0", 3, 4)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err := c.Receive(ctx)
+	cancel()
+	assert.NoError(t, err)
+	assert.Equal(t, "chunk-0-0|chunk-0-1|chunk-0-2|chunk-0-3|", string(msg.Payload()))
+	c.Ack(msg)
+
+	sendSingleChunk(producer, "1", 0, 4)
+	sendSingleChunk(producer, "1", 1, 4)
+	sendSingleChunk(producer, "1", 4, 4) // send broken chunk
+	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
+	msg, err = c.Receive(ctx)
+	cancel()
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 }
