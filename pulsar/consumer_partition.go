@@ -2181,10 +2181,49 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		cmdSubscribe.ForceTopicCreation = proto.Bool(false)
 	}
 
-	res, err := pc.client.rpcClient.RequestWithCnxKeySuffix(lr.LogicalAddr, lr.PhysicalAddr, pc.cnxKeySuffix, requestID,
-		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
-
+	// Obtain the connection before sending the subscribe RPC so we can register
+	// the consumer handler before the broker starts delivering frames.
+	// This closes a race where MESSAGE and ACTIVE_CONSUMER_CHANGE commands
+	// arriving immediately after the subscribe response were silently dropped
+	// because AddConsumeHandler had not been called yet.
+	cnx, err := pc.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr, pc.cnxKeySuffix)
 	if err != nil {
+		pc.log.WithError(err).Error("Failed to get connection")
+		return err
+	}
+
+	// Set the connection BEFORE registering the handler so that handler
+	// callbacks (e.g. MessageReceived → discardCorruptedMessage) can safely
+	// call pc._getConn() without hitting a nil pointer.
+	var prevConn internal.Connection
+	if v := pc.conn.Load(); v != nil {
+		prevConn = *v
+	}
+	pc._setConn(cnx)
+
+	// restoreConn rolls back pc.conn to the previous connection (or nil on
+	// the very first call) so a failed subscribe attempt doesn't leave
+	// pc.conn pointing at a stale connection.
+	restoreConn := func() {
+		if prevConn != nil {
+			pc._setConn(prevConn)
+		} else {
+			pc.conn.Store(nil)
+		}
+	}
+
+	// Register handler BEFORE the subscribe RPC so no frames are missed
+	err = cnx.AddConsumeHandler(pc.consumerID, pc)
+	if err != nil {
+		restoreConn()
+		pc.log.WithError(err).Error("Failed to add consumer handler")
+		return err
+	}
+
+	res, err := pc.client.rpcClient.RequestOnCnx(cnx, requestID, pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
+	if err != nil {
+		cnx.DeleteConsumeHandler(pc.consumerID)
+		restoreConn()
 		pc.log.WithError(err).Error("Failed to create consumer")
 		if err == internal.ErrRequestTimeOut {
 			requestID := pc.client.rpcClient.NewRequestID()
@@ -2192,7 +2231,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 				ConsumerId: proto.Uint64(pc.consumerID),
 				RequestId:  proto.Uint64(requestID),
 			}
-			_, _ = pc.client.rpcClient.RequestWithCnxKeySuffix(lr.LogicalAddr, lr.PhysicalAddr, pc.cnxKeySuffix, requestID,
+			_, _ = pc.client.rpcClient.RequestOnCnx(cnx, requestID,
 				pb.BaseCommand_CLOSE_CONSUMER, cmdClose)
 		}
 		return err
@@ -2202,13 +2241,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		pc.name = res.Response.ConsumerStatsResponse.GetConsumerName()
 	}
 
-	pc._setConn(res.Cnx)
 	pc.log.Info("Connected consumer")
-	err = pc._getConn().AddConsumeHandler(pc.consumerID, pc)
-	if err != nil {
-		pc.log.WithError(err).Error("Failed to add consumer handler")
-		return err
-	}
 
 	msgType := res.Response.GetType()
 
@@ -2473,9 +2506,11 @@ func (pc *partitionConsumer) _setConn(conn internal.Connection) {
 // _getConn returns internal connection field of this partition consumer atomically.
 // Note: should only be called by this partition consumer before attempting to use the connection
 func (pc *partitionConsumer) _getConn() internal.Connection {
-	// Invariant: The conn must be non-nill for the lifetime of the partitionConsumer.
-	//            For this reason we leave this cast unchecked and panic() if the
-	//            invariant is broken
+	// Invariant: conn is non-nil after the first successful grabConn (i.e. after
+	//            a subscribe RPC succeeds). During grabConn itself, conn is set
+	//            before AddConsumeHandler so that handler callbacks can use it.
+	//            Before the first successful subscribe, conn may be nil.
+	//            We leave this cast unchecked and panic() if the invariant is broken.
 	return *pc.conn.Load()
 }
 
