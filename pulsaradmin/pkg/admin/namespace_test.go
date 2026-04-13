@@ -36,6 +36,10 @@ func ptr(n int) *int {
 	return &n
 }
 
+func strPtr(s string) *string {
+	return &s
+}
+
 func mustNamespaceName(t *testing.T, namespace string) *utils.NameSpaceName {
 	t.Helper()
 
@@ -730,6 +734,65 @@ func TestNamespaces_SinglePropertyPlainTextFallback(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, removed)
 	assert.Equal(t, "removed-plain-value", *removed)
+}
+
+func TestDecodeNamespacePropertyValue(t *testing.T) {
+	tests := []struct {
+		name    string
+		body    []byte
+		want    *string
+		wantErr bool
+	}{
+		{
+			name: "empty body is unset",
+			body: []byte(""),
+			want: nil,
+		},
+		{
+			name: "whitespace body is unset",
+			body: []byte(" \n\t "),
+			want: nil,
+		},
+		{
+			name: "null body is unset",
+			body: []byte("null"),
+			want: nil,
+		},
+		{
+			name: "json string",
+			body: []byte(`"json-value"`),
+			want: strPtr("json-value"),
+		},
+		{
+			name: "empty json string",
+			body: []byte(`""`),
+			want: strPtr(""),
+		},
+		{
+			name: "plain text fallback",
+			body: []byte("plain-value"),
+			want: strPtr("plain-value"),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := decodeNamespacePropertyValue(tt.body)
+			if tt.wantErr {
+				require.Error(t, err)
+				return
+			}
+
+			require.NoError(t, err)
+			if tt.want == nil {
+				assert.Nil(t, got)
+				return
+			}
+
+			require.NotNil(t, got)
+			assert.Equal(t, *tt.want, *got)
+		})
+	}
 }
 
 func TestNamespaces_SetMaxTopicsPerNamespace(t *testing.T) {

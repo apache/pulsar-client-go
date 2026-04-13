@@ -2212,10 +2212,6 @@ func (n *namespaces) requestPropertyValueWithContext(
 }
 
 func decodeNamespacePropertyValue(body []byte) (*string, error) {
-	if isUnsetPolicyBody(body) {
-		return nil, nil
-	}
-
 	value, err := decodeOptionalJSON[string](body)
 	if err == nil {
 		return value, nil
