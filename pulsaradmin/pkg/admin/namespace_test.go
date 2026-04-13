@@ -18,6 +18,9 @@
 package admin
 
 import (
+	"io"
+	"net/http"
+	"net/url"
 	"os"
 	"testing"
 	"time"
@@ -31,6 +34,20 @@ import (
 
 func ptr(n int) *int {
 	return &n
+}
+
+func mustNamespaceName(t *testing.T, namespace string) *utils.NameSpaceName {
+	t.Helper()
+
+	ns, err := utils.GetNamespaceName(namespace)
+	require.NoError(t, err)
+	return ns
+}
+
+type namespacePropertyRequest struct {
+	method string
+	path   string
+	body   string
 }
 
 func TestSetTopicAutoCreation(t *testing.T) {
@@ -504,8 +521,7 @@ func TestNamespaces_Properties(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, admin)
 
-	namespace, err := utils.GetNamespaceName("public/default")
-	assert.Equal(t, err, nil)
+	namespace := mustNamespaceName(t, "public/default")
 
 	// Namespace properties are expected to be set and retrieved successfully
 	properties := map[string]string{
@@ -518,12 +534,202 @@ func TestNamespaces_Properties(t *testing.T) {
 	assert.Equal(t, err, nil)
 	assert.Equal(t, actualProperties, properties)
 
+	propertyValue, err := admin.Namespaces().GetProperty(*namespace, "key-1")
+	assert.NoError(t, err)
+	require.NotNil(t, propertyValue)
+	assert.Equal(t, "value-1", *propertyValue)
+
+	err = admin.Namespaces().SetProperty(*namespace, "key-2", "value-2")
+	assert.NoError(t, err)
+
+	propertyValue, err = admin.Namespaces().GetProperty(*namespace, "key-2")
+	assert.NoError(t, err)
+	require.NotNil(t, propertyValue)
+	assert.Equal(t, "value-2", *propertyValue)
+
+	err = admin.Namespaces().SetProperty(*namespace, "key-2", "value-2-updated")
+	assert.NoError(t, err)
+
+	propertyValue, err = admin.Namespaces().GetProperty(*namespace, "key-2")
+	assert.NoError(t, err)
+	require.NotNil(t, propertyValue)
+	assert.Equal(t, "value-2-updated", *propertyValue)
+
+	err = admin.Namespaces().SetProperty(*namespace, "key-empty", "")
+	assert.NoError(t, err)
+
+	propertyValue, err = admin.Namespaces().GetProperty(*namespace, "key-empty")
+	assert.NoError(t, err)
+	require.NotNil(t, propertyValue)
+	assert.Equal(t, "", *propertyValue)
+
+	actualProperties, err = admin.Namespaces().GetProperties(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		"key-1":     "value-1",
+		"key-2":     "value-2-updated",
+		"key-empty": "",
+	}, actualProperties)
+
+	removedValue, err := admin.Namespaces().RemoveProperty(*namespace, "key-2")
+	assert.NoError(t, err)
+	require.NotNil(t, removedValue)
+	assert.Equal(t, "value-2-updated", *removedValue)
+
+	propertyValue, err = admin.Namespaces().GetProperty(*namespace, "key-2")
+	assert.NoError(t, err)
+	assert.Nil(t, propertyValue)
+
+	actualProperties, err = admin.Namespaces().GetProperties(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, map[string]string{
+		"key-1":     "value-1",
+		"key-empty": "",
+	}, actualProperties)
+
 	// All namespace properties are expected to be deleted successfully
 	err = admin.Namespaces().RemoveProperties(*namespace)
 	assert.Equal(t, err, nil)
 	actualPropertiesAfterRemoveCall, err := admin.Namespaces().GetProperties(*namespace)
 	assert.Equal(t, err, nil)
 	assert.Equal(t, actualPropertiesAfterRemoveCall, map[string]string{})
+
+	propertyValue, err = admin.Namespaces().GetProperty(*namespace, "key-1")
+	assert.NoError(t, err)
+	assert.Nil(t, propertyValue)
+}
+
+func TestNamespaces_SinglePropertyEndpointsAndDecoding(t *testing.T) {
+	requests := make([]namespacePropertyRequest, 0, 7)
+	client, pulsarClient := newTopicPolicyTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		body, err := io.ReadAll(r.Body)
+		require.NoError(t, err)
+
+		requests = append(requests, namespacePropertyRequest{
+			method: r.Method,
+			path:   r.URL.EscapedPath(),
+			body:   string(body),
+		})
+
+		switch len(requests) {
+		case 1, 3:
+			w.WriteHeader(http.StatusNoContent)
+		case 2:
+			_, err = w.Write([]byte(`"json-value"`))
+			require.NoError(t, err)
+		case 4:
+			_, err = w.Write([]byte(`""`))
+			require.NoError(t, err)
+		case 5:
+			_, err = w.Write([]byte(`"json-value"`))
+			require.NoError(t, err)
+		case 6, 7:
+			w.WriteHeader(http.StatusNotFound)
+			_, err = w.Write([]byte(`{"reason":"Property not found"}`))
+			require.NoError(t, err)
+		default:
+			t.Fatalf("unexpected request %d", len(requests))
+		}
+	})
+
+	namespace := mustNamespaceName(t, "public/default")
+
+	err := client.Namespaces().SetProperty(*namespace, "json-key", "json-value")
+	require.NoError(t, err)
+
+	value, err := client.Namespaces().GetProperty(*namespace, "json-key")
+	require.NoError(t, err)
+	require.NotNil(t, value)
+	assert.Equal(t, "json-value", *value)
+
+	err = client.Namespaces().SetProperty(*namespace, "empty-key", "")
+	require.NoError(t, err)
+
+	value, err = client.Namespaces().GetProperty(*namespace, "empty-key")
+	require.NoError(t, err)
+	require.NotNil(t, value)
+	assert.Equal(t, "", *value)
+
+	removed, err := client.Namespaces().RemoveProperty(*namespace, "json-key")
+	require.NoError(t, err)
+	require.NotNil(t, removed)
+	assert.Equal(t, "json-value", *removed)
+
+	missing, err := client.Namespaces().GetProperty(*namespace, "missing-key")
+	require.NoError(t, err)
+	assert.Nil(t, missing)
+
+	removedMissing, err := client.Namespaces().RemoveProperty(*namespace, "missing-key")
+	require.NoError(t, err)
+	assert.Nil(t, removedMissing)
+
+	expectedJSONPath := pulsarClient.endpoint("/namespaces", namespace.String(), "property", "json-key")
+	expectedEmptyPath := pulsarClient.endpoint("/namespaces", namespace.String(), "property", "empty-key")
+	expectedMissingPath := pulsarClient.endpoint("/namespaces", namespace.String(), "property", "missing-key")
+
+	decodedExpectedJSONPath, err := url.PathUnescape(expectedJSONPath)
+	require.NoError(t, err)
+	decodedExpectedEmptyPath, err := url.PathUnescape(expectedEmptyPath)
+	require.NoError(t, err)
+	decodedExpectedMissingPath, err := url.PathUnescape(expectedMissingPath)
+	require.NoError(t, err)
+
+	require.Len(t, requests, 7)
+
+	assert.Equal(t, http.MethodPut, requests[0].method)
+	assert.Equal(t, decodedExpectedJSONPath, requests[0].path)
+	assert.Equal(t, `"json-value"`, requests[0].body)
+
+	assert.Equal(t, http.MethodGet, requests[1].method)
+	assert.Equal(t, decodedExpectedJSONPath, requests[1].path)
+
+	assert.Equal(t, http.MethodPut, requests[2].method)
+	assert.Equal(t, decodedExpectedEmptyPath, requests[2].path)
+	assert.Equal(t, `""`, requests[2].body)
+
+	assert.Equal(t, http.MethodGet, requests[3].method)
+	assert.Equal(t, decodedExpectedEmptyPath, requests[3].path)
+
+	assert.Equal(t, http.MethodDelete, requests[4].method)
+	assert.Equal(t, decodedExpectedJSONPath, requests[4].path)
+
+	assert.Equal(t, http.MethodGet, requests[5].method)
+	assert.Equal(t, decodedExpectedMissingPath, requests[5].path)
+
+	assert.Equal(t, http.MethodDelete, requests[6].method)
+	assert.Equal(t, decodedExpectedMissingPath, requests[6].path)
+}
+
+func TestNamespaces_SinglePropertyPlainTextFallback(t *testing.T) {
+	callCount := 0
+	client, _ := newTopicPolicyTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+
+		switch callCount {
+		case 1:
+			assert.Equal(t, http.MethodGet, r.Method)
+			_, err := w.Write([]byte("plain-value"))
+			require.NoError(t, err)
+		case 2:
+			assert.Equal(t, http.MethodDelete, r.Method)
+			_, err := w.Write([]byte("removed-plain-value"))
+			require.NoError(t, err)
+		default:
+			t.Fatalf("unexpected request %d", callCount)
+		}
+	})
+
+	namespace := mustNamespaceName(t, "public/default")
+
+	value, err := client.Namespaces().GetProperty(*namespace, "plain-key")
+	require.NoError(t, err)
+	require.NotNil(t, value)
+	assert.Equal(t, "plain-value", *value)
+
+	removed, err := client.Namespaces().RemoveProperty(*namespace, "plain-key")
+	require.NoError(t, err)
+	require.NotNil(t, removed)
+	assert.Equal(t, "removed-plain-value", *removed)
 }
 
 func TestNamespaces_SetMaxTopicsPerNamespace(t *testing.T) {
