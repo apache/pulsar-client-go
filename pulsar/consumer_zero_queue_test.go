@@ -138,7 +138,7 @@ func TestReconnectConsumer(t *testing.T) {
 				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8089"}},
 			}
 		},
-		Cmd: []string{"bin/pulsar", "standalone", "-nfw"},
+		Cmd: []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
 	}
 	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -255,7 +255,7 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8089"}},
 			}
 		},
-		Cmd: []string{"bin/pulsar", "standalone", "-nfw"},
+		Cmd: []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
 	}
 	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
 		ContainerRequest: req,

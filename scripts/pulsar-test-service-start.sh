@@ -31,7 +31,7 @@ if [[ -f /.dockerenv ]]; then
     # When running tests inside docker
     PULSAR_ADMIN=/pulsar/bin/pulsar-admin
     cat /pulsar/conf/standalone.conf
-    /pulsar/bin/pulsar-daemon start standalone --no-functions-worker --no-stream-storage
+    /pulsar/bin/pulsar-daemon start standalone --no-functions-worker --no-stream-storage --advertised-address localhost
 else
     docker build -t ${IMAGE_NAME} .
 
@@ -45,7 +45,7 @@ else
                 -e PULSAR_STANDALONE_USE_ZOOKEEPER=${PULSAR_STANDALONE_USE_ZOOKEEPER} \
                 ${IMAGE_NAME} \
                 /pulsar/bin/pulsar standalone \
-                    --no-functions-worker --no-stream-storage
+                    --no-functions-worker --no-stream-storage --advertised-address localhost
 
     PULSAR_ADMIN="docker exec -it pulsar-client-go-test /pulsar/bin/pulsar-admin"
 fi
