@@ -2671,7 +2671,7 @@ func TestProducerKeepReconnectingAndThenCallClose(t *testing.T) {
 		Image:        getPulsarTestImage(),
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
 		WaitingFor:   wait.ForExposedPort(),
-		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
 	}
 	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -2806,7 +2806,7 @@ func testSendAsyncCouldTimeoutWhileReconnecting(t *testing.T, isDisableBatching 
 		Image:        getPulsarTestImage(),
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
 		WaitingFor:   wait.ForExposedPort(),
-		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
 	}
 	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
