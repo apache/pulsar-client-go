@@ -19,7 +19,6 @@ package admin
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -227,18 +226,6 @@ func (t *topicPolicies) scopedDeleteWithContext(
 	return t.pulsar.Client.DeleteWithQueryParamsWithContext(ctx, endpoint, t.scopedQueryParams(params))
 }
 
-func decodeOptionalJSON[T any](body []byte) (*T, error) {
-	if isUnsetPolicyBody(body) {
-		return nil, nil
-	}
-
-	var out T
-	if err := json.Unmarshal(body, &out); err != nil {
-		return nil, err
-	}
-	return &out, nil
-}
-
 func decodeOptionalSchemaCompatibilityStrategy(body []byte) (*utils.SchemaCompatibilityStrategy, error) {
 	if isUnsetPolicyBody(body) {
 		return nil, nil
@@ -255,11 +242,6 @@ func decodeOptionalSchemaCompatibilityStrategy(body []byte) (*utils.SchemaCompat
 		return nil, err
 	}
 	return &strategy, nil
-}
-
-func isUnsetPolicyBody(body []byte) bool {
-	trimmed := strings.TrimSpace(string(body))
-	return trimmed == "" || trimmed == "null"
 }
 
 func (t *topicPolicies) GetMessageTTL(
