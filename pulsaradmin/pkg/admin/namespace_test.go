@@ -559,13 +559,13 @@ func TestNamespaces_Properties(t *testing.T) {
 	require.NotNil(t, propertyValue)
 	assert.Equal(t, "value-2-updated", *propertyValue)
 
-	err = admin.Namespaces().SetProperty(*namespace, "key-empty", "")
+	// Single-key property endpoints follow the upstream path-based API, which does
+	// not guarantee round-tripping empty string values. Validate empty values via
+	// the full properties endpoint instead.
+	err = admin.Namespaces().UpdateProperties(*namespace, map[string]string{
+		"key-empty": "",
+	})
 	assert.NoError(t, err)
-
-	propertyValue, err = admin.Namespaces().GetProperty(*namespace, "key-empty")
-	assert.NoError(t, err)
-	require.NotNil(t, propertyValue)
-	assert.Equal(t, "", *propertyValue)
 
 	actualProperties, err = admin.Namespaces().GetProperties(*namespace)
 	assert.NoError(t, err)
@@ -604,7 +604,7 @@ func TestNamespaces_Properties(t *testing.T) {
 }
 
 func TestNamespaces_SinglePropertyEndpointsAndDecoding(t *testing.T) {
-	requests := make([]namespacePropertyRequest, 0, 7)
+	requests := make([]namespacePropertyRequest, 0, 5)
 	client, pulsarClient := newTopicPolicyTestClient(t, func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
 		require.NoError(t, err)
@@ -616,18 +616,15 @@ func TestNamespaces_SinglePropertyEndpointsAndDecoding(t *testing.T) {
 		})
 
 		switch len(requests) {
-		case 1, 3:
+		case 1:
 			w.WriteHeader(http.StatusNoContent)
 		case 2:
 			_, err = w.Write([]byte(`"json-value"`))
 			require.NoError(t, err)
-		case 4:
-			_, err = w.Write([]byte(`""`))
-			require.NoError(t, err)
-		case 5:
+		case 3:
 			_, err = w.Write([]byte(`"json-value"`))
 			require.NoError(t, err)
-		case 6, 7:
+		case 4, 5:
 			w.WriteHeader(http.StatusNotFound)
 			_, err = w.Write([]byte(`{"reason":"Property not found"}`))
 			require.NoError(t, err)
@@ -646,14 +643,6 @@ func TestNamespaces_SinglePropertyEndpointsAndDecoding(t *testing.T) {
 	require.NotNil(t, value)
 	assert.Equal(t, "json-value", *value)
 
-	err = client.Namespaces().SetProperty(*namespace, "empty-key", "")
-	require.NoError(t, err)
-
-	value, err = client.Namespaces().GetProperty(*namespace, "empty-key")
-	require.NoError(t, err)
-	require.NotNil(t, value)
-	assert.Equal(t, "", *value)
-
 	removed, err := client.Namespaces().RemoveProperty(*namespace, "json-key")
 	require.NoError(t, err)
 	require.NotNil(t, removed)
@@ -667,41 +656,34 @@ func TestNamespaces_SinglePropertyEndpointsAndDecoding(t *testing.T) {
 	require.NoError(t, err)
 	assert.Nil(t, removedMissing)
 
+	expectedSetPath := pulsarClient.endpoint("/namespaces", namespace.String(), "property", "json-key", "json-value")
 	expectedJSONPath := pulsarClient.endpoint("/namespaces", namespace.String(), "property", "json-key")
-	expectedEmptyPath := pulsarClient.endpoint("/namespaces", namespace.String(), "property", "empty-key")
 	expectedMissingPath := pulsarClient.endpoint("/namespaces", namespace.String(), "property", "missing-key")
 
-	decodedExpectedJSONPath, err := url.PathUnescape(expectedJSONPath)
+	decodedExpectedSetPath, err := url.PathUnescape(expectedSetPath)
 	require.NoError(t, err)
-	decodedExpectedEmptyPath, err := url.PathUnescape(expectedEmptyPath)
+	decodedExpectedJSONPath, err := url.PathUnescape(expectedJSONPath)
 	require.NoError(t, err)
 	decodedExpectedMissingPath, err := url.PathUnescape(expectedMissingPath)
 	require.NoError(t, err)
 
-	require.Len(t, requests, 7)
+	require.Len(t, requests, 5)
 
 	assert.Equal(t, http.MethodPut, requests[0].method)
-	assert.Equal(t, decodedExpectedJSONPath, requests[0].path)
-	assert.Equal(t, `"json-value"`, requests[0].body)
+	assert.Equal(t, decodedExpectedSetPath, requests[0].path)
+	assert.Empty(t, requests[0].body)
 
 	assert.Equal(t, http.MethodGet, requests[1].method)
 	assert.Equal(t, decodedExpectedJSONPath, requests[1].path)
 
-	assert.Equal(t, http.MethodPut, requests[2].method)
-	assert.Equal(t, decodedExpectedEmptyPath, requests[2].path)
-	assert.Equal(t, `""`, requests[2].body)
+	assert.Equal(t, http.MethodDelete, requests[2].method)
+	assert.Equal(t, decodedExpectedJSONPath, requests[2].path)
 
 	assert.Equal(t, http.MethodGet, requests[3].method)
-	assert.Equal(t, decodedExpectedEmptyPath, requests[3].path)
+	assert.Equal(t, decodedExpectedMissingPath, requests[3].path)
 
 	assert.Equal(t, http.MethodDelete, requests[4].method)
-	assert.Equal(t, decodedExpectedJSONPath, requests[4].path)
-
-	assert.Equal(t, http.MethodGet, requests[5].method)
-	assert.Equal(t, decodedExpectedMissingPath, requests[5].path)
-
-	assert.Equal(t, http.MethodDelete, requests[6].method)
-	assert.Equal(t, decodedExpectedMissingPath, requests[6].path)
+	assert.Equal(t, decodedExpectedMissingPath, requests[4].path)
 }
 
 func TestNamespaces_SinglePropertyPlainTextFallback(t *testing.T) {
@@ -738,10 +720,9 @@ func TestNamespaces_SinglePropertyPlainTextFallback(t *testing.T) {
 
 func TestDecodeNamespacePropertyValue(t *testing.T) {
 	tests := []struct {
-		name    string
-		body    []byte
-		want    *string
-		wantErr bool
+		name string
+		body []byte
+		want *string
 	}{
 		{
 			name: "empty body is unset",
@@ -777,13 +758,7 @@ func TestDecodeNamespacePropertyValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := decodeNamespacePropertyValue(tt.body)
-			if tt.wantErr {
-				require.Error(t, err)
-				return
-			}
-
-			require.NoError(t, err)
+			got := decodeNamespacePropertyValue(tt.body)
 			if tt.want == nil {
 				assert.Nil(t, got)
 				return

@@ -2137,8 +2137,15 @@ func (n *namespaces) SetPropertyWithContext(
 	namespace utils.NameSpaceName,
 	key, value string,
 ) error {
-	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "property", key)
-	return n.pulsar.Client.PutWithContext(ctx, endpoint, value)
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "property", key, value)
+	return n.pulsar.Client.PutWithCustomMediaTypeWithContext(
+		ctx,
+		endpoint,
+		nil,
+		nil,
+		nil,
+		rest.ApplicationJSON,
+	)
 }
 
 func (n *namespaces) GetProperties(namespace utils.NameSpaceName) (map[string]string, error) {
@@ -2208,17 +2215,17 @@ func (n *namespaces) requestPropertyValueWithContext(
 	if err != nil {
 		return nil, err
 	}
-	return decodeNamespacePropertyValue(body)
+	return decodeNamespacePropertyValue(body), nil
 }
 
-func decodeNamespacePropertyValue(body []byte) (*string, error) {
+func decodeNamespacePropertyValue(body []byte) *string {
 	value, err := decodeOptionalJSON[string](body)
 	if err == nil {
-		return value, nil
+		return value
 	}
 
 	raw := strings.TrimSpace(string(body))
-	return &raw, nil
+	return &raw
 }
 
 // nolint: revive // It's ok here to use a built-in function name (max)
