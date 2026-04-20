@@ -316,6 +316,7 @@ type message struct {
 	index               *uint64
 	brokerPublishTime   *time.Time
 	conn                internal.Connection
+	isNullValue         bool
 }
 
 func (msg *message) Topic() string {
@@ -328,6 +329,10 @@ func (msg *message) Properties() map[string]string {
 
 func (msg *message) Payload() []byte {
 	return msg.payLoad
+}
+
+func (msg *message) IsNullValue() bool {
+	return msg.isNullValue
 }
 
 func (msg *message) ID() MessageID {
