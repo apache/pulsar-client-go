@@ -90,7 +90,17 @@ type ClientOptions struct {
 	// This parameter is required
 	URL string
 
-	// Timeout for the establishment of a TCP connection (default: 5 seconds)
+	// Timeout for the establishment of a TCP connection (default: 0).
+	// This parameter only controls the TCP connection establishment phase (including TLS handshake
+	// if TLS is enabled). It does NOT affect the timeout for connection disruption detection after
+	// the connection is established. Once connected, connection liveness is monitored by the
+	// Ping/Pong heartbeat mechanism controlled by KeepAliveInterval — if no data is received
+	// within 2 × KeepAliveInterval, the connection is considered stale and will be closed.
+	//
+	// 0 means no application-level timeout, the actual TCP connection timeout
+	// will fall back to the OS kernel's TCP settings (on Linux, controlled by
+	// net.ipv4.tcp_syn_retries, which defaults to 6 retries, ~127s in total).
+	// If your application is sensitive to service disruption, set this explicitly (e.g., 10s or 15s).
 	ConnectionTimeout time.Duration
 
 	// Set the operation timeout (default: 30 seconds)
@@ -99,6 +109,11 @@ type ClientOptions struct {
 	OperationTimeout time.Duration
 
 	// Configure the ping send and check interval, default to 30 seconds.
+	//
+	// The client sends PING every KeepAliveInterval and considers the connection stale if no data
+	// is received within 2 × KeepAliveInterval, then closes it and triggers automatic reconnection.
+	// The timeout for the reconnection TCP dial is controlled by ConnectionTimeout.
+	// To speed up reconnection, reduce this value (e.g., 10s or 15s).
 	KeepAliveInterval time.Duration
 
 	// Configure the authentication provider. (default: no authentication)
