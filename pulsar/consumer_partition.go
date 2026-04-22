@@ -1316,6 +1316,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			// tombstones.
 			if isNullValue && err == internal.ErrEOM {
 				payload = nil
+				err = nil
 			} else {
 				pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 				return err
