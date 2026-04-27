@@ -228,6 +228,151 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 	assert.Equal(t, err.(*Error).Result(), TopicNotFound)
 }
 
+func TestConsumerWithInvalidPriorityLevel(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            "my-topic",
+		SubscriptionName: "my-sub",
+		PriorityLevel:    -1,
+	})
+
+	assert.Nil(t, consumer)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.(*Error).Result(), InvalidConfiguration)
+}
+
+func TestConsumerSharedWithPriorityLevel(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	sub := "sub-shared-priority"
+
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: sub,
+		Type:             Shared,
+		PriorityLevel:    0,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: sub,
+		Type:             Shared,
+		PriorityLevel:    1,
+	})
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	for i := 0; i < 10; i++ {
+		if _, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		}); err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	readMsgs := 0
+	messages := make(map[string]struct{})
+	for readMsgs < 10 {
+		select {
+		case cm, ok := <-consumer1.Chan():
+			if !ok {
+				break
+			}
+			readMsgs++
+			payload := string(cm.Message.Payload())
+			messages[payload] = struct{}{}
+			consumer1.Ack(cm.Message)
+		case cm, ok := <-consumer2.Chan():
+			if !ok {
+				break
+			}
+			readMsgs++
+			payload := string(cm.Message.Payload())
+			messages[payload] = struct{}{}
+			consumer2.Ack(cm.Message)
+		}
+	}
+
+	assert.Equal(t, 10, len(messages))
+}
+
+func TestPartitionTopic_ActiveConsumerChangedWithPriority(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + randomName + "/partitions"
+
+	makeHTTPCall(t, http.MethodPut, testURL, "3")
+
+	listener := &TestActiveConsumerListener{
+		t:                t,
+		nameToPartitions: map[string]map[int32]struct{}{},
+	}
+
+	// Subscribe low-priority consumer first
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "consumer-low",
+		SubscriptionName: "my-sub",
+		Type:             Failover,
+		PriorityLevel:    1,
+		EventListener:    listener,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	allConsume([]Consumer{consumer1})
+	assert.Equal(t, 3, listener.getPartitionCount("consumer-low"))
+
+	// Subscribe high-priority consumer -- should take over
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "consumer-high",
+		SubscriptionName: "my-sub",
+		Type:             Failover,
+		PriorityLevel:    0,
+		EventListener:    listener,
+	})
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	allConsume([]Consumer{consumer1, consumer2})
+	time.Sleep(time.Second * 3)
+	allConsume([]Consumer{consumer1, consumer2})
+
+	// High-priority consumer should be active on all partitions
+	assert.Equal(t, 3, listener.getPartitionCount("consumer-high"))
+
+	consumer1.Close()
+	consumer2.Close()
+}
+
 func TestConsumerSubscriptionEarliestPosition(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

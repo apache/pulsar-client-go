@@ -100,6 +100,7 @@ type partitionConsumerOpts struct {
 	subscriptionType            SubscriptionType
 	subscriptionInitPos         SubscriptionInitialPosition
 	partitionIdx                int
+	priorityLevel               int
 	receiverQueueSize           int
 	autoReceiverQueueSize       bool
 	nackRedeliveryDelay         time.Duration
@@ -2145,7 +2146,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		ConsumerId:                 proto.Uint64(pc.consumerID),
 		RequestId:                  proto.Uint64(requestID),
 		ConsumerName:               proto.String(pc.name),
-		PriorityLevel:              nil,
+		PriorityLevel:              proto.Int32(int32(pc.options.priorityLevel)),
 		Durable:                    proto.Bool(pc.options.subscriptionMode == Durable),
 		Metadata:                   internal.ConvertFromStringMap(pc.options.metadata),
 		SubscriptionProperties:     internal.ConvertFromStringMap(pc.options.subProperties),
