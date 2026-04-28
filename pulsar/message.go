@@ -90,6 +90,12 @@ type Message interface {
 	// Payload returns the payload of the message
 	Payload() []byte
 
+	// IsNullValue reports whether the message was published as a null-value
+	// (tombstone) message, i.e. with MessageMetadata.null_value set. For such
+	// messages Payload returns nil. Applications use this flag together with
+	// Pulsar topic compaction to mark a key as deleted.
+	IsNullValue() bool
+
 	// ID returns the unique message ID associated with this message.
 	// The message id can be used to univocally refer to a message without having the keep the entire payload in memory.
 	ID() MessageID

@@ -1308,9 +1308,27 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	)
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
-		if err != nil || payload == nil {
+		isNullValue := msgMeta.GetNullValue() || (smm != nil && smm.GetNullValue())
+		if err != nil {
+			// A null-value (tombstone) message has no payload bytes on the wire, so
+			// the non-batched reader returns ErrEOM. Accept it instead of discarding
+			// it as corrupted, matching the Java client's behavior for compaction
+			// tombstones.
+			if isNullValue && err == internal.ErrEOM {
+				payload = nil
+				// Explicit reset to make tombstone-acceptance
+				// intent unambiguous.
+				err = nil //nolint:ineffassign
+			} else {
+				pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
+				return err
+			}
+		} else if payload == nil && !isNullValue {
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
+		}
+		if isNullValue {
+			payload = nil
 		}
 		if ackSet != nil && !ackSet.Test(uint(i)) {
 			pc.log.Debugf("Ignoring message from %vth message, which has been acknowledged", i)
@@ -1396,6 +1414,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
 				conn:                pc._getConn(),
+				isNullValue:         isNullValue,
 			}
 		} else {
 			msg = &message{
@@ -1417,6 +1436,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
 				conn:                pc._getConn(),
+				isNullValue:         isNullValue,
 			}
 		}
 
