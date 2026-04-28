@@ -231,8 +231,11 @@ type Producer interface {
 	// producer.Send(ctx, pulsar.ProducerMessage{ Payload: myPayload })
 	Send(context.Context, *ProducerMessage) (MessageID, error)
 
-	// SendAsync a message in asynchronous mode
-	// This call is blocked when the `maxPendingMessages` becomes full (default: 1000)
+	// SendAsync a message in asynchronous mode. The send operation completes in the background
+	// and the provided callback is invoked once the broker acknowledges the message (or when
+	// the publish fails), so the caller can continue without waiting for the result.
+	// This call is blocked when the `maxPendingMessages` becomes full (default: 1000) unless
+	// `DisableBlockIfQueueFull` is set to true, in which case it returns an error immediately.
 	// The callback will report back the message being published and
 	// the eventual error in publishing
 	// The context passed in the call is only used for the duration of the SendAsync call itself
