@@ -31,3 +31,13 @@ func GetConnectionsCount(p *ConnectionPool) int {
 	defer pool.Unlock()
 	return len(pool.connections)
 }
+
+func GetConnectionTimeout(p *ConnectionPool) time.Duration {
+	pool := (*p).(*connectionPool)
+	return pool.connectionTimeout
+}
+
+func GetKeepAliveInterval(p *ConnectionPool) time.Duration {
+	pool := (*p).(*connectionPool)
+	return pool.keepAliveInterval
+}
