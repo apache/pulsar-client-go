@@ -5711,39 +5711,69 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 	}
 }
 
-/**
- * Test that GetPartitionedTopicMetadata is not called when DLQ and Retry topics are provided.
- */
+// lookupServiceWrapper embeds the original LookupService and only overrides
+// GetPartitionedTopicMetadata to record the topics that were queried.
+type lookupServiceWrapper struct {
+	internal.LookupService
+	mu           sync.Mutex
+	calledTopics []string
+}
+
+func (w *lookupServiceWrapper) GetPartitionedTopicMetadata(topic string) (*internal.PartitionedTopicMetadata, error) {
+	w.mu.Lock()
+	w.calledTopics = append(w.calledTopics, topic)
+	w.mu.Unlock()
+	return &internal.PartitionedTopicMetadata{Partitions: 0}, nil
+}
+
+// TestConsumerWithDLQRetryTopicNoGetPartitionedTopicMetadata verifies that when custom DLQ and Retry
+// topics are provided in DLQPolicy, the resolveTopic function should NOT call GetPartitionedTopicMetadata
+// to check old-format DLQ/Retry topics. This ensures the optimization path works correctly.
 func TestConsumerWithDLQRetryTopicNoGetPartitionedTopicMetadata(t *testing.T) {
-
-	type mockLookupService struct {
-		getPartitionedTopicMetadataCalled bool
-		callCount                         int
-	}
-
-	mockLS := &mockLookupService{}
-
-	client, _ := NewClient(ClientOptions{
+	// Create a real client with a short operation timeout so that the subsequent
+	// consumer creation (which requires a broker connection) fails quickly.
+	c, err := NewClient(ClientOptions{
 		URL:                     serviceURL,
 		MaxConnectionsPerBroker: 10,
+		OperationTimeout:        1 * time.Second,
 	})
+	assert.NoError(t, err)
+	defer c.Close()
 
-	options1 := ConsumerOptions{
+	// Replace the client's internal lookupService with our wrapper to intercept
+	// and record all GetPartitionedTopicMetadata calls.
+	realClient := c.(*client)
+	wrapper := &lookupServiceWrapper{LookupService: realClient.lookupService}
+	realClient.lookupService = wrapper
+
+	// Subscribe with custom DLQ and Retry topics specified.
+	// The Subscribe call will fail due to no broker connection, but the
+	// resolveTopic logic executes before the connection attempt.
+	_, _ = c.Subscribe(ConsumerOptions{
 		Topic:            "persistent://public/default/test-topic",
 		SubscriptionName: "test-subscription",
 		RetryEnable:      true,
 		DLQ: &DLQPolicy{
 			MaxDeliveries:    3,
-			DeadLetterTopic:  "persistent://public/default/my-dlq-topic",   // 用户自定义的 DLQ topic
-			RetryLetterTopic: "persistent://public/default/my-retry-topic", // 用户自定义的 Retry topic
+			DeadLetterTopic:  "persistent://public/default/my-dlq-topic",
+			RetryLetterTopic: "persistent://public/default/my-retry-topic",
 		},
+	})
+
+	// These are the old-format topics that resolveTopic would check via
+	// GetPartitionedTopicMetadata if no custom topics were provided.
+	oldDlqTopic := "persistent://public/default/test-subscription" + DlqTopicSuffix
+	oldRetryTopic := "persistent://public/default/test-subscription" + RetryTopicSuffix
+
+	// Verify that GetPartitionedTopicMetadata was never called with old-format topics.
+	// When custom DLQ/Retry topics are provided, resolveTopic should return them directly
+	// without checking whether old-format topics exist.
+	wrapper.mu.Lock()
+	defer wrapper.mu.Unlock()
+	for _, topic := range wrapper.calledTopics {
+		assert.NotEqual(t, oldDlqTopic, topic,
+			"GetPartitionedTopicMetadata should not be called with old DLQ topic when custom DLQ topic is provided")
+		assert.NotEqual(t, oldRetryTopic, topic,
+			"GetPartitionedTopicMetadata should not be called with old Retry topic when custom Retry topic is provided")
 	}
-
-	_, _ = client.Subscribe(options1)
-
-	assert.False(t, mockLS.getPartitionedTopicMetadataCalled,
-		"GetPartitionedTopicMetadata should not be called when custom DLQ and Retry topics are provided")
-	assert.Equal(t, 0, mockLS.callCount,
-		"GetPartitionedTopicMetadata call count should be 0 when custom topics are provided")
-
 }
