@@ -306,13 +306,17 @@ func TestPriorityConsumer(t *testing.T) {
 	// Drain permits from consumer1 and consumer2
 	for i := 0; i < 5; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		consumer1.Receive(ctx)
+		msg, err := consumer1.Receive(ctx)
 		cancel()
+		assert.Nil(t, err)
+		assert.NotNil(t, msg)
 	}
 	for i := 0; i < 5; i++ {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		consumer2.Receive(ctx)
+		msg, err := consumer2.Receive(ctx)
 		cancel()
+		assert.Nil(t, err)
+		assert.NotNil(t, msg)
 	}
 
 	// Low-priority consumer should not have received any messages
@@ -321,10 +325,6 @@ func TestPriorityConsumer(t *testing.T) {
 	cancel()
 	assert.NotNil(t, err)
 	assert.Nil(t, msg)
-
-	consumer1.Close()
-	consumer2.Close()
-	consumer3.Close()
 }
 
 func TestFailOverConsumerPriority(t *testing.T) {
@@ -406,7 +406,7 @@ func TestFailOverConsumerPriority(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Poll admin stats until partitions are evenly distributed among priority-0 consumers
-	retryAssert(t, 20, 500, func() {}, func(at assert.TestingT) bool {
+	retryAssert(t, 20, 500, func() {}, func(_ assert.TestingT) bool {
 		stats, err := pulsarAdmin.Topics().GetPartitionedStats(*topicName, true)
 		if err != nil {
 			return false
@@ -437,12 +437,6 @@ func TestFailOverConsumerPriority(t *testing.T) {
 	assert.Equal(t, evenDistribution, counts["bbb1"])
 	assert.Equal(t, evenDistribution, counts["bbb2"])
 	assert.Equal(t, evenDistribution, counts["bbb3"])
-
-	consumer1.Close()
-	consumer2.Close()
-	consumer3.Close()
-	consumer4.Close()
-	consumer5.Close()
 }
 
 func TestConsumerSubscriptionEarliestPosition(t *testing.T) {
