@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"sync"
@@ -82,6 +83,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 	if options.SubscriptionName == "" {
 		return nil, newError(SubscriptionNotFound, "subscription name is required for consumer")
+	}
+
+	if options.PriorityLevel < 0 || options.PriorityLevel > math.MaxInt32 {
+		return nil, newError(InvalidConfiguration, "priority level must be >= 0 and <= math.MaxInt32")
 	}
 
 	if options.ReceiverQueueSize <= 0 {
@@ -455,6 +460,7 @@ func newPartitionConsumerOpts(topic, consumerName string, idx int, options Consu
 		subscriptionType:            options.Type,
 		subscriptionInitPos:         options.SubscriptionInitialPosition,
 		partitionIdx:                idx,
+		priorityLevel:               options.PriorityLevel,
 		receiverQueueSize:           options.ReceiverQueueSize,
 		nackRedeliveryDelay:         nackRedeliveryDelay,
 		nackBackoffPolicy:           options.NackBackoffPolicy,
