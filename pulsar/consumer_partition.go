@@ -94,35 +94,37 @@ const (
 )
 
 type partitionConsumerOpts struct {
-	topic                       string
-	consumerName                string
-	subscription                string
-	subscriptionType            SubscriptionType
-	subscriptionInitPos         SubscriptionInitialPosition
-	partitionIdx                int
-	receiverQueueSize           int
-	autoReceiverQueueSize       bool
-	nackRedeliveryDelay         time.Duration
-	nackBackoffPolicy           NackBackoffPolicy
-	nackPrecisionBit            *int64
-	metadata                    map[string]string
-	subProperties               map[string]string
-	replicateSubscriptionState  bool
-	startMessageID              *trackingMessageID
-	startMessageIDInclusive     bool
-	subscriptionMode            SubscriptionMode
-	readCompacted               bool
-	disableForceTopicCreation   bool
-	interceptors                ConsumerInterceptors
-	maxReconnectToBroker        *uint
-	backOffPolicyFunc           func() backoff.Policy
-	keySharedPolicy             *KeySharedPolicy
-	schema                      Schema
-	decryption                  *MessageDecryptionInfo
-	ackWithResponse             bool
-	maxPendingChunkedMessage    int
-	expireTimeOfIncompleteChunk time.Duration
-	autoAckIncompleteChunk      bool
+	topic                               string
+	consumerName                        string
+	subscription                        string
+	subscriptionType                    SubscriptionType
+	subscriptionInitPos                 SubscriptionInitialPosition
+	partitionIdx                        int
+	receiverQueueSize                   int
+	autoReceiverQueueSize               bool
+	nackRedeliveryDelay                 time.Duration
+	nackBackoffPolicy                   NackBackoffPolicy
+	nackPrecisionBit                    *int64
+	metadata                            map[string]string
+	subProperties                       map[string]string
+	replicateSubscriptionState          bool
+	startMessageID                      *trackingMessageID
+	startMessageIDInclusive             bool
+	subscriptionMode                    SubscriptionMode
+	readCompacted                       bool
+	disableForceTopicCreation           bool
+	interceptors                        ConsumerInterceptors
+	maxReconnectToBroker                *uint
+	maxReconnectToBrokerListener        func(consumer Consumer, err error)
+	closeConsumerOnMaxReconnectToBroker bool
+	backOffPolicyFunc                   func() backoff.Policy
+	keySharedPolicy                     *KeySharedPolicy
+	schema                              Schema
+	decryption                          *MessageDecryptionInfo
+	ackWithResponse                     bool
+	maxPendingChunkedMessage            int
+	expireTimeOfIncompleteChunk         time.Duration
+	autoAckIncompleteChunk              bool
 	// in failover mode, this callback will be called when consumer change
 	consumerEventListener      ConsumerEventListener
 	enableBatchIndexAck        bool
@@ -2100,6 +2102,12 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		pc.metrics.ConsumersReconnectFailure.Inc()
 		if maxRetry == 0 || bo.IsMaxBackoffReached() {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
+			if pc.options.maxReconnectToBrokerListener != nil {
+				pc.options.maxReconnectToBrokerListener(pc.parentConsumer, err)
+			}
+			if pc.options.closeConsumerOnMaxReconnectToBroker {
+				go pc.parentConsumer.Close()
+			}
 		}
 
 		return struct{}{}, err
