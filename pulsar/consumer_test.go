@@ -5710,3 +5710,112 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 			"The consumer uses a different connection when reconnecting")
 	}
 }
+
+func TestConsumerMaxReconnectToBrokerListener(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err)
+
+	pulsarClient, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 3 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer pulsarClient.Close()
+
+	maxRetry := uint(1)
+	listenerFired := make(chan struct{})
+	var (
+		listenerErr      error
+		listenerConsumer Consumer
+	)
+
+	topic := newTopicName()
+	var testConsumer Consumer
+	require.Eventually(t, func() bool {
+		testConsumer, err = pulsarClient.Subscribe(ConsumerOptions{
+			Topic:                topic,
+			SubscriptionName:     "test-max-reconnect-listener",
+			MaxReconnectToBroker: &maxRetry,
+			BackOffPolicyFunc: func() backoff.Policy {
+				return newTestBackoffPolicy(100*time.Millisecond, 1*time.Second)
+			},
+			MaxReconnectToBrokerListener: func(c Consumer, e error) {
+				listenerConsumer = c
+				listenerErr = e
+				close(listenerFired)
+			},
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	defer testConsumer.Close()
+
+	_ = c.Terminate(context.Background())
+
+	select {
+	case <-listenerFired:
+	case <-time.After(30 * time.Second):
+		t.Fatal("MaxReconnectToBrokerListener was not called within timeout")
+	}
+
+	assert.NotNil(t, listenerErr, "listener should receive the last connection error")
+	assert.Equal(t, testConsumer, listenerConsumer, "listener should receive the parent consumer")
+}
+
+func TestConsumerMaxReconnectToBrokerAutoClose(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err)
+
+	pulsarClient, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 3 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer pulsarClient.Close()
+
+	maxRetry := uint(1)
+	topic := newTopicName()
+	var testConsumer Consumer
+	require.Eventually(t, func() bool {
+		testConsumer, err = pulsarClient.Subscribe(ConsumerOptions{
+			Topic:                topic,
+			SubscriptionName:     "test-max-reconnect-autoclose",
+			MaxReconnectToBroker: &maxRetry,
+			BackOffPolicyFunc: func() backoff.Policy {
+				return newTestBackoffPolicy(100*time.Millisecond, 1*time.Second)
+			},
+			CloseConsumerOnMaxReconnectToBroker: true,
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+
+	_ = c.Terminate(context.Background())
+
+	pc := testConsumer.(*consumer).consumers[0]
+	require.Eventually(t, func() bool {
+		return pc.getConsumerState() == consumerClosed
+	}, 30*time.Second, 100*time.Millisecond, "consumer should be closed after exhausting max reconnect retries")
+}
