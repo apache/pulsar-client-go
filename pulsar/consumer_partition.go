@@ -93,6 +93,50 @@ const (
 	noMessageEntry = -1
 )
 
+// Broker error markers that map to Java's PulsarClientException.isRetriableError() == false
+// for the consumer subscribe/reconnect path. When the broker reports any of these in response
+// to a Subscribe command, retrying will not recover — the consumer must give up and notify
+// the application. errMsgTopicNotFound and errMsgTopicTerminated are reused from the producer
+// path; the rest are consumer-specific.
+const (
+	errMsgConsumerSubscriptionNotFound = "SubscriptionNotFound"
+	errMsgConsumerAuthorizationError   = "AuthorizationError"
+	errMsgConsumerBusy                 = "ConsumerBusy"
+	errMsgConsumerInvalidTopicName     = "InvalidTopicName"
+	errMsgConsumerIncompatibleSchema   = "IncompatibleSchema"
+	errMsgConsumerAssignError          = "ConsumerAssignError"
+	errMsgConsumerNotAllowedError      = "NotAllowedError"
+)
+
+// nonRetriableSubscribeErrorMarkers is the full set of broker error names that should
+// terminate the reconnect loop immediately. Detection is by substring match on the
+// error message, since the broker error arrives wire-formatted as "<ServerError>: <msg>"
+// (see grabConn -> BaseCommand_ERROR handling).
+var nonRetriableSubscribeErrorMarkers = []string{
+	errMsgTopicNotFound,
+	errMsgTopicTerminated,
+	errMsgConsumerSubscriptionNotFound,
+	errMsgConsumerAuthorizationError,
+	errMsgConsumerBusy,
+	errMsgConsumerInvalidTopicName,
+	errMsgConsumerIncompatibleSchema,
+	errMsgConsumerAssignError,
+	errMsgConsumerNotAllowedError,
+}
+
+func isNonRetriableSubscribeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, marker := range nonRetriableSubscribeErrorMarkers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
 type partitionConsumerOpts struct {
 	topic                               string
 	consumerName                        string
@@ -2063,7 +2107,19 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		assignedBrokerURL = connectionClosed.assignedBrokerURL
 	}
 
-	var maxRetryNotified bool
+	var giveUpNotified bool
+	notifyReconnectGiveUp := func(cause error) {
+		if giveUpNotified {
+			return
+		}
+		giveUpNotified = true
+		if pc.options.maxReconnectToBrokerListener != nil {
+			pc.options.maxReconnectToBrokerListener(pc.parentConsumer, cause)
+		}
+		if pc.options.closeConsumerOnMaxReconnectToBroker {
+			go pc.parentConsumer.Close()
+		}
+	}
 
 	opFn := func() (struct{}, error) {
 		if maxRetry == 0 {
@@ -2091,10 +2147,9 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return struct{}{}, nil
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
-		errMsg := err.Error()
-		if strings.Contains(errMsg, errMsgTopicNotFound) {
-			// when topic is deleted, we should give up reconnection.
-			pc.log.Warn("Topic Not Found.")
+		if isNonRetriableSubscribeError(err) {
+			pc.log.WithError(err).Warn("Non-retriable error during reconnect, giving up")
+			notifyReconnectGiveUp(err)
 			return struct{}{}, nil
 		}
 
@@ -2102,18 +2157,9 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			maxRetry--
 		}
 		pc.metrics.ConsumersReconnectFailure.Inc()
-		if maxRetry == 0 || bo.IsMaxBackoffReached() {
+		if maxRetry == 0 {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
-
-			if !maxRetryNotified {
-				maxRetryNotified = true
-				if pc.options.maxReconnectToBrokerListener != nil {
-					pc.options.maxReconnectToBrokerListener(pc.parentConsumer, err)
-				}
-				if pc.options.closeConsumerOnMaxReconnectToBroker {
-					go pc.parentConsumer.Close()
-				}
-			}
+			notifyReconnectGiveUp(err)
 		}
 
 		return struct{}{}, err

@@ -5830,69 +5830,29 @@ func TestConsumerMaxReconnectToBrokerAutoClose(t *testing.T) {
 	}, 30*time.Second, 100*time.Millisecond, "consumer should be closed after exhausting max reconnect retries")
 }
 
-type maxBackoffReachedPolicy struct {
-	delay time.Duration
-}
-
-func (p *maxBackoffReachedPolicy) Next() time.Duration       { return p.delay }
-func (p *maxBackoffReachedPolicy) IsMaxBackoffReached() bool { return true }
-func (p *maxBackoffReachedPolicy) Reset()                    {}
-
-func TestConsumerMaxReconnectToBrokerListenerFiresOnceWhenBackoffMaxed(t *testing.T) {
-	req := testcontainers.ContainerRequest{
-		Image:        getPulsarTestImage(),
-		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
-		WaitingFor:   wait.ForExposedPort(),
-		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
+func TestIsNonRetriableSubscribeError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"topic not found", errors.New("TopicNotFound: topic does not exist"), true},
+		{"topic terminated", errors.New("TopicTerminatedError: topic was terminated"), true},
+		{"subscription not found", errors.New("SubscriptionNotFound: sub does not exist"), true},
+		{"authorization", errors.New("AuthorizationError: not authorized"), true},
+		{"consumer busy", errors.New("ConsumerBusy: another consumer attached"), true},
+		{"invalid topic name", errors.New("InvalidTopicName: bad name"), true},
+		{"incompatible schema", errors.New("IncompatibleSchema: schema mismatch"), true},
+		{"consumer assign error", errors.New("ConsumerAssignError: dispatcher assign failed"), true},
+		{"not allowed", errors.New("NotAllowedError: action not permitted"), true},
+		{"service not ready (retriable)", errors.New("ServiceNotReady: please retry"), false},
+		{"metadata error (retriable)", errors.New("MetadataError: zk timeout"), false},
+		{"plain network error (retriable)", errors.New("dial tcp: i/o timeout"), false},
 	}
-	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		if err := c.Terminate(context.Background()); err != nil {
-			t.Logf("container terminate (cleanup) returned: %v", err)
-		}
-	})
-	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
-	require.NoError(t, err)
-
-	pulsarClient, err := NewClient(ClientOptions{
-		URL:               endpoint,
-		ConnectionTimeout: 3 * time.Second,
-		OperationTimeout:  5 * time.Second,
-	})
-	require.NoError(t, err)
-	defer pulsarClient.Close()
-
-	var listenerCount int32
-
-	topic := newTopicName()
-	var testConsumer Consumer
-	require.Eventually(t, func() bool {
-		testConsumer, err = pulsarClient.Subscribe(ConsumerOptions{
-			Topic:            topic,
-			SubscriptionName: "test-max-reconnect-listener-once",
-			BackOffPolicyFunc: func() backoff.Policy {
-				return &maxBackoffReachedPolicy{delay: 200 * time.Millisecond}
-			},
-			MaxReconnectToBrokerListener: func(_ Consumer, _ error) {
-				atomic.AddInt32(&listenerCount, 1)
-			},
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isNonRetriableSubscribeError(tc.err))
 		})
-		return err == nil
-	}, 30*time.Second, 1*time.Second)
-	defer testConsumer.Close()
-
-	require.NoError(t, c.Terminate(context.Background()))
-
-	require.Eventually(t, func() bool {
-		return atomic.LoadInt32(&listenerCount) >= 1
-	}, 30*time.Second, 200*time.Millisecond, "listener should fire at least once after reconnect failures")
-
-	time.Sleep(3 * time.Second)
-
-	assert.EqualValues(t, 1, atomic.LoadInt32(&listenerCount),
-		"listener must fire exactly once per reconnect cycle even when IsMaxBackoffReached stays true")
+	}
 }
