@@ -5723,6 +5723,11 @@ func TestConsumerMaxReconnectToBrokerListener(t *testing.T) {
 		Started:          true,
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := c.Terminate(context.Background()); err != nil {
+			t.Logf("container terminate (cleanup) returned: %v", err)
+		}
+	})
 	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
 	require.NoError(t, err)
 
@@ -5761,7 +5766,7 @@ func TestConsumerMaxReconnectToBrokerListener(t *testing.T) {
 	}, 30*time.Second, 1*time.Second)
 	defer testConsumer.Close()
 
-	_ = c.Terminate(context.Background())
+	require.NoError(t, c.Terminate(context.Background()))
 
 	select {
 	case <-listenerFired:
@@ -5785,6 +5790,11 @@ func TestConsumerMaxReconnectToBrokerAutoClose(t *testing.T) {
 		Started:          true,
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := c.Terminate(context.Background()); err != nil {
+			t.Logf("container terminate (cleanup) returned: %v", err)
+		}
+	})
 	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
 	require.NoError(t, err)
 
@@ -5812,7 +5822,7 @@ func TestConsumerMaxReconnectToBrokerAutoClose(t *testing.T) {
 		return err == nil
 	}, 30*time.Second, 1*time.Second)
 
-	_ = c.Terminate(context.Background())
+	require.NoError(t, c.Terminate(context.Background()))
 
 	pc := testConsumer.(*consumer).consumers[0]
 	require.Eventually(t, func() bool {
@@ -5840,6 +5850,11 @@ func TestConsumerMaxReconnectToBrokerListenerFiresOnceWhenBackoffMaxed(t *testin
 		Started:          true,
 	})
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := c.Terminate(context.Background()); err != nil {
+			t.Logf("container terminate (cleanup) returned: %v", err)
+		}
+	})
 	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
 	require.NoError(t, err)
 
@@ -5870,7 +5885,7 @@ func TestConsumerMaxReconnectToBrokerListenerFiresOnceWhenBackoffMaxed(t *testin
 	}, 30*time.Second, 1*time.Second)
 	defer testConsumer.Close()
 
-	_ = c.Terminate(context.Background())
+	require.NoError(t, c.Terminate(context.Background()))
 
 	require.Eventually(t, func() bool {
 		return atomic.LoadInt32(&listenerCount) >= 1
