@@ -5819,3 +5819,65 @@ func TestConsumerMaxReconnectToBrokerAutoClose(t *testing.T) {
 		return pc.getConsumerState() == consumerClosed
 	}, 30*time.Second, 100*time.Millisecond, "consumer should be closed after exhausting max reconnect retries")
 }
+
+type maxBackoffReachedPolicy struct {
+	delay time.Duration
+}
+
+func (p *maxBackoffReachedPolicy) Next() time.Duration       { return p.delay }
+func (p *maxBackoffReachedPolicy) IsMaxBackoffReached() bool { return true }
+func (p *maxBackoffReachedPolicy) Reset()                    {}
+
+func TestConsumerMaxReconnectToBrokerListenerFiresOnceWhenBackoffMaxed(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err)
+
+	pulsarClient, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 3 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer pulsarClient.Close()
+
+	var listenerCount int32
+
+	topic := newTopicName()
+	var testConsumer Consumer
+	require.Eventually(t, func() bool {
+		testConsumer, err = pulsarClient.Subscribe(ConsumerOptions{
+			Topic:            topic,
+			SubscriptionName: "test-max-reconnect-listener-once",
+			BackOffPolicyFunc: func() backoff.Policy {
+				return &maxBackoffReachedPolicy{delay: 200 * time.Millisecond}
+			},
+			MaxReconnectToBrokerListener: func(_ Consumer, _ error) {
+				atomic.AddInt32(&listenerCount, 1)
+			},
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	defer testConsumer.Close()
+
+	_ = c.Terminate(context.Background())
+
+	require.Eventually(t, func() bool {
+		return atomic.LoadInt32(&listenerCount) >= 1
+	}, 30*time.Second, 200*time.Millisecond, "listener should fire at least once after reconnect failures")
+
+	time.Sleep(3 * time.Second)
+
+	assert.EqualValues(t, 1, atomic.LoadInt32(&listenerCount),
+		"listener must fire exactly once per reconnect cycle even when IsMaxBackoffReached stays true")
+}

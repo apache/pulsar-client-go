@@ -2063,6 +2063,8 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		assignedBrokerURL = connectionClosed.assignedBrokerURL
 	}
 
+	var maxRetryNotified bool
+
 	opFn := func() (struct{}, error) {
 		if maxRetry == 0 {
 			return struct{}{}, nil
@@ -2102,11 +2104,15 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		pc.metrics.ConsumersReconnectFailure.Inc()
 		if maxRetry == 0 || bo.IsMaxBackoffReached() {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
-			if pc.options.maxReconnectToBrokerListener != nil {
-				pc.options.maxReconnectToBrokerListener(pc.parentConsumer, err)
-			}
-			if pc.options.closeConsumerOnMaxReconnectToBroker {
-				go pc.parentConsumer.Close()
+
+			if !maxRetryNotified {
+				maxRetryNotified = true
+				if pc.options.maxReconnectToBrokerListener != nil {
+					pc.options.maxReconnectToBrokerListener(pc.parentConsumer, err)
+				}
+				if pc.options.closeConsumerOnMaxReconnectToBroker {
+					go pc.parentConsumer.Close()
+				}
 			}
 		}
 
