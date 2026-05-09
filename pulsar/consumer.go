@@ -225,13 +225,18 @@ type ConsumerOptions struct {
 	// MaxReconnectToBrokerListener is called when the consumer exhausts all reconnect attempts
 	// set by MaxReconnectToBroker. The consumer argument is the parent consumer, and err is the
 	// last connection error. Use this callback to detect silent failure and take recovery action
-	// (e.g. recreate the consumer). Only fires when MaxReconnectToBroker is set to a finite value
-	// or when the backoff policy signals IsMaxBackoffReached.
+	// (e.g. recreate the consumer). This callback is invoked from the partition consumer event
+	// loop, so applications must not call consumer.Close() synchronously from within the callback,
+	// since doing so can deadlock. If closing is required, do it asynchronously (for example, in
+	// another goroutine), or enable CloseConsumerOnMaxReconnectToBroker to let the client close
+	// the consumer safely after the callback returns. Only fires when MaxReconnectToBroker is set
+	// to a finite value or when the backoff policy signals IsMaxBackoffReached.
 	MaxReconnectToBrokerListener func(consumer Consumer, err error)
 
 	// CloseConsumerOnMaxReconnectToBroker, when true, automatically closes the consumer after
 	// exhausting all reconnect attempts. The close happens asynchronously after
-	// MaxReconnectToBrokerListener (if set) returns. Default: false.
+	// MaxReconnectToBrokerListener (if set) returns, and is the recommended option when the
+	// consumer should be closed after reconnect exhaustion. Default: false.
 	CloseConsumerOnMaxReconnectToBroker bool
 
 	// BackOffPolicyFunc parameterize the following options in the reconnection logic to
