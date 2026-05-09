@@ -93,8 +93,7 @@ const (
 	noMessageEntry = -1
 )
 
-// Broker error markers that map to Java's PulsarClientException.isRetriableError() == false
-// for the consumer subscribe/reconnect path. When the broker reports any of these in response
+// Broker error markers. When the broker reports any of these in response
 // to a Subscribe command, retrying will not recover — the consumer must give up and notify
 // the application. errMsgTopicNotFound and errMsgTopicTerminated are reused from the producer
 // path; the rest are consumer-specific.
