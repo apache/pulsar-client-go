@@ -40,6 +40,17 @@ func GetOIDCWellKnownEndpointsFromIssuerURL(issuerURL string) (*OIDCWellKnownEnd
 	if err != nil {
 		return nil, errors.Wrap(err, "could not parse issuer url to build well known endpoints")
 	}
+
+	// Validate URL scheme - only allow HTTPS to prevent SSRF attacks
+	if u.Scheme != "https" {
+		return nil, errors.New("issuer URL must use HTTPS scheme")
+	}
+
+	// Validate host is not empty
+	if u.Host == "" {
+		return nil, errors.New("issuer URL must have a host")
+	}
+
 	u.Path = path.Join(u.Path, ".well-known/openid-configuration")
 
 	r, err := http.Get(u.String())
