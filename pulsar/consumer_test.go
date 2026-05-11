@@ -3181,6 +3181,173 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	assert.Equal(t, len(msgs), 10)
 }
 
+func TestConsumerAckIDListAfterPartitionAutoDiscovery(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort().WithStartupTimeout(2 * time.Minute),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--no-stream-storage", "--advertised-address", "localhost"},
+	}
+	container, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		defer cancel()
+		_ = container.Terminate(ctx)
+	}()
+
+	endpoint, err := container.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+	adminEndpoint, err := container.PortEndpoint(context.Background(), "8080", "http")
+	require.NoError(t, err, "Failed to get the pulsar admin endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL:              endpoint,
+		OperationTimeout: 30 * time.Second,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	testURL := adminEndpoint + "/" + "admin/v2/persistent/public/default/" + topic + "/partitions"
+	httpClient := &http.Client{Timeout: 10 * time.Second}
+	updatePartitions := func(method string, partitions int) error {
+		req, err := http.NewRequest(method, testURL, strings.NewReader(strconv.Itoa(partitions)))
+		if err != nil {
+			return err
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Accept", "application/json")
+
+		res, err := httpClient.Do(req)
+		if err != nil {
+			return err
+		}
+		if res.Body != nil {
+			_ = res.Body.Close()
+		}
+		if res.StatusCode >= http.StatusBadRequest {
+			return fmt.Errorf("failed to update partitions to %d: %s", partitions, res.Status)
+		}
+		return nil
+	}
+	var lastUpdateErr error
+	require.Eventually(t, func() bool {
+		lastUpdateErr = updatePartitions(http.MethodPut, 1)
+		return lastUpdateErr == nil
+	}, 30*time.Second, time.Second)
+	require.NoError(t, lastUpdateErr)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               topic,
+		SubscriptionName:    "my-sub",
+		AutoDiscoveryPeriod: time.Millisecond,
+		ReceiverQueueSize:   1000,
+	})
+	require.NoError(t, err)
+
+	var nextPartition uint32
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		MessageRouter: func(_ *ProducerMessage, metadata TopicMetadata) int {
+			return int(atomic.AddUint32(&nextPartition, 1) % metadata.NumPartitions())
+		},
+		PartitionsAutoDiscoveryInterval: time.Millisecond,
+	})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+
+	errCh := make(chan error, 1)
+	var sendWG sync.WaitGroup
+	sendWG.Add(3)
+	go func() {
+		defer sendWG.Done()
+		for i := 0; ctx.Err() == nil; i++ {
+			if _, err := producer.Send(ctx, &ProducerMessage{
+				Payload: []byte(fmt.Sprintf("hello-%d", i)),
+			}); err != nil && ctx.Err() == nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				return
+			}
+		}
+	}()
+	go func() {
+		defer sendWG.Done()
+		batch := make([]MessageID, 0, 32)
+		for ctx.Err() == nil {
+			msg, err := consumer.Receive(ctx)
+			if err != nil {
+				if ctx.Err() == nil {
+					select {
+					case errCh <- err:
+					default:
+					}
+				}
+				return
+			}
+
+			batch = append(batch, msg.ID())
+			if len(batch) < cap(batch) {
+				continue
+			}
+			if err := consumer.AckIDList(batch); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				return
+			}
+			batch = batch[:0]
+		}
+	}()
+	go func() {
+		defer sendWG.Done()
+		for partitions := 50; partitions <= 200 && ctx.Err() == nil; partitions += 50 {
+			if err := updatePartitions(http.MethodPost, partitions); err != nil {
+				select {
+				case errCh <- err:
+				default:
+				}
+				return
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+	}()
+
+	done := make(chan struct{})
+	go func() {
+		sendWG.Wait()
+		close(done)
+	}()
+
+	select {
+	case err := <-errCh:
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for workers to stop")
+		}
+		require.NoError(t, err)
+	case <-done:
+	case <-ctx.Done():
+		cancel()
+		select {
+		case <-done:
+		case <-time.After(10 * time.Second):
+			t.Fatal("timed out waiting for workers to stop")
+		}
+	}
+}
+
 func TestConsumerNegativeReceiverQueueSize(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -5581,6 +5748,18 @@ func TestAckIDList(t *testing.T) {
 			runAckIDListTest(t, params)
 		})
 	}
+}
+
+func TestAckIDListDoesNotPanicForNilPartitionConsumer(t *testing.T) {
+	msgID := newMessageID(1, 2, -1, 0, 0)
+	consumer := &consumer{
+		consumers: []*partitionConsumer{nil},
+		log:       plog.DefaultNopLogger(),
+	}
+
+	require.NotPanics(t, func() {
+		_ = consumer.AckIDList([]MessageID{msgID})
+	})
 }
 
 func getAckCount(registry *prometheus.Registry) (int, error) {

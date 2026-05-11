@@ -49,7 +49,7 @@ type acker interface {
 }
 
 type consumer struct {
-	sync.Mutex
+	sync.RWMutex
 	topic                     string
 	client                    *client
 	options                   ConsumerOptions
@@ -549,11 +549,12 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 
 func (c *consumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := c.getPartitionConsumer(msgID)
+	if err != nil {
 		return err
 	}
 
-	return c.consumers[msgID.PartitionIdx()].AckIDWithTxn(msgID, txn)
+	return consumer.AckIDWithTxn(msgID, txn)
 }
 
 // Chan return the message chan to users
@@ -568,23 +569,21 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := c.getPartitionConsumer(msgID)
+	if err != nil {
 		return err
 	}
 
 	if c.options.AckWithResponse {
-		return c.consumers[msgID.PartitionIdx()].AckIDWithResponse(msgID)
+		return consumer.AckIDWithResponse(msgID)
 	}
 
-	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
+	return consumer.AckID(msgID)
 }
 
 func (c *consumer) AckIDList(msgIDs []MessageID) error {
 	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
-		if err := c.checkMsgIDPartition(msgID); err != nil {
-			return nil, err
-		}
-		return c.consumers[msgID.PartitionIdx()], nil
+		return c.getPartitionConsumer(msgID)
 	})
 }
 
@@ -597,15 +596,16 @@ func (c *consumer) AckCumulative(msg Message) error {
 // AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
 func (c *consumer) AckIDCumulative(msgID MessageID) error {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := c.getPartitionConsumer(msgID)
+	if err != nil {
 		return err
 	}
 
 	if c.options.AckWithResponse {
-		return c.consumers[msgID.PartitionIdx()].AckIDWithResponseCumulative(msgID)
+		return consumer.AckIDWithResponseCumulative(msgID)
 	}
 
-	return c.consumers[msgID.PartitionIdx()].AckIDCumulative(msgID)
+	return consumer.AckIDCumulative(msgID)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -790,6 +790,22 @@ func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
 			partition, len(c.consumers))
 	}
 	return nil
+}
+
+func (c *consumer) getPartitionConsumer(msgID MessageID) (*partitionConsumer, error) {
+	c.RLock()
+	defer c.RUnlock()
+
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return nil, err
+	}
+
+	consumer := c.consumers[msgID.PartitionIdx()]
+	if consumer == nil {
+		return nil, fmt.Errorf("partition consumer is nil for partition %d", msgID.PartitionIdx())
+	}
+
+	return consumer, nil
 }
 
 func (c *consumer) hasNext() bool {
