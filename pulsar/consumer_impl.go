@@ -36,9 +36,12 @@ import (
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
-// beforeAssignPartitionConsumersHook lets tests pause partition discovery after
-// the consumer slice has been resized but before new consumers are assigned.
-var beforeAssignPartitionConsumersHook func(*consumer)
+// FailureInjectHook defines package-level failure injection points used by tests.
+type FailureInjectHook interface {
+	BeforeAssignPartitionConsumers()
+}
+
+var failureInjectHook FailureInjectHook
 
 type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
@@ -422,8 +425,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		close(ch)
 	}()
 
-	if beforeAssignPartitionConsumersHook != nil {
-		beforeAssignPartitionConsumersHook(c)
+	if failureInjectHook != nil {
+		failureInjectHook.BeforeAssignPartitionConsumers()
 	}
 
 	for ce := range ch {

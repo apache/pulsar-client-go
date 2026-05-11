@@ -5635,14 +5635,16 @@ func TestAckIDWaitsForPartitionConsumerUpdate(t *testing.T) {
 	msgID := newMessageID(1, 2, -1, 0, 0)
 	cons := newConsumerPartitionUpdateTestConsumer()
 	defer func() {
-		beforeAssignPartitionConsumersHook = nil
+		failureInjectHook = nil
 	}()
 
 	hookEntered := make(chan struct{})
 	releaseHook := make(chan struct{})
-	beforeAssignPartitionConsumersHook = func(*consumer) {
-		close(hookEntered)
-		<-releaseHook
+	failureInjectHook = &blockingFailureInjectHook{
+		beforeAssignPartitionConsumersFunc: func() {
+			close(hookEntered)
+			<-releaseHook
+		},
 	}
 
 	updateErrCh := make(chan error, 1)
@@ -5720,6 +5722,14 @@ func newConsumerPartitionUpdateTestConsumer() *consumer {
 		log:       plog.DefaultNopLogger(),
 		metrics:   newTestMetrics(),
 	}
+}
+
+type blockingFailureInjectHook struct {
+	beforeAssignPartitionConsumersFunc func()
+}
+
+func (h *blockingFailureInjectHook) BeforeAssignPartitionConsumers() {
+	h.beforeAssignPartitionConsumersFunc()
 }
 
 type partitionUpdateConnectionPool struct {
