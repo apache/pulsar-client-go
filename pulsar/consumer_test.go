@@ -37,7 +37,6 @@ import (
 
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
-	testcontainerspulsar "github.com/testcontainers/testcontainers-go/modules/pulsar"
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/apache/pulsar-client-go/pulsar/backoff"
@@ -3182,141 +3181,6 @@ func TestConsumerAddTopicPartitions(t *testing.T) {
 	assert.Equal(t, len(msgs), 10)
 }
 
-func TestConsumerAckIDAfterPartitionAutoDiscovery(t *testing.T) {
-	pulsarContainer, err := testcontainerspulsar.Run(context.Background(), getPulsarTestImage())
-	require.NoError(t, err, "Failed to start the pulsar container")
-	defer func() {
-		_ = testcontainers.TerminateContainer(pulsarContainer)
-	}()
-
-	endpoint, err := pulsarContainer.BrokerURL(context.Background())
-	require.NoError(t, err, "Failed to get the pulsar endpoint")
-	adminEndpoint, err := pulsarContainer.HTTPServiceURL(context.Background())
-	require.NoError(t, err, "Failed to get the pulsar admin endpoint")
-
-	topic := newTopicName()
-	pulsarAdmin, err := pulsaradmin.NewClient(&config.Config{WebServiceURL: adminEndpoint})
-	require.NoError(t, err)
-	topicName, err := utils.GetTopicName(topic)
-	require.NoError(t, err)
-
-	var lastAdminErr error
-	require.Eventually(t, func() bool {
-		lastAdminErr = pulsarAdmin.Brokers().HealthCheck()
-		return lastAdminErr == nil
-	}, 30*time.Second, time.Second)
-	require.NoError(t, lastAdminErr)
-
-	client, err := NewClient(ClientOptions{
-		URL:              endpoint,
-		OperationTimeout: 30 * time.Second,
-	})
-	require.NoError(t, err)
-	defer client.Close()
-
-	require.Eventually(t, func() bool {
-		lastAdminErr = pulsarAdmin.Topics().Create(*topicName, 1)
-		return lastAdminErr == nil
-	}, 30*time.Second, time.Second)
-	require.NoError(t, lastAdminErr)
-
-	consumer, err := client.Subscribe(ConsumerOptions{
-		Topic:               topic,
-		SubscriptionName:    "my-sub",
-		AutoDiscoveryPeriod: time.Millisecond,
-		ReceiverQueueSize:   1000,
-	})
-	require.NoError(t, err)
-
-	producer, err := client.CreateProducer(ProducerOptions{
-		Topic:                           topic,
-		PartitionsAutoDiscoveryInterval: time.Millisecond,
-	})
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-
-	errCh := make(chan error, 1)
-	var sendWG sync.WaitGroup
-	sendWG.Add(3)
-	go func() {
-		defer sendWG.Done()
-		for i := 0; ctx.Err() == nil; i++ {
-			if _, err := producer.Send(ctx, &ProducerMessage{
-				Payload: []byte(fmt.Sprintf("hello-%d", i)),
-			}); err != nil && ctx.Err() == nil {
-				select {
-				case errCh <- err:
-				default:
-				}
-				return
-			}
-		}
-	}()
-	go func() {
-		defer sendWG.Done()
-		for ctx.Err() == nil {
-			msg, err := consumer.Receive(ctx)
-			if err != nil {
-				if ctx.Err() == nil {
-					select {
-					case errCh <- err:
-					default:
-					}
-				}
-				return
-			}
-
-			if err := consumer.AckID(msg.ID()); err != nil {
-				select {
-				case errCh <- err:
-				default:
-				}
-				return
-			}
-		}
-	}()
-	go func() {
-		defer sendWG.Done()
-		for partitions := 50; partitions <= 200 && ctx.Err() == nil; partitions += 50 {
-			if err := pulsarAdmin.Topics().Update(*topicName, partitions); err != nil {
-				select {
-				case errCh <- err:
-				default:
-				}
-				return
-			}
-			time.Sleep(250 * time.Millisecond)
-		}
-	}()
-
-	done := make(chan struct{})
-	go func() {
-		sendWG.Wait()
-		close(done)
-	}()
-
-	select {
-	case err := <-errCh:
-		cancel()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			t.Fatal("timed out waiting for workers to stop")
-		}
-		require.NoError(t, err)
-	case <-done:
-	case <-ctx.Done():
-		cancel()
-		select {
-		case <-done:
-		case <-time.After(10 * time.Second):
-			t.Fatal("timed out waiting for workers to stop")
-		}
-	}
-}
-
 func TestConsumerNegativeReceiverQueueSize(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -5719,16 +5583,51 @@ func TestAckIDList(t *testing.T) {
 	}
 }
 
-func TestAckIDListDoesNotPanicForNilPartitionConsumer(t *testing.T) {
+func TestAckIDDoesNotPanicForNilPartitionConsumer(t *testing.T) {
 	msgID := newMessageID(1, 2, -1, 0, 0)
-	consumer := &consumer{
-		consumers: []*partitionConsumer{nil},
-		log:       plog.DefaultNopLogger(),
+	tests := []struct {
+		name      string
+		ack       func(*consumer) error
+		wantError bool
+	}{
+		{
+			name: "AckID",
+			ack: func(consumer *consumer) error {
+				return consumer.AckID(msgID)
+			},
+			wantError: true,
+		},
+		{
+			name: "AckIDCumulative",
+			ack: func(consumer *consumer) error {
+				return consumer.AckIDCumulative(msgID)
+			},
+			wantError: true,
+		},
+		{
+			name: "AckIDList",
+			ack: func(consumer *consumer) error {
+				return consumer.AckIDList([]MessageID{msgID})
+			},
+		},
 	}
 
-	require.NotPanics(t, func() {
-		_ = consumer.AckIDList([]MessageID{msgID})
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			consumer := &consumer{
+				consumers: []*partitionConsumer{nil},
+				log:       plog.DefaultNopLogger(),
+			}
+
+			var err error
+			require.NotPanics(t, func() {
+				err = tt.ack(consumer)
+			})
+			if tt.wantError {
+				require.Error(t, err)
+			}
+		})
+	}
 }
 
 func getAckCount(registry *prometheus.Registry) (int, error) {

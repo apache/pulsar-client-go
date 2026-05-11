@@ -29,7 +29,6 @@ require (
 	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.35.0
-	github.com/testcontainers/testcontainers-go/modules/pulsar v0.35.0
 	go.uber.org/atomic v1.11.0
 	golang.org/x/mod v0.29.0
 	golang.org/x/oauth2 v0.28.0
