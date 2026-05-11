@@ -5630,6 +5630,36 @@ func TestAckIDDoesNotPanicForNilPartitionConsumer(t *testing.T) {
 	}
 }
 
+func TestAckIDWaitsForPartitionConsumerUpdate(t *testing.T) {
+	msgID := newMessageID(1, 2, -1, 0, 0)
+	consumer := &consumer{
+		consumers: []*partitionConsumer{nil},
+		log:       plog.DefaultNopLogger(),
+	}
+
+	consumer.Lock()
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- consumer.AckID(msgID)
+	}()
+
+	select {
+	case err := <-errCh:
+		consumer.Unlock()
+		t.Fatalf("AckID returned while partition consumer update lock was held: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	consumer.Unlock()
+
+	select {
+	case err := <-errCh:
+		require.Error(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for AckID after partition consumer update lock was released")
+	}
+}
+
 func getAckCount(registry *prometheus.Registry) (int, error) {
 	metrics, err := registry.Gather()
 	if err != nil {
