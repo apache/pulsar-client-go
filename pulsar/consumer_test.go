@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -5632,32 +5633,125 @@ func TestAckIDDoesNotPanicForNilPartitionConsumer(t *testing.T) {
 
 func TestAckIDWaitsForPartitionConsumerUpdate(t *testing.T) {
 	msgID := newMessageID(1, 2, -1, 0, 0)
-	consumer := &consumer{
-		consumers: []*partitionConsumer{nil},
-		log:       plog.DefaultNopLogger(),
+	cons := newConsumerPartitionUpdateTestConsumer()
+	defer func() {
+		beforeAssignPartitionConsumersHook = nil
+	}()
+
+	hookEntered := make(chan struct{})
+	releaseHook := make(chan struct{})
+	beforeAssignPartitionConsumersHook = func(*consumer) {
+		close(hookEntered)
+		<-releaseHook
 	}
 
-	consumer.Lock()
+	updateErrCh := make(chan error, 1)
+	go func() {
+		updateErrCh <- cons.internalTopicSubscribeToPartitions()
+	}()
+
+	select {
+	case <-hookEntered:
+	case err := <-updateErrCh:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for partition consumer update hook")
+	}
+
 	errCh := make(chan error, 1)
 	go func() {
-		errCh <- consumer.AckID(msgID)
+		errCh <- cons.AckID(msgID)
 	}()
 
 	select {
 	case err := <-errCh:
-		consumer.Unlock()
 		t.Fatalf("AckID returned while partition consumer update lock was held: %v", err)
 	case <-time.After(50 * time.Millisecond):
 	}
 
-	consumer.Unlock()
+	close(releaseHook)
+
+	select {
+	case err := <-updateErrCh:
+		require.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for partition consumer update to finish")
+	}
+
+	defer func() {
+		for _, pc := range cons.consumers {
+			if pc != nil {
+				pc.Close()
+			}
+		}
+	}()
 
 	select {
 	case err := <-errCh:
-		require.Error(t, err)
+		require.NoError(t, err)
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for AckID after partition consumer update lock was released")
 	}
+}
+
+func newConsumerPartitionUpdateTestConsumer() *consumer {
+	brokerURL, _ := url.Parse("pulsar://localhost:6650")
+	cnx := newSpyConnection()
+	rpc := &grabConnSpyRPCClient{
+		cnx: cnx,
+		lookupResult: &internal.LookupResult{
+			LogicalAddr:  brokerURL,
+			PhysicalAddr: brokerURL,
+		},
+	}
+	client := &client{
+		cnxPool:       &partitionUpdateConnectionPool{cnx: cnx},
+		rpcClient:     rpc,
+		lookupService: &partitionUpdateLookupService{partitions: 1},
+		log:           plog.DefaultNopLogger(),
+	}
+	return &consumer{
+		topic:     "persistent://public/default/testpartitionupdate",
+		client:    client,
+		options:   ConsumerOptions{SubscriptionName: "sub", ReceiverQueueSize: 1},
+		consumers: []*partitionConsumer{},
+		messageCh: make(chan ConsumerMessage, 1),
+		closeCh:   make(chan struct{}),
+		log:       plog.DefaultNopLogger(),
+		metrics:   newTestMetrics(),
+	}
+}
+
+type partitionUpdateConnectionPool struct {
+	internal.ConnectionPool
+	cnx internal.Connection
+}
+
+func (p *partitionUpdateConnectionPool) GetConnection(_ *url.URL, _ *url.URL, _ int32) (internal.Connection, error) {
+	return p.cnx, nil
+}
+
+func (p *partitionUpdateConnectionPool) GetConnections() map[string]internal.Connection {
+	return nil
+}
+
+func (p *partitionUpdateConnectionPool) GenerateRoundRobinIndex() int32 {
+	return 0
+}
+
+func (p *partitionUpdateConnectionPool) Close() {}
+
+func (r *grabConnSpyRPCClient) NewConsumerID() uint64 {
+	return 1
+}
+
+type partitionUpdateLookupService struct {
+	internal.LookupService
+	partitions int
+}
+
+func (l *partitionUpdateLookupService) GetPartitionedTopicMetadata(_ string) (*internal.PartitionedTopicMetadata, error) {
+	return &internal.PartitionedTopicMetadata{Partitions: l.partitions}, nil
 }
 
 func getAckCount(registry *prometheus.Registry) (int, error) {

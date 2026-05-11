@@ -36,6 +36,10 @@ import (
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
+// beforeAssignPartitionConsumersHook lets tests pause partition discovery after
+// the consumer slice has been resized but before new consumers are assigned.
+var beforeAssignPartitionConsumersHook func(*consumer)
+
 type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
 	AckID(id MessageID) error
@@ -417,6 +421,10 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		wg.Wait()
 		close(ch)
 	}()
+
+	if beforeAssignPartitionConsumersHook != nil {
+		beforeAssignPartitionConsumersHook(c)
+	}
 
 	for ce := range ch {
 		if ce.err != nil {
