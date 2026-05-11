@@ -43,16 +43,17 @@ const (
 var ErrClientTransactionsNotEnabled = errors.New("transactions are not enabled with the client")
 
 type client struct {
-	cnxPool          internal.ConnectionPool
-	rpcClient        internal.RPCClient
-	handlers         internal.ClientHandlers
-	lookupService    internal.LookupService
-	metrics          *internal.Metrics
-	tcClient         *transactionCoordinatorClient
-	memLimit         internal.MemoryLimitController
-	closeOnce        sync.Once
-	operationTimeout time.Duration
-	tlsEnabled       bool
+	cnxPool           internal.ConnectionPool
+	rpcClient         internal.RPCClient
+	handlers          internal.ClientHandlers
+	lookupService     internal.LookupService
+	metrics           *internal.Metrics
+	tcClient          *transactionCoordinatorClient
+	memLimit          internal.MemoryLimitController
+	closeOnce         sync.Once
+	operationTimeout  time.Duration
+	tlsEnabled        bool
+	failureInjectHook FailureInjectHook
 
 	log log.Logger
 }
@@ -167,11 +168,12 @@ func newClient(options ClientOptions) (Client, error) {
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval,
 			maxConnectionsPerHost, logger, metrics, options.Description, connectionMaxIdleTime),
-		log:              logger,
-		metrics:          metrics,
-		memLimit:         internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
-		operationTimeout: operationTimeout,
-		tlsEnabled:       tlsConfig != nil,
+		log:               logger,
+		metrics:           metrics,
+		memLimit:          internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
+		operationTimeout:  operationTimeout,
+		tlsEnabled:        tlsConfig != nil,
+		failureInjectHook: options.failureInjectHook,
 	}
 
 	c.rpcClient, err = internal.NewRPCClient(options.URL, c.cnxPool, operationTimeout, logger, metrics,

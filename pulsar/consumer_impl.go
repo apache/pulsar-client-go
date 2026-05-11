@@ -418,8 +418,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		close(ch)
 	}()
 
-	if c.options.failureInjectHook != nil {
-		c.options.failureInjectHook.BeforeAssignPartitionConsumers()
+	if c.client.failureInjectHook != nil {
+		c.client.failureInjectHook.BeforeAssignPartitionConsumers()
 	}
 
 	for ce := range ch {

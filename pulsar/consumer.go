@@ -110,11 +110,6 @@ type AckGroupingOptions struct {
 	MaxTime time.Duration
 }
 
-// FailureInjectHook defines failure injection points used by tests.
-type FailureInjectHook interface {
-	BeforeAssignPartitionConsumers()
-}
-
 // ConsumerOptions is used to configure and create instances of Consumer.
 type ConsumerOptions struct {
 	// Topic specifies the topic this consumer will subscribe on.
@@ -305,8 +300,6 @@ type ConsumerOptions struct {
 
 	// startMessageID specifies the message id to start from. Currently, it's only used for the reader internally.
 	startMessageID *trackingMessageID
-
-	failureInjectHook FailureInjectHook
 }
 
 // This error is returned when `AckIDList` failed and `AckWithResponse` is true.

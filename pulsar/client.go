@@ -180,6 +180,13 @@ type ClientOptions struct {
 	// For example, if the client version is 3.0.0, and the description is "forked", the final client version string
 	// "Pulsar Go 3.0.0-forked".
 	Description string
+
+	failureInjectHook FailureInjectHook
+}
+
+// FailureInjectHook defines failure injection points used by tests.
+type FailureInjectHook interface {
+	BeforeAssignPartitionConsumers()
 }
 
 // Client represents a pulsar client

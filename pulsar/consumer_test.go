@@ -5702,10 +5702,11 @@ func newConsumerPartitionUpdateTestConsumer(failureInjectHook FailureInjectHook)
 		},
 	}
 	client := &client{
-		cnxPool:       &partitionUpdateConnectionPool{cnx: cnx},
-		rpcClient:     rpc,
-		lookupService: &partitionUpdateLookupService{partitions: 1},
-		log:           plog.DefaultNopLogger(),
+		cnxPool:           &partitionUpdateConnectionPool{cnx: cnx},
+		rpcClient:         rpc,
+		lookupService:     &partitionUpdateLookupService{partitions: 1},
+		failureInjectHook: failureInjectHook,
+		log:               plog.DefaultNopLogger(),
 	}
 	return &consumer{
 		topic:  "persistent://public/default/testpartitionupdate",
@@ -5713,7 +5714,6 @@ func newConsumerPartitionUpdateTestConsumer(failureInjectHook FailureInjectHook)
 		options: ConsumerOptions{
 			SubscriptionName:  "sub",
 			ReceiverQueueSize: 1,
-			failureInjectHook: failureInjectHook,
 		},
 		consumers: []*partitionConsumer{},
 		messageCh: make(chan ConsumerMessage, 1),
