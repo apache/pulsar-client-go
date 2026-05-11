@@ -36,13 +36,6 @@ import (
 
 const defaultNackRedeliveryDelay = 1 * time.Minute
 
-// FailureInjectHook defines package-level failure injection points used by tests.
-type FailureInjectHook interface {
-	BeforeAssignPartitionConsumers()
-}
-
-var failureInjectHook FailureInjectHook
-
 type acker interface {
 	// AckID does not handle errors returned by the Broker side, so no need to wait for doneCh to finish.
 	AckID(id MessageID) error
@@ -425,8 +418,8 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		close(ch)
 	}()
 
-	if failureInjectHook != nil {
-		failureInjectHook.BeforeAssignPartitionConsumers()
+	if c.options.failureInjectHook != nil {
+		c.options.failureInjectHook.BeforeAssignPartitionConsumers()
 	}
 
 	for ce := range ch {

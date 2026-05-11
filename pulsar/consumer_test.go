@@ -5633,19 +5633,14 @@ func TestAckIDDoesNotPanicForNilPartitionConsumer(t *testing.T) {
 
 func TestAckIDWaitsForPartitionConsumerUpdate(t *testing.T) {
 	msgID := newMessageID(1, 2, -1, 0, 0)
-	cons := newConsumerPartitionUpdateTestConsumer()
-	defer func() {
-		failureInjectHook = nil
-	}()
-
 	hookEntered := make(chan struct{})
 	releaseHook := make(chan struct{})
-	failureInjectHook = &blockingFailureInjectHook{
+	cons := newConsumerPartitionUpdateTestConsumer(&blockingFailureInjectHook{
 		beforeAssignPartitionConsumersFunc: func() {
 			close(hookEntered)
 			<-releaseHook
 		},
-	}
+	})
 
 	updateErrCh := make(chan error, 1)
 	go func() {
@@ -5696,7 +5691,7 @@ func TestAckIDWaitsForPartitionConsumerUpdate(t *testing.T) {
 	}
 }
 
-func newConsumerPartitionUpdateTestConsumer() *consumer {
+func newConsumerPartitionUpdateTestConsumer(failureInjectHook FailureInjectHook) *consumer {
 	brokerURL, _ := url.Parse("pulsar://localhost:6650")
 	cnx := newSpyConnection()
 	rpc := &grabConnSpyRPCClient{
@@ -5713,9 +5708,13 @@ func newConsumerPartitionUpdateTestConsumer() *consumer {
 		log:           plog.DefaultNopLogger(),
 	}
 	return &consumer{
-		topic:     "persistent://public/default/testpartitionupdate",
-		client:    client,
-		options:   ConsumerOptions{SubscriptionName: "sub", ReceiverQueueSize: 1},
+		topic:  "persistent://public/default/testpartitionupdate",
+		client: client,
+		options: ConsumerOptions{
+			SubscriptionName:  "sub",
+			ReceiverQueueSize: 1,
+			failureInjectHook: failureInjectHook,
+		},
 		consumers: []*partitionConsumer{},
 		messageCh: make(chan ConsumerMessage, 1),
 		closeCh:   make(chan struct{}),
