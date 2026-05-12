@@ -5694,12 +5694,14 @@ func TestAckIDWaitsForPartitionConsumerUpdate(t *testing.T) {
 	}
 }
 
-func TestClientFailureInjectHookIsUsedByConsumerPartitionUpdate(t *testing.T) {
-	hookCalled := make(chan struct{})
+func TestClientFailureInjectHookReproducesAckDuringPartitionUpdate(t *testing.T) {
+	hookEntered := make(chan struct{})
+	releaseHook := make(chan struct{})
+	var hookCalls int32
 	req := testcontainers.ContainerRequest{
 		Image:        getPulsarTestImage(),
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
-		WaitingFor:   wait.ForExposedPort(),
+		WaitingFor:   wait.ForListeningPort("6650/tcp").SkipInternalCheck().WithStartupTimeout(2 * time.Minute),
 		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
 	}
 	container, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
@@ -5713,13 +5715,35 @@ func TestClientFailureInjectHookIsUsedByConsumerPartitionUpdate(t *testing.T) {
 
 	endpoint, err := container.PortEndpoint(context.Background(), "6650", "pulsar")
 	require.NoError(t, err, "Failed to get the pulsar endpoint")
+	adminEndpoint, err := container.PortEndpoint(context.Background(), "8080", "http")
+	require.NoError(t, err, "Failed to get the pulsar admin endpoint")
+
+	topic := "persistent://public/default/" + newTopicName()
+	pulsarAdmin, err := pulsaradmin.NewClient(&config.Config{WebServiceURL: adminEndpoint})
+	require.NoError(t, err)
+	topicName, err := utils.GetTopicName(topic)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		err = pulsarAdmin.Brokers().HealthCheck()
+		return err == nil
+	}, 60*time.Second, time.Second)
+	require.NoError(t, err)
+	require.Eventually(t, func() bool {
+		err = pulsarAdmin.Topics().Create(*topicName, 1)
+		return err == nil
+	}, 60*time.Second, time.Second)
+	require.NoError(t, err)
 
 	client, err := NewClient(ClientOptions{
 		URL:              endpoint,
 		OperationTimeout: 30 * time.Second,
 		failureInjectHook: &blockingFailureInjectHook{
 			beforeAssignPartitionConsumersFunc: func() {
-				close(hookCalled)
+				if atomic.AddInt32(&hookCalls, 1) == 1 {
+					return
+				}
+				close(hookEntered)
+				<-releaseHook
 			},
 		},
 	})
@@ -5729,17 +5753,44 @@ func TestClientFailureInjectHookIsUsedByConsumerPartitionUpdate(t *testing.T) {
 	var cons Consumer
 	require.Eventually(t, func() bool {
 		cons, err = client.Subscribe(ConsumerOptions{
-			Topic:            newTopicName(),
-			SubscriptionName: "sub",
+			Topic:               topic,
+			SubscriptionName:    "sub",
+			AutoDiscoveryPeriod: time.Millisecond,
 		})
 		return err == nil
 	}, 30*time.Second, time.Second)
 	defer cons.Close()
 
+	require.Eventually(t, func() bool {
+		err = pulsarAdmin.Topics().Update(*topicName, 2)
+		return err == nil
+	}, 30*time.Second, time.Second)
+	require.NoError(t, err)
+
 	select {
-	case <-hookCalled:
-	case <-time.After(time.Second):
+	case <-hookEntered:
+	case <-time.After(10 * time.Second):
 		t.Fatal("timed out waiting for failure injection hook")
+	}
+
+	ackErrCh := make(chan error, 1)
+	go func() {
+		ackErrCh <- cons.AckID(newMessageID(1, 2, -1, 1, 0))
+	}()
+
+	select {
+	case err := <-ackErrCh:
+		t.Fatalf("AckID returned while partition consumer update was blocked: %v", err)
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(releaseHook)
+
+	select {
+	case err := <-ackErrCh:
+		require.NoError(t, err)
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for AckID after partition consumer update was released")
 	}
 }
 
