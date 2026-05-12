@@ -5635,12 +5635,15 @@ func TestAckIDWaitsForPartitionConsumerUpdate(t *testing.T) {
 	msgID := newMessageID(1, 2, -1, 0, 0)
 	hookEntered := make(chan struct{})
 	releaseHook := make(chan struct{})
-	cons := newConsumerPartitionUpdateTestConsumer(&blockingFailureInjectHook{
-		beforeAssignPartitionConsumersFunc: func() {
-			close(hookEntered)
-			<-releaseHook
+	clientOptions := ClientOptions{
+		failureInjectHook: &blockingFailureInjectHook{
+			beforeAssignPartitionConsumersFunc: func() {
+				close(hookEntered)
+				<-releaseHook
+			},
 		},
-	})
+	}
+	cons := newConsumerPartitionUpdateTestConsumer(clientOptions)
 
 	updateErrCh := make(chan error, 1)
 	go func() {
@@ -5691,7 +5694,56 @@ func TestAckIDWaitsForPartitionConsumerUpdate(t *testing.T) {
 	}
 }
 
-func newConsumerPartitionUpdateTestConsumer(failureInjectHook FailureInjectHook) *consumer {
+func TestClientFailureInjectHookIsUsedByConsumerPartitionUpdate(t *testing.T) {
+	hookCalled := make(chan struct{})
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
+	}
+	container, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err, "Failed to start the pulsar container")
+	defer func() {
+		_ = container.Terminate(context.Background())
+	}()
+
+	endpoint, err := container.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err, "Failed to get the pulsar endpoint")
+
+	client, err := NewClient(ClientOptions{
+		URL:              endpoint,
+		OperationTimeout: 30 * time.Second,
+		failureInjectHook: &blockingFailureInjectHook{
+			beforeAssignPartitionConsumersFunc: func() {
+				close(hookCalled)
+			},
+		},
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	var cons Consumer
+	require.Eventually(t, func() bool {
+		cons, err = client.Subscribe(ConsumerOptions{
+			Topic:            newTopicName(),
+			SubscriptionName: "sub",
+		})
+		return err == nil
+	}, 30*time.Second, time.Second)
+	defer cons.Close()
+
+	select {
+	case <-hookCalled:
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for failure injection hook")
+	}
+}
+
+func newConsumerPartitionUpdateTestConsumer(options ClientOptions) *consumer {
 	brokerURL, _ := url.Parse("pulsar://localhost:6650")
 	cnx := newSpyConnection()
 	rpc := &grabConnSpyRPCClient{
@@ -5705,7 +5757,7 @@ func newConsumerPartitionUpdateTestConsumer(failureInjectHook FailureInjectHook)
 		cnxPool:           &partitionUpdateConnectionPool{cnx: cnx},
 		rpcClient:         rpc,
 		lookupService:     &partitionUpdateLookupService{partitions: 1},
-		failureInjectHook: failureInjectHook,
+		failureInjectHook: options.failureInjectHook,
 		log:               plog.DefaultNopLogger(),
 	}
 	return &consumer{
