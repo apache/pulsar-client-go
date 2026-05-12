@@ -549,11 +549,11 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 
 func (c *consumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := c.findPartitionConsumer(msgID)
+	if err != nil {
 		return err
 	}
-
-	return c.consumers[msgID.PartitionIdx()].AckIDWithTxn(msgID, txn)
+	return consumer.AckIDWithTxn(msgID, txn)
 }
 
 // Chan return the message chan to users
@@ -568,23 +568,19 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := c.findPartitionConsumer(msgID)
+	if err != nil {
 		return err
 	}
-
 	if c.options.AckWithResponse {
-		return c.consumers[msgID.PartitionIdx()].AckIDWithResponse(msgID)
+		return consumer.AckIDWithResponse(msgID)
 	}
-
-	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
+	return consumer.AckID(msgID)
 }
 
 func (c *consumer) AckIDList(msgIDs []MessageID) error {
 	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
-		if err := c.checkMsgIDPartition(msgID); err != nil {
-			return nil, err
-		}
-		return c.consumers[msgID.PartitionIdx()], nil
+		return c.findPartitionConsumer(msgID)
 	})
 }
 
@@ -597,15 +593,14 @@ func (c *consumer) AckCumulative(msg Message) error {
 // AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
 func (c *consumer) AckIDCumulative(msgID MessageID) error {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := c.findPartitionConsumer(msgID)
+	if err != nil {
 		return err
 	}
-
 	if c.options.AckWithResponse {
-		return c.consumers[msgID.PartitionIdx()].AckIDWithResponseCumulative(msgID)
+		return consumer.AckIDWithResponseCumulative(msgID)
 	}
-
-	return c.consumers[msgID.PartitionIdx()].AckIDCumulative(msgID)
+	return consumer.AckIDCumulative(msgID)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -703,11 +698,9 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
-		return
+	if consumer, err := c.findPartitionConsumer(msgID); err == nil {
+		consumer.NackID(msgID)
 	}
-
-	c.consumers[msgID.PartitionIdx()].NackID(msgID)
 }
 
 func (c *consumer) Close() {
@@ -743,11 +736,10 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := c.unsafeFindPartitionConsumer(msgID)
+	if err != nil {
 		return err
 	}
-
-	consumer := c.consumers[msgID.PartitionIdx()]
 	consumer.pauseDispatchMessage()
 	// clear messageCh
 	for len(c.messageCh) > 0 {
@@ -781,15 +773,22 @@ func (c *consumer) SeekByTime(time time.Time) error {
 	return errs
 }
 
-func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
-	partition := msgID.PartitionIdx()
-	if partition < 0 || int(partition) >= len(c.consumers) {
+func (c *consumer) findPartitionConsumer(msgID MessageID) (*partitionConsumer, error) {
+	c.Lock()
+	defer c.Unlock()
+	return c.unsafeFindPartitionConsumer(msgID)
+}
+
+// NOTE: This method must be called when c.Lock is held
+func (c *consumer) unsafeFindPartitionConsumer(msgID MessageID) (*partitionConsumer, error) {
+	partition := int(msgID.PartitionIdx())
+	if partition < 0 || partition >= len(c.consumers) {
 		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
-		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+		return nil, fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(c.consumers))
 	}
-	return nil
+	return c.consumers[partition], nil
 }
 
 func (c *consumer) hasNext() bool {
@@ -828,10 +827,11 @@ func (c *consumer) hasNext() bool {
 }
 
 func (c *consumer) setLastDequeuedMsg(msgID MessageID) error {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := c.findPartitionConsumer(msgID)
+	if err != nil {
 		return err
 	}
-	c.consumers[msgID.PartitionIdx()].lastDequeuedMsg = toTrackingMessageID(msgID)
+	consumer.lastDequeuedMsg = toTrackingMessageID(msgID)
 	return nil
 }
 
@@ -894,7 +894,7 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 }
 
 func (c *consumer) messageID(msgID MessageID) *trackingMessageID {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	if _, err := c.findPartitionConsumer(msgID); err != nil {
 		return nil
 	}
 	return toTrackingMessageID(msgID)
