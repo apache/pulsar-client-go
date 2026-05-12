@@ -173,7 +173,7 @@ func newClient(options ClientOptions) (Client, error) {
 		memLimit:          internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
 		operationTimeout:  operationTimeout,
 		tlsEnabled:        tlsConfig != nil,
-		failureInjectHook: options.failureInjectHook,
+		failureInjectHook: options.FailureInjectHook,
 	}
 
 	c.rpcClient, err = internal.NewRPCClient(options.URL, c.cnxPool, operationTimeout, logger, metrics,

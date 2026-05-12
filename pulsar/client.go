@@ -181,7 +181,8 @@ type ClientOptions struct {
 	// "Pulsar Go 3.0.0-forked".
 	Description string
 
-	failureInjectHook FailureInjectHook
+	// FailureInjectHook is used by tests to pause internal client operations at controlled points.
+	FailureInjectHook FailureInjectHook
 }
 
 // FailureInjectHook defines failure injection points used by tests.
