@@ -50,9 +50,16 @@ type acker interface {
 
 type consumer struct {
 	sync.Mutex
-	topic                     string
-	client                    *client
-	options                   ConsumerOptions
+	topic   string
+	client  *client
+	options ConsumerOptions
+
+	// When accessing `consumers`, the lock must be acquired in case partitions are being added
+	// in the background by `internalTopicSubscribeToPartitions`. Currently, when a new sub-consumer
+	// is created, the current consumer can immediately receive messages from the new partition. However,
+	// before the new sub-consumers are visible in `consumers`, the Ack related methods cannot find the
+	// sub-consumer for the message's message ID, so we cannot simply change `consumers` to `atomic.Value`
+	// and perform copy-on-write when partitions are added.
 	consumers                 []*partitionConsumer
 	consumerName              string
 	disableForceTopicCreation bool
@@ -690,7 +697,9 @@ func (c *consumer) Nack(msg Message) {
 			mid.NackByMsg(msg)
 			return
 		}
-		c.consumers[mid.partitionIdx].NackMsg(msg)
+		if consumer, err := c.findPartitionConsumer(mid); err == nil {
+			consumer.NackMsg(msg)
+		}
 		return
 	}
 
@@ -795,11 +804,19 @@ func (c *consumer) hasNext() bool {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Make sure all paths cancel the context to avoid context leak
 
+	// We have to make a snapshot consumers, because we have to iterate over all consumers in
+	// other goroutines. But when this method returns, there might be still other consumers
+	// not completing the `hasNext` call, so we cannot just call defer `c.Unlock()` after acquiring the lock.
+	c.Lock()
+	consumers := make([]*partitionConsumer, len(c.consumers))
+	copy(consumers, c.consumers)
+	c.Unlock()
+
 	var wg sync.WaitGroup
-	wg.Add(len(c.consumers))
+	wg.Add(len(consumers))
 
 	hasNext := make(chan bool)
-	for _, pc := range c.consumers {
+	for _, pc := range consumers {
 		go func() {
 			defer wg.Done()
 			if pc.hasNext() {
