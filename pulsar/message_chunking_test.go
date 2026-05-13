@@ -178,7 +178,7 @@ func TestMaxPendingChunkMessages(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, c)
 	defer c.Close()
-	pc := c.(*consumer).partitionConsumers()[0]
+	pc := c.(*consumer).consumers[0]
 
 	sendSingleChunk(producer, "0", 0, 2)
 	// MaxPendingChunkedMessage is 1, the chunked message with uuid 0 will be discarded
@@ -228,7 +228,7 @@ func TestExpireIncompleteChunks(t *testing.T) {
 	defer c.Close()
 
 	uuid := "test-uuid"
-	chunkCtxMap := c.(*consumer).partitionConsumers()[0].chunkedMsgCtxMap
+	chunkCtxMap := c.(*consumer).consumers[0].chunkedMsgCtxMap
 	chunkCtxMap.addIfAbsent(uuid, 2, 100)
 	ctx := chunkCtxMap.get(uuid)
 	assert.NotNil(t, ctx)

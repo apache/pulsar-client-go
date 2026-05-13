@@ -224,9 +224,8 @@ func (r *reader) SeekByTime(time time.Time) error {
 }
 
 func (r *reader) GetLastMessageID() (MessageID, error) {
-	consumers := r.c.partitionConsumers()
-	if len(consumers) > 1 {
+	if len(r.c.consumers) > 1 {
 		return nil, fmt.Errorf("GetLastMessageID is not supported for multi-topics reader")
 	}
-	return consumers[0].getLastMessageID()
+	return r.c.consumers[0].getLastMessageID()
 }

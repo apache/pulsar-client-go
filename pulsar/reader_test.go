@@ -952,7 +952,7 @@ func TestReaderWithBackoffPolicy(t *testing.T) {
 	assert.NotNil(t, _reader)
 	assert.Nil(t, err)
 
-	partitionConsumerImp := _reader.(*reader).c.partitionConsumers()[0]
+	partitionConsumerImp := _reader.(*reader).c.consumers[0]
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
@@ -1061,7 +1061,7 @@ func TestReaderHasNextFailed(t *testing.T) {
 		StartMessageID: EarliestMessageID(),
 	})
 	assert.Nil(t, err)
-	r.(*reader).c.partitionConsumers()[0].state.Store(consumerClosing)
+	r.(*reader).c.consumers[0].state.Store(consumerClosing)
 	assert.False(t, r.HasNext())
 }
 
@@ -1082,7 +1082,7 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 	defer close(c)
 
 	// Close the consumer events loop and assign a mock eventsCh
-	pc := r.(*reader).c.partitionConsumers()[0]
+	pc := r.(*reader).c.consumers[0]
 	pc.Close()
 	pc.state.Store(consumerReady)
 	pc.eventsCh = c
