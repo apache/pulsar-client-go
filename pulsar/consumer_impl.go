@@ -332,13 +332,7 @@ func (c *consumer) storePartitionConsumers(consumers []*partitionConsumer) {
 }
 
 func (c *consumer) partitionConsumerForMessageID(msgID MessageID) (*partitionConsumer, error) {
-	return c.partitionConsumerFromSnapshot(c.partitionConsumers(), msgID)
-}
-
-func (c *consumer) partitionConsumerFromSnapshot(
-	consumers []*partitionConsumer,
-	msgID MessageID,
-) (*partitionConsumer, error) {
+	consumers := c.partitionConsumers()
 	partition := msgID.PartitionIdx()
 	if partition < 0 || int(partition) >= len(consumers) {
 		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
@@ -461,12 +455,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	if err != nil {
 		// Since there were some failures,
 		// cleanup all the partitions that succeeded in creating the consumer
-		for i, pc := range newConsumers {
-			if i < oldNumPartitions && oldConsumers[i] == pc {
-				continue
-			}
-			if pc != nil {
-				pc.Close()
+		for _, c := range newConsumers {
+			if c != nil {
+				c.Close()
 			}
 		}
 		return err
@@ -586,6 +577,10 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 
 func (c *consumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+
 	pc, err := c.partitionConsumerForMessageID(msgID)
 	if err != nil {
 		return err
@@ -605,6 +600,10 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+
 	pc, err := c.partitionConsumerForMessageID(msgID)
 	if err != nil {
 		return err
@@ -631,6 +630,10 @@ func (c *consumer) AckCumulative(msg Message) error {
 // AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
 func (c *consumer) AckIDCumulative(msgID MessageID) error {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
+
 	pc, err := c.partitionConsumerForMessageID(msgID)
 	if err != nil {
 		return err
@@ -741,6 +744,10 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return
+	}
+
 	pc, err := c.partitionConsumerForMessageID(msgID)
 	if err != nil {
 		return
@@ -783,11 +790,11 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
-	consumer, err := c.partitionConsumerFromSnapshot(consumers, msgID)
-	if err != nil {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
 		return err
 	}
 
+	consumer := consumers[msgID.PartitionIdx()]
 	consumer.pauseDispatchMessage()
 	// clear messageCh
 	for len(c.messageCh) > 0 {
@@ -864,6 +871,9 @@ func (c *consumer) hasNext() bool {
 }
 
 func (c *consumer) setLastDequeuedMsg(msgID MessageID) error {
+	if err := c.checkMsgIDPartition(msgID); err != nil {
+		return err
+	}
 	pc, err := c.partitionConsumerForMessageID(msgID)
 	if err != nil {
 		return err
