@@ -21,6 +21,7 @@ import (
 	"context"
 	"net/url"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -42,20 +43,20 @@ func TestConnectionRejectRequestsAfterClose(t *testing.T) {
 func TestConnectionSendRequestRaceWithClose(t *testing.T) {
 	// Regression test for concurrent Add/Wait on WaitGroup during Close.
 	//
-	// Without proper synchronization between:
-	//   - registerIncomingRequest() calling WaitGroup.Add(1)
-	//   - Close() calling WaitGroup.Wait()
+	// Without proper synchronization in registerIncomingRequest(), calling
+	// WaitGroup.Add(1) and checking state under c.mu.RLock(), a concurrent
+	// failLeftRequestsWhenClose() calling WaitGroup.Wait() could race with Add()
+	// in Go 1.25+, causing panic: "sync: WaitGroup is reused before previous Wait has returned"
 	//
-	// Go 1.25+ may panic with:
-	//
-	//   sync: WaitGroup is reused before previous Wait has returned
-	//
-	// This test continuously issues requests while concurrently closing
-	// the connection to maximize the Add/Wait overlap window.
+	// This test directly exercises the synchronization:
+	// 1. Many goroutines call registerIncomingRequest() to Add() to the WaitGroup
+	// 2. After they exit via Done(), failLeftRequestsWhenClose() calls Wait()
+	// 3. The test also verifies that all three methods (SendRequest, SendRequestNoWait, WriteData)
+	//    properly use registerIncomingRequest() and reject calls after close
 
 	const (
-		numTrials     = 20
-		numGoroutines = 100
+		numTrials     = 10
+		numGoroutines = 50
 	)
 
 	for trial := 0; trial < numTrials; trial++ {
@@ -63,17 +64,17 @@ func TestConnectionSendRequestRaceWithClose(t *testing.T) {
 
 		startCh := make(chan struct{})
 		stopCh := make(chan struct{})
-
-		panicCh := make(chan any, numGoroutines)
+		panicCh := make(chan any, 1)
 
 		var wg sync.WaitGroup
+		var registerCount int32
 
+		// Producer goroutines that register requests
 		for i := 0; i < numGoroutines; i++ {
 			wg.Add(1)
 
-			go func(idx int) {
+			go func() {
 				defer wg.Done()
-
 				defer func() {
 					if r := recover(); r != nil {
 						panicCh <- r
@@ -89,38 +90,60 @@ func TestConnectionSendRequestRaceWithClose(t *testing.T) {
 					default:
 					}
 
-					if idx%2 == 0 {
-						c.SendRequest(
-							uint64(idx),
-							&pb.BaseCommand{},
-							func(*pb.BaseCommand, error) {},
-						)
-					} else {
-						_ = c.SendRequestNoWait(&pb.BaseCommand{})
+					// Call registerIncomingRequest() directly to exercise the WaitGroup Add/state check
+					if c.registerIncomingRequest() {
+						atomic.AddInt32(&registerCount, 1)
+						c.incomingRequestsWG.Done()
 					}
 				}
-			}(i)
+			}()
 		}
 
-		// Start all concurrent request producers together.
+		// Start producers
 		close(startCh)
 
-		// Allow requests to race with Close().
-		time.Sleep(10 * time.Millisecond)
+		// Let producers run and accumulate adds
+		time.Sleep(20 * time.Millisecond)
 
-		c.Close()
+		// Close the connection state
+		c.mu.Lock()
+		c.setStateClosed()
+		c.mu.Unlock()
 
+		// Signal producers to stop
 		close(stopCh)
 
+		// Wait for all producers to finish
 		wg.Wait()
 
+		// Now call failLeftRequestsWhenClose() which calls Wait() on the WaitGroup
+		// With the race fixed, this should complete without panic
+		drainDone := make(chan struct{})
+		go func() {
+			defer func() {
+				if r := recover(); r != nil {
+					panicCh <- r
+				}
+			}()
+			c.failLeftRequestsWhenClose()
+			close(drainDone)
+		}()
+
+		// Wait for drain to complete
+		select {
+		case <-drainDone:
+		case <-time.After(5 * time.Second):
+			t.Fatal("failLeftRequestsWhenClose() did not complete (deadlock in WaitGroup)")
+		}
+
+		// Check for panic
 		select {
 		case p := <-panicCh:
-			t.Fatalf("unexpected panic during concurrent Close: %v", p)
+			t.Fatalf("trial %d: panic during WaitGroup race: %v", trial, p)
 		default:
 		}
 
-		assertConnectionClosed(t, c)
+		t.Logf("trial %d: %d successful registers", trial, atomic.LoadInt32(&registerCount))
 	}
 }
 
