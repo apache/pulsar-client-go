@@ -155,7 +155,7 @@ func assertConnectionClosed(t *testing.T, c *connection) {
 	c.SendRequest(
 		999,
 		&pb.BaseCommand{},
-		func(cmd *pb.BaseCommand, err error) {
+		func(_ *pb.BaseCommand, err error) {
 			callbackCh <- err
 		},
 	)
