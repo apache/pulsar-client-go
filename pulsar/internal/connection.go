@@ -455,6 +455,13 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 }
 
 func (c *connection) WriteData(ctx context.Context, data Buffer) {
+	if !c.registerIncomingRequest() {
+		data.Release()
+		c.log.Debug("Write data connection closed")
+		return
+	}
+	defer c.incomingRequestsWG.Done()
+
 	writeToQueue := false
 	defer func() {
 		if !writeToQueue {
@@ -644,16 +651,24 @@ func (c *connection) checkServerError(err *pb.ServerError) {
 	}
 }
 
+func (c *connection) registerIncomingRequest() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	if c.getState() == connectionClosed {
+		return false
+	}
+
+	c.incomingRequestsWG.Add(1)
+	return true
+}
+
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
-	c.mu.RLock()
-	if c.getState() == connectionClosed {
-		c.mu.RUnlock()
+	if !c.registerIncomingRequest() {
 		callback(req, ErrConnectionClosed)
 		return
 	}
-	c.incomingRequestsWG.Add(1)
-	c.mu.RUnlock()
 	defer c.incomingRequestsWG.Done()
 
 	select {
@@ -669,13 +684,9 @@ func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 }
 
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
-	c.mu.RLock()
-	if c.getState() == connectionClosed {
-		c.mu.RUnlock()
+	if !c.registerIncomingRequest() {
 		return ErrConnectionClosed
 	}
-	c.incomingRequestsWG.Add(1)
-	c.mu.RUnlock()
 	defer c.incomingRequestsWG.Done()
 
 	select {
