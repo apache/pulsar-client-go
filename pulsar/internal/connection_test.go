@@ -50,9 +50,10 @@ func TestConnectionSendRequestRaceWithClose(t *testing.T) {
 	//
 	// This test directly exercises the synchronization:
 	// 1. Many goroutines call registerIncomingRequest() to Add() to the WaitGroup
-	// 2. After they exit via Done(), failLeftRequestsWhenClose() calls Wait()
-	// 3. The test also verifies that all three methods (SendRequest, SendRequestNoWait, WriteData)
-	//    properly use registerIncomingRequest() and reject calls after close
+	// 2. While they are still running, failLeftRequestsWhenClose() calls Wait()
+	// 3. The connection transitions to closed so new registrations are rejected
+	//    and existing ones drain, letting Wait() return
+	// 4. The test verifies no panic occurs during the Add/Wait overlap
 
 	const (
 		numTrials     = 10
@@ -102,22 +103,23 @@ func TestConnectionSendRequestRaceWithClose(t *testing.T) {
 		// Start producers
 		close(startCh)
 
-		// Let producers run and accumulate adds
+		// Let producers run and accumulate pending adds
 		time.Sleep(20 * time.Millisecond)
 
-		// Close the connection state
+		// Transition the connection to closed — this runs under the write lock,
+		// matching the real Close() flow. After this, registerIncomingRequest()
+		// will reject new Add() calls, but goroutines already past the state
+		// check and holding RLock will still complete their Add()/Done().
 		c.mu.Lock()
 		c.setStateClosed()
 		c.mu.Unlock()
 
-		// Signal producers to stop
-		close(stopCh)
-
-		// Wait for all producers to finish
-		wg.Wait()
-
-		// Now call failLeftRequestsWhenClose() which calls Wait() on the WaitGroup
-		// With the race fixed, this should complete without panic
+		// Immediately start failLeftRequestsWhenClose() in a goroutine — it
+		// calls Wait(). With the fix, goroutines that already called Add()
+		// under RLock will finish their Done(), and no new Add() can happen
+		// because setStateClosed() above drained pending RLock holders. Without
+		// the fix, a goroutine slipping through could call Add() after Wait()
+		// returns, causing "WaitGroup is reused before previous Wait has returned".
 		drainDone := make(chan struct{})
 		go func() {
 			defer func() {
@@ -129,12 +131,18 @@ func TestConnectionSendRequestRaceWithClose(t *testing.T) {
 			close(drainDone)
 		}()
 
+		// Signal producers to stop
+		close(stopCh)
+
 		// Wait for drain to complete
 		select {
 		case <-drainDone:
 		case <-time.After(5 * time.Second):
 			t.Fatal("failLeftRequestsWhenClose() did not complete (deadlock in WaitGroup)")
 		}
+
+		// Wait for all producers to finish (they should already be done)
+		wg.Wait()
 
 		// Check for panic
 		select {
