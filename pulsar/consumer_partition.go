@@ -2112,12 +2112,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return
 		}
 		giveUpNotified = true
-		if pc.options.maxReconnectToBrokerListener != nil {
-			pc.options.maxReconnectToBrokerListener(pc.parentConsumer, cause)
-		}
-		if pc.options.closeConsumerOnMaxReconnectToBroker {
-			go pc.parentConsumer.Close()
-		}
+        go pc.parentConsumer.Close()
 	}
 
 	opFn := func() (struct{}, error) {
@@ -2158,7 +2153,8 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		pc.metrics.ConsumersReconnectFailure.Inc()
 		if maxRetry == 0 {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
-			notifyReconnectGiveUp(err)
+			notifyReconnectGiveUp(errors.New("max retry attempts reached for reconnecting to broker"))
+			return struct{}{}, nil
 		}
 
 		return struct{}{}, err
