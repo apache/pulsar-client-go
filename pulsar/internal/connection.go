@@ -373,31 +373,21 @@ func (c *connection) waitUntilReady() error {
 }
 
 func (c *connection) failLeftRequestsWhenClose() {
-	// wait for outstanding incoming requests to complete before draining
-	// and closing the channel
 	c.incomingRequestsWG.Wait()
 
-	ch := c.incomingRequestsCh
-	go func() {
-		// send a nil message to drain instead of
-		// closing the channel and causing a potential panic
-		//
-		// if other requests come in after the nil message
-		// then the RPC client will time out
-		ch <- nil
-		c.writeRequestsCh <- nil
-	}()
-	for req := range ch {
-		if nil == req {
-			break // we have drained the requests
+	for {
+		select {
+		case req := <-c.incomingRequestsCh:
+			if req != nil && req.callback != nil {
+				req.callback(req.cmd, ErrConnectionClosed)
+			}
+		case req := <-c.writeRequestsCh:
+			if req != nil {
+				req.data.Release()
+			}
+		default:
+			return
 		}
-		c.internalSendRequest(req)
-	}
-	for req := range c.writeRequestsCh {
-		if nil == req {
-			break
-		}
-		req.data.Release()
 	}
 }
 
@@ -465,6 +455,13 @@ func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
 }
 
 func (c *connection) WriteData(ctx context.Context, data Buffer) {
+	if !c.registerIncomingRequest() {
+		data.Release()
+		c.log.Debug("Write data connection closed")
+		return
+	}
+	defer c.incomingRequestsWG.Done()
+
 	writeToQueue := false
 	defer func() {
 		if !writeToQueue {
@@ -654,35 +651,43 @@ func (c *connection) checkServerError(err *pb.ServerError) {
 	}
 }
 
-func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
-	callback func(command *pb.BaseCommand, err error)) {
-	c.incomingRequestsWG.Add(1)
-	defer c.incomingRequestsWG.Done()
+func (c *connection) registerIncomingRequest() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 
 	if c.getState() == connectionClosed {
+		return false
+	}
+
+	c.incomingRequestsWG.Add(1)
+	return true
+}
+
+func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
+	callback func(command *pb.BaseCommand, err error)) {
+	if !c.registerIncomingRequest() {
+		callback(req, ErrConnectionClosed)
+		return
+	}
+	defer c.incomingRequestsWG.Done()
+
+	select {
+	case <-c.closeCh:
 		callback(req, ErrConnectionClosed)
 
-	} else {
-		select {
-		case <-c.closeCh:
-			callback(req, ErrConnectionClosed)
-
-		case c.incomingRequestsCh <- &request{
-			id:       &requestID,
-			cmd:      req,
-			callback: callback,
-		}:
-		}
+	case c.incomingRequestsCh <- &request{
+		id:       &requestID,
+		cmd:      req,
+		callback: callback,
+	}:
 	}
 }
 
 func (c *connection) SendRequestNoWait(req *pb.BaseCommand) error {
-	c.incomingRequestsWG.Add(1)
-	defer c.incomingRequestsWG.Done()
-
-	if c.getState() == connectionClosed {
+	if !c.registerIncomingRequest() {
 		return ErrConnectionClosed
 	}
+	defer c.incomingRequestsWG.Done()
 
 	select {
 	case <-c.closeCh:
