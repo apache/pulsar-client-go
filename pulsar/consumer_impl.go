@@ -449,40 +449,38 @@ func newPartitionConsumerOpts(topic, consumerName string, idx int, options Consu
 		nackRedeliveryDelay = options.NackRedeliveryDelay
 	}
 	return &partitionConsumerOpts{
-		topic:                               topic,
-		consumerName:                        consumerName,
-		subscription:                        options.SubscriptionName,
-		subscriptionType:                    options.Type,
-		subscriptionInitPos:                 options.SubscriptionInitialPosition,
-		partitionIdx:                        idx,
-		receiverQueueSize:                   options.ReceiverQueueSize,
-		nackRedeliveryDelay:                 nackRedeliveryDelay,
-		nackBackoffPolicy:                   options.NackBackoffPolicy,
-		nackPrecisionBit:                    options.NackPrecisionBit,
-		metadata:                            options.Properties,
-		subProperties:                       options.SubscriptionProperties,
-		replicateSubscriptionState:          options.ReplicateSubscriptionState,
-		startMessageID:                      options.startMessageID,
-		startMessageIDInclusive:             options.StartMessageIDInclusive,
-		subscriptionMode:                    options.SubscriptionMode,
-		readCompacted:                       options.ReadCompacted,
-		interceptors:                        options.Interceptors,
-		maxReconnectToBroker:                options.MaxReconnectToBroker,
-		maxReconnectToBrokerListener:        options.MaxReconnectToBrokerListener,
-		closeConsumerOnMaxReconnectToBroker: options.CloseConsumerOnMaxReconnectToBroker,
-		backOffPolicyFunc:                   options.BackOffPolicyFunc,
-		keySharedPolicy:                     options.KeySharedPolicy,
-		schema:                              options.Schema,
-		decryption:                          options.Decryption,
-		ackWithResponse:                     options.AckWithResponse,
-		maxPendingChunkedMessage:            options.MaxPendingChunkedMessage,
-		expireTimeOfIncompleteChunk:         options.ExpireTimeOfIncompleteChunk,
-		autoAckIncompleteChunk:              options.AutoAckIncompleteChunk,
-		consumerEventListener:               options.EventListener,
-		enableBatchIndexAck:                 options.EnableBatchIndexAcknowledgment,
-		ackGroupingOptions:                  options.AckGroupingOptions,
-		autoReceiverQueueSize:               options.EnableAutoScaledReceiverQueueSize,
-		enableZeroQueueConsumer:             options.EnableZeroQueueConsumer,
+		topic:                       topic,
+		consumerName:                consumerName,
+		subscription:                options.SubscriptionName,
+		subscriptionType:            options.Type,
+		subscriptionInitPos:         options.SubscriptionInitialPosition,
+		partitionIdx:                idx,
+		receiverQueueSize:           options.ReceiverQueueSize,
+		nackRedeliveryDelay:         nackRedeliveryDelay,
+		nackBackoffPolicy:           options.NackBackoffPolicy,
+		nackPrecisionBit:            options.NackPrecisionBit,
+		metadata:                    options.Properties,
+		subProperties:               options.SubscriptionProperties,
+		replicateSubscriptionState:  options.ReplicateSubscriptionState,
+		startMessageID:              options.startMessageID,
+		startMessageIDInclusive:     options.StartMessageIDInclusive,
+		subscriptionMode:            options.SubscriptionMode,
+		readCompacted:               options.ReadCompacted,
+		interceptors:                options.Interceptors,
+		maxReconnectToBroker:        options.MaxReconnectToBroker,
+		backOffPolicyFunc:           options.BackOffPolicyFunc,
+		keySharedPolicy:             options.KeySharedPolicy,
+		schema:                      options.Schema,
+		decryption:                  options.Decryption,
+		ackWithResponse:             options.AckWithResponse,
+		maxPendingChunkedMessage:    options.MaxPendingChunkedMessage,
+		expireTimeOfIncompleteChunk: options.ExpireTimeOfIncompleteChunk,
+		autoAckIncompleteChunk:      options.AutoAckIncompleteChunk,
+		consumerEventListener:       options.EventListener,
+		enableBatchIndexAck:         options.EnableBatchIndexAcknowledgment,
+		ackGroupingOptions:          options.AckGroupingOptions,
+		autoReceiverQueueSize:       options.EnableAutoScaledReceiverQueueSize,
+		enableZeroQueueConsumer:     options.EnableZeroQueueConsumer,
 	}
 }
 
@@ -707,6 +705,14 @@ func (c *consumer) NackID(msgID MessageID) {
 }
 
 func (c *consumer) Close() {
+	c.closeWithCause(nil)
+}
+
+// closeWithCause closes the consumer and notifies any ConsumerCloseInterceptor
+// with the supplied cause. The hook fires exactly once per consumer; the cause
+// is captured by the goroutine that wins closeOnce so concurrent callers cannot
+// race the value.
+func (c *consumer) closeWithCause(err error) {
 	c.closeOnce.Do(func() {
 		c.stopDiscovery()
 
@@ -728,6 +734,7 @@ func (c *consumer) Close() {
 		c.rlq.close()
 		c.metrics.ConsumersClosed.Inc()
 		c.metrics.ConsumersPartitions.Sub(float64(len(c.consumers)))
+		c.options.Interceptors.OnConsumerClose(c, err)
 	})
 }
 

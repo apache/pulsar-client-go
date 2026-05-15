@@ -136,38 +136,43 @@ func isNonRetriableSubscribeError(err error) bool {
 	return false
 }
 
+// causalCloser is implemented by Consumer wrappers that can record the reason
+// they were closed and forward it to a ConsumerCloseInterceptor. The reconnect
+// loop uses this to surface the underlying error when it gives up.
+type causalCloser interface {
+	closeWithCause(err error)
+}
+
 type partitionConsumerOpts struct {
-	topic                               string
-	consumerName                        string
-	subscription                        string
-	subscriptionType                    SubscriptionType
-	subscriptionInitPos                 SubscriptionInitialPosition
-	partitionIdx                        int
-	receiverQueueSize                   int
-	autoReceiverQueueSize               bool
-	nackRedeliveryDelay                 time.Duration
-	nackBackoffPolicy                   NackBackoffPolicy
-	nackPrecisionBit                    *int64
-	metadata                            map[string]string
-	subProperties                       map[string]string
-	replicateSubscriptionState          bool
-	startMessageID                      *trackingMessageID
-	startMessageIDInclusive             bool
-	subscriptionMode                    SubscriptionMode
-	readCompacted                       bool
-	disableForceTopicCreation           bool
-	interceptors                        ConsumerInterceptors
-	maxReconnectToBroker                *uint
-	maxReconnectToBrokerListener        func(consumer Consumer, err error)
-	closeConsumerOnMaxReconnectToBroker bool
-	backOffPolicyFunc                   func() backoff.Policy
-	keySharedPolicy                     *KeySharedPolicy
-	schema                              Schema
-	decryption                          *MessageDecryptionInfo
-	ackWithResponse                     bool
-	maxPendingChunkedMessage            int
-	expireTimeOfIncompleteChunk         time.Duration
-	autoAckIncompleteChunk              bool
+	topic                       string
+	consumerName                string
+	subscription                string
+	subscriptionType            SubscriptionType
+	subscriptionInitPos         SubscriptionInitialPosition
+	partitionIdx                int
+	receiverQueueSize           int
+	autoReceiverQueueSize       bool
+	nackRedeliveryDelay         time.Duration
+	nackBackoffPolicy           NackBackoffPolicy
+	nackPrecisionBit            *int64
+	metadata                    map[string]string
+	subProperties               map[string]string
+	replicateSubscriptionState  bool
+	startMessageID              *trackingMessageID
+	startMessageIDInclusive     bool
+	subscriptionMode            SubscriptionMode
+	readCompacted               bool
+	disableForceTopicCreation   bool
+	interceptors                ConsumerInterceptors
+	maxReconnectToBroker        *uint
+	backOffPolicyFunc           func() backoff.Policy
+	keySharedPolicy             *KeySharedPolicy
+	schema                      Schema
+	decryption                  *MessageDecryptionInfo
+	ackWithResponse             bool
+	maxPendingChunkedMessage    int
+	expireTimeOfIncompleteChunk time.Duration
+	autoAckIncompleteChunk      bool
 	// in failover mode, this callback will be called when consumer change
 	consumerEventListener      ConsumerEventListener
 	enableBatchIndexAck        bool
@@ -2112,7 +2117,11 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return
 		}
 		giveUpNotified = true
-        go pc.parentConsumer.Close()
+		if cc, ok := pc.parentConsumer.(causalCloser); ok {
+			go cc.closeWithCause(cause)
+		} else {
+			go pc.parentConsumer.Close()
+		}
 	}
 
 	opFn := func() (struct{}, error) {

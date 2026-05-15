@@ -220,29 +220,12 @@ type ConsumerOptions struct {
 	Schema Schema
 
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
+	// When the retry budget is exhausted, or when the broker reports a non-retriable error
+	// (e.g. AuthorizationError, TopicNotFound, TopicTerminated, IncompatibleSchema), the
+	// consumer is closed. Applications can observe the close — and recover the cause as the
+	// err argument — by registering a ConsumerInterceptor that also implements
+	// ConsumerCloseInterceptor.
 	MaxReconnectToBroker *uint
-
-	// MaxReconnectToBrokerListener is called when the consumer gives up on reconnecting to the
-	// broker. The consumer argument is the parent consumer, and err is the last connection error.
-	// Use this callback to detect silent failure and take recovery action (e.g. recreate the
-	// consumer). The callback fires at most once per reconnect cycle, in either of two cases:
-	//   1. The retry budget set by MaxReconnectToBroker is exhausted.
-	//   2. The broker reports a non-retriable error (e.g. AuthorizationError, TopicNotFound,
-	//      TopicTerminated, IncompatibleSchema). In this case the listener fires regardless of
-	//      whether MaxReconnectToBroker was set, since retrying cannot recover.
-	// This callback is invoked from the partition consumer event loop, so applications must not
-	// call consumer.Close() synchronously from within the callback — doing so can deadlock. If
-	// closing is required, do it asynchronously (for example, in another goroutine), or enable
-	// CloseConsumerOnMaxReconnectToBroker to let the client close the consumer safely after the
-	// callback returns.
-	MaxReconnectToBrokerListener func(consumer Consumer, err error)
-
-	// CloseConsumerOnMaxReconnectToBroker, when true, automatically closes the consumer after
-	// the reconnect loop gives up (either MaxReconnectToBroker exhausted or a non-retriable
-	// broker error was received). The close happens asynchronously after
-	// MaxReconnectToBrokerListener (if set) returns, and is the recommended option when the
-	// consumer should be closed after reconnect failure. Default: false.
-	CloseConsumerOnMaxReconnectToBroker bool
 
 	// BackOffPolicyFunc parameterize the following options in the reconnection logic to
 	// allow users to customize the reconnection logic (minBackoff, maxBackoff and jitterPercentage)

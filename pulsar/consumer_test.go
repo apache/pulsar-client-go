@@ -5711,7 +5711,27 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 	}
 }
 
-func TestConsumerMaxReconnectToBrokerListener(t *testing.T) {
+// closeInterceptor captures the (consumer, err) pair delivered to
+// ConsumerCloseInterceptor.OnConsumerClose and signals via fired.
+type closeInterceptor struct {
+	fired    chan struct{}
+	consumer Consumer
+	err      error
+	once     sync.Once
+}
+
+func (c *closeInterceptor) BeforeConsume(_ ConsumerMessage)              {}
+func (c *closeInterceptor) OnAcknowledge(_ Consumer, _ MessageID)        {}
+func (c *closeInterceptor) OnNegativeAcksSend(_ Consumer, _ []MessageID) {}
+func (c *closeInterceptor) OnConsumerClose(consumer Consumer, err error) {
+	c.once.Do(func() {
+		c.consumer = consumer
+		c.err = err
+		close(c.fired)
+	})
+}
+
+func TestConsumerOnCloseInterceptorOnMaxReconnect(t *testing.T) {
 	req := testcontainers.ContainerRequest{
 		Image:        getPulsarTestImage(),
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
@@ -5740,27 +5760,19 @@ func TestConsumerMaxReconnectToBrokerListener(t *testing.T) {
 	defer pulsarClient.Close()
 
 	maxRetry := uint(1)
-	listenerFired := make(chan struct{})
-	var (
-		listenerErr      error
-		listenerConsumer Consumer
-	)
+	interceptor := &closeInterceptor{fired: make(chan struct{})}
 
 	topic := newTopicName()
 	var testConsumer Consumer
 	require.Eventually(t, func() bool {
 		testConsumer, err = pulsarClient.Subscribe(ConsumerOptions{
 			Topic:                topic,
-			SubscriptionName:     "test-max-reconnect-listener",
+			SubscriptionName:     "test-on-close-interceptor",
 			MaxReconnectToBroker: &maxRetry,
 			BackOffPolicyFunc: func() backoff.Policy {
 				return newTestBackoffPolicy(100*time.Millisecond, 1*time.Second)
 			},
-			MaxReconnectToBrokerListener: func(c Consumer, e error) {
-				listenerConsumer = c
-				listenerErr = e
-				close(listenerFired)
-			},
+			Interceptors: ConsumerInterceptors{interceptor},
 		})
 		return err == nil
 	}, 30*time.Second, 1*time.Second)
@@ -5769,65 +5781,43 @@ func TestConsumerMaxReconnectToBrokerListener(t *testing.T) {
 	require.NoError(t, c.Terminate(context.Background()))
 
 	select {
-	case <-listenerFired:
+	case <-interceptor.fired:
 	case <-time.After(30 * time.Second):
-		t.Fatal("MaxReconnectToBrokerListener was not called within timeout")
+		t.Fatal("OnConsumerClose was not called within timeout")
 	}
 
-	assert.NotNil(t, listenerErr, "listener should receive the last connection error")
-	assert.Equal(t, testConsumer, listenerConsumer, "listener should receive the parent consumer")
-}
-
-func TestConsumerMaxReconnectToBrokerAutoClose(t *testing.T) {
-	req := testcontainers.ContainerRequest{
-		Image:        getPulsarTestImage(),
-		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
-		WaitingFor:   wait.ForExposedPort(),
-		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
-	}
-	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		if err := c.Terminate(context.Background()); err != nil {
-			t.Logf("container terminate (cleanup) returned: %v", err)
-		}
-	})
-	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
-	require.NoError(t, err)
-
-	pulsarClient, err := NewClient(ClientOptions{
-		URL:               endpoint,
-		ConnectionTimeout: 3 * time.Second,
-		OperationTimeout:  5 * time.Second,
-	})
-	require.NoError(t, err)
-	defer pulsarClient.Close()
-
-	maxRetry := uint(1)
-	topic := newTopicName()
-	var testConsumer Consumer
-	require.Eventually(t, func() bool {
-		testConsumer, err = pulsarClient.Subscribe(ConsumerOptions{
-			Topic:                topic,
-			SubscriptionName:     "test-max-reconnect-autoclose",
-			MaxReconnectToBroker: &maxRetry,
-			BackOffPolicyFunc: func() backoff.Policy {
-				return newTestBackoffPolicy(100*time.Millisecond, 1*time.Second)
-			},
-			CloseConsumerOnMaxReconnectToBroker: true,
-		})
-		return err == nil
-	}, 30*time.Second, 1*time.Second)
-
-	require.NoError(t, c.Terminate(context.Background()))
+	assert.NotNil(t, interceptor.err, "interceptor should receive the cause of the close")
+	assert.Equal(t, testConsumer, interceptor.consumer, "interceptor should receive the parent consumer")
 
 	pc := testConsumer.(*consumer).consumers[0]
 	require.Eventually(t, func() bool {
 		return pc.getConsumerState() == consumerClosed
 	}, 30*time.Second, 100*time.Millisecond, "consumer should be closed after exhausting max reconnect retries")
+}
+
+func TestConsumerOnCloseInterceptorOnUserClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	require.NoError(t, err)
+	defer client.Close()
+
+	interceptor := &closeInterceptor{fired: make(chan struct{})}
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            newTopicName(),
+		SubscriptionName: "test-on-close-user",
+		Interceptors:     ConsumerInterceptors{interceptor},
+	})
+	require.NoError(t, err)
+
+	consumer.Close()
+
+	select {
+	case <-interceptor.fired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("OnConsumerClose was not called within timeout")
+	}
+
+	assert.Nil(t, interceptor.err, "user-initiated close should report nil cause")
+	assert.Equal(t, consumer, interceptor.consumer)
 }
 
 func TestIsNonRetriableSubscribeError(t *testing.T) {
