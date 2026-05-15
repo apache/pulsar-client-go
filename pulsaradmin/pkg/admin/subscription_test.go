@@ -64,24 +64,28 @@ func TestGetMessagesByID(t *testing.T) {
 
 	var wg sync.WaitGroup
 	wg.Add(numberMessages)
-	messageIDMap := make(map[string]int32)
+	// Group by ledger:entry (ignoring batchIdx) to count batch sizes
+	type ledgerEntry struct {
+		LedgerID int64
+		EntryID  int64
+	}
+	messageIDMap := make(map[ledgerEntry]int32)
 	for i := 0; i <= numberMessages; i++ {
 		producer.SendAsync(ctx, &pulsar.ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}, func(id pulsar.MessageID, _ *pulsar.ProducerMessage, err error) {
 			assert.Nil(t, err)
-			messageIDMap[id.String()]++
+			key := ledgerEntry{LedgerID: id.LedgerID(), EntryID: id.EntryID()}
+			messageIDMap[key]++
 			wg.Done()
 		})
 	}
 	wg.Wait()
 	topicName, err := utils.GetTopicName(topic)
 	assert.NoError(t, err)
-	for id, i := range messageIDMap {
+	for key, i := range messageIDMap {
 		assert.Equal(t, i, int32(batchingMaxMessages))
-		messageID, err := utils.ParseMessageID(id)
-		assert.Nil(t, err)
-		messages, err := admin.Subscriptions().GetMessagesByID(*topicName, messageID.LedgerID, messageID.EntryID)
+		messages, err := admin.Subscriptions().GetMessagesByID(*topicName, key.LedgerID, key.EntryID)
 		assert.Nil(t, err)
 		assert.Equal(t, batchingMaxMessages, len(messages))
 	}

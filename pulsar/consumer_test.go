@@ -228,6 +228,217 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 	assert.Equal(t, err.(*Error).Result(), TopicNotFound)
 }
 
+func TestConsumerWithInvalidPriorityLevel(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            "my-topic",
+		SubscriptionName: "my-sub",
+		PriorityLevel:    -1,
+	})
+
+	assert.Nil(t, consumer)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.(*Error).Result(), InvalidConfiguration)
+}
+
+func TestPriorityConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	sub := "sub-shared-priority"
+
+	// High-priority consumers (priority 1)
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  sub,
+		Type:              Shared,
+		ReceiverQueueSize: 5,
+		PriorityLevel:     1,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  sub,
+		Type:              Shared,
+		ReceiverQueueSize: 5,
+		PriorityLevel:     1,
+	})
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	// Low-priority consumer (priority 2)
+	consumer3, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  sub,
+		Type:              Shared,
+		ReceiverQueueSize: 5,
+		PriorityLevel:     2,
+	})
+	assert.Nil(t, err)
+	defer consumer3.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	for i := 0; i < 10; i++ {
+		_, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	// Drain permits from consumer1 and consumer2
+	for i := 0; i < 5; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		msg, err := consumer1.Receive(ctx)
+		cancel()
+		assert.Nil(t, err)
+		assert.NotNil(t, msg)
+	}
+	for i := 0; i < 5; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		msg, err := consumer2.Receive(ctx)
+		cancel()
+		assert.Nil(t, err)
+		assert.NotNil(t, msg)
+	}
+
+	// Low-priority consumer should not have received any messages
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	msg, err := consumer3.Receive(ctx)
+	cancel()
+	assert.NotNil(t, err)
+	assert.Nil(t, msg)
+}
+
+func TestFailOverConsumerPriority(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + randomName + "/partitions"
+	makeHTTPCall(t, http.MethodPut, testURL, "9")
+
+	sub := "my-sub"
+
+	// C1 at priority 1
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "aaa",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    1,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	// C2 at priority 0 — should take over from C1
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "bbb1",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    0,
+	})
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	// C3 at priority 0
+	consumer3, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "bbb2",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    0,
+	})
+	assert.Nil(t, err)
+	defer consumer3.Close()
+
+	// C4 at priority 0
+	consumer4, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "bbb3",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    0,
+	})
+	assert.Nil(t, err)
+	defer consumer4.Close()
+
+	// C5 at priority 1 — should not get any partitions
+	consumer5, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "bbb4",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    1,
+	})
+	assert.Nil(t, err)
+	defer consumer5.Close()
+
+	evenDistribution := 9 / 3 // 3 partitions per priority-0 consumer
+
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+
+	cfg := &config.Config{}
+	pulsarAdmin, err := pulsaradmin.NewClient(cfg)
+	assert.NoError(t, err)
+
+	// Poll admin stats until partitions are evenly distributed among priority-0 consumers
+	retryAssert(t, 20, 500, func() {}, func(_ assert.TestingT) bool {
+		stats, err := pulsarAdmin.Topics().GetPartitionedStats(*topicName, true)
+		if err != nil {
+			return false
+		}
+		counts := map[string]int{}
+		for _, pStats := range stats.Partitions {
+			subStats, ok := pStats.Subscriptions[sub]
+			if !ok {
+				return false
+			}
+			counts[subStats.ActiveConsumerName]++
+		}
+		return len(counts) == 3 &&
+			counts["bbb1"] == evenDistribution &&
+			counts["bbb2"] == evenDistribution &&
+			counts["bbb3"] == evenDistribution
+	})
+
+	// Final assertion with real test failure
+	stats, err := pulsarAdmin.Topics().GetPartitionedStats(*topicName, true)
+	assert.Nil(t, err)
+	counts := map[string]int{}
+	for _, pStats := range stats.Partitions {
+		subStats := pStats.Subscriptions[sub]
+		counts[subStats.ActiveConsumerName]++
+	}
+	assert.Equal(t, 3, len(counts))
+	assert.Equal(t, evenDistribution, counts["bbb1"])
+	assert.Equal(t, evenDistribution, counts["bbb2"])
+	assert.Equal(t, evenDistribution, counts["bbb3"])
+}
+
 func TestConsumerSubscriptionEarliestPosition(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

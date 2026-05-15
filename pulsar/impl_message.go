@@ -194,6 +194,9 @@ func (id *messageID) BatchSize() int32 {
 }
 
 func (id *messageID) String() string {
+	if id.batchIdx > -1 {
+		return fmt.Sprintf("%d:%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx, id.batchIdx)
+	}
 	return fmt.Sprintf("%d:%d:%d", id.ledgerID, id.entryID, id.partitionIdx)
 }
 

@@ -132,6 +132,26 @@ type ConsumerOptions struct {
 	// This argument is required when subscribing
 	SubscriptionName string
 
+	// PriorityLevel sets the priority level for this consumer.
+	//
+	// Shared subscription:
+	// Sets priority level for the consumer to determine which consumers the broker
+	// prioritizes when dispatching messages. The broker follows descending priorities
+	// (0 = max priority, 1, 2, ...).
+	// The broker first dispatches messages to max priority consumers if they have
+	// permits, otherwise considers next priority level consumers.
+	// e.g. if consumer-A has priorityLevel 0 and consumer-B has priorityLevel 1,
+	// the broker dispatches messages to only consumer-A until it runs out of permits,
+	// then starts dispatching to consumer-B.
+	//
+	// Failover subscription (partitioned topics only):
+	// The broker selects the active consumer based on priority level and lexicographic
+	// sorting of consumer name. Higher priority (lower number) consumers are preferred.
+	// Priority level has no effect on failover subscriptions for non-partitioned topics.
+	//
+	// Default is 0 (max priority).
+	PriorityLevel int
+
 	// Properties represents a set of application defined properties for the consumer.
 	// Those properties will be visible in the topic stats
 	Properties map[string]string
