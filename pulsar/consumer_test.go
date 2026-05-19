@@ -4725,7 +4725,7 @@ func TestConsumerWithBackoffPolicy(t *testing.T) {
 	assert.Nil(t, err)
 	defer _consumer.Close()
 
-	partitionConsumerImp := _consumer.(*consumer).consumers[0]
+	partitionConsumerImp := _consumer.(*consumer).partitionConsumers()[0]
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
@@ -4948,7 +4948,7 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 		EnableAutoScaledReceiverQueueSize: true,
 	})
 	assert.Nil(t, err)
-	pc := c.(*consumer).consumers[0]
+	pc := c.(*consumer).partitionConsumers()[0]
 	assert.Equal(t, int32(1), pc.currentQueueSize.Load())
 	defer c.Close()
 
@@ -5163,7 +5163,7 @@ func TestConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c1.Close()
-	pc1 := c1.(*consumer).consumers[0]
+	pc1 := c1.(*consumer).partitionConsumers()[0]
 
 	// Fill up the messageCh of c1
 	for i := 0; i < 10; i++ {
@@ -5203,7 +5203,7 @@ func TestConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c2.Close()
-	pc2 := c2.(*consumer).consumers[0]
+	pc2 := c2.(*consumer).partitionConsumers()[0]
 
 	// Try to induce c2 receiver queue size expansion
 	for i := 0; i < 10; i++ {
@@ -5275,7 +5275,7 @@ func TestMultiConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c1.Close()
-	pc1 := c1.(*consumer).consumers[0]
+	pc1 := c1.(*consumer).partitionConsumers()[0]
 
 	// Use mem-limited client 2 to create consumer c1
 	c2, err := cli2.Subscribe(ConsumerOptions{
@@ -5286,7 +5286,7 @@ func TestMultiConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c2.Close()
-	pc2 := c2.(*consumer).consumers[0]
+	pc2 := c2.(*consumer).partitionConsumers()[0]
 
 	// Fill up the messageCh of c1 nad c2
 	for i := 0; i < 10; i++ {
@@ -5920,7 +5920,7 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 	assert.NoError(t, err)
 	defer _consumer.Close()
 
-	partitionConsumerImpl := _consumer.(*consumer).consumers[0]
+	partitionConsumerImpl := _consumer.(*consumer).partitionConsumers()[0]
 	conn := partitionConsumerImpl._getConn()
 
 	for i := 0; i < 5; i++ {
@@ -5950,6 +5950,8 @@ func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t
 		nextConsumerID:   1,
 	}
 
+	var consumers atomic.Value
+	consumers.Store([]*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}})
 	c := &consumer{
 		topic: "persistent://public/default/test-topic",
 		client: &client{
@@ -5962,7 +5964,7 @@ func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t
 			SubscriptionName: "test-sub",
 			NackPrecisionBit: ptr(defaultNackPrecisionBit),
 		},
-		consumers:    []*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}},
+		consumers:    consumers,
 		messageCh:    make(chan ConsumerMessage, 1),
 		closeCh:      make(chan struct{}),
 		errorCh:      make(chan error, 1),
@@ -5983,7 +5985,7 @@ func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t
 
 	lookupErrCh := make(chan error, 1)
 	go func() {
-		_, err := c.findPartitionConsumer(&messageID{partitionIdx: 0})
+		_, err := findPartitionConsumer(c.partitionConsumers(), &messageID{partitionIdx: 0})
 		lookupErrCh <- err
 	}()
 
