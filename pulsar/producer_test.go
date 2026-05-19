@@ -81,6 +81,34 @@ func TestProducerConnectError(t *testing.T) {
 	assert.ErrorContains(t, err, "connection error")
 }
 
+func TestUpdateMetaDataAddsTxnID(t *testing.T) {
+	sequenceID := uint64(0)
+	pp := &partitionProducer{
+		producerName:        "test-producer",
+		options:             &ProducerOptions{DisableBatching: true},
+		log:                 plog.DefaultNopLogger(),
+		sequenceIDGenerator: &sequenceID,
+	}
+	txn := &transaction{
+		txnID: TxnID{
+			MostSigBits:  12,
+			LeastSigBits: 34,
+		},
+	}
+	sr := &sendRequest{
+		msg: &ProducerMessage{
+			Payload: []byte("test"),
+		},
+		transaction: txn,
+	}
+
+	pp.updateMetaData(sr)
+
+	require.NotNil(t, sr.mm)
+	assert.Equal(t, uint64(12), sr.mm.GetTxnidMostBits())
+	assert.Equal(t, uint64(34), sr.mm.GetTxnidLeastBits())
+}
+
 func TestProducerNoTopic(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: "pulsar://localhost:6650",
