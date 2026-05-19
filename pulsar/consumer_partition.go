@@ -351,8 +351,8 @@ func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
-	messageCh chan ConsumerMessage, dlq *dlqRouter,
-	metrics *internal.LeveledMetrics) (*partitionConsumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, metrics *internal.LeveledMetrics,
+	startDispatcher bool) (*partitionConsumer, error) {
 	var boFunc func() backoff.Policy
 	if options.backOffPolicyFunc != nil {
 		boFunc = options.backOffPolicyFunc
@@ -375,7 +375,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		queueCh:                    make(chan []*message, options.receiverQueueSize),
 		startMessageID:             atomicMessageID{msgID: options.startMessageID},
 		seekMessageID:              atomicMessageID{msgID: nil},
-		connectedCh:                make(chan struct{}),
+		connectedCh:                make(chan struct{}, 1),
 		messageCh:                  messageCh,
 		connectClosedCh:            make(chan *connectionClosed, 1),
 		closeCh:                    make(chan struct{}),
@@ -462,11 +462,16 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		}
 	}
 
-	go pc.dispatcher()
-
 	go pc.runEventsLoop()
+	if startDispatcher {
+		pc.startDispatcher()
+	}
 
 	return pc, nil
+}
+
+func (pc *partitionConsumer) startDispatcher() {
+	go pc.dispatcher()
 }
 
 func (pc *partitionConsumer) unsubscribe(force bool) error {

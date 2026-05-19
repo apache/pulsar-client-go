@@ -399,16 +399,16 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
-		go func() {
+		go func(partitionIdx int, partitionTopic string) {
 			defer wg.Done()
 			opts := newPartitionConsumerOpts(partitionTopic, c.consumerName, partitionIdx, c.options)
-			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
+			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics, false)
 			ch <- ConsumerError{
 				err:       err,
 				partition: partitionIdx,
 				consumer:  cons,
 			}
-		}()
+		}(partitionIdx, partitionTopic)
 	}
 
 	go func() {
@@ -436,6 +436,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	}
 
 	c.consumers.Store(append([]*partitionConsumer(nil), newConsumers...))
+	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
+		newConsumers[partitionIdx].startDispatcher()
+	}
 	if newNumPartitions < oldNumPartitions {
 		c.metrics.ConsumersPartitions.Set(float64(newNumPartitions))
 	} else {
