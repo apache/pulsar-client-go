@@ -50,7 +50,6 @@ type acker interface {
 }
 
 type consumer struct {
-	sync.Mutex
 	topic   string
 	client  *client
 	options ConsumerOptions
