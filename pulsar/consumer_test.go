@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -5926,4 +5928,152 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 		assert.Equal(t, conn.ID(), partitionConsumerImpl._getConn().ID(),
 			"The consumer uses a different connection when reconnecting")
 	}
+}
+
+func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t *testing.T) {
+	lookupURL, err := url.Parse("pulsar://localhost:6650")
+	require.NoError(t, err)
+
+	allowSubscribe := make(chan struct{})
+	subscribeStarted := make(chan struct{})
+	var releaseSubscribe sync.Once
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	slog.SetDefault(logger)
+	log := plog.NewLoggerWithSlog(logger)
+
+	rpcClient := &blockingSubscribeRPCClient{
+		lookupResult:     &internal.LookupResult{LogicalAddr: lookupURL, PhysicalAddr: lookupURL},
+		subscribeStarted: subscribeStarted,
+		allowSubscribe:   allowSubscribe,
+		subscribeErr:     errors.New("stop subscribe after lookup check"),
+		nextConsumerID:   1,
+	}
+
+	c := &consumer{
+		topic: "persistent://public/default/test-topic",
+		client: &client{
+			cnxPool:       &blockingConnPool{cnx: dummyConnection{}},
+			rpcClient:     rpcClient,
+			lookupService: &partitionMetadataLookup{partitions: 2},
+			log:           log,
+		},
+		options: ConsumerOptions{
+			SubscriptionName: "test-sub",
+			NackPrecisionBit: ptr(defaultNackPrecisionBit),
+		},
+		consumers:    []*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}},
+		messageCh:    make(chan ConsumerMessage, 1),
+		closeCh:      make(chan struct{}),
+		errorCh:      make(chan error, 1),
+		consumerName: "test-consumer",
+		log:          log,
+		metrics:      newTestMetrics(),
+	}
+
+	go func() {
+		c.internalTopicSubscribeToPartitions()
+	}()
+
+	select {
+	case <-subscribeStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for partition discovery to start subscribing the new partition")
+	}
+
+	lookupErrCh := make(chan error, 1)
+	go func() {
+		_, err := c.findPartitionConsumer(&messageID{partitionIdx: 0})
+		lookupErrCh <- err
+	}()
+
+	select {
+	case err := <-lookupErrCh:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		releaseSubscribe.Do(func() { close(allowSubscribe) })
+		select {
+		case <-lookupErrCh:
+		case <-time.After(time.Second):
+			t.Fatal("existing partition lookup stayed blocked even after partition discovery stopped")
+		}
+		t.Fatal("existing partition lookup blocked while a new partition was being added")
+	}
+
+	releaseSubscribe.Do(func() { close(allowSubscribe) })
+}
+
+type partitionMetadataLookup struct {
+	internal.LookupService
+	partitions int
+}
+
+func (l *partitionMetadataLookup) GetPartitionedTopicMetadata(_ string) (*internal.PartitionedTopicMetadata, error) {
+	return &internal.PartitionedTopicMetadata{Partitions: l.partitions}, nil
+}
+
+type blockingConnPool struct {
+	internal.ConnectionPool
+	cnx internal.Connection
+}
+
+func (p *blockingConnPool) GetConnection(_ *url.URL, _ *url.URL, _ int32) (internal.Connection, error) {
+	return p.cnx, nil
+}
+
+func (p *blockingConnPool) GetConnections() map[string]internal.Connection {
+	return map[string]internal.Connection{}
+}
+
+func (p *blockingConnPool) GenerateRoundRobinIndex() int32 {
+	return 0
+}
+
+func (p *blockingConnPool) Close() {}
+
+type blockingSubscribeRPCClient struct {
+	internal.RPCClient
+	lookupResult     *internal.LookupResult
+	subscribeStarted chan struct{}
+	allowSubscribe   chan struct{}
+	subscribeErr     error
+	nextConsumerID   uint64
+	startOnce        sync.Once
+}
+
+func (r *blockingSubscribeRPCClient) NewRequestID() uint64 {
+	return 1
+}
+
+func (r *blockingSubscribeRPCClient) NewProducerID() uint64 {
+	return 1
+}
+
+func (r *blockingSubscribeRPCClient) NewConsumerID() uint64 {
+	id := r.nextConsumerID
+	r.nextConsumerID++
+	return id
+}
+
+func (r *blockingSubscribeRPCClient) RequestOnCnxNoWait(_ internal.Connection, _ pb.BaseCommand_Type, _ proto.Message) error {
+	return nil
+}
+
+func (r *blockingSubscribeRPCClient) RequestOnCnx(
+	_ internal.Connection, _ uint64, cmdType pb.BaseCommand_Type, _ proto.Message,
+) (*internal.RPCResult, error) {
+	switch cmdType {
+	case pb.BaseCommand_SUBSCRIBE:
+		r.startOnce.Do(func() { close(r.subscribeStarted) })
+		<-r.allowSubscribe
+		return nil, r.subscribeErr
+	case pb.BaseCommand_CLOSE_CONSUMER:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unexpected command type %v", cmdType)
+	}
+}
+
+func (r *blockingSubscribeRPCClient) LookupService(_ string) (internal.LookupService, error) {
+	return &grabConnMockLookup{result: r.lookupResult}, nil
 }
