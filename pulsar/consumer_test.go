@@ -6274,7 +6274,8 @@ func (r *blockingSubscribeRPCClient) NewConsumerID() uint64 {
 	return id
 }
 
-func (r *blockingSubscribeRPCClient) RequestOnCnxNoWait(_ internal.Connection, _ pb.BaseCommand_Type, _ proto.Message) error {
+func (r *blockingSubscribeRPCClient) RequestOnCnxNoWait(
+	_ internal.Connection, _ pb.BaseCommand_Type, _ proto.Message) error {
 	return nil
 }
 
