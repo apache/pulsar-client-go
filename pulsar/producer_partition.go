@@ -1297,7 +1297,7 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
-	sr := newSendRequest(p, ctx, msg, callback, flushImmediately)
+	sr := newSendRequest(ctx, p, msg, callback, flushImmediately)
 
 	if err := p.prepareTransaction(sr); err != nil {
 		sr.done(nil, err)
@@ -1610,8 +1610,8 @@ type sendRequest struct {
 }
 
 func newSendRequest(
-	p *partitionProducer,
 	ctx context.Context,
+	p *partitionProducer,
 	msg *ProducerMessage,
 	callback func(MessageID, *ProducerMessage, error),
 	flushImmediately bool,
@@ -1631,36 +1631,36 @@ func newSendRequest(
 	return sr
 }
 
-func newChunkSendRequest(parent *sendRequest, chunkID int, uuid string, cr *chunkRecorder, reservedMem int64) *sendRequest {
+func newChunkSendRequest(p *sendRequest, chunkID int, uuid string, cr *chunkRecorder, reservedMem int64) *sendRequest {
 	sr := sendRequestPool.Get().(*sendRequest)
 	*sr = sendRequest{
 		pool:                sendRequestPool,
-		ctx:                 parent.ctx,
-		msg:                 parent.msg,
-		producer:            parent.producer,
-		callback:            parent.callback,
-		callbackOnce:        parent.callbackOnce,
-		publishTime:         parent.publishTime,
-		flushImmediately:    parent.flushImmediately,
-		totalChunks:         parent.totalChunks,
+		ctx:                 p.ctx,
+		msg:                 p.msg,
+		producer:            p.producer,
+		callback:            p.callback,
+		callbackOnce:        p.callbackOnce,
+		publishTime:         p.publishTime,
+		flushImmediately:    p.flushImmediately,
+		totalChunks:         p.totalChunks,
 		chunkID:             chunkID,
 		uuid:                uuid,
 		chunkRecorder:       cr,
-		transaction:         parent.transaction,
-		memLimit:            parent.memLimit,
-		semaphore:           parent.semaphore,
+		transaction:         p.transaction,
+		memLimit:            p.memLimit,
+		semaphore:           p.semaphore,
 		reservedMem:         reservedMem,
-		sendAsBatch:         parent.sendAsBatch,
-		schema:              parent.schema,
-		schemaVersion:       parent.schemaVersion,
-		uncompressedPayload: parent.uncompressedPayload,
-		uncompressedSize:    parent.uncompressedSize,
-		compressedPayload:   parent.compressedPayload,
-		compressedSize:      parent.compressedSize,
-		payloadChunkSize:    parent.payloadChunkSize,
-		mm:                  parent.mm,
-		deliverAt:           parent.deliverAt,
-		maxMessageSize:      parent.maxMessageSize,
+		sendAsBatch:         p.sendAsBatch,
+		schema:              p.schema,
+		schemaVersion:       p.schemaVersion,
+		uncompressedPayload: p.uncompressedPayload,
+		uncompressedSize:    p.uncompressedSize,
+		compressedPayload:   p.compressedPayload,
+		compressedSize:      p.compressedSize,
+		payloadChunkSize:    p.payloadChunkSize,
+		mm:                  p.mm,
+		deliverAt:           p.deliverAt,
+		maxMessageSize:      p.maxMessageSize,
 	}
 	return sr
 }

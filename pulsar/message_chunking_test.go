@@ -554,8 +554,8 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 	mm.ChunkId = proto.Int32(int32(chunkID))
 	producerImpl.updateMetadataSeqID(mm, msg)
 	sr := newSendRequest(
-		producerImpl,
 		context.Background(),
+		producerImpl,
 		msg,
 		func(MessageID, *ProducerMessage, error) {},
 		true,

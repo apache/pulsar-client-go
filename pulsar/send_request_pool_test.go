@@ -28,8 +28,8 @@ import (
 
 func TestSendRequestDoneIsIdempotentAfterPutToPool(t *testing.T) {
 	sr := newSendRequest(
-		&partitionProducer{log: plog.DefaultNopLogger()},
 		context.Background(),
+		&partitionProducer{log: plog.DefaultNopLogger()},
 		&ProducerMessage{Properties: map[string]string{"k": "v"}},
 		func(MessageID, *ProducerMessage, error) {},
 		false,
