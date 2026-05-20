@@ -5950,28 +5950,14 @@ func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t
 		nextConsumerID:   1,
 	}
 
-	var consumers atomic.Value
-	consumers.Store([]*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}})
-	c := &consumer{
-		topic: "persistent://public/default/test-topic",
-		client: &client{
-			cnxPool:       &blockingConnPool{cnx: dummyConnection{}},
-			rpcClient:     rpcClient,
-			lookupService: &partitionMetadataLookup{partitions: 2},
-			log:           log,
-		},
-		options: ConsumerOptions{
-			SubscriptionName: "test-sub",
-			NackPrecisionBit: ptr(defaultNackPrecisionBit),
-		},
-		consumers:    consumers,
-		messageCh:    make(chan ConsumerMessage, 1),
-		closeCh:      make(chan struct{}),
-		errorCh:      make(chan error, 1),
-		consumerName: "test-consumer",
-		log:          log,
-		metrics:      newTestMetrics(),
-	}
+	c := newInternalTopicPartitionTestConsumer(internalTopicPartitionTestConsumerOptions{
+		conn:               dummyConnection{},
+		rpcClient:          rpcClient,
+		partitions:         2,
+		log:                log,
+		consumerOptions:    ConsumerOptions{SubscriptionName: "test-sub", NackPrecisionBit: ptr(defaultNackPrecisionBit)},
+		initialConsumers:   []*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}},
+	})
 
 	go func() {
 		c.internalTopicSubscribeToPartitions()
@@ -6023,31 +6009,20 @@ func TestInternalTopicSubscribeToPartitionsPublishesConsumersBeforeDispatchingMe
 		allowPartitionTwo:      allowPartitionTwo,
 	}
 
-	var consumers atomic.Value
-	consumers.Store([]*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}})
-	c := &consumer{
-		topic: "persistent://public/default/test-topic",
-		client: &client{
-			cnxPool:       &blockingConnPool{cnx: cnx},
-			rpcClient:     rpcClient,
-			lookupService: &partitionMetadataLookup{partitions: 3},
-			log:           plog.DefaultNopLogger(),
-		},
-		options: ConsumerOptions{
+	c := newInternalTopicPartitionTestConsumer(internalTopicPartitionTestConsumerOptions{
+		conn:       cnx,
+		rpcClient:  rpcClient,
+		partitions: 3,
+		log:        plog.DefaultNopLogger(),
+		consumerOptions: ConsumerOptions{
 			SubscriptionName:  "test-sub",
 			ReceiverQueueSize: 1,
 			NackPrecisionBit:  ptr(defaultNackPrecisionBit),
 			AckWithResponse:   true,
 		},
-		consumers:    consumers,
-		messageCh:    make(chan ConsumerMessage, 1),
-		closeCh:      make(chan struct{}),
-		errorCh:      make(chan error, 1),
-		consumerName: "test-consumer",
-		dlq:          &dlqRouter{},
-		log:          plog.DefaultNopLogger(),
-		metrics:      newTestMetrics(),
-	}
+		initialConsumers: []*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}},
+		dlq:              &dlqRouter{},
+	})
 
 	errCh := make(chan error, 1)
 	go func() {
@@ -6110,6 +6085,40 @@ func TestInternalTopicSubscribeToPartitionsPublishesConsumersBeforeDispatchingMe
 
 	for _, pc := range c.partitionConsumers()[1:] {
 		pc.Close()
+	}
+}
+
+type internalTopicPartitionTestConsumerOptions struct {
+	conn             internal.Connection
+	rpcClient        internal.RPCClient
+	partitions       int
+	log              plog.Logger
+	consumerOptions  ConsumerOptions
+	initialConsumers []*partitionConsumer
+	dlq              *dlqRouter
+}
+
+func newInternalTopicPartitionTestConsumer(opts internalTopicPartitionTestConsumerOptions) *consumer {
+	var consumers atomic.Value
+	consumers.Store(append([]*partitionConsumer(nil), opts.initialConsumers...))
+
+	return &consumer{
+		topic: "persistent://public/default/test-topic",
+		client: &client{
+			cnxPool:       &blockingConnPool{cnx: opts.conn},
+			rpcClient:     opts.rpcClient,
+			lookupService: &partitionMetadataLookup{partitions: opts.partitions},
+			log:           opts.log,
+		},
+		options:      opts.consumerOptions,
+		consumers:    consumers,
+		messageCh:    make(chan ConsumerMessage, 1),
+		closeCh:      make(chan struct{}),
+		errorCh:      make(chan error, 1),
+		consumerName: "test-consumer",
+		dlq:          opts.dlq,
+		log:          opts.log,
+		metrics:      newTestMetrics(),
 	}
 }
 
