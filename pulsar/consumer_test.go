@@ -6306,3 +6306,139 @@ func (r *blockingSubscribeRPCClient) RequestOnCnx(
 func (r *blockingSubscribeRPCClient) LookupService(_ string) (internal.LookupService, error) {
 	return &grabConnMockLookup{result: r.lookupResult}, nil
 }
+
+// closeInterceptor captures the (consumer, err) pair delivered to
+// ConsumerCloseInterceptor.OnConsumerClose and signals via fired.
+type closeInterceptor struct {
+	fired    chan struct{}
+	consumer Consumer
+	err      error
+	once     sync.Once
+}
+
+func (c *closeInterceptor) BeforeConsume(_ ConsumerMessage)              {}
+func (c *closeInterceptor) OnAcknowledge(_ Consumer, _ MessageID)        {}
+func (c *closeInterceptor) OnNegativeAcksSend(_ Consumer, _ []MessageID) {}
+func (c *closeInterceptor) OnConsumerClose(consumer Consumer, err error) {
+	c.once.Do(func() {
+		c.consumer = consumer
+		c.err = err
+		close(c.fired)
+	})
+}
+
+func TestConsumerOnCloseInterceptorOnMaxReconnect(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := c.Terminate(context.Background()); err != nil {
+			t.Logf("container terminate (cleanup) returned: %v", err)
+		}
+	})
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err)
+
+	pulsarClient, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 3 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer pulsarClient.Close()
+
+	maxRetry := uint(1)
+	interceptor := &closeInterceptor{fired: make(chan struct{})}
+
+	topic := newTopicName()
+	var testConsumer Consumer
+	require.Eventually(t, func() bool {
+		testConsumer, err = pulsarClient.Subscribe(ConsumerOptions{
+			Topic:                topic,
+			SubscriptionName:     "test-on-close-interceptor",
+			MaxReconnectToBroker: &maxRetry,
+			BackOffPolicyFunc: func() backoff.Policy {
+				return newTestBackoffPolicy(100*time.Millisecond, 1*time.Second)
+			},
+			Interceptors: ConsumerInterceptors{interceptor},
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	defer testConsumer.Close()
+
+	require.NoError(t, c.Terminate(context.Background()))
+
+	select {
+	case <-interceptor.fired:
+	case <-time.After(30 * time.Second):
+		t.Fatal("OnConsumerClose was not called within timeout")
+	}
+
+	assert.NotNil(t, interceptor.err, "interceptor should receive the cause of the close")
+	assert.Equal(t, testConsumer, interceptor.consumer, "interceptor should receive the parent consumer")
+
+	pc := testConsumer.(*consumer).partitionConsumers()[0]
+	require.Eventually(t, func() bool {
+		return pc.getConsumerState() == consumerClosed
+	}, 30*time.Second, 100*time.Millisecond, "consumer should be closed after exhausting max reconnect retries")
+}
+
+func TestConsumerOnCloseInterceptorOnUserClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	require.NoError(t, err)
+	defer client.Close()
+
+	interceptor := &closeInterceptor{fired: make(chan struct{})}
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            newTopicName(),
+		SubscriptionName: "test-on-close-user",
+		Interceptors:     ConsumerInterceptors{interceptor},
+	})
+	require.NoError(t, err)
+
+	consumer.Close()
+
+	select {
+	case <-interceptor.fired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("OnConsumerClose was not called within timeout")
+	}
+
+	assert.Nil(t, interceptor.err, "user-initiated close should report nil cause")
+	assert.Equal(t, consumer, interceptor.consumer)
+}
+
+func TestIsNonRetriableSubscribeError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"topic not found", errors.New("TopicNotFound: topic does not exist"), true},
+		{"topic terminated", errors.New("TopicTerminatedError: topic was terminated"), true},
+		{"subscription not found", errors.New("SubscriptionNotFound: sub does not exist"), true},
+		{"authorization", errors.New("AuthorizationError: not authorized"), true},
+		{"consumer busy", errors.New("ConsumerBusy: another consumer attached"), true},
+		{"invalid topic name", errors.New("InvalidTopicName: bad name"), true},
+		{"incompatible schema", errors.New("IncompatibleSchema: schema mismatch"), true},
+		{"consumer assign error", errors.New("ConsumerAssignError: dispatcher assign failed"), true},
+		{"not allowed", errors.New("NotAllowedError: action not permitted"), true},
+		{"service not ready (retriable)", errors.New("ServiceNotReady: please retry"), false},
+		{"metadata error (retriable)", errors.New("MetadataError: zk timeout"), false},
+		{"plain network error (retriable)", errors.New("dial tcp: i/o timeout"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isNonRetriableSubscribeError(tc.err))
+		})
+	}
+}

@@ -261,6 +261,12 @@ func (z *zeroQueueConsumer) NackID(msgID MessageID) {
 }
 
 func (z *zeroQueueConsumer) Close() {
+	z.closeWithCause(nil)
+}
+
+// closeWithCause closes the consumer and notifies any ConsumerCloseInterceptor
+// with the supplied cause. The hook fires exactly once per consumer.
+func (z *zeroQueueConsumer) closeWithCause(err error) {
 	z.closeOnce.Do(func() {
 		z.Lock()
 		defer z.Unlock()
@@ -272,6 +278,7 @@ func (z *zeroQueueConsumer) Close() {
 		z.rlq.close()
 		z.metrics.ConsumersClosed.Inc()
 		z.metrics.ConsumersPartitions.Sub(float64(1))
+		z.options.Interceptors.OnConsumerClose(z, err)
 	})
 }
 
