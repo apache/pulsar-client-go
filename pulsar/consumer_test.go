@@ -5939,7 +5939,6 @@ func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t
 	var releaseSubscribe sync.Once
 
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
-	slog.SetDefault(logger)
 	log := plog.NewLoggerWithSlog(logger)
 
 	rpcClient := &blockingSubscribeRPCClient{

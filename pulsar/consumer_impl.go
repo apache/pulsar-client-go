@@ -784,7 +784,7 @@ func findPartitionConsumer(consumers []*partitionConsumer, msgID MessageID) (*pa
 	partition := int(msgID.PartitionIdx())
 	if partition < 0 || partition >= len(consumers) {
 		return nil, fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(consumers))
+			partition, len(consumers)-1)
 	}
 	return consumers[partition], nil
 }
@@ -794,8 +794,9 @@ func (c *consumer) partitionConsumers() []*partitionConsumer {
 	if v == nil {
 		return nil
 	}
-	consumers := v.([]*partitionConsumer)
-	return append([]*partitionConsumer(nil), consumers...)
+	// The slice stored in c.consumers is published via copy-on-write.
+	// Callers must treat the returned slice as immutable.
+	return v.([]*partitionConsumer)
 }
 
 func (c *consumer) hasNext() bool {
