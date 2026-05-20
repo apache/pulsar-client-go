@@ -5951,12 +5951,12 @@ func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t
 	}
 
 	c := newInternalTopicPartitionTestConsumer(internalTopicPartitionTestConsumerOptions{
-		conn:               dummyConnection{},
-		rpcClient:          rpcClient,
-		partitions:         2,
-		log:                log,
-		consumerOptions:    ConsumerOptions{SubscriptionName: "test-sub", NackPrecisionBit: ptr(defaultNackPrecisionBit)},
-		initialConsumers:   []*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}},
+		conn:             dummyConnection{},
+		rpcClient:        rpcClient,
+		partitions:       2,
+		log:              log,
+		consumerOptions:  ConsumerOptions{SubscriptionName: "test-sub", NackPrecisionBit: ptr(defaultNackPrecisionBit)},
+		initialConsumers: []*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}},
 	})
 
 	go func() {
