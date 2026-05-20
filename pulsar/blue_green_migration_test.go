@@ -162,8 +162,8 @@ func testTopicMigrate(
 
 			for true {
 				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-				defer cancel()
 				_, err := producer.Send(ctx, &pm)
+				cancel()
 				if err == nil {
 					break
 				}
@@ -187,8 +187,8 @@ func testTopicMigrate(
 
 			for true {
 				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-				defer cancel()
 				m, err := consumer.Receive(ctx)
+				cancel()
 				if err == nil {
 					err = consumer.Ack(m)
 					if err == nil {
