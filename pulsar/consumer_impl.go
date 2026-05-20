@@ -713,6 +713,14 @@ func (c *consumer) NackID(msgID MessageID) {
 }
 
 func (c *consumer) Close() {
+	c.closeWithCause(nil)
+}
+
+// closeWithCause closes the consumer and notifies any ConsumerCloseInterceptor
+// with the supplied cause. The hook fires exactly once per consumer; the cause
+// is captured by the goroutine that wins closeOnce so concurrent callers cannot
+// race the value.
+func (c *consumer) closeWithCause(err error) {
 	c.closeOnce.Do(func() {
 		c.stopDiscovery()
 
@@ -734,6 +742,7 @@ func (c *consumer) Close() {
 		c.rlq.close()
 		c.metrics.ConsumersClosed.Inc()
 		c.metrics.ConsumersPartitions.Sub(float64(len(c.consumers)))
+		c.options.Interceptors.OnConsumerClose(c, err)
 	})
 }
 

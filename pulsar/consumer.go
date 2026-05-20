@@ -240,6 +240,11 @@ type ConsumerOptions struct {
 	Schema Schema
 
 	// MaxReconnectToBroker sets the maximum retry number of reconnectToBroker. (default: ultimate)
+	// When the retry budget is exhausted, or when the broker reports a non-retriable error
+	// (e.g. AuthorizationError, TopicNotFound, TopicTerminated, IncompatibleSchema), the
+	// consumer is closed. Applications can observe the close — and recover the cause as the
+	// err argument — by registering a ConsumerInterceptor that also implements
+	// ConsumerCloseInterceptor.
 	MaxReconnectToBroker *uint
 
 	// BackOffPolicyFunc parameterize the following options in the reconnection logic to

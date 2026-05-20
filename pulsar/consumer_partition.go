@@ -93,6 +93,56 @@ const (
 	noMessageEntry = -1
 )
 
+// Broker error markers. When the broker reports any of these in response
+// to a Subscribe command, retrying will not recover — the consumer must give up and notify
+// the application. errMsgTopicNotFound and errMsgTopicTerminated are reused from the producer
+// path; the rest are consumer-specific.
+const (
+	errMsgConsumerSubscriptionNotFound = "SubscriptionNotFound"
+	errMsgConsumerAuthorizationError   = "AuthorizationError"
+	errMsgConsumerBusy                 = "ConsumerBusy"
+	errMsgConsumerInvalidTopicName     = "InvalidTopicName"
+	errMsgConsumerIncompatibleSchema   = "IncompatibleSchema"
+	errMsgConsumerAssignError          = "ConsumerAssignError"
+	errMsgConsumerNotAllowedError      = "NotAllowedError"
+)
+
+// nonRetriableSubscribeErrorMarkers is the full set of broker error names that should
+// terminate the reconnect loop immediately. Detection is by substring match on the
+// error message, since the broker error arrives wire-formatted as "<ServerError>: <msg>"
+// (see grabConn -> BaseCommand_ERROR handling).
+var nonRetriableSubscribeErrorMarkers = []string{
+	errMsgTopicNotFound,
+	errMsgTopicTerminated,
+	errMsgConsumerSubscriptionNotFound,
+	errMsgConsumerAuthorizationError,
+	errMsgConsumerBusy,
+	errMsgConsumerInvalidTopicName,
+	errMsgConsumerIncompatibleSchema,
+	errMsgConsumerAssignError,
+	errMsgConsumerNotAllowedError,
+}
+
+func isNonRetriableSubscribeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, marker := range nonRetriableSubscribeErrorMarkers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// causalCloser is implemented by Consumer wrappers that can record the reason
+// they were closed and forward it to a ConsumerCloseInterceptor. The reconnect
+// loop uses this to surface the underlying error when it gives up.
+type causalCloser interface {
+	closeWithCause(err error)
+}
+
 type partitionConsumerOpts struct {
 	topic                       string
 	consumerName                string
@@ -2062,6 +2112,19 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		assignedBrokerURL = connectionClosed.assignedBrokerURL
 	}
 
+	var giveUpNotified bool
+	notifyReconnectGiveUp := func(cause error) {
+		if giveUpNotified {
+			return
+		}
+		giveUpNotified = true
+		if cc, ok := pc.parentConsumer.(causalCloser); ok {
+			go cc.closeWithCause(cause)
+		} else {
+			go pc.parentConsumer.Close()
+		}
+	}
+
 	opFn := func() (struct{}, error) {
 		if maxRetry == 0 {
 			return struct{}{}, nil
@@ -2088,10 +2151,9 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return struct{}{}, nil
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
-		errMsg := err.Error()
-		if strings.Contains(errMsg, errMsgTopicNotFound) {
-			// when topic is deleted, we should give up reconnection.
-			pc.log.Warn("Topic Not Found.")
+		if isNonRetriableSubscribeError(err) {
+			pc.log.WithError(err).Warn("Non-retriable error during reconnect, giving up")
+			notifyReconnectGiveUp(err)
 			return struct{}{}, nil
 		}
 
@@ -2099,8 +2161,10 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			maxRetry--
 		}
 		pc.metrics.ConsumersReconnectFailure.Inc()
-		if maxRetry == 0 || bo.IsMaxBackoffReached() {
+		if maxRetry == 0 {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
+			notifyReconnectGiveUp(errors.New("max retry attempts reached for reconnecting to broker"))
+			return struct{}{}, nil
 		}
 
 		return struct{}{}, err
