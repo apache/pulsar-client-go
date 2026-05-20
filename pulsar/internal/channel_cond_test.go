@@ -53,3 +53,38 @@ func TestChCondWithContext(_ *testing.T) {
 	cancel()
 	wg.Wait()
 }
+
+func TestChCondWithContextBlocks(t *testing.T) {
+	// Verify that waitWithContext actually blocks (does not return via a default case)
+	// until either a broadcast or context cancellation occurs.
+	cond := newCond(&sync.Mutex{})
+	started := make(chan struct{})
+	done := make(chan struct{})
+
+	go func() {
+		cond.L.Lock()
+		close(started)
+		cond.waitWithContext(context.Background())
+		cond.L.Unlock()
+		close(done)
+	}()
+
+	<-started
+	// Give the goroutine time to enter the select. If there were a default case,
+	// it would return immediately and close done before the broadcast below.
+	time.Sleep(20 * time.Millisecond)
+
+	select {
+	case <-done:
+		t.Fatal("waitWithContext returned before broadcast — default case must have fired")
+	default:
+	}
+
+	cond.broadcast()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("waitWithContext did not unblock after broadcast")
+	}
+}
