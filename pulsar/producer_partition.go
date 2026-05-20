@@ -660,36 +660,7 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 		}
 		// update chunk id
 		sr.mm.ChunkId = proto.Int32(int32(chunkID))
-		nsr := sendRequestPool.Get().(*sendRequest)
-		*nsr = sendRequest{
-			pool:                sendRequestPool,
-			ctx:                 sr.ctx,
-			msg:                 sr.msg,
-			producer:            sr.producer,
-			callback:            sr.callback,
-			callbackOnce:        sr.callbackOnce,
-			publishTime:         sr.publishTime,
-			flushImmediately:    sr.flushImmediately,
-			totalChunks:         sr.totalChunks,
-			chunkID:             chunkID,
-			uuid:                uuid,
-			chunkRecorder:       cr,
-			transaction:         sr.transaction,
-			memLimit:            sr.memLimit,
-			semaphore:           sr.semaphore,
-			reservedMem:         int64(rhs - lhs),
-			sendAsBatch:         sr.sendAsBatch,
-			schema:              sr.schema,
-			schemaVersion:       sr.schemaVersion,
-			uncompressedPayload: sr.uncompressedPayload,
-			uncompressedSize:    sr.uncompressedSize,
-			compressedPayload:   sr.compressedPayload,
-			compressedSize:      sr.compressedSize,
-			payloadChunkSize:    sr.payloadChunkSize,
-			mm:                  sr.mm,
-			deliverAt:           sr.deliverAt,
-			maxMessageSize:      sr.maxMessageSize,
-		}
+		nsr := newChunkSendRequest(sr, chunkID, uuid, cr, int64(rhs-lhs))
 
 		p.internalSingleSend(nsr.mm, nsr.compressedPayload[lhs:rhs], nsr, uint32(nsr.maxMessageSize))
 	}
@@ -1326,18 +1297,7 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
-	sr := sendRequestPool.Get().(*sendRequest)
-	*sr = sendRequest{
-		pool:             sendRequestPool,
-		ctx:              ctx,
-		msg:              msg,
-		producer:         p,
-		callback:         callback,
-		callbackOnce:     &sync.Once{},
-		flushImmediately: flushImmediately,
-		publishTime:      time.Now(),
-		chunkID:          -1,
-	}
+	sr := newSendRequest(p, ctx, msg, callback, flushImmediately)
 
 	if err := p.prepareTransaction(sr); err != nil {
 		sr.done(nil, err)
@@ -1612,6 +1572,7 @@ func (p *partitionProducer) Close() {
 }
 
 type sendRequest struct {
+	doneFlag         atomic.Bool
 	pool             *sync.Pool
 	ctx              context.Context
 	msg              *ProducerMessage
@@ -1648,7 +1609,67 @@ type sendRequest struct {
 	maxMessageSize      int32
 }
 
+func newSendRequest(
+	p *partitionProducer,
+	ctx context.Context,
+	msg *ProducerMessage,
+	callback func(MessageID, *ProducerMessage, error),
+	flushImmediately bool,
+) *sendRequest {
+	sr := sendRequestPool.Get().(*sendRequest)
+	*sr = sendRequest{
+		pool:             sendRequestPool,
+		ctx:              ctx,
+		msg:              msg,
+		producer:         p,
+		callback:         callback,
+		callbackOnce:     &sync.Once{},
+		flushImmediately: flushImmediately,
+		publishTime:      time.Now(),
+		chunkID:          -1,
+	}
+	return sr
+}
+
+func newChunkSendRequest(parent *sendRequest, chunkID int, uuid string, cr *chunkRecorder, reservedMem int64) *sendRequest {
+	sr := sendRequestPool.Get().(*sendRequest)
+	*sr = sendRequest{
+		pool:                sendRequestPool,
+		ctx:                 parent.ctx,
+		msg:                 parent.msg,
+		producer:            parent.producer,
+		callback:            parent.callback,
+		callbackOnce:        parent.callbackOnce,
+		publishTime:         parent.publishTime,
+		flushImmediately:    parent.flushImmediately,
+		totalChunks:         parent.totalChunks,
+		chunkID:             chunkID,
+		uuid:                uuid,
+		chunkRecorder:       cr,
+		transaction:         parent.transaction,
+		memLimit:            parent.memLimit,
+		semaphore:           parent.semaphore,
+		reservedMem:         reservedMem,
+		sendAsBatch:         parent.sendAsBatch,
+		schema:              parent.schema,
+		schemaVersion:       parent.schemaVersion,
+		uncompressedPayload: parent.uncompressedPayload,
+		uncompressedSize:    parent.uncompressedSize,
+		compressedPayload:   parent.compressedPayload,
+		compressedSize:      parent.compressedSize,
+		payloadChunkSize:    parent.payloadChunkSize,
+		mm:                  parent.mm,
+		deliverAt:           parent.deliverAt,
+		maxMessageSize:      parent.maxMessageSize,
+	}
+	return sr
+}
+
 func (sr *sendRequest) done(msgID MessageID, err error) {
+	if !sr.doneFlag.CompareAndSwap(false, true) {
+		return
+	}
+
 	if err == nil {
 		sr.producer.metrics.PublishLatency.Observe(float64(time.Now().UnixNano()-sr.publishTime.UnixNano()) / 1.0e9)
 		sr.producer.metrics.MessagesPublished.Inc()
@@ -1700,6 +1721,8 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 	if pool != nil {
 		// reset all the fields
 		*sr = sendRequest{}
+		// Keep the guard raised until the object is reinitialized from the pool.
+		sr.doneFlag.Store(true)
 		pool.Put(sr)
 	}
 }
