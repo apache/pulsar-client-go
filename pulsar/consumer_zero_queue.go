@@ -80,7 +80,7 @@ func newZeroConsumer(client *client, options ConsumerOptions, topic string,
 			pc.availablePermits.inc()
 		}
 	}
-	pc, err := newPartitionConsumer(zc, zc.client, opts, zc.messageCh, zc.dlq, zc.metrics)
+	pc, err := newPartitionConsumer(zc, zc.client, opts, zc.messageCh, zc.dlq, zc.metrics, true)
 	if err != nil {
 		return nil, err
 	}
