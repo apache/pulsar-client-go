@@ -20,6 +20,7 @@ package admin
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -187,7 +188,7 @@ func (b *broker) UpdateDynamicConfiguration(configName, configValue string) erro
 }
 
 func (b *broker) UpdateDynamicConfigurationWithContext(ctx context.Context, configName, configValue string) error {
-	value := fmt.Sprintf("/configuration/%s/%s", configName, configValue)
+	value := fmt.Sprintf("/configuration/%s/%s", configName, url.PathEscape(configValue))
 	endpoint := b.pulsar.endpointWithFullPath(b.basePath, value)
 	return b.pulsar.Client.PostWithContext(ctx, endpoint, nil)
 }

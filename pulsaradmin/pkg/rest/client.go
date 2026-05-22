@@ -62,6 +62,10 @@ func (c *Client) newRequest(method, path string) (*request, error) {
 			User:   base.User,
 			Host:   base.Host,
 			Path:   endpoint(base.Path, u.Path),
+			RawPath: endpoint(
+				base.EscapedPath(),
+				u.EscapedPath(),
+			),
 		},
 		params: make(url.Values),
 	}

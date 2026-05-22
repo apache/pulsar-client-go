@@ -20,9 +20,11 @@ package admin
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/auth"
@@ -30,7 +32,14 @@ import (
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestBrokerHealthCheckWithTopicVersion(t *testing.T) {
 	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
@@ -96,6 +105,34 @@ func TestUpdateDynamicConfiguration(t *testing.T) {
 	configurations, err := admin.Brokers().GetDynamicConfigurationNames()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, configurations)
+}
+
+func TestUpdateDynamicConfigurationEscapesConfigValue(t *testing.T) {
+	admin := &pulsarClient{
+		APIVersion: config.V2,
+		Client: &rest.Client{
+			ServiceURL: "http://example.com",
+			HTTPClient: &http.Client{
+				Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+					require.Equal(t, http.MethodPost, r.Method)
+					require.Equal(
+						t,
+						"/admin/v2/brokers/configuration/testConfigName/public%2Fdefault",
+						r.URL.EscapedPath(),
+					)
+					return &http.Response{
+						StatusCode: http.StatusNoContent,
+						Body:       io.NopCloser(strings.NewReader("")),
+						Header:     make(http.Header),
+						Request:    r,
+					}, nil
+				}),
+			},
+		},
+	}
+
+	err := admin.Brokers().UpdateDynamicConfiguration("testConfigName", "public/default")
+	require.NoError(t, err)
 }
 
 func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
