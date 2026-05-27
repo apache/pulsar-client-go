@@ -724,6 +724,10 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 		UncompressedSize: proto.Uint32(uint32(uncompressedSize)),
 	}
 
+	if msg.Value == nil && msg.Payload == nil {
+		mm.NullValue = proto.Bool(true)
+	}
+
 	if !msg.EventTime.IsZero() {
 		mm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
 	}
@@ -769,6 +773,10 @@ func (p *partitionProducer) genSingleMessageMetadataInBatch(
 ) (smm *pb.SingleMessageMetadata) {
 	smm = &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int32(int32(uncompressedSize)),
+	}
+
+	if msg.Value == nil && msg.Payload == nil {
+		smm.NullValue = proto.Bool(true)
 	}
 
 	if !msg.EventTime.IsZero() {
