@@ -81,7 +81,7 @@ func TestProducerConnectError(t *testing.T) {
 	assert.ErrorContains(t, err, "connection error")
 }
 
-func TestUpdateMetaDataAddsTxnID(t *testing.T) {
+func TestUpdateMetadataAddsTxnID(t *testing.T) {
 	sequenceID := uint64(0)
 	pp := &partitionProducer{
 		producerName:        "test-producer",
