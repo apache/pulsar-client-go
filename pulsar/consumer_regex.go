@@ -25,6 +25,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pkgerrors "github.com/pkg/errors"
@@ -51,6 +52,8 @@ type regexConsumer struct {
 
 	consumersLock sync.Mutex
 	consumers     map[string]Consumer
+
+	paused atomic.Bool
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
@@ -348,6 +351,28 @@ func (c *regexConsumer) Name() string {
 	return c.consumerName
 }
 
+func (c *regexConsumer) Pause() {
+	c.consumersLock.Lock()
+	defer c.consumersLock.Unlock()
+	c.paused.Store(true)
+	for _, con := range c.consumers {
+		con.Pause()
+	}
+}
+
+func (c *regexConsumer) Resume() {
+	c.consumersLock.Lock()
+	defer c.consumersLock.Unlock()
+	c.paused.Store(false)
+	for _, con := range c.consumers {
+		con.Resume()
+	}
+}
+
+func (c *regexConsumer) Paused() bool {
+	return c.paused.Load()
+}
+
 func (c *regexConsumer) closed() bool {
 	select {
 	case <-c.closeCh:
@@ -422,8 +447,11 @@ func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter, rlq *retryRou
 
 	c.consumersLock.Lock()
 	defer c.consumersLock.Unlock()
-	for t, consumer := range consumers {
-		c.consumers[t] = consumer
+	for t, con := range consumers {
+		if c.paused.Load() {
+			con.Pause()
+		}
+		c.consumers[t] = con
 	}
 }
 
