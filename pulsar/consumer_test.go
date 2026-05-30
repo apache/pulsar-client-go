@@ -6512,7 +6512,6 @@ func TestConsumerPauseResume(t *testing.T) {
 	assert.Nil(t, err)
 	defer aConsumer.Close()
 
-	// Receive one message first to confirm delivery is flowing before pausing.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	first, err := aConsumer.Receive(ctx)
 	cancel()
@@ -6522,17 +6521,13 @@ func TestConsumerPauseResume(t *testing.T) {
 	}
 	received := 1
 
-	// Pause is idempotent.
 	aConsumer.Pause()
 	aConsumer.Pause()
 	assert.True(t, aConsumer.Paused())
 
-	// Already-granted messages still drain, but once the broker's permits are
-	// exhausted no refill is sent, so delivery stops before all messages arrive.
 	received += drainUntilTimeout(t, aConsumer, 3*time.Second)
 	assert.Less(t, received, numMsg, "pause must stop delivery before all messages arrive")
 
-	// Resume is idempotent and lets the rest through with no loss.
 	aConsumer.Resume()
 	aConsumer.Resume()
 	assert.False(t, aConsumer.Paused())
@@ -6557,10 +6552,10 @@ func TestPartitionedConsumerPauseResume(t *testing.T) {
 	defer aProducer.Close()
 
 	for i := 0; i < numMsg; i++ {
-		_, err := aProducer.Send(context.Background(), &ProducerMessage{
+		_, sendErr := aProducer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-%d", i)),
 		})
-		assert.Nil(t, err)
+		assert.Nil(t, sendErr)
 	}
 
 	aConsumer, err := aClient.Subscribe(ConsumerOptions{
@@ -6661,10 +6656,10 @@ func TestRegexConsumerPauseResumeInheritsNewTopics(t *testing.T) {
 	assert.Nil(t, err)
 	defer aProducer.Close()
 	for i := 0; i < numMsg; i++ {
-		_, err := aProducer.Send(context.Background(), &ProducerMessage{
+		_, sendErr := aProducer.Send(context.Background(), &ProducerMessage{
 			Payload: []byte(fmt.Sprintf("msg-%d", i)),
 		})
-		assert.Nil(t, err)
+		assert.Nil(t, sendErr)
 	}
 
 	time.Sleep(3 * time.Second)
