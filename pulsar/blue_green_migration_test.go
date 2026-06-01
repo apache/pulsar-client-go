@@ -164,9 +164,12 @@ func testTopicMigrate(
 			retryStarted := time.Now()
 
 			for true {
-				ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
-				_, err := producer.Send(ctx, &pm)
-				cancel()
+				err := func() error {
+					ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+					defer cancel()
+					_, err := producer.Send(ctx, &pm)
+					return err
+				}
 				if err == nil {
 					break
 				}
