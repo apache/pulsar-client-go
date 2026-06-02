@@ -1617,51 +1617,67 @@ func newSendRequest(
 	flushImmediately bool,
 ) *sendRequest {
 	sr := sendRequestPool.Get().(*sendRequest)
-	*sr = sendRequest{
-		pool:             sendRequestPool,
-		ctx:              ctx,
-		msg:              msg,
-		producer:         p,
-		callback:         callback,
-		callbackOnce:     &sync.Once{},
-		flushImmediately: flushImmediately,
-		publishTime:      time.Now(),
-		chunkID:          -1,
-	}
+	sr.pool = sendRequestPool
+	sr.ctx = ctx
+	sr.msg = msg
+	sr.producer = p
+	sr.callback = callback
+	sr.callbackOnce = &sync.Once{}
+	sr.flushImmediately = flushImmediately
+	sr.publishTime = time.Now()
+	sr.chunkID = -1
+	sr.totalChunks = 0
+	sr.uuid = ""
+	sr.chunkRecorder = nil
+	sr.transaction = nil
+	sr.memLimit = nil
+	sr.semaphore = nil
+	sr.reservedMem = 0
+	sr.sendAsBatch = false
+	sr.schema = nil
+	sr.schemaVersion = nil
+	sr.uncompressedPayload = nil
+	sr.uncompressedSize = 0
+	sr.compressedPayload = nil
+	sr.compressedSize = 0
+	sr.payloadChunkSize = 0
+	sr.mm = nil
+	sr.deliverAt = nil
+	sr.maxMessageSize = 0
+	sr.doneFlag.Store(false)
 	return sr
 }
 
 func newChunkSendRequest(p *sendRequest, chunkID int, uuid string, cr *chunkRecorder, reservedMem int64) *sendRequest {
 	sr := sendRequestPool.Get().(*sendRequest)
-	*sr = sendRequest{
-		pool:                sendRequestPool,
-		ctx:                 p.ctx,
-		msg:                 p.msg,
-		producer:            p.producer,
-		callback:            p.callback,
-		callbackOnce:        p.callbackOnce,
-		publishTime:         p.publishTime,
-		flushImmediately:    p.flushImmediately,
-		totalChunks:         p.totalChunks,
-		chunkID:             chunkID,
-		uuid:                uuid,
-		chunkRecorder:       cr,
-		transaction:         p.transaction,
-		memLimit:            p.memLimit,
-		semaphore:           p.semaphore,
-		reservedMem:         reservedMem,
-		sendAsBatch:         p.sendAsBatch,
-		schema:              p.schema,
-		schemaVersion:       p.schemaVersion,
-		uncompressedPayload: p.uncompressedPayload,
-		uncompressedSize:    p.uncompressedSize,
-		compressedPayload:   p.compressedPayload,
-		compressedSize:      p.compressedSize,
-		payloadChunkSize:    p.payloadChunkSize,
-		mm:                  p.mm,
-		deliverAt:           p.deliverAt,
-		maxMessageSize:      p.maxMessageSize,
-	}
+	sr.pool = sendRequestPool
+	sr.ctx = p.ctx
+	sr.msg = p.msg
+	sr.producer = p.producer
+	sr.callback = p.callback
+	sr.callbackOnce = p.callbackOnce
+	sr.publishTime = p.publishTime
+	sr.flushImmediately = p.flushImmediately
+	sr.totalChunks = p.totalChunks
+	sr.chunkID = chunkID
+	sr.uuid = uuid
+	sr.chunkRecorder = cr
+	sr.transaction = p.transaction
+	sr.memLimit = p.memLimit
+	sr.semaphore = p.semaphore
+	sr.reservedMem = reservedMem
+	sr.sendAsBatch = p.sendAsBatch
+	sr.schema = p.schema
+	sr.schemaVersion = p.schemaVersion
+	sr.uncompressedPayload = p.uncompressedPayload
+	sr.uncompressedSize = p.uncompressedSize
+	sr.compressedPayload = p.compressedPayload
+	sr.compressedSize = p.compressedSize
+	sr.payloadChunkSize = p.payloadChunkSize
+	sr.mm = p.mm
+	sr.deliverAt = p.deliverAt
+	sr.maxMessageSize = p.maxMessageSize
+	sr.doneFlag.Store(false)
 	return sr
 }
 
@@ -1719,10 +1735,11 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 
 	pool := sr.pool
 	if pool != nil {
-		// reset all the fields
-		*sr = sendRequest{}
-		// Keep the guard raised until the object is reinitialized from the pool.
-		sr.doneFlag.Store(true)
+		// Reset all the fields while keeping the done guard raised until the
+		// object is reinitialized from the pool.
+		reset := sendRequest{}
+		reset.doneFlag.Store(true)
+		*sr = reset
 		pool.Put(sr)
 	}
 }
