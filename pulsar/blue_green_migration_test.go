@@ -169,7 +169,7 @@ func testTopicMigrate(
 					defer cancel()
 					_, err := producer.Send(ctx, &pm)
 					return err
-				}
+				}()
 				if err == nil {
 					break
 				}
@@ -242,6 +242,12 @@ func testTopicMigrate(
 
 		select {
 		case <-doneCh:
+			select {
+			case err := <-errCh:
+				req.NoError(err, stage)
+				return false
+			default:
+			}
 			return true
 		case err := <-errCh:
 			req.NoError(err, stage)
