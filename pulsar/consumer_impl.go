@@ -21,9 +21,11 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"math/rand"
 	"strconv"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/crypto"
@@ -48,11 +50,11 @@ type acker interface {
 }
 
 type consumer struct {
-	sync.Mutex
-	topic                     string
-	client                    *client
-	options                   ConsumerOptions
-	consumers                 []*partitionConsumer
+	topic   string
+	client  *client
+	options ConsumerOptions
+
+	consumers                 atomic.Value
 	consumerName              string
 	disableForceTopicCreation bool
 
@@ -82,6 +84,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 
 	if options.SubscriptionName == "" {
 		return nil, newError(SubscriptionNotFound, "subscription name is required for consumer")
+	}
+
+	if options.PriorityLevel < 0 || options.PriorityLevel > math.MaxInt32 {
+		return nil, newError(InvalidConfiguration, "priority level must be >= 0 and <= math.MaxInt32")
 	}
 
 	if options.ReceiverQueueSize <= 0 {
@@ -349,14 +355,10 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		return err
 	}
 
-	oldNumPartitions := 0
 	newNumPartitions := len(partitions)
 
-	c.Lock()
-	defer c.Unlock()
-
-	oldConsumers := c.consumers
-	oldNumPartitions = len(oldConsumers)
+	oldConsumers := c.partitionConsumers()
+	oldNumPartitions := len(oldConsumers)
 
 	if oldConsumers != nil {
 		if oldNumPartitions == newNumPartitions {
@@ -369,14 +371,14 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 			Info("Changed number of partitions in topic")
 	}
 
-	c.consumers = make([]*partitionConsumer, newNumPartitions)
+	newConsumers := make([]*partitionConsumer, newNumPartitions)
 
 	// When for some reason (eg: forced deletion of sub partition) causes oldNumPartitions> newNumPartitions,
 	// we need to rebuild the cache of new consumers, otherwise the array will be out of bounds.
 	if oldConsumers != nil && oldNumPartitions < newNumPartitions {
 		// Copy over the existing consumer instances
 		for i := 0; i < oldNumPartitions; i++ {
-			c.consumers[i] = oldConsumers[i]
+			newConsumers[i] = oldConsumers[i]
 		}
 	}
 
@@ -401,16 +403,16 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
 		partitionTopic := partitions[partitionIdx]
 
-		go func() {
+		go func(partitionIdx int, partitionTopic string) {
 			defer wg.Done()
 			opts := newPartitionConsumerOpts(partitionTopic, c.consumerName, partitionIdx, c.options)
-			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics)
+			cons, err := newPartitionConsumer(c, c.client, opts, c.messageCh, c.dlq, c.metrics, false)
 			ch <- ConsumerError{
 				err:       err,
 				partition: partitionIdx,
 				consumer:  cons,
 			}
-		}()
+		}(partitionIdx, partitionTopic)
 	}
 
 	go func() {
@@ -422,14 +424,14 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		if ce.err != nil {
 			err = ce.err
 		} else {
-			c.consumers[ce.partition] = ce.consumer
+			newConsumers[ce.partition] = ce.consumer
 		}
 	}
 
 	if err != nil {
 		// Since there were some failures,
 		// cleanup all the partitions that succeeded in creating the consumer
-		for _, c := range c.consumers {
+		for _, c := range newConsumers {
 			if c != nil {
 				c.Close()
 			}
@@ -437,6 +439,10 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 		return err
 	}
 
+	c.consumers.Store(append([]*partitionConsumer(nil), newConsumers...))
+	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
+		newConsumers[partitionIdx].startDispatcher()
+	}
 	if newNumPartitions < oldNumPartitions {
 		c.metrics.ConsumersPartitions.Set(float64(newNumPartitions))
 	} else {
@@ -460,6 +466,7 @@ func newPartitionConsumerOpts(topic, consumerName string, idx int, options Consu
 		subscriptionType:            options.Type,
 		subscriptionInitPos:         options.SubscriptionInitialPosition,
 		partitionIdx:                idx,
+		priorityLevel:               options.PriorityLevel,
 		receiverQueueSize:           options.ReceiverQueueSize,
 		nackRedeliveryDelay:         nackRedeliveryDelay,
 		nackBackoffPolicy:           options.NackBackoffPolicy,
@@ -502,11 +509,9 @@ func (c *consumer) UnsubscribeForce() error {
 }
 
 func (c *consumer) unsubscribe(force bool) error {
-	c.Lock()
-	defer c.Unlock()
-
+	consumers := c.partitionConsumers()
 	var errMsg string
-	for _, consumer := range c.consumers {
+	for _, consumer := range consumers {
 		if err := consumer.unsubscribe(force); err != nil {
 			errMsg += fmt.Sprintf("topic %s, subscription %s: %s", consumer.topic, c.Subscription(), err)
 		}
@@ -518,8 +523,9 @@ func (c *consumer) unsubscribe(force bool) error {
 }
 
 func (c *consumer) GetLastMessageIDs() ([]TopicMessageID, error) {
+	consumers := c.partitionConsumers()
 	ids := make([]TopicMessageID, 0)
-	for _, pc := range c.consumers {
+	for _, pc := range consumers {
 		id, err := pc.getLastMessageID()
 		tm := &topicMessageID{topic: pc.topic, track: id}
 		if err != nil {
@@ -548,11 +554,11 @@ func (c *consumer) Receive(ctx context.Context) (message Message, err error) {
 
 func (c *consumer) AckWithTxn(msg Message, txn Transaction) error {
 	msgID := msg.ID()
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := findPartitionConsumer(c.partitionConsumers(), msgID)
+	if err != nil {
 		return err
 	}
-
-	return c.consumers[msgID.PartitionIdx()].AckIDWithTxn(msgID, txn)
+	return consumer.AckIDWithTxn(msgID, txn)
 }
 
 // Chan return the message chan to users
@@ -567,23 +573,19 @@ func (c *consumer) Ack(msg Message) error {
 
 // AckID the consumption of a single message, identified by its MessageID
 func (c *consumer) AckID(msgID MessageID) error {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := findPartitionConsumer(c.partitionConsumers(), msgID)
+	if err != nil {
 		return err
 	}
-
 	if c.options.AckWithResponse {
-		return c.consumers[msgID.PartitionIdx()].AckIDWithResponse(msgID)
+		return consumer.AckIDWithResponse(msgID)
 	}
-
-	return c.consumers[msgID.PartitionIdx()].AckID(msgID)
+	return consumer.AckID(msgID)
 }
 
 func (c *consumer) AckIDList(msgIDs []MessageID) error {
 	return ackIDListFromMultiTopics(c.log, msgIDs, func(msgID MessageID) (acker, error) {
-		if err := c.checkMsgIDPartition(msgID); err != nil {
-			return nil, err
-		}
-		return c.consumers[msgID.PartitionIdx()], nil
+		return findPartitionConsumer(c.partitionConsumers(), msgID)
 	})
 }
 
@@ -596,15 +598,14 @@ func (c *consumer) AckCumulative(msg Message) error {
 // AckIDCumulative the reception of all the messages in the stream up to (and including)
 // the provided message, identified by its MessageID
 func (c *consumer) AckIDCumulative(msgID MessageID) error {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := findPartitionConsumer(c.partitionConsumers(), msgID)
+	if err != nil {
 		return err
 	}
-
 	if c.options.AckWithResponse {
-		return c.consumers[msgID.PartitionIdx()].AckIDWithResponseCumulative(msgID)
+		return consumer.AckIDWithResponseCumulative(msgID)
 	}
-
-	return c.consumers[msgID.PartitionIdx()].AckIDCumulative(msgID)
+	return consumer.AckIDCumulative(msgID)
 }
 
 // ReconsumeLater mark a message for redelivery after custom delay
@@ -694,7 +695,9 @@ func (c *consumer) Nack(msg Message) {
 			mid.NackByMsg(msg)
 			return
 		}
-		c.consumers[mid.partitionIdx].NackMsg(msg)
+		if consumer, err := findPartitionConsumer(c.partitionConsumers(), mid); err == nil {
+			consumer.NackMsg(msg)
+		}
 		return
 	}
 
@@ -702,27 +705,31 @@ func (c *consumer) Nack(msg Message) {
 }
 
 func (c *consumer) NackID(msgID MessageID) {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
-		return
+	if consumer, err := findPartitionConsumer(c.partitionConsumers(), msgID); err == nil {
+		consumer.NackID(msgID)
 	}
-
-	c.consumers[msgID.PartitionIdx()].NackID(msgID)
 }
 
 func (c *consumer) Close() {
+	c.closeWithCause(nil)
+}
+
+// closeWithCause closes the consumer and notifies any ConsumerCloseInterceptor
+// with the supplied cause. The hook fires exactly once per consumer; the cause
+// is captured by the goroutine that wins closeOnce so concurrent callers cannot
+// race the value.
+func (c *consumer) closeWithCause(err error) {
 	c.closeOnce.Do(func() {
 		c.stopDiscovery()
 
-		c.Lock()
-		defer c.Unlock()
-
 		var wg sync.WaitGroup
-		for i := range c.consumers {
+		consumers := c.partitionConsumers()
+		for i := range consumers {
 			wg.Add(1)
 			go func(pc *partitionConsumer) {
 				defer wg.Done()
 				pc.Close()
-			}(c.consumers[i])
+			}(consumers[i])
 		}
 		wg.Wait()
 		close(c.closeCh)
@@ -730,23 +737,22 @@ func (c *consumer) Close() {
 		c.dlq.close()
 		c.rlq.close()
 		c.metrics.ConsumersClosed.Inc()
-		c.metrics.ConsumersPartitions.Sub(float64(len(c.consumers)))
+		c.metrics.ConsumersPartitions.Sub(float64(len(consumers)))
+		c.options.Interceptors.OnConsumerClose(c, err)
 	})
 }
 
 func (c *consumer) Seek(msgID MessageID) error {
-	c.Lock()
-	defer c.Unlock()
+	consumers := c.partitionConsumers()
 
-	if len(c.consumers) > 1 {
+	if len(consumers) > 1 {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := findPartitionConsumer(consumers, msgID)
+	if err != nil {
 		return err
 	}
-
-	consumer := c.consumers[msgID.PartitionIdx()]
 	consumer.pauseDispatchMessage()
 	// clear messageCh
 	for len(c.messageCh) > 0 {
@@ -757,11 +763,10 @@ func (c *consumer) Seek(msgID MessageID) error {
 }
 
 func (c *consumer) SeekByTime(time time.Time) error {
-	c.Lock()
-	defer c.Unlock()
 	var errs error
+	consumers := c.partitionConsumers()
 
-	for _, cons := range c.consumers {
+	for _, cons := range consumers {
 		cons.pauseDispatchMessage()
 	}
 	// clear messageCh
@@ -770,7 +775,7 @@ func (c *consumer) SeekByTime(time time.Time) error {
 	}
 
 	// run SeekByTime on every partition of topic
-	for _, cons := range c.consumers {
+	for _, cons := range consumers {
 		if err := cons.SeekByTime(time); err != nil {
 			msg := fmt.Sprintf("unable to SeekByTime for topic=%s subscription=%s", c.topic, c.Subscription())
 			errs = pkgerrors.Wrap(newError(SeekFailed, err.Error()), msg)
@@ -780,26 +785,36 @@ func (c *consumer) SeekByTime(time time.Time) error {
 	return errs
 }
 
-func (c *consumer) checkMsgIDPartition(msgID MessageID) error {
-	partition := msgID.PartitionIdx()
-	if partition < 0 || int(partition) >= len(c.consumers) {
-		c.log.Errorf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(c.consumers))
-		return fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
-			partition, len(c.consumers))
+func findPartitionConsumer(consumers []*partitionConsumer, msgID MessageID) (*partitionConsumer, error) {
+	partition := int(msgID.PartitionIdx())
+	if partition < 0 || partition >= len(consumers) {
+		return nil, fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
+			partition, len(consumers)-1)
 	}
-	return nil
+	return consumers[partition], nil
+}
+
+func (c *consumer) partitionConsumers() []*partitionConsumer {
+	v := c.consumers.Load()
+	if v == nil {
+		return nil
+	}
+	// The slice stored in c.consumers is published via copy-on-write.
+	// Callers must treat the returned slice as immutable.
+	return v.([]*partitionConsumer)
 }
 
 func (c *consumer) hasNext() bool {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel() // Make sure all paths cancel the context to avoid context leak
 
+	consumers := c.partitionConsumers()
+
 	var wg sync.WaitGroup
-	wg.Add(len(c.consumers))
+	wg.Add(len(consumers))
 
 	hasNext := make(chan bool)
-	for _, pc := range c.consumers {
+	for _, pc := range consumers {
 		go func() {
 			defer wg.Done()
 			if pc.hasNext() {
@@ -827,10 +842,11 @@ func (c *consumer) hasNext() bool {
 }
 
 func (c *consumer) setLastDequeuedMsg(msgID MessageID) error {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	consumer, err := findPartitionConsumer(c.partitionConsumers(), msgID)
+	if err != nil {
 		return err
 	}
-	c.consumers[msgID.PartitionIdx()].lastDequeuedMsg = toTrackingMessageID(msgID)
+	consumer.lastDequeuedMsg = toTrackingMessageID(msgID)
 	return nil
 }
 
@@ -893,7 +909,7 @@ func toProtoInitialPosition(p SubscriptionInitialPosition) pb.CommandSubscribe_I
 }
 
 func (c *consumer) messageID(msgID MessageID) *trackingMessageID {
-	if err := c.checkMsgIDPartition(msgID); err != nil {
+	if _, err := findPartitionConsumer(c.partitionConsumers(), msgID); err != nil {
 		return nil
 	}
 	return toTrackingMessageID(msgID)

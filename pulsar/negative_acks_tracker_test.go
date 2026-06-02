@@ -197,6 +197,10 @@ func (msg *mockMessage1) Payload() []byte {
 	return nil
 }
 
+func (msg *mockMessage1) IsNullValue() bool {
+	return false
+}
+
 func (msg *mockMessage1) ID() MessageID {
 	return &messageID{
 		ledgerID: 1,
@@ -271,6 +275,10 @@ func (msg *mockMessage2) Properties() map[string]string {
 
 func (msg *mockMessage2) Payload() []byte {
 	return nil
+}
+
+func (msg *mockMessage2) IsNullValue() bool {
+	return false
 }
 
 func (msg *mockMessage2) ID() MessageID {

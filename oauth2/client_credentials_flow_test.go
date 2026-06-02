@@ -19,6 +19,10 @@ package oauth2
 
 import (
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"time"
 
 	"github.com/apache/pulsar-client-go/oauth2/clock"
@@ -47,6 +51,57 @@ var clientCredentials = KeyFile{
 	ClientEmail:  "test_clientEmail",
 	IssuerURL:    "http://issuer",
 	Scope:        "test_scope",
+}
+
+func mockWellKnownServer(tokenEndpoint string) *httptest.Server {
+	handler := http.NewServeMux()
+	handler.HandleFunc("/.well-known/openid-configuration", func(writer http.ResponseWriter, _ *http.Request) {
+		fmt.Fprintf(writer, "{\n  \"token_endpoint\": \"%s\"\n}\n", tokenEndpoint)
+	})
+	return httptest.NewServer(handler)
+}
+
+func mockKeyFileWithIssuer(issuerURL string) (string, error) {
+	kf, err := os.CreateTemp("", "test_oauth2")
+	if err != nil {
+		return "", err
+	}
+	_, err = kf.WriteString(fmt.Sprintf(`{
+  "type":"resource",
+  "client_id":"client-id",
+  "client_secret":"client-secret",
+  "client_email":"oauth@test.org",
+  "issuer_url":"%s"
+}`, issuerURL))
+	if err != nil {
+		_ = kf.Close()
+		return "", err
+	}
+	if err := kf.Close(); err != nil {
+		return "", err
+	}
+	return kf.Name(), nil
+}
+
+func mockKeyFileWithoutIssuer() (string, error) {
+	kf, err := os.CreateTemp("", "test_oauth2")
+	if err != nil {
+		return "", err
+	}
+	_, err = kf.WriteString(`{
+  "type":"resource",
+  "client_id":"client-id",
+  "client_secret":"client-secret",
+  "client_email":"oauth@test.org"
+}`)
+	if err != nil {
+		_ = kf.Close()
+		return "", err
+	}
+	if err := kf.Close(); err != nil {
+		return "", err
+	}
+	return kf.Name(), nil
 }
 
 var _ = ginkgo.Describe("ClientCredentialsFlow", func() {
@@ -121,6 +176,42 @@ var _ = ginkgo.Describe("ClientCredentialsFlow", func() {
 			gomega.Expect(err.Error()).To(gomega.Equal("authentication failed using client credentials: " +
 				"could not exchange client credentials: someerror"))
 		})
+	})
+})
+
+var _ = ginkgo.Describe("DefaultGrantProvider", func() {
+	ginkgo.It("prefers issuer url from options over key file", func() {
+		keyFileTokenEndpoint := "http://keyfile.example/token"
+		optionsTokenEndpoint := "http://options.example/token"
+		serverFromKeyFile := mockWellKnownServer(keyFileTokenEndpoint)
+		defer serverFromKeyFile.Close()
+		serverFromOptions := mockWellKnownServer(optionsTokenEndpoint)
+		defer serverFromOptions.Close()
+
+		keyFile, err := mockKeyFileWithIssuer(serverFromKeyFile.URL)
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+		defer os.Remove(keyFile)
+
+		provider := DefaultGrantProvider{}
+		grant, err := provider.GetGrant("test-audience", &ClientCredentialsFlowOptions{
+			KeyFile:   keyFile,
+			IssuerURL: serverFromOptions.URL,
+		})
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+		gomega.Expect(grant.TokenEndpoint).To(gomega.Equal(optionsTokenEndpoint))
+	})
+
+	ginkgo.It("returns an error when issuer url is missing", func() {
+		keyFile, err := mockKeyFileWithoutIssuer()
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+		defer os.Remove(keyFile)
+
+		provider := DefaultGrantProvider{}
+		_, err = provider.GetGrant("test-audience", &ClientCredentialsFlowOptions{
+			KeyFile: keyFile,
+		})
+		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(err.Error()).To(gomega.Equal("issuer url is required for client credentials flow"))
 	})
 })
 

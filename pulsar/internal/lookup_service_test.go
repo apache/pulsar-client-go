@@ -28,6 +28,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -131,9 +132,8 @@ func responseType(r pb.CommandLookupTopicResponse_LookupType) *pb.CommandLookupT
 }
 
 func TestLookupSuccess(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
-	assert.NoError(t, err)
-	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar://example:6650")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
@@ -157,7 +157,7 @@ func TestLookupSuccess(t *testing.T) {
 		},
 	}
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -168,9 +168,8 @@ func TestLookupSuccess(t *testing.T) {
 }
 
 func TestTlsLookupSuccess(t *testing.T) {
-	url, err := url.Parse("pulsar+ssl://example:6651")
-	assert.NoError(t, err)
-	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar+ssl://example:6651")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
@@ -195,7 +194,7 @@ func TestTlsLookupSuccess(t *testing.T) {
 	}
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
 
-	ls := NewLookupService(mockedClient, url, serviceNameResolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, serviceNameResolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -206,9 +205,8 @@ func TestTlsLookupSuccess(t *testing.T) {
 }
 
 func TestLookupWithProxy(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
-	assert.NoError(t, err)
-	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar://example:6650")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
@@ -233,7 +231,7 @@ func TestLookupWithProxy(t *testing.T) {
 		},
 	}
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -244,8 +242,8 @@ func TestLookupWithProxy(t *testing.T) {
 }
 
 func TestTlsLookupWithProxy(t *testing.T) {
-	url, err := url.Parse("pulsar+ssl://example:6651")
-	assert.NoError(t, err)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar+ssl://example:6651")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
@@ -269,9 +267,8 @@ func TestTlsLookupWithProxy(t *testing.T) {
 			},
 		},
 	}
-	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, serviceNameResolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -282,8 +279,8 @@ func TestTlsLookupWithProxy(t *testing.T) {
 }
 
 func TestLookupWithRedirect(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
-	assert.NoError(t, err)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar://example:6650")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t:           t,
@@ -319,9 +316,8 @@ func TestLookupWithRedirect(t *testing.T) {
 			},
 		},
 	}
-	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -332,8 +328,8 @@ func TestLookupWithRedirect(t *testing.T) {
 }
 
 func TestTlsLookupWithRedirect(t *testing.T) {
-	url, err := url.Parse("pulsar+ssl://example:6651")
-	assert.NoError(t, err)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar+ssl://example:6651")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t:           t,
@@ -370,9 +366,8 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 		},
 	}
 
-	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, serviceNameResolver, true, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.NoError(t, err)
@@ -383,8 +378,8 @@ func TestTlsLookupWithRedirect(t *testing.T) {
 }
 
 func TestLookupWithInvalidUrlResponse(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
-	assert.NoError(t, err)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar://example:6650")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
@@ -408,9 +403,8 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 			},
 		},
 	}
-	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -418,8 +412,8 @@ func TestLookupWithInvalidUrlResponse(t *testing.T) {
 }
 
 func TestLookupWithLookupFailure(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
-	assert.NoError(t, err)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar://example:6650")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	mockedClient := &mockedLookupRPCClient{
 		t: t,
@@ -442,9 +436,8 @@ func TestLookupWithLookupFailure(t *testing.T) {
 		},
 	}
 
-	resolver := NewPulsarServiceNameResolver(url)
 	metricsProvider := NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer)
-	ls := NewLookupService(mockedClient, url, resolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
+	ls := NewLookupService(mockedClient, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(), metricsProvider)
 
 	lr, err := ls.Lookup("my-topic")
 	assert.Error(t, err)
@@ -526,9 +519,8 @@ func (m *mockedPartitionedTopicMetadataRPCClient) LookupService(_ string) (Looku
 }
 
 func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
-	url, err := url.Parse("pulsar://example:6650")
-	assert.NoError(t, err)
-	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar://example:6650")
+	require.NoError(t, err)
 
 	kvs := make([]*pb.KeyValue, 0)
 	ls := NewLookupService(&mockedPartitionedTopicMetadataRPCClient{
@@ -547,7 +539,7 @@ func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
 				Response:   pb.CommandPartitionedTopicMetadataResponse_Success.Enum(),
 			},
 		},
-	}, url, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(),
+	}, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(),
 		NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer))
 
 	metadata, err := ls.GetPartitionedTopicMetadata("my-topic")
@@ -557,10 +549,8 @@ func TestGetPartitionedTopicMetadataSuccess(t *testing.T) {
 }
 
 func TestLookupSuccessWithMultipleHosts(t *testing.T) {
-	url, err := url.Parse("pulsar://host1,host2,host3:6650")
-	assert.NoError(t, err)
-	serviceNameResolver := NewPulsarServiceNameResolver(url)
-
+	serviceNameResolver, err := NewPulsarServiceNameResolver("pulsar://host1:6650,host2:6650,host3:6650")
+	require.NoError(t, err)
 	kvs := make([]*pb.KeyValue, 0)
 	ls := NewLookupService(&mockedLookupRPCClient{
 		t: t,
@@ -582,7 +572,7 @@ func TestLookupSuccessWithMultipleHosts(t *testing.T) {
 				BrokerServiceUrl: proto.String("pulsar://broker-1:6650"),
 			},
 		},
-	}, url, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(),
+	}, serviceNameResolver, false, "", kvs, log.DefaultNopLogger(),
 		NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer))
 
 	lr, err := ls.Lookup("my-topic")
@@ -639,11 +629,10 @@ func NewMockHTTPClient(serviceNameResolver ServiceNameResolver) HTTPClient {
 }
 
 func TestHttpLookupSuccess(t *testing.T) {
-	url, err := url.Parse("http://broker-1:8080")
-	assert.NoError(t, err)
-	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("http://broker-1:8080")
+	require.NoError(t, err)
 	httpClient := NewMockHTTPClient(serviceNameResolver)
-	ls := NewHTTPLookupService(httpClient, url, serviceNameResolver, false,
+	ls := NewHTTPLookupService(httpClient, serviceNameResolver, false,
 		log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer))
 
 	lr, err := ls.Lookup("my-topic")
@@ -655,11 +644,10 @@ func TestHttpLookupSuccess(t *testing.T) {
 }
 
 func TestHttpGetPartitionedTopicMetadataSuccess(t *testing.T) {
-	url, err := url.Parse("http://broker-1:8080")
-	assert.NoError(t, err)
-	serviceNameResolver := NewPulsarServiceNameResolver(url)
+	serviceNameResolver, err := NewPulsarServiceNameResolver("http://broker-1:8080")
+	require.NoError(t, err)
 	httpClient := NewMockHTTPClient(serviceNameResolver)
-	ls := NewHTTPLookupService(httpClient, url, serviceNameResolver, false,
+	ls := NewHTTPLookupService(httpClient, serviceNameResolver, false,
 		log.DefaultNopLogger(), NewMetricsProvider(4, map[string]string{}, prometheus.DefaultRegisterer))
 
 	tMetadata, err := ls.GetPartitionedTopicMetadata("my-topic")

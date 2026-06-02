@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [ '1.23', '1.24' ]
+        go-version: [ '1.24', '1.26']
     steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v5
@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v3
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.23'
+          go-version: '1.24'
       - name: Check license header
         run: docker run --rm -v $(pwd):/github/workspace ghcr.io/korandoru/hawkeye-native:v3 check
       - name: Run golangci-lint
@@ -48,7 +48,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        go-version: [ '1.23', '1.24' ]
+        go-version: [ '1.24', '1.26' ]
     steps:
       - uses: actions/checkout@v3      
       - uses: actions/setup-go@v3
@@ -57,6 +57,8 @@ jobs:
       - name: Run Tests
         id: run-tests
         run: make test GO_VERSION=${{ matrix.go-version }}
+        env:
+          GODEBUG: urlstrictcolons=1
       - name: Upload logs on failure
         if: failure() && steps.run-tests.outcome == 'failure'
         uses: actions/upload-artifact@v4

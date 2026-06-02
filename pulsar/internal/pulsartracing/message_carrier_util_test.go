@@ -80,6 +80,10 @@ func (msg *mockConsumerMessage) Payload() []byte {
 	return nil
 }
 
+func (msg *mockConsumerMessage) IsNullValue() bool {
+	return false
+}
+
 func (msg *mockConsumerMessage) ID() pulsar.MessageID {
 	return nil
 }

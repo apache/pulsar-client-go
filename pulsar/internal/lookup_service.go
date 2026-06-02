@@ -92,14 +92,14 @@ type lookupService struct {
 }
 
 // NewLookupService init a lookup service struct and return an object of LookupService.
-func NewLookupService(rpcClient RPCClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
+func NewLookupService(rpcClient RPCClient, serviceNameResolver ServiceNameResolver,
 	tlsEnabled bool, listenerName string,
 	lookupProperties []*pb.KeyValue, logger log.Logger, metrics *Metrics) LookupService {
 	return &lookupService{
 		rpcClient:           rpcClient,
 		serviceNameResolver: serviceNameResolver,
 		tlsEnabled:          tlsEnabled,
-		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceNameResolver.GetServiceURI().URL}),
 		lookupProperties:    lookupProperties,
 		metrics:             metrics,
 		listenerName:        listenerName,
@@ -446,14 +446,14 @@ func (h *httpLookupService) Close() {
 }
 
 // NewHTTPLookupService init a http based lookup service struct and return an object of LookupService.
-func NewHTTPLookupService(httpClient HTTPClient, serviceURL *url.URL, serviceNameResolver ServiceNameResolver,
+func NewHTTPLookupService(httpClient HTTPClient, serviceNameResolver ServiceNameResolver,
 	tlsEnabled bool, logger log.Logger, metrics *Metrics) LookupService {
 
 	return &httpLookupService{
 		httpClient:          httpClient,
 		serviceNameResolver: serviceNameResolver,
 		tlsEnabled:          tlsEnabled,
-		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceURL}),
+		log:                 logger.SubLogger(log.Fields{"serviceURL": serviceNameResolver.GetServiceURI().URL}),
 		metrics:             metrics,
 	}
 }

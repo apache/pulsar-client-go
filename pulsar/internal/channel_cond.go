@@ -47,6 +47,7 @@ func (c *chCond) wait() {
 }
 
 // waitWithContext Same as wait() call, but the end condition can also be controlled through the context.
+// It blocks until either a broadcast occurs or the context is done.
 func (c *chCond) waitWithContext(ctx context.Context) bool {
 	n := c.notifyChan()
 	c.L.Unlock()
@@ -56,8 +57,6 @@ func (c *chCond) waitWithContext(ctx context.Context) bool {
 		return true
 	case <-ctx.Done():
 		return false
-	default:
-		return true
 	}
 }
 

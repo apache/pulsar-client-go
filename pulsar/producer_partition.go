@@ -523,9 +523,10 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		}
 
 		if strings.Contains(errMsg, errMsgProducerBlockedQuotaExceededException) {
-			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, stop reconnecting")
+			//	ProducerBlockedQuotaExceededException is a retryable exception,
+			//	we only fail pending messages but continue trying to reconnect
+			p.log.Warn("Producer was blocked by quota exceed exception, failing pending messages, will retry reconnecting")
 			p.failPendingMessages(errors.Join(ErrProducerBlockedQuotaExceeded, err))
-			return struct{}{}, nil
 		}
 
 		if strings.Contains(errMsg, errMsgProducerFenced) {
@@ -723,6 +724,10 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 		UncompressedSize: proto.Uint32(uint32(uncompressedSize)),
 	}
 
+	if msg.Value == nil && msg.Payload == nil {
+		mm.NullValue = proto.Bool(true)
+	}
+
 	if !msg.EventTime.IsZero() {
 		mm.EventTime = proto.Uint64(internal.TimestampMillis(msg.EventTime))
 	}
@@ -768,6 +773,10 @@ func (p *partitionProducer) genSingleMessageMetadataInBatch(
 ) (smm *pb.SingleMessageMetadata) {
 	smm = &pb.SingleMessageMetadata{
 		PayloadSize: proto.Int32(int32(uncompressedSize)),
+	}
+
+	if msg.Value == nil && msg.Payload == nil {
+		smm.NullValue = proto.Bool(true)
 	}
 
 	if !msg.EventTime.IsZero() {

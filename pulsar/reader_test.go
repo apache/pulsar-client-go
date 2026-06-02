@@ -496,6 +496,70 @@ func TestReaderHasNext(t *testing.T) {
 	assert.Equal(t, 10, i)
 }
 
+// TestReaderNullValueTombstone verifies that a message published with a nil
+// Value / nil Payload (the Pulsar compaction tombstone convention) is delivered
+// to Reader.Next.
+func TestReaderNullValueTombstone(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+
+	_, err = producer.Send(ctx, &ProducerMessage{
+		Key:     "k",
+		Payload: []byte("v1"),
+	})
+	assert.NoError(t, err)
+
+	tombstoneID, err := producer.Send(ctx, &ProducerMessage{
+		Key:     "k",
+		Payload: nil,
+	})
+	assert.NoError(t, err)
+	producer.Close()
+
+	reader, err := client.CreateReader(ReaderOptions{
+		Topic:                   topic,
+		StartMessageID:          EarliestMessageID(),
+		StartMessageIDInclusive: true,
+	})
+	assert.Nil(t, err)
+	defer reader.Close()
+
+	lastID, err := reader.GetLastMessageID()
+	assert.NoError(t, err)
+	assert.Equal(t, tombstoneID.LedgerID(), lastID.LedgerID())
+	assert.Equal(t, tombstoneID.EntryID(), lastID.EntryID())
+
+	firstCtx, firstCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer firstCancel()
+	msg, err := reader.Next(firstCtx)
+	assert.NoError(t, err)
+	assert.Equal(t, []byte("v1"), msg.Payload())
+	assert.False(t, msg.IsNullValue())
+
+	secondCtx, secondCancel := context.WithTimeout(ctx, 5*time.Second)
+	defer secondCancel()
+	tombstone, err := reader.Next(secondCtx)
+	assert.NoError(t, err)
+	assert.True(t, tombstone.IsNullValue())
+	assert.Nil(t, tombstone.Payload())
+	assert.Equal(t, lastID.LedgerID(), tombstone.ID().LedgerID())
+	assert.Equal(t, lastID.EntryID(), tombstone.ID().EntryID())
+
+	assert.False(t, reader.HasNext())
+}
+
 type myMessageID struct {
 	data []byte
 }
@@ -888,7 +952,7 @@ func TestReaderWithBackoffPolicy(t *testing.T) {
 	assert.NotNil(t, _reader)
 	assert.Nil(t, err)
 
-	partitionConsumerImp := _reader.(*reader).c.consumers[0]
+	partitionConsumerImp := _reader.(*reader).c.partitionConsumers()[0]
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
@@ -997,7 +1061,7 @@ func TestReaderHasNextFailed(t *testing.T) {
 		StartMessageID: EarliestMessageID(),
 	})
 	assert.Nil(t, err)
-	r.(*reader).c.consumers[0].state.Store(consumerClosing)
+	r.(*reader).c.partitionConsumers()[0].state.Store(consumerClosing)
 	assert.False(t, r.HasNext())
 }
 
@@ -1018,7 +1082,7 @@ func TestReaderHasNextRetryFailed(t *testing.T) {
 	defer close(c)
 
 	// Close the consumer events loop and assign a mock eventsCh
-	pc := r.(*reader).c.consumers[0]
+	pc := r.(*reader).c.partitionConsumers()[0]
 	pc.Close()
 	pc.state.Store(consumerReady)
 	pc.eventsCh = c

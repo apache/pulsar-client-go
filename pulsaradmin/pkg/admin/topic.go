@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 
@@ -831,6 +832,12 @@ type Topics interface {
 	//        list of replication cluster id
 	SetReplicationClustersWithContext(ctx context.Context, topic utils.TopicName, data []string) error
 
+	// RemoveReplicationClusters removes the replication clusters override on a topic
+	RemoveReplicationClusters(topic utils.TopicName) error
+
+	// RemoveReplicationClustersWithContext removes the replication clusters override on a topic
+	RemoveReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) error
+
 	// GetSubscribeRate returns subscribe rate configuration for a topic.
 	// Returns nil if the subscribe rate is not configured at the topic level.
 	GetSubscribeRate(utils.TopicName) (*utils.SubscribeRate, error)
@@ -1027,11 +1034,35 @@ type Topics interface {
 	// RemoveAutoSubscriptionCreationWithContext Remove auto subscription creation override for a topic
 	RemoveAutoSubscriptionCreationWithContext(context.Context, utils.TopicName) error
 
-	// GetSchemaCompatibilityStrategy returns schema compatibility strategy for a topic
+	// GetSchemaCompatibilityStrategy returns the applied schema compatibility strategy for a topic.
 	GetSchemaCompatibilityStrategy(utils.TopicName) (utils.SchemaCompatibilityStrategy, error)
 
-	// GetSchemaCompatibilityStrategyWithContext returns schema compatibility strategy for a topic
+	// GetSchemaCompatibilityStrategyWithContext returns the applied schema compatibility strategy for a topic.
 	GetSchemaCompatibilityStrategyWithContext(context.Context, utils.TopicName) (utils.SchemaCompatibilityStrategy, error)
+
+	// GetSchemaCompatibilityStrategyApplied returns schema compatibility strategy for a topic.
+	//
+	// @param topic
+	//        topicName struct
+	// @param applied
+	//        when set to true, function will try to find policy applied to this topic
+	//        in namespace or broker level, if no policy set in topic level
+	GetSchemaCompatibilityStrategyApplied(utils.TopicName, bool) (utils.SchemaCompatibilityStrategy, error)
+
+	// GetSchemaCompatibilityStrategyAppliedWithContext returns schema compatibility strategy for a topic.
+	//
+	// @param ctx
+	//        context used for the request
+	// @param topic
+	//        topicName struct
+	// @param applied
+	//        when set to true, function will try to find policy applied to this topic
+	//        in namespace or broker level, if no policy set in topic level
+	GetSchemaCompatibilityStrategyAppliedWithContext(
+		context.Context,
+		utils.TopicName,
+		bool,
+	) (utils.SchemaCompatibilityStrategy, error)
 
 	// SetSchemaCompatibilityStrategy sets schema compatibility strategy for a topic
 	SetSchemaCompatibilityStrategy(utils.TopicName,
@@ -1068,6 +1099,40 @@ func (c *pulsarClient) Topics() Topics {
 		nonPersistentPath: "/non-persistent",
 		lookupPath:        "/lookup/v2/topic",
 	}
+}
+
+func (t *topics) localTopicPolicies() TopicPolicies {
+	return t.pulsar.TopicPolicies(false)
+}
+
+func legacyTopicPolicyInt(value *int) int {
+	if value == nil {
+		return -1
+	}
+	return *value
+}
+
+func legacyTopicPolicyInt64(value *int64) int64 {
+	if value == nil {
+		return -1
+	}
+	return *value
+}
+
+func legacyTopicPolicyBool(value *bool) bool {
+	if value == nil {
+		return false
+	}
+	return *value
+}
+
+func legacyTopicSchemaCompatibilityStrategy(
+	value *utils.SchemaCompatibilityStrategy,
+) utils.SchemaCompatibilityStrategy {
+	if value == nil {
+		return utils.SchemaCompatibilityStrategyUndefined
+	}
+	return *value
 }
 
 func (t *topics) Create(topic utils.TopicName, partitions int) error {
@@ -1481,10 +1546,11 @@ func (t *topics) GetMessageTTL(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMessageTTLWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var ttl = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "messageTTL")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &ttl)
-	return ttl, err
+	ttl, err := t.localTopicPolicies().GetMessageTTL(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(ttl), nil
 }
 
 func (t *topics) SetMessageTTL(topic utils.TopicName, messageTTL int) error {
@@ -1516,10 +1582,11 @@ func (t *topics) GetMaxProducers(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxProducersWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxProducers = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxProducers")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxProducers)
-	return maxProducers, err
+	maxProducers, err := t.localTopicPolicies().GetMaxProducers(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(maxProducers), nil
 }
 
 func (t *topics) SetMaxProducers(topic utils.TopicName, maxProducers int) error {
@@ -1547,10 +1614,11 @@ func (t *topics) GetMaxConsumers(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxConsumersWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxConsumers = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumers")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxConsumers)
-	return maxConsumers, err
+	maxConsumers, err := t.localTopicPolicies().GetMaxConsumers(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(maxConsumers), nil
 }
 
 func (t *topics) SetMaxConsumers(topic utils.TopicName, maxConsumers int) error {
@@ -1578,10 +1646,11 @@ func (t *topics) GetMaxUnackMessagesPerConsumer(topic utils.TopicName) (int, err
 }
 
 func (t *topics) GetMaxUnackMessagesPerConsumerWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxNum = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnConsumer")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxNum)
-	return maxNum, err
+	maxNum, err := t.localTopicPolicies().GetMaxUnackMessagesPerConsumer(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(maxNum), nil
 }
 
 func (t *topics) SetMaxUnackMessagesPerConsumer(topic utils.TopicName, maxUnackedNum int) error {
@@ -1614,10 +1683,11 @@ func (t *topics) GetMaxUnackMessagesPerSubscriptionWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (int, error) {
-	var maxNum = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxUnackedMessagesOnSubscription")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxNum)
-	return maxNum, err
+	maxNum, err := t.localTopicPolicies().GetMaxUnackMessagesPerSubscription(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(maxNum), nil
 }
 
 func (t *topics) SetMaxUnackMessagesPerSubscription(topic utils.TopicName, maxUnackedNum int) error {
@@ -1647,13 +1717,7 @@ func (t *topics) GetPersistence(topic utils.TopicName) (*utils.PersistenceData, 
 }
 
 func (t *topics) GetPersistenceWithContext(ctx context.Context, topic utils.TopicName) (*utils.PersistenceData, error) {
-	var persistenceData utils.PersistenceData
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "persistence")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &persistenceData)
-	if body != nil {
-		return &persistenceData, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetPersistence(ctx, topic, false)
 }
 
 func (t *topics) SetPersistence(topic utils.TopicName, persistenceData utils.PersistenceData) error {
@@ -1686,13 +1750,7 @@ func (t *topics) GetDelayedDeliveryWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.DelayedDeliveryData, error) {
-	var delayedDeliveryData utils.DelayedDeliveryData
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "delayedDelivery")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &delayedDeliveryData)
-	if body != nil {
-		return &delayedDeliveryData, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetDelayedDelivery(ctx, topic, false)
 }
 
 func (t *topics) SetDelayedDelivery(topic utils.TopicName, delayedDeliveryData utils.DelayedDeliveryData) error {
@@ -1725,13 +1783,7 @@ func (t *topics) GetDispatchRateWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.DispatchRateData, error) {
-	var dispatchRateData utils.DispatchRateData
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "dispatchRate")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &dispatchRateData)
-	if body != nil {
-		return &dispatchRateData, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetDispatchRate(ctx, topic, false)
 }
 
 func (t *topics) SetDispatchRate(topic utils.TopicName, dispatchRateData utils.DispatchRateData) error {
@@ -1761,13 +1813,7 @@ func (t *topics) GetPublishRate(topic utils.TopicName) (*utils.PublishRateData, 
 }
 
 func (t *topics) GetPublishRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.PublishRateData, error) {
-	var publishRateData utils.PublishRateData
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "publishRate")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &publishRateData)
-	if body != nil {
-		return &publishRateData, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetPublishRate(ctx, topic, false)
 }
 
 func (t *topics) SetPublishRate(topic utils.TopicName, publishRateData utils.PublishRateData) error {
@@ -1797,10 +1843,11 @@ func (t *topics) GetDeduplicationStatus(topic utils.TopicName) (bool, error) {
 }
 
 func (t *topics) GetDeduplicationStatusWithContext(ctx context.Context, topic utils.TopicName) (bool, error) {
-	var enabled bool
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationEnabled")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &enabled)
-	return enabled, err
+	enabled, err := t.localTopicPolicies().GetDeduplicationStatus(ctx, topic, false)
+	if err != nil {
+		return false, err
+	}
+	return legacyTopicPolicyBool(enabled), nil
 }
 
 func (t *topics) SetDeduplicationStatus(topic utils.TopicName, enabled bool) error {
@@ -1830,15 +1877,7 @@ func (t *topics) GetRetentionWithContext(
 	topic utils.TopicName,
 	applied bool,
 ) (*utils.RetentionPolicies, error) {
-	var policy utils.RetentionPolicies
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "retention")
-	body, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &policy, map[string]string{
-		"applied": strconv.FormatBool(applied),
-	}, true)
-	if body != nil {
-		return &policy, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetRetention(ctx, topic, applied)
 }
 
 func (t *topics) RemoveRetention(topic utils.TopicName) error {
@@ -1872,12 +1911,11 @@ func (t *topics) GetCompactionThresholdWithContext(
 	topic utils.TopicName,
 	applied bool,
 ) (int64, error) {
-	var threshold int64 = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "compactionThreshold")
-	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &threshold, map[string]string{
-		"applied": strconv.FormatBool(applied),
-	}, true)
-	return threshold, err
+	threshold, err := t.localTopicPolicies().GetCompactionThreshold(ctx, topic, applied)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt64(threshold), nil
 }
 
 func (t *topics) SetCompactionThreshold(topic utils.TopicName, threshold int64) error {
@@ -1911,13 +1949,7 @@ func (t *topics) GetBacklogQuotaMapWithContext(
 	applied bool,
 ) (map[utils.BacklogQuotaType]utils.BacklogQuota,
 	error) {
-	var backlogQuotaMap map[utils.BacklogQuotaType]utils.BacklogQuota
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "backlogQuotaMap")
-
-	queryParams := map[string]string{"applied": strconv.FormatBool(applied)}
-	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &backlogQuotaMap, queryParams, true)
-
-	return backlogQuotaMap, err
+	return t.localTopicPolicies().GetBacklogQuotaMap(ctx, topic, applied)
 }
 
 func (t *topics) SetBacklogQuota(topic utils.TopicName, backlogQuota utils.BacklogQuota,
@@ -1957,12 +1989,14 @@ func (t *topics) GetInactiveTopicPoliciesWithContext(
 	topic utils.TopicName,
 	applied bool,
 ) (utils.InactiveTopicPolicies, error) {
-	var out utils.InactiveTopicPolicies
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "inactiveTopicPolicies")
-	_, err := t.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, &out, map[string]string{
-		"applied": strconv.FormatBool(applied),
-	}, true)
-	return out, err
+	policies, err := t.localTopicPolicies().GetInactiveTopicPolicies(ctx, topic, applied)
+	if err != nil {
+		return utils.InactiveTopicPolicies{}, err
+	}
+	if policies == nil {
+		return utils.InactiveTopicPolicies{}, nil
+	}
+	return *policies, nil
 }
 
 func (t *topics) RemoveInactiveTopicPolicies(topic utils.TopicName) error {
@@ -2001,10 +2035,16 @@ func (t *topics) GetReplicationClusters(topic utils.TopicName) ([]string, error)
 }
 
 func (t *topics) GetReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) ([]string, error) {
-	var data []string
+	return t.localTopicPolicies().GetReplicationClusters(ctx, topic, false)
+}
+
+func (t *topics) RemoveReplicationClusters(topic utils.TopicName) error {
+	return t.RemoveReplicationClustersWithContext(context.Background(), topic)
+}
+
+func (t *topics) RemoveReplicationClustersWithContext(ctx context.Context, topic utils.TopicName) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replication")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &data)
-	return data, err
+	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (t *topics) GetSubscribeRate(topic utils.TopicName) (*utils.SubscribeRate, error) {
@@ -2012,13 +2052,7 @@ func (t *topics) GetSubscribeRate(topic utils.TopicName) (*utils.SubscribeRate, 
 }
 
 func (t *topics) GetSubscribeRateWithContext(ctx context.Context, topic utils.TopicName) (*utils.SubscribeRate, error) {
-	var subscribeRate utils.SubscribeRate
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscribeRate")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &subscribeRate)
-	if body != nil {
-		return &subscribeRate, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetSubscribeRate(ctx, topic, false)
 }
 
 func (t *topics) SetSubscribeRate(topic utils.TopicName, subscribeRate utils.SubscribeRate) error {
@@ -2051,13 +2085,7 @@ func (t *topics) GetSubscriptionDispatchRateWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.DispatchRateData, error) {
-	var dispatchRate utils.DispatchRateData
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "subscriptionDispatchRate")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &dispatchRate)
-	if body != nil {
-		return &dispatchRate, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetSubscriptionDispatchRate(ctx, topic, false)
 }
 
 func (t *topics) SetSubscriptionDispatchRate(topic utils.TopicName, dispatchRate utils.DispatchRateData) error {
@@ -2087,10 +2115,11 @@ func (t *topics) GetMaxConsumersPerSubscription(topic utils.TopicName) (int, err
 }
 
 func (t *topics) GetMaxConsumersPerSubscriptionWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxConsumers = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxConsumersPerSubscription")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxConsumers)
-	return maxConsumers, err
+	maxConsumers, err := t.localTopicPolicies().GetMaxConsumersPerSubscription(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(maxConsumers), nil
 }
 
 func (t *topics) SetMaxConsumersPerSubscription(topic utils.TopicName, maxConsumers int) error {
@@ -2120,10 +2149,11 @@ func (t *topics) GetMaxMessageSize(topic utils.TopicName) (int, error) {
 }
 
 func (t *topics) GetMaxMessageSizeWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxMessageSize = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxMessageSize")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxMessageSize)
-	return maxMessageSize, err
+	maxMessageSize, err := t.localTopicPolicies().GetMaxMessageSize(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(maxMessageSize), nil
 }
 
 func (t *topics) SetMaxMessageSize(topic utils.TopicName, maxMessageSize int) error {
@@ -2149,10 +2179,11 @@ func (t *topics) GetMaxSubscriptionsPerTopic(topic utils.TopicName) (int, error)
 }
 
 func (t *topics) GetMaxSubscriptionsPerTopicWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var maxSubscriptions = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "maxSubscriptionsPerTopic")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &maxSubscriptions)
-	return maxSubscriptions, err
+	maxSubscriptions, err := t.localTopicPolicies().GetMaxSubscriptionsPerTopic(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(maxSubscriptions), nil
 }
 
 func (t *topics) SetMaxSubscriptionsPerTopic(topic utils.TopicName, maxSubscriptions int) error {
@@ -2182,10 +2213,11 @@ func (t *topics) GetSchemaValidationEnforced(topic utils.TopicName) (bool, error
 }
 
 func (t *topics) GetSchemaValidationEnforcedWithContext(ctx context.Context, topic utils.TopicName) (bool, error) {
-	var enabled bool
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaValidationEnforced")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &enabled)
-	return enabled, err
+	enabled, err := t.localTopicPolicies().GetSchemaValidationEnforced(ctx, topic, false)
+	if err != nil {
+		return false, err
+	}
+	return legacyTopicPolicyBool(enabled), nil
 }
 
 func (t *topics) SetSchemaValidationEnforced(topic utils.TopicName, enabled bool) error {
@@ -2215,10 +2247,11 @@ func (t *topics) GetDeduplicationSnapshotInterval(topic utils.TopicName) (int, e
 }
 
 func (t *topics) GetDeduplicationSnapshotIntervalWithContext(ctx context.Context, topic utils.TopicName) (int, error) {
-	var interval = -1
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "deduplicationSnapshotInterval")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &interval)
-	return interval, err
+	interval, err := t.localTopicPolicies().GetDeduplicationSnapshotInterval(ctx, topic, false)
+	if err != nil {
+		return -1, err
+	}
+	return legacyTopicPolicyInt(interval), nil
 }
 
 func (t *topics) SetDeduplicationSnapshotInterval(topic utils.TopicName, interval int) error {
@@ -2251,13 +2284,7 @@ func (t *topics) GetReplicatorDispatchRateWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.DispatchRateData, error) {
-	var dispatchRate utils.DispatchRateData
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "replicatorDispatchRate")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &dispatchRate)
-	if body != nil {
-		return &dispatchRate, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetReplicatorDispatchRate(ctx, topic, false)
 }
 
 func (t *topics) SetReplicatorDispatchRate(topic utils.TopicName, dispatchRate utils.DispatchRateData) error {
@@ -2290,13 +2317,7 @@ func (t *topics) GetAutoSubscriptionCreationWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.AutoSubscriptionCreationOverride, error) {
-	var autoSubCreation utils.AutoSubscriptionCreationOverride
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "autoSubscriptionCreation")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &autoSubCreation)
-	if body != nil {
-		return &autoSubCreation, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetAutoSubscriptionCreation(ctx, topic, false)
 }
 
 func (t *topics) SetAutoSubscriptionCreation(topic utils.TopicName,
@@ -2320,17 +2341,33 @@ func (t *topics) RemoveAutoSubscriptionCreationWithContext(ctx context.Context, 
 }
 
 func (t *topics) GetSchemaCompatibilityStrategy(topic utils.TopicName) (utils.SchemaCompatibilityStrategy, error) {
-	return t.GetSchemaCompatibilityStrategyWithContext(context.Background(), topic)
+	return t.GetSchemaCompatibilityStrategyApplied(topic, true)
 }
 
 func (t *topics) GetSchemaCompatibilityStrategyWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (utils.SchemaCompatibilityStrategy, error) {
-	var strategy utils.SchemaCompatibilityStrategy
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "schemaCompatibilityStrategy")
-	err := t.pulsar.Client.GetWithContext(ctx, endpoint, &strategy)
-	return strategy, err
+	return t.GetSchemaCompatibilityStrategyAppliedWithContext(ctx, topic, true)
+}
+
+func (t *topics) GetSchemaCompatibilityStrategyApplied(
+	topic utils.TopicName,
+	applied bool,
+) (utils.SchemaCompatibilityStrategy, error) {
+	return t.GetSchemaCompatibilityStrategyAppliedWithContext(context.Background(), topic, applied)
+}
+
+func (t *topics) GetSchemaCompatibilityStrategyAppliedWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	applied bool,
+) (utils.SchemaCompatibilityStrategy, error) {
+	strategy, err := t.localTopicPolicies().GetSchemaCompatibilityStrategy(ctx, topic, applied)
+	if err != nil {
+		return "", err
+	}
+	return legacyTopicSchemaCompatibilityStrategy(strategy), nil
 }
 
 func (t *topics) SetSchemaCompatibilityStrategy(topic utils.TopicName,
@@ -2353,6 +2390,15 @@ func (t *topics) RemoveSchemaCompatibilityStrategyWithContext(ctx context.Contex
 	return t.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
+func parseTopicSchemaCompatibilityStrategy(body []byte) (utils.SchemaCompatibilityStrategy, error) {
+	raw := strings.ReplaceAll(string(body), "\"", "")
+	if raw == "" {
+		return utils.SchemaCompatibilityStrategyUndefined, nil
+	}
+
+	return utils.ParseSchemaCompatibilityStrategy(raw)
+}
+
 func (t *topics) GetOffloadPolicies(topic utils.TopicName) (*utils.OffloadPolicies, error) {
 	return t.GetOffloadPoliciesWithContext(context.Background(), topic)
 }
@@ -2361,13 +2407,7 @@ func (t *topics) GetOffloadPoliciesWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.OffloadPolicies, error) {
-	var offloadPolicies utils.OffloadPolicies
-	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "offloadPolicies")
-	body, err := t.pulsar.Client.GetBodyWithContext(ctx, endpoint, &offloadPolicies)
-	if body != nil {
-		return &offloadPolicies, err
-	}
-	return nil, err
+	return t.localTopicPolicies().GetOffloadPolicies(ctx, topic, false)
 }
 
 func (t *topics) SetOffloadPolicies(topic utils.TopicName, offloadPolicies utils.OffloadPolicies) error {

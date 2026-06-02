@@ -22,40 +22,33 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestResolveBeforeUpdateServiceUrl(t *testing.T) {
-	resolver := NewPulsarServiceNameResolver(nil)
+	resolver, err := NewPulsarServiceNameResolver("")
+	require.NoError(t, err)
 	u, err := resolver.ResolveHost()
 	assert.Nil(t, u)
 	assert.NotNil(t, err)
 	assert.EqualError(t, err, "no service url is provided yet")
 }
 
-func TestResolveUriBeforeUpdateServiceUrl(t *testing.T) {
-	resolver := NewPulsarServiceNameResolver(nil)
-	u, err := resolver.ResolveHostURI()
-	assert.Nil(t, u)
-	assert.NotNil(t, err)
-	assert.EqualError(t, err, "no service url is provided yet")
-}
-
 func TestUpdateInvalidServiceUrl(t *testing.T) {
-	resolver := NewPulsarServiceNameResolver(nil)
-	url, _ := url.Parse("pulsar:///")
-	err := resolver.UpdateServiceURL(url)
+	resolver, err := NewPulsarServiceNameResolver("")
+	require.NoError(t, err)
+	err = resolver.UpdateServiceURL("pulsar:///")
 	assert.NotNil(t, err)
-	assert.Empty(t, resolver.GetServiceURL())
 	assert.Nil(t, resolver.GetServiceURI())
 }
 
 func TestSimpleHostUrl(t *testing.T) {
-	resolver := NewPulsarServiceNameResolver(nil)
-	serviceURL, _ := url.Parse("pulsar://host1:6650")
-	err := resolver.UpdateServiceURL(serviceURL)
+	resolver, err := NewPulsarServiceNameResolver("")
+	require.NoError(t, err)
+	serviceURL := "pulsar://host1:6650"
+	err = resolver.UpdateServiceURL(serviceURL)
 	assert.Nil(t, err)
-	assert.Equal(t, serviceURL, resolver.GetServiceURL())
-	expectedURI, err := NewPulsarServiceURIFromURL(serviceURL)
+	expectedURI, err := NewPulsarServiceURIFromURIString(serviceURL)
 	assert.Nil(t, err)
 	assert.Equal(t, expectedURI, resolver.GetServiceURI())
 	actualHost, err := resolver.ResolveHost()
@@ -63,11 +56,10 @@ func TestSimpleHostUrl(t *testing.T) {
 	assert.Equal(t, "host1", actualHost.Hostname())
 	assert.Equal(t, "6650", actualHost.Port())
 
-	newServiceURL, _ := url.Parse("pulsar://host2:6650")
+	newServiceURL := "pulsar://host2:6650"
 	err = resolver.UpdateServiceURL(newServiceURL)
 	assert.Nil(t, err)
-	assert.Equal(t, newServiceURL, resolver.GetServiceURL())
-	expectedURI, err = NewPulsarServiceURIFromURL(newServiceURL)
+	expectedURI, err = NewPulsarServiceURIFromURIString(newServiceURL)
 	assert.Nil(t, err)
 	assert.Equal(t, expectedURI, resolver.GetServiceURI())
 	actualHost, err = resolver.ResolveHost()
@@ -77,55 +69,59 @@ func TestSimpleHostUrl(t *testing.T) {
 }
 
 func TestMultipleHostsUrl(t *testing.T) {
-	resolver := NewPulsarServiceNameResolver(nil)
-	serviceURL, _ := url.Parse("pulsar://host1:6650,host2:6650")
-	err := resolver.UpdateServiceURL(serviceURL)
+	resolver, err := NewPulsarServiceNameResolver("")
+	require.NoError(t, err)
+	serviceURL := "pulsar://host1:6650,host2:6650"
+	err = resolver.UpdateServiceURL(serviceURL)
 	assert.Nil(t, err)
-	assert.Equal(t, serviceURL, resolver.GetServiceURL())
-	expectedURI, err := NewPulsarServiceURIFromURL(serviceURL)
+	expectedURI, err := NewPulsarServiceURIFromURIString(serviceURL)
 	assert.Nil(t, err)
 	assert.Equal(t, expectedURI, resolver.GetServiceURI())
 	host1, _ := url.Parse("pulsar://host1:6650")
 	host2, _ := url.Parse("pulsar://host2:6650")
-	host1uri, _ := NewPulsarServiceURIFromURIString("pulsar://host1:6650")
-	host2uri, _ := NewPulsarServiceURIFromURIString("pulsar://host2:6650")
 	assert.Contains(t, resolver.GetAddressList(), host1)
 	assert.Contains(t, resolver.GetAddressList(), host2)
 	hosts := []*url.URL{host1, host2}
-	hosturis := []*PulsarServiceURI{host1uri, host2uri}
 	for i := 0; i < 10; i++ {
 		host, err := resolver.ResolveHost()
 		assert.Nil(t, err)
-		hosturi, err := resolver.ResolveHostURI()
-		assert.Nil(t, err)
 		assert.Contains(t, hosts, host)
-		assert.Contains(t, hosturis, hosturi)
 	}
 }
 
 func TestMultipleHostsTlsUrl(t *testing.T) {
-	resolver := NewPulsarServiceNameResolver(nil)
-	serviceURL, _ := url.Parse("pulsar+ssl://host1:6651,host2:6651")
-	err := resolver.UpdateServiceURL(serviceURL)
+	resolver, err := NewPulsarServiceNameResolver("")
+	require.NoError(t, err)
+	serviceURL := "pulsar+ssl://host1:6651,host2:6651"
+	err = resolver.UpdateServiceURL(serviceURL)
 	assert.Nil(t, err)
-	assert.Equal(t, serviceURL, resolver.GetServiceURL())
-	expectedURI, err := NewPulsarServiceURIFromURL(serviceURL)
+	expectedURI, err := NewPulsarServiceURIFromURIString(serviceURL)
 	assert.Nil(t, err)
 	assert.Equal(t, expectedURI, resolver.GetServiceURI())
 	host1, _ := url.Parse("pulsar+ssl://host1:6651")
 	host2, _ := url.Parse("pulsar+ssl://host2:6651")
-	host1uri, _ := NewPulsarServiceURIFromURIString("pulsar+ssl://host1:6651")
-	host2uri, _ := NewPulsarServiceURIFromURIString("pulsar+ssl://host2:6651")
 	assert.Contains(t, resolver.GetAddressList(), host1)
 	assert.Contains(t, resolver.GetAddressList(), host2)
 	hosts := []*url.URL{host1, host2}
-	hosturis := []*PulsarServiceURI{host1uri, host2uri}
 	for i := 0; i < 10; i++ {
 		host, err := resolver.ResolveHost()
 		assert.Nil(t, err)
-		hosturi, err := resolver.ResolveHostURI()
-		assert.Nil(t, err)
 		assert.Contains(t, hosts, host)
-		assert.Contains(t, hosturis, hosturi)
 	}
+}
+
+func TestResolveIpv6Host(t *testing.T) {
+	resolver, err := NewPulsarServiceNameResolver("")
+	require.NoError(t, err)
+
+	serviceURL := "pulsar://[fec0:0:0:ffff::1]:6650"
+	err = resolver.UpdateServiceURL(serviceURL)
+	require.NoError(t, err)
+
+	actualHost, err := resolver.ResolveHost()
+	require.NoError(t, err)
+	assert.Equal(t, "pulsar", actualHost.Scheme)
+	assert.Equal(t, "fec0:0:0:ffff::1", actualHost.Hostname())
+	assert.Equal(t, "6650", actualHost.Port())
+	assert.Equal(t, "[fec0:0:0:ffff::1]:6650", actualHost.Host)
 }

@@ -129,3 +129,15 @@ func TestAckingMessageIDBatchTwo(t *testing.T) {
 	assert.Equal(t, true, ids[0].ack())
 	assert.Equal(t, true, tracker.completed())
 }
+
+func TestMessageStringOnMessage(t *testing.T) {
+	id := newMessageID(1, 2, -1, 4, 0)
+
+	assert.Equal(t, "1:2:4", id.String())
+}
+
+func TestMessageStringOnBatchMessage(t *testing.T) {
+	id := newMessageID(1, 2, 3, 4, 5)
+
+	assert.Equal(t, "1:2:4:3", id.String())
+}

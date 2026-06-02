@@ -22,7 +22,9 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"regexp"
 	"strconv"
@@ -226,6 +228,223 @@ func TestConsumerWithInvalidConf(t *testing.T) {
 	assert.NotNil(t, err)
 
 	assert.Equal(t, err.(*Error).Result(), TopicNotFound)
+}
+
+func TestConsumerWithInvalidPriorityLevel(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	assert.Nil(t, err)
+	defer client.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            "my-topic",
+		SubscriptionName: "my-sub",
+		PriorityLevel:    -1,
+	})
+
+	assert.Nil(t, consumer)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.(*Error).Result(), InvalidConfiguration)
+}
+
+func TestPriorityConsumer(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	sub := "sub-shared-priority"
+
+	// High-priority consumers (priority 1)
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  sub,
+		Type:              Shared,
+		ReceiverQueueSize: 5,
+		PriorityLevel:     1,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  sub,
+		Type:              Shared,
+		ReceiverQueueSize: 5,
+		PriorityLevel:     1,
+	})
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	// Low-priority consumer (priority 2)
+	consumer3, err := client.Subscribe(ConsumerOptions{
+		Topic:             topic,
+		SubscriptionName:  sub,
+		Type:              Shared,
+		ReceiverQueueSize: 5,
+		PriorityLevel:     2,
+	})
+	assert.Nil(t, err)
+	defer consumer3.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// Phase 1: Send 15 messages — distributed among the three priority-1 consumers
+	for i := 0; i < 15; i++ {
+		_, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	// Phase 2: Drain 20 messages from consumer1 and consumer2 to replenish their permits.
+	// After receiving, each consumer sends individual permits back to the broker,
+	// so consumer1 and consumer2 will have more permits than consumer3.
+	for i := 0; i < 20; i++ {
+		ctx1, cancel1 := context.WithTimeout(context.Background(), 2*time.Second)
+		_, _ = consumer1.Receive(ctx1)
+		cancel1()
+		ctx2, cancel2 := context.WithTimeout(context.Background(), 2*time.Second)
+		_, _ = consumer2.Receive(ctx2)
+		cancel2()
+	}
+
+	// Phase 3: Send 5 more messages — broker should dispatch only to consumer1/consumer2
+	// because they have more available permits at priority level 1.
+	for i := 0; i < 5; i++ {
+		_, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-extra-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	// Low-priority consumer should not have received any messages
+	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	msg, err := consumer3.Receive(ctx)
+	cancel()
+	assert.NotNil(t, err)
+	assert.Nil(t, msg)
+}
+
+func TestFailOverConsumerPriority(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	randomName := newTopicName()
+	topic := "persistent://public/default/" + randomName
+	testURL := adminURL + "/" + "admin/v2/persistent/public/default/" + randomName + "/partitions"
+	makeHTTPCall(t, http.MethodPut, testURL, "9")
+
+	sub := "my-sub"
+
+	// C1 at priority 1
+	consumer1, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "aaa",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    1,
+	})
+	assert.Nil(t, err)
+	defer consumer1.Close()
+
+	// C2 at priority 0 — should take over from C1
+	consumer2, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "bbb1",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    0,
+	})
+	assert.Nil(t, err)
+	defer consumer2.Close()
+
+	// C3 at priority 0
+	consumer3, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "bbb2",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    0,
+	})
+	assert.Nil(t, err)
+	defer consumer3.Close()
+
+	// C4 at priority 0
+	consumer4, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "bbb3",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    0,
+	})
+	assert.Nil(t, err)
+	defer consumer4.Close()
+
+	// C5 at priority 1 — should not get any partitions
+	consumer5, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		Name:             "bbb4",
+		SubscriptionName: sub,
+		Type:             Failover,
+		PriorityLevel:    1,
+	})
+	assert.Nil(t, err)
+	defer consumer5.Close()
+
+	evenDistribution := 9 / 3 // 3 partitions per priority-0 consumer
+
+	topicName, err := utils.GetTopicName(topic)
+	assert.Nil(t, err)
+
+	cfg := &config.Config{}
+	pulsarAdmin, err := pulsaradmin.NewClient(cfg)
+	assert.NoError(t, err)
+
+	// Poll admin stats until partitions are evenly distributed among priority-0 consumers
+	retryAssert(t, 20, 500, func() {}, func(_ assert.TestingT) bool {
+		stats, err := pulsarAdmin.Topics().GetPartitionedStats(*topicName, true)
+		if err != nil {
+			return false
+		}
+		counts := map[string]int{}
+		for _, pStats := range stats.Partitions {
+			subStats, ok := pStats.Subscriptions[sub]
+			if !ok {
+				return false
+			}
+			counts[subStats.ActiveConsumerName]++
+		}
+		return len(counts) == 3 &&
+			counts["bbb1"] == evenDistribution &&
+			counts["bbb2"] == evenDistribution &&
+			counts["bbb3"] == evenDistribution
+	})
+
+	// Final assertion with real test failure
+	stats, err := pulsarAdmin.Topics().GetPartitionedStats(*topicName, true)
+	assert.Nil(t, err)
+	counts := map[string]int{}
+	for _, pStats := range stats.Partitions {
+		subStats := pStats.Subscriptions[sub]
+		counts[subStats.ActiveConsumerName]++
+	}
+	assert.Equal(t, 3, len(counts))
+	assert.Equal(t, evenDistribution, counts["bbb1"])
+	assert.Equal(t, evenDistribution, counts["bbb2"])
+	assert.Equal(t, evenDistribution, counts["bbb3"])
 }
 
 func TestConsumerSubscriptionEarliestPosition(t *testing.T) {
@@ -4506,7 +4725,7 @@ func TestConsumerWithBackoffPolicy(t *testing.T) {
 	assert.Nil(t, err)
 	defer _consumer.Close()
 
-	partitionConsumerImp := _consumer.(*consumer).consumers[0]
+	partitionConsumerImp := _consumer.(*consumer).partitionConsumers()[0]
 	// 1 s
 	startTime := time.Now()
 	partitionConsumerImp.reconnectToBroker(nil)
@@ -4729,7 +4948,7 @@ func TestConsumerWithAutoScaledQueueReceive(t *testing.T) {
 		EnableAutoScaledReceiverQueueSize: true,
 	})
 	assert.Nil(t, err)
-	pc := c.(*consumer).consumers[0]
+	pc := c.(*consumer).partitionConsumers()[0]
 	assert.Equal(t, int32(1), pc.currentQueueSize.Load())
 	defer c.Close()
 
@@ -4944,7 +5163,7 @@ func TestConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c1.Close()
-	pc1 := c1.(*consumer).consumers[0]
+	pc1 := c1.(*consumer).partitionConsumers()[0]
 
 	// Fill up the messageCh of c1
 	for i := 0; i < 10; i++ {
@@ -4984,7 +5203,7 @@ func TestConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c2.Close()
-	pc2 := c2.(*consumer).consumers[0]
+	pc2 := c2.(*consumer).partitionConsumers()[0]
 
 	// Try to induce c2 receiver queue size expansion
 	for i := 0; i < 10; i++ {
@@ -5056,7 +5275,7 @@ func TestMultiConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c1.Close()
-	pc1 := c1.(*consumer).consumers[0]
+	pc1 := c1.(*consumer).partitionConsumers()[0]
 
 	// Use mem-limited client 2 to create consumer c1
 	c2, err := cli2.Subscribe(ConsumerOptions{
@@ -5067,7 +5286,7 @@ func TestMultiConsumerMemoryLimit(t *testing.T) {
 	})
 	assert.Nil(t, err)
 	defer c2.Close()
-	pc2 := c2.(*consumer).consumers[0]
+	pc2 := c2.(*consumer).partitionConsumers()[0]
 
 	// Fill up the messageCh of c1 nad c2
 	for i := 0; i < 10; i++ {
@@ -5598,7 +5817,7 @@ func TestConsumerKeepReconnectingAndThenCallClose(t *testing.T) {
 		Image:        getPulsarTestImage(),
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
 		WaitingFor:   wait.ForExposedPort(),
-		Cmd:          []string{"bin/pulsar", "standalone", "-nfw"},
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
 	}
 	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
 		ContainerRequest: req,
@@ -5701,13 +5920,525 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 	assert.NoError(t, err)
 	defer _consumer.Close()
 
-	partitionConsumerImpl := _consumer.(*consumer).consumers[0]
+	partitionConsumerImpl := _consumer.(*consumer).partitionConsumers()[0]
 	conn := partitionConsumerImpl._getConn()
 
 	for i := 0; i < 5; i++ {
 		assert.NoError(t, partitionConsumerImpl.grabConn(""))
 		assert.Equal(t, conn.ID(), partitionConsumerImpl._getConn().ID(),
 			"The consumer uses a different connection when reconnecting")
+	}
+}
+
+func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t *testing.T) {
+	lookupURL, err := url.Parse("pulsar://localhost:6650")
+	require.NoError(t, err)
+
+	allowSubscribe := make(chan struct{})
+	subscribeStarted := make(chan struct{})
+	var releaseSubscribe sync.Once
+
+	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
+	log := plog.NewLoggerWithSlog(logger)
+
+	rpcClient := &blockingSubscribeRPCClient{
+		lookupResult:     &internal.LookupResult{LogicalAddr: lookupURL, PhysicalAddr: lookupURL},
+		subscribeStarted: subscribeStarted,
+		allowSubscribe:   allowSubscribe,
+		subscribeErr:     errors.New("stop subscribe after lookup check"),
+		nextConsumerID:   1,
+	}
+
+	c := newInternalTopicPartitionTestConsumer(internalTopicPartitionTestConsumerOptions{
+		conn:             dummyConnection{},
+		rpcClient:        rpcClient,
+		partitions:       2,
+		log:              log,
+		consumerOptions:  ConsumerOptions{SubscriptionName: "test-sub", NackPrecisionBit: ptr(defaultNackPrecisionBit)},
+		initialConsumers: []*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}},
+	})
+
+	go func() {
+		c.internalTopicSubscribeToPartitions()
+	}()
+
+	select {
+	case <-subscribeStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for partition discovery to start subscribing the new partition")
+	}
+
+	lookupErrCh := make(chan error, 1)
+	go func() {
+		_, err := findPartitionConsumer(c.partitionConsumers(), &messageID{partitionIdx: 0})
+		lookupErrCh <- err
+	}()
+
+	select {
+	case err := <-lookupErrCh:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		releaseSubscribe.Do(func() { close(allowSubscribe) })
+		select {
+		case <-lookupErrCh:
+		case <-time.After(time.Second):
+			t.Fatal("existing partition lookup stayed blocked even after partition discovery stopped")
+		}
+		t.Fatal("existing partition lookup blocked while a new partition was being added")
+	}
+
+	releaseSubscribe.Do(func() { close(allowSubscribe) })
+}
+
+func TestInternalTopicSubscribeToPartitionsPublishesConsumersBeforeDispatchingMessages(t *testing.T) {
+	lookupURL, err := url.Parse("pulsar://localhost:6650")
+	require.NoError(t, err)
+
+	partitionOneSubscribed := make(chan struct{})
+	partitionOneFlowed := make(chan struct{})
+	partitionTwoBlocked := make(chan struct{})
+	allowPartitionTwo := make(chan struct{})
+	cnx := newPartitionExpansionRaceConnection()
+	rpcClient := &partitionExpansionRaceRPCClient{
+		lookupResult:           &internal.LookupResult{LogicalAddr: lookupURL, PhysicalAddr: lookupURL},
+		cnx:                    cnx,
+		partitionOneSubscribed: partitionOneSubscribed,
+		partitionOneFlowed:     partitionOneFlowed,
+		partitionTwoBlocked:    partitionTwoBlocked,
+		allowPartitionTwo:      allowPartitionTwo,
+	}
+
+	c := newInternalTopicPartitionTestConsumer(internalTopicPartitionTestConsumerOptions{
+		conn:       cnx,
+		rpcClient:  rpcClient,
+		partitions: 3,
+		log:        plog.DefaultNopLogger(),
+		consumerOptions: ConsumerOptions{
+			SubscriptionName:  "test-sub",
+			ReceiverQueueSize: 1,
+			NackPrecisionBit:  ptr(defaultNackPrecisionBit),
+			AckWithResponse:   true,
+		},
+		initialConsumers: []*partitionConsumer{{topic: "persistent://public/default/test-topic-partition-0"}},
+		dlq:              &dlqRouter{},
+	})
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.internalTopicSubscribeToPartitions()
+	}()
+
+	select {
+	case <-partitionOneSubscribed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for partition 1 to subscribe")
+	}
+
+	select {
+	case <-partitionTwoBlocked:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for partition 2 subscribe to block")
+	}
+
+	require.Len(t, c.partitionConsumers(), 1)
+	select {
+	case <-partitionOneFlowed:
+		t.Fatal("new partition dispatcher requested permits before c.consumers contained the new partition")
+	case <-time.After(200 * time.Millisecond):
+	}
+
+	close(allowPartitionTwo)
+
+	select {
+	case err := <-errCh:
+		require.NoError(t, err)
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for partition discovery to finish")
+	}
+	require.Len(t, c.partitionConsumers(), 3)
+
+	select {
+	case <-partitionOneFlowed:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for partition 1 dispatcher to request permits")
+	}
+
+	handler := cnx.handler(rpcClient.partitionOneConsumerID.Load())
+	require.NotNil(t, handler)
+	err = handler.MessageReceived(&pb.CommandMessage{
+		MessageId: &pb.MessageIdData{
+			LedgerId: proto.Uint64(1),
+			EntryId:  proto.Uint64(1),
+		},
+	}, internal.NewBufferWrapper(rawCompatSingleMessage))
+	require.NoError(t, err)
+
+	var cm ConsumerMessage
+	select {
+	case cm = <-c.messageCh:
+	case <-time.After(3 * time.Second):
+		t.Fatal("timed out waiting for the queued partition 1 message to dispatch")
+	}
+	require.Equal(t, int32(1), cm.Message.ID().PartitionIdx())
+	require.NoError(t, c.AckID(cm.Message.ID()))
+
+	for _, pc := range c.partitionConsumers()[1:] {
+		pc.Close()
+	}
+}
+
+type internalTopicPartitionTestConsumerOptions struct {
+	conn             internal.Connection
+	rpcClient        internal.RPCClient
+	partitions       int
+	log              plog.Logger
+	consumerOptions  ConsumerOptions
+	initialConsumers []*partitionConsumer
+	dlq              *dlqRouter
+}
+
+func newInternalTopicPartitionTestConsumer(opts internalTopicPartitionTestConsumerOptions) *consumer {
+	var consumers atomic.Value
+	consumers.Store(append([]*partitionConsumer(nil), opts.initialConsumers...))
+
+	return &consumer{
+		topic: "persistent://public/default/test-topic",
+		client: &client{
+			cnxPool:       &blockingConnPool{cnx: opts.conn},
+			rpcClient:     opts.rpcClient,
+			lookupService: &partitionMetadataLookup{partitions: opts.partitions},
+			log:           opts.log,
+		},
+		options:      opts.consumerOptions,
+		consumers:    consumers,
+		messageCh:    make(chan ConsumerMessage, 1),
+		closeCh:      make(chan struct{}),
+		errorCh:      make(chan error, 1),
+		consumerName: "test-consumer",
+		dlq:          opts.dlq,
+		log:          opts.log,
+		metrics:      newTestMetrics(),
+	}
+}
+
+type partitionMetadataLookup struct {
+	internal.LookupService
+	partitions int
+}
+
+func (l *partitionMetadataLookup) GetPartitionedTopicMetadata(_ string) (*internal.PartitionedTopicMetadata, error) {
+	return &internal.PartitionedTopicMetadata{Partitions: l.partitions}, nil
+}
+
+type blockingConnPool struct {
+	internal.ConnectionPool
+	cnx internal.Connection
+}
+
+func (p *blockingConnPool) GetConnection(_ *url.URL, _ *url.URL, _ int32) (internal.Connection, error) {
+	return p.cnx, nil
+}
+
+func (p *blockingConnPool) GetConnections() map[string]internal.Connection {
+	return map[string]internal.Connection{}
+}
+
+func (p *blockingConnPool) GenerateRoundRobinIndex() int32 {
+	return 0
+}
+
+func (p *blockingConnPool) Close() {}
+
+type partitionExpansionRaceConnection struct {
+	dummyConnection
+	mu       sync.Mutex
+	handlers map[uint64]internal.ConsumerHandler
+}
+
+func newPartitionExpansionRaceConnection() *partitionExpansionRaceConnection {
+	return &partitionExpansionRaceConnection{handlers: make(map[uint64]internal.ConsumerHandler)}
+}
+
+func (c *partitionExpansionRaceConnection) AddConsumeHandler(id uint64, handler internal.ConsumerHandler) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.handlers[id] = handler
+	return nil
+}
+
+func (c *partitionExpansionRaceConnection) DeleteConsumeHandler(id uint64) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	delete(c.handlers, id)
+}
+
+func (c *partitionExpansionRaceConnection) handler(id uint64) internal.ConsumerHandler {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.handlers[id]
+}
+
+type partitionExpansionRaceRPCClient struct {
+	internal.RPCClient
+	lookupResult           *internal.LookupResult
+	cnx                    *partitionExpansionRaceConnection
+	partitionOneSubscribed chan struct{}
+	partitionOneFlowed     chan struct{}
+	partitionTwoBlocked    chan struct{}
+	allowPartitionTwo      chan struct{}
+	requestID              atomic.Uint64
+	consumerID             atomic.Uint64
+	partitionOneConsumerID atomic.Uint64
+	partitionOneOnce       sync.Once
+	partitionOneFlowOnce   sync.Once
+	partitionTwoOnce       sync.Once
+}
+
+func (r *partitionExpansionRaceRPCClient) NewRequestID() uint64 {
+	return r.requestID.Add(1)
+}
+
+func (r *partitionExpansionRaceRPCClient) NewProducerID() uint64 {
+	return r.requestID.Add(1)
+}
+
+func (r *partitionExpansionRaceRPCClient) NewConsumerID() uint64 {
+	return r.consumerID.Add(1)
+}
+
+func (r *partitionExpansionRaceRPCClient) RequestOnCnxNoWait(
+	_ internal.Connection, cmdType pb.BaseCommand_Type, msg proto.Message,
+) error {
+	if cmdType == pb.BaseCommand_FLOW {
+		flow := msg.(*pb.CommandFlow)
+		if flow.GetConsumerId() == r.partitionOneConsumerID.Load() {
+			r.partitionOneFlowOnce.Do(func() { close(r.partitionOneFlowed) })
+		}
+	}
+	return nil
+}
+
+func (r *partitionExpansionRaceRPCClient) RequestOnCnx(
+	_ internal.Connection, _ uint64, cmdType pb.BaseCommand_Type, msg proto.Message,
+) (*internal.RPCResult, error) {
+	switch cmdType {
+	case pb.BaseCommand_SUBSCRIBE:
+		return r.handleSubscribe(msg.(*pb.CommandSubscribe))
+	case pb.BaseCommand_ACK, pb.BaseCommand_CLOSE_CONSUMER:
+		return r.success(), nil
+	default:
+		return nil, fmt.Errorf("unexpected command type %v", cmdType)
+	}
+}
+
+func (r *partitionExpansionRaceRPCClient) handleSubscribe(cmd *pb.CommandSubscribe) (*internal.RPCResult, error) {
+	switch {
+	case strings.HasSuffix(cmd.GetTopic(), "-partition-1"):
+		r.partitionOneConsumerID.Store(cmd.GetConsumerId())
+		r.partitionOneOnce.Do(func() { close(r.partitionOneSubscribed) })
+		return r.success(), nil
+	case strings.HasSuffix(cmd.GetTopic(), "-partition-2"):
+		r.partitionTwoOnce.Do(func() { close(r.partitionTwoBlocked) })
+		<-r.allowPartitionTwo
+		return r.success(), nil
+	default:
+		return nil, fmt.Errorf("unexpected subscribe topic %s", cmd.GetTopic())
+	}
+}
+
+func (r *partitionExpansionRaceRPCClient) success() *internal.RPCResult {
+	successType := pb.BaseCommand_SUCCESS
+	return &internal.RPCResult{
+		Response: &pb.BaseCommand{Type: &successType},
+		Cnx:      r.cnx,
+	}
+}
+
+func (r *partitionExpansionRaceRPCClient) LookupService(_ string) (internal.LookupService, error) {
+	return &grabConnMockLookup{result: r.lookupResult}, nil
+}
+
+type blockingSubscribeRPCClient struct {
+	internal.RPCClient
+	lookupResult     *internal.LookupResult
+	subscribeStarted chan struct{}
+	allowSubscribe   chan struct{}
+	subscribeErr     error
+	nextConsumerID   uint64
+	startOnce        sync.Once
+}
+
+func (r *blockingSubscribeRPCClient) NewRequestID() uint64 {
+	return 1
+}
+
+func (r *blockingSubscribeRPCClient) NewProducerID() uint64 {
+	return 1
+}
+
+func (r *blockingSubscribeRPCClient) NewConsumerID() uint64 {
+	id := r.nextConsumerID
+	r.nextConsumerID++
+	return id
+}
+
+func (r *blockingSubscribeRPCClient) RequestOnCnxNoWait(
+	_ internal.Connection, _ pb.BaseCommand_Type, _ proto.Message) error {
+	return nil
+}
+
+func (r *blockingSubscribeRPCClient) RequestOnCnx(
+	_ internal.Connection, _ uint64, cmdType pb.BaseCommand_Type, _ proto.Message,
+) (*internal.RPCResult, error) {
+	switch cmdType {
+	case pb.BaseCommand_SUBSCRIBE:
+		r.startOnce.Do(func() { close(r.subscribeStarted) })
+		<-r.allowSubscribe
+		return nil, r.subscribeErr
+	case pb.BaseCommand_CLOSE_CONSUMER:
+		return nil, nil
+	default:
+		return nil, fmt.Errorf("unexpected command type %v", cmdType)
+	}
+}
+
+func (r *blockingSubscribeRPCClient) LookupService(_ string) (internal.LookupService, error) {
+	return &grabConnMockLookup{result: r.lookupResult}, nil
+}
+
+// closeInterceptor captures the (consumer, err) pair delivered to
+// ConsumerCloseInterceptor.OnConsumerClose and signals via fired.
+type closeInterceptor struct {
+	fired    chan struct{}
+	consumer Consumer
+	err      error
+	once     sync.Once
+}
+
+func (c *closeInterceptor) BeforeConsume(_ ConsumerMessage)              {}
+func (c *closeInterceptor) OnAcknowledge(_ Consumer, _ MessageID)        {}
+func (c *closeInterceptor) OnNegativeAcksSend(_ Consumer, _ []MessageID) {}
+func (c *closeInterceptor) OnConsumerClose(consumer Consumer, err error) {
+	c.once.Do(func() {
+		c.consumer = consumer
+		c.err = err
+		close(c.fired)
+	})
+}
+
+func TestConsumerOnCloseInterceptorOnMaxReconnect(t *testing.T) {
+	req := testcontainers.ContainerRequest{
+		Image:        getPulsarTestImage(),
+		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
+		WaitingFor:   wait.ForExposedPort(),
+		Cmd:          []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
+	}
+	c, err := testcontainers.GenericContainer(context.Background(), testcontainers.GenericContainerRequest{
+		ContainerRequest: req,
+		Started:          true,
+	})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		if err := c.Terminate(context.Background()); err != nil {
+			t.Logf("container terminate (cleanup) returned: %v", err)
+		}
+	})
+	endpoint, err := c.PortEndpoint(context.Background(), "6650", "pulsar")
+	require.NoError(t, err)
+
+	pulsarClient, err := NewClient(ClientOptions{
+		URL:               endpoint,
+		ConnectionTimeout: 3 * time.Second,
+		OperationTimeout:  5 * time.Second,
+	})
+	require.NoError(t, err)
+	defer pulsarClient.Close()
+
+	maxRetry := uint(1)
+	interceptor := &closeInterceptor{fired: make(chan struct{})}
+
+	topic := newTopicName()
+	var testConsumer Consumer
+	require.Eventually(t, func() bool {
+		testConsumer, err = pulsarClient.Subscribe(ConsumerOptions{
+			Topic:                topic,
+			SubscriptionName:     "test-on-close-interceptor",
+			MaxReconnectToBroker: &maxRetry,
+			BackOffPolicyFunc: func() backoff.Policy {
+				return newTestBackoffPolicy(100*time.Millisecond, 1*time.Second)
+			},
+			Interceptors: ConsumerInterceptors{interceptor},
+		})
+		return err == nil
+	}, 30*time.Second, 1*time.Second)
+	defer testConsumer.Close()
+
+	require.NoError(t, c.Terminate(context.Background()))
+
+	select {
+	case <-interceptor.fired:
+	case <-time.After(30 * time.Second):
+		t.Fatal("OnConsumerClose was not called within timeout")
+	}
+
+	assert.NotNil(t, interceptor.err, "interceptor should receive the cause of the close")
+	assert.Equal(t, testConsumer, interceptor.consumer, "interceptor should receive the parent consumer")
+
+	pc := testConsumer.(*consumer).partitionConsumers()[0]
+	require.Eventually(t, func() bool {
+		return pc.getConsumerState() == consumerClosed
+	}, 30*time.Second, 100*time.Millisecond, "consumer should be closed after exhausting max reconnect retries")
+}
+
+func TestConsumerOnCloseInterceptorOnUserClose(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	require.NoError(t, err)
+	defer client.Close()
+
+	interceptor := &closeInterceptor{fired: make(chan struct{})}
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            newTopicName(),
+		SubscriptionName: "test-on-close-user",
+		Interceptors:     ConsumerInterceptors{interceptor},
+	})
+	require.NoError(t, err)
+
+	consumer.Close()
+
+	select {
+	case <-interceptor.fired:
+	case <-time.After(5 * time.Second):
+		t.Fatal("OnConsumerClose was not called within timeout")
+	}
+
+	assert.Nil(t, interceptor.err, "user-initiated close should report nil cause")
+	assert.Equal(t, consumer, interceptor.consumer)
+}
+
+func TestIsNonRetriableSubscribeError(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"topic not found", errors.New("TopicNotFound: topic does not exist"), true},
+		{"topic terminated", errors.New("TopicTerminatedError: topic was terminated"), true},
+		{"subscription not found", errors.New("SubscriptionNotFound: sub does not exist"), true},
+		{"authorization", errors.New("AuthorizationError: not authorized"), true},
+		{"consumer busy", errors.New("ConsumerBusy: another consumer attached"), true},
+		{"invalid topic name", errors.New("InvalidTopicName: bad name"), true},
+		{"incompatible schema", errors.New("IncompatibleSchema: schema mismatch"), true},
+		{"consumer assign error", errors.New("ConsumerAssignError: dispatcher assign failed"), true},
+		{"not allowed", errors.New("NotAllowedError: action not permitted"), true},
+		{"service not ready (retriable)", errors.New("ServiceNotReady: please retry"), false},
+		{"metadata error (retriable)", errors.New("MetadataError: zk timeout"), false},
+		{"plain network error (retriable)", errors.New("dial tcp: i/o timeout"), false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, isNonRetriableSubscribeError(tc.err))
+		})
 	}
 }
 

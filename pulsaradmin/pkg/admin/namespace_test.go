@@ -610,28 +610,23 @@ func TestNamespaces_MessageTTL(t *testing.T) {
 
 	namespace, _ := utils.GetNamespaceName("public/default")
 
-	// Get default (should be -1)
 	ttl, err := admin.Namespaces().GetNamespaceMessageTTL(namespace.String())
 	assert.NoError(t, err)
-	assert.Equal(t, -1, ttl)
+	initialTTL := ttl
 
-	// Set to 0 explicitly
-	err = admin.Namespaces().SetNamespaceMessageTTL(namespace.String(), 0)
-	assert.NoError(t, err)
-
-	// Verify returns 0
-	ttl, err = admin.Namespaces().GetNamespaceMessageTTL(namespace.String())
-	assert.NoError(t, err)
-	assert.Equal(t, 0, ttl)
-
-	// Set to positive value
 	err = admin.Namespaces().SetNamespaceMessageTTL(namespace.String(), 3600)
 	assert.NoError(t, err)
 
-	// Verify returns value
 	ttl, err = admin.Namespaces().GetNamespaceMessageTTL(namespace.String())
 	assert.NoError(t, err)
 	assert.Equal(t, 3600, ttl)
+
+	err = admin.Namespaces().RemoveNamespaceMessageTTL(namespace.String())
+	assert.NoError(t, err)
+
+	ttl, err = admin.Namespaces().GetNamespaceMessageTTL(namespace.String())
+	assert.NoError(t, err)
+	assert.Equal(t, initialTTL, ttl)
 }
 
 func TestNamespaces_OffloadDeleteLag(t *testing.T) {
@@ -674,28 +669,50 @@ func TestNamespaces_MaxConsumersPerTopic(t *testing.T) {
 
 	namespace, _ := utils.GetNamespaceName("public/default")
 
-	// Get default (should be -1)
 	maxConsumers, err := admin.Namespaces().GetMaxConsumersPerTopic(*namespace)
 	assert.NoError(t, err)
-	assert.Equal(t, -1, maxConsumers)
+	initialMaxConsumers := maxConsumers
 
-	// Set to 0 explicitly
-	err = admin.Namespaces().SetMaxConsumersPerTopic(*namespace, 0)
-	assert.NoError(t, err)
-
-	// Verify returns 0
-	maxConsumers, err = admin.Namespaces().GetMaxConsumersPerTopic(*namespace)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, maxConsumers)
-
-	// Set to positive value
 	err = admin.Namespaces().SetMaxConsumersPerTopic(*namespace, 100)
 	assert.NoError(t, err)
 
-	// Verify returns value
 	maxConsumers, err = admin.Namespaces().GetMaxConsumersPerTopic(*namespace)
 	assert.NoError(t, err)
 	assert.Equal(t, 100, maxConsumers)
+
+	err = admin.Namespaces().RemoveMaxConsumersPerTopic(*namespace)
+	assert.NoError(t, err)
+
+	maxConsumers, err = admin.Namespaces().GetMaxConsumersPerTopic(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, initialMaxConsumers, maxConsumers)
+}
+
+func TestNamespaces_MaxConsumersPerSubscription(t *testing.T) {
+	config := &config.Config{}
+	admin, err := New(config)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+
+	namespace, _ := utils.GetNamespaceName("public/default")
+
+	maxConsumers, err := admin.Namespaces().GetMaxConsumersPerSubscription(*namespace)
+	assert.NoError(t, err)
+	initialMaxConsumers := maxConsumers
+
+	err = admin.Namespaces().SetMaxConsumersPerSubscription(*namespace, 100)
+	assert.NoError(t, err)
+
+	maxConsumers, err = admin.Namespaces().GetMaxConsumersPerSubscription(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, 100, maxConsumers)
+
+	err = admin.Namespaces().RemoveMaxConsumersPerSubscription(*namespace)
+	assert.NoError(t, err)
+
+	maxConsumers, err = admin.Namespaces().GetMaxConsumersPerSubscription(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, initialMaxConsumers, maxConsumers)
 }
 
 func TestNamespaces_CompactionThreshold(t *testing.T) {
@@ -738,28 +755,23 @@ func TestNamespaces_MaxProducersPerTopic(t *testing.T) {
 
 	namespace, _ := utils.GetNamespaceName("public/default")
 
-	// Get default (should be -1)
 	maxProducers, err := admin.Namespaces().GetMaxProducersPerTopic(*namespace)
 	assert.NoError(t, err)
-	assert.Equal(t, -1, maxProducers)
+	initialMaxProducers := maxProducers
 
-	// Set to 0 explicitly
-	err = admin.Namespaces().SetMaxProducersPerTopic(*namespace, 0)
-	assert.NoError(t, err)
-
-	// Verify returns 0
-	maxProducers, err = admin.Namespaces().GetMaxProducersPerTopic(*namespace)
-	assert.NoError(t, err)
-	assert.Equal(t, 0, maxProducers)
-
-	// Set to positive value
 	err = admin.Namespaces().SetMaxProducersPerTopic(*namespace, 50)
 	assert.NoError(t, err)
 
-	// Verify returns value
 	maxProducers, err = admin.Namespaces().GetMaxProducersPerTopic(*namespace)
 	assert.NoError(t, err)
 	assert.Equal(t, 50, maxProducers)
+
+	err = admin.Namespaces().RemoveMaxProducersPerTopic(*namespace)
+	assert.NoError(t, err)
+
+	maxProducers, err = admin.Namespaces().GetMaxProducersPerTopic(*namespace)
+	assert.NoError(t, err)
+	assert.Equal(t, initialMaxProducers, maxProducers)
 }
 
 func TestNamespaces_Retention(t *testing.T) {
@@ -770,12 +782,10 @@ func TestNamespaces_Retention(t *testing.T) {
 
 	namespaceName := "public/default"
 
-	// Initial state: policy not configured, should return nil
 	retention, err := admin.Namespaces().GetRetention(namespaceName)
 	assert.NoError(t, err)
-	assert.Nil(t, retention, "Expected nil when retention is not configured")
+	initialRetention := retention
 
-	// Set new retention policy
 	newRetention := utils.RetentionPolicies{
 		RetentionSizeInMB:      1024,
 		RetentionTimeInMinutes: 60,
@@ -783,12 +793,18 @@ func TestNamespaces_Retention(t *testing.T) {
 	err = admin.Namespaces().SetRetention(namespaceName, newRetention)
 	assert.NoError(t, err)
 
-	// Verify retention is set
 	retention, err = admin.Namespaces().GetRetention(namespaceName)
 	assert.NoError(t, err)
-	assert.NotNil(t, retention, "Expected non-nil when retention is configured")
+	assert.NotNil(t, retention)
 	assert.Equal(t, int64(1024), retention.RetentionSizeInMB)
 	assert.Equal(t, 60, retention.RetentionTimeInMinutes)
+
+	err = admin.Namespaces().RemoveRetention(namespaceName)
+	assert.NoError(t, err)
+
+	retention, err = admin.Namespaces().GetRetention(namespaceName)
+	assert.NoError(t, err)
+	assert.Equal(t, initialRetention, retention)
 }
 
 func TestNamespaces_BookieAffinityGroup(t *testing.T) {

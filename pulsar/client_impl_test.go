@@ -46,6 +46,12 @@ func TestClient(t *testing.T) {
 	assert.Equal(t, InvalidConfiguration, err.(*Error).Result())
 }
 
+func TestClientInvalidScheme(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: "ftp://localhost:21"})
+	require.Error(t, err)
+	assert.Nil(t, client)
+}
+
 func TestTLSConnectionCAError(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL:              serviceURLTLS,
@@ -1231,4 +1237,34 @@ func TestMultipleCloseClient(t *testing.T) {
 	assert.Nil(t, err)
 	client.Close()
 	client.Close()
+}
+
+func TestDefaultConnectionTimeout(t *testing.T) {
+	// Verify that the default ConnectionTimeout is 0 (no application-level timeout)
+	// when the user does not explicitly set it.
+	cli, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer cli.Close()
+
+	pool := cli.(*client).cnxPool
+	connectionTimeout := internal.GetConnectionTimeout(&pool)
+	assert.Equal(t, time.Duration(0), connectionTimeout,
+		"Default ConnectionTimeout should be 0 (no application-level timeout)")
+}
+
+func TestDefaultKeepAliveInterval(t *testing.T) {
+	// Verify that the default KeepAliveInterval is 30s
+	// when the user does not explicitly set it.
+	cli, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	assert.Nil(t, err)
+	defer cli.Close()
+
+	pool := cli.(*client).cnxPool
+	keepAliveInterval := internal.GetKeepAliveInterval(&pool)
+	assert.Equal(t, 30*time.Second, keepAliveInterval,
+		"Default KeepAliveInterval should be 30s")
 }

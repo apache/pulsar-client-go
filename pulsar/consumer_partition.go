@@ -93,6 +93,56 @@ const (
 	noMessageEntry = -1
 )
 
+// Broker error markers. When the broker reports any of these in response
+// to a Subscribe command, retrying will not recover — the consumer must give up and notify
+// the application. errMsgTopicNotFound and errMsgTopicTerminated are reused from the producer
+// path; the rest are consumer-specific.
+const (
+	errMsgConsumerSubscriptionNotFound = "SubscriptionNotFound"
+	errMsgConsumerAuthorizationError   = "AuthorizationError"
+	errMsgConsumerBusy                 = "ConsumerBusy"
+	errMsgConsumerInvalidTopicName     = "InvalidTopicName"
+	errMsgConsumerIncompatibleSchema   = "IncompatibleSchema"
+	errMsgConsumerAssignError          = "ConsumerAssignError"
+	errMsgConsumerNotAllowedError      = "NotAllowedError"
+)
+
+// nonRetriableSubscribeErrorMarkers is the full set of broker error names that should
+// terminate the reconnect loop immediately. Detection is by substring match on the
+// error message, since the broker error arrives wire-formatted as "<ServerError>: <msg>"
+// (see grabConn -> BaseCommand_ERROR handling).
+var nonRetriableSubscribeErrorMarkers = []string{
+	errMsgTopicNotFound,
+	errMsgTopicTerminated,
+	errMsgConsumerSubscriptionNotFound,
+	errMsgConsumerAuthorizationError,
+	errMsgConsumerBusy,
+	errMsgConsumerInvalidTopicName,
+	errMsgConsumerIncompatibleSchema,
+	errMsgConsumerAssignError,
+	errMsgConsumerNotAllowedError,
+}
+
+func isNonRetriableSubscribeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	for _, marker := range nonRetriableSubscribeErrorMarkers {
+		if strings.Contains(msg, marker) {
+			return true
+		}
+	}
+	return false
+}
+
+// causalCloser is implemented by Consumer wrappers that can record the reason
+// they were closed and forward it to a ConsumerCloseInterceptor. The reconnect
+// loop uses this to surface the underlying error when it gives up.
+type causalCloser interface {
+	closeWithCause(err error)
+}
+
 type partitionConsumerOpts struct {
 	topic                       string
 	consumerName                string
@@ -100,6 +150,7 @@ type partitionConsumerOpts struct {
 	subscriptionType            SubscriptionType
 	subscriptionInitPos         SubscriptionInitialPosition
 	partitionIdx                int
+	priorityLevel               int
 	receiverQueueSize           int
 	autoReceiverQueueSize       bool
 	nackRedeliveryDelay         time.Duration
@@ -350,8 +401,8 @@ func (s *schemaInfoCache) add(schemaVersionHash string, schema Schema) {
 }
 
 func newPartitionConsumer(parent Consumer, client *client, options *partitionConsumerOpts,
-	messageCh chan ConsumerMessage, dlq *dlqRouter,
-	metrics *internal.LeveledMetrics) (*partitionConsumer, error) {
+	messageCh chan ConsumerMessage, dlq *dlqRouter, metrics *internal.LeveledMetrics,
+	startDispatcher bool) (*partitionConsumer, error) {
 	var boFunc func() backoff.Policy
 	if options.backOffPolicyFunc != nil {
 		boFunc = options.backOffPolicyFunc
@@ -374,7 +425,7 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		queueCh:                    make(chan []*message, options.receiverQueueSize),
 		startMessageID:             atomicMessageID{msgID: options.startMessageID},
 		seekMessageID:              atomicMessageID{msgID: nil},
-		connectedCh:                make(chan struct{}),
+		connectedCh:                make(chan struct{}, 1),
 		messageCh:                  messageCh,
 		connectClosedCh:            make(chan *connectionClosed, 1),
 		closeCh:                    make(chan struct{}),
@@ -461,11 +512,16 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		}
 	}
 
-	go pc.dispatcher()
-
 	go pc.runEventsLoop()
+	if startDispatcher {
+		pc.startDispatcher()
+	}
 
 	return pc, nil
+}
+
+func (pc *partitionConsumer) startDispatcher() {
+	go pc.dispatcher()
 }
 
 func (pc *partitionConsumer) unsubscribe(force bool) error {
@@ -1308,9 +1364,27 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	)
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
-		if err != nil || payload == nil {
+		isNullValue := msgMeta.GetNullValue() || (smm != nil && smm.GetNullValue())
+		if err != nil {
+			// A null-value (tombstone) message has no payload bytes on the wire, so
+			// the non-batched reader returns ErrEOM. Accept it instead of discarding
+			// it as corrupted, matching the Java client's behavior for compaction
+			// tombstones.
+			if isNullValue && err == internal.ErrEOM {
+				payload = nil
+				// Explicit reset to make tombstone-acceptance
+				// intent unambiguous.
+				err = nil //nolint:ineffassign
+			} else {
+				pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
+				return err
+			}
+		} else if payload == nil && !isNullValue {
 			pc.discardCorruptedMessage(pbMsgID, pb.CommandAck_BatchDeSerializeError)
 			return err
+		}
+		if isNullValue {
+			payload = nil
 		}
 		if ackSet != nil && !ackSet.Test(uint(i)) {
 			pc.log.Debugf("Ignoring message from %vth message, which has been acknowledged", i)
@@ -1396,6 +1470,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
 				conn:                pc._getConn(),
+				isNullValue:         isNullValue,
 			}
 		} else {
 			msg = &message{
@@ -1417,6 +1492,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 				index:               messageIndex,
 				brokerPublishTime:   brokerPublishTime,
 				conn:                pc._getConn(),
+				isNullValue:         isNullValue,
 			}
 		}
 
@@ -1435,6 +1511,11 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 	if skippedMessages > 0 {
 		pc.availablePermits.add(skippedMessages)
+	}
+
+	if len(messages) == 0 {
+		pc.log.Warnf("receive %d messages , all filtered", numMsgs)
+		return nil
 	}
 
 	// send messages to the dispatcher
@@ -1456,35 +1537,161 @@ func (pc *partitionConsumer) processMessageChunk(compressedPayload internal.Buff
 		partitionIdx: pc.partitionIdx,
 	}
 
-	if msgMeta.GetChunkId() == 0 {
+	if msgMeta.GetChunkId() != msgMeta.GetNumChunksFromMsg()-1 {
+		pc.availablePermits.inc()
+	}
+	if chunkID == 0 {
+		// Handle ack hole case when receive duplicated chunks.
+		// There are two situation that receives chunks with the same sequence ID and chunk ID.
+		// Situation 1 - Message redeliver:
+		// For example:
+		//     Chunk-1 sequence ID: 0, chunk ID: 0, msgID: 1:1
+		//     Chunk-2 sequence ID: 0, chunk ID: 1, msgID: 1:2
+		//     Chunk-3 sequence ID: 0, chunk ID: 0, msgID: 1:1
+		//     Chunk-4 sequence ID: 0, chunk ID: 1, msgID: 1:2
+		//     Chunk-5 sequence ID: 0, chunk ID: 2, msgID: 1:3
+		// In this case, chunk-3 and chunk-4 have the same msgID with chunk-1 and chunk-2.
+		// This may be caused by message redeliver, we can't ack any chunk in this case here.
+		// Situation 2 - Corrupted chunk message
+		// For example:
+		//     Chunk-1 sequence ID: 0, chunk ID: 0, msgID: 1:1
+		//     Chunk-2 sequence ID: 0, chunk ID: 1, msgID: 1:2
+		//     Chunk-3 sequence ID: 0, chunk ID: 0, msgID: 1:3
+		//     Chunk-4 sequence ID: 0, chunk ID: 1, msgID: 1:4
+		//     Chunk-5 sequence ID: 0, chunk ID: 2, msgID: 1:5
+		// In this case, all the chunks with different msgIDs and are persistent in the topic.
+		// But Chunk-1 and Chunk-2 belong to a corrupted chunk message that must be skipped since
+		// they will not be delivered to end users. So we should ack them here to avoid ack hole.
+		ctx := pc.chunkedMsgCtxMap.get(uuid)
+		if ctx != nil {
+			isCorruptedChunkMessageDetected := true
+			for _, previousChunkMsgID := range ctx.chunkedMsgIDs {
+				if previousChunkMsgID == nil {
+					continue
+				}
+				if previousChunkMsgID.equal(msgID) {
+					isCorruptedChunkMessageDetected = false
+					break
+				}
+			}
+			if isCorruptedChunkMessageDetected {
+				ctx.discard(pc)
+			}
+			// The first chunk of a new chunked-message received
+			// before receiving other chunks of previous chunked-message
+			// so, remove previous chunked-message from map and release buffer
+			pc.log.Warnf(fmt.Sprintf(
+				"[%s] [%s] Receive a duplicated chunk id=0 message with messageId [%s], sequenceId [%d], "+
+					"uuid [%s]. Remove previous chunk context with lastChunkedMsgID [%d]",
+				pc.name,
+				pc.options.subscription,
+				msgID.String(),
+				msgMeta.GetSequenceId(),
+				msgMeta.GetUuid(),
+				ctx.lastChunkedMsgID,
+			))
+			ctx.chunkedMsgBuffer.Clear()
+			pc.chunkedMsgCtxMap.remove(uuid)
+		}
 		pc.chunkedMsgCtxMap.addIfAbsent(uuid,
 			numChunks,
 			totalChunksSize,
 		)
 	}
 
+	// discard message if chunk is out-of-order
 	ctx := pc.chunkedMsgCtxMap.get(uuid)
-
 	if ctx == nil || ctx.chunkedMsgBuffer == nil || chunkID != ctx.lastChunkedMsgID+1 {
+		// Filter and ack duplicated chunks instead of discard ctx.
+		// For example:
+		//     Chunk-1 sequence ID: 0, chunk ID: 0, msgID: 1:1
+		//     Chunk-2 sequence ID: 0, chunk ID: 1, msgID: 1:2
+		//     Chunk-3 sequence ID: 0, chunk ID: 2, msgID: 1:3
+		//     Chunk-4 sequence ID: 0, chunk ID: 1, msgID: 1:4
+		//     Chunk-5 sequence ID: 0, chunk ID: 2, msgID: 1:5
+		//     Chunk-6 sequence ID: 0, chunk ID: 3, msgID: 1:6
+		// We should filter and ack chunk-4 and chunk-5.
+		if ctx != nil && chunkID <= ctx.lastChunkedMsgID {
+			pc.log.Warnf(fmt.Sprintf(
+				"[%s] [%s] Receive a duplicated chunk message with messageId [%s], "+
+					"last-chunk-Id [%d], chunkId [%d], sequenceId [%d], uuid [%s]",
+				pc.name,
+				pc.options.subscription,
+				msgID.String(),
+				ctx.lastChunkedMsgID,
+				chunkID,
+				msgMeta.GetSequenceId(),
+				msgMeta.GetUuid(),
+			))
+			// Just like the above logic of receiving the first chunk again.
+			// We only ack this chunk in the message duplication case.
+			isCorruptedChunkMessageDetected := true
+			for _, previousChunkMsgID := range ctx.chunkedMsgIDs {
+				if previousChunkMsgID == nil {
+					continue
+				}
+				if previousChunkMsgID.equal(msgID) {
+					isCorruptedChunkMessageDetected = false
+					break
+				}
+			}
+			if isCorruptedChunkMessageDetected {
+				pc.AckID(toTrackingMessageID(msgID))
+			}
+			return nil
+		}
+		// Chunked messages rely on TCP to ensure that chunk IDs are strictly increasing within a partition.
+		// If the current chunk ID is greater than ctx.lastChunkedMsgID + 1,
+		// it indicates that the current chunk is corrupted and may require resource cleanup.
 		lastChunkedMsgID := -1
 		totalChunks := -1
 		if ctx != nil {
 			lastChunkedMsgID = int(ctx.lastChunkedMsgID)
 			totalChunks = int(ctx.totalChunks)
-			ctx.chunkedMsgBuffer.Clear()
 		}
 		pc.log.Warnf(fmt.Sprintf(
-			"Received unexpected chunk messageId %s, last-chunk-id %d, chunkId = %d, total-chunks %d",
-			msgID.String(), lastChunkedMsgID, chunkID, totalChunks))
-		pc.chunkedMsgCtxMap.remove(uuid)
-		pc.availablePermits.inc()
+			"[%s] [%s] Received unexpected chunk messageId [%s], last-chunk-id [%d], "+
+				"chunkId = [%d], total-chunks [%d], sequenceId [%d], uuid [%s]",
+			pc.Topic(),
+			pc.options.subscription,
+			msgID.String(),
+			lastChunkedMsgID,
+			chunkID,
+			totalChunks,
+			msgMeta.GetSequenceId(),
+			msgMeta.GetUuid()),
+		)
+		if ctx != nil {
+			ctx.chunkedMsgBuffer.Clear()
+			pc.chunkedMsgCtxMap.remove(uuid)
+		}
+		// Consider a scenario where MaxPendingChunkedMessage is set to 1,
+		// and we have two messages (A and B), each consisting of three chunks:
+		// A chunks are Chunk-1, Chunk-2, Chunk-6 and B chunks are Chunk-3, Chunk-4, Chunk-5
+		// The consumer receives them in the following order:
+		//     Chunk-1 sequence ID: 0, chunk ID: 0, msgID: 1:1
+		//     Chunk-2 sequence ID: 0, chunk ID: 1, msgID: 1:2
+		//     since MaxPendingChunkedMessage is 1, the context for A is removed
+		//     Chunk-3 sequence ID: 1, chunk ID: 0, msgID: 1:3
+		//     Chunk-4 sequence ID: 1, chunk ID: 1, msgID: 1:4
+		//     Chunk-5 sequence ID: 1, chunk ID: 2, msgID: 1:5
+		//     Chunk-6 sequence ID: 0, chunk ID: 2, msgID: 1:6
+		// If we acknowledge Chunk-6 here, message A would be lost.
+		// This is unexpected, as the user would expect A to be successfully consumed after redelivery.
+		// So the correct logic should be:
+		// If AutoAckIncompleteChunk is true, then acknowledge the message.
+		// Otherwise, do nothing so that the message can be redelivered in the future.
+		if pc.options.autoAckIncompleteChunk {
+			pc.AckID(toTrackingMessageID(msgID))
+		}
 		return nil
 	}
 
+	// The chunk ID meets the expected value,
+	// so we add the current chunk to the corresponding chunkedMsgCtx.
 	ctx.append(chunkID, msgID, compressedPayload)
 
 	if msgMeta.GetChunkId() != msgMeta.GetNumChunksFromMsg()-1 {
-		pc.availablePermits.inc()
 		return nil
 	}
 
@@ -1910,6 +2117,19 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		assignedBrokerURL = connectionClosed.assignedBrokerURL
 	}
 
+	var giveUpNotified bool
+	notifyReconnectGiveUp := func(cause error) {
+		if giveUpNotified {
+			return
+		}
+		giveUpNotified = true
+		if cc, ok := pc.parentConsumer.(causalCloser); ok {
+			go cc.closeWithCause(cause)
+		} else {
+			go pc.parentConsumer.Close()
+		}
+	}
+
 	opFn := func() (struct{}, error) {
 		if maxRetry == 0 {
 			return struct{}{}, nil
@@ -1936,10 +2156,9 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return struct{}{}, nil
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
-		errMsg := err.Error()
-		if strings.Contains(errMsg, errMsgTopicNotFound) {
-			// when topic is deleted, we should give up reconnection.
-			pc.log.Warn("Topic Not Found.")
+		if isNonRetriableSubscribeError(err) {
+			pc.log.WithError(err).Warn("Non-retriable error during reconnect, giving up")
+			notifyReconnectGiveUp(err)
 			return struct{}{}, nil
 		}
 
@@ -1947,8 +2166,10 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			maxRetry--
 		}
 		pc.metrics.ConsumersReconnectFailure.Inc()
-		if maxRetry == 0 || bo.IsMaxBackoffReached() {
+		if maxRetry == 0 {
 			pc.metrics.ConsumersReconnectMaxRetry.Inc()
+			notifyReconnectGiveUp(errors.New("max retry attempts reached for reconnecting to broker"))
+			return struct{}{}, nil
 		}
 
 		return struct{}{}, err
@@ -2014,7 +2235,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		ConsumerId:                 proto.Uint64(pc.consumerID),
 		RequestId:                  proto.Uint64(requestID),
 		ConsumerName:               proto.String(pc.name),
-		PriorityLevel:              nil,
+		PriorityLevel:              proto.Int32(int32(pc.options.priorityLevel)),
 		Durable:                    proto.Bool(pc.options.subscriptionMode == Durable),
 		Metadata:                   internal.ConvertFromStringMap(pc.options.metadata),
 		SubscriptionProperties:     internal.ConvertFromStringMap(pc.options.subProperties),
@@ -2050,10 +2271,49 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		cmdSubscribe.ForceTopicCreation = proto.Bool(false)
 	}
 
-	res, err := pc.client.rpcClient.RequestWithCnxKeySuffix(lr.LogicalAddr, lr.PhysicalAddr, pc.cnxKeySuffix, requestID,
-		pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
-
+	// Obtain the connection before sending the subscribe RPC so we can register
+	// the consumer handler before the broker starts delivering frames.
+	// This closes a race where MESSAGE and ACTIVE_CONSUMER_CHANGE commands
+	// arriving immediately after the subscribe response were silently dropped
+	// because AddConsumeHandler had not been called yet.
+	cnx, err := pc.client.cnxPool.GetConnection(lr.LogicalAddr, lr.PhysicalAddr, pc.cnxKeySuffix)
 	if err != nil {
+		pc.log.WithError(err).Error("Failed to get connection")
+		return err
+	}
+
+	// Set the connection BEFORE registering the handler so that handler
+	// callbacks (e.g. MessageReceived → discardCorruptedMessage) can safely
+	// call pc._getConn() without hitting a nil pointer.
+	var prevConn internal.Connection
+	if v := pc.conn.Load(); v != nil {
+		prevConn = *v
+	}
+	pc._setConn(cnx)
+
+	// restoreConn rolls back pc.conn to the previous connection (or nil on
+	// the very first call) so a failed subscribe attempt doesn't leave
+	// pc.conn pointing at a stale connection.
+	restoreConn := func() {
+		if prevConn != nil {
+			pc._setConn(prevConn)
+		} else {
+			pc.conn.Store(nil)
+		}
+	}
+
+	// Register handler BEFORE the subscribe RPC so no frames are missed
+	err = cnx.AddConsumeHandler(pc.consumerID, pc)
+	if err != nil {
+		restoreConn()
+		pc.log.WithError(err).Error("Failed to add consumer handler")
+		return err
+	}
+
+	res, err := pc.client.rpcClient.RequestOnCnx(cnx, requestID, pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
+	if err != nil {
+		cnx.DeleteConsumeHandler(pc.consumerID)
+		restoreConn()
 		pc.log.WithError(err).Error("Failed to create consumer")
 		if err == internal.ErrRequestTimeOut {
 			requestID := pc.client.rpcClient.NewRequestID()
@@ -2061,7 +2321,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 				ConsumerId: proto.Uint64(pc.consumerID),
 				RequestId:  proto.Uint64(requestID),
 			}
-			_, _ = pc.client.rpcClient.RequestWithCnxKeySuffix(lr.LogicalAddr, lr.PhysicalAddr, pc.cnxKeySuffix, requestID,
+			_, _ = pc.client.rpcClient.RequestOnCnx(cnx, requestID,
 				pb.BaseCommand_CLOSE_CONSUMER, cmdClose)
 		}
 		return err
@@ -2071,13 +2331,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		pc.name = res.Response.ConsumerStatsResponse.GetConsumerName()
 	}
 
-	pc._setConn(res.Cnx)
 	pc.log.Info("Connected consumer")
-	err = pc._getConn().AddConsumeHandler(pc.consumerID, pc)
-	if err != nil {
-		pc.log.WithError(err).Error("Failed to add consumer handler")
-		return err
-	}
 
 	msgType := res.Response.GetType()
 
@@ -2342,9 +2596,11 @@ func (pc *partitionConsumer) _setConn(conn internal.Connection) {
 // _getConn returns internal connection field of this partition consumer atomically.
 // Note: should only be called by this partition consumer before attempting to use the connection
 func (pc *partitionConsumer) _getConn() internal.Connection {
-	// Invariant: The conn must be non-nill for the lifetime of the partitionConsumer.
-	//            For this reason we leave this cast unchecked and panic() if the
-	//            invariant is broken
+	// Invariant: conn is non-nil after the first successful grabConn (i.e. after
+	//            a subscribe RPC succeeds). During grabConn itself, conn is set
+	//            before AddConsumeHandler so that handler callbacks can use it.
+	//            Before the first successful subscribe, conn may be nil.
+	//            We leave this cast unchecked and panic() if the invariant is broken.
 	return *pc.conn.Load()
 }
 
@@ -2513,6 +2769,7 @@ func (c *chunkedMsgCtxMap) discardOldestChunkMessage(autoAck bool) {
 	if autoAck {
 		ctx.discard(c.pc)
 	}
+	ctx.chunkedMsgBuffer.Clear()
 	delete(c.chunkedMsgCtxs, oldest)
 	c.pc.log.Infof("Chunked message [%s] has been removed from chunkedMsgCtxMap", oldest)
 }
@@ -2530,6 +2787,7 @@ func (c *chunkedMsgCtxMap) discardChunkMessage(uuid string, autoAck bool) {
 	if autoAck {
 		ctx.discard(c.pc)
 	}
+	ctx.chunkedMsgBuffer.Clear()
 	delete(c.chunkedMsgCtxs, uuid)
 	e := c.pendingQueue.Front()
 	for ; e != nil; e = e.Next() {

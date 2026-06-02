@@ -25,10 +25,19 @@ import (
 // Client contains all admin interfaces for operating pulsar resources
 type Client = admin.Client
 
+// TopicPolicies contains scoped admin interfaces for topic-level policies.
+type TopicPolicies = admin.TopicPolicies
+
+// TopicPoliciesProvider provides scoped TopicPolicies instances.
+type TopicPoliciesProvider = admin.TopicPoliciesProvider
+
 // Config are the arguments for creating a new admin Client
 type Config = config.Config
 
 var (
 	// NewClient returns a new admin Client for operating pulsar resources
 	NewClient = admin.New
+
+	// TopicPoliciesOf returns a scoped TopicPolicies client from an admin client when available.
+	TopicPoliciesOf = admin.TopicPoliciesOf
 )

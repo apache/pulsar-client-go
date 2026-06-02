@@ -94,6 +94,12 @@ type Namespaces interface {
 	// GetNamespaceMessageTTLWithContext returns the message TTL for a namespace. Returns -1 if not set
 	GetNamespaceMessageTTLWithContext(ctx context.Context, namespace string) (int, error)
 
+	// RemoveNamespaceMessageTTL removes the message TTL configuration for a namespace, defaulting to broker settings
+	RemoveNamespaceMessageTTL(namespace string) error
+
+	// RemoveNamespaceMessageTTLWithContext removes the message TTL for a namespace, defaulting to broker settings
+	RemoveNamespaceMessageTTLWithContext(ctx context.Context, namespace string) error
+
 	// GetRetention returns the retention configuration for a namespace.
 	// Returns nil if the retention policy is not configured at the namespace level.
 	GetRetention(namespace string) (*utils.RetentionPolicies, error)
@@ -107,6 +113,12 @@ type Namespaces interface {
 
 	// SetRetentionWithContext sets the retention configuration for all the topics on a namespace
 	SetRetentionWithContext(ctx context.Context, namespace string, policy utils.RetentionPolicies) error
+
+	// RemoveRetention removes the retention configuration for a namespace, defaulting to broker settings
+	RemoveRetention(namespace string) error
+
+	// RemoveRetentionWithContext removes the retention configuration for a namespace, defaulting to broker settings
+	RemoveRetentionWithContext(ctx context.Context, namespace string) error
 
 	// GetBacklogQuotaMap returns backlog quota map on a namespace
 	GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
@@ -288,6 +300,14 @@ type Namespaces interface {
 	// Returns -1 if not set
 	GetMaxConsumersPerSubscriptionWithContext(ctx context.Context, namespace utils.NameSpaceName) (int, error)
 
+	// RemoveMaxConsumersPerSubscription removes maxConsumersPerSubscription configuration for a namespace,
+	// defaulting to broker settings
+	RemoveMaxConsumersPerSubscription(namespace utils.NameSpaceName) error
+
+	// RemoveMaxConsumersPerSubscriptionWithContext removes maxConsumersPerSubscription configuration for a namespace,
+	// defaulting to broker settings
+	RemoveMaxConsumersPerSubscriptionWithContext(ctx context.Context, namespace utils.NameSpaceName) error
+
 	// SetMaxConsumersPerTopic sets maxConsumersPerTopic for a namespace.
 	//nolint: revive // It's ok here to use a built-in function name (max)
 	SetMaxConsumersPerTopic(namespace utils.NameSpaceName, max int) error
@@ -302,6 +322,14 @@ type Namespaces interface {
 	// GetMaxConsumersPerTopicWithContext returns the maxProducersPerTopic for a namespace. Returns -1 if not set
 	GetMaxConsumersPerTopicWithContext(ctx context.Context, namespace utils.NameSpaceName) (int, error)
 
+	// RemoveMaxConsumersPerTopic removes maxConsumersPerTopic configuration for a namespace,
+	// defaulting to broker settings
+	RemoveMaxConsumersPerTopic(namespace utils.NameSpaceName) error
+
+	// RemoveMaxConsumersPerTopicWithContext removes maxConsumersPerTopic configuration for a namespace,
+	// defaulting to broker settings
+	RemoveMaxConsumersPerTopicWithContext(ctx context.Context, namespace utils.NameSpaceName) error
+
 	// SetMaxProducersPerTopic sets maxProducersPerTopic for a namespace.
 	//nolint: revive // It's ok here to use a built-in function name (max)
 	SetMaxProducersPerTopic(namespace utils.NameSpaceName, max int) error
@@ -315,6 +343,14 @@ type Namespaces interface {
 
 	// GetMaxProducersPerTopicWithContext returns the maxProducersPerTopic for a namespace. Returns -1 if not set
 	GetMaxProducersPerTopicWithContext(ctx context.Context, namespace utils.NameSpaceName) (int, error)
+
+	// RemoveMaxProducersPerTopic removes maxProducersPerTopic configuration for a namespace,
+	// defaulting to broker settings
+	RemoveMaxProducersPerTopic(namespace utils.NameSpaceName) error
+
+	// RemoveMaxProducersPerTopicWithContext removes maxProducersPerTopic configuration for a namespace,
+	// defaulting to broker settings
+	RemoveMaxProducersPerTopicWithContext(ctx context.Context, namespace utils.NameSpaceName) error
 
 	// SetMaxTopicsPerNamespace sets maxTopicsPerNamespace for a namespace.
 	//nolint: revive // It's ok here to use a built-in function name (max)
@@ -891,6 +927,19 @@ func (n *namespaces) SetNamespaceMessageTTLWithContext(ctx context.Context, name
 	return n.pulsar.Client.PostWithContext(ctx, endpoint, &ttlInSeconds)
 }
 
+func (n *namespaces) RemoveNamespaceMessageTTL(namespace string) error {
+	return n.RemoveNamespaceMessageTTLWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemoveNamespaceMessageTTLWithContext(ctx context.Context, namespace string) error {
+	nsName, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "messageTTL")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
+}
+
 func (n *namespaces) SetRetention(namespace string, policy utils.RetentionPolicies) error {
 	return n.SetRetentionWithContext(context.Background(), namespace, policy)
 }
@@ -924,6 +973,19 @@ func (n *namespaces) GetRetentionWithContext(ctx context.Context, namespace stri
 		return &policy, err
 	}
 	return nil, err
+}
+
+func (n *namespaces) RemoveRetention(namespace string) error {
+	return n.RemoveRetentionWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemoveRetentionWithContext(ctx context.Context, namespace string) error {
+	nsName, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "retention")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (n *namespaces) GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuotaType]utils.BacklogQuota, error) {
@@ -1171,6 +1233,18 @@ func (n *namespaces) GetMaxConsumersPerSubscriptionWithContext(
 	return result, err
 }
 
+func (n *namespaces) RemoveMaxConsumersPerSubscription(namespace utils.NameSpaceName) error {
+	return n.RemoveMaxConsumersPerSubscriptionWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemoveMaxConsumersPerSubscriptionWithContext(
+	ctx context.Context,
+	namespace utils.NameSpaceName,
+) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerSubscription")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
+}
+
 func (n *namespaces) SetOffloadThreshold(namespace utils.NameSpaceName, threshold int64) error {
 	return n.SetOffloadThresholdWithContext(context.Background(), namespace, threshold)
 }
@@ -1251,6 +1325,18 @@ func (n *namespaces) GetMaxConsumersPerTopicWithContext(
 	return result, err
 }
 
+func (n *namespaces) RemoveMaxConsumersPerTopic(namespace utils.NameSpaceName) error {
+	return n.RemoveMaxConsumersPerTopicWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemoveMaxConsumersPerTopicWithContext(
+	ctx context.Context,
+	namespace utils.NameSpaceName,
+) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxConsumersPerTopic")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
+}
+
 func (n *namespaces) SetCompactionThreshold(namespace utils.NameSpaceName, threshold int64) error {
 	return n.SetCompactionThresholdWithContext(context.Background(), namespace, threshold)
 }
@@ -1305,6 +1391,18 @@ func (n *namespaces) GetMaxProducersPerTopicWithContext(
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
 	err := n.pulsar.Client.GetWithContext(ctx, endpoint, &result)
 	return result, err
+}
+
+func (n *namespaces) RemoveMaxProducersPerTopic(namespace utils.NameSpaceName) error {
+	return n.RemoveMaxProducersPerTopicWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemoveMaxProducersPerTopicWithContext(
+	ctx context.Context,
+	namespace utils.NameSpaceName,
+) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "maxProducersPerTopic")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (n *namespaces) GetNamespaceReplicationClusters(namespace string) ([]string, error) {

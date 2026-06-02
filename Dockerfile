@@ -19,7 +19,7 @@
 # set via the Makefile or CLI
 ARG PULSAR_IMAGE=apachepulsar/pulsar:latest
 
-ARG GO_VERSION=1.23
+ARG GO_VERSION=1.24
 FROM golang:$GO_VERSION as golang
 
 FROM $PULSAR_IMAGE

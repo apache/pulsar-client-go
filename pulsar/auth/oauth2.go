@@ -61,6 +61,7 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 	case ConfigParamTypeClientCredentials:
 		flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
 			KeyFile:          params[ConfigParamKeyFile],
+			IssuerURL:        params[ConfigParamIssuerURL],
 			AdditionalScopes: strings.Split(params[ConfigParamScope], " "),
 		})
 		if err != nil {
