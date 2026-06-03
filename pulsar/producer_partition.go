@@ -1642,7 +1642,7 @@ func newSendRequest(
 	sr.compressedSize = 0
 	sr.payloadChunkSize = 0
 	sr.mm = nil
-	sr.deliverAt = nil
+	sr.deliverAt = time.Time{}
 	sr.maxMessageSize = 0
 	sr.doneFlag.Store(false)
 	return sr
@@ -1735,13 +1735,43 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 
 	pool := sr.pool
 	if pool != nil {
-		// Reset all the fields while keeping the done guard raised until the
-		// object is reinitialized from the pool.
-		reset := sendRequest{}
-		reset.doneFlag.Store(true)
-		*sr = reset
+		sr.reset()
 		pool.Put(sr)
 	}
+}
+
+// reset clears all fields and returns the sendRequest to a reusable state.
+// The doneFlag is intentionally left raised; newSendRequest will lower it.
+func (sr *sendRequest) reset() {
+	sr.doneFlag.Store(true)
+	sr.pool = nil
+	sr.ctx = nil
+	sr.msg = nil
+	sr.producer = nil
+	sr.callback = nil
+	sr.callbackOnce = nil
+	sr.publishTime = time.Time{}
+	sr.flushImmediately = false
+	sr.totalChunks = 0
+	sr.chunkID = 0
+	sr.uuid = ""
+	sr.chunkRecorder = nil
+	sr.memLimit = nil
+	sr.reservedMem = 0
+	sr.semaphore = nil
+	sr.reservedSemaphore = 0
+	sr.sendAsBatch = false
+	sr.transaction = nil
+	sr.schema = nil
+	sr.schemaVersion = nil
+	sr.uncompressedPayload = nil
+	sr.uncompressedSize = 0
+	sr.compressedPayload = nil
+	sr.compressedSize = 0
+	sr.payloadChunkSize = 0
+	sr.mm = nil
+	sr.deliverAt = time.Time{}
+	sr.maxMessageSize = 0
 }
 
 func (p *partitionProducer) blockIfQueueFull() bool {
