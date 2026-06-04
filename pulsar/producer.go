@@ -198,6 +198,18 @@ type ProducerOptions struct {
 	// EnableChunking controls whether automatic chunking of messages is enabled for the producer. By default, chunking
 	// is disabled.
 	// Chunking can not be enabled when batching is enabled.
+	//
+	// Note: If chunking is enabled and the consumer is configured with DLQ/RLQ (Dead Letter Queue / Retry Letter
+	// Queue), it is recommended to also enable chunking in the DLQ policy's ProducerOptions so that large chunked
+	// messages can be forwarded to the DLQ/RLQ topic successfully. Example:
+	//   DLQ: &pulsar.DLQPolicy{
+	//       MaxDeliveries:   3,
+	//       DeadLetterTopic: "my-dlq-topic",
+	//       ProducerOptions: pulsar.ProducerOptions{
+	//           EnableChunking:  true,
+	//           DisableBatching: true,
+	//       },
+	//   }
 	EnableChunking bool
 
 	// ChunkMaxMessageSize is the max size of single chunk payload.
