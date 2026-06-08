@@ -6453,10 +6453,7 @@ func drainUntilTimeout(t *testing.T, consumer Consumer, perMsgTimeout time.Durat
 			return count
 		}
 
-		ackErr := consumer.Ack(msg)
-		if ackErr != nil {
-			return 0
-		}
+		require.NoError(t, consumer.Ack(msg))
 
 		count++
 	}
@@ -6468,11 +6465,7 @@ func drainExactly(t *testing.T, consumer Consumer, want int) {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		msg, err := consumer.Receive(ctx)
 		cancel()
-		assert.Nil(t, err)
-		if err != nil {
-			return
-		}
-
+		require.NoError(t, err)
 		require.NoError(t, consumer.Ack(msg))
 	}
 }
