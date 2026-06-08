@@ -338,6 +338,24 @@ func (p *availablePermits) flowIfNeed() {
 	}
 }
 
+func (p *availablePermits) flush() {
+	if p.pc.paused.Load() {
+		return
+	}
+
+	current := p.get()
+	if current > 0 {
+		if !p.permits.CompareAndSwap(current, 0) {
+			return
+		}
+
+		p.pc.log.Debugf("flushing withheld permits=%d", current)
+		if err := p.pc.internalFlow(uint32(current)); err != nil {
+			p.pc.log.WithError(err).Error("unable to send permits")
+		}
+	}
+}
+
 // atomicMessageID is a wrapper for trackingMessageID to make get and set atomic
 type atomicMessageID struct {
 	msgID *trackingMessageID
@@ -1784,7 +1802,7 @@ func (pc *partitionConsumer) pause() {
 
 func (pc *partitionConsumer) resume() {
 	if pc.paused.CompareAndSwap(true, false) {
-		pc.availablePermits.flowIfNeed()
+		pc.availablePermits.flush()
 	}
 }
 
