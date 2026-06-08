@@ -6473,10 +6473,7 @@ func drainExactly(t *testing.T, consumer Consumer, want int) {
 			return
 		}
 
-		ackErr := consumer.Ack(msg)
-		if ackErr != nil {
-			return
-		}
+		require.NoError(t, consumer.Ack(msg))
 	}
 }
 
