@@ -26,7 +26,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -554,30 +553,29 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 	mm.TotalChunkMsgSize = proto.Int32(int32(len(wholePayload)))
 	mm.ChunkId = proto.Int32(int32(chunkID))
 	producerImpl.updateMetadataSeqID(mm, msg)
+	sr := newSendRequest(
+		context.Background(),
+		producerImpl,
+		msg,
+		func(MessageID, *ProducerMessage, error) {},
+		true,
+	)
+	sr.totalChunks = totalChunks
+	sr.chunkID = chunkID
+	sr.uuid = uuid
+	sr.chunkRecorder = newChunkRecorder()
+	sr.uncompressedPayload = wholePayload
+	sr.uncompressedSize = int64(len(wholePayload))
+	sr.compressedPayload = wholePayload
+	sr.compressedSize = len(wholePayload)
+	sr.payloadChunkSize = internal.MaxMessageSize - proto.Size(mm)
+	sr.mm = mm
+	sr.deliverAt = time.Now()
+	sr.maxMessageSize = internal.MaxMessageSize
 	producerImpl.internalSingleSend(
 		mm,
 		msg.Payload,
-		&sendRequest{
-			callback: func(id MessageID, producerMessage *ProducerMessage, err error) {
-			},
-			callbackOnce:        &sync.Once{},
-			ctx:                 context.Background(),
-			msg:                 msg,
-			producer:            producerImpl,
-			flushImmediately:    true,
-			totalChunks:         totalChunks,
-			chunkID:             chunkID,
-			uuid:                uuid,
-			chunkRecorder:       newChunkRecorder(),
-			uncompressedPayload: wholePayload,
-			uncompressedSize:    int64(len(wholePayload)),
-			compressedPayload:   wholePayload,
-			compressedSize:      len(wholePayload),
-			payloadChunkSize:    internal.MaxMessageSize - proto.Size(mm),
-			mm:                  mm,
-			deliverAt:           time.Now(),
-			maxMessageSize:      internal.MaxMessageSize,
-		},
+		sr,
 		uint32(internal.MaxMessageSize),
 	)
 }
