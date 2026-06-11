@@ -56,7 +56,7 @@ jobs:
           go-version: ${{ matrix.go-version }}
       - name: Run Tests
         id: run-tests
-        run: make test GO_VERSION=${{ matrix.go-version }}
+        run: make test GO_VERSION=${{ matrix.go-version }} PULSAR_VERSION=4.0.3
         env:
           GODEBUG: urlstrictcolons=1
       - name: Upload logs on failure
