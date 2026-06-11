@@ -17,15 +17,20 @@
 
 package utils
 
+import "encoding/json"
+
 //nolint:lll
 type OffloadPolicies struct {
-	OffloadersDirectory                               string            `json:"offloadersDirectory,omitempty"`
-	ManagedLedgerOffloadDriver                        string            `json:"managedLedgerOffloadDriver,omitempty"`
-	ManagedLedgerOffloadMaxThreads                    int               `json:"managedLedgerOffloadMaxThreads,omitempty"`
-	ManagedLedgerOffloadReadThreads                   int               `json:"managedLedgerOffloadReadThreads,omitempty"`
-	ManagedLedgerOffloadPrefetchRounds                int               `json:"managedLedgerOffloadPrefetchRounds,omitempty"`
-	ManagedLedgerOffloadThresholdInSeconds            int64             `json:"managedLedgerOffloadThresholdInSeconds,omitempty"`
-	ManagedLedgerOffloadThresholdInBytes              int64             `json:"managedLedgerOffloadThresholdInBytes,omitempty"`
+	OffloadersDirectory                string `json:"offloadersDirectory,omitempty"`
+	ManagedLedgerOffloadDriver         string `json:"managedLedgerOffloadDriver,omitempty"`
+	ManagedLedgerOffloadMaxThreads     int    `json:"managedLedgerOffloadMaxThreads,omitempty"`
+	ManagedLedgerOffloadReadThreads    int    `json:"managedLedgerOffloadReadThreads,omitempty"`
+	ManagedLedgerOffloadPrefetchRounds int    `json:"managedLedgerOffloadPrefetchRounds,omitempty"`
+	// Use SetManagedLedgerOffloadThresholdInSeconds to send explicit zero; direct zero is omitted by JSON.
+	ManagedLedgerOffloadThresholdInSeconds int64 `json:"managedLedgerOffloadThresholdInSeconds,omitempty"`
+	// Use SetManagedLedgerOffloadThresholdInBytes to send explicit zero; direct zero is omitted by JSON.
+	ManagedLedgerOffloadThresholdInBytes int64 `json:"managedLedgerOffloadThresholdInBytes,omitempty"`
+	// Use SetManagedLedgerOffloadDeletionLagInMillis to send explicit zero; direct zero is omitted by JSON.
 	ManagedLedgerOffloadDeletionLagInMillis           int64             `json:"managedLedgerOffloadDeletionLagInMillis,omitempty"`
 	ManagedLedgerOffloadedReadPriority                string            `json:"managedLedgerOffloadedReadPriority,omitempty"`
 	ManagedLedgerExtraConfigurations                  map[string]string `json:"managedLedgerExtraConfigurations,omitempty"`
@@ -52,6 +57,10 @@ type OffloadPolicies struct {
 	ManagedLedgerOffloadMaxBlockSizeInBytes           int               `json:"managedLedgerOffloadMaxBlockSizeInBytes,omitempty"`
 	ManagedLedgerOffloadReadBufferSizeInBytes         int               `json:"managedLedgerOffloadReadBufferSizeInBytes,omitempty"`
 	ManagedLedgerOffloadDriverMetadata                map[string]string `json:"managedLedgerOffloadDriverMetadata,omitempty"`
+
+	managedLedgerOffloadThresholdInBytesSet    bool
+	managedLedgerOffloadThresholdInSecondsSet  bool
+	managedLedgerOffloadDeletionLagInMillisSet bool
 }
 
 func NewOffloadPolicies() *OffloadPolicies {
@@ -63,4 +72,53 @@ func NewOffloadPolicies() *OffloadPolicies {
 		ManagedLedgerExtraConfigurations:                  make(map[string]string),
 		ManagedLedgerOffloadDriverMetadata:                make(map[string]string),
 	}
+}
+
+// SetManagedLedgerOffloadThresholdInBytes sets managedLedgerOffloadThresholdInBytes and marks zero as explicit.
+func (p *OffloadPolicies) SetManagedLedgerOffloadThresholdInBytes(threshold int64) *OffloadPolicies {
+	p.ManagedLedgerOffloadThresholdInBytes = threshold
+	p.managedLedgerOffloadThresholdInBytesSet = true
+	return p
+}
+
+// SetManagedLedgerOffloadThresholdInSeconds sets managedLedgerOffloadThresholdInSeconds and marks zero as explicit.
+func (p *OffloadPolicies) SetManagedLedgerOffloadThresholdInSeconds(threshold int64) *OffloadPolicies {
+	p.ManagedLedgerOffloadThresholdInSeconds = threshold
+	p.managedLedgerOffloadThresholdInSecondsSet = true
+	return p
+}
+
+// SetManagedLedgerOffloadDeletionLagInMillis sets managedLedgerOffloadDeletionLagInMillis and marks zero as explicit.
+func (p *OffloadPolicies) SetManagedLedgerOffloadDeletionLagInMillis(lag int64) *OffloadPolicies {
+	p.ManagedLedgerOffloadDeletionLagInMillis = lag
+	p.managedLedgerOffloadDeletionLagInMillisSet = true
+	return p
+}
+
+func (p OffloadPolicies) MarshalJSON() ([]byte, error) {
+	type offloadPoliciesAlias OffloadPolicies
+	body, err := json.Marshal(offloadPoliciesAlias(p))
+	if err != nil {
+		return nil, err
+	}
+	if !p.managedLedgerOffloadThresholdInBytesSet &&
+		!p.managedLedgerOffloadThresholdInSecondsSet &&
+		!p.managedLedgerOffloadDeletionLagInMillisSet {
+		return body, nil
+	}
+
+	out := make(map[string]interface{})
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, err
+	}
+	if p.managedLedgerOffloadThresholdInBytesSet {
+		out["managedLedgerOffloadThresholdInBytes"] = p.ManagedLedgerOffloadThresholdInBytes
+	}
+	if p.managedLedgerOffloadThresholdInSecondsSet {
+		out["managedLedgerOffloadThresholdInSeconds"] = p.ManagedLedgerOffloadThresholdInSeconds
+	}
+	if p.managedLedgerOffloadDeletionLagInMillisSet {
+		out["managedLedgerOffloadDeletionLagInMillis"] = p.ManagedLedgerOffloadDeletionLagInMillis
+	}
+	return json.Marshal(out)
 }

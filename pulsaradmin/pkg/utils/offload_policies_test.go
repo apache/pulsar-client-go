@@ -136,6 +136,28 @@ func TestOffloadPolicies_JSONSerialization(t *testing.T) {
 	}
 }
 
+func TestOffloadPolicies_ExplicitZeroThresholdSerialization(t *testing.T) {
+	policies := OffloadPolicies{}
+	policies.SetManagedLedgerOffloadThresholdInBytes(0)
+
+	jsonData, err := json.Marshal(policies)
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"managedLedgerOffloadThresholdInBytes":0}`, string(jsonData))
+}
+
+func TestOffloadPolicies_ExplicitZeroOptionalNumericSerialization(t *testing.T) {
+	policies := OffloadPolicies{}
+	policies.SetManagedLedgerOffloadThresholdInBytes(0).
+		SetManagedLedgerOffloadThresholdInSeconds(0).
+		SetManagedLedgerOffloadDeletionLagInMillis(0)
+
+	jsonData, err := json.Marshal(policies)
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"managedLedgerOffloadThresholdInBytes":0,`+
+		`"managedLedgerOffloadThresholdInSeconds":0,`+
+		`"managedLedgerOffloadDeletionLagInMillis":0}`, string(jsonData))
+}
+
 func TestOffloadPolicies_JSONDeserialization(t *testing.T) {
 	tests := []struct {
 		name     string
