@@ -230,6 +230,30 @@ type Namespaces interface {
 		namespace utils.NameSpaceName,
 	) (utils.SchemaCompatibilityStrategy, error)
 
+	// GetOffloadPolicies returns offload policies for a namespace.
+	// Returns nil if the offload policies are not configured at the namespace level.
+	GetOffloadPolicies(namespace utils.NameSpaceName) (*utils.OffloadPolicies, error)
+
+	// GetOffloadPoliciesWithContext returns offload policies for a namespace.
+	// Returns nil if the offload policies are not configured at the namespace level.
+	GetOffloadPoliciesWithContext(ctx context.Context, namespace utils.NameSpaceName) (*utils.OffloadPolicies, error)
+
+	// SetOffloadPolicies sets offload policies for a namespace.
+	SetOffloadPolicies(namespace utils.NameSpaceName, offloadPolicies utils.OffloadPolicies) error
+
+	// SetOffloadPoliciesWithContext sets offload policies for a namespace.
+	SetOffloadPoliciesWithContext(
+		ctx context.Context,
+		namespace utils.NameSpaceName,
+		offloadPolicies utils.OffloadPolicies,
+	) error
+
+	// RemoveOffloadPolicies removes offload policies for a namespace, defaulting to broker settings.
+	RemoveOffloadPolicies(namespace utils.NameSpaceName) error
+
+	// RemoveOffloadPoliciesWithContext removes offload policies for a namespace, defaulting to broker settings.
+	RemoveOffloadPoliciesWithContext(ctx context.Context, namespace utils.NameSpaceName) error
+
 	// ClearOffloadDeleteLag clears the offload deletion lag for a namespace.
 	ClearOffloadDeleteLag(namespace utils.NameSpaceName) error
 
@@ -1169,6 +1193,47 @@ func (n *namespaces) GetSchemaCompatibilityStrategyWithContext(ctx context.Conte
 		return "", err
 	}
 	return s, nil
+}
+
+func (n *namespaces) GetOffloadPolicies(namespace utils.NameSpaceName) (*utils.OffloadPolicies, error) {
+	return n.GetOffloadPoliciesWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) GetOffloadPoliciesWithContext(
+	ctx context.Context,
+	namespace utils.NameSpaceName,
+) (*utils.OffloadPolicies, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadPolicies")
+	body, err := n.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, nil, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	return decodeOptionalJSON[utils.OffloadPolicies](body)
+}
+
+func (n *namespaces) SetOffloadPolicies(
+	namespace utils.NameSpaceName,
+	offloadPolicies utils.OffloadPolicies,
+) error {
+	return n.SetOffloadPoliciesWithContext(context.Background(), namespace, offloadPolicies)
+}
+
+func (n *namespaces) SetOffloadPoliciesWithContext(
+	ctx context.Context,
+	namespace utils.NameSpaceName,
+	offloadPolicies utils.OffloadPolicies,
+) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadPolicies")
+	return n.pulsar.Client.PostWithContext(ctx, endpoint, &offloadPolicies)
+}
+
+func (n *namespaces) RemoveOffloadPolicies(namespace utils.NameSpaceName) error {
+	return n.RemoveOffloadPoliciesWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemoveOffloadPoliciesWithContext(ctx context.Context, namespace utils.NameSpaceName) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "removeOffloadPolicies")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (n *namespaces) ClearOffloadDeleteLag(namespace utils.NameSpaceName) error {
