@@ -6450,6 +6450,7 @@ func drainUntilTimeout(t *testing.T, consumer Consumer, perMsgTimeout time.Durat
 		msg, err := consumer.Receive(ctx)
 		cancel()
 		if err != nil {
+			require.ErrorIs(t, err, context.DeadlineExceeded)
 			return count
 		}
 

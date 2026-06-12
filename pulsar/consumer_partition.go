@@ -343,15 +343,18 @@ func (p *availablePermits) flush() {
 		return
 	}
 
-	current := p.get()
-	if current > 0 {
-		if !p.permits.CompareAndSwap(current, 0) {
+	for {
+		current := p.get()
+		if current <= 0 {
 			return
 		}
 
-		p.pc.log.Debugf("flushing withheld permits=%d", current)
-		if err := p.pc.internalFlow(uint32(current)); err != nil {
-			p.pc.log.WithError(err).Error("unable to send permits")
+		if p.permits.CompareAndSwap(current, 0) {
+			p.pc.log.Debugf("flushing withheld permits=%d", current)
+			if err := p.pc.internalFlow(uint32(current)); err != nil {
+				p.pc.log.WithError(err).Error("unable to send permits")
+			}
+			return
 		}
 	}
 }

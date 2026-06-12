@@ -353,20 +353,34 @@ func (c *regexConsumer) Name() string {
 
 func (c *regexConsumer) Pause() {
 	c.consumersLock.Lock()
-	defer c.consumersLock.Unlock()
 	c.paused.Store(true)
-	for _, con := range c.consumers {
+	consumers := c.snapshotConsumers()
+	c.consumersLock.Unlock()
+
+	for _, con := range consumers {
 		con.Pause()
 	}
 }
 
 func (c *regexConsumer) Resume() {
 	c.consumersLock.Lock()
-	defer c.consumersLock.Unlock()
 	c.paused.Store(false)
-	for _, con := range c.consumers {
+	consumers := c.snapshotConsumers()
+	c.consumersLock.Unlock()
+
+	for _, con := range consumers {
 		con.Resume()
 	}
+}
+
+func (c *regexConsumer) snapshotConsumers() []Consumer {
+	consumers := make([]Consumer, 0, len(c.consumers))
+
+	for _, con := range c.consumers {
+		consumers = append(consumers, con)
+	}
+
+	return consumers
 }
 
 func (c *regexConsumer) Paused() bool {
