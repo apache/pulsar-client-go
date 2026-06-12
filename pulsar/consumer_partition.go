@@ -254,8 +254,11 @@ type partitionConsumer struct {
 	// After executing seekByTime, the client is unaware of the startMessageId.
 	// Use this flag to compare markDeletePosition with BrokerLastMessageId when checking hasMoreMessages.
 	hasSoughtByTime atomic.Bool
-	ctx             context.Context
-	cancelFunc      context.CancelFunc
+
+	paused atomic.Bool
+
+	ctx        context.Context
+	cancelFunc context.CancelFunc
 }
 
 // pauseDispatchMessage used to discard the message in the dispatcher goroutine.
@@ -306,6 +309,10 @@ func (p *availablePermits) get() int32 {
 }
 
 func (p *availablePermits) flowIfNeed() {
+	if p.pc.paused.Load() {
+		return
+	}
+
 	// TODO implement a better flow controller
 	// send more permits if needed
 	var flowThreshold int32
@@ -327,6 +334,27 @@ func (p *availablePermits) flowIfNeed() {
 		p.pc.log.Debugf("requesting more permits=%d available=%d", requestedPermits, availablePermits)
 		if err := p.pc.internalFlow(uint32(requestedPermits)); err != nil {
 			p.pc.log.WithError(err).Error("unable to send permits")
+		}
+	}
+}
+
+func (p *availablePermits) flush() {
+	if p.pc.paused.Load() {
+		return
+	}
+
+	for {
+		current := p.get()
+		if current <= 0 {
+			return
+		}
+
+		if p.permits.CompareAndSwap(current, 0) {
+			p.pc.log.Debugf("flushing withheld permits=%d", current)
+			if err := p.pc.internalFlow(uint32(current)); err != nil {
+				p.pc.log.WithError(err).Error("unable to send permits")
+			}
+			return
 		}
 	}
 }
@@ -1771,6 +1799,16 @@ func (pc *partitionConsumer) SetRedirectedClusterURI(redirectedClusterURI string
 	pc.redirectedClusterURI = redirectedClusterURI
 }
 
+func (pc *partitionConsumer) pause() {
+	pc.paused.Store(true)
+}
+
+func (pc *partitionConsumer) resume() {
+	if pc.paused.CompareAndSwap(true, false) {
+		pc.availablePermits.flush()
+	}
+}
+
 // Flow command gives additional permits to send messages to the consumer.
 // A typical consumer implementation will use a queue to accumulate these messages
 // before the application is ready to consume them. After the consumer is ready,
@@ -1879,8 +1917,9 @@ func (pc *partitionConsumer) dispatcher() {
 			}
 
 			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
-			// send initial permits
-			if err := pc.internalFlow(initialPermits); err != nil && !pc.options.enableZeroQueueConsumer {
+			if pc.paused.Load() {
+				pc.availablePermits.add(int32(initialPermits))
+			} else if err := pc.internalFlow(initialPermits); err != nil && !pc.options.enableZeroQueueConsumer {
 				pc.log.WithError(err).Error("unable to send initial permits to broker")
 			}
 

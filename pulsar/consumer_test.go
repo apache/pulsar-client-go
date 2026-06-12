@@ -6391,19 +6391,19 @@ func TestConsumerOnCloseInterceptorOnMaxReconnect(t *testing.T) {
 }
 
 func TestConsumerOnCloseInterceptorOnUserClose(t *testing.T) {
-	client, err := NewClient(ClientOptions{URL: serviceURL})
+	aClient, err := NewClient(ClientOptions{URL: serviceURL})
 	require.NoError(t, err)
-	defer client.Close()
+	defer aClient.Close()
 
 	interceptor := &closeInterceptor{fired: make(chan struct{})}
-	consumer, err := client.Subscribe(ConsumerOptions{
+	aConsumer, err := aClient.Subscribe(ConsumerOptions{
 		Topic:            newTopicName(),
 		SubscriptionName: "test-on-close-user",
 		Interceptors:     ConsumerInterceptors{interceptor},
 	})
 	require.NoError(t, err)
 
-	consumer.Close()
+	aConsumer.Close()
 
 	select {
 	case <-interceptor.fired:
@@ -6412,7 +6412,7 @@ func TestConsumerOnCloseInterceptorOnUserClose(t *testing.T) {
 	}
 
 	assert.Nil(t, interceptor.err, "user-initiated close should report nil cause")
-	assert.Equal(t, consumer, interceptor.consumer)
+	assert.Equal(t, aConsumer, interceptor.consumer)
 }
 
 func TestIsNonRetriableSubscribeError(t *testing.T) {
@@ -6507,4 +6507,226 @@ func TestConsumerWithDLQRetryTopicNoGetPartitionedTopicMetadata(t *testing.T) {
 		assert.NotEqual(t, oldRetryTopic, topic,
 			"GetPartitionedTopicMetadata should not be called with old Retry topic when custom Retry topic is provided")
 	}
+}
+
+func drainUntilTimeout(t *testing.T, consumer Consumer, perMsgTimeout time.Duration) int {
+	t.Helper()
+	count := 0
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), perMsgTimeout)
+		msg, err := consumer.Receive(ctx)
+		cancel()
+		if err != nil {
+			require.ErrorIs(t, err, context.DeadlineExceeded)
+			return count
+		}
+
+		require.NoError(t, consumer.Ack(msg))
+
+		count++
+	}
+}
+
+func drainExactly(t *testing.T, consumer Consumer, want int) {
+	t.Helper()
+	for i := 0; i < want; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		msg, err := consumer.Receive(ctx)
+		cancel()
+		require.NoError(t, err)
+		require.NoError(t, consumer.Ack(msg))
+	}
+}
+
+func TestConsumerPauseResume(t *testing.T) {
+	aClient, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer aClient.Close()
+
+	topic := newTopicName()
+	const numMsg = 20
+
+	aProducer, err := aClient.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer aProducer.Close()
+
+	for i := 0; i < numMsg; i++ {
+		_, err := aProducer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		})
+		assert.Nil(t, err)
+	}
+
+	aConsumer, err := aClient.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "pause-resume-sub",
+		Type:                        Exclusive,
+		ReceiverQueueSize:           5,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer aConsumer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	first, err := aConsumer.Receive(ctx)
+	cancel()
+	assert.Nil(t, err)
+	if err == nil {
+		assert.NoError(t, aConsumer.Ack(first))
+	}
+	received := 1
+
+	aConsumer.Pause()
+	aConsumer.Pause()
+	assert.True(t, aConsumer.Paused())
+
+	received += drainUntilTimeout(t, aConsumer, 3*time.Second)
+	assert.Less(t, received, numMsg, "pause must stop delivery before all messages arrive")
+
+	aConsumer.Resume()
+	aConsumer.Resume()
+	assert.False(t, aConsumer.Paused())
+
+	drainExactly(t, aConsumer, numMsg-received)
+}
+
+func TestPartitionedConsumerPauseResume(t *testing.T) {
+	aClient, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer aClient.Close()
+
+	topic := newTopicName()
+	makeHTTPCall(t, http.MethodPut, adminURL+"/admin/v2/persistent/public/default/"+topic+"/partitions", "3")
+
+	const numMsg = 30
+	aProducer, err := aClient.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer aProducer.Close()
+
+	for i := 0; i < numMsg; i++ {
+		_, sendErr := aProducer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		})
+		assert.Nil(t, sendErr)
+	}
+
+	aConsumer, err := aClient.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "pause-resume-partitioned-sub",
+		Type:                        Exclusive,
+		ReceiverQueueSize:           5,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer aConsumer.Close()
+
+	aConsumer.Pause()
+	assert.True(t, aConsumer.Paused())
+
+	receivedWhilePaused := drainUntilTimeout(t, aConsumer, 3*time.Second)
+	assert.Less(t, receivedWhilePaused, numMsg, "pause must stop delivery before all messages arrive")
+
+	aConsumer.Resume()
+	assert.False(t, aConsumer.Paused())
+
+	drainExactly(t, aConsumer, numMsg-receivedWhilePaused)
+}
+
+func TestZeroQueueConsumerPauseResume(t *testing.T) {
+	aClient, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer aClient.Close()
+
+	topic := newTopicName()
+	aProducer, err := aClient.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer aProducer.Close()
+
+	aConsumer, err := aClient.Subscribe(ConsumerOptions{
+		Topic:                   topic,
+		SubscriptionName:        "zq-pause-sub",
+		Type:                    Exclusive,
+		EnableZeroQueueConsumer: true,
+	})
+	assert.Nil(t, err)
+	defer aConsumer.Close()
+
+	_, err = aProducer.Send(context.Background(), &ProducerMessage{Payload: []byte("hello")})
+	assert.Nil(t, err)
+
+	aConsumer.Pause()
+	assert.True(t, aConsumer.Paused())
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	msg, err := aConsumer.Receive(ctx)
+	cancel()
+	assert.Nil(t, msg)
+	assert.NotNil(t, err)
+
+	aConsumer.Resume()
+	assert.False(t, aConsumer.Paused())
+
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	msg, err = aConsumer.Receive(ctx)
+	cancel()
+	assert.Nil(t, err)
+	if assert.NotNil(t, msg) {
+		assert.Equal(t, "hello", string(msg.Payload()))
+		ackErr := aConsumer.Ack(msg)
+		require.NoError(t, ackErr)
+	}
+}
+
+func TestRegexConsumerPauseResumeInheritsNewTopics(t *testing.T) {
+	aClient, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer aClient.Close()
+
+	prefix := fmt.Sprintf("persistent://public/default/pause-regex-%d", time.Now().UnixNano())
+	aConsumer, err := aClient.Subscribe(ConsumerOptions{
+		TopicsPattern:               prefix + "-.*",
+		SubscriptionName:            "regex-pause-sub",
+		Type:                        Exclusive,
+		ReceiverQueueSize:           5,
+		AutoDiscoveryPeriod:         1 * time.Second,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+	defer aConsumer.Close()
+
+	aConsumer.Pause()
+	assert.True(t, aConsumer.Paused())
+
+	const numMsg = 20
+	aProducer, err := aClient.CreateProducer(ProducerOptions{
+		Topic:           prefix + "-new",
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer aProducer.Close()
+	for i := 0; i < numMsg; i++ {
+		_, sendErr := aProducer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		})
+		assert.Nil(t, sendErr)
+	}
+
+	time.Sleep(3 * time.Second)
+
+	receivedWhilePaused := drainUntilTimeout(t, aConsumer, 3*time.Second)
+	assert.Less(t, receivedWhilePaused, numMsg, "newly discovered topic must inherit paused state")
+
+	aConsumer.Resume()
+	assert.False(t, aConsumer.Paused())
+
+	drainExactly(t, aConsumer, numMsg-receivedWhilePaused)
 }
