@@ -107,6 +107,28 @@ func TestUpdateDynamicConfiguration(t *testing.T) {
 	assert.NotEmpty(t, configurations)
 }
 
+func TestUpdateDynamicConfigurationEscapedValueE2E(t *testing.T) {
+	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
+	require.NoError(t, err)
+	cfg := &config.Config{
+		Token: string(readFile),
+	}
+	admin, err := New(cfg)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
+	t.Cleanup(func() {
+		assert.NoError(t, admin.Brokers().DeleteDynamicConfiguration("loadBalancerSheddingExcludedNamespaces"))
+	})
+
+	err = admin.Brokers().UpdateDynamicConfiguration("loadBalancerSheddingExcludedNamespaces", "my-tenant/my-namespace")
+	require.NoError(t, err)
+
+	configurations, err := admin.Brokers().GetAllDynamicConfigurations()
+	require.NoError(t, err)
+	require.NotEmpty(t, configurations)
+	assert.Equal(t, "my-tenant/my-namespace", configurations["loadBalancerSheddingExcludedNamespaces"])
+}
+
 func TestUpdateDynamicConfigurationEscapesConfigValue(t *testing.T) {
 	admin := &pulsarClient{
 		APIVersion: config.V2,
@@ -117,7 +139,7 @@ func TestUpdateDynamicConfigurationEscapesConfigValue(t *testing.T) {
 					require.Equal(t, http.MethodPost, r.Method)
 					require.Equal(
 						t,
-						"/admin/v2/brokers/configuration/testConfigName/public%2Fdefault",
+						"/admin/v2/brokers/configuration/loadBalancerSheddingExcludedNamespaces/my-tenant%2Fmy-namespace",
 						r.URL.EscapedPath(),
 					)
 					return &http.Response{
@@ -131,7 +153,7 @@ func TestUpdateDynamicConfigurationEscapesConfigValue(t *testing.T) {
 		},
 	}
 
-	err := admin.Brokers().UpdateDynamicConfiguration("testConfigName", "public/default")
+	err := admin.Brokers().UpdateDynamicConfiguration("loadBalancerSheddingExcludedNamespaces", "my-tenant/my-namespace")
 	require.NoError(t, err)
 }
 
