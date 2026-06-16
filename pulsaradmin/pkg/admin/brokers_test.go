@@ -157,6 +157,34 @@ func TestUpdateDynamicConfigurationEscapesConfigValue(t *testing.T) {
 	require.NoError(t, err)
 }
 
+func TestUpdateDynamicConfigurationDoesNotCleanConfigPath(t *testing.T) {
+	admin := &pulsarClient{
+		APIVersion: config.V2,
+		Client: &rest.Client{
+			ServiceURL: "http://example.com",
+			HTTPClient: &http.Client{
+				Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+					require.Equal(t, http.MethodPost, r.Method)
+					require.Equal(
+						t,
+						"/admin/v2/brokers/configuration/loadBalancerSheddingExcludedNamespaces/..",
+						r.URL.EscapedPath(),
+					)
+					return &http.Response{
+						StatusCode: http.StatusNoContent,
+						Body:       io.NopCloser(strings.NewReader("")),
+						Header:     make(http.Header),
+						Request:    r,
+					}, nil
+				}),
+			},
+		},
+	}
+
+	err := admin.Brokers().UpdateDynamicConfiguration("loadBalancerSheddingExcludedNamespaces", "..")
+	require.NoError(t, err)
+}
+
 func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
 	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
 	assert.NoError(t, err)

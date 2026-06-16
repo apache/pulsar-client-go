@@ -194,7 +194,8 @@ func (b *broker) UpdateDynamicConfigurationWithContext(ctx context.Context, conf
 		url.PathEscape(configName),
 		url.PathEscape(configValue),
 	)
-	escapedEndpoint := b.pulsar.endpointWithFullPath(b.basePath, escapedConfigPath)
+	adminPath := strings.TrimRight(utils.MakeHTTPPath(b.pulsar.APIVersion.String(), b.basePath), "/")
+	escapedEndpoint := adminPath + escapedConfigPath
 
 	// Build the URL from the escaped string so url.Parse derives a matching Path and RawPath.
 	// The regular newRequest path decodes escaped path segments and would turn %2F back into '/'.
