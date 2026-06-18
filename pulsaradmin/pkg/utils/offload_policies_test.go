@@ -87,6 +87,32 @@ func TestOffloadPolicies_JSONSerialization(t *testing.T) {
 			},
 			expected: `{"managedLedgerOffloadDriver":"s3","managedLedgerOffloadMaxThreads":4,"managedLedgerOffloadThresholdInBytes":1000000,"managedLedgerOffloadDeletionLagInMillis":7200000,"managedLedgerOffloadAutoTriggerSizeThresholdBytes":500000,"s3ManagedLedgerOffloadBucket":"test-bucket","s3ManagedLedgerOffloadRegion":"us-west-2","s3ManagedLedgerOffloadServiceEndpoint":"https://s3.us-west-2.amazonaws.com","s3ManagedLedgerOffloadCredentialId":"access-key","s3ManagedLedgerOffloadCredentialSecret":"secret-key","s3ManagedLedgerOffloadRole":"test-role","s3ManagedLedgerOffloadRoleSessionName":"test-session","offloadersDirectory":"/opt/offloaders","managedLedgerOffloadDriverMetadata":{"key1":"value1","key2":"value2"}}`,
 		},
+		//nolint:lll
+		{
+			name: "Pulsar admin offload fields serialization",
+			policies: OffloadPolicies{
+				ManagedLedgerOffloadReadThreads:              3,
+				ManagedLedgerOffloadPrefetchRounds:           2,
+				ManagedLedgerOffloadThresholdInSeconds:       3600,
+				ManagedLedgerOffloadedReadPriority:           "tiered-storage-first",
+				ManagedLedgerExtraConfigurations:             map[string]string{"managedLedgerOffloadExtraConfig.a": "b"},
+				S3ManagedLedgerOffloadMaxBlockSizeInBytes:    67108864,
+				S3ManagedLedgerOffloadReadBufferSizeInBytes:  1048576,
+				GCSManagedLedgerOffloadRegion:                "us-central1",
+				GCSManagedLedgerOffloadBucket:                "gcs-bucket",
+				GCSManagedLedgerOffloadMaxBlockSizeInBytes:   134217728,
+				GCSManagedLedgerOffloadReadBufferSizeInBytes: 1048576,
+				GCSManagedLedgerOffloadServiceAccountKeyFile: "/var/keys/gcs.json",
+				FileSystemProfilePath:                        "/etc/hadoop/conf",
+				FileSystemURI:                                "hdfs://namenode:8020",
+				ManagedLedgerOffloadBucket:                   "universal-bucket",
+				ManagedLedgerOffloadRegion:                   "us-east-1",
+				ManagedLedgerOffloadServiceEndpoint:          "https://storage.example.com",
+				ManagedLedgerOffloadMaxBlockSizeInBytes:      67108864,
+				ManagedLedgerOffloadReadBufferSizeInBytes:    1048576,
+			},
+			expected: `{"managedLedgerOffloadReadThreads":3,"managedLedgerOffloadPrefetchRounds":2,"managedLedgerOffloadThresholdInSeconds":3600,"managedLedgerOffloadedReadPriority":"tiered-storage-first","managedLedgerExtraConfigurations":{"managedLedgerOffloadExtraConfig.a":"b"},"s3ManagedLedgerOffloadMaxBlockSizeInBytes":67108864,"s3ManagedLedgerOffloadReadBufferSizeInBytes":1048576,"gcsManagedLedgerOffloadRegion":"us-central1","gcsManagedLedgerOffloadBucket":"gcs-bucket","gcsManagedLedgerOffloadMaxBlockSizeInBytes":134217728,"gcsManagedLedgerOffloadReadBufferSizeInBytes":1048576,"gcsManagedLedgerOffloadServiceAccountKeyFile":"/var/keys/gcs.json","fileSystemProfilePath":"/etc/hadoop/conf","fileSystemURI":"hdfs://namenode:8020","managedLedgerOffloadBucket":"universal-bucket","managedLedgerOffloadRegion":"us-east-1","managedLedgerOffloadServiceEndpoint":"https://storage.example.com","managedLedgerOffloadMaxBlockSizeInBytes":67108864,"managedLedgerOffloadReadBufferSizeInBytes":1048576}`,
+		},
 		{
 			name:     "Empty struct serialization (zero values omitted)",
 			policies: OffloadPolicies{},
@@ -105,9 +131,31 @@ func TestOffloadPolicies_JSONSerialization(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			jsonData, err := json.Marshal(tt.policies)
 			assert.NoError(t, err)
-			assert.Equal(t, tt.expected, string(jsonData))
+			assert.JSONEq(t, tt.expected, string(jsonData))
 		})
 	}
+}
+
+func TestOffloadPolicies_ExplicitZeroThresholdSerialization(t *testing.T) {
+	policies := OffloadPolicies{}
+	policies.SetManagedLedgerOffloadThresholdInBytes(0)
+
+	jsonData, err := json.Marshal(policies)
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"managedLedgerOffloadThresholdInBytes":0}`, string(jsonData))
+}
+
+func TestOffloadPolicies_ExplicitZeroOptionalNumericSerialization(t *testing.T) {
+	policies := OffloadPolicies{}
+	policies.SetManagedLedgerOffloadThresholdInBytes(0).
+		SetManagedLedgerOffloadThresholdInSeconds(0).
+		SetManagedLedgerOffloadDeletionLagInMillis(0)
+
+	jsonData, err := json.Marshal(policies)
+	assert.NoError(t, err)
+	assert.JSONEq(t, `{"managedLedgerOffloadThresholdInBytes":0,`+
+		`"managedLedgerOffloadThresholdInSeconds":0,`+
+		`"managedLedgerOffloadDeletionLagInMillis":0}`, string(jsonData))
 }
 
 func TestOffloadPolicies_JSONDeserialization(t *testing.T) {
@@ -148,6 +196,33 @@ func TestOffloadPolicies_JSONDeserialization(t *testing.T) {
 				ManagedLedgerOffloadMaxThreads: 4,
 				S3ManagedLedgerOffloadBucket:   "test-bucket",
 				// Other fields should be zero values
+			},
+			wantErr: false,
+		},
+		//nolint:lll
+		{
+			name:     "Pulsar admin offload fields deserialization",
+			jsonData: `{"managedLedgerOffloadReadThreads":3,"managedLedgerOffloadPrefetchRounds":2,"managedLedgerOffloadThresholdInSeconds":3600,"managedLedgerOffloadedReadPriority":"tiered-storage-first","managedLedgerExtraConfigurations":{"managedLedgerOffloadExtraConfig.a":"b"},"s3ManagedLedgerOffloadMaxBlockSizeInBytes":67108864,"s3ManagedLedgerOffloadReadBufferSizeInBytes":1048576,"gcsManagedLedgerOffloadRegion":"us-central1","gcsManagedLedgerOffloadBucket":"gcs-bucket","gcsManagedLedgerOffloadMaxBlockSizeInBytes":134217728,"gcsManagedLedgerOffloadReadBufferSizeInBytes":1048576,"gcsManagedLedgerOffloadServiceAccountKeyFile":"/var/keys/gcs.json","fileSystemProfilePath":"/etc/hadoop/conf","fileSystemURI":"hdfs://namenode:8020","managedLedgerOffloadBucket":"universal-bucket","managedLedgerOffloadRegion":"us-east-1","managedLedgerOffloadServiceEndpoint":"https://storage.example.com","managedLedgerOffloadMaxBlockSizeInBytes":67108864,"managedLedgerOffloadReadBufferSizeInBytes":1048576}`,
+			expected: OffloadPolicies{
+				ManagedLedgerOffloadReadThreads:              3,
+				ManagedLedgerOffloadPrefetchRounds:           2,
+				ManagedLedgerOffloadThresholdInSeconds:       3600,
+				ManagedLedgerOffloadedReadPriority:           "tiered-storage-first",
+				ManagedLedgerExtraConfigurations:             map[string]string{"managedLedgerOffloadExtraConfig.a": "b"},
+				S3ManagedLedgerOffloadMaxBlockSizeInBytes:    67108864,
+				S3ManagedLedgerOffloadReadBufferSizeInBytes:  1048576,
+				GCSManagedLedgerOffloadRegion:                "us-central1",
+				GCSManagedLedgerOffloadBucket:                "gcs-bucket",
+				GCSManagedLedgerOffloadMaxBlockSizeInBytes:   134217728,
+				GCSManagedLedgerOffloadReadBufferSizeInBytes: 1048576,
+				GCSManagedLedgerOffloadServiceAccountKeyFile: "/var/keys/gcs.json",
+				FileSystemProfilePath:                        "/etc/hadoop/conf",
+				FileSystemURI:                                "hdfs://namenode:8020",
+				ManagedLedgerOffloadBucket:                   "universal-bucket",
+				ManagedLedgerOffloadRegion:                   "us-east-1",
+				ManagedLedgerOffloadServiceEndpoint:          "https://storage.example.com",
+				ManagedLedgerOffloadMaxBlockSizeInBytes:      67108864,
+				ManagedLedgerOffloadReadBufferSizeInBytes:    1048576,
 			},
 			wantErr: false,
 		},

@@ -997,6 +997,14 @@ type Topics interface {
 	// Returns nil if the offload policies are not configured at the topic level.
 	GetOffloadPoliciesWithContext(context.Context, utils.TopicName) (*utils.OffloadPolicies, error)
 
+	// GetOffloadPoliciesApplied returns offload policies for a topic.
+	// When applied is true, it returns the effective policy applied to this topic.
+	GetOffloadPoliciesApplied(utils.TopicName, bool) (*utils.OffloadPolicies, error)
+
+	// GetOffloadPoliciesAppliedWithContext returns offload policies for a topic.
+	// When applied is true, it returns the effective policy applied to this topic.
+	GetOffloadPoliciesAppliedWithContext(context.Context, utils.TopicName, bool) (*utils.OffloadPolicies, error)
+
 	// SetOffloadPolicies sets offload policies for a topic
 	SetOffloadPolicies(utils.TopicName, utils.OffloadPolicies) error
 
@@ -2407,7 +2415,22 @@ func (t *topics) GetOffloadPoliciesWithContext(
 	ctx context.Context,
 	topic utils.TopicName,
 ) (*utils.OffloadPolicies, error) {
-	return t.localTopicPolicies().GetOffloadPolicies(ctx, topic, false)
+	return t.GetOffloadPoliciesAppliedWithContext(ctx, topic, false)
+}
+
+func (t *topics) GetOffloadPoliciesApplied(
+	topic utils.TopicName,
+	applied bool,
+) (*utils.OffloadPolicies, error) {
+	return t.GetOffloadPoliciesAppliedWithContext(context.Background(), topic, applied)
+}
+
+func (t *topics) GetOffloadPoliciesAppliedWithContext(
+	ctx context.Context,
+	topic utils.TopicName,
+	applied bool,
+) (*utils.OffloadPolicies, error) {
+	return t.localTopicPolicies().GetOffloadPolicies(ctx, topic, applied)
 }
 
 func (t *topics) SetOffloadPolicies(topic utils.TopicName, offloadPolicies utils.OffloadPolicies) error {
