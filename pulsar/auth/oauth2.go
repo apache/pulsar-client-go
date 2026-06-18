@@ -31,13 +31,17 @@ import (
 )
 
 const (
-	ConfigParamType                  = "type"
-	ConfigParamTypeClientCredentials = "client_credentials"
-	ConfigParamIssuerURL             = "issuerUrl"
-	ConfigParamAudience              = "audience"
-	ConfigParamScope                 = "scope"
-	ConfigParamKeyFile               = "privateKey"
-	ConfigParamClientID              = "clientId"
+	ConfigParamType                    = "type"
+	ConfigParamTypeClientCredentials   = "client_credentials"
+	ConfigParamIssuerURL               = "issuerUrl"
+	ConfigParamAudience                = "audience"
+	ConfigParamScope                   = "scope"
+	ConfigParamKeyFile                 = "privateKey"
+	ConfigParamClientID                = "clientId"
+	ConfigParamTokenEndpointAuthMethod = "tokenEndpointAuthMethod"
+	ConfigParamTLSCertFile             = "tlsCertFile"
+	ConfigParamTLSKeyFile              = "tlsKeyFile"
+	ConfigParamTrustCertsFilePath      = "trustCertsFilePath"
 )
 
 type oauth2AuthProvider struct {
@@ -49,7 +53,12 @@ type oauth2AuthProvider struct {
 	flow             *oauth2.ClientCredentialsFlow
 }
 
-// NewAuthenticationOAuth2WithParams return a interface of Provider with string map.
+// NewAuthenticationOAuth2WithParams creates an OAuth2 auth provider from string params.
+//
+// For client_credentials, tokenEndpointAuthMethod defaults to client_secret_post.
+// Required params:
+//   - client_secret_post: privateKey
+//   - tls_client_auth: issuerUrl, tlsCertFile, tlsKeyFile
 func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, error) {
 	issuer := oauth2.Issuer{
 		IssuerEndpoint: params[ConfigParamIssuerURL],
@@ -60,9 +69,14 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 	switch params[ConfigParamType] {
 	case ConfigParamTypeClientCredentials:
 		flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
-			KeyFile:          params[ConfigParamKeyFile],
-			IssuerURL:        params[ConfigParamIssuerURL],
-			AdditionalScopes: strings.Split(params[ConfigParamScope], " "),
+			KeyFile:                 params[ConfigParamKeyFile],
+			ClientID:                params[ConfigParamClientID],
+			IssuerURL:               params[ConfigParamIssuerURL],
+			AdditionalScopes:        strings.Split(params[ConfigParamScope], " "),
+			TokenEndpointAuthMethod: params[ConfigParamTokenEndpointAuthMethod],
+			TLSCertFile:             params[ConfigParamTLSCertFile],
+			TLSKeyFile:              params[ConfigParamTLSKeyFile],
+			TrustCertsFilePath:      params[ConfigParamTrustCertsFilePath],
 		})
 		if err != nil {
 			return nil, err

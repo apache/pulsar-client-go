@@ -73,6 +73,7 @@ type ClientCredentialsExchangeRequest struct {
 	ClientSecret  string
 	Audience      string
 	Scopes        []string
+	AuthMethod    string
 }
 
 // DeviceCodeExchangeRequest is used to request the exchange of
@@ -193,10 +194,17 @@ func (ce *TokenRetriever) newRefreshTokenRequest(req RefreshTokenExchangeRequest
 // newClientCredentialsRequest builds a new ClientCredentialsExchangeRequest wrapped in an
 // http.Request
 func (ce *TokenRetriever) newClientCredentialsRequest(req ClientCredentialsExchangeRequest) (*http.Request, error) {
+	authMethod, err := normalizeTokenEndpointAuthMethod(req.AuthMethod)
+	if err != nil {
+		return nil, err
+	}
+
 	uv := url.Values{}
 	uv.Set("grant_type", "client_credentials")
 	uv.Set("client_id", req.ClientID)
-	uv.Set("client_secret", req.ClientSecret)
+	if authMethod == TokenEndpointAuthMethodClientSecretPost {
+		uv.Set("client_secret", req.ClientSecret)
+	}
 	if len(req.Scopes) > 0 {
 		uv.Set("scope", strings.Join(req.Scopes, " "))
 	}
