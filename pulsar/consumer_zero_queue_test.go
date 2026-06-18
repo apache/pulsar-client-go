@@ -22,13 +22,14 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
+	"net/netip"
 	"os"
 	"testing"
 	"time"
 
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/go-connections/nat"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/api/types/network"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -133,9 +134,12 @@ func TestReconnectConsumer(t *testing.T) {
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
 		WaitingFor:   wait.ForExposedPort(),
 		HostConfigModifier: func(config *container.HostConfig) {
-			config.PortBindings = map[nat.Port][]nat.PortBinding{
-				"6650/tcp": {{HostIP: "0.0.0.0", HostPort: "6659"}},
-				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8089"}},
+			ip := netip.MustParseAddr("0.0.0.0")
+			p6650, _ := network.ParsePort("6650/tcp")
+			p8080, _ := network.ParsePort("8080/tcp")
+			config.PortBindings = network.PortMap{
+				p6650: {{HostIP: ip, HostPort: "6659"}},
+				p8080: {{HostIP: ip, HostPort: "8089"}},
 			}
 		},
 		Cmd: []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
@@ -250,9 +254,12 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
 		WaitingFor:   wait.ForExposedPort(),
 		HostConfigModifier: func(config *container.HostConfig) {
-			config.PortBindings = map[nat.Port][]nat.PortBinding{
-				"6650/tcp": {{HostIP: "0.0.0.0", HostPort: "6659"}},
-				"8080/tcp": {{HostIP: "0.0.0.0", HostPort: "8089"}},
+			ip := netip.MustParseAddr("0.0.0.0")
+			p6650, _ := network.ParsePort("6650/tcp")
+			p8080, _ := network.ParsePort("8080/tcp")
+			config.PortBindings = network.PortMap{
+				p6650: {{HostIP: ip, HostPort: "6659"}},
+				p8080: {{HostIP: ip, HostPort: "8089"}},
 			}
 		},
 		Cmd: []string{"bin/pulsar", "standalone", "-nfw", "--advertised-address", "localhost"},
