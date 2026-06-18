@@ -136,7 +136,7 @@ var _ = ginkgo.Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
 		serverCert, err := tls.LoadX509KeyPair(oidcTestCertPath("broker-cert.pem"), oidcTestCertPath("broker-key.pem"))
 		gomega.Expect(err).ToNot(gomega.HaveOccurred())
 
-		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte(`{"token_endpoint":"https://issuer/token"}`))
 		}))

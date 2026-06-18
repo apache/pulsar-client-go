@@ -287,7 +287,10 @@ type ClientCredentialsGrantRefresher struct {
 	authMethod string
 }
 
-func NewDefaultClientCredentialsGrantRefresher(clock clock.Clock, options ClientCredentialsFlowOptions) (*ClientCredentialsGrantRefresher, error) {
+func NewDefaultClientCredentialsGrantRefresher(
+	clock clock.Clock,
+	options ClientCredentialsFlowOptions,
+) (*ClientCredentialsGrantRefresher, error) {
 	authMethod, err := normalizeTokenEndpointAuthMethod(options.TokenEndpointAuthMethod)
 	if err != nil {
 		return nil, err
