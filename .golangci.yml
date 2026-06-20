@@ -17,9 +17,7 @@
 
 # Run `make lint` from the root path of this project to check code with golangci-lint.
 
-run:
-  timeout: 5m
-
+version: "2"
 linters:
   # Uncomment this line to run only the explicitly enabled linters
   # disable-all: true
@@ -27,12 +25,10 @@ linters:
   # Run these linters in addition to the default ones
   enable:
     - bodyclose
-    - goimports
     - lll
     - misspell
     - prealloc
     - revive
-    - stylecheck
     - unconvert
     - unparam
 
@@ -40,3 +36,29 @@ linters:
   disable:
     - errcheck
     - staticcheck
+  settings:
+    govet:
+      disable:
+        # Keep govet enabled, but suppress noisy inline suggestions that
+        # conflict with unconvert and add style churn without behavior changes.
+        - inline
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
+formatters:
+  enable:
+    - goimports
+  exclusions:
+    generated: lax
+    paths:
+      - third_party$
+      - builtin$
+      - examples$
