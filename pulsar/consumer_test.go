@@ -4796,7 +4796,7 @@ func TestBatchIndexAck(t *testing.T) {
 		cumulative         bool
 		ackGroupingOptions *AckGroupingOptions
 	}
-	configs := make([]config, 0)
+	configs := make([]config, 0, 12)
 	for _, option := range []*AckGroupingOptions{
 		nil, // MaxSize: 1000, MaxTime: 10ms
 		{MaxSize: 0, MaxTime: 0},

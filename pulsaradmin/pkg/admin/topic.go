@@ -1334,7 +1334,7 @@ func (t *topics) GrantPermissionWithContext(
 	action []utils.AuthAction,
 ) error {
 	endpoint := t.pulsar.endpoint(t.basePath, topic.GetRestPath(), "permissions", role)
-	s := []string{}
+	s := make([]string, 0, len(action))
 	for _, v := range action {
 		s = append(s, v.String())
 	}

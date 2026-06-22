@@ -167,8 +167,7 @@ func (b BinaryFreeList) PutDouble(datum interface{}) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("serialize failed: expected: Go numeric; received: %T", datum)
 	}
-	var buf []byte
-	buf = append(buf, 0, 0, 0, 0, 0, 0, 0, 0)
+	buf := make([]byte, 8)
 	binary.BigEndian.PutUint64(buf[len(buf)-8:], math.Float64bits(value))
 	return buf, nil
 }
@@ -195,8 +194,7 @@ func (b BinaryFreeList) PutFloat(datum interface{}) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("serialize failed: expected: Go numeric; received: %T", datum)
 	}
-	var buf []byte
-	buf = append(buf, 0, 0, 0, 0)
+	buf := make([]byte, 4)
 	binary.BigEndian.PutUint32(buf[len(buf)-4:], math.Float32bits(value))
 	return buf, nil
 }

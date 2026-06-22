@@ -48,7 +48,7 @@ func NewMessageMetadataSupplier(messageMetadata *pb.MessageMetadata) MessageMeta
 
 func (m *MessageMetadata) EncryptionKeys() []EncryptionKeyInfo {
 	if m.messageMetadata != nil {
-		encInfo := []EncryptionKeyInfo{}
+		encInfo := make([]EncryptionKeyInfo, 0, len(m.messageMetadata.EncryptionKeys))
 		for _, k := range m.messageMetadata.EncryptionKeys {
 			key := NewEncryptionKeyInfo(k.GetKey(), k.GetValue(), getKeyMetaMap(k.GetMetadata()))
 			encInfo = append(encInfo, *key)
@@ -101,7 +101,7 @@ func (m *MessageMetadata) encryptionKeyPresent(keyInfo EncryptionKeyInfo) int {
 
 func getKeyMeta(metaMap map[string]string) []*pb.KeyValue {
 	if len(metaMap) > 0 {
-		var meta []*pb.KeyValue
+		meta := make([]*pb.KeyValue, 0, len(metaMap))
 		for k, v := range metaMap {
 			meta = append(meta, &pb.KeyValue{Key: &k, Value: &v})
 		}

@@ -1759,7 +1759,7 @@ func (n *namespaces) GrantNamespacePermissionWithContext(
 	role string,
 	action []utils.AuthAction) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions", role)
-	s := make([]string, 0)
+	s := make([]string, 0, len(action))
 	for _, v := range action {
 		s = append(s, v.String())
 	}
