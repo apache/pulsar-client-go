@@ -20,6 +20,8 @@ package admin
 import (
 	"context"
 	"fmt"
+	"net/http"
+	"net/url"
 	"strings"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -187,9 +189,26 @@ func (b *broker) UpdateDynamicConfiguration(configName, configValue string) erro
 }
 
 func (b *broker) UpdateDynamicConfigurationWithContext(ctx context.Context, configName, configValue string) error {
-	value := fmt.Sprintf("/configuration/%s/%s", configName, configValue)
-	endpoint := b.pulsar.endpointWithFullPath(b.basePath, value)
-	return b.pulsar.Client.PostWithContext(ctx, endpoint, nil)
+	escapedConfigPath := fmt.Sprintf(
+		"/configuration/%s/%s",
+		url.PathEscape(configName),
+		url.PathEscape(configValue),
+	)
+	adminPath := strings.TrimRight(utils.MakeHTTPPath(b.pulsar.APIVersion.String(), b.basePath), "/")
+	escapedEndpoint := adminPath + escapedConfigPath
+
+	// Build the URL from the escaped string so url.Parse derives a matching Path and RawPath.
+	// The regular newRequest path decodes escaped path segments and would turn %2F back into '/'.
+	requestURL, err := url.Parse(strings.TrimRight(b.pulsar.Client.ServiceURL, "/") + escapedEndpoint)
+	if err != nil {
+		return err
+	}
+	resp, err := b.pulsar.Client.MakeRequestWithURLWithContext(ctx, http.MethodPost, requestURL)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	return nil
 }
 
 func (b *broker) DeleteDynamicConfiguration(configName string) error {

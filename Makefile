@@ -23,6 +23,11 @@ PULSAR_IMAGE = apachepulsar/pulsar:$(PULSAR_VERSION)
 GO_VERSION ?= 1.25
 CONTAINER_ARCH ?= $(shell uname -m | sed s/x86_64/amd64/)
 
+# golangci-lint version used for local install and docker invocation.
+# Bump this when upgrading Go to ensure analyzer compatibility (pin to a
+# specific release or set to @latest for most recent).
+GOLANGCI_LINT_VERSION ?= v2.12.2
+
 # Golang standard bin directory.
 GOPATH ?= $(shell go env GOPATH)
 GOROOT ?= $(shell go env GOROOT)
@@ -44,13 +49,13 @@ lint: bin/golangci-lint
 	bin/golangci-lint run
 
 bin/golangci-lint:
-	GOBIN=$(shell pwd)/bin go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.2
+	GOBIN=$(shell pwd)/bin go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 # an alternative to above `make lint` command
 # use golangCi-lint docker to avoid local golang env issues
 # https://golangci-lint.run/welcome/install/
 lint-docker:
-	docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:v1.64.2 golangci-lint run -v
+	docker run --rm -v $(shell pwd):/app -w /app golangci/golangci-lint:$(GOLANGCI_LINT_VERSION) golangci-lint run -v
 
 container:
 	docker build -t ${IMAGE_NAME} \

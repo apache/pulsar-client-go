@@ -104,21 +104,21 @@ func NewMetricsProvider(metricsCardinality int, userDefinedLabels map[string]str
 	for k, v := range userDefinedLabels {
 		constLabels[k] = v
 	}
-	var metricsLevelLabels []string
-
 	// note: ints here mirror MetricsCardinality in client.go to avoid import cycle
-	switch metricsCardinality {
-	case 1: //MetricsCardinalityNone
-		metricsLevelLabels = []string{}
-	case 2: //MetricsCardinalityTenant
-		metricsLevelLabels = []string{"pulsar_tenant"}
-	case 3: //MetricsCardinalityNamespace
-		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace"}
-	case 4: //MetricsCardinalityTopic
-		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace", "topic"}
-	default: //Anything else is namespace
-		metricsLevelLabels = []string{"pulsar_tenant", "pulsar_namespace"}
-	}
+	metricsLevelLabels := func() []string {
+		switch metricsCardinality {
+		case 1: //MetricsCardinalityNone
+			return []string{}
+		case 2: //MetricsCardinalityTenant
+			return []string{"pulsar_tenant"}
+		case 3: //MetricsCardinalityNamespace
+			return []string{"pulsar_tenant", "pulsar_namespace"}
+		case 4: //MetricsCardinalityTopic
+			return []string{"pulsar_tenant", "pulsar_namespace", "topic"}
+		default: //Anything else is namespace
+			return []string{"pulsar_tenant", "pulsar_namespace"}
+		}
+	}()
 
 	metrics := &Metrics{
 		metricsLevel: metricsCardinality,

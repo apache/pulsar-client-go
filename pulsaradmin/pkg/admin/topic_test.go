@@ -1095,6 +1095,207 @@ func TestOffloadPolicies(t *testing.T) {
 	)
 }
 
+func TestNamespaceOffloadPoliciesIntegration(t *testing.T) {
+	randomName := newTopicName()
+	namespace := "public/" + randomName + "-ns"
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	namespaceName, err := utils.GetNamespaceName(namespace)
+	assert.NoError(t, err)
+
+	err = admin.Namespaces().CreateNamespace(namespace)
+	assert.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = admin.Namespaces().RemoveOffloadPolicies(*namespaceName)
+		_ = admin.Namespaces().DeleteNamespace(namespace)
+	})
+
+	offloadPolicies, err := admin.Namespaces().GetOffloadPolicies(*namespaceName)
+	assert.NoError(t, err)
+	assert.Nil(t, offloadPolicies, "Expected nil when namespace offload policies are not configured")
+
+	newOffloadPolicies := utils.OffloadPolicies{
+		ManagedLedgerOffloadDriver:          "aws-s3",
+		ManagedLedgerOffloadBucket:          "namespace-bucket",
+		ManagedLedgerOffloadRegion:          "us-west-2",
+		ManagedLedgerOffloadServiceEndpoint: "https://storage.example.com",
+	}
+	newOffloadPolicies.SetManagedLedgerOffloadThresholdInBytes(0).
+		SetManagedLedgerOffloadThresholdInSeconds(100).
+		SetManagedLedgerOffloadDeletionLagInMillis(100)
+
+	err = admin.Namespaces().SetOffloadPolicies(*namespaceName, newOffloadPolicies)
+	assert.NoError(t, err)
+
+	assert.Eventually(
+		t,
+		func() bool {
+			offloadPolicies, err = admin.Namespaces().GetOffloadPolicies(*namespaceName)
+			return err == nil &&
+				offloadPolicies != nil &&
+				offloadPolicies.ManagedLedgerOffloadDriver == "aws-s3" &&
+				offloadPolicies.ManagedLedgerOffloadBucket == "namespace-bucket" &&
+				offloadPolicies.ManagedLedgerOffloadRegion == "us-west-2" &&
+				offloadPolicies.ManagedLedgerOffloadServiceEndpoint == "https://storage.example.com" &&
+				offloadPolicies.ManagedLedgerOffloadThresholdInBytes == 0 &&
+				offloadPolicies.ManagedLedgerOffloadThresholdInSeconds == 100 &&
+				offloadPolicies.ManagedLedgerOffloadDeletionLagInMillis == 100
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+
+	err = admin.Namespaces().RemoveOffloadPolicies(*namespaceName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			offloadPolicies, err = admin.Namespaces().GetOffloadPolicies(*namespaceName)
+			return err == nil && offloadPolicies == nil
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func TestOffloadPoliciesAppliedIntegration(t *testing.T) {
+	randomName := newTopicName()
+	namespace := "public/" + randomName + "-ns"
+	topic := "persistent://" + namespace + "/" + randomName
+	cfg := &config.Config{}
+	admin, err := New(cfg)
+	assert.NoError(t, err)
+	assert.NotNil(t, admin)
+
+	namespaceName, err := utils.GetNamespaceName(namespace)
+	assert.NoError(t, err)
+	topicName, err := utils.GetTopicName(topic)
+	assert.NoError(t, err)
+
+	err = admin.Namespaces().CreateNamespace(namespace)
+	assert.NoError(t, err)
+	err = admin.Topics().Create(*topicName, 0)
+	assert.NoError(t, err)
+
+	t.Cleanup(func() {
+		_ = admin.Topics().RemoveOffloadPolicies(*topicName)
+		_ = admin.Namespaces().RemoveOffloadPolicies(*namespaceName)
+		_ = admin.Topics().Delete(*topicName, true, true)
+		_ = admin.Namespaces().DeleteNamespace(namespace)
+	})
+
+	directPolicies, err := admin.Topics().GetOffloadPolicies(*topicName)
+	assert.NoError(t, err)
+	assert.Nil(t, directPolicies, "Expected nil when topic offload policies are not configured")
+
+	namespacePolicies := utils.OffloadPolicies{
+		ManagedLedgerOffloadDriver: "aws-s3",
+		ManagedLedgerOffloadBucket: "namespace-bucket",
+		ManagedLedgerOffloadRegion: "us-west-2",
+	}
+	namespacePolicies.SetManagedLedgerOffloadThresholdInBytes(100).
+		SetManagedLedgerOffloadThresholdInSeconds(100).
+		SetManagedLedgerOffloadDeletionLagInMillis(200)
+
+	err = admin.Namespaces().SetOffloadPolicies(*namespaceName, namespacePolicies)
+	assert.NoError(t, err)
+	assertEventuallyOffloadPolicy(t, func() (*utils.OffloadPolicies, error) {
+		return admin.Topics().GetOffloadPoliciesApplied(*topicName, true)
+	}, namespacePolicies)
+
+	directPolicies, err = admin.Topics().GetOffloadPolicies(*topicName)
+	assert.NoError(t, err)
+	assert.Nil(t, directPolicies, "Expected direct topic offload policy to remain unset")
+
+	topicPolicies := utils.OffloadPolicies{
+		ManagedLedgerOffloadDriver: "aws-s3",
+		ManagedLedgerOffloadBucket: "topic-bucket",
+		ManagedLedgerOffloadRegion: "us-east-1",
+	}
+	topicPolicies.SetManagedLedgerOffloadThresholdInBytes(200).
+		SetManagedLedgerOffloadThresholdInSeconds(200).
+		SetManagedLedgerOffloadDeletionLagInMillis(400)
+
+	err = admin.Topics().SetOffloadPolicies(*topicName, topicPolicies)
+	assert.NoError(t, err)
+	assertEventuallyOffloadPolicy(t, func() (*utils.OffloadPolicies, error) {
+		return admin.Topics().GetOffloadPolicies(*topicName)
+	}, topicPolicies)
+	assertEventuallyOffloadPolicy(t, func() (*utils.OffloadPolicies, error) {
+		return admin.Topics().GetOffloadPoliciesApplied(*topicName, true)
+	}, topicPolicies)
+
+	err = admin.Topics().RemoveOffloadPolicies(*topicName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			directPolicies, err = admin.Topics().GetOffloadPolicies(*topicName)
+			return err == nil && directPolicies == nil
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+	assertEventuallyOffloadPolicy(t, func() (*utils.OffloadPolicies, error) {
+		return admin.Topics().GetOffloadPoliciesApplied(*topicName, true)
+	}, namespacePolicies)
+
+	err = admin.Namespaces().RemoveOffloadPolicies(*namespaceName)
+	assert.NoError(t, err)
+	assert.Eventually(
+		t,
+		func() bool {
+			policies, err := admin.Namespaces().GetOffloadPolicies(*namespaceName)
+			return err == nil && policies == nil
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+	assert.Eventually(
+		t,
+		func() bool {
+			policies, err := admin.Topics().GetOffloadPoliciesApplied(*topicName, true)
+			return err == nil &&
+				(policies == nil || policies.ManagedLedgerOffloadBucket != namespacePolicies.ManagedLedgerOffloadBucket)
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+}
+
+func assertEventuallyOffloadPolicy(
+	t *testing.T,
+	getPolicy func() (*utils.OffloadPolicies, error),
+	expected utils.OffloadPolicies,
+) {
+	t.Helper()
+	var lastPolicies *utils.OffloadPolicies
+	var lastErr error
+	ok := assert.Eventually(
+		t,
+		func() bool {
+			lastPolicies, lastErr = getPolicy()
+			return lastErr == nil &&
+				lastPolicies != nil &&
+				lastPolicies.ManagedLedgerOffloadDriver == expected.ManagedLedgerOffloadDriver &&
+				lastPolicies.ManagedLedgerOffloadBucket == expected.ManagedLedgerOffloadBucket &&
+				lastPolicies.ManagedLedgerOffloadRegion == expected.ManagedLedgerOffloadRegion &&
+				lastPolicies.ManagedLedgerOffloadThresholdInBytes == expected.ManagedLedgerOffloadThresholdInBytes &&
+				lastPolicies.ManagedLedgerOffloadThresholdInSeconds == expected.ManagedLedgerOffloadThresholdInSeconds &&
+				lastPolicies.ManagedLedgerOffloadDeletionLagInMillis == expected.ManagedLedgerOffloadDeletionLagInMillis
+		},
+		10*time.Second,
+		100*time.Millisecond,
+	)
+	if !ok {
+		t.Logf("last offload policies: %#v; err: %v", lastPolicies, lastErr)
+	}
+}
+
 func TestAutoSubscriptionCreation(t *testing.T) {
 	randomName := newTopicName()
 	topic := "persistent://public/default/" + randomName
