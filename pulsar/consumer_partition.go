@@ -410,6 +410,12 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		boFunc = backoff.NewDefaultBackoff
 	}
 
+	// The partition index is parsed from the topic name; guard the int32
+	// conversion below against out-of-range values.
+	if options.partitionIdx > math.MaxInt32 || options.partitionIdx < math.MinInt32 {
+		return nil, fmt.Errorf("partition index %d is out of the valid int32 range", options.partitionIdx)
+	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	pc := &partitionConsumer{
 		parentConsumer:             parent,
