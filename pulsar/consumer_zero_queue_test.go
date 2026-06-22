@@ -134,9 +134,11 @@ func TestReconnectConsumer(t *testing.T) {
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
 		WaitingFor:   wait.ForExposedPort(),
 		HostConfigModifier: func(config *container.HostConfig) {
-			ip := netip.MustParseAddr("0.0.0.0")
-			p6650, _ := network.ParsePort("6650/tcp")
-			p8080, _ := network.ParsePort("8080/tcp")
+			ip := netip.IPv4Unspecified()
+			p6650, err := network.ParsePort("6650/tcp")
+			require.NoError(t, err)
+			p8080, err := network.ParsePort("8080/tcp")
+			require.NoError(t, err)
 			config.PortBindings = network.PortMap{
 				p6650: {{HostIP: ip, HostPort: "6659"}},
 				p8080: {{HostIP: ip, HostPort: "8089"}},
@@ -254,9 +256,11 @@ func TestReconnectedBrokerSendPermits(t *testing.T) {
 		ExposedPorts: []string{"6650/tcp", "8080/tcp"},
 		WaitingFor:   wait.ForExposedPort(),
 		HostConfigModifier: func(config *container.HostConfig) {
-			ip := netip.MustParseAddr("0.0.0.0")
-			p6650, _ := network.ParsePort("6650/tcp")
-			p8080, _ := network.ParsePort("8080/tcp")
+			ip := netip.IPv4Unspecified()
+			p6650, err := network.ParsePort("6650/tcp")
+			require.NoError(t, err)
+			p8080, err := network.ParsePort("8080/tcp")
+			require.NoError(t, err)
 			config.PortBindings = network.PortMap{
 				p6650: {{HostIP: ip, HostPort: "6659"}},
 				p8080: {{HostIP: ip, HostPort: "8089"}},
