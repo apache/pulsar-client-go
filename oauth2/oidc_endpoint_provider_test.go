@@ -18,13 +18,24 @@
 package oauth2
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"path/filepath"
+	"strings"
 
 	"github.com/onsi/ginkgo"
 	"github.com/onsi/gomega"
 )
+
+func oidcTestCertPath(name string) string {
+	return filepath.Join("..", "integration-tests", "certs", name)
+}
+
+func oidcIssuerURL(serverURL string) string {
+	return strings.Replace(serverURL, "127.0.0.1", "localhost", 1)
+}
 
 var _ = ginkgo.Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
 	ginkgo.It("calls and gets the well known data from the correct endpoint for the issuer", func() {
@@ -88,5 +99,53 @@ var _ = ginkgo.Describe("GetOIDCWellKnownEndpointsFromIssuerURL", func() {
 			" known endpoints: invalid character '<' looking for beginning of value"))
 		gomega.Expect(endpoints).To(gomega.BeNil())
 		gomega.Expect(req.URL.Path).To(gomega.Equal("/.well-known/openid-configuration"))
+	})
+
+	ginkgo.It("supports custom CA when using a configured client", func() {
+		var req *http.Request
+		wkEndpointsResp := OIDCWellKnownEndpoints{
+			AuthorizationEndpoint: "the-auth-endpoint", TokenEndpoint: "the-token-endpoint"}
+		responseBytes, err := json.Marshal(wkEndpointsResp)
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+
+		serverCert, err := tls.LoadX509KeyPair(oidcTestCertPath("broker-cert.pem"), oidcTestCertPath("broker-key.pem"))
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			req = r
+			w.WriteHeader(http.StatusOK)
+			w.Write(responseBytes)
+		}))
+		ts.TLS = &tls.Config{Certificates: []tls.Certificate{serverCert}}
+		ts.StartTLS()
+		defer ts.Close()
+
+		client, err := newClientCredentialsHTTPClient(ClientCredentialsFlowOptions{
+			TrustCertsFilePath: oidcTestCertPath("cacert.pem"),
+		})
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+
+		endpoints, err := GetOIDCWellKnownEndpointsFromIssuerURLWithClient(oidcIssuerURL(ts.URL), client)
+
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+		gomega.Expect(*endpoints).To(gomega.Equal(wkEndpointsResp))
+		gomega.Expect(req.URL.Path).To(gomega.Equal("/.well-known/openid-configuration"))
+	})
+
+	ginkgo.It("fails against custom CA https issuer without trust certs", func() {
+		serverCert, err := tls.LoadX509KeyPair(oidcTestCertPath("broker-cert.pem"), oidcTestCertPath("broker-key.pem"))
+		gomega.Expect(err).ToNot(gomega.HaveOccurred())
+
+		ts := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"token_endpoint":"https://issuer/token"}`))
+		}))
+		ts.TLS = &tls.Config{Certificates: []tls.Certificate{serverCert}}
+		ts.StartTLS()
+		defer ts.Close()
+
+		endpoints, err := GetOIDCWellKnownEndpointsFromIssuerURL(oidcIssuerURL(ts.URL))
+		gomega.Expect(err).To(gomega.HaveOccurred())
+		gomega.Expect(endpoints).To(gomega.BeNil())
 	})
 })
