@@ -2753,6 +2753,21 @@ func (m *mockConn) SendRequest(requestID uint64, req *pb.BaseCommand, callback f
 	m.realConn.SendRequest(requestID, req, callback)
 }
 
+func (m *mockConn) getBuffersLen() int {
+	m.l.Lock()
+	defer m.l.Unlock()
+	return len(m.buffers)
+}
+
+func (m *mockConn) getBufferAt(idx int) internal.Buffer {
+	m.l.Lock()
+	defer m.l.Unlock()
+	if idx >= 0 && idx < len(m.buffers) {
+		return m.buffers[idx]
+	}
+	return nil
+}
+
 func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 	topicName := newTopicName()
 
@@ -2783,14 +2798,15 @@ func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 
 	// Wait for the buffer to be written to the connection
 	assert.Eventually(t, func() bool {
-		return len(conn.buffers) != 0
+		return conn.getBuffersLen() != 0
 	}, 5*time.Second, 100*time.Millisecond)
 
 	// Simulate connection failure and verify buffer retention
 	pp.failPendingMessages(errors.New("expected error"))
 
-	assert.Equal(t, 1, len(conn.buffers), "Expected one buffer to be sent")
-	b := conn.buffers[0]
+	assert.Equal(t, 1, conn.getBuffersLen(), "Expected one buffer to be sent")
+	b := conn.getBufferAt(0)
+	assert.NotNil(t, b, "Expected buffer to be present")
 	assert.Equal(t, int64(1), b.RefCnt(), "Expected buffer to have a reference count of 1 after sending")
 }
 
