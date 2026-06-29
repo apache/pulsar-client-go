@@ -83,7 +83,14 @@ type DLQPolicy struct {
 	// a topic.
 	DeadLetterTopicProducerName string
 
-	// ProducerOptions is the producer options to produce messages to the DLQ and RLQ topic
+	// ProducerOptions is the producer options to produce messages to the DLQ and RLQ topic.
+	// If the messages being consumed were produced with chunking enabled, it is recommended to also enable
+	// chunking here so that large chunked messages can be forwarded to the DLQ/RLQ topic successfully.
+	// Example:
+	//   ProducerOptions: pulsar.ProducerOptions{
+	//       EnableChunking:  true,
+	//       DisableBatching: true,
+	//   }
 	ProducerOptions ProducerOptions
 
 	// RetryLetterTopic specifies the name of the topic where the retry messages will be sent.
