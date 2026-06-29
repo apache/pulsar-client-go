@@ -831,7 +831,7 @@ func TestChunkReconsumeLater(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
 	msg, err = consumer.Receive(ctx)
 	cancel()
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Nil(t, msg)
 
 	// Consume from DLQ topic, verify the large chunked message is correctly routed to DLQ
@@ -856,13 +856,13 @@ func TestChunkReconsumeLater(t *testing.T) {
 	assert.NotEmpty(t, dlqMsg.Properties()[SysPropertyRealTopic])
 	assert.NotEmpty(t, dlqMsg.Properties()[SysPropertyOriginMessageID])
 
-	dlqConsumer.Ack(dlqMsg)
+	assert.NoError(t, dlqConsumer.Ack(dlqMsg))
 
 	// No more messages on the DLQ topic
 	ctx, cancel = context.WithTimeout(context.Background(), 2*time.Second)
 	dlqMsg, err = dlqConsumer.Receive(ctx)
 	cancel()
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Nil(t, dlqMsg)
 }
 
@@ -959,12 +959,12 @@ func TestChunkDLQWithNack(t *testing.T) {
 	assert.Contains(t, dlqMsg.Properties()[SysPropertyRealTopic], topic)
 	assert.NotEmpty(t, dlqMsg.Properties()[SysPropertyOriginMessageID])
 
-	dlqConsumer.Ack(dlqMsg)
+	assert.NoError(t, dlqConsumer.Ack(dlqMsg))
 
 	// No more messages on the original consumer
 	ctx, cancel = context.WithTimeout(context.Background(), 3*time.Second)
 	msg, err := consumer.Receive(ctx)
 	cancel()
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Nil(t, msg)
 }
