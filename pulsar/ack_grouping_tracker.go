@@ -22,6 +22,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/bits-and-blooms/bitset"
 )
@@ -38,6 +39,15 @@ type ackGroupingTracker interface {
 	flushAndClean()
 
 	close()
+}
+
+func isNonPersistentTopic(topic string) bool {
+	tn, err := internal.ParseTopicName(topic)
+	if err != nil {
+		// On a parse error, keep the default (persistent) behavior.
+		return false
+	}
+	return tn.Domain == "non-persistent"
 }
 
 func newAckGroupingTracker(options *AckGroupingOptions,
