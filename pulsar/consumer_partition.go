@@ -1338,13 +1338,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
 
-	messages := make([]*message, 0)
-	var ackTracker *ackTracker
-	// are there multiple messages in this batch?
-	if numMsgs > 1 {
-		ackTracker = newAckTracker(uint(numMsgs))
-	}
-
 	var ackSet *bitset.BitSet
 	if response.GetAckSet() != nil {
 		ackSetFromResponse := response.GetAckSet()
@@ -1353,6 +1346,13 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			buf[i] = uint64(ackSetFromResponse[i])
 		}
 		ackSet = bitset.From(buf)
+	}
+
+	messages := make([]*message, 0)
+	var ackTracker *ackTracker
+	// are there multiple messages in this batch?
+	if numMsgs > 1 {
+		ackTracker = newAckTracker(uint(numMsgs), ackSet)
 	}
 
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
