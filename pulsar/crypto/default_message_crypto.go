@@ -92,16 +92,24 @@ func (d *DefaultMessageCrypto) AddPublicKeyCipher(keyNames []string, keyReader K
 }
 
 func (d *DefaultMessageCrypto) addPublicKeyCipher(keyName string, keyReader KeyReader) error {
-	d.cipherLock.Lock()
-	defer d.cipherLock.Unlock()
 	if keyName == "" || keyReader == nil {
 		return fmt.Errorf("keyname or keyreader is nil")
 	}
 
-	// read the public key and its info using keyReader
 	keyInfo, err := keyReader.PublicKey(keyName, nil)
 	if err != nil {
 		return err
+	}
+
+	return d.addPublicKeyCipherWithKeyInfo(keyName, keyInfo)
+}
+
+func (d *DefaultMessageCrypto) addPublicKeyCipherWithKeyInfo(keyName string, keyInfo *EncryptionKeyInfo) error {
+	d.cipherLock.Lock()
+	defer d.cipherLock.Unlock()
+
+	if keyName == "" || keyInfo == nil {
+		return fmt.Errorf("keyname or keyinfo is nil")
 	}
 
 	parsedKey, err := d.loadPublicKey(keyInfo.Key())
@@ -149,10 +157,26 @@ func (d *DefaultMessageCrypto) Encrypt(encKeys []string,
 	}
 
 	for _, keyName := range encKeys {
-		// if key is not already loaded, load it
-		if _, ok := d.encryptedDataKeyMap.Load(keyName); !ok {
-			if err := d.addPublicKeyCipher(keyName, keyReader); err != nil {
+		// fetch current key info to detect rotation
+		currentKeyInfo, err := keyReader.PublicKey(keyName, nil)
+		if err != nil {
+			d.logger.Error(err)
+			return nil, err
+		}
+
+		// re-encrypt data key if first time or metadata changed
+		needsReload := true
+		if cached, ok := d.encryptedDataKeyMap.Load(keyName); ok {
+			cachedInfo, _ := cached.(*EncryptionKeyInfo)
+			if cachedInfo != nil && metadataEqual(cachedInfo.Metadata(), currentKeyInfo.Metadata()) {
+				needsReload = false
+			}
+		}
+
+		if needsReload {
+			if err := d.addPublicKeyCipherWithKeyInfo(keyName, currentKeyInfo); err != nil {
 				d.logger.Error(err)
+				return nil, err
 			}
 		}
 
@@ -362,4 +386,17 @@ func generateDataKey() ([]byte, error) {
 	key := make([]byte, 32)  // generate key of length 256 bits
 	_, err := rand.Read(key) // cryptographically secure random number
 	return key, err
+}
+
+// metadataEqual compares two metadata maps for equality.
+func metadataEqual(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for k, v := range a {
+		if b[k] != v {
+			return false
+		}
+	}
+	return true
 }
