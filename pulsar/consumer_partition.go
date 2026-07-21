@@ -454,7 +454,21 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.availablePermits = &availablePermits{pc: pc}
 	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(options.maxPendingChunkedMessage, pc)
 	pc.unAckChunksTracker = newUnAckChunksTracker(pc)
-	pc.ackGroupingTracker = newAckGroupingTracker(options.ackGroupingOptions,
+	ackGroupingOptions := options.ackGroupingOptions
+	if isNonPersistentTopic(pc.topic) {
+		// Non-persistent topics are not stored in BookKeeper, so the broker
+		// assigns every message the same placeholder MessageID (ledgerId=0,
+		// entryId=0). The grouping ack tracker's isDuplicate() dedupes by
+		// MessageID, so once the first message is acked, every later message
+		// looks like a duplicate of it and is silently dropped before reaching
+		// the application. Force the immediate (no-op isDuplicate) tracker for
+		// non-persistent topics, matching the Java and C++ clients, which use a
+		// dedicated non-persistent ack tracker that never dedupes. There is
+		// nothing to dedupe against anyway: non-persistent topics do not
+		// redeliver.
+		ackGroupingOptions = &AckGroupingOptions{MaxSize: 1}
+	}
+	pc.ackGroupingTracker = newAckGroupingTracker(ackGroupingOptions,
 		func(id MessageID) { pc.sendIndividualAck(id) },
 		func(id MessageID) { pc.sendCumulativeAck(id) },
 		func(ids []*pb.MessageIdData) {

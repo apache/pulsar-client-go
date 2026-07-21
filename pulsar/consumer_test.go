@@ -6508,3 +6508,53 @@ func TestConsumerWithDLQRetryTopicNoGetPartitionedTopicMetadata(t *testing.T) {
 			"GetPartitionedTopicMetadata should not be called with old Retry topic when custom Retry topic is provided")
 	}
 }
+
+// TestNonPersistentTopicReceiveAllMessages is a regression test for the bug
+// where a consumer on a non-persistent topic received only the first message
+// and then silently dropped the rest. See the non-persistent guard in
+// newPartitionConsumer.
+func TestNonPersistentTopicReceiveAllMessages(t *testing.T) {
+	client, err := NewClient(ClientOptions{URL: lookupURL})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	topic = "non-persistent://public/default/" + topic
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "sub-non-persistent",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		DisableBatching: true,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// Synchronous send-receive-ack loop: this is the pattern that
+	// deterministically triggered the "only the first message" bug, because
+	// each message arrives within the ack-grouping flush window right after the
+	// previous one was acked.
+	const total = 10
+	for i := 0; i < total; i++ {
+		_, err := producer.Send(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		})
+		assert.Nil(t, err)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		msg, err := consumer.Receive(ctx)
+		cancel()
+		assert.Nil(t, err, "did not receive message %d (dropped as a bogus duplicate?)", i)
+		if err != nil {
+			return
+		}
+		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+}
