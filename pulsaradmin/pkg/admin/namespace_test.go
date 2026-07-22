@@ -18,6 +18,9 @@
 package admin
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -31,6 +34,80 @@ import (
 
 func ptr(n int) *int {
 	return &n
+}
+
+func TestNamespaces_RemoveBacklogQuotaByType(t *testing.T) {
+	tests := []struct {
+		name      string
+		quotaType utils.BacklogQuotaType
+		remove    func(Namespaces) error
+	}{
+		{
+			name:      "legacy",
+			quotaType: utils.DestinationStorage,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuota("public/default")
+			},
+		},
+		{
+			name:      "legacy with context",
+			quotaType: utils.DestinationStorage,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaWithContext(context.Background(), "public/default")
+			},
+		},
+		{
+			name:      "message age",
+			quotaType: utils.MessageAge,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaByType("public/default", utils.MessageAge)
+			},
+		},
+		{
+			name:      "message age with context",
+			quotaType: utils.MessageAge,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaByTypeWithContext(
+					context.Background(),
+					"public/default",
+					utils.MessageAge,
+				)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			type request struct {
+				method    string
+				path      string
+				quotaType string
+				querySize int
+			}
+			requests := make(chan request, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				query := r.URL.Query()
+				requests <- request{
+					method:    r.Method,
+					path:      r.URL.EscapedPath(),
+					quotaType: query.Get("backlogQuotaType"),
+					querySize: len(query),
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(&config.Config{WebServiceURL: server.URL})
+			require.NoError(t, err)
+
+			require.NoError(t, tt.remove(client.Namespaces()))
+			actual := <-requests
+			assert.Equal(t, http.MethodDelete, actual.method)
+			assert.Equal(t, "/admin/v2/namespaces/public/default/backlogQuota", actual.path)
+			assert.Equal(t, tt.quotaType.String(), actual.quotaType)
+			assert.Equal(t, 1, actual.querySize)
+		})
+	}
 }
 
 func TestSetTopicAutoCreation(t *testing.T) {
