@@ -19,6 +19,7 @@ package admin
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -108,6 +109,45 @@ func TestNamespaces_RemoveBacklogQuotaByType(t *testing.T) {
 			assert.Equal(t, 1, actual.querySize)
 		})
 	}
+}
+
+func TestNamespaces_RemoveBacklogQuotaByTypeIntegration(t *testing.T) {
+	client, err := New(&config.Config{})
+	require.NoError(t, err)
+
+	namespaces := client.Namespaces()
+	namespace := fmt.Sprintf("public/remove-backlog-quota-%d", time.Now().UnixNano())
+	require.NoError(t, namespaces.CreateNamespace(namespace))
+	t.Cleanup(func() {
+		_ = namespaces.DeleteNamespace(namespace)
+	})
+
+	require.NoError(t, namespaces.SetBacklogQuota(
+		namespace,
+		utils.NewBacklogQuota(1024, -1, utils.ProducerException),
+		utils.DestinationStorage,
+	))
+	require.NoError(t, namespaces.SetBacklogQuota(
+		namespace,
+		utils.NewBacklogQuota(-1, 60, utils.ConsumerBacklogEviction),
+		utils.MessageAge,
+	))
+
+	quotas, err := namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Contains(t, quotas, utils.DestinationStorage)
+	require.Contains(t, quotas, utils.MessageAge)
+
+	require.NoError(t, namespaces.RemoveBacklogQuotaByType(namespace, utils.MessageAge))
+	quotas, err = namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Contains(t, quotas, utils.DestinationStorage)
+	require.NotContains(t, quotas, utils.MessageAge)
+
+	require.NoError(t, namespaces.RemoveBacklogQuota(namespace))
+	quotas, err = namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Empty(t, quotas)
 }
 
 func TestSetTopicAutoCreation(t *testing.T) {
