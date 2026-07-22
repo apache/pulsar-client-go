@@ -147,13 +147,13 @@ type Namespaces interface {
 	RemoveBacklogQuotaWithContext(ctx context.Context, namespace string) error
 
 	// RemoveBacklogQuotaByType removes a backlog quota policy of the specified type from a namespace
-	RemoveBacklogQuotaByType(namespace string, quotaType utils.BacklogQuotaType) error
+	RemoveBacklogQuotaByType(namespace string, backlogQuotaType utils.BacklogQuotaType) error
 
 	// RemoveBacklogQuotaByTypeWithContext removes a backlog quota policy of the specified type from a namespace
 	RemoveBacklogQuotaByTypeWithContext(
 		ctx context.Context,
 		namespace string,
-		quotaType utils.BacklogQuotaType,
+		backlogQuotaType utils.BacklogQuotaType,
 	) error
 
 	// GetTopicAutoCreation returns the topic auto-creation config for a namespace.
@@ -1065,14 +1065,14 @@ func (n *namespaces) RemoveBacklogQuotaWithContext(ctx context.Context, namespac
 	return n.RemoveBacklogQuotaByTypeWithContext(ctx, namespace, utils.DestinationStorage)
 }
 
-func (n *namespaces) RemoveBacklogQuotaByType(namespace string, quotaType utils.BacklogQuotaType) error {
-	return n.RemoveBacklogQuotaByTypeWithContext(context.Background(), namespace, quotaType)
+func (n *namespaces) RemoveBacklogQuotaByType(namespace string, backlogQuotaType utils.BacklogQuotaType) error {
+	return n.RemoveBacklogQuotaByTypeWithContext(context.Background(), namespace, backlogQuotaType)
 }
 
 func (n *namespaces) RemoveBacklogQuotaByTypeWithContext(
 	ctx context.Context,
 	namespace string,
-	quotaType utils.BacklogQuotaType,
+	backlogQuotaType utils.BacklogQuotaType,
 ) error {
 	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
@@ -1080,7 +1080,7 @@ func (n *namespaces) RemoveBacklogQuotaByTypeWithContext(
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "backlogQuota")
 	params := map[string]string{
-		"backlogQuotaType": string(quotaType),
+		"backlogQuotaType": string(backlogQuotaType),
 	}
 	return n.pulsar.Client.DeleteWithQueryParamsWithContext(ctx, endpoint, params)
 }
