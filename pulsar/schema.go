@@ -29,7 +29,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	log "github.com/sirupsen/logrus"
 
-	"github.com/hamba/avro/v2"
+	"github.com/iskorotkov/avro/v2"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protodesc"
 	"google.golang.org/protobuf/reflect/protoreflect"
