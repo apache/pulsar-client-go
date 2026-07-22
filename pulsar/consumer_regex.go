@@ -25,6 +25,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	pkgerrors "github.com/pkg/errors"
@@ -51,6 +52,8 @@ type regexConsumer struct {
 
 	consumersLock sync.Mutex
 	consumers     map[string]Consumer
+
+	paused atomic.Bool
 
 	closeOnce sync.Once
 	closeCh   chan struct{}
@@ -348,6 +351,42 @@ func (c *regexConsumer) Name() string {
 	return c.consumerName
 }
 
+func (c *regexConsumer) Pause() {
+	c.consumersLock.Lock()
+	c.paused.Store(true)
+	consumers := c.snapshotConsumers()
+	c.consumersLock.Unlock()
+
+	for _, con := range consumers {
+		con.Pause()
+	}
+}
+
+func (c *regexConsumer) Resume() {
+	c.consumersLock.Lock()
+	c.paused.Store(false)
+	consumers := c.snapshotConsumers()
+	c.consumersLock.Unlock()
+
+	for _, con := range consumers {
+		con.Resume()
+	}
+}
+
+func (c *regexConsumer) snapshotConsumers() []Consumer {
+	consumers := make([]Consumer, 0, len(c.consumers))
+
+	for _, con := range c.consumers {
+		consumers = append(consumers, con)
+	}
+
+	return consumers
+}
+
+func (c *regexConsumer) Paused() bool {
+	return c.paused.Load()
+}
+
 func (c *regexConsumer) closed() bool {
 	select {
 	case <-c.closeCh:
@@ -422,8 +461,11 @@ func (c *regexConsumer) subscribe(topics []string, dlq *dlqRouter, rlq *retryRou
 
 	c.consumersLock.Lock()
 	defer c.consumersLock.Unlock()
-	for t, consumer := range consumers {
-		c.consumers[t] = consumer
+	for t, con := range consumers {
+		if c.paused.Load() {
+			con.Pause()
+		}
+		c.consumers[t] = con
 	}
 }
 
