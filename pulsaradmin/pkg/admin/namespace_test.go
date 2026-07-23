@@ -18,6 +18,10 @@
 package admin
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -31,6 +35,119 @@ import (
 
 func ptr(n int) *int {
 	return &n
+}
+
+func TestNamespaces_RemoveBacklogQuotaByType(t *testing.T) {
+	tests := []struct {
+		name      string
+		quotaType utils.BacklogQuotaType
+		remove    func(Namespaces) error
+	}{
+		{
+			name:      "legacy",
+			quotaType: utils.DestinationStorage,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuota("public/default")
+			},
+		},
+		{
+			name:      "legacy with context",
+			quotaType: utils.DestinationStorage,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaWithContext(context.Background(), "public/default")
+			},
+		},
+		{
+			name:      "message age",
+			quotaType: utils.MessageAge,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaByType("public/default", utils.MessageAge)
+			},
+		},
+		{
+			name:      "message age with context",
+			quotaType: utils.MessageAge,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaByTypeWithContext(
+					context.Background(),
+					"public/default",
+					utils.MessageAge,
+				)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			type request struct {
+				method    string
+				path      string
+				quotaType string
+				querySize int
+			}
+			requests := make(chan request, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				query := r.URL.Query()
+				requests <- request{
+					method:    r.Method,
+					path:      r.URL.EscapedPath(),
+					quotaType: query.Get("backlogQuotaType"),
+					querySize: len(query),
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(&config.Config{WebServiceURL: server.URL})
+			require.NoError(t, err)
+
+			require.NoError(t, tt.remove(client.Namespaces()))
+			actual := <-requests
+			assert.Equal(t, http.MethodDelete, actual.method)
+			assert.Equal(t, "/admin/v2/namespaces/public/default/backlogQuota", actual.path)
+			assert.Equal(t, tt.quotaType.String(), actual.quotaType)
+			assert.Equal(t, 1, actual.querySize)
+		})
+	}
+}
+
+func TestNamespaces_RemoveBacklogQuotaByTypeIntegration(t *testing.T) {
+	client, err := New(&config.Config{})
+	require.NoError(t, err)
+
+	namespaces := client.Namespaces()
+	namespace := fmt.Sprintf("public/remove-backlog-quota-%d", time.Now().UnixNano())
+	require.NoError(t, namespaces.CreateNamespace(namespace))
+	t.Cleanup(func() {
+		_ = namespaces.DeleteNamespace(namespace)
+	})
+
+	require.NoError(t, namespaces.SetBacklogQuota(
+		namespace,
+		utils.NewBacklogQuota(1024, -1, utils.ProducerException),
+		utils.DestinationStorage,
+	))
+	require.NoError(t, namespaces.SetBacklogQuota(
+		namespace,
+		utils.NewBacklogQuota(-1, 60, utils.ConsumerBacklogEviction),
+		utils.MessageAge,
+	))
+
+	quotas, err := namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Contains(t, quotas, utils.DestinationStorage)
+	require.Contains(t, quotas, utils.MessageAge)
+
+	require.NoError(t, namespaces.RemoveBacklogQuotaByType(namespace, utils.MessageAge))
+	quotas, err = namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Contains(t, quotas, utils.DestinationStorage)
+	require.NotContains(t, quotas, utils.MessageAge)
+
+	require.NoError(t, namespaces.RemoveBacklogQuota(namespace))
+	quotas, err = namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Empty(t, quotas)
 }
 
 func TestSetTopicAutoCreation(t *testing.T) {
