@@ -4822,6 +4822,144 @@ func TestBatchIndexAck(t *testing.T) {
 	}
 }
 
+// Go adaptation of testAckedBatchMessageNotSentToDeadLetterTopicOnFinalRedeliveryRound
+// from apache/pulsar (DeadLetterTopicTest): messages of a partially-acked batch that are
+// acked on their final redelivery round must not be routed to the DLQ.
+//
+// The final-round acks go through a consumer WITHOUT batch index ack. Such a consumer can
+// only ack a batch as a whole entry, once its ack tracker reports every index as acked (a
+// consumer with batch index ack would ack each index at the broker directly, and would not
+// depend on the tracker completing). If the tracker of a redelivered batch is not
+// initialized from the broker-provided ack set, it wrongly counts the already-acked indexes
+// as outstanding, so acking all remaining messages on their final redelivery round never
+// completes it: the acks are silently dropped, the broker redelivers the messages to the
+// next consumer session, and once their redeliveries are exhausted they are routed to the
+// DLQ -- even though the application acked every one of them in time.
+func TestAckedBatchMessageNotSentToDeadLetterTopicWithoutBatchIndexAck(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	maxRedeliveryCount := 3
+	batchSize := 5
+	subscriptionName := "my-subscription"
+	dlqTopic := topic + "-" + subscriptionName + "-DLQ"
+
+	subscribe := func(batchIndexAck bool) Consumer {
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:                          topic,
+			SubscriptionName:               subscriptionName,
+			Type:                           Shared,
+			SubscriptionInitialPosition:    SubscriptionPositionEarliest,
+			EnableBatchIndexAcknowledgment: batchIndexAck,
+			AckWithResponse:                true,
+			NackRedeliveryDelay:            1 * time.Second,
+			DLQ: &DLQPolicy{
+				MaxDeliveries:   uint32(maxRedeliveryCount),
+				DeadLetterTopic: dlqTopic,
+			},
+		})
+		require.NoError(t, err)
+		return consumer
+	}
+
+	receive := func(consumer Consumer, timeout time.Duration) (Message, error) {
+		receiveCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		return consumer.Receive(receiveCtx)
+	}
+
+	deadLetterConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       dlqTopic,
+		SubscriptionName:            subscriptionName,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	require.NoError(t, err)
+	defer deadLetterConsumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		DisableBatching:         false,
+		BatchingMaxMessages:     uint(batchSize),
+		BatchingMaxPublishDelay: time.Hour,
+	})
+	require.NoError(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	sendErrCh := make(chan error, batchSize)
+	for i := 0; i < batchSize; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("message-%d", i)),
+		}, func(_ MessageID, _ *ProducerMessage, err error) {
+			sendErrCh <- err
+		})
+	}
+	require.NoError(t, producer.FlushWithCtx(ctx))
+	for i := 0; i < batchSize; i++ {
+		require.NoError(t, <-sendErrCh)
+	}
+
+	// Ack batch indexes 0, 3 and 4 with batch index ack enabled, so that the broker keeps a
+	// partial ack set for the batch, then close the consumer to get 1 and 2 redelivered.
+	consumer := subscribe(true)
+	messagesByBatchIdx := make(map[int32]Message)
+	for i := 0; i < batchSize; i++ {
+		message, err := receive(consumer, 5*time.Second)
+		require.NoError(t, err)
+		messagesByBatchIdx[message.ID().BatchIdx()] = message
+	}
+	require.Len(t, messagesByBatchIdx, batchSize)
+	for _, batchIndex := range []int32{0, 3, 4} {
+		require.NoError(t, consumer.Ack(messagesByBatchIdx[batchIndex]))
+	}
+	consumer.Close()
+
+	// Indexes 1 and 2 are redelivered to a consumer without batch index ack, along with the
+	// broker ack set. Nack them on every round but the final one (redeliveryCount ==
+	// maxRedeliveryCount-1; one more redelivery would route them to the DLQ instead of the
+	// application), where they are explicitly acked. Note that redelivery caused by closing
+	// a consumer does not increment redeliveryCount, only nacks do.
+	consumer = subscribe(false)
+	for acked := 0; acked < 2; {
+		message, err := receive(consumer, 5*time.Second)
+		require.NoError(t, err)
+		require.Contains(t, []string{"message-1", "message-2"}, string(message.Payload()))
+		if message.RedeliveryCount() < uint32(maxRedeliveryCount-1) {
+			// Let it be redelivered instead of acking.
+			consumer.Nack(message)
+			continue
+		}
+		require.NoError(t, consumer.Ack(message))
+		acked++
+	}
+	consumer.Close()
+
+	// Every message of the batch has been acked at or before its final allowed redelivery
+	// round, so a new consumer session must not receive anything. If the final-round acks
+	// were lost, the broker redelivers messages 1 and 2 here; the application cannot tell
+	// them apart from any other redelivered message, and nacking them exhausts their
+	// redeliveries and routes them to the DLQ.
+	consumer = subscribe(false)
+	defer consumer.Close()
+	for {
+		message, err := receive(consumer, 3*time.Second)
+		if err != nil {
+			break
+		}
+		consumer.Nack(message)
+	}
+
+	// No message should ever be routed to the DLQ.
+	receiveCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	deadLetterMessage, err := deadLetterConsumer.Receive(receiveCtx)
+	require.Error(t, err, "no message should have been routed to the DLQ, but received: %v", deadLetterMessage)
+}
+
 func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, option *AckGroupingOptions) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

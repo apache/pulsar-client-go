@@ -409,10 +409,17 @@ func (msg *message) getConn() internal.Connection {
 	return msg.conn
 }
 
-func newAckTracker(size uint) *ackTracker {
-	batchIDs := bitset.New(size)
-	for i := uint(0); i < size; i++ {
-		batchIDs.Set(i)
+// newAckTracker creates a tracker for a batch of the given size. batchIDs is the set of
+// indexes still outstanding (e.g. the broker-provided ack set of a redelivered batch); if
+// nil, every index is considered outstanding.
+func newAckTracker(size uint, batchIDs *bitset.BitSet) *ackTracker {
+	if batchIDs == nil {
+		batchIDs = bitset.New(size)
+		for i := uint(0); i < size; i++ {
+			batchIDs.Set(i)
+		}
+	} else {
+		batchIDs = batchIDs.Clone()
 	}
 	return &ackTracker{
 		size:     size,
