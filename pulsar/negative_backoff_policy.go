@@ -41,11 +41,10 @@ func (nbp *defaultNackBackoffPolicy) Next(redeliveryCount uint32) time.Duration 
 	minNackTime := 1 * time.Second  // 1sec
 	maxNackTime := 10 * time.Minute // 10min
 
-	backoff := float64(minNackTime << redeliveryCount)
-	if backoff == 0 {
-		// Overflow so we assign the maximum value of the backoff.
-		backoff = float64(maxNackTime)
+	if redeliveryCount >= 63 {
+		return maxNackTime
 	}
 
+	backoff := float64(minNackTime << redeliveryCount)
 	return time.Duration(math.Min(backoff, float64(maxNackTime)))
 }
