@@ -138,6 +138,7 @@ type dataRequest struct {
 type connection struct {
 	started           int32
 	connectionTimeout time.Duration
+	dialer            func(ctx context.Context, network, addr string) (net.Conn, error)
 	closeOnce         sync.Once
 
 	// mu protects the fields below against concurrency accesses.
@@ -182,6 +183,7 @@ type connection struct {
 
 // connectionOptions defines configurations for creating connection.
 type connectionOptions struct {
+	dialer            func(ctx context.Context, network, addr string) (net.Conn, error)
 	logicalAddr       *url.URL
 	physicalAddr      *url.URL
 	tls               *TLSOptions
@@ -195,6 +197,7 @@ type connectionOptions struct {
 
 func newConnection(opts connectionOptions) *connection {
 	cnx := &connection{
+		dialer:               opts.dialer,
 		connectionTimeout:    opts.connectionTimeout,
 		keepAliveInterval:    opts.keepAliveInterval,
 		logicalAddr:          opts.logicalAddr,
@@ -258,13 +261,31 @@ func (c *connection) connect() bool {
 		tlsConfig *tls.Config
 	)
 
+	// time.Duration is initialized to 0 by default, net.Dialer's default timeout is no timeout
+	// therefore if c.connectionTimeout is 0, it means no timeout.
+	// As in tls.DialWithDialer, this deadline spans the dial and the TLS
+	// handshake together, not just the dial.
+	ctx := context.Background()
+	if c.connectionTimeout.Nanoseconds() > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, c.connectionTimeout)
+		defer cancel()
+	}
+
+	// kept separate from the TLS handshake below so that a custom dialer returns
+	// a plain net.Conn and the handshake is performed here, not inside
+	// tls.DialWithDialer.
+	dial := func() (net.Conn, error) {
+		if c.dialer != nil {
+			return c.dialer(ctx, "tcp", c.physicalAddr.Host)
+		}
+		var d net.Dialer
+		return d.DialContext(ctx, "tcp", c.physicalAddr.Host)
+	}
+
 	if c.tlsOptions == nil {
 		// Clear text connection
-		if c.connectionTimeout.Nanoseconds() > 0 {
-			cnx, err = net.DialTimeout("tcp", c.physicalAddr.Host, c.connectionTimeout)
-		} else {
-			cnx, err = net.Dial("tcp", c.physicalAddr.Host)
-		}
+		cnx, err = dial()
 	} else {
 		// TLS connection
 		tlsConfig, err = c.getTLSConfig()
@@ -273,10 +294,28 @@ func (c *connection) connect() bool {
 			return false
 		}
 
-		// time.Duration is initialized to 0 by default, net.Dialer's default timeout is no timeout
-		// therefore if c.connectionTimeout is 0, it means no timeout
-		d := &net.Dialer{Timeout: c.connectionTimeout}
-		cnx, err = tls.DialWithDialer(d, "tcp", c.physicalAddr.Host, tlsConfig)
+		// tls.DialWithDialer infers ServerName from the address being dialed when
+		// the config does not set one; tls.Client does not, and would verify
+		// against an empty name. Preserve that so behaviour is unchanged
+		// if ServerName is left empty.
+		if tlsConfig.ServerName == "" {
+			host := c.physicalAddr.Hostname()
+			if host != "" {
+				tlsConfig = tlsConfig.Clone()
+				tlsConfig.ServerName = host
+			}
+		}
+
+		var rawConn net.Conn
+		rawConn, err = dial()
+		if err == nil {
+			tlsConn := tls.Client(rawConn, tlsConfig)
+			if err = tlsConn.HandshakeContext(ctx); err != nil {
+				_ = rawConn.Close()
+			} else {
+				cnx = tlsConn
+			}
+		}
 	}
 
 	if err != nil {
