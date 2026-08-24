@@ -654,6 +654,36 @@ func TestSpecifiedPartitionZeroQueueConsumer(t *testing.T) {
 	assert.Nil(t, err)
 }
 
+func TestZeroQueueConsumerUsesOnlyPartitionForSinglePartitionTopic(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+
+	require.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	err = createPartitionedTopic(topic, 1)
+	require.NoError(t, err)
+	topics, err := client.TopicPartitions(topic)
+	require.NoError(t, err)
+	require.Len(t, topics, 1)
+	topicName, err := internal.ParseTopicName(topics[0])
+	require.NoError(t, err)
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                   topic,
+		SubscriptionName:        "my-sub",
+		EnableZeroQueueConsumer: true,
+	})
+	require.NoError(t, err)
+	defer consumer.Close()
+
+	zeroConsumer, ok := consumer.(*zeroQueueConsumer)
+	require.True(t, ok)
+	assert.Equal(t, topicName.Name, zeroConsumer.pc.topic)
+}
+
 func TestZeroQueueConsumerGetLastMessageIDs(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
