@@ -284,7 +284,7 @@ func newInternalConsumer(client *client, options ConsumerOptions, topic string,
 	}
 
 	if len(partitions) == 1 && options.EnableZeroQueueConsumer {
-		return newZeroConsumer(client, options, topic, messageCh, dlq, rlq, disableForceTopicCreation)
+		return newZeroConsumer(client, options, partitions[0], messageCh, dlq, rlq, disableForceTopicCreation)
 	}
 
 	consumer := &consumer{
