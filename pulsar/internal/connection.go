@@ -923,8 +923,9 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
+		c.DeleteConsumeHandler(consumerID) //delete the handle from registry first
 		consumer.ConnectionClosed(closeConsumer)
-		c.DeleteConsumeHandler(consumerID)
+
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
 	}
