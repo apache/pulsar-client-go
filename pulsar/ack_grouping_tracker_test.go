@@ -287,3 +287,22 @@ func TestTrackerPendingAcks(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, 0, len(ackSet)) // all messages in the batch are acknowledged
 }
+
+func TestIsNonPersistentTopic(t *testing.T) {
+	tests := []struct {
+		name  string
+		topic string
+		want  bool
+	}{
+		{"non-persistent scheme", "non-persistent://public/default/my-topic", true},
+		{"persistent scheme", "persistent://public/default/my-topic", false},
+		{"short name defaults to persistent", "my-topic", false},
+		{"namespace path defaults to persistent", "public/default/my-topic", false},
+		{"unparseable treated as persistent", "://invalid", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.want, isNonPersistentTopic(tt.topic))
+		})
+	}
+}
