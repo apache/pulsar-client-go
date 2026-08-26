@@ -18,7 +18,9 @@
 package pulsar
 
 import (
+	"context"
 	"crypto/tls"
+	"net"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/auth"
@@ -102,6 +104,11 @@ type ClientOptions struct {
 	// net.ipv4.tcp_syn_retries, which defaults to 6 retries, ~127s in total).
 	// If your application is sensitive to service disruption, set this explicitly (e.g., 10s or 15s).
 	ConnectionTimeout time.Duration
+
+	// Dialer is an optional custom dialer used to establish TCP connections to
+	// brokers. When nil, a net.Dialer honouring ConnectionTimeout is used.
+	// The address passed to the dialer is the broker's host:port
+	Dialer func(ctx context.Context, network, addr string) (net.Conn, error)
 
 	// Set the operation timeout (default: 30 seconds)
 	// Producer-create, subscribe and unsubscribe operations will be retried until this interval, after which the
