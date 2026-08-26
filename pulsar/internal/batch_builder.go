@@ -34,6 +34,7 @@ type BatcherBuilderProvider func(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
+	sequenceIDGenerator *SequenceIDGenerator,
 ) (BatchBuilder, error)
 
 // BatchBuilder is a interface of batch builders
@@ -43,13 +44,14 @@ type BatchBuilder interface {
 
 	// Add will add single message to batch.
 	Add(
-		metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
+		metadata *pb.SingleMessageMetadata,
 		payload []byte,
 		callback interface{}, replicateTo []string, deliverAt time.Time,
 		schemaVersion []byte, multiSchemaEnabled bool,
 		useTxn bool,
 		mostSigBits uint64,
 		leastSigBits uint64,
+		customSequenceID *int64,
 	) bool
 
 	// Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
@@ -73,6 +75,50 @@ type FlushBatch struct {
 	Error      error
 }
 
+type messageEntry struct {
+	smm              *pb.SingleMessageMetadata
+	payload          []byte
+	customSequenceID *int64
+}
+
+type messageBatch struct {
+	entries       []messageEntry
+	estimatedSize uint32
+}
+
+func (mb *messageBatch) Append(smm *pb.SingleMessageMetadata, payload []byte, customSequenceID *int64) {
+	mb.entries = append(mb.entries, messageEntry{
+		smm:              smm,
+		payload:          payload,
+		customSequenceID: customSequenceID,
+	})
+	mb.estimatedSize += uint32(len(payload) + proto.Size(smm) + 4 + 11) // metadataSize:4 sequenceID: [2,11]
+}
+
+func (mb *messageBatch) AssignSequenceIDs(sequenceIDGenerator *SequenceIDGenerator) {
+	for k, entry := range mb.entries {
+		if entry.smm.SequenceId != nil {
+			continue
+		}
+
+		var sequenceID uint64
+		if entry.customSequenceID != nil {
+			sequenceID = uint64(*entry.customSequenceID)
+		} else {
+			sequenceID = sequenceIDGenerator.Next()
+		}
+		mb.entries[k].smm.SequenceId = proto.Uint64(sequenceID)
+	}
+}
+
+func (mb *messageBatch) FlushTo(wb Buffer) {
+	for _, entry := range mb.entries {
+		addSingleMessageToBatch(wb, entry.smm, entry.payload)
+	}
+	mb.entries = mb.entries[:0]
+	mb.estimatedSize = 0
+}
+
 // batchContainer wraps the objects needed to a batch.
 // batchContainer implement BatchBuilder as a single batch container.
 type batchContainer struct {
@@ -91,8 +137,10 @@ type batchContainer struct {
 
 	maxMessageSize uint32
 
-	producerName string
-	producerID   uint64
+	producerName        string
+	producerID          uint64
+	sequenceIDGenerator *SequenceIDGenerator
+	messageBatch
 
 	cmdSend     *pb.BaseCommand
 	msgMetadata *pb.MessageMetadata
@@ -112,16 +160,18 @@ func newBatchContainer(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
+	sequenceIDGenerator *SequenceIDGenerator,
 ) batchContainer {
 
 	bc := batchContainer{
-		buffer:         NewBuffer(4096),
-		numMessages:    0,
-		maxMessages:    maxMessages,
-		maxBatchSize:   maxBatchSize,
-		maxMessageSize: maxMessageSize,
-		producerName:   producerName,
-		producerID:     producerID,
+		buffer:              NewBuffer(4096),
+		numMessages:         0,
+		maxMessages:         maxMessages,
+		maxBatchSize:        maxBatchSize,
+		maxMessageSize:      maxMessageSize,
+		producerName:        producerName,
+		producerID:          producerID,
+		sequenceIDGenerator: sequenceIDGenerator,
 		cmdSend: baseCommand(
 			pb.BaseCommand_SEND,
 			&pb.CommandSend{
@@ -151,11 +201,12 @@ func NewBatchBuilder(
 	maxMessages uint, maxBatchSize uint, maxMessageSize uint32, producerName string, producerID uint64,
 	compressionType pb.CompressionType, level compression.Level,
 	bufferPool BuffersPool, metrics *Metrics, logger log.Logger, encryptor crypto.Encryptor,
+	sequenceIDGenerator *SequenceIDGenerator,
 ) (BatchBuilder, error) {
 
 	bc := newBatchContainer(
 		maxMessages, maxBatchSize, maxMessageSize, producerName, producerID, compressionType,
-		level, bufferPool, metrics, logger, encryptor,
+		level, bufferPool, metrics, logger, encryptor, sequenceIDGenerator,
 	)
 
 	return &bc, nil
@@ -163,7 +214,9 @@ func NewBatchBuilder(
 
 // IsFull checks if the size in the current batch meets or exceeds the maximum size allowed by the batch
 func (bc *batchContainer) IsFull() bool {
-	return bc.numMessages >= bc.maxMessages || bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize)
+	return bc.numMessages >= bc.maxMessages ||
+		bc.buffer.ReadableBytes() >= uint32(bc.maxBatchSize) ||
+		bc.estimatedSize >= uint32(bc.maxBatchSize)
 }
 
 // hasSpace should return true if and only if the batch container can accommodate another message of length payload.
@@ -175,7 +228,8 @@ func (bc *batchContainer) hasSpace(payload []byte) bool {
 	msgSize := uint32(len(payload))
 	expectedSize := bc.buffer.ReadableBytes() + msgSize
 	return bc.numMessages+1 <= bc.maxMessages &&
-		expectedSize <= uint32(bc.maxBatchSize) && expectedSize <= bc.maxMessageSize
+		expectedSize <= uint32(bc.maxBatchSize) && expectedSize <= bc.maxMessageSize &&
+		bc.estimatedSize+msgSize <= uint32(bc.maxBatchSize) && bc.estimatedSize+msgSize <= bc.maxMessageSize
 }
 
 func (bc *batchContainer) hasSameSchema(schemaVersion []byte) bool {
@@ -187,11 +241,11 @@ func (bc *batchContainer) hasSameSchema(schemaVersion []byte) bool {
 
 // Add will add single message to batch.
 func (bc *batchContainer) Add(
-	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
+	metadata *pb.SingleMessageMetadata,
 	payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time,
 	schemaVersion []byte, multiSchemaEnabled bool,
-	useTxn bool, mostSigBits uint64, leastSigBits uint64,
+	useTxn bool, mostSigBits uint64, leastSigBits uint64, customSequenceID *int64,
 ) bool {
 
 	if replicateTo != nil && bc.numMessages != 0 {
@@ -211,13 +265,6 @@ func (bc *batchContainer) Add(
 	}
 
 	if bc.numMessages == 0 {
-		var sequenceID uint64
-		if metadata.SequenceId != nil {
-			sequenceID = *metadata.SequenceId
-		} else {
-			sequenceID = GetAndAdd(sequenceIDGenerator, 1)
-		}
-		bc.msgMetadata.SequenceId = proto.Uint64(sequenceID)
 		bc.msgMetadata.PublishTime = proto.Uint64(TimestampMillis(time.Now()))
 		bc.msgMetadata.ProducerName = &bc.producerName
 		bc.msgMetadata.ReplicateTo = replicateTo
@@ -229,13 +276,12 @@ func (bc *batchContainer) Add(
 			bc.msgMetadata.DeliverAtTime = proto.Int64(int64(TimestampMillis(deliverAt)))
 		}
 
-		bc.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
 		if useTxn {
 			bc.cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
 			bc.cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
 		}
 	}
-	addSingleMessageToBatch(bc.buffer, metadata, payload)
+	bc.messageBatch.Append(metadata, payload, customSequenceID)
 
 	bc.numMessages++
 	bc.callbacks = append(bc.callbacks, callback)
@@ -264,6 +310,12 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	bc.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bc.numMessages))
 	bc.cmdSend.Send.NumMessages = proto.Int32(int32(bc.numMessages))
 
+	bc.messageBatch.AssignSequenceIDs(bc.sequenceIDGenerator)
+	sequenceID := *bc.messageBatch.entries[0].smm.SequenceId
+	bc.msgMetadata.SequenceId = proto.Uint64(sequenceID)
+	bc.cmdSend.Send.SequenceId = proto.Uint64(sequenceID)
+	bc.messageBatch.FlushTo(bc.buffer)
+
 	uncompressedSize := bc.buffer.ReadableBytes()
 	bc.msgMetadata.UncompressedSize = &uncompressedSize
 
@@ -272,13 +324,12 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	bufferCount.Inc()
 	buffer.SetReleaseCallback(func() { bufferCount.Dec() })
 
-	sequenceID := uint64(0)
 	var err error
 	if err = serializeMessage(
 		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
 		bc.encryptor, bc.maxMessageSize, true,
-	); err == nil { // no error in serializing Batch
-		sequenceID = bc.cmdSend.Send.GetSequenceId()
+	); err != nil {
+		sequenceID = 0
 	}
 
 	callbacks := bc.callbacks
