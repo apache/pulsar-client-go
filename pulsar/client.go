@@ -74,9 +74,9 @@ func NewAuthenticationAthenz(authParams map[string]string) Authentication {
 }
 
 // NewAuthenticationOAuth2 Creates OAuth2 Authentication provider
-func NewAuthenticationOAuth2(authParams map[string]string) Authentication {
-	oauth, _ := auth.NewAuthenticationOAuth2WithParams(authParams)
-	return oauth
+func NewAuthenticationOAuth2(authParams map[string]string) (Authentication, error) {
+	oauth, err := auth.NewAuthenticationOAuth2WithParams(authParams)
+	return oauth, err
 }
 
 // NewAuthenticationBasic Creates Basic Authentication provider
