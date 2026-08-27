@@ -38,6 +38,8 @@ func newConnectionReader(cnx *connection) *connectionReader {
 }
 
 func (r *connectionReader) readFromConnection() {
+	defer r.cnx.recoverPanic()
+
 	for {
 		cmd, headersAndPayload, err := r.readSingleCommand()
 		if err != nil {
