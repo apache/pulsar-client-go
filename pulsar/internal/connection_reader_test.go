@@ -101,6 +101,55 @@ func TestReadSingleCommandRejectsFrameSizeAboveInt32Range(t *testing.T) {
 	}
 }
 
+// The command size is a second length read off the wire, and it indexes into the
+// frame. A peer can declare a plausible frame size and then a command size far
+// larger than the frame holds.
+func TestReadSingleCommandRejectsCommandSizeLargerThanFrame(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		frame []byte
+	}{
+		{
+			name: "command size at the top of the uint32 range",
+			frame: []byte{
+				0x00, 0x00, 0x00, 0x08, // frameSize = 8, unremarkable
+				0xFF, 0xFF, 0xFF, 0xFF, // cmdSize = 4294967295
+				0x00, 0x00, 0x00, 0x00,
+			},
+		},
+		{
+			name: "command size just past the frame",
+			frame: []byte{
+				0x00, 0x00, 0x00, 0x08, // frameSize = 8
+				0x00, 0x00, 0x00, 0x05, // cmdSize = 5, but only 4 bytes remain
+				0x00, 0x00, 0x00, 0x00,
+			},
+		},
+		{
+			name: "frame too short to hold a command size",
+			frame: []byte{
+				0x00, 0x00, 0x00, 0x02, // frameSize = 2, less than the 4 read below
+				0x00, 0x00, 0x00, 0x00,
+			},
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r, peer := newTestConnectionReader(t)
+
+			go func() {
+				_, _ = peer.Write(tc.frame)
+			}()
+
+			cmd, payload, err := r.readSingleCommand()
+
+			assert.Nil(t, cmd)
+			assert.Nil(t, payload)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), "received invalid command size")
+		})
+	}
+}
+
 // Once the handshake has completed the broker's own maxMessageSize applies, and
 // a frame within it is still accepted for reading.
 func TestReadSingleCommandAcceptsFrameWithinBrokerMaxMessageSize(t *testing.T) {

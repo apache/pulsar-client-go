@@ -101,6 +101,15 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 
 	// We have now the complete frame
 	cmdSize := r.buffer.ReadUint32()
+	// cmdSize is read off the wire and indexes into the frame, so it has to fit
+	// within it. Written as cmdSize > frameSize-4 because cmdSize+4 can wrap
+	// around uint32; the frameSize < 4 check keeps frameSize-4 from wrapping.
+	if frameSize < 4 || cmdSize > frameSize-4 {
+		cmdSizeError := fmt.Errorf("received invalid command size=%d frameSize=%d", cmdSize, frameSize)
+		r.cnx.log.Error(cmdSizeError)
+		r.cnx.Close()
+		return nil, nil, cmdSizeError
+	}
 	cmd, err = r.deserializeCmd(r.buffer.Read(cmdSize))
 	if err != nil {
 		return nil, nil, err
