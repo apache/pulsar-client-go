@@ -24,8 +24,8 @@ jobs:
       matrix:
         go-version: [ '1.25', '1.26']
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
       - run: make build
@@ -33,14 +33,18 @@ jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - name: Check ASF action allowlist
+        uses: apache/infrastructure-actions/allowlist-check@main
+        with:
+          scan-glob: '.github/**/*.y*ml'
+      - uses: actions/setup-go@v7
         with:
           go-version: '1.25'
       - name: Check license header
         run: docker run --rm -v $(pwd):/github/workspace ghcr.io/korandoru/hawkeye-native:v3 check
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee
+        uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
         with:
           version: v2.12.2
 
@@ -50,8 +54,8 @@ jobs:
       matrix:
         go-version: [ '1.25', '1.26' ]
     steps:
-      - uses: actions/checkout@v3      
-      - uses: actions/setup-go@v3
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go-version }}
       - name: Run Tests
@@ -61,7 +65,7 @@ jobs:
           GODEBUG: urlstrictcolons=1
       - name: Upload logs on failure
         if: failure() && steps.run-tests.outcome == 'failure'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: test-logs-${{ matrix.go-version }}
           path: logs/
