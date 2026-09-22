@@ -89,3 +89,49 @@ func TestDecompressionError(t *testing.T) {
 		})
 	}
 }
+
+// TestLz4DecompressUncompressedBlock tests that lz4 Decompress is backward compatible
+// with the custom format from the Compress size==0 branch (writeSize header + raw data).
+func TestLz4DecompressUncompressedBlock(t *testing.T) {
+	provider := NewLz4Provider()
+
+	// Simulate the output format of the Compress size==0 branch: writeSize header + raw data
+	// Case 1: data length < 0xF (header is 1 byte)
+	t.Run("small_uncompressed_block", func(t *testing.T) {
+		original := []byte("hello") // length 5, < 0xF
+		// writeSize(5) => dst[0] |= 5<<4 = 0x50, header 1 byte
+		src := make([]byte, 1+len(original))
+		src[0] = byte(len(original) << 4)
+		copy(src[1:], original)
+
+		dst, err := provider.Decompress(nil, src, len(original))
+		assert.Nil(t, err)
+		assert.Equal(t, original, dst)
+	})
+
+	// Case 2: data length >= 0xF (multi-byte header)
+	t.Run("large_uncompressed_block", func(t *testing.T) {
+		original := make([]byte, 300) // length 300, >= 0xF
+		for i := range original {
+			original[i] = byte(i % 251) // use hard-to-compress data
+		}
+		// Use Compress to generate the data, then verify Decompress can handle it
+		compressed := provider.Compress(nil, original)
+		dst, err := provider.Decompress(nil, compressed, len(original))
+		assert.Nil(t, err)
+		assert.Equal(t, original, dst)
+	})
+}
+
+// TestLz4ReadWriteSizeRoundTrip verifies that readSize is the correct inverse of writeSize
+func TestLz4ReadWriteSizeRoundTrip(t *testing.T) {
+	testSizes := []int{0, 1, 5, 14, 15, 16, 100, 255, 256, 270, 1000, 65535}
+	for _, size := range testSizes {
+		dst := make([]byte, size+20) // large enough buffer
+		headerSize := writeSize(size, dst)
+
+		readHeader, readDataSize := readSize(dst[:headerSize])
+		assert.Equal(t, headerSize, readHeader, "size=%d header mismatch", size)
+		assert.Equal(t, size, readDataSize, "size=%d data size mismatch", size)
+	}
+}
