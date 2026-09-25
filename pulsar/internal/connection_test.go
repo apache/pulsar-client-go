@@ -19,12 +19,16 @@ package internal
 
 import (
 	"context"
+	"crypto/tls"
+	"errors"
+	"net"
 	"net/url"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/auth"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
@@ -223,4 +227,258 @@ func newMockMetrics() *Metrics {
 			Name: "test_connections_handshake_errors",
 		}),
 	}
+}
+
+func testConnectionOptions(t *testing.T, physicalAddr string) connectionOptions {
+	t.Helper()
+
+	addr, err := url.Parse(physicalAddr)
+	assert.NoError(t, err)
+
+	return connectionOptions{
+		logicalAddr:  addr,
+		physicalAddr: addr,
+		auth:         auth.NewAuthDisabled(),
+		logger:       log.DefaultNopLogger(),
+		metrics:      newMockMetrics(),
+	}
+}
+
+// listen starts a TCP listener that accepts and immediately closes connections,
+// so connect() can complete a plaintext dial without a broker.
+func listen(t *testing.T) net.Listener {
+	t.Helper()
+
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	t.Cleanup(func() { _ = l.Close() })
+
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.Close()
+		}
+	}()
+	return l
+}
+
+func TestConnectionDialerIsUsed(t *testing.T) {
+	l := listen(t)
+
+	var (
+		gotNetwork string
+		gotAddr    string
+		gotSet     bool
+	)
+
+	opts := testConnectionOptions(t, "pulsar://"+l.Addr().String())
+	opts.connectionTimeout = 10 * time.Second
+	opts.dialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		gotNetwork, gotAddr, gotSet = network, addr, true
+
+		deadline, ok := ctx.Deadline()
+		assert.True(t, ok, "dialer context should carry the connection timeout")
+		assert.WithinDuration(t, time.Now().Add(10*time.Second), deadline, time.Second)
+
+		return net.Dial(network, addr)
+	}
+
+	cnx := newConnection(opts)
+	assert.True(t, cnx.connect())
+	cnx.Close()
+
+	assert.True(t, gotSet, "dialer should have been called")
+	assert.Equal(t, "tcp", gotNetwork)
+	assert.Equal(t, l.Addr().String(), gotAddr)
+}
+
+func TestConnectionDialerNoTimeoutHasNoDeadline(t *testing.T) {
+	l := listen(t)
+
+	opts := testConnectionOptions(t, "pulsar://"+l.Addr().String())
+	opts.dialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		_, ok := ctx.Deadline()
+		assert.False(t, ok, "no ConnectionTimeout should mean no deadline")
+		return net.Dial(network, addr)
+	}
+
+	cnx := newConnection(opts)
+	assert.True(t, cnx.connect())
+	cnx.Close()
+}
+
+func TestConnectionDialerError(t *testing.T) {
+	l := listen(t)
+
+	opts := testConnectionOptions(t, "pulsar://"+l.Addr().String())
+	opts.dialer = func(_ context.Context, _, _ string) (net.Conn, error) {
+		return nil, errors.New("dial rejected")
+	}
+
+	cnx := newConnection(opts)
+	assert.False(t, cnx.connect(), "a dialer error should fail the connection")
+}
+
+// The dialer returns a plain net.Conn and the library performs the TLS
+// handshake itself, so a custom dialer must not bypass certificate
+// verification.
+func TestConnectionDialerWithTLS(t *testing.T) {
+	cert, err := tls.LoadX509KeyPair("../../integration-tests/certs/broker-cert.pem",
+		"../../integration-tests/certs/broker-key.pem")
+	assert.NoError(t, err)
+
+	l, err := tls.Listen("tcp", "127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{cert}})
+	assert.NoError(t, err)
+	defer l.Close()
+
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.(*tls.Conn).Handshake()
+			_ = c.Close()
+		}
+	}()
+
+	dialed := false
+	opts := testConnectionOptions(t, "pulsar+ssl://"+l.Addr().String())
+	opts.tls = &TLSOptions{TrustCertsFilePath: "../../integration-tests/certs/cacert.pem"}
+	opts.dialer = func(ctx context.Context, network, addr string) (net.Conn, error) {
+		dialed = true
+		return net.Dial(network, addr)
+	}
+
+	cnx := newConnection(opts)
+	// The broker certificate is not valid for 127.0.0.1, so the handshake the
+	// library performs on the dialer's conn must reject it.
+	assert.False(t, cnx.connect())
+	assert.True(t, dialed, "dialer should be used for TLS connections too")
+
+	// ...and it succeeds once the name matches.
+	opts.tls.ServerName = "localhost"
+	opts.tls.ValidateHostname = true
+	cnx = newConnection(opts)
+	assert.True(t, cnx.connect())
+	cnx.Close()
+}
+
+// With ValidateHostname off, getTLSConfig() leaves ServerName empty.
+// tls.DialWithDialer used to infer it from the dialed address; tls.Client does
+// not, so connect() fills it in and verification still works.
+func TestConnectionTLSServerNameInferredFromAddress(t *testing.T) {
+	cert, err := tls.LoadX509KeyPair("../../integration-tests/certs/broker-cert.pem",
+		"../../integration-tests/certs/broker-key.pem")
+	assert.NoError(t, err)
+
+	l, err := tls.Listen("tcp", "localhost:0", &tls.Config{Certificates: []tls.Certificate{cert}})
+	assert.NoError(t, err)
+	defer l.Close()
+
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_ = c.(*tls.Conn).Handshake()
+			_ = c.Close()
+		}
+	}()
+
+	_, port, err := net.SplitHostPort(l.Addr().String())
+	assert.NoError(t, err)
+
+	opts := testConnectionOptions(t, "pulsar+ssl://localhost:"+port)
+	opts.tls = &TLSOptions{TrustCertsFilePath: "../../integration-tests/certs/cacert.pem"}
+
+	cnx := newConnection(opts)
+	assert.True(t, cnx.connect())
+	cnx.Close()
+}
+
+// A peer that completes the TCP accept then never speaks TLS.
+func TestConnectionTLSHandshakeBlackhole(t *testing.T) {
+	l, err := net.Listen("tcp", "127.0.0.1:0")
+	assert.NoError(t, err)
+	defer l.Close()
+
+	accepted := make(chan net.Conn, 4)
+	go func() {
+		for {
+			c, err := l.Accept()
+			if err != nil {
+				return
+			}
+			accepted <- c // hold it open, send nothing
+		}
+	}()
+
+	_, port, _ := net.SplitHostPort(l.Addr().String())
+	opts := testConnectionOptions(t, "pulsar+ssl://localhost:"+port)
+	opts.connectionTimeout = 2 * time.Second
+	opts.tls = &TLSOptions{TrustCertsFilePath: "../../integration-tests/certs/cacert.pem"}
+
+	cnx := newConnection(opts)
+
+	done := make(chan bool, 1)
+	start := time.Now()
+	go func() { done <- cnx.connect() }()
+
+	select {
+	case ok := <-done:
+		assert.False(t, ok)
+		t.Logf("connect() returned after %v", time.Since(start))
+	case <-time.After(10 * time.Second):
+		t.Fatalf("connect() HUNG: still blocked after 10s with ConnectionTimeout=2s")
+	}
+}
+
+// After connect() returns, the connection must remain usable indefinitely:
+// the connect deadline must not linger on the socket.
+func TestConnectionNoLingeringDeadlineAfterHandshake(t *testing.T) {
+	cert, err := tls.LoadX509KeyPair("../../integration-tests/certs/broker-cert.pem",
+		"../../integration-tests/certs/broker-key.pem")
+	assert.NoError(t, err)
+
+	l, err := tls.Listen("tcp", "localhost:0", &tls.Config{Certificates: []tls.Certificate{cert}})
+	assert.NoError(t, err)
+	defer l.Close()
+
+	srvDone := make(chan struct{})
+	go func() {
+		defer close(srvDone)
+		c, err := l.Accept()
+		if err != nil {
+			return
+		}
+		_ = c.(*tls.Conn).Handshake()
+		// Stay silent past the connect timeout, then send a byte.
+		time.Sleep(1500 * time.Millisecond)
+		_, _ = c.Write([]byte{0x42})
+		time.Sleep(2 * time.Second)
+		_ = c.Close()
+	}()
+
+	_, port, _ := net.SplitHostPort(l.Addr().String())
+	opts := testConnectionOptions(t, "pulsar+ssl://localhost:"+port)
+	opts.connectionTimeout = 500 * time.Millisecond
+	opts.tls = &TLSOptions{TrustCertsFilePath: "../../integration-tests/certs/cacert.pem"}
+
+	cnx := newConnection(opts)
+	assert.True(t, cnx.connect())
+
+	// Read well after the 500ms connect timeout would have elapsed.
+	buf := make([]byte, 1)
+	n, err := cnx.cnx.Read(buf)
+	assert.NoError(t, err, "read after connect timeout elapsed must not fail with i/o timeout")
+	assert.Equal(t, 1, n)
+	assert.Equal(t, byte(0x42), buf[0])
+
+	cnx.Close()
+	<-srvDone
 }

@@ -166,7 +166,7 @@ func newClient(options ClientOptions) (Client, error) {
 
 	c := &client{
 		cnxPool: internal.NewConnectionPool(tlsConfig, authProvider, connectionTimeout, keepAliveInterval,
-			maxConnectionsPerHost, logger, metrics, options.Description, connectionMaxIdleTime),
+			maxConnectionsPerHost, logger, metrics, options.Description, connectionMaxIdleTime, options.Dialer),
 		log:              logger,
 		metrics:          metrics,
 		memLimit:         internal.NewMemoryLimitController(memLimitBytes, defaultMemoryLimitTriggerThreshold),
