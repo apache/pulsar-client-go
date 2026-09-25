@@ -1252,6 +1252,11 @@ func (p *partitionProducer) updateMetaData(sr *sendRequest) {
 	}
 
 	sr.mm = p.genMetadata(sr.msg, int(sr.uncompressedSize), deliverAt)
+	if sr.transaction != nil {
+		txnID := sr.transaction.GetTxnID()
+		sr.mm.TxnidMostBits = proto.Uint64(txnID.MostSigBits)
+		sr.mm.TxnidLeastBits = proto.Uint64(txnID.LeastSigBits)
+	}
 
 	sr.sendAsBatch = !p.options.DisableBatching &&
 		sr.msg.ReplicationClusters == nil &&
