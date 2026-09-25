@@ -26,6 +26,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -226,6 +227,17 @@ func newConnection(opts connectionOptions) *connection {
 	return cnx
 }
 
+// recoverPanic closes the connection when a goroutine owned by it panics,
+// so the panic only ends the goroutine rather than the entire process.
+// Deferred at the top of each goroutine this package starts, because recover
+// only reaches the goroutine it runs in.
+func (c *connection) recoverPanic() {
+	if r := recover(); r != nil {
+		c.log.Errorf("recovered from panic on connection goroutine: %v\n%s", r, debug.Stack())
+		c.Close()
+	}
+}
+
 func (c *connection) start() {
 	if !atomic.CompareAndSwapInt32(&c.started, 0, 1) {
 		c.log.Warnf("connection has already started")
@@ -234,6 +246,8 @@ func (c *connection) start() {
 
 	// Each connection gets its own goroutine that will
 	go func() {
+		defer c.recoverPanic()
+
 		if c.connect() {
 			if c.doHandshake() {
 				c.metrics.ConnectionsOpened.Inc()
@@ -438,6 +452,8 @@ func (c *connection) run() {
 }
 
 func (c *connection) runPingCheck(pingCheckTicker *time.Ticker) {
+	defer c.recoverPanic()
+
 	for {
 		select {
 		case <-c.closeCh:
