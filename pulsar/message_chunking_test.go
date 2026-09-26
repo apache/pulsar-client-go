@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -526,11 +527,15 @@ func TestChunkBlockIfQueueFull(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// Large messages will be split into 11 chunks, exceeding the length of pending queue
-	_, err = producer.Send(ctx, &ProducerMessage{
+	// Large messages will be split into 11 chunks, exceeding the length of
+	// the pending queue. Each chunk acquires its permit just before it is
+	// dispatched, so the send blocks until earlier chunks are acknowledged
+	// but still completes (#1448).
+	msgID, err := producer.Send(ctx, &ProducerMessage{
 		Payload: createTestMessagePayload(100),
 	})
-	assert.Error(t, err)
+	assert.NoError(t, err)
+	assert.NotNil(t, msgID)
 }
 
 func createTestMessagePayload(size int) []byte {
@@ -967,4 +972,57 @@ func TestChunkDLQWithNack(t *testing.T) {
 	cancel()
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Nil(t, msg)
+}
+
+// brokerAvailableForChunkTest reports whether a Pulsar broker is reachable
+// for the chunked-send regression test below. Suites running without a local
+// broker can force the test to run against a remote broker by setting
+// PULSAR_TEST_BROKER to a non-empty value.
+func brokerAvailableForChunkTest(t *testing.T) bool {
+	t.Helper()
+	if os.Getenv("PULSAR_TEST_BROKER") != "" {
+		return true
+	}
+	conn, err := net.DialTimeout("tcp", "localhost:6650", time.Second)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func TestSendChunkedMessageWithMoreChunksThanMaxPendingMessages(t *testing.T) {
+	if !brokerAvailableForChunkTest(t) {
+		t.Skip("Pulsar broker is not available (set PULSAR_TEST_BROKER to override)")
+	}
+
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		DisableBatching:     true, // batching and chunking cannot be used together
+		MaxPendingMessages:  2,    // fewer than the total number of chunks below
+		EnableChunking:      true,
+		ChunkMaxMessageSize: 1000,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	// A 10 KiB payload with a 1000-byte chunk size produces 11 chunks.
+	// Before the fix for #1448, the producer tried to acquire one permit
+	// per chunk up front and blocked until the send context expired.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	msgID, err := producer.Send(ctx, &ProducerMessage{
+		Payload: make([]byte, 10*1024),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, msgID)
 }

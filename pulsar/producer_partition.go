@@ -658,6 +658,36 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 		if rhs = lhs + sr.payloadChunkSize; rhs > sr.compressedSize {
 			rhs = sr.compressedSize
 		}
+		// The first chunk runs on the permit reserved by reserveSemaphore;
+		// every subsequent chunk acquires its own permit just before it is
+		// dispatched. Permits freed by acknowledged chunks can then be
+		// reused by the remaining chunks of the same message, so a message
+		// split into more chunks than MaxPendingMessages no longer
+		// deadlocks the producer.
+		if chunkID > 0 {
+			if p.blockIfQueueFull() {
+				if !p.publishSemaphore.Acquire(sr.ctx) {
+					sr.chunkID = -1
+					// Chunks dispatched so far release their own permits and
+					// memory on completion; scope the parent's releases to
+					// the undispatched remainder so the accounting stays
+					// balanced.
+					sr.semaphore = nil
+					sr.reservedMem -= int64(chunkID * sr.payloadChunkSize)
+					sr.done(nil, ErrContextExpired)
+					return
+				}
+			} else {
+				if !p.publishSemaphore.TryAcquire() {
+					sr.chunkID = -1
+					sr.semaphore = nil
+					sr.reservedMem -= int64(chunkID * sr.payloadChunkSize)
+					sr.done(nil, ErrSendQueueIsFull)
+					return
+				}
+			}
+			p.metrics.MessagesPending.Inc()
+		}
 		// update chunk id
 		sr.mm.ChunkId = proto.Int32(int32(chunkID))
 		nsr := sendRequestPool.Get().(*sendRequest)
@@ -1710,30 +1740,24 @@ func (p *partitionProducer) blockIfQueueFull() bool {
 }
 
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
-	for i := 0; i < sr.totalChunks; i++ {
-		if p.blockIfQueueFull() {
-			if !p.publishSemaphore.Acquire(sr.ctx) {
-				return ErrContextExpired
-			}
-
-			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
-			// of that only a part of the chunks acquire succeed
-			sr.semaphore = p.publishSemaphore
-			sr.reservedSemaphore++
-			p.metrics.MessagesPending.Inc()
-		} else {
-			if !p.publishSemaphore.TryAcquire() {
-				return ErrSendQueueIsFull
-			}
-
-			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
-			// of that only a part of the chunks acquire succeed
-			sr.semaphore = p.publishSemaphore
-			sr.reservedSemaphore++
-			p.metrics.MessagesPending.Inc()
+	// Reserve a single permit for the message's first chunk. Subsequent
+	// chunks acquire their own permits one at a time just before being
+	// dispatched (see internalSend). Reserving sr.totalChunks permits up
+	// front deadlocks whenever totalChunks exceeds the available permits
+	// (MaxPendingMessages), because the producer would hold every permit it
+	// could ever acquire while waiting for chunks that can never be sent.
+	if p.blockIfQueueFull() {
+		if !p.publishSemaphore.Acquire(sr.ctx) {
+			return ErrContextExpired
+		}
+	} else {
+		if !p.publishSemaphore.TryAcquire() {
+			return ErrSendQueueIsFull
 		}
 	}
-
+	sr.semaphore = p.publishSemaphore
+	sr.reservedSemaphore++
+	p.metrics.MessagesPending.Inc()
 	return nil
 }
 
