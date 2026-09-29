@@ -18,7 +18,7 @@
 package internal
 
 import (
-	"fmt"
+	"bytes"
 	"testing"
 	"time"
 
@@ -31,18 +31,11 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type mockEncryptor struct {
-}
-
-func (m *mockEncryptor) Encrypt(_ []byte, _ *pb.MessageMetadata) ([]byte, error) {
-	return []byte("test"), nil
-}
-
-func TestKeyBasedBatcherOrdering(t *testing.T) {
-	keyBatcher, err := NewKeyBasedBatchBuilder(
+func TestBatchContainer_IsFull(t *testing.T) {
+	batcher, err := NewBatchBuilder(
+		10,
 		1000,
-		1000,
-		1000,
+		10000,
 		"test",
 		1,
 		pb.CompressionType_NONE,
@@ -54,22 +47,28 @@ func TestKeyBasedBatcherOrdering(t *testing.T) {
 		NewSequenceIDGenerator(1),
 	)
 	if err != nil {
-		assert.Fail(t, "Failed to create key based batcher")
+		assert.Fail(t, "Failed to create batcher")
 	}
 
-	for i := 0; i < 10; i++ {
-		metadata := &pb.SingleMessageMetadata{
-			OrderingKey: []byte(fmt.Sprintf("key-%d", i)),
-			PayloadSize: proto.Int32(0),
-		}
-		assert.True(t, keyBatcher.Add(metadata, []byte("test"), nil, nil, time.Now(),
-			nil, false, false, 0, 0, nil))
+	f := func(payload []byte) bool {
+		return batcher.Add(&pb.SingleMessageMetadata{
+			PayloadSize: proto.Int32(123),
+		}, payload, nil, nil, time.Now(),
+			nil, false, false, 0, 0, nil)
 	}
 
-	batches := keyBatcher.FlushBatches()
-	for i := 1; i < len(batches); i++ {
-		if batches[i].SequenceID <= batches[i-1].SequenceID {
-			t.Errorf("Batch id is not incremental at index %d: %d <= %d", i, batches[i].SequenceID, batches[i-1].SequenceID)
-		}
+	// maxMessages
+	for i := 0; i < 9; i++ {
+		f([]byte("test"))
+		assert.False(t, batcher.IsFull())
 	}
+	f([]byte("test"))
+	assert.True(t, batcher.IsFull())
+
+	batcher.Flush()
+	assert.False(t, batcher.IsFull())
+
+	// maxBatchSize
+	f(bytes.Repeat([]byte("a"), 1000))
+	assert.True(t, batcher.IsFull())
 }
