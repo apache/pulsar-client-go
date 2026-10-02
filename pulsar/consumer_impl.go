@@ -58,6 +58,8 @@ type consumer struct {
 	consumerName              string
 	disableForceTopicCreation bool
 
+	paused atomic.Bool
+
 	// channel used to deliver message to clients
 	messageCh chan ConsumerMessage
 
@@ -323,6 +325,24 @@ func (c *consumer) Name() string {
 	return c.consumerName
 }
 
+func (c *consumer) Pause() {
+	c.paused.Store(true)
+	for _, pc := range c.partitionConsumers() {
+		pc.pause()
+	}
+}
+
+func (c *consumer) Resume() {
+	c.paused.Store(false)
+	for _, pc := range c.partitionConsumers() {
+		pc.resume()
+	}
+}
+
+func (c *consumer) Paused() bool {
+	return c.paused.Load()
+}
+
 func (c *consumer) runBackgroundPartitionDiscovery(period time.Duration) (cancel func()) {
 	var wg sync.WaitGroup
 	stopDiscoveryCh := make(chan struct{})
@@ -441,6 +461,9 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 
 	c.consumers.Store(append([]*partitionConsumer(nil), newConsumers...))
 	for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
+		if c.paused.Load() {
+			newConsumers[partitionIdx].pause()
+		}
 		newConsumers[partitionIdx].startDispatcher()
 	}
 	if newNumPartitions < oldNumPartitions {

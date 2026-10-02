@@ -323,3 +323,15 @@ func (z *zeroQueueConsumer) SeekByTime(time time.Time) error {
 func (z *zeroQueueConsumer) Name() string {
 	return z.consumerName
 }
+
+func (z *zeroQueueConsumer) Pause() {
+	z.pc.pause()
+}
+
+func (z *zeroQueueConsumer) Resume() {
+	z.pc.resume()
+}
+
+func (z *zeroQueueConsumer) Paused() bool {
+	return z.pc.paused.Load()
+}

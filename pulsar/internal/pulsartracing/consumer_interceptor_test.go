@@ -115,6 +115,14 @@ func (c *mockConsumer) Name() string {
 	return ""
 }
 
+func (c *mockConsumer) Pause() {}
+
+func (c *mockConsumer) Resume() {}
+
+func (c *mockConsumer) Paused() bool {
+	return false
+}
+
 func (c *mockConsumer) GetLastMessageIDs() ([]pulsar.TopicMessageID, error) {
 	ids := make([]pulsar.TopicMessageID, 0)
 	return ids, nil
