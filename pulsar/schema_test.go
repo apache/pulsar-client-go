@@ -660,3 +660,37 @@ func TestDoubleSchema(t *testing.T) {
 	assert.Equal(t, res, float64(1))
 	defer consumer.Close()
 }
+
+func TestBooleanSchema(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  "booleanTopic",
+		Schema: NewBooleanSchema(nil),
+	})
+	assert.Nil(t, err)
+	ctx := context.Background()
+	if _, err := producer.Send(ctx, &ProducerMessage{
+		Value: true,
+	}); err != nil {
+		log.Fatal(err)
+	}
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       "booleanTopic",
+		SubscriptionName:            "sub-2",
+		Schema:                      NewBooleanSchema(nil),
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	assert.Nil(t, err)
+
+	var res bool
+	msg, err := consumer.Receive(ctx)
+	assert.Nil(t, err)
+	err = msg.GetSchemaValue(&res)
+	assert.Nil(t, err)
+	assert.Equal(t, res, true)
+	defer consumer.Close()
+}
