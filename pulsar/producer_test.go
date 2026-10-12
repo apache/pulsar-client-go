@@ -2301,11 +2301,7 @@ func TestMemLimitRejectProducerMessagesWithChunking(t *testing.T) {
 	_, _ = producer3.Send(context.Background(), &ProducerMessage{
 		Payload: make([]byte, 2*1024),
 	})
-	// the memory reserved for the already dispatched chunk is released when
-	// its acknowledgment arrives, so wait for the release to complete
-	retryAssert(t, 10, 200, func() {}, func(t assert.TestingT) bool {
-		return assert.Equal(t, 0, int(c.(*client).memLimit.CurrentUsage()))
-	})
+	assert.Zero(t, c.(*client).memLimit.CurrentUsage())
 }
 
 func TestMemLimitContextCancel(t *testing.T) {

@@ -658,36 +658,6 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 		if rhs = lhs + sr.payloadChunkSize; rhs > sr.compressedSize {
 			rhs = sr.compressedSize
 		}
-		// The first chunk runs on the permit reserved by reserveSemaphore;
-		// every subsequent chunk acquires its own permit just before it is
-		// dispatched. Permits freed by acknowledged chunks can then be
-		// reused by the remaining chunks of the same message, so a message
-		// split into more chunks than MaxPendingMessages no longer
-		// deadlocks the producer.
-		if chunkID > 0 {
-			if p.blockIfQueueFull() {
-				if !p.publishSemaphore.Acquire(sr.ctx) {
-					sr.chunkID = -1
-					// Chunks dispatched so far release their own permits and
-					// memory on completion; scope the parent's releases to
-					// the undispatched remainder so the accounting stays
-					// balanced.
-					sr.semaphore = nil
-					sr.reservedMem -= int64(chunkID * sr.payloadChunkSize)
-					sr.done(nil, ErrContextExpired)
-					return
-				}
-			} else {
-				if !p.publishSemaphore.TryAcquire() {
-					sr.chunkID = -1
-					sr.semaphore = nil
-					sr.reservedMem -= int64(chunkID * sr.payloadChunkSize)
-					sr.done(nil, ErrSendQueueIsFull)
-					return
-				}
-			}
-			p.metrics.MessagesPending.Inc()
-		}
 		// update chunk id
 		sr.mm.ChunkId = proto.Int32(int32(chunkID))
 		nsr := sendRequestPool.Get().(*sendRequest)
@@ -947,14 +917,11 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		buffer.Retain()
 		p.pendingQueue.Lock()
 		defer p.pendingQueue.Unlock()
-		conn := p._getConn()
-		if p.getProducerState() == producerReady {
-			// If the producer is reconnecting, we should not write to the connection.
-			// We just need to push the buffer to the pending queue, it will be sent during the reconnecting.
-			conn.WriteData(ctx, buffer)
-		} else {
-			p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
-		}
+		// The item must be in the pending queue before its data reaches the connection.
+		// PutUnsafe waits for room in the queue and releases the lock while it waits, so
+		// writing first would let the broker acknowledge the item before it is queued
+		// (the receipt would then be dropped as "timed out") whenever more items than
+		// the queue can hold are in flight, e.g. the chunks of one large message.
 		p.pendingQueue.PutUnsafe(&pendingItem{
 			ctx:          ctx,
 			cancel:       cancel,
@@ -964,6 +931,14 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
+		conn := p._getConn()
+		if p.getProducerState() == producerReady {
+			// If the producer is reconnecting, we should not write to the connection.
+			// We just need to push the buffer to the pending queue, it will be sent during the reconnecting.
+			conn.WriteData(ctx, buffer)
+		} else {
+			p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
+		}
 	}
 }
 
@@ -1706,8 +1681,17 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 	}
 
 	if sr.semaphore != nil {
-		sr.semaphore.Release()
-		sr.producer.metrics.MessagesPending.Dec()
+		// A chunk releases the single permit it was dispatched with. A request
+		// that failed before being split into chunks still holds every permit
+		// reserved for the message, so it returns all of them.
+		permits := 1
+		if sr.reservedSemaphore > permits {
+			permits = sr.reservedSemaphore
+		}
+		for i := 0; i < permits; i++ {
+			sr.semaphore.Release()
+		}
+		sr.producer.metrics.MessagesPending.Sub(float64(permits))
 	}
 
 	if sr.memLimit != nil {
@@ -1740,24 +1724,29 @@ func (p *partitionProducer) blockIfQueueFull() bool {
 }
 
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
-	// Reserve a single permit for the message's first chunk. Subsequent
-	// chunks acquire their own permits one at a time just before being
-	// dispatched (see internalSend). Reserving sr.totalChunks permits up
-	// front deadlocks whenever totalChunks exceeds the available permits
-	// (MaxPendingMessages), because the producer would hold every permit it
-	// could ever acquire while waiting for chunks that can never be sent.
+	// All the chunks of a message are reserved in a single atomic call so that
+	// they are dispatched as one unit. The semaphore admits a request as long as
+	// the permits already held are below the limit, even if the request needs
+	// more permits than that (MaxPendingMessages acts as a throttle, like the
+	// memory limit). Acquiring one permit per chunk instead would block forever
+	// whenever a message has more chunks than MaxPendingMessages.
+	n := int32(sr.totalChunks)
 	if p.blockIfQueueFull() {
-		if !p.publishSemaphore.Acquire(sr.ctx) {
+		if !p.publishSemaphore.AcquireN(sr.ctx, n) {
 			return ErrContextExpired
 		}
 	} else {
-		if !p.publishSemaphore.TryAcquire() {
+		if !p.publishSemaphore.TryAcquireN(n) {
 			return ErrSendQueueIsFull
 		}
 	}
+
+	// Record the permits held so that done() can return all of them if the
+	// message fails before it is split into chunks. Each dispatched chunk
+	// releases its own permit once it is acknowledged or fails.
 	sr.semaphore = p.publishSemaphore
-	sr.reservedSemaphore++
-	p.metrics.MessagesPending.Inc()
+	sr.reservedSemaphore = int(n)
+	p.metrics.MessagesPending.Add(float64(n))
 	return nil
 }
 

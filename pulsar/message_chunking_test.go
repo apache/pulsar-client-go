@@ -23,7 +23,6 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
-	"net"
 	"net/http"
 	"os"
 	"strings"
@@ -269,10 +268,18 @@ func TestChunksEnqueueFailed(t *testing.T) {
 	// Need to wait some time to let the rate limiter take effect
 	time.Sleep(2 * time.Second)
 
+	// The first message is admitted although its 20 chunks exceed MaxPendingMessages,
+	// because the publish semaphore only throttles: a request may exceed the limit as
+	// long as the limit has not been reached yet. The rate limit keeps its chunks pending.
+	producer.SendAsync(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(1000),
+	}, func(MessageID, *ProducerMessage, error) {})
+
+	// The limit is now reached, so the next message is rejected as a whole.
 	ID, err := producer.Send(context.Background(), &ProducerMessage{
 		Payload: createTestMessagePayload(1000),
 	})
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrSendQueueIsFull)
 	assert.Nil(t, ID)
 }
 
@@ -528,9 +535,8 @@ func TestChunkBlockIfQueueFull(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	// Large messages will be split into 11 chunks, exceeding the length of
-	// the pending queue. Each chunk acquires its permit just before it is
-	// dispatched, so the send blocks until earlier chunks are acknowledged
-	// but still completes (#1448).
+	// the pending queue. The message is admitted as a whole, so the send
+	// completes instead of waiting for permits that can never be granted (#1448).
 	msgID, err := producer.Send(ctx, &ProducerMessage{
 		Payload: createTestMessagePayload(100),
 	})
@@ -974,28 +980,7 @@ func TestChunkDLQWithNack(t *testing.T) {
 	assert.Nil(t, msg)
 }
 
-// brokerAvailableForChunkTest reports whether a Pulsar broker is reachable
-// for the chunked-send regression test below. Suites running without a local
-// broker can force the test to run against a remote broker by setting
-// PULSAR_TEST_BROKER to a non-empty value.
-func brokerAvailableForChunkTest(t *testing.T) bool {
-	t.Helper()
-	if os.Getenv("PULSAR_TEST_BROKER") != "" {
-		return true
-	}
-	conn, err := net.DialTimeout("tcp", "localhost:6650", time.Second)
-	if err != nil {
-		return false
-	}
-	_ = conn.Close()
-	return true
-}
-
 func TestSendChunkedMessageWithMoreChunksThanMaxPendingMessages(t *testing.T) {
-	if !brokerAvailableForChunkTest(t) {
-		t.Skip("Pulsar broker is not available (set PULSAR_TEST_BROKER to override)")
-	}
-
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
 	})
@@ -1015,8 +1000,9 @@ func TestSendChunkedMessageWithMoreChunksThanMaxPendingMessages(t *testing.T) {
 	defer producer.Close()
 
 	// A 10 KiB payload with a 1000-byte chunk size produces 11 chunks.
-	// Before the fix for #1448, the producer tried to acquire one permit
-	// per chunk up front and blocked until the send context expired.
+	// Before the fix for #1448, the producer waited for one permit per chunk
+	// while holding all the permits it could ever get, so the send blocked until
+	// the context expired.
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
