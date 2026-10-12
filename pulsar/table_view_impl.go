@@ -169,7 +169,7 @@ func (tv *TableViewImpl) Size() int {
 func (tv *TableViewImpl) IsEmpty() bool {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
-	return tv.Size() == 0
+	return len(tv.data) == 0
 }
 
 func (tv *TableViewImpl) ContainsKey(key string) bool {
@@ -192,7 +192,7 @@ func (tv *TableViewImpl) Entries() map[string]interface{} {
 	for k, v := range tv.data {
 		data[k] = v
 	}
-	return tv.data
+	return data
 }
 
 func (tv *TableViewImpl) Keys() []string {
@@ -245,7 +245,6 @@ func (tv *TableViewImpl) Close() {
 
 func (tv *TableViewImpl) handleMessage(msg Message) {
 	tv.dataMu.Lock()
-	defer tv.dataMu.Unlock()
 
 	payload := reflect.New(tv.options.SchemaValueType)
 	if len(msg.Payload()) == 0 {
@@ -256,7 +255,10 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 		}
 		tv.data[msg.Key()] = reflect.Indirect(payload).Interface()
 	}
+	tv.dataMu.Unlock()
 
+	tv.listenersMu.Lock()
+	defer tv.listenersMu.Unlock()
 	for _, listener := range tv.listeners {
 		if err := listener(msg.Key(), reflect.Indirect(payload).Interface()); err != nil {
 			tv.logger.Errorf("table view listener failed for %v: %v", msg, err)

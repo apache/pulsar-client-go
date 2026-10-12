@@ -361,3 +361,182 @@ func TestForEachAndListenJSONSchema(t *testing.T) {
 		t.Logf("TableView number of elements: %d", tv.Size())
 	}
 }
+
+func TestTableViewIsEmpty(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	// create table view
+	v := ""
+	tv, err := client.CreateTableView(TableViewOptions{
+		Topic:           topic,
+		Schema:          schema,
+		SchemaValueType: reflect.TypeOf(&v),
+	})
+	assert.NoError(t, err)
+	defer tv.Close()
+
+	// IsEmpty should return true when no messages have been published
+	assert.True(t, tv.IsEmpty())
+	assert.Equal(t, 0, tv.Size())
+
+	// Publish a message
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Key:   "key-1",
+		Value: "value-1",
+	})
+	assert.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return tv.Size() == 1
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// IsEmpty should return false after receiving a message
+	assert.False(t, tv.IsEmpty())
+	assert.True(t, tv.ContainsKey("key-1"))
+	assert.False(t, tv.ContainsKey("non-existent-key"))
+
+	keys := tv.Keys()
+	assert.Equal(t, 1, len(keys))
+	assert.Equal(t, "key-1", keys[0])
+}
+
+func TestTableViewEntriesReturnsCopy(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	// create table view
+	v := ""
+	tv, err := client.CreateTableView(TableViewOptions{
+		Topic:           topic,
+		Schema:          schema,
+		SchemaValueType: reflect.TypeOf(&v),
+	})
+	assert.NoError(t, err)
+	defer tv.Close()
+
+	// Publish messages
+	for i := 0; i < 3; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		_, err = producer.Send(context.Background(), &ProducerMessage{
+			Key:   key,
+			Value: fmt.Sprintf("value-%d", i),
+		})
+		assert.NoError(t, err)
+	}
+
+	require.Eventually(t, func() bool {
+		return tv.Size() == 3
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// Get a copy of entries
+	entries := tv.Entries()
+	assert.Equal(t, 3, len(entries))
+
+	// Mutate the returned map — this should NOT affect the internal state
+	entries["injected-key"] = strPointer("injected-value")
+	delete(entries, "key-0")
+
+	// Verify the internal state is unchanged
+	assert.Equal(t, 3, tv.Size())
+	assert.True(t, tv.ContainsKey("key-0"))
+	assert.False(t, tv.ContainsKey("injected-key"))
+}
+
+func TestTableViewForEachAndListenConcurrent(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	// create table view
+	v := ""
+	tv, err := client.CreateTableView(TableViewOptions{
+		Topic:           topic,
+		Schema:          schema,
+		SchemaValueType: reflect.TypeOf(&v),
+	})
+	assert.NoError(t, err)
+	defer tv.Close()
+
+	// Register a listener via ForEachAndListen
+	listenedKeys := make(chan string, 100)
+	err = tv.ForEachAndListen(func(key string, value interface{}) error {
+		listenedKeys <- key
+		return nil
+	})
+	assert.NoError(t, err)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	// Publish messages concurrently
+	numMsg := 20
+	for i := 0; i < numMsg; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		_, err = producer.Send(context.Background(), &ProducerMessage{
+			Key:   key,
+			Value: fmt.Sprintf("value-%d", i),
+		})
+		assert.NoError(t, err)
+	}
+
+	// Wait until all messages are received
+	require.Eventually(t, func() bool {
+		return tv.Size() == numMsg
+	}, 10*time.Second, 100*time.Millisecond)
+
+	// Verify all keys were notified to the listener
+	received := make(map[string]bool)
+	timeout := time.After(5 * time.Second)
+	for len(received) < numMsg {
+		select {
+		case key := <-listenedKeys:
+			received[key] = true
+		case <-timeout:
+			t.Fatalf("timed out waiting for listener notifications, got %d/%d", len(received), numMsg)
+		}
+	}
+
+	for i := 0; i < numMsg; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		assert.True(t, received[key], "listener should have been notified for key: %s", key)
+	}
+}
