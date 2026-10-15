@@ -256,7 +256,8 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				return
 			}
 			require.Error(t, err)
-			restError := err.(rest.Error)
+			var restError rest.Error
+			require.ErrorAs(t, err, &restError)
 			assert.Contains(t, tt.errReasons, restError.Reason)
 		})
 	}

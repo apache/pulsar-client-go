@@ -189,6 +189,7 @@ func httpGetWithTLS(requestPath string, out interface{}) error {
 		return fmt.Errorf("failed to parse CA certificates from %s", caCertsPath)
 	}
 	client := &http.Client{
+		Timeout: 30 * time.Second,
 		Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{
 				Certificates: []tls.Certificate{cert},
