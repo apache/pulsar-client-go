@@ -192,7 +192,7 @@ func (tv *TableViewImpl) Entries() map[string]interface{} {
 	for k, v := range tv.data {
 		data[k] = v
 	}
-	return tv.data
+	return data
 }
 
 func (tv *TableViewImpl) Keys() []string {
