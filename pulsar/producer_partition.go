@@ -1412,14 +1412,22 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 			response.GetMessageId(), response.GetSequenceId(), pi.sequenceID)
 		return
 	}
-	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
-	p.pendingQueue.Poll()
+	// Only the owner that removes this exact item may complete its requests. A
+	// timeout, close, or another receipt may have claimed it since Peek().
+	if p.pendingQueue.CompareAndPoll(func(item any) bool {
+		return item == pi
+	}) != pi {
+		return
+	}
 
 	now := time.Now().UnixNano()
 
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
+	if pi.isDone {
+		return
+	}
 	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
 	batchSize := int32(len(pi.sendRequests))
 	for idx, i := range pi.sendRequests {
