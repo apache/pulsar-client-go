@@ -28,6 +28,7 @@ import (
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -176,26 +177,9 @@ func transactionStats(id *TxnID) (map[string]interface{}, error) {
 // with the test client certificate. It is used for admin endpoints that require a
 // super-user role.
 func httpGetWithTLS(requestPath string, out interface{}) error {
-	cert, err := tls.LoadX509KeyPair(tlsClientCertPath, tlsClientKeyPath)
+	client, err := getTLSWebClient()
 	if err != nil {
 		return err
-	}
-	caCert, err := os.ReadFile(caCertsPath)
-	if err != nil {
-		return err
-	}
-	pool := x509.NewCertPool()
-	if !pool.AppendCertsFromPEM(caCert) {
-		return fmt.Errorf("failed to parse CA certificates from %s", caCertsPath)
-	}
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{
-				Certificates: []tls.Certificate{cert},
-				RootCAs:      pool,
-			},
-		},
 	}
 	req, err := http.NewRequest(http.MethodGet, webServiceURLTLS+"/"+requestPath, nil)
 	if err != nil {
@@ -218,6 +202,44 @@ func httpGetWithTLS(requestPath string, out interface{}) error {
 		return err
 	}
 	return json.Unmarshal(outBytes, out)
+}
+
+var (
+	tlsWebClientOnce sync.Once
+	tlsWebClient     *http.Client
+	tlsWebClientErr  error
+)
+
+// getTLSWebClient lazily builds and caches an HTTPS client that authenticates with the
+// test client certificate. It is used for admin endpoints that require a super-user role.
+func getTLSWebClient() (*http.Client, error) {
+	tlsWebClientOnce.Do(func() {
+		cert, err := tls.LoadX509KeyPair(tlsClientCertPath, tlsClientKeyPath)
+		if err != nil {
+			tlsWebClientErr = err
+			return
+		}
+		caCert, err := os.ReadFile(caCertsPath)
+		if err != nil {
+			tlsWebClientErr = err
+			return
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caCert) {
+			tlsWebClientErr = fmt.Errorf("failed to parse CA certificates from %s", caCertsPath)
+			return
+		}
+		tlsWebClient = &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					Certificates: []tls.Certificate{cert},
+					RootCAs:      pool,
+				},
+			},
+		}
+	})
+	return tlsWebClient, tlsWebClientErr
 }
 
 func topicPath(topic string) string {
