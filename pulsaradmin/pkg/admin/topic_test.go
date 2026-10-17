@@ -1794,7 +1794,8 @@ func TestTopics_DelayedDelivery(t *testing.T) {
 			delayedDelivery, err = admin.Topics().GetDelayedDelivery(*topicName)
 			return err == nil && delayedDelivery != nil &&
 				delayedDelivery.Active == true &&
-				delayedDelivery.TickTime == 1000
+				delayedDelivery.TickTime == 1000 &&
+				delayedDelivery.MaxDelayInMillis == 60000
 		},
 		10*time.Second,
 		100*time.Millisecond,
