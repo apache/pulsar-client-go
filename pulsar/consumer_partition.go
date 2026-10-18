@@ -553,6 +553,7 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 	}
 
 	if cmid, ok := msgID.(*chunkMessageID); ok {
+		pc.observeProcessingTime(cmid)
 		if txn == nil {
 			return pc.unAckChunksTracker.ack(cmid)
 		}
@@ -571,7 +572,8 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 			},
 		}
 		pc.metrics.AcksCounter.Inc()
-		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+		// trackingID has just been rebuilt without a receive time, so read it from the acked ID
+		pc.observeProcessingTime(msgID)
 	} else if !pc.options.enableBatchIndexAck {
 		return nil
 	}
@@ -602,6 +604,23 @@ func (pc *partitionConsumer) AckIDWithTxn(msgID MessageID, txn Transaction) erro
 // ackID acknowledges the consumption of a message and optionally waits for response from the broker.
 func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 	return pc.ackIDCommon(msgID, withResponse, nil)
+}
+
+// observeProcessingTime records the time between receiving the message identified by msgID and
+// acknowledging it. IDs without a receive time, such as ones built by the application or returned
+// by DeserializeMessageID, are not recorded.
+func (pc *partitionConsumer) observeProcessingTime(msgID MessageID) {
+	var receivedTime time.Time
+	switch id := msgID.(type) {
+	case *trackingMessageID:
+		receivedTime = id.receivedTime
+	case *chunkMessageID:
+		receivedTime = id.receivedTime
+	}
+	if receivedTime.IsZero() {
+		return
+	}
+	pc.metrics.ProcessingTime.Observe(time.Since(receivedTime).Seconds())
 }
 
 func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
@@ -827,7 +846,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 				position := newPosition(msgID)
 				if convertedMsgID.ack() {
 					pendingAcks[position] = nil
-					pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-convertedMsgID.receivedTime.UnixNano()) / 1.0e9)
+					pc.observeProcessingTime(convertedMsgID)
 				} else if pc.options.enableBatchIndexAck {
 					pendingAcks[position] = convertedMsgID.tracker.getAckBitSet()
 				}
@@ -836,6 +855,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 					pendingAcks[newPosition(id)] = nil
 				}
 				chunkedMsgIDs = append(chunkedMsgIDs, convertedMsgID)
+				pc.observeProcessingTime(convertedMsgID)
 			case *messageID:
 				pendingAcks[newPosition(msgID)] = nil
 			default:
@@ -931,7 +951,7 @@ func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withRespon
 	}
 
 	pc.metrics.AcksCounter.Inc()
-	pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+	pc.observeProcessingTime(msgID)
 
 	var ackReq *ackRequest
 	if withResponse {
