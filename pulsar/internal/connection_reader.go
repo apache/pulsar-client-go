@@ -38,6 +38,8 @@ func newConnectionReader(cnx *connection) *connectionReader {
 }
 
 func (r *connectionReader) readFromConnection() {
+	defer r.cnx.recoverPanic()
+
 	for {
 		cmd, headersAndPayload, err := r.readSingleCommand()
 		if err != nil {
@@ -72,8 +74,18 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 
 	// We have enough to read frame size
 	frameSize := r.buffer.ReadUint32()
-	maxFrameSize := r.cnx.maxMessageSize + MessageFramePadding
-	if r.cnx.maxMessageSize != 0 && int32(frameSize) > maxFrameSize {
+	// maxMessageSize is only known once the handshake has completed, since it is
+	// taken from the broker's Connected response. Until then, bound the frame by
+	// the protocol maximum rather than not bounding it at all: this read happens
+	// before the peer has authenticated, and frameSize decides how large a buffer
+	// readAtLeast allocates for the rest of the frame below.
+	maxFrameSize := uint32(MaxFrameSize)
+	if r.cnx.maxMessageSize != 0 {
+		maxFrameSize = uint32(r.cnx.maxMessageSize) + MessageFramePadding
+	}
+	// Compared as uint32 so a frameSize of 2^31 or more stays large and fails
+	// this bound instead of turning negative in a signed comparison.
+	if frameSize > maxFrameSize {
 		frameSizeError := fmt.Errorf("received too big frame size=%d maxFrameSize=%d", frameSize, maxFrameSize)
 		r.cnx.log.Error(frameSizeError)
 		r.cnx.Close()
@@ -91,6 +103,15 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 
 	// We have now the complete frame
 	cmdSize := r.buffer.ReadUint32()
+	// cmdSize is read off the wire and indexes into the frame, so it has to fit
+	// within it. Written as cmdSize > frameSize-4 because cmdSize+4 can wrap
+	// around uint32; the frameSize < 4 check keeps frameSize-4 from wrapping.
+	if frameSize < 4 || cmdSize > frameSize-4 {
+		cmdSizeError := fmt.Errorf("received invalid command size=%d frameSize=%d", cmdSize, frameSize)
+		r.cnx.log.Error(cmdSizeError)
+		r.cnx.Close()
+		return nil, nil, cmdSizeError
+	}
 	cmd, err = r.deserializeCmd(r.buffer.Read(cmdSize))
 	if err != nil {
 		return nil, nil, err

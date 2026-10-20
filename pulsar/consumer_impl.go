@@ -749,9 +749,16 @@ func (c *consumer) Seek(msgID MessageID) error {
 		return newError(SeekFailed, "for partition topic, seek command should perform on the individual partitions")
 	}
 
-	consumer, err := findPartitionConsumer(consumers, msgID)
-	if err != nil {
-		return err
+	var consumer *partitionConsumer
+	if len(consumers) == 1 && msgID.PartitionIdx() == -1 {
+		// EarliestMessageID() and LatestMessageID() use -1 as the partition index.
+		// There is only one partition consumer here, so that is the one to seek.
+		consumer = consumers[0]
+	} else {
+		var err error
+		if consumer, err = findPartitionConsumer(consumers, msgID); err != nil {
+			return err
+		}
 	}
 	consumer.pauseDispatchMessage()
 	// clear messageCh
