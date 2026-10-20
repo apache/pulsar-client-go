@@ -1799,6 +1799,52 @@ func TestConsumerSeek(t *testing.T) {
 	assert.Equal(t, fmt.Sprintf("hello-%d", N-50), string(msg.Payload()))
 }
 
+func TestConsumerSeekEarliestOnNonPartitionedTopic(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	require.NoError(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+	})
+	require.NoError(t, err)
+	defer consumer.Close()
+
+	const N = 10
+	for i := 0; i < N; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		require.NoError(t, err)
+	}
+
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		require.NoError(t, err)
+		require.NoError(t, consumer.Ack(msg))
+	}
+
+	require.NoError(t, consumer.Seek(EarliestMessageID()))
+
+	receiveCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	msg, err := consumer.Receive(receiveCtx)
+	require.NoError(t, err)
+	assert.Equal(t, "hello-0", string(msg.Payload()))
+}
+
 func TestConsumerSeekByTime(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,
@@ -6645,4 +6691,52 @@ func TestConsumerWithDLQRetryTopicNoGetPartitionedTopicMetadata(t *testing.T) {
 		assert.NotEqual(t, oldRetryTopic, topic,
 			"GetPartitionedTopicMetadata should not be called with old Retry topic when custom Retry topic is provided")
 	}
+}
+
+func TestConsumerSeekWithoutPartitionIndexOnSinglePartitionConsumer(t *testing.T) {
+	eventsCh := make(chan interface{}, 1)
+	pc := &partitionConsumer{
+		topic:                      "persistent://public/default/test-topic",
+		eventsCh:                   eventsCh,
+		dispatcherSeekingControlCh: make(chan struct{}, 1),
+		log:                        plog.DefaultNopLogger(),
+	}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0}, nil, nil, nil)
+
+	c := &consumer{
+		topic:     "persistent://public/default/test-topic",
+		messageCh: make(chan ConsumerMessage, 1),
+	}
+	c.consumers.Store([]*partitionConsumer{pc})
+
+	for _, msgID := range []MessageID{EarliestMessageID(), LatestMessageID()} {
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- c.Seek(msgID)
+		}()
+
+		select {
+		case event := <-eventsCh:
+			req, ok := event.(*seekRequest)
+			require.True(t, ok, "expected a seek request, got %T", event)
+			assert.Equal(t, msgID.LedgerID(), req.msgID.LedgerID())
+			assert.Equal(t, msgID.EntryID(), req.msgID.EntryID())
+			close(req.doneCh)
+		case err := <-errCh:
+			t.Fatalf("Seek(%v) did not reach the partition consumer: %v", msgID, err)
+		case <-time.After(3 * time.Second):
+			t.Fatalf("timed out waiting for the seek request for %v", msgID)
+		}
+
+		require.NoError(t, <-errCh)
+		// Drain the pause signal sent by Seek so that the next Seek does not block.
+		<-pc.dispatcherSeekingControlCh
+	}
+
+	// A partition index that does not exist is still rejected.
+	assert.Error(t, c.Seek(NewMessageID(1, 2, -1, 3)))
+
+	// Ack paths keep rejecting IDs without a partition index.
+	assert.Error(t, c.AckID(EarliestMessageID()))
+	assert.Error(t, c.AckIDCumulative(LatestMessageID()))
 }
