@@ -157,10 +157,10 @@ func TestSetTopicAutoCreation(t *testing.T) {
 	require.NotNil(t, admin)
 
 	tests := []struct {
-		name      string
-		namespace string
-		config    utils.TopicAutoCreationConfig
-		errReason string
+		name       string
+		namespace  string
+		config     utils.TopicAutoCreationConfig
+		errReasons []string // accepted error reasons; empty means success is expected
 	}{
 		{
 			name:      "Set partitioned type topic auto creation",
@@ -170,7 +170,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Type:       utils.Partitioned,
 				Partitions: ptr(3),
 			},
-			errReason: "",
+			errReasons: nil,
 		},
 		{
 			name:      "Set partitioned type topic auto creation without partitions",
@@ -179,8 +179,8 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.Partitioned,
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
-				"cannot be null when the type is partitioned.",
+			errReasons: []string{"Invalid configuration for autoTopicCreationOverride. the detail is " +
+				"[defaultNumPartitions] cannot be null when the type is partitioned."},
 		},
 		{
 			name:      "Set partitioned type topic auto creation with partitions < 1",
@@ -190,8 +190,8 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Type:       utils.Partitioned,
 				Partitions: ptr(-1),
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
-				"cannot be less than 1 for partition type.",
+			errReasons: []string{"Invalid configuration for autoTopicCreationOverride. the detail is " +
+				"[defaultNumPartitions] cannot be less than 1 for partition type."},
 		},
 		{
 			name:      "Set non-partitioned type topic auto creation",
@@ -200,7 +200,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.NonPartitioned,
 			},
-			errReason: "",
+			errReasons: nil,
 		},
 		{
 			name:      "Set non-partitioned type topic auto creation with partitions",
@@ -210,8 +210,12 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Type:       utils.NonPartitioned,
 				Partitions: ptr(3),
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] is " +
-				"not allowed to be set when the type is non-partition.",
+			errReasons: []string{
+				"Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] is " +
+					"not allowed to be set when the type is non-partition.",
+				"Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
+					"must be null, 0 or 1 when the type is non-partitioned.",
+			},
 		},
 		{
 			name:      "Disable topic auto creation",
@@ -219,7 +223,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			config: utils.TopicAutoCreationConfig{
 				Allow: false,
 			},
-			errReason: "",
+			errReasons: nil,
 		},
 		{
 			name:      "Set topic auto creation on a non-exist namespace",
@@ -228,7 +232,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.NonPartitioned,
 			},
-			errReason: "Namespace does not exist",
+			errReasons: []string{"Namespace does not exist"},
 		},
 		{
 			name:      "Set topic auto creation on a non-exist tenant",
@@ -237,23 +241,24 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.NonPartitioned,
 			},
-			errReason: "Tenant does not exist",
+			errReasons: []string{"Tenant does not exist", "Namespace does not exist"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			namespace, _ := utils.GetNamespaceName(tt.namespace)
 			err := admin.Namespaces().SetTopicAutoCreation(*namespace, tt.config)
-			if tt.errReason == "" {
-				assert.Equal(t, nil, err)
+			if len(tt.errReasons) == 0 {
+				assert.NoError(t, err)
 
 				err = admin.Namespaces().RemoveTopicAutoCreation(*namespace)
-				assert.Equal(t, nil, err)
+				assert.NoError(t, err)
+				return
 			}
-			if err != nil {
-				restError := err.(rest.Error)
-				assert.Equal(t, tt.errReason, restError.Reason)
-			}
+			require.Error(t, err)
+			var restError rest.Error
+			require.ErrorAs(t, err, &restError)
+			assert.Contains(t, tt.errReasons, restError.Reason)
 		})
 	}
 }
