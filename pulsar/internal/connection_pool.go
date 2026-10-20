@@ -18,7 +18,9 @@
 package internal
 
 import (
+	"context"
 	"fmt"
+	"net"
 	"net/url"
 	"sync"
 	"sync/atomic"
@@ -58,6 +60,7 @@ type connectionPool struct {
 	metrics     *Metrics
 	log         log.Logger
 	description string
+	dialer      func(ctx context.Context, network, addr string) (net.Conn, error)
 }
 
 // NewConnectionPool init connection pool.
@@ -70,7 +73,8 @@ func NewConnectionPool(
 	logger log.Logger,
 	metrics *Metrics,
 	description string,
-	connectionMaxIdleTime time.Duration) ConnectionPool {
+	connectionMaxIdleTime time.Duration,
+	dialer func(ctx context.Context, network, addr string) (net.Conn, error)) ConnectionPool {
 	p := &connectionPool{
 		connections:           make(map[string]*connection),
 		tlsOptions:            tlsOptions,
@@ -82,6 +86,7 @@ func NewConnectionPool(
 		metrics:               metrics,
 		closeCh:               make(chan struct{}),
 		description:           description,
+		dialer:                dialer,
 	}
 	go p.checkAndCleanIdleConnections(connectionMaxIdleTime)
 	return p
@@ -114,6 +119,7 @@ func (p *connectionPool) GetConnection(logicalAddr *url.URL, physicalAddr *url.U
 
 	if conn == nil {
 		conn = newConnection(connectionOptions{
+			dialer:            p.dialer,
 			logicalAddr:       logicalAddr,
 			physicalAddr:      physicalAddr,
 			tls:               p.tlsOptions,
