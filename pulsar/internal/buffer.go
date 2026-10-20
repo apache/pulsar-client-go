@@ -177,9 +177,16 @@ func (b *buffer) IsWritable() bool {
 }
 
 func (b *buffer) Read(size uint32) []byte {
-	// Check []byte slice size, avoid slice bounds out of range
-	if b.readerIdx+size > uint32(len(b.data)) {
-		log.Errorf("The input size [%d] > byte slice of data size [%d]", b.readerIdx+size, len(b.data))
+	// Bound the read against b.data. Skip can move readerIdx past the end of
+	// the data, and readerIdx+size can wrap around uint32, so check each index
+	// on its own instead of comparing computed sums.
+	dataLen := uint32(len(b.data))
+	if b.readerIdx > dataLen {
+		log.Errorf("The reader index [%d] > data size [%d]", b.readerIdx, dataLen)
+		return nil
+	}
+	if size > dataLen-b.readerIdx {
+		log.Errorf("The input size [%d] > readable byte slice of data size [%d]", size, dataLen-b.readerIdx)
 		return nil
 	}
 	res := b.data[b.readerIdx : b.readerIdx+size]

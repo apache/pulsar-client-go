@@ -224,3 +224,52 @@ func newMockMetrics() *Metrics {
 		}),
 	}
 }
+
+// A panic on a goroutine the connection owns must not escape it. recover only
+// reaches the goroutine it runs in, so each goroutine this package starts defers
+// its own guard; without them a fault while talking to one broker terminates the
+// whole process rather than the connection.
+func TestRecoverPanicClosesConnection(t *testing.T) {
+	c := newTestConnection()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer c.recoverPanic()
+
+		panic("simulated fault on a connection goroutine")
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("goroutine did not return")
+	}
+
+	assert.True(t, c.closed(), "the connection should be closed after a recovered panic")
+	assertConnectionClosed(t, c)
+}
+
+// The guard must tolerate being deferred on a connection that is already closed,
+// since the panicking path may have closed it on the way out. Close is
+// idempotent, so this must not panic a second time.
+func TestRecoverPanicOnAlreadyClosedConnection(t *testing.T) {
+	c := newTestConnection()
+	c.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer c.recoverPanic()
+
+		panic("simulated fault after close")
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("goroutine did not return")
+	}
+
+	assert.True(t, c.closed())
+}
