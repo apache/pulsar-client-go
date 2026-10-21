@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -5595,6 +5596,51 @@ func TestConsumerForceUnSubscribe(t *testing.T) {
 	err = consumer.UnsubscribeForce()
 	assert.Error(t, err)
 
+}
+
+func TestConsumerUnsubscribeThenCloseReleasesGoroutines(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	subscribeUnsubscribeClose := func() {
+		c, err := client.Subscribe(ConsumerOptions{
+			Topic:            topic,
+			SubscriptionName: "unsub-then-close",
+		})
+		if !assert.Nil(t, err) {
+			return
+		}
+		pc := c.(*consumer).partitionConsumers()[0]
+		assert.Nil(t, c.Unsubscribe())
+		c.Close()
+
+		select {
+		case <-pc.closeCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("partition consumer closeCh not closed after Unsubscribe and Close")
+		}
+	}
+
+	// warm up the connection so its goroutines are part of the baseline
+	subscribeUnsubscribeClose()
+	time.Sleep(100 * time.Millisecond)
+	baseline := runtime.NumGoroutine()
+
+	const cycles = 20
+	for i := 0; i < cycles; i++ {
+		subscribeUnsubscribeClose()
+	}
+
+	// each leaked partition consumer held at least 3 goroutines: the events loop,
+	// the dispatcher and the ack grouping timer
+	assert.Eventually(t, func() bool {
+		return runtime.NumGoroutine() < baseline+cycles
+	}, 5*time.Second, 100*time.Millisecond,
+		"goroutines grew from %d to %d over %d unsubscribe+close cycles", baseline, runtime.NumGoroutine(), cycles)
 }
 
 func TestConsumerGetLastMessageIDs(t *testing.T) {

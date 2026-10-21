@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"sync"
@@ -552,6 +553,47 @@ func TestGrabConn_ConnResetOnAddHandlerFailure(t *testing.T) {
 		"pc.conn must be reset to nil on first-call AddConsumeHandler failure")
 }
 
+func TestUnsubscribeReleasesPartitionConsumer(t *testing.T) {
+	cnx := newSpyConnection()
+	rpc := &grabConnSpyRPCClient{cnx: cnx}
+	pc := newGrabConnTestConsumer(cnx, rpc)
+	pc.eventsCh = make(chan interface{}, 10)
+	pc.closeCh = make(chan struct{})
+	pc.ctx, pc.cancelFunc = context.WithCancel(context.Background())
+	pc.ackGroupingTracker = newAckGroupingTracker(nil,
+		func(id MessageID) { pc.sendIndividualAck(id) },
+		func(id MessageID) { pc.sendCumulativeAck(id) },
+		func(ids []*pb.MessageIdData) { pc.eventsCh <- &ackListRequest{msgIDs: ids} })
+	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(1, pc)
+	pc.setConsumerState(consumerReady)
+
+	loopExited := make(chan struct{})
+	go func() {
+		pc.runEventsLoop()
+		close(loopExited)
+	}()
+
+	assert.NoError(t, pc.unsubscribe(false))
+	assert.Equal(t, consumerState(consumerClosed), pc.getConsumerState())
+	assert.True(t, cnx.handlerRemoved.Load())
+	assert.Error(t, pc.ctx.Err())
+	assert.False(t, rpc.closeSentOnCnx.Load(), "the broker already dropped the unsubscribed consumer")
+
+	select {
+	case <-pc.closeCh:
+	default:
+		t.Fatal("closeCh not closed after a successful unsubscribe")
+	}
+	select {
+	case <-loopExited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("events loop still running after a successful unsubscribe")
+	}
+
+	// Close after Unsubscribe is a no-op and must not block on the exited events loop.
+	pc.Close()
+}
+
 // --- Helpers
 
 // newGrabConnTestConsumer builds a minimal partitionConsumer wired to the
@@ -692,6 +734,8 @@ func (r *grabConnSpyRPCClient) RequestOnCnx(_ internal.Connection, _ uint64,
 	case pb.BaseCommand_CLOSE_CONSUMER:
 		r.closeSentOnCnx.Store(true)
 		return nil, nil
+	case pb.BaseCommand_UNSUBSCRIBE:
+		return &internal.RPCResult{}, nil
 	case pb.BaseCommand_SUBSCRIBE:
 		// handled below
 	default:
