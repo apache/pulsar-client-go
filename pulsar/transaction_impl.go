@@ -201,17 +201,14 @@ func (txn *transaction) registerAckTopic(topic string, subName string) error {
 		topic:        topic,
 		subscription: subName,
 	}
-	_, ok := txn.registerAckSubscriptions[sub]
-	if !ok {
-		txn.mu.Lock()
-		defer txn.mu.Unlock()
-		if _, ok = txn.registerAckSubscriptions[sub]; !ok {
-			err := txn.tcClient.addSubscriptionToTxn(&txn.txnID, topic, subName)
-			if err != nil {
-				return err
-			}
-			txn.registerAckSubscriptions[sub] = true
+	txn.mu.Lock()
+	defer txn.mu.Unlock()
+	if _, ok := txn.registerAckSubscriptions[sub]; !ok {
+		err := txn.tcClient.addSubscriptionToTxn(&txn.txnID, topic, subName)
+		if err != nil {
+			return err
 		}
+		txn.registerAckSubscriptions[sub] = true
 	}
 	return nil
 }
