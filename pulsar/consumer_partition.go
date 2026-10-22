@@ -560,14 +560,22 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 	}
 
 	trackingID := toTrackingMessageID(msgID)
+	if txn != nil && pc.options.enableBatchIndexAck && trackingID != nil && trackingID.tracker != nil {
+		// Transaction ACK sets must contain only this message, not previously acknowledged indexes.
+		id := *trackingID
+		id.tracker = newAckTracker(uint(id.batchSize), nil)
+		trackingID = &id
+	}
 
 	if trackingID != nil && trackingID.ack() {
 		// All messages in the same batch have been acknowledged, we only need to acknowledge the
 		// MessageID that represents the entry that stores the whole batch
 		trackingID = &trackingMessageID{
 			messageID: &messageID{
-				ledgerID: trackingID.ledgerID,
-				entryID:  trackingID.entryID,
+				ledgerID:  trackingID.ledgerID,
+				entryID:   trackingID.entryID,
+				batchIdx:  -1,
+				batchSize: trackingID.batchSize,
 			},
 		}
 		pc.metrics.AcksCounter.Inc()
@@ -622,6 +630,10 @@ func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
 	messageIDs[0] = &pb.MessageIdData{
 		LedgerId: proto.Uint64(uint64(msgID.ledgerID)),
 		EntryId:  proto.Uint64(uint64(msgID.entryID)),
+	}
+	// The broker uses the batch size to decrement the consumer's unacked count.
+	if msgID.batchSize > 0 {
+		messageIDs[0].BatchSize = proto.Int32(msgID.batchSize)
 	}
 	if pc.options.enableBatchIndexAck && msgID.tracker != nil {
 		ackSet := msgID.tracker.toAckSet()
