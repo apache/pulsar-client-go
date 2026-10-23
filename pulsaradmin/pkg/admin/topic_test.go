@@ -228,7 +228,9 @@ func TestPartitionState(t *testing.T) {
 	assert.Equal(t, sub.LastMarkDeleteAdvancedTimestamp, int64(0))
 	assert.Equal(t, sub.IsDurable, true)
 	assert.Equal(t, sub.AllowOutOfOrderDelivery, false)
-	assert.Equal(t, sub.ConsumersAfterMarkDeletePosition, map[string]string{})
+	// apache/pulsar#26687 (PIP-379, Pulsar 5.0) removed consumersAfterMarkDeletePosition
+	// from the subscription stats, so the field may be absent (nil) instead of an empty map.
+	assert.Empty(t, sub.ConsumersAfterMarkDeletePosition)
 	assert.Equal(t, sub.NonContiguousDeletedMessagesRanges, 0)
 	assert.Equal(t, sub.NonContiguousDeletedMessagesRangesSrzSize, 0)
 	assert.Equal(t, sub.DelayedMessageIndexSizeInBytes, int64(0))

@@ -79,6 +79,7 @@ const (
 	errMsgTopicTerminated                       = "TopicTerminatedError"
 	errMsgProducerBlockedQuotaExceededException = "ProducerBlockedQuotaExceededException"
 	errMsgProducerFenced                        = "ProducerFenced"
+	errMsgTopicEpochMoved                       = "Topic epoch has already moved"
 )
 
 func init() {
@@ -346,8 +347,12 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 	}
 
 	p.producerName = res.Response.ProducerSuccess.GetProducerName()
-	nextTopicEpoch := res.Response.ProducerSuccess.GetTopicEpoch()
-	p.topicEpoch = &nextTopicEpoch
+	if res.Response.ProducerSuccess.TopicEpoch != nil {
+		p.topicEpoch = proto.Uint64(res.Response.ProducerSuccess.GetTopicEpoch())
+	} else {
+		// Drop any previously tracked epoch if the broker did not assign one.
+		p.topicEpoch = nil
+	}
 
 	if p.options.Encryption != nil {
 		p.encryptor = internalcrypto.NewProducerEncryptor(p.options.Encryption.Keys,
@@ -530,9 +535,15 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		}
 
 		if strings.Contains(errMsg, errMsgProducerFenced) {
-			p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
-			p.doClose(errors.Join(ErrProducerFenced, err))
-			return struct{}{}, nil
+			if p.canRecoverFromFenced(errMsg) {
+				p.log.Warn("Producer was fenced because the topic epoch has already moved, " +
+					"dropping the stale topic epoch and retrying")
+				p.topicEpoch = nil
+			} else {
+				p.log.Warn("Producer was fenced, failing pending messages, stop reconnecting")
+				p.doClose(errors.Join(ErrProducerFenced, err))
+				return struct{}{}, nil
+			}
 		}
 		p.log.WithError(err).Warn("Failed to reconnect to broker, will retry later.")
 
@@ -554,6 +565,18 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		}).Info("Reconnecting to broker")
 		return delayReconnectTime
 	})
+}
+
+// canRecoverFromFenced reports whether a ProducerFenced failure received while
+// reconnecting can be recovered from by dropping the stale topic epoch and
+// retrying, instead of permanently fencing the producer. This only applies to
+// WaitForExclusive producers rejected because the topic epoch has already
+// moved forward: on the next attempt the broker either grants the ownership
+// back with a new epoch or queues the producer behind the current owner.
+func (p *partitionProducer) canRecoverFromFenced(errMsg string) bool {
+	return p.options.ProducerAccessMode == ProducerAccessModeWaitForExclusive &&
+		p.topicEpoch != nil &&
+		strings.Contains(errMsg, errMsgTopicEpochMoved)
 }
 
 func (p *partitionProducer) runEventsLoop() {
@@ -1412,14 +1435,22 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 			response.GetMessageId(), response.GetSequenceId(), pi.sequenceID)
 		return
 	}
-	// The ack was indeed for the expected item in the queue, we can remove it and trigger the callback
-	p.pendingQueue.Poll()
+	// Only the owner that removes this exact item may complete its requests. A
+	// timeout, close, or another receipt may have claimed it since Peek().
+	if p.pendingQueue.CompareAndPoll(func(item any) bool {
+		return item == pi
+	}) != pi {
+		return
+	}
 
 	now := time.Now().UnixNano()
 
 	// lock the pending item while sending the requests
 	pi.Lock()
 	defer pi.Unlock()
+	if pi.isDone {
+		return
+	}
 	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
 	batchSize := int32(len(pi.sendRequests))
 	for idx, i := range pi.sendRequests {
