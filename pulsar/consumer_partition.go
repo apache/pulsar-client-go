@@ -541,6 +541,10 @@ func (pc *partitionConsumer) unsubscribe(force bool) error {
 
 	// wait for the request to complete
 	<-req.doneCh
+	if req.unsubscribed {
+		// Close() skips a consumer that is no longer ready, so release its resources here.
+		pc.closeAndWait(true)
+	}
 	return req.err
 }
 
@@ -690,6 +694,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	}
 	pc.log.Infof("The consumer[%d] successfully unsubscribed", pc.consumerID)
 	pc.setConsumerState(consumerClosed)
+	unsub.unsubscribed = true
 }
 
 func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
@@ -1039,6 +1044,12 @@ func (pc *partitionConsumer) Close() {
 		return
 	}
 
+	pc.closeAndWait(false)
+}
+
+// closeAndWait stops the consumer's timers and goroutines and waits for the events loop to exit.
+// unsubscribed skips closing the consumer on the broker, which already removed it.
+func (pc *partitionConsumer) closeAndWait(unsubscribed bool) {
 	pc.cancelFunc()
 
 	// flush all pending ACK requests and terminate the timer goroutine
@@ -1047,7 +1058,7 @@ func (pc *partitionConsumer) Close() {
 	// close chunkedMsgCtxMap
 	pc.chunkedMsgCtxMap.Close()
 
-	req := &closeRequest{doneCh: make(chan struct{})}
+	req := &closeRequest{doneCh: make(chan struct{}), unsubscribed: unsubscribed}
 	pc.eventsCh <- req
 
 	// wait for request to finish
@@ -1974,13 +1985,15 @@ type ackWithTxnRequest struct {
 }
 
 type unsubscribeRequest struct {
-	doneCh chan struct{}
-	force  bool
-	err    error
+	doneCh       chan struct{}
+	force        bool
+	err          error
+	unsubscribed bool
 }
 
 type closeRequest struct {
-	doneCh chan struct{}
+	doneCh       chan struct{}
+	unsubscribed bool
 }
 
 type redeliveryRequest struct {
@@ -2053,6 +2066,12 @@ func (pc *partitionConsumer) runEventsLoop() {
 
 func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	defer close(req.doneCh)
+	if req.unsubscribed {
+		pc.closeCompressionProviders()
+		close(pc.closeCh)
+		return
+	}
+
 	state := pc.getConsumerState()
 	if state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
@@ -2085,6 +2104,17 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		pc.log.Info("Closed consumer")
 	}
 
+	pc.closeCompressionProviders()
+
+	pc.setConsumerState(consumerClosed)
+	pc._getConn().DeleteConsumeHandler(pc.consumerID)
+	if pc.nackTracker != nil {
+		pc.nackTracker.Close()
+	}
+	close(pc.closeCh)
+}
+
+func (pc *partitionConsumer) closeCompressionProviders() {
 	pc.compressionProviders.Range(func(_, v interface{}) bool {
 		if provider, ok := v.(compression.Provider); ok {
 			provider.Close()
@@ -2094,13 +2124,6 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		}
 		return true
 	})
-
-	pc.setConsumerState(consumerClosed)
-	pc._getConn().DeleteConsumeHandler(pc.consumerID)
-	if pc.nackTracker != nil {
-		pc.nackTracker.Close()
-	}
-	close(pc.closeCh)
 }
 
 func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {
