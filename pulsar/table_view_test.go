@@ -474,7 +474,7 @@ func TestTableViewEntriesEmpty(t *testing.T) {
 // a "concurrent map read and map write" panic when readers iterate the
 // returned map while writers mutate the internal data map. Run with
 // `go test -race` to additionally detect data races.
-func TestTableViewEntriesConcurrent(t *testing.T) {
+func TestTableViewEntriesConcurrent(_ *testing.T) {
 	tv := &TableViewImpl{
 		data: make(map[string]interface{}),
 	}
