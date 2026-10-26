@@ -464,7 +464,8 @@ func TestTxn_TransactionAbort(t *testing.T) {
 }
 
 // Messages of different transactions, and messages without a transaction, sent through one batching producer must
-// not share a batch: each batch is a single broker entry, committed or aborted as a whole.
+// not share a batch: each batch is a single broker entry, committed or aborted as a whole. Each message must be
+// received exactly once.
 func TestTxn_BatchingDoesNotMixTransactions(t *testing.T) {
 	topic := newTopicName()
 	_, client := createClientWithTC(t)
@@ -483,13 +484,22 @@ func TestTxn_BatchingDoesNotMixTransactions(t *testing.T) {
 	require.NoError(t, err)
 	defer producer.Close()
 
+	// The broker takes a topic's first transaction buffer snapshot on its first transactional publish. Meanwhile, it
+	// holds back transactional publishes but not the others, so it acks out of order and the producer reconnects and
+	// resends, duplicating messages. Take the snapshot first so that only batching is under test.
+	warmup, err := client.NewTransaction(txnTimeout)
+	require.NoError(t, err)
+	_, err = producer.Send(context.Background(), &ProducerMessage{Transaction: warmup, Payload: []byte("warmup")})
+	require.NoError(t, err)
+	require.NoError(t, warmup.Abort(context.Background()))
+
 	committed, err := client.NewTransaction(txnTimeout)
 	require.NoError(t, err)
 	aborted, err := client.NewTransaction(txnTimeout)
 	require.NoError(t, err)
 
 	// Interleave the messages so that, without the fix, they would share batches.
-	expected := map[string]bool{}
+	expected := map[string]int{}
 	for i := 0; i < 10; i++ {
 		for _, m := range []struct {
 			prefix string
@@ -497,7 +507,7 @@ func TestTxn_BatchingDoesNotMixTransactions(t *testing.T) {
 		}{{"committed", committed}, {"aborted", aborted}, {"none", nil}} {
 			payload := fmt.Sprintf("%s-%d", m.prefix, i)
 			if m.prefix != "aborted" {
-				expected[payload] = true
+				expected[payload] = 1
 			}
 			producer.SendAsync(context.Background(), &ProducerMessage{
 				Transaction: m.txn,
@@ -512,7 +522,7 @@ func TestTxn_BatchingDoesNotMixTransactions(t *testing.T) {
 	require.NoError(t, committed.Commit(context.Background()))
 	require.NoError(t, aborted.Abort(context.Background()))
 
-	received := map[string]bool{}
+	received := map[string]int{}
 	for {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		msg, err := consumer.Receive(ctx)
@@ -520,7 +530,7 @@ func TestTxn_BatchingDoesNotMixTransactions(t *testing.T) {
 		if err != nil {
 			break
 		}
-		received[string(msg.Payload())] = true
+		received[string(msg.Payload())]++
 		require.NoError(t, consumer.Ack(msg))
 	}
 	assert.Equal(t, expected, received)
