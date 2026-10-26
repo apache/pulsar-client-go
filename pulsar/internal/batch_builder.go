@@ -185,6 +185,18 @@ func (bc *batchContainer) hasSameSchema(schemaVersion []byte) bool {
 	return bytes.Equal(bc.msgMetadata.SchemaVersion, schemaVersion)
 }
 
+func (bc *batchContainer) hasSameTxn(useTxn bool, mostSigBits uint64, leastSigBits uint64) bool {
+	if bc.numMessages == 0 {
+		return true
+	}
+	if !useTxn {
+		return bc.msgMetadata.TxnidMostBits == nil
+	}
+	return bc.msgMetadata.TxnidMostBits != nil &&
+		bc.msgMetadata.GetTxnidMostBits() == mostSigBits &&
+		bc.msgMetadata.GetTxnidLeastBits() == leastSigBits
+}
+
 // Add will add single message to batch.
 func (bc *batchContainer) Add(
 	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
@@ -207,6 +219,10 @@ func (bc *batchContainer) Add(
 		return false
 	} else if multiSchemaEnabled && !bc.hasSameSchema(schemaVersion) {
 		// The current batch has a different schema. Producer has to call Flush() to
+		return false
+	} else if !bc.hasSameTxn(useTxn, mostSigBits, leastSigBits) {
+		// A batch is a single entry, committed or aborted as a whole, so it can't mix transactions.
+		// Producer has to call Flush() first.
 		return false
 	}
 
