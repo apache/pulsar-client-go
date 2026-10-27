@@ -287,3 +287,36 @@ func TestTrackerPendingAcks(t *testing.T) {
 	assert.True(t, found)
 	assert.Equal(t, 0, len(ackSet)) // all messages in the batch are acknowledged
 }
+
+func TestIsNonPersistentTopic(t *testing.T) {
+	for _, topic := range []string{
+		"non-persistent://public/default/t",
+		"non-persistent://tenant/ns/local-name",
+		"non-persistent://public/default/t-partition-0",
+	} {
+		assert.True(t, isNonPersistentTopic(topic), topic)
+	}
+	for _, topic := range []string{
+		"persistent://public/default/t",
+		"public/default/t", // short form, persistent by default
+	} {
+		assert.False(t, isNonPersistentTopic(topic), topic)
+	}
+}
+
+func TestNonPersistentAckGroupingTrackerIsNoOp(t *testing.T) {
+	var tracker ackGroupingTracker = newNonPersistentAckGroupingTracker()
+
+	// The placeholder MessageID non-persistent messages carry must never
+	// count as a duplicate.
+	for i := 0; i < 3; i++ {
+		assert.False(t, tracker.isDuplicate(&messageID{ledgerID: 0, entryID: 0}))
+	}
+
+	// Acknowledgments on non-persistent topics are discarded.
+	tracker.add(&messageID{ledgerID: 0, entryID: 0})
+	tracker.addCumulative(&messageID{ledgerID: 0, entryID: 0})
+	tracker.flush()
+	tracker.flushAndClean()
+	tracker.close()
+}
