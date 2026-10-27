@@ -25,6 +25,7 @@ import (
 	"time"
 
 	pb "github.com/apache/pulsar-client-go/integration-tests/pb"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -591,5 +592,44 @@ func TestTableViewEntriesIntegration(t *testing.T) {
 		if assert.NotNil(t, got, "key %s should still exist", key) {
 			assert.Equal(t, valuePrefix+key, *(got.(*string)))
 		}
+	}
+}
+
+// mockReader is a minimal Reader stub whose Next blocks until ctx is cancelled.
+type mockReader struct {
+	topic string
+}
+
+func (m *mockReader) Topic() string                             { return m.topic }
+func (m *mockReader) Next(ctx context.Context) (Message, error) { <-ctx.Done(); return nil, ctx.Err() }
+func (m *mockReader) HasNext() bool                             { return false }
+func (m *mockReader) Close()                                    {}
+func (m *mockReader) Seek(MessageID) error                      { return nil }
+func (m *mockReader) SeekByTime(time.Time) error                { return nil }
+func (m *mockReader) GetLastMessageID() (MessageID, error)      { return nil, nil }
+
+// TestCloseCallsCancelFuncToAvoidDeadlock verifies that Close() cancels
+// each reader's context so that watchReaderForNewMessages can exit and
+// Close() does not deadlock.
+func TestCloseCallsCancelFuncToAvoidDeadlock(t *testing.T) {
+	tv := &TableViewImpl{
+		data:          make(map[string]interface{}),
+		cancelReaders: make(map[string]cancelReader),
+		logger:        log.DefaultNopLogger(),
+		closedCh:      make(chan struct{}),
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := &mockReader{topic: "test-topic"}
+	tv.cancelReaders["test-topic"] = cancelReader{reader: reader, cancelFunc: cancel}
+	go tv.watchReaderForNewMessages(ctx, reader)
+
+	done := make(chan struct{})
+	go func() { tv.Close(); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close() deadlocked: cancelFunc() was probably not called")
 	}
 }
