@@ -189,6 +189,7 @@ func (bc *batchContainer) hasSameTxn(useTxn bool, mostSigBits uint64, leastSigBi
 	if bc.numMessages == 0 {
 		return true
 	}
+	// A message outside a transaction only joins a batch outside one too. Txn id bits are set together, so one suffices.
 	if !useTxn {
 		return bc.msgMetadata.TxnidMostBits == nil
 	}
