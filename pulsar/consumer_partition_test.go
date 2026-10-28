@@ -913,3 +913,69 @@ func (m *grabConnMockPool) GetConnection(_ *url.URL, _ *url.URL, _ int32) (inter
 	}
 	return m.cnx, nil
 }
+
+type closeRecordingConnection struct {
+	dummyConnection
+	closedRequests []uint64
+}
+
+func (c *closeRecordingConnection) CloseRequest(requestID uint64, _ error) {
+	c.closedRequests = append(c.closedRequests, requestID)
+}
+
+func TestConnectionClosedCancelsInflightAckOnBrokerClose(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	pc := &partitionConsumer{
+		client:          &client{},
+		log:             log.DefaultNopLogger(),
+		connectClosedCh: make(chan *connectionClosed, 1),
+	}
+	pc.inflightAck.Store(&inflightAckRequest{requestID: 42, cnx: cnx})
+
+	pc.ConnectionClosed(cnx, &pb.CommandCloseConsumer{})
+
+	assert.Equal(t, []uint64{42}, cnx.closedRequests)
+	select {
+	case <-pc.connectClosedCh:
+	default:
+		t.Fatal("reconnect was not requested")
+	}
+}
+
+func TestConnectionClosedKeepsInflightAckOnConnectionFailure(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	pc := &partitionConsumer{
+		log:             log.DefaultNopLogger(),
+		connectClosedCh: make(chan *connectionClosed, 1),
+	}
+	pc.inflightAck.Store(&inflightAckRequest{requestID: 42, cnx: cnx})
+
+	pc.ConnectionClosed(cnx, nil)
+
+	assert.Empty(t, cnx.closedRequests)
+	select {
+	case <-pc.connectClosedCh:
+	default:
+		t.Fatal("reconnect was not requested")
+	}
+}
+
+func TestConnectionClosedSkipsInflightAckFromOtherConnection(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	other := &closeRecordingConnection{}
+	pc := &partitionConsumer{
+		client:          &client{},
+		log:             log.DefaultNopLogger(),
+		connectClosedCh: make(chan *connectionClosed, 1),
+	}
+	pc.inflightAck.Store(&inflightAckRequest{requestID: 42, cnx: other})
+
+	pc.ConnectionClosed(cnx, &pb.CommandCloseConsumer{})
+
+	assert.Empty(t, cnx.closedRequests)
+	select {
+	case <-pc.connectClosedCh:
+	default:
+		t.Fatal("reconnect was not requested")
+	}
+}
