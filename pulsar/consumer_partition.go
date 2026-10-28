@@ -187,6 +187,15 @@ type ConsumerEventListener interface {
 	BecameInactive(consumer Consumer, topicName string, partition int32)
 }
 
+// inflightAckRequest is the ack-with-response currently being waited for
+// by the events loop.
+type inflightAckRequest struct {
+	requestID uint64
+	cnx       internal.Connection
+}
+
+var errAckConsumerClosed = errors.New("consumer closed before ack response was received")
+
 type partitionConsumer struct {
 	client *client
 
@@ -197,6 +206,8 @@ type partitionConsumer struct {
 
 	conn         atomic.Pointer[internal.Connection]
 	cnxKeySuffix int32
+
+	inflightAck atomic.Pointer[inflightAckRequest]
 
 	topic        string
 	name         string
@@ -1242,7 +1253,10 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 
 	if pc.options.ackWithResponse {
 		cmdAck.RequestId = proto.Uint64(reqID)
-		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+		cnx := pc._getConn()
+		pc.inflightAck.Store(&inflightAckRequest{requestID: reqID, cnx: cnx})
+		_, err := pc.client.rpcClient.RequestOnCnx(cnx, reqID, pb.BaseCommand_ACK, cmdAck)
+		pc.inflightAck.Store(nil)
 		if err != nil {
 			pc.log.WithError(err).Error("Ack with response error")
 			req.err = err
@@ -1260,12 +1274,15 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 func (pc *partitionConsumer) internalAckList(request *ackListRequest) {
 	if request.errCh != nil {
 		reqID := pc.client.rpcClient.NewRequestID()
-		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, &pb.CommandAck{
+		cnx := pc._getConn()
+		pc.inflightAck.Store(&inflightAckRequest{requestID: reqID, cnx: cnx})
+		_, err := pc.client.rpcClient.RequestOnCnx(cnx, reqID, pb.BaseCommand_ACK, &pb.CommandAck{
 			AckType:    pb.CommandAck_Individual.Enum(),
 			ConsumerId: proto.Uint64(pc.consumerID),
 			MessageId:  request.msgIDs,
 			RequestId:  &reqID,
 		})
+		pc.inflightAck.Store(nil)
 		request.errCh <- err
 		return
 	}
@@ -1786,7 +1803,7 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 	return &encCtx
 }
 
-func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
+func (pc *partitionConsumer) ConnectionClosed(cnx internal.Connection, closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
 	pc.reconnectCount.Inc()
@@ -1801,6 +1818,14 @@ func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseCons
 	default:
 		// Reconnect has already been requested so we do not block the
 		// connection callback.
+	}
+
+	// The broker does not always answer in-flight acks when it closes the
+	// consumer, so fail the wait instead of waiting for the timeout.
+	if closeConsumer != nil {
+		if ack := pc.inflightAck.Load(); ack != nil && ack.cnx == cnx {
+			cnx.CloseRequest(ack.requestID, errAckConsumerClosed)
+		}
 	}
 }
 

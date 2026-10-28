@@ -332,6 +332,9 @@ func (dummyConnection) SendRequestNoWait(_ *pb.BaseCommand) error {
 	return nil
 }
 
+func (dummyConnection) CloseRequest(_ uint64, _ error) {
+}
+
 func (dummyConnection) WriteData(_ context.Context, _ internal.Buffer) {
 }
 
