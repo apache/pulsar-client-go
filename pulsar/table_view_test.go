@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -596,6 +597,41 @@ func TestTableViewEntriesIntegration(t *testing.T) {
 	}
 }
 
+// recordingLogger wraps a nop logger and counts Errorf invocations so
+// shutdown tests can assert that normal termination paths
+// (ConsumerClosed / context cancellation) emit no error logs while
+// transient failures do. It embeds the package's nop logger to inherit
+// no-op implementations for every method we do not care about.
+type recordingLogger struct {
+	log.Logger
+	mu        sync.Mutex
+	errorMsgs []string
+}
+
+func newRecordingLogger() *recordingLogger {
+	return &recordingLogger{Logger: log.DefaultNopLogger()}
+}
+
+func (r *recordingLogger) Errorf(format string, args ...interface{}) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.errorMsgs = append(r.errorMsgs, fmt.Sprintf(format, args...))
+}
+
+func (r *recordingLogger) errorLogCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.errorMsgs)
+}
+
+func (r *recordingLogger) snapshotErrorMsgs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, len(r.errorMsgs))
+	copy(out, r.errorMsgs)
+	return out
+}
+
 // mockReader is a lightweight Reader implementation used to drive
 // watchReaderForNewMessages in unit tests. nextFn is invoked for every
 // call to Next so each test can script the exact (message, error) sequence
@@ -623,9 +659,10 @@ func (m *mockReader) GetLastMessageID() (MessageID, error) { return nil, nil }
 // exits immediately when the reader reports ConsumerClosed, without entering
 // another iteration.
 func TestWatchReaderExitsOnConsumerClosed(t *testing.T) {
+	rec := newRecordingLogger()
 	tv := &TableViewImpl{
 		data:   make(map[string]interface{}),
-		logger: log.DefaultNopLogger(),
+		logger: rec,
 	}
 
 	reader := &mockReader{
@@ -649,14 +686,18 @@ func TestWatchReaderExitsOnConsumerClosed(t *testing.T) {
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&reader.nextCalls),
 		"ConsumerClosed must cause an immediate exit without further Next calls")
+	assert.Equal(t, 0, rec.errorLogCount(),
+		"ConsumerClosed is a normal shutdown and must not produce an error log, got: %v",
+		rec.snapshotErrorMsgs())
 }
 
 // TestWatchReaderExitsOnContextCanceled verifies that watchReaderForNewMessages
 // exits immediately once the context is cancelled.
 func TestWatchReaderExitsOnContextCanceled(t *testing.T) {
+	rec := newRecordingLogger()
 	tv := &TableViewImpl{
 		data:   make(map[string]interface{}),
-		logger: log.DefaultNopLogger(),
+		logger: rec,
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -685,6 +726,9 @@ func TestWatchReaderExitsOnContextCanceled(t *testing.T) {
 
 	assert.Equal(t, int32(1), atomic.LoadInt32(&reader.nextCalls),
 		"a cancelled context must cause an immediate exit without further Next calls")
+	assert.Equal(t, 0, rec.errorLogCount(),
+		"context cancellation is a normal shutdown and must not produce an error log, got: %v",
+		rec.snapshotErrorMsgs())
 }
 
 // TestWatchReaderRecoversFromTransientError verifies that watchReaderForNewMessages
@@ -692,15 +736,12 @@ func TestWatchReaderExitsOnContextCanceled(t *testing.T) {
 // continues, a subsequent valid message is handled, and only ConsumerClosed
 // finally stops it.
 func TestWatchReaderRecoversFromTransientError(t *testing.T) {
+	rec := newRecordingLogger()
 	tv := &TableViewImpl{
-		data:    make(map[string]interface{}),
-		logger:  log.DefaultNopLogger(),
+		data:    map[string]interface{}{"k1": "existing value"},
+		logger:  rec,
 		options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
 	}
-
-	// Tombstone message: empty payload triggers the delete branch in
-	// handleMessage and avoids any schema decoding.
-	delivered := &mockMessage{key: "k1", payload: []byte{}}
 
 	reader := &mockReader{
 		topic: "persistent://public/default/unit-test",
@@ -709,7 +750,7 @@ func TestWatchReaderRecoversFromTransientError(t *testing.T) {
 			case 1:
 				return nil, fmt.Errorf("transient read error")
 			case 2:
-				return delivered, nil
+				return &mockMessage{key: "k1", payload: []byte{}}, nil
 			default:
 				return nil, newError(ConsumerClosed, "consumer closed")
 			}
@@ -725,11 +766,14 @@ func TestWatchReaderRecoversFromTransientError(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("watchReaderForNewMessages did not exit after ConsumerClosed following transient error")
+		t.Fatal("watchReaderForNewMessages did not exit after ConsumerClosed")
 	}
 
-	assert.Equal(t, int32(3), atomic.LoadInt32(&reader.nextCalls),
-		"loop must survive transient error, deliver one message and then exit on ConsumerClosed")
+	assert.Equal(t, int32(3), atomic.LoadInt32(&reader.nextCalls))
+	assert.False(t, tv.ContainsKey("k1"),
+		"tombstone after transient error must be handled")
+	assert.Equal(t, 1, rec.errorLogCount(),
+		"only the transient error should be logged, got: %v", rec.snapshotErrorMsgs())
 }
 
 // mockMessage is a minimal Message implementation sufficient for exercising
