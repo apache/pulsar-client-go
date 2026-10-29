@@ -21,10 +21,13 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	pb "github.com/apache/pulsar-client-go/integration-tests/pb"
+	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -593,3 +596,208 @@ func TestTableViewEntriesIntegration(t *testing.T) {
 		}
 	}
 }
+
+// recordingLogger wraps a nop logger and counts Errorf invocations so
+// shutdown tests can assert that normal termination paths
+// (ConsumerClosed / context cancellation) emit no error logs while
+// transient failures do. It embeds the package's nop logger to inherit
+// no-op implementations for every method we do not care about.
+type recordingLogger struct {
+	log.Logger
+	mu        sync.Mutex
+	errorMsgs []string
+}
+
+func newRecordingLogger() *recordingLogger {
+	return &recordingLogger{Logger: log.DefaultNopLogger()}
+}
+
+func (r *recordingLogger) Errorf(format string, args ...interface{}) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.errorMsgs = append(r.errorMsgs, fmt.Sprintf(format, args...))
+}
+
+func (r *recordingLogger) errorLogCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.errorMsgs)
+}
+
+func (r *recordingLogger) snapshotErrorMsgs() []string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]string, len(r.errorMsgs))
+	copy(out, r.errorMsgs)
+	return out
+}
+
+// mockReader is a lightweight Reader implementation used to drive
+// watchReaderForNewMessages in unit tests. nextFn is invoked for every
+// call to Next so each test can script the exact (message, error) sequence
+// it wants to exercise.
+type mockReader struct {
+	topic     string
+	nextCalls int32
+	nextFn    func(ctx context.Context, call int32) (Message, error)
+}
+
+func (m *mockReader) Topic() string { return m.topic }
+
+func (m *mockReader) Next(ctx context.Context) (Message, error) {
+	call := atomic.AddInt32(&m.nextCalls, 1)
+	return m.nextFn(ctx, call)
+}
+
+func (m *mockReader) HasNext() bool                        { return false }
+func (m *mockReader) Close()                               {}
+func (m *mockReader) Seek(MessageID) error                 { return nil }
+func (m *mockReader) SeekByTime(time.Time) error           { return nil }
+func (m *mockReader) GetLastMessageID() (MessageID, error) { return nil, nil }
+
+// TestWatchReaderExitsOnConsumerClosed verifies that watchReaderForNewMessages
+// exits immediately when the reader reports ConsumerClosed, without entering
+// another iteration.
+func TestWatchReaderExitsOnConsumerClosed(t *testing.T) {
+	rec := newRecordingLogger()
+	tv := &TableViewImpl{
+		data:   make(map[string]interface{}),
+		logger: rec,
+	}
+
+	reader := &mockReader{
+		topic: "persistent://public/default/unit-test",
+		nextFn: func(_ context.Context, _ int32) (Message, error) {
+			return nil, newError(ConsumerClosed, "consumer closed")
+		},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		tv.watchReaderForNewMessages(context.Background(), reader)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("watchReaderForNewMessages did not exit on ConsumerClosed")
+	}
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&reader.nextCalls),
+		"ConsumerClosed must cause an immediate exit without further Next calls")
+	assert.Equal(t, 0, rec.errorLogCount(),
+		"ConsumerClosed is a normal shutdown and must not produce an error log, got: %v",
+		rec.snapshotErrorMsgs())
+}
+
+// TestWatchReaderExitsOnContextCanceled verifies that watchReaderForNewMessages
+// exits immediately once the context is cancelled.
+func TestWatchReaderExitsOnContextCanceled(t *testing.T) {
+	rec := newRecordingLogger()
+	tv := &TableViewImpl{
+		data:   make(map[string]interface{}),
+		logger: rec,
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	reader := &mockReader{
+		topic: "persistent://public/default/unit-test",
+		nextFn: func(ctx context.Context, _ int32) (Message, error) {
+			<-ctx.Done()
+			return nil, ctx.Err()
+		},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		tv.watchReaderForNewMessages(ctx, reader)
+		close(done)
+	}()
+
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("watchReaderForNewMessages did not exit after context cancellation")
+	}
+
+	assert.Equal(t, int32(1), atomic.LoadInt32(&reader.nextCalls),
+		"a cancelled context must cause an immediate exit without further Next calls")
+	assert.Equal(t, 0, rec.errorLogCount(),
+		"context cancellation is a normal shutdown and must not produce an error log, got: %v",
+		rec.snapshotErrorMsgs())
+}
+
+// TestWatchReaderRecoversFromTransientError verifies that watchReaderForNewMessages
+// keeps consuming after a non-fatal error: the error is logged, the loop
+// continues, a subsequent valid message is handled, and only ConsumerClosed
+// finally stops it.
+func TestWatchReaderRecoversFromTransientError(t *testing.T) {
+	rec := newRecordingLogger()
+	tv := &TableViewImpl{
+		data:    map[string]interface{}{"k1": "existing value"},
+		logger:  rec,
+		options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
+	}
+
+	reader := &mockReader{
+		topic: "persistent://public/default/unit-test",
+		nextFn: func(_ context.Context, call int32) (Message, error) {
+			switch call {
+			case 1:
+				return nil, fmt.Errorf("transient read error")
+			case 2:
+				return &mockMessage{key: "k1", payload: []byte{}}, nil
+			default:
+				return nil, newError(ConsumerClosed, "consumer closed")
+			}
+		},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		tv.watchReaderForNewMessages(context.Background(), reader)
+		close(done)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("watchReaderForNewMessages did not exit after ConsumerClosed")
+	}
+
+	assert.Equal(t, int32(3), atomic.LoadInt32(&reader.nextCalls))
+	assert.False(t, tv.ContainsKey("k1"),
+		"tombstone after transient error must be handled")
+	assert.Equal(t, 1, rec.errorLogCount(),
+		"only the transient error should be logged, got: %v", rec.snapshotErrorMsgs())
+}
+
+// mockMessage is a minimal Message implementation sufficient for exercising
+// handleMessage's tombstone (empty payload) branch.
+type mockMessage struct {
+	key     string
+	payload []byte
+}
+
+func (m *mockMessage) Topic() string                            { return "" }
+func (m *mockMessage) ProducerName() string                     { return "" }
+func (m *mockMessage) Properties() map[string]string            { return nil }
+func (m *mockMessage) Payload() []byte                          { return m.payload }
+func (m *mockMessage) IsNullValue() bool                        { return len(m.payload) == 0 }
+func (m *mockMessage) ID() MessageID                            { return nil }
+func (m *mockMessage) PublishTime() time.Time                   { return time.Time{} }
+func (m *mockMessage) EventTime() time.Time                     { return time.Time{} }
+func (m *mockMessage) Key() string                              { return m.key }
+func (m *mockMessage) OrderingKey() string                      { return "" }
+func (m *mockMessage) RedeliveryCount() uint32                  { return 0 }
+func (m *mockMessage) IsReplicated() bool                       { return false }
+func (m *mockMessage) GetReplicatedFrom() string                { return "" }
+func (m *mockMessage) GetSchemaValue(_ interface{}) error       { return nil }
+func (m *mockMessage) SchemaVersion() []byte                    { return nil }
+func (m *mockMessage) GetEncryptionContext() *EncryptionContext { return nil }
+func (m *mockMessage) Index() *uint64                           { return nil }
+func (m *mockMessage) BrokerPublishTime() *time.Time            { return nil }
