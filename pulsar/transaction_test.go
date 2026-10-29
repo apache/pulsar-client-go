@@ -31,6 +31,111 @@ import (
 
 const txnTimeout = 10 * time.Minute
 
+func TestTxn_BatchAckUnackedMessages(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		batchSize       int
+		disableBatching bool
+		batchIndex      bool
+		ordinaryAck     bool
+		abortFirst      bool
+		separateTxns    bool
+	}{
+		{name: "batch", batchSize: 3},
+		{name: "single-message-batch", batchSize: 1},
+		{name: "non-batched", batchSize: 1, disableBatching: true},
+		{name: "batch-index", batchSize: 3, batchIndex: true},
+		{name: "ordinary-ack", batchSize: 3, ordinaryAck: true},
+		{name: "batch-abort", batchSize: 3, abortFirst: true},
+		{name: "batch-index-abort", batchSize: 3, batchIndex: true, abortFirst: true},
+		{name: "batch-index-separate-transactions", batchSize: 3, batchIndex: true, separateTxns: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			client, err := NewClient(ClientOptions{URL: serviceURL, EnableTransaction: true})
+			require.NoError(t, err)
+			defer client.Close()
+			topic := newTopicName()
+			consumer, err := client.Subscribe(ConsumerOptions{
+				Topic: topic, SubscriptionName: "batch-ack", Type: Shared,
+				EnableBatchIndexAcknowledgment: tc.batchIndex,
+			})
+			require.NoError(t, err)
+			defer consumer.Close()
+			producer, err := client.CreateProducer(ProducerOptions{
+				Topic: topic, DisableBatching: tc.disableBatching,
+				BatchingMaxPublishDelay: time.Hour,
+			})
+			require.NoError(t, err)
+			defer producer.Close()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			// Flush each producer batch explicitly; do not rely on timing to form batches.
+			for round := 0; round < 24; round++ {
+				sent := make(chan error, tc.batchSize)
+				for i := 0; i < tc.batchSize; i++ {
+					producer.SendAsync(ctx, &ProducerMessage{Payload: []byte(fmt.Sprintf("%d:%d", round, i))},
+						func(_ MessageID, _ *ProducerMessage, err error) { sent <- err })
+				}
+				require.NoError(t, producer.FlushWithCtx(ctx))
+				for i := 0; i < tc.batchSize; i++ {
+					select {
+					case err := <-sent:
+						require.NoError(t, err)
+					case <-ctx.Done():
+						t.Fatal(ctx.Err())
+					}
+				}
+				var txn Transaction
+				if !tc.ordinaryAck {
+					txn, err = client.NewTransaction(time.Minute)
+					require.NoError(t, err)
+				}
+				for i := 0; i < tc.batchSize; i++ {
+					msg, err := consumer.Receive(ctx)
+					require.NoError(t, err, "dispatch stopped at producer batch %d", round)
+					if !tc.disableBatching {
+						require.EqualValues(t, tc.batchSize, msg.ID().(*trackingMessageID).batchSize)
+					}
+					require.Equal(t, fmt.Sprintf("%d:%d", round, i), string(msg.Payload()))
+					if txn != nil {
+						require.NoError(t, consumer.AckWithTxn(msg, txn))
+						if tc.separateTxns && i < tc.batchSize-1 {
+							require.NoError(t, txn.Commit(ctx))
+							txn, err = client.NewTransaction(time.Minute)
+							require.NoError(t, err)
+						}
+					} else {
+						require.NoError(t, consumer.Ack(msg))
+					}
+				}
+				if tc.abortFirst {
+					require.NoError(t, txn.Abort(ctx))
+					txn, err = client.NewTransaction(time.Minute)
+					require.NoError(t, err)
+					for i := 0; i < tc.batchSize; i++ {
+						msg, err := consumer.Receive(ctx)
+						require.NoError(t, err, "aborted batch must be redelivered")
+						require.Equal(t, fmt.Sprintf("%d:%d", round, i), string(msg.Payload()))
+						require.NoError(t, consumer.AckWithTxn(msg, txn))
+					}
+				}
+				if txn != nil {
+					require.NoError(t, txn.Commit(ctx))
+				}
+			}
+			require.Eventually(t, func() bool {
+				stats, err := topicStats(topic)
+				if err != nil {
+					return false
+				}
+				sub := stats["subscriptions"].(map[string]interface{})["batch-ack"].(map[string]interface{})
+				return sub["unackedMessages"].(float64) == 0 && sub["msgBacklog"].(float64) == 0
+			}, 10*time.Second, 100*time.Millisecond, "committed batches must not leak unacknowledged messages")
+		})
+	}
+}
+
 func TestTxn_TCClient(t *testing.T) {
 	//1. Prepare: create PulsarClient and init transaction coordinator client.
 	topic := newTopicName()
