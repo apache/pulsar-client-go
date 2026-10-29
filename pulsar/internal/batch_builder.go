@@ -185,6 +185,19 @@ func (bc *batchContainer) hasSameSchema(schemaVersion []byte) bool {
 	return bytes.Equal(bc.msgMetadata.SchemaVersion, schemaVersion)
 }
 
+func (bc *batchContainer) hasSameTxn(useTxn bool, mostSigBits uint64, leastSigBits uint64) bool {
+	if bc.numMessages == 0 {
+		return true
+	}
+	// A message outside a transaction only joins a batch outside one too. Txn id bits are set together, so one suffices.
+	if !useTxn {
+		return bc.msgMetadata.TxnidMostBits == nil
+	}
+	return bc.msgMetadata.TxnidMostBits != nil &&
+		bc.msgMetadata.GetTxnidMostBits() == mostSigBits &&
+		bc.msgMetadata.GetTxnidLeastBits() == leastSigBits
+}
+
 // Add will add single message to batch.
 func (bc *batchContainer) Add(
 	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
@@ -207,6 +220,10 @@ func (bc *batchContainer) Add(
 		return false
 	} else if multiSchemaEnabled && !bc.hasSameSchema(schemaVersion) {
 		// The current batch has a different schema. Producer has to call Flush() to
+		return false
+	} else if !bc.hasSameTxn(useTxn, mostSigBits, leastSigBits) {
+		// A batch is a single entry, committed or aborted as a whole, so it can't mix transactions.
+		// Producer has to call Flush() first.
 		return false
 	}
 
@@ -233,6 +250,8 @@ func (bc *batchContainer) Add(
 		if useTxn {
 			bc.cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
 			bc.cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
+			bc.msgMetadata.TxnidMostBits = proto.Uint64(mostSigBits)
+			bc.msgMetadata.TxnidLeastBits = proto.Uint64(leastSigBits)
 		}
 	}
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
@@ -250,6 +269,10 @@ func (bc *batchContainer) reset() {
 	bc.msgMetadata.DeliverAtTime = nil
 	bc.msgMetadata.SchemaVersion = nil
 	bc.msgMetadata.Properties = nil
+	bc.msgMetadata.TxnidMostBits = nil
+	bc.msgMetadata.TxnidLeastBits = nil
+	bc.cmdSend.Send.TxnidMostBits = nil
+	bc.cmdSend.Send.TxnidLeastBits = nil
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
