@@ -51,19 +51,19 @@ func TestKeyBasedBatcherOrdering(t *testing.T) {
 		NewMetricsProvider(2, map[string]string{}, prometheus.DefaultRegisterer),
 		log.NewLoggerWithLogrus(logrus.StandardLogger()),
 		&mockEncryptor{},
+		NewSequenceIDGenerator(1),
 	)
 	if err != nil {
 		assert.Fail(t, "Failed to create key based batcher")
 	}
 
-	sequenceID := uint64(0)
 	for i := 0; i < 10; i++ {
 		metadata := &pb.SingleMessageMetadata{
 			OrderingKey: []byte(fmt.Sprintf("key-%d", i)),
 			PayloadSize: proto.Int32(0),
 		}
-		assert.True(t, keyBatcher.Add(metadata, &sequenceID, []byte("test"), nil, nil, time.Now(),
-			nil, false, false, 0, 0))
+		assert.True(t, keyBatcher.Add(metadata, []byte("test"), nil, nil, time.Now(),
+			nil, false, false, 0, 0, nil))
 	}
 
 	batches := keyBatcher.FlushBatches()
