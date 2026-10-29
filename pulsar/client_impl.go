@@ -175,7 +175,8 @@ func newClient(options ClientOptions) (Client, error) {
 	}
 
 	c.rpcClient, err = internal.NewRPCClient(options.URL, c.cnxPool, operationTimeout, logger, metrics,
-		options.ListenerName, tlsConfig, authProvider, toKeyValues(options.LookupProperties))
+		options.ListenerName, tlsConfig, authProvider, toKeyValues(options.LookupProperties),
+		options.BackOffPolicyFunc)
 	if err != nil {
 		return nil, err
 	}

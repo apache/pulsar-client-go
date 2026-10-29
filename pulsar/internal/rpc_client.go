@@ -92,12 +92,13 @@ type rpcClient struct {
 	urlLookupServiceMapLock sync.RWMutex
 	urlLookupServiceMap     map[string]LookupService
 	lookupProperties        []*pb.KeyValue
+	retryBackoff            func() backoff.Policy
 }
 
 func NewRPCClient(serviceURL string, pool ConnectionPool,
 	requestTimeout time.Duration, logger log.Logger, metrics *Metrics,
 	listenerName string, tlsConfig *TLSOptions, authProvider auth.Provider,
-	lookupProperties []*pb.KeyValue) (RPCClient, error) {
+	lookupProperties []*pb.KeyValue, retryBackoff func() backoff.Policy) (RPCClient, error) {
 	c := rpcClient{
 		pool:                pool,
 		requestTimeout:      requestTimeout,
@@ -108,6 +109,7 @@ func NewRPCClient(serviceURL string, pool ConnectionPool,
 		authProvider:        authProvider,
 		urlLookupServiceMap: make(map[string]LookupService),
 		lookupProperties:    lookupProperties,
+		retryBackoff:        retryBackoff,
 	}
 	lookupService, err := c.LookupService(serviceURL)
 	if err != nil {
@@ -122,7 +124,7 @@ func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
 	requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
 	var err error
 	var host *url.URL
-	bo := backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
+	bo := c.newRetryBackoff()
 	// we can retry these requests because this kind of request is
 	// not specific to any particular broker
 	opFn := func() (*RPCResult, error) {
@@ -149,6 +151,15 @@ func (c *rpcClient) requestToHost(serviceNameResolver *ServiceNameResolver,
 func (c *rpcClient) RequestToAnyBroker(requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
 	return c.requestToHost(c.lookupService.ServiceNameResolver(), requestID, cmdType, message)
+}
+
+// newRetryBackoff is the backoff of one request's retries: the client's
+// configured policy, else the default one doubling from 100ms.
+func (c *rpcClient) newRetryBackoff() backoff.Policy {
+	if c.retryBackoff != nil {
+		return c.retryBackoff()
+	}
+	return backoff.NewDefaultBackoffWithInitialBackOff(100 * time.Millisecond)
 }
 
 func (c *rpcClient) RequestToHost(serviceNameResolver *ServiceNameResolver, requestID uint64,
