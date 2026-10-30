@@ -65,13 +65,14 @@ func main() {
 
 	ctx := context.Background()
 	for i := 0; i < 10; i++ {
-		if msgId, err := producer.Send(ctx, &pulsar.ProducerMessage{
+		msgID, err := producer.Send(ctx, &pulsar.ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
-		}); err != nil {
+		})
+		if err != nil {
 			logger.Error("send message error", "error", err)
 			return
-		} else {
-			logger.Info("Published message", "msgId", msgId.String())
 		}
+
+		logger.Info("Published message", "msgId", msgID.String())
 	}
 }

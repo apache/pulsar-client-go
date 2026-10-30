@@ -23,6 +23,50 @@
 
 All notable changes to this project will be documented in this file.
 
+[0.21.0] 2026-07-15
+
+## What's Changed
+
+* [improve] Reduce unnecessary creation of retry topics and DLQ topics ([#1459](https://github.com/apache/pulsar-client-go/pull/1459)) by @zjxxzjwang
+* [feat] Add offload policies API and tests to pulsaradmin ([#1512](https://github.com/apache/pulsar-client-go/pull/1512)) by @freeznet
+* [fix] Escape configuration values in `UpdateDynamicConfiguration` ([#1505](https://github.com/apache/pulsar-client-go/pull/1505)) by @Demogorgon314
+* [chore] Update Go to 1.25 and update the linter ([#1515](https://github.com/apache/pulsar-client-go/pull/1515)) by @kellyfj
+* [improve] Implement `tls_client_auth` for OAuth2 ([#1514](https://github.com/apache/pulsar-client-go/pull/1514)) by @izumo27
+* [chore] Update Testcontainers and change the Docker dependency to Moby ([#1513](https://github.com/apache/pulsar-client-go/pull/1513)) by @kellyfj
+* [docs] Add chunking documentation for DLQ/RLQ and integration tests ([#1511](https://github.com/apache/pulsar-client-go/pull/1511)) by @geniusjoe
+* [fix] Add bounds check for partition index `int32` conversion ([#1517](https://github.com/apache/pulsar-client-go/pull/1517)) by @merlimat
+
+## New Contributors
+
+* @zjxxzjwang made their first contribution in [#1459](https://github.com/apache/pulsar-client-go/pull/1459)
+* @kellyfj made their first contribution in [#1515](https://github.com/apache/pulsar-client-go/pull/1515)
+
+[0.20.0] 2026-06-01
+
+## What's Changed
+
+* [test] Add localhost advertised address to standalone startup ([#1480](https://github.com/apache/pulsar-client-go/pull/1480)) by @RobertIndie
+* [fix] Deliver null-value tombstones instead of discarding them ([#1482](https://github.com/apache/pulsar-client-go/pull/1482)) by @jcmfernandes
+* [fix] Fix race in `grabConn` dropping messages before handler registration ([#1476](https://github.com/apache/pulsar-client-go/pull/1476)) by @aleks-lazic
+* [fix] Add `batchIdx` to `messageID.String()` for batched messages ([#1491](https://github.com/apache/pulsar-client-go/pull/1491)) by @adrianiacobghiula
+* [feat] Add consumer `PriorityLevel` support ([#1487](https://github.com/apache/pulsar-client-go/pull/1487)) by @grishaf
+* [fix] Make access to `consumer.consumers` thread-safe ([#1494](https://github.com/apache/pulsar-client-go/pull/1494)) by @BewareMyPower
+* [fix] Fix connection panic caused by `WaitGroup` misuse on close ([#1484](https://github.com/apache/pulsar-client-go/pull/1484)) by @nodece
+* [test] Fix `TestPriorityConsumer` ([#1495](https://github.com/apache/pulsar-client-go/pull/1495)) by @nodece
+* [docs] Enhance `ConnectionTimeout` and `KeepAliveInterval` comments ([#1488](https://github.com/apache/pulsar-client-go/pull/1488)) by @geniusjoe
+* [fix] Add reconnect failure listener and auto-close on max retry exhaustion ([#1490](https://github.com/apache/pulsar-client-go/pull/1490)) by @PavelZeger
+* [fix] Fix deadlock when increasing partitioned consumers ([#1500](https://github.com/apache/pulsar-client-go/pull/1500)) by @BewareMyPower
+* [docs] Clarify `SendAsync` description ([#1485](https://github.com/apache/pulsar-client-go/pull/1485)) by @MukundaKatta
+* [fix] Remove default case in `waitWithContext` to prevent busy-spin deadlock ([#1503](https://github.com/apache/pulsar-client-go/pull/1503)) by @nodece
+
+## New Contributors
+
+* @jcmfernandes made their first contribution in [#1482](https://github.com/apache/pulsar-client-go/pull/1482)
+* @aleks-lazic made their first contribution in [#1476](https://github.com/apache/pulsar-client-go/pull/1476)
+* @grishaf made their first contribution in [#1487](https://github.com/apache/pulsar-client-go/pull/1487)
+* @PavelZeger made their first contribution in [#1490](https://github.com/apache/pulsar-client-go/pull/1490)
+* @MukundaKatta made their first contribution in [#1485](https://github.com/apache/pulsar-client-go/pull/1485)
+
 [0.19.0] 2026-04-07
 
 ## What's Changed
@@ -989,4 +1033,3 @@ Our thanks go to the following contributors from the community for helping this 
 - [banishee](https://github.com/banishee)
 - [archfish](https://github.com/archfish)
 - [Morsicus](https://github.com/Morsicus)
-

@@ -93,7 +93,59 @@ func (lz4Provider) Decompress(dst, src []byte, originalSize int) ([]byte, error)
 		dst = make([]byte, originalSize)
 	}
 	_, err := lz4.UncompressBlock(src, dst)
+	if err != nil {
+		// Fallback for backward compatibility with the legacy lz4 v2 custom format
+		// where Compress wrote a writeSize header + raw uncompressed data (size == 0 branch).
+		// Try to parse the header and extract the original data.
+		if uncompressed, ok := tryReadUncompressedBlock(src, originalSize); ok {
+			copy(dst, uncompressed)
+			return dst, nil
+		}
+	}
 	return dst, err
+}
+
+// tryReadUncompressedBlock attempts to parse the custom format written by the
+// Compress size==0 branch: writeSize(len(data)) header + raw data.
+// Returns the raw data if parsing succeeds and the data length matches originalSize.
+func tryReadUncompressedBlock(src []byte, originalSize int) ([]byte, bool) {
+	if len(src) == 0 {
+		return nil, false
+	}
+
+	// Parse the writeSize-encoded header (inverse of writeSize)
+	headerSize, dataSize := readSize(src)
+	if headerSize <= 0 || dataSize != originalSize {
+		return nil, false
+	}
+	if headerSize+dataSize != len(src) {
+		return nil, false
+	}
+	return src[headerSize:], true
+}
+
+// readSize is the inverse of writeSize. It parses the data size and header length from src.
+func readSize(src []byte) (headerSize int, dataSize int) {
+	if len(src) == 0 {
+		return 0, 0
+	}
+	nibble := int(src[0] >> 4)
+	if nibble < 0xF {
+		return 1, nibble
+	}
+	// nibble == 0xF, need to read subsequent bytes
+	size := 0xF
+	i := 1
+	for i < len(src) {
+		b := int(src[i])
+		i++
+		size += b
+		if b < 0xFF {
+			return i, size
+		}
+	}
+	// Incomplete data
+	return 0, 0
 }
 
 func (lz4Provider) Close() error {

@@ -19,12 +19,16 @@ package pulsar
 
 import (
 	"bytes"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -157,11 +161,85 @@ func topicStats(topic string) (map[string]interface{}, error) {
 	return metadata, err
 }
 
+// transactionStats queries the transaction metadata admin endpoint. Since
+// apache/pulsar#26773 that endpoint requires super-user access, so the request must be
+// authenticated. The plain-text httpGet helper sends no credentials and would be rejected
+// as the "anonymous" role (HTTP 401), so use the TLS web service with the test client
+// certificate instead, whose CN ("admin") is a super-user role in standalone.conf.
 func transactionStats(id *TxnID) (map[string]interface{}, error) {
 	var metadata map[string]interface{}
 	path := fmt.Sprintf("admin/v3/transactions/transactionMetadata/%d/%d", id.MostSigBits, id.LeastSigBits)
-	err := httpGet(path, &metadata)
+	err := httpGetWithTLS(path, &metadata)
 	return metadata, err
+}
+
+// httpGetWithTLS performs an HTTPS GET against the broker's web service, authenticating
+// with the test client certificate. It is used for admin endpoints that require a
+// super-user role.
+func httpGetWithTLS(requestPath string, out interface{}) error {
+	client, err := getTLSWebClient()
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequest(http.MethodGet, webServiceURLTLS+"/"+requestPath, nil)
+	if err != nil {
+		return err
+	}
+	req.Header = jsonHeaders()
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode > 299 || resp.StatusCode < 200 {
+		return fmt.Errorf("http error status code: %d", resp.StatusCode)
+	}
+	if out == nil {
+		return nil
+	}
+	outBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return err
+	}
+	return json.Unmarshal(outBytes, out)
+}
+
+var (
+	tlsWebClientOnce sync.Once
+	tlsWebClient     *http.Client
+	tlsWebClientErr  error
+)
+
+// getTLSWebClient lazily builds and caches an HTTPS client that authenticates with the
+// test client certificate. It is used for admin endpoints that require a super-user role.
+func getTLSWebClient() (*http.Client, error) {
+	tlsWebClientOnce.Do(func() {
+		cert, err := tls.LoadX509KeyPair(tlsClientCertPath, tlsClientKeyPath)
+		if err != nil {
+			tlsWebClientErr = err
+			return
+		}
+		caCert, err := os.ReadFile(caCertsPath)
+		if err != nil {
+			tlsWebClientErr = err
+			return
+		}
+		pool := x509.NewCertPool()
+		if !pool.AppendCertsFromPEM(caCert) {
+			tlsWebClientErr = fmt.Errorf("failed to parse CA certificates from %s", caCertsPath)
+			return
+		}
+		tlsWebClient = &http.Client{
+			Timeout: 30 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					Certificates: []tls.Certificate{cert},
+					RootCAs:      pool,
+				},
+			},
+		}
+	})
+	return tlsWebClient, tlsWebClientErr
 }
 
 func topicPath(topic string) string {

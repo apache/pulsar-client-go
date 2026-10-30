@@ -198,6 +198,31 @@ var _ = ginkgo.Describe("CodetokenExchanger", func() {
 			gomega.Expect(result.Header.Get("Content-Length")).To(gomega.Equal("93"))
 		})
 
+		ginkgo.It("omits client secret for tls client auth", func() {
+			tokenRetriever := TokenRetriever{}
+			exchangeRequest := ClientCredentialsExchangeRequest{
+				TokenEndpoint: "https://issuer/oauth/token",
+				ClientID:      "clientID",
+				ClientSecret:  "clientSecret",
+				Audience:      "audience",
+				AuthMethod:    TokenEndpointAuthMethodTLSClientAuth,
+			}
+
+			result, err := tokenRetriever.newClientCredentialsRequest(exchangeRequest)
+
+			result.ParseForm()
+
+			gomega.Expect(err).To(gomega.BeNil())
+			gomega.Expect(result.FormValue("grant_type")).To(gomega.Equal("client_credentials"))
+			gomega.Expect(result.FormValue("client_id")).To(gomega.Equal("clientID"))
+			gomega.Expect(result.FormValue("client_secret")).To(gomega.Equal(""))
+			gomega.Expect(result.FormValue("audience")).To(gomega.Equal("audience"))
+			gomega.Expect(result.URL.String()).To(gomega.Equal("https://issuer/oauth/token"))
+
+			gomega.Expect(result.Header.Get("Content-Type")).To(gomega.Equal("application/x-www-form-urlencoded"))
+			gomega.Expect(result.Header.Get("Content-Length")).To(gomega.Equal("66"))
+		})
+
 		ginkgo.It("returns an error when NewRequest returns an error", func() {
 			tokenRetriever := TokenRetriever{}
 

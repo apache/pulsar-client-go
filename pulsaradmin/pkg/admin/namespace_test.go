@@ -18,6 +18,10 @@
 package admin
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -33,6 +37,119 @@ func ptr(n int) *int {
 	return &n
 }
 
+func TestNamespaces_RemoveBacklogQuotaByType(t *testing.T) {
+	tests := []struct {
+		name      string
+		quotaType utils.BacklogQuotaType
+		remove    func(Namespaces) error
+	}{
+		{
+			name:      "legacy",
+			quotaType: utils.DestinationStorage,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuota("public/default")
+			},
+		},
+		{
+			name:      "legacy with context",
+			quotaType: utils.DestinationStorage,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaWithContext(context.Background(), "public/default")
+			},
+		},
+		{
+			name:      "message age",
+			quotaType: utils.MessageAge,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaByType("public/default", utils.MessageAge)
+			},
+		},
+		{
+			name:      "message age with context",
+			quotaType: utils.MessageAge,
+			remove: func(namespaces Namespaces) error {
+				return namespaces.RemoveBacklogQuotaByTypeWithContext(
+					context.Background(),
+					"public/default",
+					utils.MessageAge,
+				)
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			type request struct {
+				method    string
+				path      string
+				quotaType string
+				querySize int
+			}
+			requests := make(chan request, 1)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				query := r.URL.Query()
+				requests <- request{
+					method:    r.Method,
+					path:      r.URL.EscapedPath(),
+					quotaType: query.Get("backlogQuotaType"),
+					querySize: len(query),
+				}
+				w.WriteHeader(http.StatusNoContent)
+			}))
+			t.Cleanup(server.Close)
+
+			client, err := New(&config.Config{WebServiceURL: server.URL})
+			require.NoError(t, err)
+
+			require.NoError(t, tt.remove(client.Namespaces()))
+			actual := <-requests
+			assert.Equal(t, http.MethodDelete, actual.method)
+			assert.Equal(t, "/admin/v2/namespaces/public/default/backlogQuota", actual.path)
+			assert.Equal(t, tt.quotaType.String(), actual.quotaType)
+			assert.Equal(t, 1, actual.querySize)
+		})
+	}
+}
+
+func TestNamespaces_RemoveBacklogQuotaByTypeIntegration(t *testing.T) {
+	client, err := New(&config.Config{})
+	require.NoError(t, err)
+
+	namespaces := client.Namespaces()
+	namespace := fmt.Sprintf("public/remove-backlog-quota-%d", time.Now().UnixNano())
+	require.NoError(t, namespaces.CreateNamespace(namespace))
+	t.Cleanup(func() {
+		_ = namespaces.DeleteNamespace(namespace)
+	})
+
+	require.NoError(t, namespaces.SetBacklogQuota(
+		namespace,
+		utils.NewBacklogQuota(1024, -1, utils.ProducerException),
+		utils.DestinationStorage,
+	))
+	require.NoError(t, namespaces.SetBacklogQuota(
+		namespace,
+		utils.NewBacklogQuota(-1, 60, utils.ConsumerBacklogEviction),
+		utils.MessageAge,
+	))
+
+	quotas, err := namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Contains(t, quotas, utils.DestinationStorage)
+	require.Contains(t, quotas, utils.MessageAge)
+
+	require.NoError(t, namespaces.RemoveBacklogQuotaByType(namespace, utils.MessageAge))
+	quotas, err = namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Contains(t, quotas, utils.DestinationStorage)
+	require.NotContains(t, quotas, utils.MessageAge)
+
+	require.NoError(t, namespaces.RemoveBacklogQuota(namespace))
+	quotas, err = namespaces.GetBacklogQuotaMap(namespace)
+	require.NoError(t, err)
+	require.Empty(t, quotas)
+}
+
 func TestSetTopicAutoCreation(t *testing.T) {
 	config := &config.Config{}
 	admin, err := New(config)
@@ -40,10 +157,10 @@ func TestSetTopicAutoCreation(t *testing.T) {
 	require.NotNil(t, admin)
 
 	tests := []struct {
-		name      string
-		namespace string
-		config    utils.TopicAutoCreationConfig
-		errReason string
+		name       string
+		namespace  string
+		config     utils.TopicAutoCreationConfig
+		errReasons []string // accepted error reasons; empty means success is expected
 	}{
 		{
 			name:      "Set partitioned type topic auto creation",
@@ -53,7 +170,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Type:       utils.Partitioned,
 				Partitions: ptr(3),
 			},
-			errReason: "",
+			errReasons: nil,
 		},
 		{
 			name:      "Set partitioned type topic auto creation without partitions",
@@ -62,8 +179,8 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.Partitioned,
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
-				"cannot be null when the type is partitioned.",
+			errReasons: []string{"Invalid configuration for autoTopicCreationOverride. the detail is " +
+				"[defaultNumPartitions] cannot be null when the type is partitioned."},
 		},
 		{
 			name:      "Set partitioned type topic auto creation with partitions < 1",
@@ -73,8 +190,8 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Type:       utils.Partitioned,
 				Partitions: ptr(-1),
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
-				"cannot be less than 1 for partition type.",
+			errReasons: []string{"Invalid configuration for autoTopicCreationOverride. the detail is " +
+				"[defaultNumPartitions] cannot be less than 1 for partition type."},
 		},
 		{
 			name:      "Set non-partitioned type topic auto creation",
@@ -83,7 +200,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.NonPartitioned,
 			},
-			errReason: "",
+			errReasons: nil,
 		},
 		{
 			name:      "Set non-partitioned type topic auto creation with partitions",
@@ -93,8 +210,12 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Type:       utils.NonPartitioned,
 				Partitions: ptr(3),
 			},
-			errReason: "Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] is " +
-				"not allowed to be set when the type is non-partition.",
+			errReasons: []string{
+				"Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] is " +
+					"not allowed to be set when the type is non-partition.",
+				"Invalid configuration for autoTopicCreationOverride. the detail is [defaultNumPartitions] " +
+					"must be null, 0 or 1 when the type is non-partitioned.",
+			},
 		},
 		{
 			name:      "Disable topic auto creation",
@@ -102,7 +223,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 			config: utils.TopicAutoCreationConfig{
 				Allow: false,
 			},
-			errReason: "",
+			errReasons: nil,
 		},
 		{
 			name:      "Set topic auto creation on a non-exist namespace",
@@ -111,7 +232,7 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.NonPartitioned,
 			},
-			errReason: "Namespace does not exist",
+			errReasons: []string{"Namespace does not exist"},
 		},
 		{
 			name:      "Set topic auto creation on a non-exist tenant",
@@ -120,23 +241,24 @@ func TestSetTopicAutoCreation(t *testing.T) {
 				Allow: true,
 				Type:  utils.NonPartitioned,
 			},
-			errReason: "Tenant does not exist",
+			errReasons: []string{"Tenant does not exist", "Namespace does not exist"},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			namespace, _ := utils.GetNamespaceName(tt.namespace)
 			err := admin.Namespaces().SetTopicAutoCreation(*namespace, tt.config)
-			if tt.errReason == "" {
-				assert.Equal(t, nil, err)
+			if len(tt.errReasons) == 0 {
+				assert.NoError(t, err)
 
 				err = admin.Namespaces().RemoveTopicAutoCreation(*namespace)
-				assert.Equal(t, nil, err)
+				assert.NoError(t, err)
+				return
 			}
-			if err != nil {
-				restError := err.(rest.Error)
-				assert.Equal(t, tt.errReason, restError.Reason)
-			}
+			require.Error(t, err)
+			var restError rest.Error
+			require.ErrorAs(t, err, &restError)
+			assert.Contains(t, tt.errReasons, restError.Reason)
 		})
 	}
 }

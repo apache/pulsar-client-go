@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"context"
 	"fmt"
 	"net/url"
 	"sync"
@@ -158,6 +159,135 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	default:
 		t.Error("Expected an ack request to be triggered!")
 	}
+}
+
+// TestProcessingTimeMetric verifies that pulsar_client_consumer_processing_time_seconds records the time
+// between receiving a message and acknowledging it.
+// This is the regression test for https://github.com/apache/pulsar-client-go/issues/1154
+func TestProcessingTimeMetric(t *testing.T) {
+	const processingTime = 2 * time.Second
+	receivedID := func() *trackingMessageID {
+		id := newTrackingMessageID(1, 1, 0, 0, 1, nil)
+		id.receivedTime = time.Now().Add(-processingTime)
+		return id
+	}
+	receivedChunkID := func(pc *partitionConsumer) *chunkMessageID {
+		first, last := &messageID{ledgerID: 1, entryID: 1}, &messageID{ledgerID: 1, entryID: 2}
+		id := newChunkMessageID(first, last)
+		id.receivedTime = time.Now().Add(-processingTime)
+		pc.unAckChunksTracker.add(id, []*messageID{first, last})
+		return id
+	}
+
+	tests := []struct {
+		name            string
+		ackWithResponse bool
+		ack             func(pc *partitionConsumer) error
+	}{
+		{name: "AckID", ack: func(pc *partitionConsumer) error {
+			return pc.AckID(receivedID())
+		}},
+		{name: "AckID chunked message", ack: func(pc *partitionConsumer) error {
+			return pc.AckID(receivedChunkID(pc))
+		}},
+		{name: "AckIDList", ackWithResponse: true, ack: func(pc *partitionConsumer) error {
+			go func() { (<-pc.eventsCh).(*ackListRequest).errCh <- nil }()
+			return pc.AckIDList([]MessageID{receivedID()})
+		}},
+		{name: "AckIDList chunked message", ackWithResponse: true, ack: func(pc *partitionConsumer) error {
+			go func() { (<-pc.eventsCh).(*ackListRequest).errCh <- nil }()
+			return pc.AckIDList([]MessageID{receivedChunkID(pc)})
+		}},
+		{name: "AckIDCumulative", ack: func(pc *partitionConsumer) error {
+			return pc.AckIDCumulative(receivedID())
+		}},
+		{name: "AckIDCumulative chunked message", ack: func(pc *partitionConsumer) error {
+			return pc.AckIDCumulative(receivedChunkID(pc))
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			registry := prometheus.NewRegistry()
+			pc := newProcessingTimeTestConsumer(registry)
+			pc.options.ackWithResponse = tt.ackWithResponse
+
+			assert.NoError(t, tt.ack(pc))
+
+			count, sum := getProcessingTime(t, registry)
+			assert.Equal(t, uint64(1), count)
+			assert.GreaterOrEqual(t, sum, processingTime.Seconds())
+			assert.Less(t, sum, time.Minute.Seconds())
+		})
+	}
+}
+
+// TestProcessingTimeMetricBatchMessage verifies that a batch received from the broker is observed once,
+// when the ack that completes the batch arrives.
+func TestProcessingTimeMetricBatchMessage(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	pc := newProcessingTimeTestConsumer(registry)
+	pc.queueCh = make(chan []*message, 1)
+	pc.decryptor = crypto.NewNoopDecryptor()
+	pc._setConn(dummyConnection{})
+	pc.availablePermits = &availablePermits{pc: pc}
+
+	if err := pc.MessageReceived(nil, internal.NewBufferWrapper(rawBatchMessage10)); err != nil {
+		t.Fatal(err)
+	}
+	messages := <-pc.queueCh
+	assert.Len(t, messages, 10)
+	for _, m := range messages {
+		assert.NoError(t, pc.AckID(m.ID()))
+	}
+
+	count, sum := getProcessingTime(t, registry)
+	assert.Equal(t, uint64(1), count)
+	// the batch is acked right after it is received, so only check for a sane upper bound
+	assert.Less(t, sum, time.Minute.Seconds())
+}
+
+// TestProcessingTimeMetricSkipsIDsWithoutReceiveTime verifies that acknowledging a message ID that was not
+// received by the consumer, such as one built by the application, does not record a processing time.
+func TestProcessingTimeMetricSkipsIDsWithoutReceiveTime(t *testing.T) {
+	registry := prometheus.NewRegistry()
+	pc := newProcessingTimeTestConsumer(registry)
+
+	assert.NoError(t, pc.AckID(&messageID{ledgerID: 1, entryID: 1, batchIdx: -1}))
+	assert.NoError(t, pc.AckIDCumulative(&messageID{ledgerID: 1, entryID: 2, batchIdx: -1}))
+
+	count, _ := getProcessingTime(t, registry)
+	assert.Equal(t, uint64(0), count)
+}
+
+func newProcessingTimeTestConsumer(registry *prometheus.Registry) *partitionConsumer {
+	pc := &partitionConsumer{
+		eventsCh: make(chan interface{}, 10),
+		options:  &partitionConsumerOpts{},
+		metrics:  internal.NewMetricsProvider(4, map[string]string{}, registry).GetLeveledMetrics("topic"),
+	}
+	pc.unAckChunksTracker = newUnAckChunksTracker(pc)
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { pc.sendIndividualAck(id) },
+		func(id MessageID) { pc.sendCumulativeAck(id) }, nil)
+	return pc
+}
+
+// getProcessingTime returns the number of observations and their sum in seconds.
+func getProcessingTime(t *testing.T, registry *prometheus.Registry) (uint64, float64) {
+	metrics, err := registry.Gather()
+	assert.NoError(t, err)
+
+	var count uint64
+	var sum float64
+	for _, metric := range metrics {
+		if metric.GetName() == "pulsar_client_consumer_processing_time_seconds" {
+			for _, m := range metric.GetMetric() {
+				count += m.GetHistogram().GetSampleCount()
+				sum += m.GetHistogram().GetSampleSum()
+			}
+		}
+	}
+	return count, sum
 }
 
 // Raw single message in old format
@@ -552,6 +682,47 @@ func TestGrabConn_ConnResetOnAddHandlerFailure(t *testing.T) {
 		"pc.conn must be reset to nil on first-call AddConsumeHandler failure")
 }
 
+func TestUnsubscribeReleasesPartitionConsumer(t *testing.T) {
+	cnx := newSpyConnection()
+	rpc := &grabConnSpyRPCClient{cnx: cnx}
+	pc := newGrabConnTestConsumer(cnx, rpc)
+	pc.eventsCh = make(chan interface{}, 10)
+	pc.closeCh = make(chan struct{})
+	pc.ctx, pc.cancelFunc = context.WithCancel(context.Background())
+	pc.ackGroupingTracker = newAckGroupingTracker(nil,
+		func(id MessageID) { pc.sendIndividualAck(id) },
+		func(id MessageID) { pc.sendCumulativeAck(id) },
+		func(ids []*pb.MessageIdData) { pc.eventsCh <- &ackListRequest{msgIDs: ids} })
+	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(1, pc)
+	pc.setConsumerState(consumerReady)
+
+	loopExited := make(chan struct{})
+	go func() {
+		pc.runEventsLoop()
+		close(loopExited)
+	}()
+
+	assert.NoError(t, pc.unsubscribe(false))
+	assert.Equal(t, consumerState(consumerClosed), pc.getConsumerState())
+	assert.True(t, cnx.handlerRemoved.Load())
+	assert.Error(t, pc.ctx.Err())
+	assert.False(t, rpc.closeSentOnCnx.Load(), "the broker already dropped the unsubscribed consumer")
+
+	select {
+	case <-pc.closeCh:
+	default:
+		t.Fatal("closeCh not closed after a successful unsubscribe")
+	}
+	select {
+	case <-loopExited:
+	case <-time.After(5 * time.Second):
+		t.Fatal("events loop still running after a successful unsubscribe")
+	}
+
+	// Close after Unsubscribe is a no-op and must not block on the exited events loop.
+	pc.Close()
+}
+
 // --- Helpers
 
 // newGrabConnTestConsumer builds a minimal partitionConsumer wired to the
@@ -692,6 +863,8 @@ func (r *grabConnSpyRPCClient) RequestOnCnx(_ internal.Connection, _ uint64,
 	case pb.BaseCommand_CLOSE_CONSUMER:
 		r.closeSentOnCnx.Store(true)
 		return nil, nil
+	case pb.BaseCommand_UNSUBSCRIBE:
+		return &internal.RPCResult{}, nil
 	case pb.BaseCommand_SUBSCRIBE:
 		// handled below
 	default:

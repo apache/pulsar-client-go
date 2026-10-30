@@ -361,3 +361,235 @@ func TestForEachAndListenJSONSchema(t *testing.T) {
 		t.Logf("TableView number of elements: %d", tv.Size())
 	}
 }
+
+func TestTableViewIsEmpty(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	// create producer
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	// create table view
+	v := ""
+	tv, err := client.CreateTableView(TableViewOptions{
+		Topic:           topic,
+		Schema:          schema,
+		SchemaValueType: reflect.TypeOf(&v),
+	})
+	assert.NoError(t, err)
+	defer tv.Close()
+
+	// IsEmpty should return true when no messages have been published
+	assert.True(t, tv.IsEmpty())
+	assert.Equal(t, 0, tv.Size())
+
+	// Publish a message
+	_, err = producer.Send(context.Background(), &ProducerMessage{
+		Key:   "key-1",
+		Value: "value-1",
+	})
+	assert.NoError(t, err)
+
+	require.Eventually(t, func() bool {
+		return tv.Size() == 1
+	}, 5*time.Second, 100*time.Millisecond)
+
+	// IsEmpty should return false after receiving a message
+	assert.False(t, tv.IsEmpty())
+	assert.True(t, tv.ContainsKey("key-1"))
+	assert.False(t, tv.ContainsKey("non-existent-key"))
+
+	keys := tv.Keys()
+	assert.Equal(t, 1, len(keys))
+	assert.Equal(t, "key-1", keys[0])
+}
+
+// TestTableViewEntriesReturnsCopy is a pure unit test for Entries() that
+// does not depend on a broker. It verifies two things:
+//  1. The returned map has the exact same content as the internal data map.
+//  2. The returned map is an independent copy: callers mutating the result
+//     must not affect the TableView's internal state, and vice versa.
+func TestTableViewEntriesReturnsCopy(t *testing.T) {
+	tv := &TableViewImpl{
+		data: map[string]interface{}{
+			"k1": "v1",
+			"k2": 42,
+			"k3": []byte("bytes"),
+		},
+	}
+
+	entries := tv.Entries()
+
+	// 1. The returned content must match the internal data.
+	assert.Equal(t, 3, len(entries))
+	assert.Equal(t, "v1", entries["k1"])
+	assert.Equal(t, 42, entries["k2"])
+	assert.Equal(t, []byte("bytes"), entries["k3"])
+
+	// 2. Mutations on the returned map must not affect internal data.
+	entries["k1"] = "modified"
+	delete(entries, "k2")
+	entries["new-key"] = "new-value"
+
+	assert.Equal(t, "v1", tv.data["k1"], "external modification should not affect internal data")
+	assert.Equal(t, 42, tv.data["k2"], "external delete should not affect internal data")
+	_, exists := tv.data["new-key"]
+	assert.False(t, exists, "external insertion should not leak into internal data")
+
+	// 3. Changes to internal data must not affect the previously returned snapshot.
+	tv.data["k1"] = "internal-change"
+	assert.Equal(t, "modified", entries["k1"],
+		"internal modification should not affect the already-returned snapshot")
+}
+
+// TestTableViewEntriesEmpty verifies that calling Entries() on an empty
+// TableView returns a non-nil empty map that is safe to range over or
+// write to.
+func TestTableViewEntriesEmpty(t *testing.T) {
+	tv := &TableViewImpl{
+		data: map[string]interface{}{},
+	}
+
+	entries := tv.Entries()
+	assert.NotNil(t, entries, "Entries() should not return nil")
+	assert.Equal(t, 0, len(entries))
+
+	// Writing to the returned map must not affect internal state.
+	entries["x"] = 1
+	assert.Equal(t, 0, len(tv.data), "external writes should not affect internal data")
+}
+
+// TestTableViewEntriesConcurrent verifies that Entries() does not trigger
+// a "concurrent map read and map write" panic when readers iterate the
+// returned map while writers mutate the internal data map. Run with
+// `go test -race` to additionally detect data races.
+func TestTableViewEntriesConcurrent(_ *testing.T) {
+	tv := &TableViewImpl{
+		data: make(map[string]interface{}),
+	}
+
+	stop := make(chan struct{})
+	done := make(chan struct{}, 2)
+
+	// writer: hold the lock to simulate handleMessage writes.
+	go func() {
+		defer func() { done <- struct{}{} }()
+		for i := 0; ; i++ {
+			select {
+			case <-stop:
+				return
+			default:
+				tv.dataMu.Lock()
+				tv.data[fmt.Sprintf("k-%d", i%50)] = i
+				if i%3 == 0 {
+					delete(tv.data, fmt.Sprintf("k-%d", (i+1)%50))
+				}
+				tv.dataMu.Unlock()
+			}
+		}
+	}()
+
+	// reader: repeatedly call Entries() and range over the returned copy.
+	go func() {
+		defer func() { done <- struct{}{} }()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				entries := tv.Entries()
+				// Ranging the copy must not trigger concurrent map r/w.
+				for k, v := range entries {
+					_ = k
+					_ = v
+				}
+			}
+		}
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	close(stop)
+	<-done
+	<-done
+}
+
+// TestTableViewEntriesIntegration is an end-to-end test against a real
+// broker. It verifies that after a TableView is populated via producer
+// writes, Entries() stays consistent with tv.Get() and tv.Size(), and
+// that mutating the returned map does not affect subsequent lookups.
+func TestTableViewEntriesIntegration(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	schema := NewStringSchema(nil)
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: schema,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	numMsg := 5
+	valuePrefix := "entries-test: "
+	for i := 0; i < numMsg; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		_, err = producer.Send(context.Background(), &ProducerMessage{
+			Key:   key,
+			Value: valuePrefix + key,
+		})
+		assert.NoError(t, err)
+	}
+
+	v := ""
+	tv, err := client.CreateTableView(TableViewOptions{
+		Topic:           topic,
+		Schema:          schema,
+		SchemaValueType: reflect.TypeOf(&v),
+	})
+	assert.NoError(t, err)
+	defer tv.Close()
+
+	require.Eventually(t, func() bool {
+		return tv.Size() == numMsg
+	}, 10*time.Second, 200*time.Millisecond)
+
+	entries := tv.Entries()
+	assert.Equal(t, numMsg, len(entries))
+	for k, val := range entries {
+		assert.Equal(t, valuePrefix+k, *(val.(*string)))
+	}
+
+	// Poison the returned map and ensure tv.Get / tv.Size are unaffected.
+	for k := range entries {
+		delete(entries, k)
+	}
+	entries["poison"] = strPointer("should-not-leak")
+
+	assert.Equal(t, numMsg, tv.Size(),
+		"mutating the result of Entries() should not affect TableView state")
+	assert.Nil(t, tv.Get("poison"),
+		"externally injected keys should not leak into the TableView")
+	for i := 0; i < numMsg; i++ {
+		key := fmt.Sprintf("key-%d", i)
+		got := tv.Get(key)
+		if assert.NotNil(t, got, "key %s should still exist", key) {
+			assert.Equal(t, valuePrefix+key, *(got.(*string)))
+		}
+	}
+}

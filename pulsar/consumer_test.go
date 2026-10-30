@@ -27,6 +27,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -1797,6 +1798,52 @@ func TestConsumerSeek(t *testing.T) {
 	msg, err := consumer.Receive(ctx)
 	assert.Nil(t, err)
 	assert.Equal(t, fmt.Sprintf("hello-%d", N-50), string(msg.Payload()))
+}
+
+func TestConsumerSeekEarliestOnNonPartitionedTopic(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	ctx := context.Background()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	require.NoError(t, err)
+	defer producer.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topicName,
+		SubscriptionName: "sub-1",
+	})
+	require.NoError(t, err)
+	defer consumer.Close()
+
+	const N = 10
+	for i := 0; i < N; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("hello-%d", i)),
+		})
+		require.NoError(t, err)
+	}
+
+	for i := 0; i < N; i++ {
+		msg, err := consumer.Receive(ctx)
+		require.NoError(t, err)
+		require.NoError(t, consumer.Ack(msg))
+	}
+
+	require.NoError(t, consumer.Seek(EarliestMessageID()))
+
+	receiveCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+	msg, err := consumer.Receive(receiveCtx)
+	require.NoError(t, err)
+	assert.Equal(t, "hello-0", string(msg.Payload()))
 }
 
 func TestConsumerSeekByTime(t *testing.T) {
@@ -4796,7 +4843,7 @@ func TestBatchIndexAck(t *testing.T) {
 		cumulative         bool
 		ackGroupingOptions *AckGroupingOptions
 	}
-	configs := make([]config, 0)
+	configs := make([]config, 0, 12)
 	for _, option := range []*AckGroupingOptions{
 		nil, // MaxSize: 1000, MaxTime: 10ms
 		{MaxSize: 0, MaxTime: 0},
@@ -4820,6 +4867,144 @@ func TestBatchIndexAck(t *testing.T) {
 				runBatchIndexAckTest(t, params.ackWithResponse, params.cumulative, params.ackGroupingOptions)
 			})
 	}
+}
+
+// Go adaptation of testAckedBatchMessageNotSentToDeadLetterTopicOnFinalRedeliveryRound
+// from apache/pulsar (DeadLetterTopicTest): messages of a partially-acked batch that are
+// acked on their final redelivery round must not be routed to the DLQ.
+//
+// The final-round acks go through a consumer WITHOUT batch index ack. Such a consumer can
+// only ack a batch as a whole entry, once its ack tracker reports every index as acked (a
+// consumer with batch index ack would ack each index at the broker directly, and would not
+// depend on the tracker completing). If the tracker of a redelivered batch is not
+// initialized from the broker-provided ack set, it wrongly counts the already-acked indexes
+// as outstanding, so acking all remaining messages on their final redelivery round never
+// completes it: the acks are silently dropped, the broker redelivers the messages to the
+// next consumer session, and once their redeliveries are exhausted they are routed to the
+// DLQ -- even though the application acked every one of them in time.
+func TestAckedBatchMessageNotSentToDeadLetterTopicWithoutBatchIndexAck(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	maxRedeliveryCount := 3
+	batchSize := 5
+	subscriptionName := "my-subscription"
+	dlqTopic := topic + "-" + subscriptionName + "-DLQ"
+
+	subscribe := func(batchIndexAck bool) Consumer {
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:                          topic,
+			SubscriptionName:               subscriptionName,
+			Type:                           Shared,
+			SubscriptionInitialPosition:    SubscriptionPositionEarliest,
+			EnableBatchIndexAcknowledgment: batchIndexAck,
+			AckWithResponse:                true,
+			NackRedeliveryDelay:            1 * time.Second,
+			DLQ: &DLQPolicy{
+				MaxDeliveries:   uint32(maxRedeliveryCount),
+				DeadLetterTopic: dlqTopic,
+			},
+		})
+		require.NoError(t, err)
+		return consumer
+	}
+
+	receive := func(consumer Consumer, timeout time.Duration) (Message, error) {
+		receiveCtx, cancel := context.WithTimeout(context.Background(), timeout)
+		defer cancel()
+		return consumer.Receive(receiveCtx)
+	}
+
+	deadLetterConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       dlqTopic,
+		SubscriptionName:            subscriptionName,
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	require.NoError(t, err)
+	defer deadLetterConsumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		DisableBatching:         false,
+		BatchingMaxMessages:     uint(batchSize),
+		BatchingMaxPublishDelay: time.Hour,
+	})
+	require.NoError(t, err)
+	defer producer.Close()
+
+	ctx := context.Background()
+	sendErrCh := make(chan error, batchSize)
+	for i := 0; i < batchSize; i++ {
+		producer.SendAsync(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("message-%d", i)),
+		}, func(_ MessageID, _ *ProducerMessage, err error) {
+			sendErrCh <- err
+		})
+	}
+	require.NoError(t, producer.FlushWithCtx(ctx))
+	for i := 0; i < batchSize; i++ {
+		require.NoError(t, <-sendErrCh)
+	}
+
+	// Ack batch indexes 0, 3 and 4 with batch index ack enabled, so that the broker keeps a
+	// partial ack set for the batch, then close the consumer to get 1 and 2 redelivered.
+	consumer := subscribe(true)
+	messagesByBatchIdx := make(map[int32]Message)
+	for i := 0; i < batchSize; i++ {
+		message, err := receive(consumer, 5*time.Second)
+		require.NoError(t, err)
+		messagesByBatchIdx[message.ID().BatchIdx()] = message
+	}
+	require.Len(t, messagesByBatchIdx, batchSize)
+	for _, batchIndex := range []int32{0, 3, 4} {
+		require.NoError(t, consumer.Ack(messagesByBatchIdx[batchIndex]))
+	}
+	consumer.Close()
+
+	// Indexes 1 and 2 are redelivered to a consumer without batch index ack, along with the
+	// broker ack set. Nack them on every round but the final one (redeliveryCount ==
+	// maxRedeliveryCount-1; one more redelivery would route them to the DLQ instead of the
+	// application), where they are explicitly acked. Note that redelivery caused by closing
+	// a consumer does not increment redeliveryCount, only nacks do.
+	consumer = subscribe(false)
+	for acked := 0; acked < 2; {
+		message, err := receive(consumer, 5*time.Second)
+		require.NoError(t, err)
+		require.Contains(t, []string{"message-1", "message-2"}, string(message.Payload()))
+		if message.RedeliveryCount() < uint32(maxRedeliveryCount-1) {
+			// Let it be redelivered instead of acking.
+			consumer.Nack(message)
+			continue
+		}
+		require.NoError(t, consumer.Ack(message))
+		acked++
+	}
+	consumer.Close()
+
+	// Every message of the batch has been acked at or before its final allowed redelivery
+	// round, so a new consumer session must not receive anything. If the final-round acks
+	// were lost, the broker redelivers messages 1 and 2 here; the application cannot tell
+	// them apart from any other redelivered message, and nacking them exhausts their
+	// redeliveries and routes them to the DLQ.
+	consumer = subscribe(false)
+	defer consumer.Close()
+	for {
+		message, err := receive(consumer, 3*time.Second)
+		if err != nil {
+			break
+		}
+		consumer.Nack(message)
+	}
+
+	// No message should ever be routed to the DLQ.
+	receiveCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	deadLetterMessage, err := deadLetterConsumer.Receive(receiveCtx)
+	require.Error(t, err, "no message should have been routed to the DLQ, but received: %v", deadLetterMessage)
 }
 
 func runBatchIndexAckTest(t *testing.T, ackWithResponse bool, cumulative bool, option *AckGroupingOptions) {
@@ -5411,6 +5596,51 @@ func TestConsumerForceUnSubscribe(t *testing.T) {
 	err = consumer.UnsubscribeForce()
 	assert.Error(t, err)
 
+}
+
+func TestConsumerUnsubscribeThenCloseReleasesGoroutines(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+	subscribeUnsubscribeClose := func() {
+		c, err := client.Subscribe(ConsumerOptions{
+			Topic:            topic,
+			SubscriptionName: "unsub-then-close",
+		})
+		if !assert.Nil(t, err) {
+			return
+		}
+		pc := c.(*consumer).partitionConsumers()[0]
+		assert.Nil(t, c.Unsubscribe())
+		c.Close()
+
+		select {
+		case <-pc.closeCh:
+		case <-time.After(5 * time.Second):
+			t.Fatal("partition consumer closeCh not closed after Unsubscribe and Close")
+		}
+	}
+
+	// warm up the connection so its goroutines are part of the baseline
+	subscribeUnsubscribeClose()
+	time.Sleep(100 * time.Millisecond)
+	baseline := runtime.NumGoroutine()
+
+	const cycles = 20
+	for i := 0; i < cycles; i++ {
+		subscribeUnsubscribeClose()
+	}
+
+	// each leaked partition consumer held at least 3 goroutines: the events loop,
+	// the dispatcher and the ack grouping timer
+	assert.Eventually(t, func() bool {
+		return runtime.NumGoroutine() < baseline+cycles
+	}, 5*time.Second, 100*time.Millisecond,
+		"goroutines grew from %d to %d over %d unsubscribe+close cycles", baseline, runtime.NumGoroutine(), cycles)
 }
 
 func TestConsumerGetLastMessageIDs(t *testing.T) {
@@ -6729,4 +6959,52 @@ func TestRegexConsumerPauseResumeInheritsNewTopics(t *testing.T) {
 	assert.False(t, aConsumer.Paused())
 
 	drainExactly(t, aConsumer, numMsg-receivedWhilePaused)
+}
+
+func TestConsumerSeekWithoutPartitionIndexOnSinglePartitionConsumer(t *testing.T) {
+	eventsCh := make(chan interface{}, 1)
+	pc := &partitionConsumer{
+		topic:                      "persistent://public/default/test-topic",
+		eventsCh:                   eventsCh,
+		dispatcherSeekingControlCh: make(chan struct{}, 1),
+		log:                        plog.DefaultNopLogger(),
+	}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0}, nil, nil, nil)
+
+	c := &consumer{
+		topic:     "persistent://public/default/test-topic",
+		messageCh: make(chan ConsumerMessage, 1),
+	}
+	c.consumers.Store([]*partitionConsumer{pc})
+
+	for _, msgID := range []MessageID{EarliestMessageID(), LatestMessageID()} {
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- c.Seek(msgID)
+		}()
+
+		select {
+		case event := <-eventsCh:
+			req, ok := event.(*seekRequest)
+			require.True(t, ok, "expected a seek request, got %T", event)
+			assert.Equal(t, msgID.LedgerID(), req.msgID.LedgerID())
+			assert.Equal(t, msgID.EntryID(), req.msgID.EntryID())
+			close(req.doneCh)
+		case err := <-errCh:
+			t.Fatalf("Seek(%v) did not reach the partition consumer: %v", msgID, err)
+		case <-time.After(3 * time.Second):
+			t.Fatalf("timed out waiting for the seek request for %v", msgID)
+		}
+
+		require.NoError(t, <-errCh)
+		// Drain the pause signal sent by Seek so that the next Seek does not block.
+		<-pc.dispatcherSeekingControlCh
+	}
+
+	// A partition index that does not exist is still rejected.
+	assert.Error(t, c.Seek(NewMessageID(1, 2, -1, 3)))
+
+	// Ack paths keep rejecting IDs without a partition index.
+	assert.Error(t, c.AckID(EarliestMessageID()))
+	assert.Error(t, c.AckIDCumulative(LatestMessageID()))
 }

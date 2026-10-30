@@ -26,4 +26,9 @@ type ProducerConfig struct {
 	CryptoConfig            *CryptoConfig `json:"cryptoConfig" yaml:"cryptoConfig"`
 	BatchBuilder            string        `json:"batchBuilder" yaml:"batchBuilder"`
 	CompressionType         string        `json:"compressionType" yaml:"compressionType"`
+
+	// BatchingConfig requires Apache Pulsar 4.1.0 or later, which added batchingConfig to
+	// producerConfig via PIP-401. It is omitted when nil so that requests to earlier brokers are
+	// unchanged.
+	BatchingConfig *BatchingConfig `json:"batchingConfig,omitempty" yaml:"batchingConfig"`
 }

@@ -2075,6 +2075,101 @@ func TestWaitForExclusiveProducer(t *testing.T) {
 	wg.Wait()
 }
 
+func TestCanRecoverFromFenced(t *testing.T) {
+	fencedWithEpochMoved := "server error: ProducerFenced: " +
+		"org.apache.pulsar.broker.service.BrokerServiceException$ProducerFencedException: " +
+		"Topic epoch has already moved. Current epoch: 86, Producer epoch: 85"
+
+	tests := []struct {
+		name       string
+		accessMode ProducerAccessMode
+		topicEpoch *uint64
+		errMsg     string
+		expected   bool
+	}{
+		{
+			name:       "wait for exclusive producer with stale topic epoch",
+			accessMode: ProducerAccessModeWaitForExclusive,
+			topicEpoch: proto.Uint64(85),
+			errMsg:     fencedWithEpochMoved,
+			expected:   true,
+		},
+		{
+			name:       "exclusive producer is not recoverable",
+			accessMode: ProducerAccessModeExclusive,
+			topicEpoch: proto.Uint64(85),
+			errMsg:     fencedWithEpochMoved,
+			expected:   false,
+		},
+		{
+			name:       "no topic epoch tracked",
+			accessMode: ProducerAccessModeWaitForExclusive,
+			topicEpoch: nil,
+			errMsg:     fencedWithEpochMoved,
+			expected:   false,
+		},
+		{
+			name:       "fenced for another reason",
+			accessMode: ProducerAccessModeWaitForExclusive,
+			topicEpoch: proto.Uint64(85),
+			errMsg:     "server error: ProducerFenced: Fenced out",
+			expected:   false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := &partitionProducer{
+				options:    &ProducerOptions{ProducerAccessMode: tt.accessMode},
+				topicEpoch: tt.topicEpoch,
+			}
+			assert.Equal(t, tt.expected, p.canRecoverFromFenced(tt.errMsg))
+		})
+	}
+}
+
+func TestWaitForExclusiveProducerRecoverFromFencedTopicEpoch(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: serviceURL,
+	})
+	require.NoError(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+
+	// Advance the topic epoch by letting a producer own the topic and close.
+	first, err := client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeWaitForExclusive,
+	})
+	require.NoError(t, err)
+	first.Close()
+
+	second, err := client.CreateProducer(ProducerOptions{
+		Topic:              topicName,
+		ProducerAccessMode: ProducerAccessModeWaitForExclusive,
+	})
+	require.NoError(t, err)
+	defer second.Close()
+
+	pp := second.(*producer).getProducer(0).(*partitionProducer)
+
+	// Forge a stale topic epoch, as if the epoch had moved forward while the
+	// producer was disconnected (e.g. after a broker restart), then force a
+	// reconnection which the broker rejects with ProducerFenced.
+	pp.topicEpoch = proto.Uint64(0)
+	pp._getConn().Close()
+
+	var msgID MessageID
+	require.Eventually(t, func() bool {
+		msgID, err = second.Send(context.Background(), &ProducerMessage{
+			Payload: []byte("test"),
+		})
+		return err == nil
+	}, 30*time.Second, 100*time.Millisecond)
+	assert.NotNil(t, msgID)
+}
+
 func TestMemLimitRejectProducerMessages(t *testing.T) {
 
 	c, err := NewClient(ClientOptions{
@@ -2753,6 +2848,21 @@ func (m *mockConn) SendRequest(requestID uint64, req *pb.BaseCommand, callback f
 	m.realConn.SendRequest(requestID, req, callback)
 }
 
+func (m *mockConn) getBuffersLen() int {
+	m.l.Lock()
+	defer m.l.Unlock()
+	return len(m.buffers)
+}
+
+func (m *mockConn) getBufferAt(idx int) internal.Buffer {
+	m.l.Lock()
+	defer m.l.Unlock()
+	if idx >= 0 && idx < len(m.buffers) {
+		return m.buffers[idx]
+	}
+	return nil
+}
+
 func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 	topicName := newTopicName()
 
@@ -2783,14 +2893,15 @@ func TestSendBufferRetainWhenConnectionStuck(t *testing.T) {
 
 	// Wait for the buffer to be written to the connection
 	assert.Eventually(t, func() bool {
-		return len(conn.buffers) != 0
+		return conn.getBuffersLen() != 0
 	}, 5*time.Second, 100*time.Millisecond)
 
 	// Simulate connection failure and verify buffer retention
 	pp.failPendingMessages(errors.New("expected error"))
 
-	assert.Equal(t, 1, len(conn.buffers), "Expected one buffer to be sent")
-	b := conn.buffers[0]
+	assert.Equal(t, 1, conn.getBuffersLen(), "Expected one buffer to be sent")
+	b := conn.getBufferAt(0)
+	assert.NotNil(t, b, "Expected buffer to be present")
 	assert.Equal(t, int64(1), b.RefCnt(), "Expected buffer to have a reference count of 1 after sending")
 }
 

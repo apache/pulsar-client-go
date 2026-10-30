@@ -169,7 +169,7 @@ func (tv *TableViewImpl) Size() int {
 func (tv *TableViewImpl) IsEmpty() bool {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
-	return tv.Size() == 0
+	return len(tv.data) == 0
 }
 
 func (tv *TableViewImpl) ContainsKey(key string) bool {
@@ -192,7 +192,7 @@ func (tv *TableViewImpl) Entries() map[string]interface{} {
 	for k, v := range tv.data {
 		data[k] = v
 	}
-	return tv.data
+	return data
 }
 
 func (tv *TableViewImpl) Keys() []string {

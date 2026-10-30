@@ -438,6 +438,12 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		boFunc = backoff.NewDefaultBackoff
 	}
 
+	// The partition index is parsed from the topic name; guard the int32
+	// conversion below against out-of-range values.
+	if options.partitionIdx > math.MaxInt32 || options.partitionIdx < math.MinInt32 {
+		return nil, fmt.Errorf("partition index %d is out of the valid int32 range", options.partitionIdx)
+	}
+
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	pc := &partitionConsumer{
 		parentConsumer:             parent,
@@ -563,6 +569,10 @@ func (pc *partitionConsumer) unsubscribe(force bool) error {
 
 	// wait for the request to complete
 	<-req.doneCh
+	if req.unsubscribed {
+		// Close() skips a consumer that is no longer ready, so release its resources here.
+		pc.closeAndWait(true)
+	}
 	return req.err
 }
 
@@ -575,6 +585,7 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 	}
 
 	if cmid, ok := msgID.(*chunkMessageID); ok {
+		pc.observeProcessingTime(cmid)
 		if txn == nil {
 			return pc.unAckChunksTracker.ack(cmid)
 		}
@@ -593,7 +604,8 @@ func (pc *partitionConsumer) ackIDCommon(msgID MessageID, withResponse bool, txn
 			},
 		}
 		pc.metrics.AcksCounter.Inc()
-		pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+		// trackingID has just been rebuilt without a receive time, so read it from the acked ID
+		pc.observeProcessingTime(msgID)
 	} else if !pc.options.enableBatchIndexAck {
 		return nil
 	}
@@ -624,6 +636,23 @@ func (pc *partitionConsumer) AckIDWithTxn(msgID MessageID, txn Transaction) erro
 // ackID acknowledges the consumption of a message and optionally waits for response from the broker.
 func (pc *partitionConsumer) ackID(msgID MessageID, withResponse bool) error {
 	return pc.ackIDCommon(msgID, withResponse, nil)
+}
+
+// observeProcessingTime records the time between receiving the message identified by msgID and
+// acknowledging it. IDs without a receive time, such as ones built by the application or returned
+// by DeserializeMessageID, are not recorded.
+func (pc *partitionConsumer) observeProcessingTime(msgID MessageID) {
+	var receivedTime time.Time
+	switch id := msgID.(type) {
+	case *trackingMessageID:
+		receivedTime = id.receivedTime
+	case *chunkMessageID:
+		receivedTime = id.receivedTime
+	}
+	if receivedTime.IsZero() {
+		return
+	}
+	pc.metrics.ProcessingTime.Observe(time.Since(receivedTime).Seconds())
 }
 
 func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
@@ -712,6 +741,7 @@ func (pc *partitionConsumer) internalUnsubscribe(unsub *unsubscribeRequest) {
 	}
 	pc.log.Infof("The consumer[%d] successfully unsubscribed", pc.consumerID)
 	pc.setConsumerState(consumerClosed)
+	unsub.unsubscribed = true
 }
 
 func (pc *partitionConsumer) getLastMessageID() (*trackingMessageID, error) {
@@ -849,7 +879,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 				position := newPosition(msgID)
 				if convertedMsgID.ack() {
 					pendingAcks[position] = nil
-					pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-convertedMsgID.receivedTime.UnixNano()) / 1.0e9)
+					pc.observeProcessingTime(convertedMsgID)
 				} else if pc.options.enableBatchIndexAck {
 					pendingAcks[position] = convertedMsgID.tracker.getAckBitSet()
 				}
@@ -858,6 +888,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 					pendingAcks[newPosition(id)] = nil
 				}
 				chunkedMsgIDs = append(chunkedMsgIDs, convertedMsgID)
+				pc.observeProcessingTime(convertedMsgID)
 			case *messageID:
 				pendingAcks[newPosition(msgID)] = nil
 			default:
@@ -953,7 +984,7 @@ func (pc *partitionConsumer) internalAckIDCumulative(msgID MessageID, withRespon
 	}
 
 	pc.metrics.AcksCounter.Inc()
-	pc.metrics.ProcessingTime.Observe(float64(time.Now().UnixNano()-trackingID.receivedTime.UnixNano()) / 1.0e9)
+	pc.observeProcessingTime(msgID)
 
 	var ackReq *ackRequest
 	if withResponse {
@@ -1061,6 +1092,12 @@ func (pc *partitionConsumer) Close() {
 		return
 	}
 
+	pc.closeAndWait(false)
+}
+
+// closeAndWait stops the consumer's timers and goroutines and waits for the events loop to exit.
+// unsubscribed skips closing the consumer on the broker, which already removed it.
+func (pc *partitionConsumer) closeAndWait(unsubscribed bool) {
 	pc.cancelFunc()
 
 	// flush all pending ACK requests and terminate the timer goroutine
@@ -1069,7 +1106,7 @@ func (pc *partitionConsumer) Close() {
 	// close chunkedMsgCtxMap
 	pc.chunkedMsgCtxMap.Close()
 
-	req := &closeRequest{doneCh: make(chan struct{})}
+	req := &closeRequest{doneCh: make(chan struct{}), unsubscribed: unsubscribed}
 	pc.eventsCh <- req
 
 	// wait for request to finish
@@ -1366,13 +1403,6 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 		numMsgs = int(msgMeta.GetNumMessagesInBatch())
 	}
 
-	messages := make([]*message, 0)
-	var ackTracker *ackTracker
-	// are there multiple messages in this batch?
-	if numMsgs > 1 {
-		ackTracker = newAckTracker(uint(numMsgs))
-	}
-
 	var ackSet *bitset.BitSet
 	if response.GetAckSet() != nil {
 		ackSetFromResponse := response.GetAckSet()
@@ -1381,6 +1411,13 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			buf[i] = uint64(ackSetFromResponse[i])
 		}
 		ackSet = bitset.From(buf)
+	}
+
+	messages := make([]*message, 0)
+	var ackTracker *ackTracker
+	// are there multiple messages in this batch?
+	if numMsgs > 1 {
+		ackTracker = newAckTracker(uint(numMsgs), ackSet)
 	}
 
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
@@ -2007,13 +2044,15 @@ type ackWithTxnRequest struct {
 }
 
 type unsubscribeRequest struct {
-	doneCh chan struct{}
-	force  bool
-	err    error
+	doneCh       chan struct{}
+	force        bool
+	err          error
+	unsubscribed bool
 }
 
 type closeRequest struct {
-	doneCh chan struct{}
+	doneCh       chan struct{}
+	unsubscribed bool
 }
 
 type redeliveryRequest struct {
@@ -2086,6 +2125,12 @@ func (pc *partitionConsumer) runEventsLoop() {
 
 func (pc *partitionConsumer) internalClose(req *closeRequest) {
 	defer close(req.doneCh)
+	if req.unsubscribed {
+		pc.closeCompressionProviders()
+		close(pc.closeCh)
+		return
+	}
+
 	state := pc.getConsumerState()
 	if state == consumerClosed || state == consumerClosing {
 		pc.log.WithField("state", state).Error("Consumer is closing or has closed")
@@ -2118,6 +2163,17 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		pc.log.Info("Closed consumer")
 	}
 
+	pc.closeCompressionProviders()
+
+	pc.setConsumerState(consumerClosed)
+	pc._getConn().DeleteConsumeHandler(pc.consumerID)
+	if pc.nackTracker != nil {
+		pc.nackTracker.Close()
+	}
+	close(pc.closeCh)
+}
+
+func (pc *partitionConsumer) closeCompressionProviders() {
 	pc.compressionProviders.Range(func(_, v interface{}) bool {
 		if provider, ok := v.(compression.Provider); ok {
 			provider.Close()
@@ -2127,13 +2183,6 @@ func (pc *partitionConsumer) internalClose(req *closeRequest) {
 		}
 		return true
 	})
-
-	pc.setConsumerState(consumerClosed)
-	pc._getConn().DeleteConsumeHandler(pc.consumerID)
-	if pc.nackTracker != nil {
-		pc.nackTracker.Close()
-	}
-	close(pc.closeCh)
 }
 
 func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClosed) {

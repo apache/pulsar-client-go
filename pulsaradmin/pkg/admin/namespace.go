@@ -140,11 +140,21 @@ type Namespaces interface {
 		backlogQuotaType utils.BacklogQuotaType,
 	) error
 
-	// RemoveBacklogQuota removes a backlog quota policy from a namespace
+	// RemoveBacklogQuota removes the destination storage backlog quota policy from a namespace
 	RemoveBacklogQuota(namespace string) error
 
-	// RemoveBacklogQuotaWithContext removes a backlog quota policy from a namespace
+	// RemoveBacklogQuotaWithContext removes the destination storage backlog quota policy from a namespace
 	RemoveBacklogQuotaWithContext(ctx context.Context, namespace string) error
+
+	// RemoveBacklogQuotaByType removes a backlog quota policy of the specified type from a namespace
+	RemoveBacklogQuotaByType(namespace string, backlogQuotaType utils.BacklogQuotaType) error
+
+	// RemoveBacklogQuotaByTypeWithContext removes a backlog quota policy of the specified type from a namespace
+	RemoveBacklogQuotaByTypeWithContext(
+		ctx context.Context,
+		namespace string,
+		backlogQuotaType utils.BacklogQuotaType,
+	) error
 
 	// GetTopicAutoCreation returns the topic auto-creation config for a namespace.
 	// Returns nil if the topic auto-creation config is not configured at the namespace level.
@@ -229,6 +239,30 @@ type Namespaces interface {
 		ctx context.Context,
 		namespace utils.NameSpaceName,
 	) (utils.SchemaCompatibilityStrategy, error)
+
+	// GetOffloadPolicies returns offload policies for a namespace.
+	// Returns nil if the offload policies are not configured at the namespace level.
+	GetOffloadPolicies(namespace utils.NameSpaceName) (*utils.OffloadPolicies, error)
+
+	// GetOffloadPoliciesWithContext returns offload policies for a namespace.
+	// Returns nil if the offload policies are not configured at the namespace level.
+	GetOffloadPoliciesWithContext(ctx context.Context, namespace utils.NameSpaceName) (*utils.OffloadPolicies, error)
+
+	// SetOffloadPolicies sets offload policies for a namespace.
+	SetOffloadPolicies(namespace utils.NameSpaceName, offloadPolicies utils.OffloadPolicies) error
+
+	// SetOffloadPoliciesWithContext sets offload policies for a namespace.
+	SetOffloadPoliciesWithContext(
+		ctx context.Context,
+		namespace utils.NameSpaceName,
+		offloadPolicies utils.OffloadPolicies,
+	) error
+
+	// RemoveOffloadPolicies removes offload policies for a namespace, defaulting to broker settings.
+	RemoveOffloadPolicies(namespace utils.NameSpaceName) error
+
+	// RemoveOffloadPoliciesWithContext removes offload policies for a namespace, defaulting to broker settings.
+	RemoveOffloadPoliciesWithContext(ctx context.Context, namespace utils.NameSpaceName) error
 
 	// ClearOffloadDeleteLag clears the offload deletion lag for a namespace.
 	ClearOffloadDeleteLag(namespace utils.NameSpaceName) error
@@ -1024,17 +1058,29 @@ func (n *namespaces) SetBacklogQuotaWithContext(ctx context.Context, namespace s
 }
 
 func (n *namespaces) RemoveBacklogQuota(namespace string) error {
-	return n.RemoveBacklogQuotaWithContext(context.Background(), namespace)
+	return n.RemoveBacklogQuotaByType(namespace, utils.DestinationStorage)
 }
 
 func (n *namespaces) RemoveBacklogQuotaWithContext(ctx context.Context, namespace string) error {
+	return n.RemoveBacklogQuotaByTypeWithContext(ctx, namespace, utils.DestinationStorage)
+}
+
+func (n *namespaces) RemoveBacklogQuotaByType(namespace string, backlogQuotaType utils.BacklogQuotaType) error {
+	return n.RemoveBacklogQuotaByTypeWithContext(context.Background(), namespace, backlogQuotaType)
+}
+
+func (n *namespaces) RemoveBacklogQuotaByTypeWithContext(
+	ctx context.Context,
+	namespace string,
+	backlogQuotaType utils.BacklogQuotaType,
+) error {
 	nsName, err := utils.GetNamespaceName(namespace)
 	if err != nil {
 		return err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "backlogQuota")
 	params := map[string]string{
-		"backlogQuotaType": string(utils.DestinationStorage),
+		"backlogQuotaType": string(backlogQuotaType),
 	}
 	return n.pulsar.Client.DeleteWithQueryParamsWithContext(ctx, endpoint, params)
 }
@@ -1169,6 +1215,47 @@ func (n *namespaces) GetSchemaCompatibilityStrategyWithContext(ctx context.Conte
 		return "", err
 	}
 	return s, nil
+}
+
+func (n *namespaces) GetOffloadPolicies(namespace utils.NameSpaceName) (*utils.OffloadPolicies, error) {
+	return n.GetOffloadPoliciesWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) GetOffloadPoliciesWithContext(
+	ctx context.Context,
+	namespace utils.NameSpaceName,
+) (*utils.OffloadPolicies, error) {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadPolicies")
+	body, err := n.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, nil, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	return decodeOptionalJSON[utils.OffloadPolicies](body)
+}
+
+func (n *namespaces) SetOffloadPolicies(
+	namespace utils.NameSpaceName,
+	offloadPolicies utils.OffloadPolicies,
+) error {
+	return n.SetOffloadPoliciesWithContext(context.Background(), namespace, offloadPolicies)
+}
+
+func (n *namespaces) SetOffloadPoliciesWithContext(
+	ctx context.Context,
+	namespace utils.NameSpaceName,
+	offloadPolicies utils.OffloadPolicies,
+) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "offloadPolicies")
+	return n.pulsar.Client.PostWithContext(ctx, endpoint, &offloadPolicies)
+}
+
+func (n *namespaces) RemoveOffloadPolicies(namespace utils.NameSpaceName) error {
+	return n.RemoveOffloadPoliciesWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemoveOffloadPoliciesWithContext(ctx context.Context, namespace utils.NameSpaceName) error {
+	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "removeOffloadPolicies")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 
 func (n *namespaces) ClearOffloadDeleteLag(namespace utils.NameSpaceName) error {
@@ -1694,7 +1781,7 @@ func (n *namespaces) GrantNamespacePermissionWithContext(
 	role string,
 	action []utils.AuthAction) error {
 	endpoint := n.pulsar.endpoint(n.basePath, namespace.String(), "permissions", role)
-	s := make([]string, 0)
+	s := make([]string, 0, len(action))
 	for _, v := range action {
 		s = append(s, v.String())
 	}

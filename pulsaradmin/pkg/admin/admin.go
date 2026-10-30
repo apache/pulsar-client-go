@@ -112,8 +112,3 @@ func (c *pulsarClient) endpoint(componentPath string, parts ...string) string {
 		path.Join(escapedParts...),
 	)
 }
-
-// this function won't do any escaping
-func (c *pulsarClient) endpointWithFullPath(componentPath string, fullPath string) string {
-	return path.Join(utils.MakeHTTPPath(c.APIVersion.String(), componentPath), fullPath)
-}
