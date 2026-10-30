@@ -71,10 +71,10 @@ func TestCloseRequestFailsRegisteredRequestOnce(t *testing.T) {
 	c.pendingLock.Lock()
 	remembered := len(c.cancelledReqs)
 	c.pendingLock.Unlock()
-	assert.Zero(t, remembered)
+	assert.LessOrEqual(t, remembered, 1)
 }
 
-func TestCloseRequestAfterResponseNotRemembered(t *testing.T) {
+func TestCloseRequestAfterResponseRememberedOnce(t *testing.T) {
 	c := newTestConnection()
 
 	requestID := uint64(5)
@@ -95,12 +95,68 @@ func TestCloseRequestAfterResponseNotRemembered(t *testing.T) {
 	}
 
 	c.CloseRequest(requestID, errRequestCancelled)
+	c.CloseRequest(requestID, errRequestCancelled)
 
 	c.pendingLock.Lock()
 	remembered := len(c.cancelledReqs)
 	c.pendingLock.Unlock()
-	assert.Zero(t, remembered,
-		"cancellation of a completed request must not be remembered")
+	assert.Equal(t, 1, remembered)
+}
+
+func TestCloseRequestOutOfOrderCompletionStillCancels(t *testing.T) {
+	c := newTestConnection()
+
+	completedID := uint64(1001)
+	completed := make(chan error, 1)
+	registerPendingRequest(c, completedID, func(_ *pb.BaseCommand, err error) {
+		completed <- err
+	})
+	if req, ok := c.deletePendingRequest(completedID); ok {
+		req.callback(&pb.BaseCommand{}, nil)
+	}
+	select {
+	case err := <-completed:
+		assert.NoError(t, err)
+	case <-time.After(time.Second):
+		t.Fatal("higher-id request did not complete")
+	}
+
+	unregisteredID := uint64(1000)
+	c.CloseRequest(unregisteredID, errRequestCancelled)
+
+	c.internalSendRequest(&request{
+		id:  &unregisteredID,
+		cmd: &pb.BaseCommand{},
+		callback: func(_ *pb.BaseCommand, err error) {
+			completed <- err
+		},
+	})
+
+	select {
+	case err := <-completed:
+		assert.ErrorIs(t, err, errRequestCancelled)
+	case <-time.After(time.Second):
+		t.Fatal("cancellation of an unregistered id was dropped after a " +
+			"higher id completed; the request was sent")
+	}
+}
+
+func TestCancelledReqsBounded(t *testing.T) {
+	c := newTestConnection()
+
+	for id := uint64(1); id <= 1100; id++ {
+		c.CloseRequest(id, errRequestCancelled)
+	}
+
+	c.pendingLock.Lock()
+	size := len(c.cancelledReqs)
+	_, oldest := c.cancelledReqs[1]
+	_, newest := c.cancelledReqs[1100]
+	c.pendingLock.Unlock()
+
+	assert.LessOrEqual(t, size, 1024)
+	assert.False(t, oldest)
+	assert.True(t, newest)
 }
 
 func TestCloseRequestBeforeRegistration(t *testing.T) {
@@ -181,7 +237,7 @@ func TestCloseRequestConcurrentWithResponse(t *testing.T) {
 
 		assert.Equal(t, int32(1), completions.Load(),
 			"request must complete exactly once (trial %d)", trial)
-		assert.Zero(t, remembered, "trial %d", trial)
+		assert.LessOrEqual(t, remembered, 1, "trial %d", trial)
 		select {
 		case err := <-completed:
 			if err != nil {

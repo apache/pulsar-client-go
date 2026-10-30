@@ -208,6 +208,11 @@ type partitionConsumer struct {
 	cnxKeySuffix int32
 
 	inflightAck atomic.Pointer[inflightAckRequest]
+	// Connections on which the broker closed this consumer. Acks that would
+	// go out on them fail fast with errAckConsumerClosed instead of waiting
+	// for a broker that no longer answers; cleared on successful reconnect.
+	closedAckConnsMu sync.Mutex
+	closedAckConns   map[internal.Connection]struct{}
 
 	topic        string
 	name         string
@@ -685,7 +690,17 @@ func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
 	}
 
 	cmdAck.RequestId = proto.Uint64(reqID)
-	_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+	cnx := pc._getConn()
+	pc.inflightAck.Store(&inflightAckRequest{requestID: reqID, cnx: cnx})
+	if pc.connClosedForAck(cnx) {
+		pc.inflightAck.Store(nil)
+		pc.log.Debug("Skip ack on a connection that closed this consumer")
+		req.Transaction.endSendOrAckOp(errAckConsumerClosed)
+		req.err = errAckConsumerClosed
+		return
+	}
+	_, err := pc.client.rpcClient.RequestOnCnx(cnx, reqID, pb.BaseCommand_ACK, cmdAck)
+	pc.inflightAck.Store(nil)
 	if err != nil {
 		pc.log.WithError(err).Error("Ack with response error")
 	}
@@ -1255,6 +1270,14 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 		cmdAck.RequestId = proto.Uint64(reqID)
 		cnx := pc._getConn()
 		pc.inflightAck.Store(&inflightAckRequest{requestID: reqID, cnx: cnx})
+		// Checked after the store so a close landing in between is still
+		// caught by ConnectionClosed.
+		if pc.connClosedForAck(cnx) {
+			pc.inflightAck.Store(nil)
+			pc.log.Debug("Skip ack on a connection that closed this consumer")
+			req.err = errAckConsumerClosed
+			return
+		}
 		_, err := pc.client.rpcClient.RequestOnCnx(cnx, reqID, pb.BaseCommand_ACK, cmdAck)
 		pc.inflightAck.Store(nil)
 		if err != nil {
@@ -1276,6 +1299,12 @@ func (pc *partitionConsumer) internalAckList(request *ackListRequest) {
 		reqID := pc.client.rpcClient.NewRequestID()
 		cnx := pc._getConn()
 		pc.inflightAck.Store(&inflightAckRequest{requestID: reqID, cnx: cnx})
+		if pc.connClosedForAck(cnx) {
+			pc.inflightAck.Store(nil)
+			pc.log.Debug("Skip ack list on a connection that closed this consumer")
+			request.errCh <- errAckConsumerClosed
+			return
+		}
 		_, err := pc.client.rpcClient.RequestOnCnx(cnx, reqID, pb.BaseCommand_ACK, &pb.CommandAck{
 			AckType:    pb.CommandAck_Individual.Enum(),
 			ConsumerId: proto.Uint64(pc.consumerID),
@@ -1803,6 +1832,28 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 	return &encCtx
 }
 
+func (pc *partitionConsumer) markConnClosedForAck(cnx internal.Connection) {
+	pc.closedAckConnsMu.Lock()
+	defer pc.closedAckConnsMu.Unlock()
+	if pc.closedAckConns == nil {
+		pc.closedAckConns = make(map[internal.Connection]struct{})
+	}
+	pc.closedAckConns[cnx] = struct{}{}
+}
+
+func (pc *partitionConsumer) connClosedForAck(cnx internal.Connection) bool {
+	pc.closedAckConnsMu.Lock()
+	defer pc.closedAckConnsMu.Unlock()
+	_, ok := pc.closedAckConns[cnx]
+	return ok
+}
+
+func (pc *partitionConsumer) clearClosedAckConns() {
+	pc.closedAckConnsMu.Lock()
+	defer pc.closedAckConnsMu.Unlock()
+	pc.closedAckConns = make(map[internal.Connection]struct{})
+}
+
 func (pc *partitionConsumer) ConnectionClosed(cnx internal.Connection, closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
@@ -1823,6 +1874,7 @@ func (pc *partitionConsumer) ConnectionClosed(cnx internal.Connection, closeCons
 	// The broker does not always answer in-flight acks when it closes the
 	// consumer, so fail the wait instead of waiting for the timeout.
 	if closeConsumer != nil {
+		pc.markConnClosedForAck(cnx)
 		if ack := pc.inflightAck.Load(); ack != nil && ack.cnx == cnx {
 			cnx.CloseRequest(ack.requestID, errAckConsumerClosed)
 		}
@@ -2405,6 +2457,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		pc.name = res.Response.ConsumerStatsResponse.GetConsumerName()
 	}
 
+	pc.clearClosedAckConns()
 	pc.log.Info("Connected consumer")
 
 	msgType := res.Response.GetType()

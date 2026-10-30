@@ -171,8 +171,6 @@ type connection struct {
 	pendingReqs map[uint64]*request
 	// requests cancelled by CloseRequest before their send was registered
 	cancelledReqs map[uint64]error
-	// highest request id completed on this connection
-	lastCompletedReqID uint64
 
 	tlsOptions *TLSOptions
 	auth       auth.Provider
@@ -830,9 +828,6 @@ func (c *connection) deletePendingRequest(requestID uint64) (*request, bool) {
 	request, ok := c.pendingReqs[requestID]
 	if ok {
 		delete(c.pendingReqs, requestID)
-		if requestID > c.lastCompletedReqID {
-			c.lastCompletedReqID = requestID
-		}
 	}
 	return request, ok
 }
@@ -861,17 +856,36 @@ func (c *connection) CloseRequest(requestID uint64, err error) {
 	req, ok := c.pendingReqs[requestID]
 	if ok {
 		delete(c.pendingReqs, requestID)
-		if requestID > c.lastCompletedReqID {
-			c.lastCompletedReqID = requestID
-		}
 		c.pendingLock.Unlock()
 		req.callback(nil, err)
 		return
 	}
-	if requestID > c.lastCompletedReqID {
-		c.cancelledReqs[requestID] = err
-	}
+	c.rememberCancelledRequest(requestID, err)
 	c.pendingLock.Unlock()
+}
+
+// rememberCancelledRequest records the cancellation of a request that is not
+// pending. Responses complete out of order, so a completed higher id says
+// nothing about an allocated-but-unregistered lower id: remember
+// unconditionally. Ids are never reused, so bounding the map and dropping
+// the oldest entries is safe.
+func (c *connection) rememberCancelledRequest(requestID uint64, err error) {
+	const maxCancelledReqs = 1024
+	if _, ok := c.cancelledReqs[requestID]; ok {
+		return
+	}
+	if len(c.cancelledReqs) >= maxCancelledReqs {
+		var oldest uint64
+		first := true
+		for id := range c.cancelledReqs {
+			if first || id < oldest {
+				oldest = id
+				first = false
+			}
+		}
+		delete(c.cancelledReqs, oldest)
+	}
+	c.cancelledReqs[requestID] = err
 }
 
 func (c *connection) lastDataReceived() time.Time {
