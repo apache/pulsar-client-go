@@ -69,3 +69,17 @@ This change added tests and can be verified as follows:
   - If yes, how is the feature documented? (not applicable / docs / GoDocs / not documented)
   - If a feature is not applicable for documentation, explain why?
   - If a feature is not documented yet in this PR, please create a followup issue for adding the documentation
+
+### Matching PR in forked repository
+
+PR in forked repository: <!-- ENTER URL HERE -->
+
+<!--
+apache/pulsar-client-go pull requests should be first tested in your own fork since the 
+apache/pulsar-client-go CI based on GitHub Actions has constrained resources and quota.
+GitHub Actions provides separate quota for pull requests that are executed in 
+a forked repository.
+
+The tests will be run in the forked repository until all PR review comments have
+been handled, the tests pass and the PR is approved by a reviewer.
+-->
