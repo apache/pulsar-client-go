@@ -268,11 +268,16 @@ func (tv *TableViewImpl) watchReaderForNewMessages(ctx context.Context, reader R
 	for {
 		msg, err := reader.Next(ctx)
 		if err != nil {
+			// A closed reader/consumer or a cancelled context means a normal
+			// shutdown; exit silently without logging it as an error.
+			var e *Error
+			if (errors.As(err, &e) && e.Result() == ConsumerClosed) || errors.Is(err, context.Canceled) {
+				return
+			}
+			// For any other error, log it and continue. reader.Next blocks
+			// internally, so this loop will not spin.
 			tv.logger.Errorf("read next message failed for %s: %v", reader.Topic(), err)
-		}
-		var e *Error
-		if (errors.As(err, &e) && e.Result() == ConsumerClosed) || errors.Is(err, context.Canceled) {
-			return
+			continue
 		}
 		if msg != nil {
 			tv.handleMessage(msg)
