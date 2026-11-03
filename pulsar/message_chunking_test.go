@@ -268,10 +268,18 @@ func TestChunksEnqueueFailed(t *testing.T) {
 	// Need to wait some time to let the rate limiter take effect
 	time.Sleep(2 * time.Second)
 
+	// The first message is admitted although its 20 chunks exceed MaxPendingMessages,
+	// because the publish semaphore only throttles: a request may exceed the limit as
+	// long as the limit has not been reached yet. The rate limit keeps its chunks pending.
+	producer.SendAsync(context.Background(), &ProducerMessage{
+		Payload: createTestMessagePayload(1000),
+	}, func(MessageID, *ProducerMessage, error) {})
+
+	// The limit is now reached, so the next message is rejected as a whole.
 	ID, err := producer.Send(context.Background(), &ProducerMessage{
 		Payload: createTestMessagePayload(1000),
 	})
-	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrSendQueueIsFull)
 	assert.Nil(t, ID)
 }
 
@@ -526,11 +534,14 @@ func TestChunkBlockIfQueueFull(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	// Large messages will be split into 11 chunks, exceeding the length of pending queue
-	_, err = producer.Send(ctx, &ProducerMessage{
+	// Large messages will be split into 11 chunks, exceeding the length of
+	// the pending queue. The message is admitted as a whole, so the send
+	// completes instead of waiting for permits that can never be granted (#1448).
+	msgID, err := producer.Send(ctx, &ProducerMessage{
 		Payload: createTestMessagePayload(100),
 	})
-	assert.Error(t, err)
+	assert.NoError(t, err)
+	assert.NotNil(t, msgID)
 }
 
 func createTestMessagePayload(size int) []byte {
@@ -967,4 +978,37 @@ func TestChunkDLQWithNack(t *testing.T) {
 	cancel()
 	assert.ErrorIs(t, err, context.DeadlineExceeded)
 	assert.Nil(t, msg)
+}
+
+func TestSendChunkedMessageWithMoreChunksThanMaxPendingMessages(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.NoError(t, err)
+	defer client.Close()
+
+	topic := newTopicName()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:               topic,
+		DisableBatching:     true, // batching and chunking cannot be used together
+		MaxPendingMessages:  2,    // fewer than the total number of chunks below
+		EnableChunking:      true,
+		ChunkMaxMessageSize: 1000,
+	})
+	assert.NoError(t, err)
+	defer producer.Close()
+
+	// A 10 KiB payload with a 1000-byte chunk size produces 11 chunks.
+	// Before the fix for #1448, the producer waited for one permit per chunk
+	// while holding all the permits it could ever get, so the send blocked until
+	// the context expired.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	msgID, err := producer.Send(ctx, &ProducerMessage{
+		Payload: make([]byte, 10*1024),
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, msgID)
 }

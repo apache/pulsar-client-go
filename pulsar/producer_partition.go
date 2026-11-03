@@ -940,14 +940,11 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 		buffer.Retain()
 		p.pendingQueue.Lock()
 		defer p.pendingQueue.Unlock()
-		conn := p._getConn()
-		if p.getProducerState() == producerReady {
-			// If the producer is reconnecting, we should not write to the connection.
-			// We just need to push the buffer to the pending queue, it will be sent during the reconnecting.
-			conn.WriteData(ctx, buffer)
-		} else {
-			p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
-		}
+		// The item must be in the pending queue before its data reaches the connection.
+		// PutUnsafe waits for room in the queue and releases the lock while it waits, so
+		// writing first would let the broker acknowledge the item before it is queued
+		// (the receipt would then be dropped as "timed out") whenever more items than
+		// the queue can hold are in flight, e.g. the chunks of one large message.
 		p.pendingQueue.PutUnsafe(&pendingItem{
 			ctx:          ctx,
 			cancel:       cancel,
@@ -957,6 +954,14 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			sequenceID:   sequenceID,
 			sendRequests: callbacks,
 		})
+		conn := p._getConn()
+		if p.getProducerState() == producerReady {
+			// If the producer is reconnecting, we should not write to the connection.
+			// We just need to push the buffer to the pending queue, it will be sent during the reconnecting.
+			conn.WriteData(ctx, buffer)
+		} else {
+			p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
+		}
 	}
 }
 
@@ -1707,8 +1712,17 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 	}
 
 	if sr.semaphore != nil {
-		sr.semaphore.Release()
-		sr.producer.metrics.MessagesPending.Dec()
+		// A chunk releases the single permit it was dispatched with. A request
+		// that failed before being split into chunks still holds every permit
+		// reserved for the message, so it returns all of them.
+		permits := 1
+		if sr.reservedSemaphore > permits {
+			permits = sr.reservedSemaphore
+		}
+		for i := 0; i < permits; i++ {
+			sr.semaphore.Release()
+		}
+		sr.producer.metrics.MessagesPending.Sub(float64(permits))
 	}
 
 	if sr.memLimit != nil {
@@ -1741,30 +1755,29 @@ func (p *partitionProducer) blockIfQueueFull() bool {
 }
 
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
-	for i := 0; i < sr.totalChunks; i++ {
-		if p.blockIfQueueFull() {
-			if !p.publishSemaphore.Acquire(sr.ctx) {
-				return ErrContextExpired
-			}
-
-			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
-			// of that only a part of the chunks acquire succeed
-			sr.semaphore = p.publishSemaphore
-			sr.reservedSemaphore++
-			p.metrics.MessagesPending.Inc()
-		} else {
-			if !p.publishSemaphore.TryAcquire() {
-				return ErrSendQueueIsFull
-			}
-
-			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
-			// of that only a part of the chunks acquire succeed
-			sr.semaphore = p.publishSemaphore
-			sr.reservedSemaphore++
-			p.metrics.MessagesPending.Inc()
+	// All the chunks of a message are reserved in a single atomic call so that
+	// they are dispatched as one unit. The semaphore admits a request as long as
+	// the permits already held are below the limit, even if the request needs
+	// more permits than that (MaxPendingMessages acts as a throttle, like the
+	// memory limit). Acquiring one permit per chunk instead would block forever
+	// whenever a message has more chunks than MaxPendingMessages.
+	n := int32(sr.totalChunks)
+	if p.blockIfQueueFull() {
+		if !p.publishSemaphore.AcquireN(sr.ctx, n) {
+			return ErrContextExpired
+		}
+	} else {
+		if !p.publishSemaphore.TryAcquireN(n) {
+			return ErrSendQueueIsFull
 		}
 	}
 
+	// Record the permits held so that done() can return all of them if the
+	// message fails before it is split into chunks. Each dispatched chunk
+	// releases its own permit once it is acknowledged or fails.
+	sr.semaphore = p.publishSemaphore
+	sr.reservedSemaphore = int(n)
+	p.metrics.MessagesPending.Add(float64(n))
 	return nil
 }
 
