@@ -22,6 +22,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
@@ -77,6 +78,8 @@ type multiTopicConsumer struct {
 	rlq       *retryRouter
 	closeOnce sync.Once
 	closeCh   chan struct{}
+
+	paused atomic.Bool
 
 	log log.Logger
 }
@@ -359,4 +362,22 @@ func (c *multiTopicConsumer) SeekByTime(_ time.Time) error {
 // Name returns the name of consumer.
 func (c *multiTopicConsumer) Name() string {
 	return c.consumerName
+}
+
+func (c *multiTopicConsumer) Pause() {
+	c.paused.Store(true)
+	for _, con := range c.consumers {
+		con.Pause()
+	}
+}
+
+func (c *multiTopicConsumer) Resume() {
+	c.paused.Store(false)
+	for _, con := range c.consumers {
+		con.Resume()
+	}
+}
+
+func (c *multiTopicConsumer) Paused() bool {
+	return c.paused.Load()
 }
