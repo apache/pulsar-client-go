@@ -71,6 +71,9 @@ type FlushBatch struct {
 	SequenceID uint64
 	Callbacks  []interface{}
 	Error      error
+
+	// HighestSequenceID is the largest sequence ID of the messages in the batch.
+	HighestSequenceID uint64
 }
 
 // batchContainer wraps the objects needed to a batch.
@@ -97,6 +100,11 @@ type batchContainer struct {
 	cmdSend     *pb.BaseCommand
 	msgMetadata *pb.MessageMetadata
 	callbacks   []interface{}
+
+	// highestSequenceID is the largest sequence ID added to the current batch.
+	// It is sent as highest_sequence_id so that broker-side deduplication tracks
+	// the whole batch instead of only its first message.
+	highestSequenceID uint64
 
 	compressionProvider compression.Provider
 	buffersPool         BuffersPool
@@ -234,6 +242,9 @@ func (bc *batchContainer) Add(
 			bc.cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
 			bc.cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
 		}
+		bc.highestSequenceID = sequenceID
+	} else if metadata.SequenceId != nil && *metadata.SequenceId > bc.highestSequenceID {
+		bc.highestSequenceID = *metadata.SequenceId
 	}
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
 
@@ -263,6 +274,8 @@ func (bc *batchContainer) Flush() *FlushBatch {
 
 	bc.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bc.numMessages))
 	bc.cmdSend.Send.NumMessages = proto.Int32(int32(bc.numMessages))
+	bc.msgMetadata.HighestSequenceId = proto.Uint64(bc.highestSequenceID)
+	bc.cmdSend.Send.HighestSequenceId = proto.Uint64(bc.highestSequenceID)
 
 	uncompressedSize := bc.buffer.ReadableBytes()
 	bc.msgMetadata.UncompressedSize = &uncompressedSize
@@ -273,21 +286,24 @@ func (bc *batchContainer) Flush() *FlushBatch {
 	buffer.SetReleaseCallback(func() { bufferCount.Dec() })
 
 	sequenceID := uint64(0)
+	highestSequenceID := uint64(0)
 	var err error
 	if err = serializeMessage(
 		buffer, bc.cmdSend, bc.msgMetadata, bc.buffer, bc.compressionProvider,
 		bc.encryptor, bc.maxMessageSize, true,
 	); err == nil { // no error in serializing Batch
 		sequenceID = bc.cmdSend.Send.GetSequenceId()
+		highestSequenceID = bc.cmdSend.Send.GetHighestSequenceId()
 	}
 
 	callbacks := bc.callbacks
 	bc.reset()
 	return &FlushBatch{
-		BatchData:  buffer,
-		SequenceID: sequenceID,
-		Callbacks:  callbacks,
-		Error:      err,
+		BatchData:         buffer,
+		SequenceID:        sequenceID,
+		HighestSequenceID: highestSequenceID,
+		Callbacks:         callbacks,
+		Error:             err,
 	}
 }
 
