@@ -370,6 +370,10 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		p.encryptor = internalcrypto.NewNoopEncryptor()
 	}
 
+	// Only the first connection seeds the sequence state from the broker, as
+	// in the Java client. On a reconnect the local values already cover what
+	// this producer pushed, and grabCnx then runs on the reconnect goroutine
+	// concurrently with internalSend, which owns lastSequenceIDPushed.
 	if p.sequenceIDGenerator == nil {
 		lastSequenceID := res.Response.ProducerSuccess.GetLastSequenceId()
 		nextSequenceID := uint64(lastSequenceID + 1)

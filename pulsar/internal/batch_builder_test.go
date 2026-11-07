@@ -83,6 +83,7 @@ func TestBatchContainerSetsHighestSequenceID(t *testing.T) {
 	assert.Equal(t, int32(3), send.GetNumMessages())
 	assert.Equal(t, uint64(5), meta.GetSequenceId())
 	assert.Equal(t, uint64(9), meta.GetHighestSequenceId())
+	assert.Zero(t, builder.(*batchContainer).highestSequenceID, "Flush must reset the highest sequence ID")
 
 	// The next batch must not inherit the previous highest sequence ID.
 	addWithSequenceID(t, builder, &generator, "", proto.Uint64(10))

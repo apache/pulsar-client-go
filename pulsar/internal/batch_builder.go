@@ -255,6 +255,7 @@ func (bc *batchContainer) Add(
 
 func (bc *batchContainer) reset() {
 	bc.numMessages = 0
+	bc.highestSequenceID = 0
 	bc.buffer.Clear()
 	bc.callbacks = []interface{}{}
 	bc.msgMetadata.ReplicateTo = nil
