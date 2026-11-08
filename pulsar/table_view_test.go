@@ -802,22 +802,25 @@ func (m *mockMessage) GetEncryptionContext() *EncryptionContext { return nil }
 func (m *mockMessage) Index() *uint64                           { return nil }
 func (m *mockMessage) BrokerPublishTime() *time.Time            { return nil }
 
-// mockReader is a minimal Reader stub whose Next blocks until ctx is cancelled.
-type mockReader struct {
-	topic string
+// blockingCloseReader wraps a Reader and makes Close() block until the
+// given channel is closed. This models the real reader.Close() →
+// consumer.closeWithCause() → wg.Wait() behaviour.
+type blockingCloseReader struct {
+	Reader
+	nextExited chan struct{}
 }
 
-func (m *mockReader) Topic() string                             { return m.topic }
-func (m *mockReader) Next(ctx context.Context) (Message, error) { <-ctx.Done(); return nil, ctx.Err() }
-func (m *mockReader) HasNext() bool                             { return false }
-func (m *mockReader) Close()                                    {}
-func (m *mockReader) Seek(MessageID) error                      { return nil }
-func (m *mockReader) SeekByTime(time.Time) error                { return nil }
-func (m *mockReader) GetLastMessageID() (MessageID, error)      { return nil, nil }
+func (b *blockingCloseReader) Close() {
+	<-b.nextExited
+}
 
 // TestCloseCallsCancelFuncToAvoidDeadlock verifies that Close() cancels
 // each reader's context so that watchReaderForNewMessages can exit and
 // Close() does not deadlock.
+//
+// The mock models the real shutdown coupling: Close() blocks until Next()
+// returns. Without the cancelFunc() call, Next() never unblocks, Close()
+// never returns, and the test times out.
 func TestCloseCallsCancelFuncToAvoidDeadlock(t *testing.T) {
 	tv := &TableViewImpl{
 		data:          make(map[string]interface{}),
@@ -826,10 +829,27 @@ func TestCloseCallsCancelFuncToAvoidDeadlock(t *testing.T) {
 		closedCh:      make(chan struct{}),
 	}
 
+	entered := make(chan struct{})    // closed when Next() enters its blocking wait
+	nextExited := make(chan struct{}) // closed when Next() returns
+
 	ctx, cancel := context.WithCancel(context.Background())
-	reader := &mockReader{topic: "test-topic"}
+	reader := &blockingCloseReader{
+		Reader: &mockReader{
+			topic: "test-topic",
+			nextFn: func(ctx context.Context, _ int32) (Message, error) {
+				close(entered)
+				<-ctx.Done()
+				close(nextExited)
+				return nil, ctx.Err()
+			},
+		},
+		nextExited: nextExited,
+	}
 	tv.cancelReaders["test-topic"] = cancelReader{reader: reader, cancelFunc: cancel}
 	go tv.watchReaderForNewMessages(ctx, reader)
+
+	// Wait until Next() is entered so the deadlock scenario is fully set up.
+	<-entered
 
 	done := make(chan struct{})
 	go func() { tv.Close(); close(done) }()
