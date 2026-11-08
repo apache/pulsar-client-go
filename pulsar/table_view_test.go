@@ -801,3 +801,81 @@ func (m *mockMessage) SchemaVersion() []byte                    { return nil }
 func (m *mockMessage) GetEncryptionContext() *EncryptionContext { return nil }
 func (m *mockMessage) Index() *uint64                           { return nil }
 func (m *mockMessage) BrokerPublishTime() *time.Time            { return nil }
+
+// schemaMessage extends mockMessage so that GetSchemaValue copies a
+// predefined value into the destination pointer. It is used to exercise
+// handleMessage's non-tombstone branch in a pure unit test, without
+// requiring a real broker or schema.
+type schemaMessage struct {
+	mockMessage
+	value string
+}
+
+func (m *schemaMessage) GetSchemaValue(dst interface{}) error {
+	// dst is *string here because the test configures SchemaValueType as
+	// reflect.TypeOf("") and handleMessage passes reflect.New(T).Interface().
+	p, ok := dst.(*string)
+	if !ok {
+		return fmt.Errorf("unexpected dst type %T", dst)
+	}
+	*p = m.value
+	return nil
+}
+
+// TestHandleMessageListenerValue is a pure unit test that pins down the
+// contract between handleMessage and registered listeners:
+//
+//  1. For a normal message, the listener receives the deserialized value
+//     and tv.data is updated accordingly.
+//  2. For a tombstone (empty payload), the listener receives nil (not the
+//     type's zero value) and the key is removed from tv.data.
+//
+// This directly guards the bug where tombstones used to pass a type zero
+// value to listeners, making it impossible to distinguish "key deleted"
+// from "value updated to zero".
+func TestHandleMessageListenerValue(t *testing.T) {
+	tv := &TableViewImpl{
+		data:    make(map[string]interface{}),
+		logger:  log.DefaultNopLogger(),
+		options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
+	}
+
+	type callback struct {
+		key   string
+		value interface{}
+	}
+	var got []callback
+	tv.listeners = append(tv.listeners, func(k string, v interface{}) error {
+		got = append(got, callback{key: k, value: v})
+		return nil
+	})
+
+	// 1) Normal message: listener must receive the deserialized value and
+	//    tv.data must contain it.
+	tv.handleMessage(&schemaMessage{
+		mockMessage: mockMessage{key: "k1", payload: []byte("non-empty")},
+		value:       "hello",
+	})
+	require.Len(t, got, 1)
+	assert.Equal(t, "k1", got[0].key)
+	assert.Equal(t, "hello", got[0].value,
+		"listener must receive the deserialized value for a normal message")
+	assert.Equal(t, "hello", tv.data["k1"],
+		"tv.data must be updated to the deserialized value")
+
+	// 2) Tombstone: listener must receive nil and the key must be removed.
+	tv.handleMessage(&mockMessage{key: "k1", payload: nil})
+	require.Len(t, got, 2)
+	assert.Equal(t, "k1", got[1].key)
+	assert.Nil(t, got[1].value,
+		"listener must receive nil for a tombstone, not the type zero value")
+	_, exists := tv.data["k1"]
+	assert.False(t, exists, "tombstone must delete the key from tv.data")
+
+	// 3) Tombstone for a key that never existed is still a nil callback.
+	tv.handleMessage(&mockMessage{key: "never-existed", payload: []byte{}})
+	require.Len(t, got, 3)
+	assert.Equal(t, "never-existed", got[2].key)
+	assert.Nil(t, got[2].value,
+		"tombstone on an absent key must still deliver nil to listeners")
+}

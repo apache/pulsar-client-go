@@ -247,18 +247,26 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 	tv.dataMu.Lock()
 	defer tv.dataMu.Unlock()
 
-	payload := reflect.New(tv.options.SchemaValueType)
+	// value is the payload delivered to registered listeners.
+	// For a tombstone (empty payload) we explicitly pass nil to signal
+	// that the key has been removed; otherwise listeners would receive
+	// the type's zero value and could not distinguish a deletion from
+	// a legitimate update to the zero value.
+	var value interface{}
 	if len(msg.Payload()) == 0 {
 		delete(tv.data, msg.Key())
+		value = nil
 	} else {
+		payload := reflect.New(tv.options.SchemaValueType)
 		if err := msg.GetSchemaValue(payload.Interface()); err != nil {
 			tv.logger.Errorf("msg.GetSchemaValue() failed with %v; msg is %v", err, msg)
 		}
-		tv.data[msg.Key()] = reflect.Indirect(payload).Interface()
+		value = reflect.Indirect(payload).Interface()
+		tv.data[msg.Key()] = value
 	}
 
 	for _, listener := range tv.listeners {
-		if err := listener(msg.Key(), reflect.Indirect(payload).Interface()); err != nil {
+		if err := listener(msg.Key(), value); err != nil {
 			tv.logger.Errorf("table view listener failed for %v: %v", msg, err)
 		}
 	}
