@@ -6317,6 +6317,59 @@ func TestInternalTopicSubscribeToPartitionsPublishesConsumersBeforeDispatchingMe
 	}
 }
 
+func TestInternalTopicSubscribeToPartitionsKeepsExistingConsumersWhenExpansionFails(t *testing.T) {
+	lookupURL, err := url.Parse("pulsar://localhost:6650")
+	require.NoError(t, err)
+
+	cnx := newPartitionExpansionRaceConnection()
+	rpcClient := &partitionExpansionFailureRPCClient{
+		lookupResult: &internal.LookupResult{LogicalAddr: lookupURL, PhysicalAddr: lookupURL},
+		cnx:          cnx,
+	}
+	c := newInternalTopicPartitionTestConsumer(internalTopicPartitionTestConsumerOptions{
+		conn:       cnx,
+		rpcClient:  rpcClient,
+		partitions: 1,
+		log:        plog.DefaultNopLogger(),
+		consumerOptions: ConsumerOptions{
+			SubscriptionName:  "test-sub",
+			ReceiverQueueSize: 1,
+			NackPrecisionBit:  ptr(defaultNackPrecisionBit),
+		},
+		dlq: &dlqRouter{},
+	})
+	lookup := c.client.lookupService.(*partitionMetadataLookup)
+
+	require.NoError(t, c.internalTopicSubscribeToPartitions())
+	require.Len(t, c.partitionConsumers(), 1)
+	existing := c.partitionConsumers()[0]
+	require.Equal(t, consumerState(consumerReady), existing.getConsumerState())
+
+	// The topic grows to 3 partitions, and subscribing to partition 2 fails.
+	lookup.partitions = 3
+	rpcClient.failPartitionTwo.Store(true)
+	require.Error(t, c.internalTopicSubscribeToPartitions())
+
+	require.Equal(t, consumerState(consumerReady), existing.getConsumerState(),
+		"the failed expansion closed the consumer of an existing partition")
+	require.Len(t, c.partitionConsumers(), 1)
+	require.Same(t, existing, c.partitionConsumers()[0])
+
+	// The next discovery adds the new partitions and keeps the existing consumer.
+	rpcClient.failPartitionTwo.Store(false)
+	require.NoError(t, c.internalTopicSubscribeToPartitions())
+	consumers := c.partitionConsumers()
+	require.Len(t, consumers, 3)
+	require.Same(t, existing, consumers[0])
+	for _, pc := range consumers {
+		require.Equal(t, consumerState(consumerReady), pc.getConsumerState())
+	}
+
+	for _, pc := range consumers {
+		pc.Close()
+	}
+}
+
 type internalTopicPartitionTestConsumerOptions struct {
 	conn             internal.Connection
 	rpcClient        internal.RPCClient
@@ -6485,6 +6538,64 @@ func (r *partitionExpansionRaceRPCClient) success() *internal.RPCResult {
 }
 
 func (r *partitionExpansionRaceRPCClient) LookupService(_ string) (internal.LookupService, error) {
+	return &grabConnMockLookup{result: r.lookupResult}, nil
+}
+
+// partitionExpansionFailureRPCClient accepts every subscribe, except that it fails partition 2
+// while failPartitionTwo is set.
+type partitionExpansionFailureRPCClient struct {
+	internal.RPCClient
+	lookupResult     *internal.LookupResult
+	cnx              *partitionExpansionRaceConnection
+	failPartitionTwo atomic.Bool
+	requestID        atomic.Uint64
+	consumerID       atomic.Uint64
+}
+
+func (r *partitionExpansionFailureRPCClient) NewRequestID() uint64 {
+	return r.requestID.Add(1)
+}
+
+func (r *partitionExpansionFailureRPCClient) NewProducerID() uint64 {
+	return r.requestID.Add(1)
+}
+
+func (r *partitionExpansionFailureRPCClient) NewConsumerID() uint64 {
+	return r.consumerID.Add(1)
+}
+
+func (r *partitionExpansionFailureRPCClient) RequestOnCnxNoWait(
+	_ internal.Connection, _ pb.BaseCommand_Type, _ proto.Message,
+) error {
+	return nil
+}
+
+func (r *partitionExpansionFailureRPCClient) RequestOnCnx(
+	_ internal.Connection, _ uint64, cmdType pb.BaseCommand_Type, msg proto.Message,
+) (*internal.RPCResult, error) {
+	switch cmdType {
+	case pb.BaseCommand_SUBSCRIBE:
+		topic := msg.(*pb.CommandSubscribe).GetTopic()
+		if r.failPartitionTwo.Load() && strings.HasSuffix(topic, "-partition-2") {
+			return nil, errors.New("subscribe failed")
+		}
+		return r.success(), nil
+	case pb.BaseCommand_CLOSE_CONSUMER:
+		return r.success(), nil
+	default:
+		return nil, fmt.Errorf("unexpected command type %v", cmdType)
+	}
+}
+
+func (r *partitionExpansionFailureRPCClient) success() *internal.RPCResult {
+	successType := pb.BaseCommand_SUCCESS
+	return &internal.RPCResult{
+		Response: &pb.BaseCommand{Type: &successType},
+		Cnx:      r.cnx,
+	}
+}
+
+func (r *partitionExpansionFailureRPCClient) LookupService(_ string) (internal.LookupService, error) {
 	return &grabConnMockLookup{result: r.lookupResult}, nil
 }
 
