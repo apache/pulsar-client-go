@@ -120,6 +120,26 @@ type Namespaces interface {
 	// RemoveRetentionWithContext removes the retention configuration for a namespace, defaulting to broker settings
 	RemoveRetentionWithContext(ctx context.Context, namespace string) error
 
+	// GetDelayedDelivery returns the explicit delayed delivery policy for a namespace.
+	// Returns nil if the policy is not configured at the namespace level.
+	GetDelayedDelivery(namespace string) (*utils.DelayedDeliveryData, error)
+
+	// GetDelayedDeliveryWithContext returns the explicit delayed delivery policy for a namespace.
+	// Returns nil if the policy is not configured at the namespace level.
+	GetDelayedDeliveryWithContext(ctx context.Context, namespace string) (*utils.DelayedDeliveryData, error)
+
+	// SetDelayedDelivery sets the delayed delivery policy for all topics in a namespace.
+	SetDelayedDelivery(namespace string, policy utils.DelayedDeliveryData) error
+
+	// SetDelayedDeliveryWithContext sets the delayed delivery policy for all topics in a namespace.
+	SetDelayedDeliveryWithContext(ctx context.Context, namespace string, policy utils.DelayedDeliveryData) error
+
+	// RemoveDelayedDelivery removes the namespace policy, restoring inheritance from broker settings.
+	RemoveDelayedDelivery(namespace string) error
+
+	// RemoveDelayedDeliveryWithContext removes the namespace policy, restoring inheritance from broker settings.
+	RemoveDelayedDeliveryWithContext(ctx context.Context, namespace string) error
+
 	// GetBacklogQuotaMap returns backlog quota map on a namespace
 	GetBacklogQuotaMap(namespace string) (map[utils.BacklogQuotaType]utils.BacklogQuota, error)
 
@@ -1019,6 +1039,56 @@ func (n *namespaces) RemoveRetentionWithContext(ctx context.Context, namespace s
 		return err
 	}
 	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "retention")
+	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
+}
+
+func (n *namespaces) GetDelayedDelivery(namespace string) (*utils.DelayedDeliveryData, error) {
+	return n.GetDelayedDeliveryWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) GetDelayedDeliveryWithContext(
+	ctx context.Context,
+	namespace string,
+) (*utils.DelayedDeliveryData, error) {
+	nsName, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return nil, err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "delayedDelivery")
+	body, err := n.pulsar.Client.GetWithQueryParamsWithContext(ctx, endpoint, nil, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	return decodeOptionalJSON[utils.DelayedDeliveryData](body)
+}
+
+func (n *namespaces) SetDelayedDelivery(namespace string, policy utils.DelayedDeliveryData) error {
+	return n.SetDelayedDeliveryWithContext(context.Background(), namespace, policy)
+}
+
+func (n *namespaces) SetDelayedDeliveryWithContext(
+	ctx context.Context,
+	namespace string,
+	policy utils.DelayedDeliveryData,
+) error {
+	nsName, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "delayedDelivery")
+	return n.pulsar.Client.PostWithContext(ctx, endpoint, &policy)
+}
+
+func (n *namespaces) RemoveDelayedDelivery(namespace string) error {
+	return n.RemoveDelayedDeliveryWithContext(context.Background(), namespace)
+}
+
+func (n *namespaces) RemoveDelayedDeliveryWithContext(ctx context.Context, namespace string) error {
+	nsName, err := utils.GetNamespaceName(namespace)
+	if err != nil {
+		return err
+	}
+	endpoint := n.pulsar.endpoint(n.basePath, nsName.String(), "delayedDelivery")
 	return n.pulsar.Client.DeleteWithContext(ctx, endpoint)
 }
 

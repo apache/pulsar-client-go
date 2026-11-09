@@ -492,7 +492,7 @@ type DelayedDeliveryData struct {
 	Active   bool    `json:"active"`
 	// MaxDelayInMillis is optional and was added for enhanced delayed delivery support
 	// Default value 0 means no maximum delay limit (backward compatible)
-	MaxDelayInMillis int64 `json:"maxDelayInMillis,omitempty"`
+	MaxDelayInMillis int64 `json:"maxDeliveryDelayInMillis,omitempty"`
 }
 
 // NewDelayedDeliveryData creates a DelayedDeliveryData with backward compatible defaults
