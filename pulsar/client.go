@@ -22,6 +22,7 @@ import (
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar/auth"
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
 )
@@ -107,6 +108,14 @@ type ClientOptions struct {
 	// Producer-create, subscribe and unsubscribe operations will be retried until this interval, after which the
 	// operation will be marked as failed
 	OperationTimeout time.Duration
+
+	// Configure the backoff between the retries of a request the client sends to
+	// any broker of the service URL, such as a topic lookup or partitioned-topic
+	// metadata, within OperationTimeout. Without it the delay doubles from 100ms
+	// up to 60s, so a lookup that starts while a broker is away can sleep through
+	// the moment its topic gets a new owner.
+	// Reconnects of a producer or consumer are paced by their own BackOffPolicyFunc.
+	BackOffPolicyFunc func() backoff.Policy
 
 	// Configure the ping send and check interval, default to 30 seconds.
 	//
