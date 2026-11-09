@@ -438,4 +438,31 @@ type Consumer interface {
 
 	// Name returns the name of consumer.
 	Name() string
+
+	// Pause stops the consumer from requesting more messages from the broker.
+	//
+	// Messages already buffered, in-flight, or previously granted to this consumer
+	// remain available via Receive() / Chan(); acknowledgement still works. This
+	// might cause Receive() to block until Resume() is called and new messages are
+	// pushed by the broker. For a zero-queue consumer, Receive blocks until Resume()
+	// or the context is canceled.
+	//
+	// Pausing only withholds flow permits; the consumer stays connected, so it does
+	// not change subscription membership:
+	//   - Shared:    dispatch moves to other consumers once granted permits run out.
+	//   - KeyShared: the paused consumer's keys are not reassigned; their backlog grows.
+	//   - Failover:  no failover is triggered; the consumer stays active.
+	//   - Exclusive: the backlog grows.
+	// In all cases the backlog drains after Resume().
+	//
+	// Idempotent.
+	Pause()
+
+	// Resume reverses Pause, letting the consumer request messages again.
+	//
+	// Idempotent.
+	Resume()
+
+	// Paused reports whether Pause() has been called more recently than Resume().
+	Paused() bool
 }
