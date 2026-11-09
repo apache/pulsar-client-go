@@ -6786,3 +6786,47 @@ func TestConsumerSeekWithoutPartitionIndexOnSinglePartitionConsumer(t *testing.T
 	assert.Error(t, c.AckID(EarliestMessageID()))
 	assert.Error(t, c.AckIDCumulative(LatestMessageID()))
 }
+
+func TestConsumer_NonPersistentTopic_ReceiveAfterAck(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := "non-persistent://public/default/test-np-receive-after-ack"
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "np-receive-after-ack",
+		Type:             Shared,
+	})
+	assert.Nil(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+	})
+	assert.Nil(t, err)
+	defer producer.Close()
+
+	// Send, receive and ack one message at a time. Non-persistent messages
+	// all carry the placeholder MessageID (0,0); after the first ack, the
+	// remaining messages must not be treated as duplicates of it.
+	ctx := context.Background()
+	for i := 0; i < 10; i++ {
+		_, err = producer.Send(ctx, &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		})
+		assert.Nil(t, err)
+
+		rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		msg, err := consumer.Receive(rctx)
+		cancel()
+		if !assert.Nil(t, err, "message %d not received", i) {
+			return
+		}
+		assert.Equal(t, fmt.Sprintf("msg-%d", i), string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+}

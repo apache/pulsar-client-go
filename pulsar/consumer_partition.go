@@ -454,15 +454,21 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.availablePermits = &availablePermits{pc: pc}
 	pc.chunkedMsgCtxMap = newChunkedMsgCtxMap(options.maxPendingChunkedMessage, pc)
 	pc.unAckChunksTracker = newUnAckChunksTracker(pc)
-	pc.ackGroupingTracker = newAckGroupingTracker(options.ackGroupingOptions,
-		func(id MessageID) { pc.sendIndividualAck(id) },
-		func(id MessageID) { pc.sendCumulativeAck(id) },
-		func(ids []*pb.MessageIdData) {
-			pc.eventsCh <- &ackListRequest{
-				errCh:  nil, // ignore the error
-				msgIDs: ids,
-			}
-		})
+	if isNonPersistentTopic(pc.topic) {
+		// Non-persistent topics discard acks entirely; see
+		// nonPersistentAckGroupingTracker.
+		pc.ackGroupingTracker = newNonPersistentAckGroupingTracker()
+	} else {
+		pc.ackGroupingTracker = newAckGroupingTracker(options.ackGroupingOptions,
+			func(id MessageID) { pc.sendIndividualAck(id) },
+			func(id MessageID) { pc.sendCumulativeAck(id) },
+			func(ids []*pb.MessageIdData) {
+				pc.eventsCh <- &ackListRequest{
+					errCh:  nil, // ignore the error
+					msgIDs: ids,
+				}
+			})
+	}
 	pc.setConsumerState(consumerInit)
 	pc.log = client.log.SubLogger(log.Fields{
 		"name":         pc.name,
