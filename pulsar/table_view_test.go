@@ -801,3 +801,62 @@ func (m *mockMessage) SchemaVersion() []byte                    { return nil }
 func (m *mockMessage) GetEncryptionContext() *EncryptionContext { return nil }
 func (m *mockMessage) Index() *uint64                           { return nil }
 func (m *mockMessage) BrokerPublishTime() *time.Time            { return nil }
+
+// blockingCloseReader wraps a Reader and makes Close() block until the
+// given channel is closed. This models the real reader.Close() →
+// consumer.closeWithCause() → wg.Wait() behaviour.
+type blockingCloseReader struct {
+	Reader
+	nextExited chan struct{}
+}
+
+func (b *blockingCloseReader) Close() {
+	<-b.nextExited
+}
+
+// TestCloseCallsCancelFuncToAvoidDeadlock verifies that Close() cancels
+// each reader's context so that watchReaderForNewMessages can exit and
+// Close() does not deadlock.
+//
+// The mock models the real shutdown coupling: Close() blocks until Next()
+// returns. Without the cancelFunc() call, Next() never unblocks, Close()
+// never returns, and the test times out.
+func TestCloseCallsCancelFuncToAvoidDeadlock(t *testing.T) {
+	tv := &TableViewImpl{
+		data:          make(map[string]interface{}),
+		cancelReaders: make(map[string]cancelReader),
+		logger:        log.DefaultNopLogger(),
+		closedCh:      make(chan struct{}),
+	}
+
+	entered := make(chan struct{})    // closed when Next() enters its blocking wait
+	nextExited := make(chan struct{}) // closed when Next() returns
+
+	ctx, cancel := context.WithCancel(context.Background())
+	reader := &blockingCloseReader{
+		Reader: &mockReader{
+			topic: "test-topic",
+			nextFn: func(ctx context.Context, _ int32) (Message, error) {
+				close(entered)
+				<-ctx.Done()
+				close(nextExited)
+				return nil, ctx.Err()
+			},
+		},
+		nextExited: nextExited,
+	}
+	tv.cancelReaders["test-topic"] = cancelReader{reader: reader, cancelFunc: cancel}
+	go tv.watchReaderForNewMessages(ctx, reader)
+
+	// Wait until Next() is entered so the deadlock scenario is fully set up.
+	<-entered
+
+	done := make(chan struct{})
+	go func() { tv.Close(); close(done) }()
+
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+		t.Fatal("Close() deadlocked: cancelFunc() was probably not called")
+	}
+}
