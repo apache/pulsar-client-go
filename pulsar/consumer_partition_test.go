@@ -161,6 +161,46 @@ func TestBatchMessageIDWithAckTracker(t *testing.T) {
 	}
 }
 
+// TestBatchMessageReservesMemoryPerMessage verifies that, with the auto-scaled receiver queue,
+// a received batch reserves exactly the size of its messages from the client memory limit, so
+// releasing each message in the dispatcher brings the usage back to zero.
+// This is the regression test for https://github.com/apache/pulsar-client-go/issues/1427
+func TestBatchMessageReservesMemoryPerMessage(t *testing.T) {
+	memLimit := internal.NewMemoryLimitController(defaultMemoryLimitBytes, defaultMemoryLimitTriggerThreshold)
+	pc := partitionConsumer{
+		client:               &client{memLimit: memLimit},
+		queueCh:              make(chan []*message, 1),
+		eventsCh:             make(chan interface{}, 1),
+		compressionProviders: sync.Map{},
+		options:              &partitionConsumerOpts{autoReceiverQueueSize: true, receiverQueueSize: 1000},
+		metrics:              newTestMetrics(),
+		decryptor:            crypto.NewNoopDecryptor(),
+		log:                  log.DefaultNopLogger(),
+	}
+	pc._setConn(dummyConnection{})
+	pc.availablePermits = &availablePermits{pc: &pc}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { pc.sendIndividualAck(id) }, nil, nil)
+
+	if err := pc.MessageReceived(nil, internal.NewBufferWrapper(rawBatchMessage10)); err != nil {
+		t.Fatal(err)
+	}
+	messages := <-pc.queueCh
+	assert.Len(t, messages, 10)
+
+	var totalSize int64
+	for _, m := range messages {
+		totalSize += int64(m.size())
+	}
+	assert.Equal(t, totalSize, memLimit.CurrentUsage())
+
+	// the dispatcher releases the size of each message it hands to the application
+	for _, m := range messages {
+		memLimit.ReleaseMemory(int64(m.size()))
+	}
+	assert.Zero(t, memLimit.CurrentUsage())
+}
+
 // TestProcessingTimeMetric verifies that pulsar_client_consumer_processing_time_seconds records the time
 // between receiving a message and acknowledging it.
 // This is the regression test for https://github.com/apache/pulsar-client-go/issues/1154
