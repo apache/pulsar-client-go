@@ -410,41 +410,130 @@ func TestTxn_AckAndSend(t *testing.T) {
 }
 
 func TestTxn_TransactionAbort(t *testing.T) {
-	// Prepare: Create PulsarClient and initialize the transaction coordinator client.
+	cases := []struct {
+		name            string
+		disableBatching bool
+		chunking        bool
+		payloadSize     int
+	}{
+		{name: "batched", payloadSize: 1024},
+		{name: "non-batched", disableBatching: true, payloadSize: 1024},
+		{name: "chunked", disableBatching: true, chunking: true, payloadSize: _brokerMaxMessageSize},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			// Prepare: Create PulsarClient and initialize the transaction coordinator client.
+			topic := newTopicName()
+			sub := "my-sub"
+			_, client := createClientWithTC(t)
+
+			// Prepare: Create Topic and Subscription.
+			consumer, _ := client.Subscribe(ConsumerOptions{
+				Topic:            topic,
+				SubscriptionName: sub,
+			})
+			producer, _ := client.CreateProducer(ProducerOptions{
+				Topic:           topic,
+				SendTimeout:     0,
+				DisableBatching: c.disableBatching,
+				EnableChunking:  c.chunking,
+			})
+
+			// Open a transaction and send 10 messages with the transaction.
+			txn, err := client.NewTransaction(txnTimeout)
+			require.Nil(t, err)
+
+			for i := 0; i < 10; i++ {
+				_, err = producer.Send(context.Background(), &ProducerMessage{
+					Transaction: txn,
+					Payload:     make([]byte, c.payloadSize),
+				})
+				require.Nil(t, err)
+			}
+
+			// Abort the transaction.
+			_ = txn.Abort(context.Background())
+
+			consumerShouldNotReceiveMessage(t, consumer)
+
+			// Clean up: Close the consumer and producer instances.
+			consumer.Close()
+			producer.Close()
+		})
+	}
+}
+
+// Messages of different transactions, and messages without a transaction, sent through one batching producer must
+// not share a batch: each batch is a single broker entry, committed or aborted as a whole. Each message must be
+// received exactly once.
+func TestTxn_BatchingDoesNotMixTransactions(t *testing.T) {
 	topic := newTopicName()
-	sub := "my-sub"
 	_, client := createClientWithTC(t)
 
-	// Prepare: Create Topic and Subscription.
-	consumer, _ := client.Subscribe(ConsumerOptions{
+	consumer, err := client.Subscribe(ConsumerOptions{
 		Topic:            topic,
-		SubscriptionName: sub,
+		SubscriptionName: "my-sub",
 	})
-	producer, _ := client.CreateProducer(ProducerOptions{
-		Topic:       topic,
-		SendTimeout: 0,
+	require.NoError(t, err)
+	defer consumer.Close()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		SendTimeout:             0,
+		BatchingMaxPublishDelay: time.Minute,
 	})
+	require.NoError(t, err)
+	defer producer.Close()
 
-	// Open a transaction and send 10 messages with the transaction.
-	txn, err := client.NewTransaction(txnTimeout)
-	require.Nil(t, err)
+	// The broker takes a topic's first transaction buffer snapshot on its first transactional publish. Meanwhile, it
+	// holds back transactional publishes but not the others, so it acks out of order and the producer reconnects and
+	// resends, duplicating messages. Take the snapshot first so that only batching is under test.
+	warmup, err := client.NewTransaction(txnTimeout)
+	require.NoError(t, err)
+	_, err = producer.Send(context.Background(), &ProducerMessage{Transaction: warmup, Payload: []byte("warmup")})
+	require.NoError(t, err)
+	require.NoError(t, warmup.Abort(context.Background()))
 
+	committed, err := client.NewTransaction(txnTimeout)
+	require.NoError(t, err)
+	aborted, err := client.NewTransaction(txnTimeout)
+	require.NoError(t, err)
+
+	// Interleave the messages so that, without the fix, they would share batches.
+	expected := map[string]int{}
 	for i := 0; i < 10; i++ {
-		_, err = producer.Send(context.Background(), &ProducerMessage{
-			Transaction: txn,
-			Payload:     make([]byte, 1024),
-		})
-		require.Nil(t, err)
+		for _, m := range []struct {
+			prefix string
+			txn    Transaction
+		}{{"committed", committed}, {"aborted", aborted}, {"none", nil}} {
+			payload := fmt.Sprintf("%s-%d", m.prefix, i)
+			if m.prefix != "aborted" {
+				expected[payload] = 1
+			}
+			producer.SendAsync(context.Background(), &ProducerMessage{
+				Transaction: m.txn,
+				Payload:     []byte(payload),
+			}, func(_ MessageID, _ *ProducerMessage, err error) {
+				assert.NoError(t, err)
+			})
+		}
 	}
+	require.NoError(t, producer.Flush())
 
-	// Abort the transaction.
-	_ = txn.Abort(context.Background())
+	require.NoError(t, committed.Commit(context.Background()))
+	require.NoError(t, aborted.Abort(context.Background()))
 
-	consumerShouldNotReceiveMessage(t, consumer)
-
-	// Clean up: Close the consumer and producer instances.
-	consumer.Close()
-	producer.Close()
+	received := map[string]int{}
+	for {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		msg, err := consumer.Receive(ctx)
+		cancel()
+		if err != nil {
+			break
+		}
+		received[string(msg.Payload())]++
+		require.NoError(t, consumer.Ack(msg))
+	}
+	assert.Equal(t, expected, received)
 }
 
 func consumerShouldNotReceiveMessage(t *testing.T, consumer Consumer) {
@@ -452,7 +541,7 @@ func consumerShouldNotReceiveMessage(t *testing.T, consumer Consumer) {
 	done := make(chan struct{})
 	go func() {
 		_, err := consumer.Receive(context.Background())
-		if err != nil {
+		if err == nil {
 			close(done)
 		}
 	}()

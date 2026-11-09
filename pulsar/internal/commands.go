@@ -358,6 +358,8 @@ func SingleSend(wb Buffer,
 	if useTxn {
 		cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
 		cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
+		msgMetadata.TxnidMostBits = proto.Uint64(mostSigBits)
+		msgMetadata.TxnidLeastBits = proto.Uint64(leastSigBits)
 	}
 	// payload has been compressed so compressionProvider can be nil
 	return serializeMessage(wb, cmdSend, msgMetadata, compressedPayload,

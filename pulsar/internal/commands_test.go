@@ -20,7 +20,11 @@ package internal
 import (
 	"testing"
 
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
+	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestConvertStringMap(t *testing.T) {
@@ -36,6 +40,23 @@ func TestConvertStringMap(t *testing.T) {
 	assert.Equal(t, 2, len(m2))
 	assert.Equal(t, "1", m2["a"])
 	assert.Equal(t, "2", m2["b"])
+}
+
+func TestSingleSendSetsTxnIDOnCommandAndMetadata(t *testing.T) {
+	for _, txn := range []testTxn{noTxn, txnA} {
+		frame := NewBuffer(1024)
+		metadata := &pb.MessageMetadata{
+			ProducerName: proto.String("test"),
+			SequenceId:   proto.Uint64(1),
+			PublishTime:  proto.Uint64(1),
+		}
+		err := SingleSend(frame, 1, 1, metadata, NewBufferWrapper([]byte("test")), crypto.NewNoopEncryptor(),
+			1024, txn.use, txn.mostSigBits, txn.leastSigBits)
+		require.NoError(t, err)
+
+		cmd, metadata := parseSendFrame(t, frame)
+		assertTxnID(t, txn, cmd, metadata)
+	}
 }
 
 func TestReadMessageMetadata(t *testing.T) {
