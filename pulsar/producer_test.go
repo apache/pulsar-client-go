@@ -2170,6 +2170,75 @@ func TestWaitForExclusiveProducerRecoverFromFencedTopicEpoch(t *testing.T) {
 	assert.NotNil(t, msgID)
 }
 
+func TestExclusiveWithFencingProducer(t *testing.T) {
+	for name, existingMode := range map[string]ProducerAccessMode{
+		"existing-shared":                 ProducerAccessModeShared,
+		"existing-exclusive":              ProducerAccessModeExclusive,
+		"existing-exclusive-with-fencing": ProducerAccessModeExclusiveWithFencing,
+	} {
+		t.Run(name, func(t *testing.T) {
+			// Use a client for each producer, as two processes competing for a topic would do.
+			existingClient, err := NewClient(ClientOptions{URL: serviceURL})
+			require.NoError(t, err)
+			defer existingClient.Close()
+			client, err := NewClient(ClientOptions{URL: serviceURL})
+			require.NoError(t, err)
+			defer client.Close()
+
+			topicName := newTopicName()
+			existing, err := existingClient.CreateProducer(ProducerOptions{
+				Topic:              topicName,
+				ProducerAccessMode: existingMode,
+			})
+			require.NoError(t, err)
+			defer existing.Close()
+			_, err = existing.Send(context.Background(), &ProducerMessage{Payload: []byte("existing")})
+			require.NoError(t, err)
+
+			// The new producer takes the topic over instead of being rejected.
+			producer, err := client.CreateProducer(ProducerOptions{
+				Topic:              topicName,
+				ProducerAccessMode: ProducerAccessModeExclusiveWithFencing,
+			})
+			require.NoError(t, err)
+			defer producer.Close()
+
+			send := func(p Producer) error {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_, err := p.Send(ctx, &ProducerMessage{Payload: []byte("test")})
+				return err
+			}
+
+			// The existing producer can never publish again. A shared producer keeps being rejected
+			// while it reconnects. An exclusive one is fenced when it reconnects and is closed for
+			// good: it fails the pending messages with ErrProducerFenced and the later ones with
+			// ErrProducerClosed.
+			var existingErr error
+			require.Eventually(t, func() bool {
+				existingErr = send(existing)
+				return existingErr != nil
+			}, 30*time.Second, 100*time.Millisecond)
+			if existingMode != ProducerAccessModeShared {
+				require.Eventually(t, func() bool {
+					existingErr = send(existing)
+					return errors.Is(existingErr, ErrProducerFenced) || errors.Is(existingErr, ErrProducerClosed)
+				}, 30*time.Second, 100*time.Millisecond, "unexpected error: %v", existingErr)
+			}
+
+			// The new producer keeps the topic, even though the existing one tried to reconnect.
+			require.Eventually(t, func() bool {
+				return send(producer) == nil
+			}, 30*time.Second, 100*time.Millisecond)
+			for i := 0; i < 20; i++ {
+				require.NoError(t, send(producer))
+				time.Sleep(50 * time.Millisecond)
+			}
+			require.Error(t, send(existing))
+		})
+	}
+}
+
 func TestMemLimitRejectProducerMessages(t *testing.T) {
 
 	c, err := NewClient(ClientOptions{
