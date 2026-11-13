@@ -80,6 +80,7 @@ type ConnectionListener interface {
 type Connection interface {
 	SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error))
 	SendRequestNoWait(req *pb.BaseCommand) error
+	CloseRequest(requestID uint64, err error)
 	WriteData(ctx context.Context, data Buffer)
 	RegisterListener(id uint64, listener ConnectionListener) error
 	UnregisterListener(id uint64)
@@ -97,8 +98,8 @@ type ConsumerHandler interface {
 
 	ActiveConsumerChanged(isActive bool)
 
-	// ConnectionClosed close the TCP connection.
-	ConnectionClosed(closeConsumer *pb.CommandCloseConsumer)
+	// ConnectionClosed is invoked when the broker closes the consumer.
+	ConnectionClosed(cnx Connection, closeConsumer *pb.CommandCloseConsumer)
 
 	// SetRedirectedClusterURI set the redirected cluster URI for lookups
 	SetRedirectedClusterURI(redirectedClusterURI string)
@@ -168,6 +169,8 @@ type connection struct {
 
 	pendingLock sync.Mutex
 	pendingReqs map[uint64]*request
+	// requests cancelled by CloseRequest before their send was registered
+	cancelledReqs map[uint64]error
 
 	tlsOptions *TLSOptions
 	auth       auth.Provider
@@ -203,6 +206,7 @@ func newConnection(opts connectionOptions) *connection {
 		writeBuffer:          NewBuffer(4096),
 		log:                  opts.logger.SubLogger(log.Fields{"remote_addr": opts.physicalAddr}),
 		pendingReqs:          make(map[uint64]*request),
+		cancelledReqs:        make(map[uint64]error),
 		lastDataReceivedTime: time.Now(),
 		tlsOptions:           opts.tls,
 		auth:                 opts.auth,
@@ -727,6 +731,14 @@ func (c *connection) internalSendRequest(req *request) {
 	} else {
 		c.pendingLock.Lock()
 		if req.id != nil {
+			if err, cancelled := c.cancelledReqs[*req.id]; cancelled {
+				delete(c.cancelledReqs, *req.id)
+				c.pendingLock.Unlock()
+				if req.callback != nil {
+					req.callback(req.cmd, err)
+				}
+				return
+			}
 			c.pendingReqs[*req.id] = req
 		}
 		c.pendingLock.Unlock()
@@ -827,14 +839,53 @@ func (c *connection) findPendingRequest(requestID uint64) (*request, bool) {
 	return request, ok
 }
 
-func (c *connection) failPendingRequests(err error) bool {
+func (c *connection) failPendingRequests(err error) {
 	c.pendingLock.Lock()
 	defer c.pendingLock.Unlock()
 	for id, req := range c.pendingReqs {
 		req.callback(nil, err)
 		delete(c.pendingReqs, id)
 	}
-	return true
+	c.cancelledReqs = make(map[uint64]error)
+}
+
+// CloseRequest fails the pending request with the given id with err,
+// without waiting for its response.
+func (c *connection) CloseRequest(requestID uint64, err error) {
+	c.pendingLock.Lock()
+	req, ok := c.pendingReqs[requestID]
+	if ok {
+		delete(c.pendingReqs, requestID)
+		c.pendingLock.Unlock()
+		req.callback(nil, err)
+		return
+	}
+	c.rememberCancelledRequest(requestID, err)
+	c.pendingLock.Unlock()
+}
+
+// rememberCancelledRequest records the cancellation of a request that is not
+// pending. Responses complete out of order, so a completed higher id says
+// nothing about an allocated-but-unregistered lower id: remember
+// unconditionally. Ids are never reused, so bounding the map and dropping
+// the oldest entries is safe.
+func (c *connection) rememberCancelledRequest(requestID uint64, err error) {
+	const maxCancelledReqs = 1024
+	if _, ok := c.cancelledReqs[requestID]; ok {
+		return
+	}
+	if len(c.cancelledReqs) >= maxCancelledReqs {
+		var oldest uint64
+		first := true
+		for id := range c.cancelledReqs {
+			if first || id < oldest {
+				oldest = id
+				first = false
+			}
+		}
+		delete(c.cancelledReqs, oldest)
+	}
+	c.cancelledReqs[requestID] = err
 }
 
 func (c *connection) lastDataReceived() time.Time {
@@ -939,7 +990,7 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
 
 	if consumer, ok := c.consumerHandler(consumerID); ok {
-		consumer.ConnectionClosed(closeConsumer)
+		consumer.ConnectionClosed(c, closeConsumer)
 		c.DeleteConsumeHandler(consumerID)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
@@ -1087,7 +1138,7 @@ func (c *connection) Close() {
 
 		// notify consumers connection closed
 		for _, handler := range consumerHandlers {
-			handler.ConnectionClosed(nil)
+			handler.ConnectionClosed(c, nil)
 		}
 
 		c.metrics.ConnectionsClosed.Inc()
