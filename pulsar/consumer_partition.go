@@ -1848,10 +1848,19 @@ func (pc *partitionConsumer) connClosedForAck(cnx internal.Connection) bool {
 	return ok
 }
 
-func (pc *partitionConsumer) clearClosedAckConns() {
+// clearClosedAckConnsExcept forgets the close markers of every connection
+// except cnx. A successful re-subscribe only proves the replaced connections
+// are stale: the reader may already have processed a CLOSE_CONSUMER on cnx
+// itself between the SUBSCRIBE response and grabConn resuming, and that
+// marker must survive so acks queued behind the reconnect still fail fast.
+func (pc *partitionConsumer) clearClosedAckConnsExcept(cnx internal.Connection) {
 	pc.closedAckConnsMu.Lock()
 	defer pc.closedAckConnsMu.Unlock()
-	pc.closedAckConns = make(map[internal.Connection]struct{})
+	for c := range pc.closedAckConns {
+		if c != cnx {
+			delete(pc.closedAckConns, c)
+		}
+	}
 }
 
 func (pc *partitionConsumer) ConnectionClosed(cnx internal.Connection, closeConsumer *pb.CommandCloseConsumer) {
@@ -2457,7 +2466,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		pc.name = res.Response.ConsumerStatsResponse.GetConsumerName()
 	}
 
-	pc.clearClosedAckConns()
+	pc.clearClosedAckConnsExcept(cnx)
 	pc.log.Info("Connected consumer")
 
 	msgType := res.Response.GetType()
