@@ -1042,13 +1042,19 @@ func TestInternalAckListFailsFastOnClosedConsumerConnection(t *testing.T) {
 }
 
 func TestClosedAckConnsClearedAfterReconnect(t *testing.T) {
-	cnx := &closeRecordingConnection{}
+	oldCnx := &closeRecordingConnection{}
+	newCnx := &closeRecordingConnection{}
 	pc := &partitionConsumer{}
-	pc.markConnClosedForAck(cnx)
-	assert.True(t, pc.connClosedForAck(cnx))
+	pc.markConnClosedForAck(oldCnx)
+	pc.markConnClosedForAck(newCnx)
+	assert.True(t, pc.connClosedForAck(oldCnx))
+	assert.True(t, pc.connClosedForAck(newCnx))
 
-	pc.clearClosedAckConns()
-	assert.False(t, pc.connClosedForAck(cnx))
+	// A CLOSE_CONSUMER processed on the new connection between the
+	// SUBSCRIBE response and grabConn resuming must survive the cleanup.
+	pc.clearClosedAckConnsExcept(newCnx)
+	assert.False(t, pc.connClosedForAck(oldCnx))
+	assert.True(t, pc.connClosedForAck(newCnx))
 }
 
 type stubRPCClient struct {

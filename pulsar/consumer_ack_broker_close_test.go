@@ -105,19 +105,24 @@ func TestAckWithResponseSurvivesBrokerClosingConsumer(t *testing.T) {
 	_ = resp.Body.Close()
 
 	deadline := time.After(25 * time.Second)
-	for {
-		if consumed.Load() >= numMessages {
-			break
-		}
+	timedOut := false
+	for consumed.Load() < numMessages && !timedOut {
 		select {
 		case <-deadline:
-			t.Fatalf("consumed only %d/%d messages within 25s",
-				consumed.Load(), numMessages)
+			timedOut = true
 		case <-time.After(100 * time.Millisecond):
 		}
 	}
+	// Stop and join the workers even on timeout: Fatalf would skip this,
+	// the deferred consumer.Close() makes Receive fail immediately, and the
+	// workers would spin for the rest of the test suite.
 	close(stop)
 	wg.Wait()
+
+	if timedOut {
+		t.Fatalf("consumed only %d/%d messages within 25s",
+			consumed.Load(), numMessages)
+	}
 
 	assert.Zero(t, slowAcks.Load(),
 		"acks stalled instead of failing fast while the broker closed the consumer")
