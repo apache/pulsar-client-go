@@ -219,14 +219,16 @@ func (tv *TableViewImpl) ForEach(action func(string, interface{}) error) error {
 }
 
 func (tv *TableViewImpl) ForEachAndListen(action func(string, interface{}) error) error {
-	tv.listenersMu.Lock()
-	defer tv.listenersMu.Unlock()
-
+	// Lock ordering: always acquire dataMu before listenersMu to match
+	// handleMessage and avoid an AB-BA deadlock. ForEach already takes
+	// dataMu, so we must not be holding listenersMu when calling it.
 	if err := tv.ForEach(action); err != nil {
 		return err
 	}
 
+	tv.listenersMu.Lock()
 	tv.listeners = append(tv.listeners, action)
+	tv.listenersMu.Unlock()
 	return nil
 }
 
@@ -258,7 +260,17 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 		tv.data[msg.Key()] = reflect.Indirect(payload).Interface()
 	}
 
-	for _, listener := range tv.listeners {
+	// Snapshot tv.listeners under listenersMu to avoid a data race with
+	// ForEachAndListen, which mutates the slice under the same lock.
+	// Callbacks are invoked after releasing listenersMu so that a listener
+	// is free to call back into the TableView (e.g. ForEachAndListen)
+	// without deadlocking on listenersMu.
+	tv.listenersMu.Lock()
+	listeners := make([]func(string, interface{}) error, len(tv.listeners))
+	copy(listeners, tv.listeners)
+	tv.listenersMu.Unlock()
+
+	for _, listener := range listeners {
 		if err := listener(msg.Key(), reflect.Indirect(payload).Interface()); err != nil {
 			tv.logger.Errorf("table view listener failed for %v: %v", msg, err)
 		}

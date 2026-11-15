@@ -860,3 +860,75 @@ func TestCloseCallsCancelFuncToAvoidDeadlock(t *testing.T) {
 		t.Fatal("Close() deadlocked: cancelFunc() was probably not called")
 	}
 }
+
+// TestHandleMessageListenersNoDataRace exercises the data race between
+// handleMessage (which reads tv.listeners) and ForEachAndListen (which
+// appends to tv.listeners). Run with `go test -race` — before the fix
+// the race detector flags a concurrent read/write on tv.listeners.
+func TestHandleMessageListenersNoDataRace(t *testing.T) {
+	tv := &TableViewImpl{
+		data:    make(map[string]interface{}),
+		logger:  log.DefaultNopLogger(),
+		options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
+	}
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+
+	// Writer goroutine: continuously register new listeners.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				_ = tv.ForEachAndListen(func(string, interface{}) error { return nil })
+			}
+		}
+	}()
+
+	// Reader goroutine: continuously deliver messages, which iterates tv.listeners.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		msg := &mockMessage{key: "k", payload: []byte{}}
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+				tv.handleMessage(msg)
+			}
+		}
+	}()
+
+	time.Sleep(200 * time.Millisecond)
+	close(stop)
+	wg.Wait()
+}
+
+// TestHandleMessageInvokesRegisteredListener verifies the basic contract
+// that a listener registered via ForEachAndListen receives subsequent
+// messages delivered through handleMessage.
+func TestHandleMessageInvokesRegisteredListener(t *testing.T) {
+	tv := &TableViewImpl{
+		data:    make(map[string]interface{}),
+		logger:  log.DefaultNopLogger(),
+		options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
+	}
+
+	var got int32
+	err := tv.ForEachAndListen(func(_ string, _ interface{}) error {
+		atomic.AddInt32(&got, 1)
+		return nil
+	})
+	require.NoError(t, err)
+
+	tv.handleMessage(&mockMessage{key: "k1", payload: []byte{}})
+	tv.handleMessage(&mockMessage{key: "k2", payload: []byte{}})
+
+	assert.Equal(t, int32(2), atomic.LoadInt32(&got),
+		"listener must be invoked once per handleMessage call")
+}
