@@ -219,14 +219,32 @@ func (tv *TableViewImpl) ForEach(action func(string, interface{}) error) error {
 }
 
 func (tv *TableViewImpl) ForEachAndListen(action func(string, interface{}) error) error {
+	// Atomically register the listener and replay existing entries under
+	// dataMu. handleMessage acquires dataMu first (and reads tv.listeners
+	// while still holding it), so holding dataMu here guarantees that no
+	// message can be delivered between the snapshot replay and the listener
+	// registration.
+	//
+	// Without this, a message that arrives after releasing dataMu but before
+	// appending the listener would be observed by neither path (message
+	// loss); conversely, appending the listener before the replay could
+	// cause the same key to be delivered twice (duplicate delivery).
+	tv.dataMu.Lock()
+	defer tv.dataMu.Unlock()
+
+	// Register first, then replay. Because handleMessage is blocked on
+	// dataMu for the whole duration, the "register-then-replay" order is
+	// safe: no concurrent write can slip in and trigger the listener for a
+	// key we are also about to replay.
 	tv.listenersMu.Lock()
-	defer tv.listenersMu.Unlock()
-
-	if err := tv.ForEach(action); err != nil {
-		return err
-	}
-
 	tv.listeners = append(tv.listeners, action)
+	tv.listenersMu.Unlock()
+
+	for k, v := range tv.data {
+		if err := action(k, v); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
