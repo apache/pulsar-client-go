@@ -237,6 +237,7 @@ func (tv *TableViewImpl) Close() {
 	if !tv.closed {
 		tv.closed = true
 		for _, cancelReader := range tv.cancelReaders {
+			cancelReader.cancelFunc()
 			cancelReader.reader.Close()
 		}
 		close(tv.closedCh)
