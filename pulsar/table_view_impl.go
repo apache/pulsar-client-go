@@ -260,7 +260,13 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 	} else {
 		payload := reflect.New(tv.options.SchemaValueType)
 		if err := msg.GetSchemaValue(payload.Interface()); err != nil {
-			tv.logger.Errorf("msg.GetSchemaValue() failed with %v; msg is %v", err, msg)
+			// Decoding failed: keep the previously stored value (if any) and
+			// do not notify listeners, to avoid silently overwriting a good
+			// value with the type's zero value and to prevent reintroducing
+			// zero-value ambiguity on the listener side.
+			tv.logger.Errorf("msg.GetSchemaValue() failed with %v; key=%q, skip this message",
+				err, msg.Key())
+			return
 		}
 		value = reflect.Indirect(payload).Interface()
 		tv.data[msg.Key()] = value
