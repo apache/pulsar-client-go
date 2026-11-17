@@ -112,6 +112,13 @@ type partitionProducer struct {
 	encryptor                internalcrypto.Encryptor
 	compressionProvider      compression.Provider
 
+	// lastSequenceIDPushed is the highest sequence ID handed to the connection or
+	// added to a batch, and lastSequenceIDPotentialDuplicated tells whether the
+	// current batch holds a message whose sequence ID was not above it. Both are
+	// only accessed from the event loop, see internalSend.
+	lastSequenceIDPushed              int64
+	lastSequenceIDPotentialDuplicated bool
+
 	// Channel where app is posting messages to be published
 	dataChan             chan *sendRequest
 	cmdChan              chan interface{}
@@ -363,9 +370,15 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		p.encryptor = internalcrypto.NewNoopEncryptor()
 	}
 
+	// Only the first connection seeds the sequence state from the broker, as
+	// in the Java client. On a reconnect the local values already cover what
+	// this producer pushed, and grabCnx then runs on the reconnect goroutine
+	// concurrently with internalSend, which owns lastSequenceIDPushed.
 	if p.sequenceIDGenerator == nil {
-		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
+		lastSequenceID := res.Response.ProducerSuccess.GetLastSequenceId()
+		nextSequenceID := uint64(lastSequenceID + 1)
 		p.sequenceIDGenerator = &nextSequenceID
+		p.lastSequenceIDPushed = lastSequenceID
 	}
 
 	schemaVersion := res.Response.ProducerSuccess.GetSchemaVersion()
@@ -641,6 +654,25 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 		smm := p.genSingleMessageMetadataInBatch(sr.msg, int(sr.uncompressedSize))
 		multiSchemaEnabled := !p.options.DisableMultiSchema
 
+		// The broker deduplicates a batch by its lowest and highest sequence IDs only,
+		// so a batch that mixes a resent (potentially duplicated) message with new
+		// messages would be dropped or accepted as a whole. Keep potential duplicates
+		// in their own batch, as the Java client does.
+		sequenceID := int64(smm.GetSequenceId())
+		potentialDuplicate := sequenceID <= p.lastSequenceIDPushed
+		if potentialDuplicate {
+			if sequenceID <= p.LastSequenceID() {
+				p.log.Warnf("Message with sequence id %d is definitely a duplicate", sequenceID)
+			} else {
+				p.log.Infof("Message with sequence id %d might be a duplicate but cannot be determined at this time",
+					sequenceID)
+			}
+		}
+		if potentialDuplicate || p.lastSequenceIDPotentialDuplicated {
+			p.internalFlushCurrentBatch()
+		}
+		p.lastSequenceIDPotentialDuplicated = potentialDuplicate
+
 		added := addRequestToBatch(
 			smm, p, sr.uncompressedPayload, sr, sr.msg, sr.deliverAt, sr.schemaVersion, multiSchemaEnabled)
 		if !added {
@@ -658,12 +690,15 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 				return
 			}
 		}
+		p.lastSequenceIDPushed = max(p.lastSequenceIDPushed, sequenceID)
 
 		if sr.flushImmediately {
 			p.internalFlushCurrentBatch()
 		}
 		return
 	}
+
+	p.lastSequenceIDPushed = max(p.lastSequenceIDPushed, int64(sr.mm.GetSequenceId()))
 
 	if sr.totalChunks <= 1 {
 		p.internalSingleSend(sr.mm, sr.compressedPayload, sr, uint32(sr.maxMessageSize))
@@ -870,7 +905,7 @@ func (p *partitionProducer) internalSingleSend(
 		return
 	}
 
-	p.writeData(buffer, sid, []interface{}{sr})
+	p.writeData(buffer, sid, sid, []interface{}{sr})
 }
 
 type pendingItem struct {
@@ -884,6 +919,10 @@ type pendingItem struct {
 	sendRequests   []interface{}
 	isDone         bool
 	flushCallbacks []func(err error)
+
+	// highestSequenceID is the largest sequence ID in this item. It differs from
+	// sequenceID only for batches.
+	highestSequenceID uint64
 }
 
 func (p *partitionProducer) internalFlushCurrentBatch() {
@@ -921,10 +960,11 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 		return
 	}
 
-	p.writeData(batchData, sequenceID, callbacks)
+	p.writeData(batchData, sequenceID, batch.HighestSequenceID, callbacks)
 }
 
-func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64, callbacks []interface{}) {
+func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID, highestSequenceID uint64,
+	callbacks []interface{}) {
 	select {
 	case <-p.ctx.Done():
 		buffer.Release()
@@ -949,13 +989,14 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 			p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
 		}
 		p.pendingQueue.PutUnsafe(&pendingItem{
-			ctx:          ctx,
-			cancel:       cancel,
-			createdAt:    now,
-			sentAt:       now,
-			buffer:       buffer,
-			sequenceID:   sequenceID,
-			sendRequests: callbacks,
+			ctx:               ctx,
+			cancel:            cancel,
+			createdAt:         now,
+			sentAt:            now,
+			buffer:            buffer,
+			sequenceID:        sequenceID,
+			highestSequenceID: highestSequenceID,
+			sendRequests:      callbacks,
 		})
 	}
 }
@@ -1077,7 +1118,7 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 		if b.BatchData == nil {
 			continue
 		}
-		p.writeData(b.BatchData, b.SequenceID, b.Callbacks)
+		p.writeData(b.BatchData, b.SequenceID, b.HighestSequenceID, b.Callbacks)
 	}
 
 }
@@ -1453,9 +1494,11 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	}
 	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
 	batchSize := int32(len(pi.sendRequests))
+	if highest := int64(max(pi.sequenceID, pi.highestSequenceID)); highest > atomic.LoadInt64(&p.lastSequenceID) {
+		atomic.StoreInt64(&p.lastSequenceID, highest)
+	}
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
-		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
 
 		msgID := newMessageID(
 			int64(response.MessageId.GetLedgerId()),

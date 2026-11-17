@@ -3198,3 +3198,82 @@ func TestProducerReconnectWhenBacklogQuotaExceed(t *testing.T) {
 	// This indicates that producer successfully detected backlog quota limit and triggered reconnection mechanism
 	assert.True(t, isReachMaxBackoff)
 }
+
+// See https://github.com/apache/pulsar-client-go/issues/1395
+func TestProducerDeduplicationWithBatchedResends(t *testing.T) {
+	namespace := fmt.Sprintf("public/dedup-batch-%d", time.Now().UnixNano())
+	require.NoError(t, createNamespace(namespace, anonymousNamespacePolicy()))
+	require.NoError(t, httpDo(http.MethodPost, "admin/v2/namespaces/"+namespace+"/deduplication", true, nil))
+
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	require.NoError(t, err)
+	defer client.Close()
+
+	tests := []struct {
+		name string
+		// Each round is published back to back so that it fills one batch,
+		// then flushed and acknowledged before the next round starts.
+		rounds [][]int64
+		want   []string
+	}{
+		{
+			name:   "duplicate and new message in one batch",
+			rounds: [][]int64{{0, 1}, {0, 2}},
+			want:   []string{"round-0-seq-0", "round-0-seq-1", "round-1-seq-2"},
+		},
+		{
+			name:   "resend of a message from the middle of a batch",
+			rounds: [][]int64{{0, 1, 2}, {1}, {3}},
+			want:   []string{"round-0-seq-0", "round-0-seq-1", "round-0-seq-2", "round-2-seq-3"},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			topic := fmt.Sprintf("persistent://%s/%s", namespace, newTopicName())
+			consumer, err := client.Subscribe(ConsumerOptions{
+				Topic:            topic,
+				SubscriptionName: "dedup",
+			})
+			require.NoError(t, err)
+			defer consumer.Close()
+
+			producer, err := client.CreateProducer(ProducerOptions{
+				Topic:                   topic,
+				Name:                    "dedup-producer",
+				BatchingMaxPublishDelay: time.Minute,
+			})
+			require.NoError(t, err)
+			defer producer.Close()
+
+			for round, ids := range tt.rounds {
+				var wg sync.WaitGroup
+				for _, id := range ids {
+					sequenceID := id
+					wg.Add(1)
+					producer.SendAsync(context.Background(), &ProducerMessage{
+						Payload:    []byte(fmt.Sprintf("round-%d-seq-%d", round, sequenceID)),
+						SequenceID: &sequenceID,
+					}, func(_ MessageID, _ *ProducerMessage, err error) {
+						assert.NoError(t, err)
+						wg.Done()
+					})
+				}
+				require.NoError(t, producer.Flush())
+				wg.Wait()
+			}
+
+			var got []string
+			for {
+				ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+				msg, err := consumer.Receive(ctx)
+				cancel()
+				if err != nil {
+					break
+				}
+				got = append(got, string(msg.Payload()))
+				require.NoError(t, consumer.Ack(msg))
+			}
+			assert.Equal(t, tt.want, got)
+		})
+	}
+}
