@@ -68,6 +68,12 @@ const (
 
 	// ProducerAccessModeWaitForExclusive is pending until producer can acquire exclusive access.
 	ProducerAccessModeWaitForExclusive
+
+	// ProducerAccessModeExclusiveWithFencing is required exclusive access for producer.
+	// Fence out the producers that are already connected to the topic, instead of failing.
+	// The fenced producers are closed by the broker and fail with ErrProducerFenced.
+	// It requires a broker of version 2.11.0 or later.
+	ProducerAccessModeExclusiveWithFencing
 )
 
 // TopicMetadata represents a topic metadata.
