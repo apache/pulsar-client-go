@@ -1441,10 +1441,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
 	pc.metrics.PrefetchedMessages.Add(float64(numMsgs))
 
-	var (
-		bytesReceived   int
-		skippedMessages int32
-	)
+	var skippedMessages int32
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
 		isNullValue := msgMeta.GetNullValue() || (smm != nil && smm.GetNullValue())
@@ -1584,9 +1581,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			Message:  msg,
 		})
 		messages = append(messages, msg)
-		bytesReceived += msg.size()
 		if pc.options.autoReceiverQueueSize {
-			pc.client.memLimit.ForceReserveMemory(int64(bytesReceived))
+			pc.client.memLimit.ForceReserveMemory(int64(msg.size()))
 			pc.incomingMessages.Add(int32(1))
 			pc.markScaleIfNeed()
 		}

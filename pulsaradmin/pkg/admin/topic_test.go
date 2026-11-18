@@ -27,6 +27,7 @@ import (
 
 	"github.com/apache/pulsar-client-go/pulsar"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -1457,19 +1458,26 @@ func TestSchemaCompatibilityStrategy(t *testing.T) {
 func TestTopics_ReplicationClusters(t *testing.T) {
 	randomName := newTopicName()
 	topic := "persistent://public/default/" + randomName
-	cfg := &config.Config{}
+	// Listing clusters requires superuser access since Pulsar 5.0 (apache/pulsar#26267).
+	// The test TLS client certificate maps to the "admin" superuser role.
+	cfg := &config.Config{
+		WebServiceURL:         "https://localhost:8443",
+		TLSTrustCertsFilePath: "../../../integration-tests/certs/cacert.pem",
+		TLSCertFile:           "../../../integration-tests/certs/client-cert.pem",
+		TLSKeyFile:            "../../../integration-tests/certs/client-key.pem",
+	}
 	admin, err := New(cfg)
-	assert.NoError(t, err)
-	assert.NotNil(t, admin)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
 
 	topicName, err := utils.GetTopicName(topic)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	err = admin.Topics().Create(*topicName, 4)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	clusters, err := admin.Clusters().List()
-	assert.NoError(t, err)
-	assert.NotEmpty(t, clusters)
+	require.NoError(t, err)
+	require.NotEmpty(t, clusters)
 
 	targetClusters := []string{clusters[0]}
 	err = admin.Topics().SetReplicationClusters(*topicName, targetClusters)
