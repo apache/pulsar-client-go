@@ -247,9 +247,9 @@ func (tv *TableViewImpl) Close() {
 }
 
 func (tv *TableViewImpl) handleMessage(msg Message) {
+	// Update data under dataMu, compute the value to be delivered to
+	// listeners, then release dataMu before invoking callbacks.
 	tv.dataMu.Lock()
-	defer tv.dataMu.Unlock()
-
 	// value is the payload delivered to registered listeners.
 	// For a tombstone (empty payload) we explicitly pass nil to signal
 	// that the key has been removed; otherwise listeners would receive
@@ -268,14 +268,14 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 			// zero-value ambiguity on the listener side.
 			tv.logger.Errorf("msg.GetSchemaValue() failed with %v; key=%q, skip this message",
 				err, msg.Key())
+			tv.dataMu.Unlock()
 			return
 		}
 		value = reflect.Indirect(payload).Interface()
 		tv.data[msg.Key()] = value
 	}
+	tv.dataMu.Unlock()
 
-	for _, listener := range tv.listeners {
-		if err := listener(msg.Key(), value); err != nil {
 	// Snapshot tv.listeners under listenersMu to avoid a data race with
 	// ForEachAndListen, which mutates the slice under the same lock.
 	// Callbacks are invoked after releasing listenersMu so that a listener
@@ -287,7 +287,7 @@ func (tv *TableViewImpl) handleMessage(msg Message) {
 	tv.listenersMu.Unlock()
 
 	for _, listener := range listeners {
-		if err := listener(msg.Key(), reflect.Indirect(payload).Interface()); err != nil {
+		if err := listener(msg.Key(), value); err != nil {
 			tv.logger.Errorf("table view listener failed for %v: %v", msg, err)
 		}
 	}
