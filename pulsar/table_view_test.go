@@ -860,3 +860,165 @@ func TestCloseCallsCancelFuncToAvoidDeadlock(t *testing.T) {
 		t.Fatal("Close() deadlocked: cancelFunc() was probably not called")
 	}
 }
+
+// schemaMessage extends mockMessage so that GetSchemaValue copies a
+// predefined value into the destination pointer. It is used to exercise
+// handleMessage's non-tombstone branch in a pure unit test, without
+// requiring a real broker or schema.
+type schemaMessage struct {
+	mockMessage
+	value string
+}
+
+func (m *schemaMessage) GetSchemaValue(dst interface{}) error {
+	// dst is *string here because the test configures SchemaValueType as
+	// reflect.TypeOf("") and handleMessage passes reflect.New(T).Interface().
+	p, ok := dst.(*string)
+	if !ok {
+		return fmt.Errorf("unexpected dst type %T", dst)
+	}
+	*p = m.value
+	return nil
+}
+
+// TestHandleMessageListenerValue is a pure unit test that pins down the
+// contract between handleMessage and registered listeners:
+//
+//  1. For a normal message, the listener receives the deserialized value
+//     and tv.data is updated accordingly.
+//  2. For a tombstone (empty payload), the listener receives nil (not the
+//     type's zero value) and the key is removed from tv.data.
+//
+// This directly guards the bug where tombstones used to pass a type zero
+// value to listeners, making it impossible to distinguish "key deleted"
+// from "value updated to zero".
+func TestHandleMessageListenerValue(t *testing.T) {
+	tv := &TableViewImpl{
+		data:    make(map[string]interface{}),
+		logger:  log.DefaultNopLogger(),
+		options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
+	}
+
+	type callback struct {
+		key   string
+		value interface{}
+	}
+	var got []callback
+	tv.listeners = append(tv.listeners, func(k string, v interface{}) error {
+		got = append(got, callback{key: k, value: v})
+		return nil
+	})
+
+	// 1) Normal message: listener must receive the deserialized value and
+	//    tv.data must contain it.
+	tv.handleMessage(&schemaMessage{
+		mockMessage: mockMessage{key: "k1", payload: []byte("non-empty")},
+		value:       "hello",
+	})
+	require.Len(t, got, 1)
+	assert.Equal(t, "k1", got[0].key)
+	assert.Equal(t, "hello", got[0].value,
+		"listener must receive the deserialized value for a normal message")
+	assert.Equal(t, "hello", tv.data["k1"],
+		"tv.data must be updated to the deserialized value")
+
+	// 2) Tombstone: listener must receive nil and the key must be removed.
+	tv.handleMessage(&mockMessage{key: "k1", payload: nil})
+	require.Len(t, got, 2)
+	assert.Equal(t, "k1", got[1].key)
+	assert.Nil(t, got[1].value,
+		"listener must receive nil for a tombstone, not the type zero value")
+	_, exists := tv.data["k1"]
+	assert.False(t, exists, "tombstone must delete the key from tv.data")
+
+	// 3) Tombstone for a key that never existed is still a nil callback.
+	tv.handleMessage(&mockMessage{key: "never-existed", payload: []byte{}})
+	require.Len(t, got, 3)
+	assert.Equal(t, "never-existed", got[2].key)
+	assert.Nil(t, got[2].value,
+		"tombstone on an absent key must still deliver nil to listeners")
+}
+
+// failingSchemaMessage is a Message whose GetSchemaValue always returns
+// an error. It is used to exercise handleMessage's deserialization-failure
+// branch in a pure unit test.
+type failingSchemaMessage struct {
+	mockMessage
+	err error
+}
+
+func (m *failingSchemaMessage) GetSchemaValue(_ interface{}) error {
+	return m.err
+}
+
+// TestHandleMessageSkipsOnDecodeError pins down the contract for the
+// GetSchemaValue failure path in handleMessage:
+//
+//  1. A previously stored good value for the same key must NOT be
+//     overwritten with the type's zero value.
+//  2. Registered listeners must NOT be invoked (so they cannot observe
+//     an ambiguous zero value for a failed decode).
+//  3. For a key that had no prior value, tv.data must remain unchanged
+//     (no zero-value entry is inserted).
+//  4. The failure must be surfaced via an error log so operators can
+//     still diagnose the issue.
+//
+// This guards the fix for the "silent overwrite / zero-value ambiguity"
+// bug: before the fix, handleMessage logged the error but continued to
+// write reflect.New(T) (a zero value) into tv.data and notified
+// listeners with that zero value.
+func TestHandleMessageSkipsOnDecodeError(t *testing.T) {
+	rec := newRecordingLogger()
+	tv := &TableViewImpl{
+		data:    map[string]interface{}{"k1": "existing value"},
+		logger:  rec,
+		options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
+	}
+
+	var listenerCalls int
+	tv.listeners = append(tv.listeners, func(_ string, _ interface{}) error {
+		listenerCalls++
+		return nil
+	})
+
+	// 1) Decode error on a key with a prior value: value must be preserved
+	//    and no listener must be called.
+	tv.handleMessage(&failingSchemaMessage{
+		mockMessage: mockMessage{key: "k1", payload: []byte("non-empty")},
+		err:         fmt.Errorf("boom: cannot decode"),
+	})
+	assert.Equal(t, "existing value", tv.data["k1"],
+		"decode failure must NOT overwrite a previously stored value")
+	assert.Equal(t, 0, listenerCalls,
+		"listener must NOT be invoked when decoding fails")
+	assert.Equal(t, 1, rec.errorLogCount(),
+		"decode failure must still be reported via an error log, got: %v",
+		rec.snapshotErrorMsgs())
+
+	// 2) Decode error on a brand new key: no zero-value entry must be
+	//    inserted and the listener must still not be called.
+	tv.handleMessage(&failingSchemaMessage{
+		mockMessage: mockMessage{key: "brand-new", payload: []byte("non-empty")},
+		err:         fmt.Errorf("boom: cannot decode"),
+	})
+	_, exists := tv.data["brand-new"]
+	assert.False(t, exists,
+		"decode failure on a new key must NOT create a zero-value entry")
+	assert.Equal(t, 0, listenerCalls,
+		"listener must NOT be invoked on decode failure, even for new keys")
+	assert.Equal(t, 2, rec.errorLogCount(),
+		"each decode failure must produce an error log, got: %v",
+		rec.snapshotErrorMsgs())
+
+	// 3) A subsequent successful message must still update tv.data and
+	//    reach the listener, proving that the earlier `return` only
+	//    skips the failing message and does not break later processing.
+	tv.handleMessage(&schemaMessage{
+		mockMessage: mockMessage{key: "k1", payload: []byte("non-empty")},
+		value:       "updated",
+	})
+	assert.Equal(t, "updated", tv.data["k1"],
+		"a subsequent successful message must update tv.data normally")
+	assert.Equal(t, 1, listenerCalls,
+		"listener must be called exactly once, only for the successful message")
+}
