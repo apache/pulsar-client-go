@@ -1368,6 +1368,13 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 
 		// Reset the reader on the uncompressed buffer
 		reader.ResetBuffer(uncompressedHeadersAndPayload)
+	} else {
+		// Reset the reader on the decrypted buffer when no decompression
+		// is needed. Producers that send encrypted, uncompressed messages
+		// without UncompressedSize (e.g. the C++ client with
+		// CompressionNone) would otherwise leave the reader positioned
+		// over the ciphertext in the original wire buffer.
+		reader.ResetBuffer(processedPayloadBuffer)
 	}
 
 	numMsgs := 1
@@ -1395,10 +1402,7 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 	pc.metrics.MessagesReceived.Add(float64(numMsgs))
 	pc.metrics.PrefetchedMessages.Add(float64(numMsgs))
 
-	var (
-		bytesReceived   int
-		skippedMessages int32
-	)
+	var skippedMessages int32
 	for i := 0; i < numMsgs; i++ {
 		smm, payload, err := reader.ReadMessage()
 		isNullValue := msgMeta.GetNullValue() || (smm != nil && smm.GetNullValue())
@@ -1538,9 +1542,8 @@ func (pc *partitionConsumer) MessageReceived(response *pb.CommandMessage, header
 			Message:  msg,
 		})
 		messages = append(messages, msg)
-		bytesReceived += msg.size()
 		if pc.options.autoReceiverQueueSize {
-			pc.client.memLimit.ForceReserveMemory(int64(bytesReceived))
+			pc.client.memLimit.ForceReserveMemory(int64(msg.size()))
 			pc.incomingMessages.Add(int32(1))
 			pc.markScaleIfNeed()
 		}
