@@ -429,11 +429,12 @@ func (c *consumer) internalTopicSubscribeToPartitions() error {
 	}
 
 	if err != nil {
-		// Since there were some failures,
-		// cleanup all the partitions that succeeded in creating the consumer
-		for _, c := range newConsumers {
-			if c != nil {
-				c.Close()
+		// Since there were some failures, close the partition consumers created by this call.
+		// The existing ones stay open and in c.consumers, so the next discovery retries
+		// only the new partitions.
+		for partitionIdx := startPartition; partitionIdx < newNumPartitions; partitionIdx++ {
+			if newConsumers[partitionIdx] != nil {
+				newConsumers[partitionIdx].Close()
 			}
 		}
 		return err
