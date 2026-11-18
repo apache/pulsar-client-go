@@ -3997,6 +3997,87 @@ func TestBatchProducerConsumerRSAEncryptionWithCompression(t *testing.T) {
 	}
 }
 
+func TestBatchProducerConsumerRSAEncryptionWithoutCompression(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topic := fmt.Sprintf("my-topic-enc-no-comp-%v", time.Now().Nanosecond())
+
+	cryptoConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic: topic,
+		Decryption: &MessageDecryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+		},
+		SubscriptionName: "crypto-subscription",
+		Schema:           NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+
+	normalConsumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "normal-subscription",
+		Schema:           NewStringSchema(nil),
+	})
+
+	assert.Nil(t, err)
+	batchSize := 2
+	cryptoProducer, err := client.CreateProducer(ProducerOptions{
+		Topic: topic,
+		Encryption: &ProducerEncryptionInfo{
+			KeyReader: crypto.NewFileKeyReader("crypto/testdata/pub_key_rsa.pem",
+				"crypto/testdata/pri_key_rsa.pem"),
+			Keys: []string{"client-rsa.pem"},
+		},
+		Schema:              NewStringSchema(nil),
+		CompressionType:     NoCompression,
+		DisableBatching:     false,
+		BatchingMaxMessages: uint(batchSize),
+	})
+
+	assert.Nil(t, err)
+
+	msgFormat := "my-message-%v"
+
+	totalMessages := 10
+
+	ctx := context.Background()
+
+	for i := 0; i < totalMessages; i++ {
+		_, err := cryptoProducer.Send(ctx, &ProducerMessage{
+			Value: fmt.Sprintf(msgFormat, i),
+		})
+
+		assert.Nil(t, err)
+	}
+
+	// try to consume with normal consumer
+	normalConsumerCtx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
+	defer cancel()
+
+	msg, err := normalConsumer.Receive(normalConsumerCtx)
+	// msg should be null as the consumer will not be able to decrypt
+	assert.NotNil(t, err)
+	assert.Nil(t, msg)
+
+	// try to consume the message by crypto consumer
+	// consumer should be able to read all the messages
+	var actualMessage *string
+	for i := 0; i < totalMessages; i++ {
+		msg, err := cryptoConsumer.Receive(ctx)
+		assert.Nil(t, err)
+		expectedMsg := fmt.Sprintf(msgFormat, i)
+		err = msg.GetSchemaValue(&actualMessage)
+		assert.Nil(t, err)
+		assert.Equal(t, expectedMsg, *actualMessage)
+		cryptoConsumer.Ack(msg)
+	}
+}
+
 func TestProducerConsumerRedeliveryOfFailedEncryptedMessages(t *testing.T) {
 	// create new client instance for each producer and consumer
 	client, err := NewClient(ClientOptions{

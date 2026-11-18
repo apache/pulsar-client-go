@@ -23,6 +23,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/RoaringBitmap/roaring/v2/roaring64"
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/stretchr/testify/assert"
 )
@@ -154,6 +155,50 @@ func TestNacksWithBatchesTracker(t *testing.T) {
 	assert.Equal(t, int64(2), msgIDs[1].entryID)
 
 	nacks.Close()
+}
+
+func TestNacksTrackerDrainsAllExpiredBucketsAtOnce(t *testing.T) {
+	// The tracker scans on a fixed tick, so every entry that is already due
+	// must be redelivered by that single scan. Removing entries while
+	// iterating the ordered map used to make the scan skip the bucket that
+	// followed the removed one, delaying it by one full tick.
+	nacks := newNegativeAcksTracker(newNackMockedConsumer(nil), time.Hour, nil,
+		log.DefaultNopLogger(), ptr(int64(0)))
+	defer nacks.Close()
+
+	now := time.Now()
+	nacks.Lock()
+	for i := int64(1); i <= 32; i++ {
+		nacks.negativeAcks.Put(now.Add(-time.Duration(i)*time.Millisecond),
+			map[ledgerID]*roaring64.Bitmap{
+				i: roaring64.BitmapOf(uint64(i)),
+			})
+	}
+	// Not due yet, must be kept in the tracker.
+	futureKey := now.Add(time.Minute)
+	nacks.negativeAcks.Put(futureKey, map[ledgerID]*roaring64.Bitmap{
+		100: roaring64.BitmapOf(100),
+	})
+	nacks.Unlock()
+
+	msgIDs := nacks.drainExpired(now)
+
+	ledgers := make([]int64, 0, len(msgIDs))
+	for _, id := range msgIDs {
+		ledgers = append(ledgers, id.ledgerID)
+	}
+	sort.Slice(ledgers, func(i, j int) bool { return ledgers[i] < ledgers[j] })
+	expected := make([]int64, 0, 32)
+	for i := int64(1); i <= 32; i++ {
+		expected = append(expected, i)
+	}
+	assert.Equal(t, expected, ledgers)
+
+	nacks.Lock()
+	defer nacks.Unlock()
+	assert.Equal(t, 1, nacks.negativeAcks.Size())
+	_, exists := nacks.negativeAcks.Get(futureKey)
+	assert.True(t, exists)
 }
 
 func TestNackBackoffTracker(t *testing.T) {
