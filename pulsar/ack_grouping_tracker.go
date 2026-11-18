@@ -18,6 +18,7 @@
 package pulsar
 
 import (
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -38,6 +39,30 @@ type ackGroupingTracker interface {
 	flushAndClean()
 
 	close()
+}
+
+// nonPersistentAckGroupingTracker is a no-op tracker for non-persistent
+// topics. Non-persistent messages all carry the placeholder MessageID
+// (ledgerId=0, entryId=0), so grouping acks by MessageID would mark every
+// message after the first acked one as a duplicate. Acknowledgments are
+// meaningless there anyway — nothing is persisted — so this tracker
+// discards them and never reports a duplicate, like the Java and C++
+// clients' non-persistent trackers.
+type nonPersistentAckGroupingTracker struct{}
+
+func (nonPersistentAckGroupingTracker) add(MessageID)              {}
+func (nonPersistentAckGroupingTracker) addCumulative(MessageID)    {}
+func (nonPersistentAckGroupingTracker) isDuplicate(MessageID) bool { return false }
+func (nonPersistentAckGroupingTracker) flush()                     {}
+func (nonPersistentAckGroupingTracker) flushAndClean()             {}
+func (nonPersistentAckGroupingTracker) close()                     {}
+
+func newNonPersistentAckGroupingTracker() ackGroupingTracker {
+	return nonPersistentAckGroupingTracker{}
+}
+
+func isNonPersistentTopic(topic string) bool {
+	return strings.HasPrefix(topic, "non-persistent://")
 }
 
 func newAckGroupingTracker(options *AckGroupingOptions,
