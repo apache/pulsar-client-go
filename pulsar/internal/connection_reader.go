@@ -64,8 +64,13 @@ func (r *connectionReader) readSingleCommand() (cmd *pb.BaseCommand, headersAndP
 	// First, we need to read the frame size
 	if r.buffer.ReadableBytes() < 4 {
 		if r.buffer.ReadableBytes() == 0 {
-			// If the buffer is empty, just go back to write at the beginning
-			r.buffer.Clear()
+			// If the buffer is empty, shrink it back to baseline if it expanded to hold
+			// a large frame, so connectionReader does not retain large heap memory indefinitely.
+			if r.buffer.Capacity() > 64*1024 {
+				r.buffer = NewBuffer(4096)
+			} else {
+				r.buffer.Clear()
+			}
 		}
 		if err := r.readAtLeast(4); err != nil {
 			return nil, nil, fmt.Errorf("unable to read frame size: %+v", err)
@@ -131,8 +136,17 @@ func (r *connectionReader) readAtLeast(size uint32) error {
 		// There's not enough room in the current buffer to read the requested amount of data
 		totalFrameSize := r.buffer.ReadableBytes() + size
 		if r.buffer.ReadableBytes()+size > r.buffer.Capacity() {
-			// Resize to a bigger buffer to avoid continuous resizing
-			r.buffer.Resize(totalFrameSize * 2)
+			// Resize to a bigger buffer.
+			// For smaller buffers, double to avoid continuous resizing.
+			// For large frames (>64KB), allocate only what is needed plus a modest cushion
+			// to avoid over-allocating huge buffers (e.g. allocating 20MB for a 10MB message).
+			var newCapacity uint32
+			if totalFrameSize > 64*1024 {
+				newCapacity = totalFrameSize + 64*1024
+			} else {
+				newCapacity = totalFrameSize * 2
+			}
+			r.buffer.Resize(newCapacity)
 		} else {
 			// Compact the buffer by moving the partial data to the beginning.
 			// This will have enough room for reading the remainder of the data
