@@ -169,3 +169,20 @@ func TestReadSingleCommandAcceptsFrameWithinBrokerMaxMessageSize(t *testing.T) {
 	require.Error(t, err)
 	assert.NotContains(t, err.Error(), "received too big frame size")
 }
+
+func TestConnectionReaderBufferShrinksAfterLargeFrame(t *testing.T) {
+	r, peer := newTestConnectionReader(t)
+
+	// Simulate that the buffer expanded to 128 KB after receiving a large payload frame
+	r.buffer.Resize(128 * 1024)
+	assert.Equal(t, uint32(128*1024), r.buffer.Capacity())
+
+	// Close peer so readSingleCommand errors out on readAtLeast(4) after resetting buffer
+	_ = peer.Close()
+
+	_, _, err := r.readSingleCommand()
+	require.Error(t, err)
+
+	// Buffer should have shrunk back to baseline capacity (4096) rather than retaining 128KB
+	assert.Equal(t, uint32(4096), r.buffer.Capacity())
+}
