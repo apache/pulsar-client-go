@@ -1972,6 +1972,21 @@ func (pc *partitionConsumer) dispatcher() {
 				}
 				if pc.options.autoReceiverQueueSize {
 					pc.incomingMessages.Sub(int32(len(m)))
+					if pc.client != nil && pc.client.memLimit != nil {
+						for _, msg := range m {
+							pc.client.memLimit.ReleaseMemory(int64(msg.size()))
+						}
+					}
+				}
+			}
+
+			if pc.options.autoReceiverQueueSize && len(messages) > 0 {
+				if pc.client != nil && pc.client.memLimit != nil {
+					for _, msg := range messages {
+						if msg != nil {
+							pc.client.memLimit.ReleaseMemory(int64(msg.size()))
+						}
+					}
 				}
 			}
 
@@ -2507,7 +2522,20 @@ func (pc *partitionConsumer) shrinkReceiverQueueSize() {
 	newSize := int32(math.Max(float64(minSize), float64(oldSize/2)))
 	if newSize < oldSize {
 		pc.currentQueueSize.CompareAndSwap(oldSize, newSize)
-		pc.availablePermits.add(newSize - oldSize)
+		// We reduce available permits to account for the shrunk queue, but must never
+		// allow availablePermits to become negative, which would stall flow control
+		// and prevent the consumer from requesting more messages.
+		for {
+			cur := pc.availablePermits.get()
+			target := cur + (newSize - oldSize)
+			if target < 0 {
+				target = 0
+			}
+			if pc.availablePermits.permits.CompareAndSwap(cur, target) {
+				break
+			}
+		}
+		pc.availablePermits.flowIfNeed()
 		pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
 	}
 }
@@ -2813,7 +2841,12 @@ func (c *chunkedMsgCtxMap) discardOldestChunkMessage(autoAck bool) {
 	if c.closed || (c.maxPending > 0 && c.pendingQueue.Len() <= c.maxPending) {
 		return
 	}
-	oldest := c.pendingQueue.Front().Value.(string)
+	front := c.pendingQueue.Front()
+	if front == nil {
+		return
+	}
+	oldest := front.Value.(string)
+	c.pendingQueue.Remove(front)
 	ctx, ok := c.chunkedMsgCtxs[oldest]
 	if !ok {
 		return
