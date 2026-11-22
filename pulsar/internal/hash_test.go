@@ -33,6 +33,10 @@ var javaHashValues = []testProvider{
 	{"", 0x0},
 	{"hello", 0x5e918d2},
 	{"test", 0x364492},
+	// String.hashCode() has the sign bit set for these keys; the Java and C++
+	// clients clear it before choosing a partition.
+	{"customer-42", 0x165fbacd},
+	{"device-7f3a", 0x212d0ef4},
 }
 
 var murmurHashValues = []testProvider{
