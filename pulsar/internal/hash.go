@@ -26,7 +26,8 @@ func JavaStringHash(s string) uint32 {
 		h = 31*h + uint32(s[i])
 	}
 
-	return h
+	// Maintain compatibility with values used in Java client
+	return h & 0x7fffffff
 }
 
 // Murmur3_32Hash use Murmur3 hashing function
