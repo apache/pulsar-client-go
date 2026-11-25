@@ -233,6 +233,8 @@ func (bc *batchContainer) Add(
 		if useTxn {
 			bc.cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
 			bc.cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
+			bc.msgMetadata.TxnidMostBits = proto.Uint64(mostSigBits)
+			bc.msgMetadata.TxnidLeastBits = proto.Uint64(leastSigBits)
 		}
 	}
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
@@ -250,6 +252,10 @@ func (bc *batchContainer) reset() {
 	bc.msgMetadata.DeliverAtTime = nil
 	bc.msgMetadata.SchemaVersion = nil
 	bc.msgMetadata.Properties = nil
+	bc.msgMetadata.TxnidMostBits = nil
+	bc.msgMetadata.TxnidLeastBits = nil
+	bc.cmdSend.Send.TxnidMostBits = nil
+	bc.cmdSend.Send.TxnidLeastBits = nil
 }
 
 // Flush all the messages buffered in the client and wait until all messages have been successfully persisted.
