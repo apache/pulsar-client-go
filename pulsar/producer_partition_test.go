@@ -817,34 +817,99 @@ func TestQueuedSendCallbackClosesProducerDuringSelfClose(t *testing.T) {
 	require.ErrorIs(t, <-cbErr, ErrTopicTerminated)
 }
 
-// An explicit Close fails a queued send, and its callback calls the public Close again. The nested call waits for
-// the outer one to leave closeOnce, so the outer Close must not wait for the callbacks.
-func TestQueuedSendCallbackClosesProducerDuringExplicitClose(t *testing.T) {
-	p := newClosableTestProducer(t, 1)
-	pp := newTestTopLevelProducer(p)
+// expectCloseAfterCallback returns a callback that fails the test if Close has already returned when it runs, then
+// calls Close itself and reports its error. closeDone must be closed when the outer Close returns.
+func expectCloseAfterCallback(t *testing.T, p *partitionProducer, closeDone <-chan struct{}) (
+	func(MessageID, *ProducerMessage, error), <-chan error) {
+	t.Helper()
 	cbErr := make(chan error, 1)
-	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("queued")},
-		func(_ MessageID, _ *ProducerMessage, err error) {
-			pp.Close()
-			cbErr <- err
-		})
-	require.Len(t, p.dataChan, 1)
+	return func(_ MessageID, _ *ProducerMessage, err error) {
+		// Close must not return while this callback runs. The bound only limits how long that is checked.
+		select {
+		case <-closeDone:
+			cbErr <- errors.New("Close returned before the callback ran")
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+		p.Close()
+		cbErr <- err
+	}, cbErr
+}
 
-	// No event loop runs. The test plays the loop: it takes the close request and closes the producer, so the
-	// send request is still queued when the producer closes.
-	closeDone := runAsync(pp.Close)
+// playEventLoopClose takes the close request that Close queued, and closes the producer the way the event loop does.
+func playEventLoopClose(t *testing.T, p *partitionProducer) {
+	t.Helper()
 	select {
 	case cmd := <-p.cmdChan:
 		require.IsType(t, &closeProducer{}, cmd)
+		p.internalClose(cmd.(*closeProducer))
 	case <-time.After(5 * time.Second):
 		t.Fatal("Close did not queue its request")
 	}
-	loopDone := runAsync(p.internalClose)
+}
+
+// An explicit Close fails a queued send, and its callback calls Close again. The outer Close returns after the
+// callback, and the nested call must not wait for the teardown that runs it.
+func TestQueuedSendCallbackClosesProducerDuringExplicitClose(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	closeDone := make(chan struct{})
+	cb, cbErr := expectCloseAfterCallback(t, p, closeDone)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("queued")}, cb)
+	require.Len(t, p.dataChan, 1)
+
+	// No event loop runs. The test plays the loop, so the send request is still queued when the producer closes.
+	go func() {
+		defer close(closeDone)
+		p.Close()
+	}()
+	playEventLoopClose(t, p)
 
 	awaitSignal(t, closeDone, "Close to return")
-	awaitSignal(t, loopDone, "the close on the event loop to finish")
 	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
 }
+
+// A send request reaches the event loop after Close cancelled the producer context but before the loop takes the
+// close request. It must not be sent, and its callback must run before Close returns.
+func TestSendAfterCloseCancelFailsBeforeCloseReturns(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	p.options = &ProducerOptions{DisableBatching: true}
+	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
+	p.sequenceIDGenerator = new(uint64)
+	p.encryptor = internalcrypto.NewNoopEncryptor()
+	p.client.metrics = internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	conn := &countingWriteConnection{}
+	p._setConn(conn)
+	closeDone := make(chan struct{})
+	cb, cbErr := expectCloseAfterCallback(t, p, closeDone)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("late")}, cb)
+	require.Len(t, p.dataChan, 1)
+
+	go func() {
+		defer close(closeDone)
+		p.Close()
+	}()
+	// Close cancels the context before it queues the close request. Play the loop: handle the send first.
+	select {
+	case cmd := <-p.cmdChan:
+		p.internalSend(<-p.dataChan)
+		p.internalClose(cmd.(*closeProducer))
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not queue its request")
+	}
+
+	awaitSignal(t, closeDone, "Close to return")
+	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+	require.Zero(t, conn.writes.Load(), "a message was written after Close")
+	require.True(t, p.publishSemaphore.TryAcquire(), "the permit was not released")
+}
+
+// countingWriteConnection counts WriteData calls.
+type countingWriteConnection struct {
+	dummyConnection
+	writes atomic.Int32
+}
+
+func (c *countingWriteConnection) WriteData(_ context.Context, _ internal.Buffer) { c.writes.Add(1) }
 
 // A batch fails to serialize on the event loop, and the failed message's callback calls Close. Close needs the event
 // loop, so the callback must not run on it.

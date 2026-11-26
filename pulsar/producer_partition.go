@@ -938,35 +938,34 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 }
 
 func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64, callbacks []interface{}) {
-	select {
-	case <-p.ctx.Done():
-		buffer.Release()
-		p.failRequestsOffLoop(ErrProducerClosed, callbacks)
-		return
-	default:
-		now := time.Now()
-		ctx, cancel := context.WithCancel(context.Background())
+	now := time.Now()
+	ctx, cancel := context.WithCancel(context.Background())
+	p.pendingQueue.Lock()
+	defer p.pendingQueue.Unlock()
+	conn := p._getConn()
+	switch {
+	case p.ctx.Err() != nil:
+		// Close was called, so do not send. Close queues a close request after cancelling the context, and the
+		// teardown fails this item before Close returns.
+		p.log.Debug("Skipping write to connection, producer is closing")
+	case p.getProducerState() == producerReady:
 		buffer.Retain()
-		p.pendingQueue.Lock()
-		defer p.pendingQueue.Unlock()
-		conn := p._getConn()
-		if p.getProducerState() == producerReady {
-			// If the producer is reconnecting, we should not write to the connection.
-			// We just need to push the buffer to the pending queue, it will be sent during the reconnecting.
-			conn.WriteData(ctx, buffer)
-		} else {
-			p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
-		}
-		p.pendingQueue.PutUnsafe(&pendingItem{
-			ctx:          ctx,
-			cancel:       cancel,
-			createdAt:    now,
-			sentAt:       now,
-			buffer:       buffer,
-			sequenceID:   sequenceID,
-			sendRequests: callbacks,
-		})
+		conn.WriteData(ctx, buffer)
+	default:
+		// If the producer is reconnecting, we should not write to the connection.
+		// We just need to push the buffer to the pending queue, it will be sent during the reconnecting.
+		buffer.Retain()
+		p.log.Debug("Skipping write to connection, producer state: ", p.getProducerState())
 	}
+	p.pendingQueue.PutUnsafe(&pendingItem{
+		ctx:          ctx,
+		cancel:       cancel,
+		createdAt:    now,
+		sentAt:       now,
+		buffer:       buffer,
+		sequenceID:   sequenceID,
+		sendRequests: callbacks,
+	})
 }
 
 func (p *partitionProducer) failTimeoutMessages() {
