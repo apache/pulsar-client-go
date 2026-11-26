@@ -867,7 +867,8 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 
 	// They might be complete after the whole for loop
 	for _, msgID := range msgIDs {
-		if msgID.PartitionIdx() != pc.partitionIdx {
+		// -1 is the partition index Java uses for non-partitioned topics, whose only partition is 0.
+		if idx := msgID.PartitionIdx(); idx != pc.partitionIdx && !(idx == -1 && pc.partitionIdx == 0) {
 			pc.log.Errorf("%v inconsistent partition index %v (current: %v)", msgID, msgID.PartitionIdx(), pc.partitionIdx)
 		} else if msgID.BatchIdx() >= 0 && msgID.BatchSize() > 0 &&
 			msgID.BatchIdx() >= msgID.BatchSize() {

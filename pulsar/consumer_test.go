@@ -7089,3 +7089,84 @@ func TestConsumerSeekWithoutPartitionIndexOnSinglePartitionConsumer(t *testing.T
 	assert.Error(t, c.AckID(EarliestMessageID()))
 	assert.Error(t, c.AckIDCumulative(LatestMessageID()))
 }
+
+// A non-partitioned topic has a single partition consumer with index 0, but message ids from the
+// Java client carry partition index -1 for such topics. Those ids must still be routed to that consumer.
+func TestFindPartitionConsumerWithNegativeOnePartitionIndexOnSinglePartition(t *testing.T) {
+	pc := &partitionConsumer{topic: "persistent://public/default/test-topic"}
+
+	found, err := findPartitionConsumer([]*partitionConsumer{pc}, NewMessageID(1, 2, -1, -1))
+	require.NoError(t, err)
+	assert.Same(t, pc, found)
+
+	_, err = findPartitionConsumer([]*partitionConsumer{pc, {topic: "persistent://public/default/test-topic"}},
+		NewMessageID(1, 2, -1, -1))
+	assert.Error(t, err, "a negative partition index is only valid for a single partition consumer")
+}
+
+func newSinglePartitionConsumerForAckTest(t *testing.T, ackWithResponse bool) (*consumer, *partitionConsumer) {
+	t.Helper()
+	pc := &partitionConsumer{
+		topic:    "persistent://public/default/test-topic",
+		eventsCh: make(chan interface{}, 1),
+		log:      plog.DefaultNopLogger(),
+		metrics:  newTestMetrics(),
+		options:  &partitionConsumerOpts{ackWithResponse: ackWithResponse},
+	}
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0}, nil, nil, nil)
+	pc.nackTracker = newNegativeAcksTracker(pc, time.Hour, nil, pc.log, ptr(defaultNackPrecisionBit))
+	t.Cleanup(pc.nackTracker.Close)
+
+	c := &consumer{
+		topic:     "persistent://public/default/test-topic",
+		messageCh: make(chan ConsumerMessage, 1),
+		options:   ConsumerOptions{AckWithResponse: ackWithResponse},
+		log:       plog.DefaultNopLogger(),
+	}
+	c.consumers.Store([]*partitionConsumer{pc})
+	return c, pc
+}
+
+func TestAckIDWithNegativeOnePartitionIndexOnSinglePartition(t *testing.T) {
+	c, pc := newSinglePartitionConsumerForAckTest(t, false)
+	var acked []MessageID
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { acked = append(acked, id) }, nil, nil)
+
+	require.NoError(t, c.AckID(NewMessageID(1, 2, -1, -1)))
+	require.Len(t, acked, 1)
+	assert.Equal(t, int64(1), acked[0].LedgerID())
+	assert.Equal(t, int64(2), acked[0].EntryID())
+}
+
+func TestNackIDWithNegativeOnePartitionIndexOnSinglePartition(t *testing.T) {
+	c, pc := newSinglePartitionConsumerForAckTest(t, false)
+
+	c.NackID(NewMessageID(1, 2, -1, -1))
+	pc.nackTracker.Lock()
+	size := pc.nackTracker.negativeAcks.Size()
+	pc.nackTracker.Unlock()
+	assert.Equal(t, 1, size, "NackID must not silently drop a message id with partition index -1")
+}
+
+func TestAckIDListWithResponseAndNegativeOnePartitionIndexOnSinglePartition(t *testing.T) {
+	c, pc := newSinglePartitionConsumerForAckTest(t, true)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.AckIDList([]MessageID{NewMessageID(1, 2, -1, -1)})
+	}()
+
+	select {
+	case event := <-pc.eventsCh:
+		req, ok := event.(*ackListRequest)
+		require.True(t, ok, "expected an ack list request, got %T", event)
+		require.Len(t, req.msgIDs, 1, "the message id with partition index -1 must be acked")
+		assert.Equal(t, uint64(1), req.msgIDs[0].GetLedgerId())
+		assert.Equal(t, uint64(2), req.msgIDs[0].GetEntryId())
+		req.errCh <- nil
+	case <-time.After(3 * time.Second):
+		t.Fatal("ack list request did not reach the partition consumer")
+	}
+	require.NoError(t, <-errCh)
+}
