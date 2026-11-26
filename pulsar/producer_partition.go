@@ -1740,11 +1740,18 @@ func (p *partitionProducer) blockIfQueueFull() bool {
 	return !p.options.DisableBlockIfQueueFull
 }
 
+// contextExpiredError is returned when the send context ends while a send waits for resources.
+// It matches ErrContextExpired and also the context error, so errors.Is(err, context.Canceled)
+// holds no matter whether the cancellation was noticed before or during the reservation.
+func contextExpiredError(ctx context.Context) error {
+	return fmt.Errorf("%w: %w", ErrContextExpired, ctx.Err())
+}
+
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {
 	for i := 0; i < sr.totalChunks; i++ {
 		if p.blockIfQueueFull() {
 			if !p.publishSemaphore.Acquire(sr.ctx) {
-				return ErrContextExpired
+				return contextExpiredError(sr.ctx)
 			}
 
 			// update sr.semaphore and sr.reservedSemaphore here so that we can release semaphore in the case
@@ -1776,7 +1783,7 @@ func (p *partitionProducer) reserveMem(sr *sendRequest) error {
 
 	if p.blockIfQueueFull() {
 		if !p.client.memLimit.ReserveMemory(sr.ctx, requiredMem) {
-			return ErrContextExpired
+			return contextExpiredError(sr.ctx)
 		}
 	} else {
 		if !p.client.memLimit.TryReserveMemory(requiredMem) {

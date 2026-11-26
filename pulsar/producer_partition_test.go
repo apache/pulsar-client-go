@@ -183,3 +183,40 @@ func TestReceivedSendReceiptAlreadyDone(t *testing.T) {
 	require.Zero(t, q.Size())
 	require.Zero(t, pi.buffer.RefCnt())
 }
+
+// A send blocked on a full semaphore or memory limit must report the context
+// error regardless of which resource blocked it.
+func TestReserveResourcesCancelledContextWrapsContextError(t *testing.T) {
+	for _, blocked := range []string{"semaphore", "memory"} {
+		t.Run(blocked, func(t *testing.T) {
+			semaphore := internal.NewSemaphore(1)
+			memory := internal.NewMemoryLimitController(1024, 0)
+			if blocked == "semaphore" {
+				require.True(t, semaphore.TryAcquire())
+			} else {
+				require.True(t, memory.TryReserveMemory(1025)) // usage must exceed the limit to block
+			}
+
+			p := &partitionProducer{
+				publishSemaphore: semaphore,
+				client:           &client{memLimit: memory},
+				options:          &ProducerOptions{},
+				log:              plog.DefaultNopLogger(),
+				metrics:          internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			cancel()
+			sr := &sendRequest{
+				ctx:              ctx,
+				totalChunks:      1,
+				uncompressedSize: 1,
+				compressedSize:   1,
+				sendAsBatch:      true,
+			}
+
+			err := p.reserveResources(sr)
+			require.ErrorIs(t, err, ErrContextExpired)
+			require.ErrorIs(t, err, context.Canceled)
+		})
+	}
+}

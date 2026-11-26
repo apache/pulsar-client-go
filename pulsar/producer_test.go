@@ -2434,7 +2434,7 @@ func TestMemLimitContextCancel(t *testing.T) {
 			Payload: make([]byte, 1024),
 		}, func(_ MessageID, _ *ProducerMessage, e error) {
 			assert.Error(t, e)
-			assert.ErrorContains(t, e, "context canceled")
+			assert.ErrorIs(t, e, context.Canceled)
 			wg.Done()
 		})
 	}()
