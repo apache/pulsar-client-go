@@ -115,8 +115,9 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	dataChan chan *sendRequest
 	cmdChan  chan interface{}
-	// closedCh is closed once, at the end of doClose, to tell senders and the event loop that the producer is
-	// closed. dataChan and cmdChan are never closed, so a send on them cannot panic.
+	// closedCh is closed once, when doClose has finished its internal cleanup, to tell senders, Close and the event
+	// loop that the producer is closed. The callbacks of the messages failed by doClose run after it is closed.
+	// dataChan and cmdChan are never closed, so a send on them cannot panic.
 	closedCh             chan struct{}
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
@@ -608,7 +609,7 @@ func (p *partitionProducer) runEventsLoop() {
 			case *flushRequest:
 				p.internalFlush(v)
 			case *closeProducer:
-				p.internalClose(v)
+				p.internalClose()
 				return
 			}
 		case <-p.batchFlushTicker.C:
@@ -1505,9 +1506,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	pi.done(nil)
 }
 
-func (p *partitionProducer) internalClose(req *closeProducer) {
-	defer close(req.doneCh)
-
+func (p *partitionProducer) internalClose() {
 	p.doClose(ErrProducerClosed)
 }
 
@@ -1529,7 +1528,7 @@ func (p *partitionProducer) doClose(reason error) {
 	} else {
 		p.log.Info("Closed producer")
 	}
-	p.failPendingMessages(reason)
+	pending := p.takePendingItems()
 
 	if p.batchBuilder != nil {
 		if err = p.batchBuilder.Close(); err != nil {
@@ -1541,18 +1540,28 @@ func (p *partitionProducer) doClose(reason error) {
 	p._getConn().UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
 	close(p.closedCh)
+
+	// Run the callbacks only now. A callback may call Close, which waits for closedCh, or a public Close that
+	// waits for another Close to leave closeOnce.
+	p.failPendingItems(pending, reason)
 }
 
 func (p *partitionProducer) failPendingMessages(err error) {
+	p.failPendingItems(p.takePendingItems(), err)
+}
+
+// takePendingItems removes the items currently in pendingQueue and releases the permits and memory of their send
+// requests. The caller owns the items and must complete them with failPendingItems.
+func (p *partitionProducer) takePendingItems() []*pendingItem {
 	curViewItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(curViewItems)
 	if viewSize <= 0 {
-		return
+		return nil
 	}
-	p.log.Infof("Failing %d messages on closing producer", viewSize)
 	lastViewItem := curViewItems[viewSize-1].(*pendingItem)
 
 	// iterate at most viewSize items
+	items := make([]*pendingItem, 0, viewSize)
 	for i := 0; i < viewSize; i++ {
 		item := p.pendingQueue.CompareAndPoll(
 			func(m interface{}) bool {
@@ -1560,26 +1569,39 @@ func (p *partitionProducer) failPendingMessages(err error) {
 			})
 
 		if item == nil {
-			return
+			break
 		}
 
 		pi := item.(*pendingItem)
 		pi.Lock()
-
 		for _, i := range pi.sendRequests {
-			sr := i.(*sendRequest)
-			sr.done(nil, err)
+			i.(*sendRequest).releaseResources()
 		}
-
-		// flag the sending has completed with error, flush make no effect
-		pi.done(err)
 		pi.Unlock()
+		items = append(items, pi)
 
 		// finally reached the last view item, current iteration ends
 		if pi == lastViewItem {
-			p.log.Infof("%d messages complete failed", viewSize)
-			return
+			break
 		}
+	}
+	return items
+}
+
+// failPendingItems fails the send requests of items taken by takePendingItems.
+func (p *partitionProducer) failPendingItems(items []*pendingItem, err error) {
+	if len(items) == 0 {
+		return
+	}
+	p.log.Infof("Failing %d messages on closing producer", len(items))
+	for _, pi := range items {
+		pi.Lock()
+		for _, i := range pi.sendRequests {
+			i.(*sendRequest).done(nil, err)
+		}
+		// flag the sending has completed with error, flush make no effect
+		pi.done(err)
+		pi.Unlock()
 	}
 }
 
@@ -1645,18 +1667,20 @@ func (p *partitionProducer) casProducerState(oldState, newState producerState) b
 }
 
 func (p *partitionProducer) Close() {
-	if p.isClosingOrClosed() {
-		// Producer is closing or closed
-		return
+	if !p.isClosingOrClosed() {
+		p.cancelFunc()
+
+		// The event loop closes the producer. If the producer closes itself instead, the loop may exit without
+		// taking the request, so stop waiting to queue it once the producer is closed.
+		select {
+		case p.cmdChan <- &closeProducer{}:
+		case <-p.closedCh:
+		}
 	}
 
-	p.cancelFunc()
-
-	cp := &closeProducer{doneCh: make(chan struct{})}
-	p.cmdChan <- cp
-
-	// wait for close producer request to complete
-	<-cp.doneCh
+	// Return once the producer is closed, by this request or by the producer closing itself. The callbacks of the
+	// failed messages run after closedCh is closed, so a callback that calls Close does not wait for itself.
+	<-p.closedCh
 }
 
 type sendRequest struct {
@@ -1723,15 +1747,7 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		sr.producer.metrics.PublishErrorsMsgTooLarge.Inc()
 	}
 
-	if sr.semaphore != nil {
-		sr.semaphore.Release()
-		sr.producer.metrics.MessagesPending.Dec()
-	}
-
-	if sr.memLimit != nil {
-		sr.memLimit.ReleaseMemory(sr.reservedMem)
-		sr.producer.metrics.BytesPending.Sub(float64(sr.reservedMem))
-	}
+	sr.releaseResources()
 
 	// sr.chunkID == -1 means a chunked message is not yet prepared, so that we should fail it immediately
 	if sr.totalChunks <= 1 || sr.chunkID == -1 || sr.chunkID == sr.totalChunks-1 {
@@ -1749,6 +1765,22 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		// reset all the fields
 		*sr = sendRequest{}
 		pool.Put(sr)
+	}
+}
+
+// releaseResources returns the publish permit and the memory reserved by sr. It does nothing if they were already
+// returned, so done can call it again.
+func (sr *sendRequest) releaseResources() {
+	if sr.semaphore != nil {
+		sr.semaphore.Release()
+		sr.producer.metrics.MessagesPending.Dec()
+		sr.semaphore = nil
+	}
+
+	if sr.memLimit != nil {
+		sr.memLimit.ReleaseMemory(sr.reservedMem)
+		sr.producer.metrics.BytesPending.Sub(float64(sr.reservedMem))
+		sr.memLimit = nil
 	}
 }
 
@@ -1830,9 +1862,7 @@ func (p *partitionProducer) reserveResources(sr *sendRequest) error {
 	return nil
 }
 
-type closeProducer struct {
-	doneCh chan struct{}
-}
+type closeProducer struct{}
 
 type flushRequest struct {
 	doneCh chan struct{}

@@ -326,6 +326,63 @@ func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
 	return p
 }
 
+// startEventLoop runs the producer event loop and returns a channel that is closed when the loop exits.
+func startEventLoop(p *partitionProducer) <-chan struct{} {
+	exited := make(chan struct{})
+	go func() {
+		defer close(exited)
+		p.runEventsLoop()
+	}()
+	return exited
+}
+
+// holdCloseAfterStateCheck makes Close stop right after its state check, where it calls cancelFunc. It returns a
+// channel that is closed when Close gets there, and a function that lets Close continue.
+func holdCloseAfterStateCheck(p *partitionProducer) (<-chan struct{}, func()) {
+	entered, release := make(chan struct{}), make(chan struct{})
+	cancel := p.cancelFunc
+	p.cancelFunc = func() {
+		close(entered)
+		<-release
+		cancel()
+	}
+	return entered, func() { close(release) }
+}
+
+// addPendingSend puts a sent but unacknowledged message in the pending queue, holding one publish permit.
+func addPendingSend(t *testing.T, p *partitionProducer, cb func(MessageID, *ProducerMessage, error)) {
+	t.Helper()
+	require.True(t, p.publishSemaphore.TryAcquire())
+	p.metrics.MessagesPending.Inc()
+	sr := &sendRequest{
+		producer: p, msg: &ProducerMessage{}, callbackOnce: &sync.Once{}, publishTime: time.Now(),
+		semaphore: p.publishSemaphore, reservedSemaphore: 1, callback: cb,
+	}
+	buf := internal.NewBuffer(1)
+	buf.Retain()
+	p.pendingQueue.Put(&pendingItem{
+		buffer: buf, sequenceID: 1, createdAt: time.Now(), sentAt: time.Now(), sendRequests: []interface{}{sr},
+	})
+}
+
+// newTestTopLevelProducer wraps p in a producer, so a test can call the public Close and its closeOnce.
+func newTestTopLevelProducer(p *partitionProducer) *producer {
+	p.client.handlers = internal.NewClientHandlers()
+	pp := &producer{client: p.client, topic: p.topic, log: p.log, metrics: p.metrics, stopDiscovery: func() {}}
+	pp.producers.Store([]Producer{p})
+	return pp
+}
+
+// runAsync runs f in a goroutine and returns a channel that is closed when it returns.
+func runAsync(f func()) <-chan struct{} {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		f()
+	}()
+	return done
+}
+
 // callOutcome records what a concurrent call returned, or whether it panicked.
 type callOutcome struct {
 	err      error
@@ -407,40 +464,123 @@ func TestFlushBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
 	}
 }
 
-// Close passes its state check, then the producer starts closing itself. While the close RPC is in flight, Close
-// queues its request. The event loop must still be running to take it, so Close returns.
+// Close passes its state check, then the producer starts closing itself. Close queues its request while the close
+// RPC is in flight, and must return once the producer is closed.
 func TestCloseQueuedDuringSelfCloseRPCReturns(t *testing.T) {
 	p := newClosableTestProducer(t, 1)
 	rpc := &closeTestRPC{closeEntered: make(chan struct{}), closeRelease: make(chan struct{})}
 	p.client.rpcClient = rpc
-	go p.runEventsLoop()
+	startEventLoop(p)
+	closeEntered, releaseClose := holdCloseAfterStateCheck(p)
 
-	// Close calls cancelFunc right after its state check. Hold it there.
-	cancelEntered, cancelRelease := make(chan struct{}), make(chan struct{})
-	cancel := p.cancelFunc
-	p.cancelFunc = func() {
-		close(cancelEntered)
-		<-cancelRelease
-		cancel()
-	}
-
-	closeDone := make(chan struct{})
-	go func() {
-		defer close(closeDone)
-		p.Close()
-	}()
-	awaitSignal(t, cancelEntered, "Close to pass its state check")
-
-	selfCloseDone := make(chan struct{})
-	go func() {
-		defer close(selfCloseDone)
-		p.doClose(ErrTopicTerminated)
-	}()
+	closeDone := runAsync(p.Close)
+	awaitSignal(t, closeEntered, "Close to pass its state check")
+	selfCloseDone := runAsync(func() { p.doClose(ErrTopicTerminated) })
 	awaitSignal(t, rpc.closeEntered, "the self-close RPC to start")
 
-	close(cancelRelease)
-	awaitSignal(t, closeDone, "Close to return while the self-close RPC is in flight")
-
+	releaseClose()
 	close(rpc.closeRelease)
+	awaitSignal(t, closeDone, "Close to return")
 	awaitSignal(t, selfCloseDone, "the self-close to finish")
+}
+
+// Regression for #1584: Close passes its state check, then the producer closes itself and the event loop exits.
+// Close then queues its request into the buffered cmdChan, where nobody takes it. Close must still return.
+func TestCloseAfterSelfCloseFinishedReturns(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	loopExited := startEventLoop(p)
+	closeEntered, releaseClose := holdCloseAfterStateCheck(p)
+
+	closeDone := runAsync(p.Close)
+	awaitSignal(t, closeEntered, "Close to pass its state check")
+	p.doClose(ErrTopicTerminated)
+	awaitSignal(t, loopExited, "the event loop to exit")
+
+	releaseClose()
+	awaitSignal(t, closeDone, "Close to return after the producer closed itself")
+}
+
+// Regression for #1584: Close blocked on a full cmdChan must return when the producer closes itself.
+func TestCloseBlockedOnFullCmdChanReturnsWhenProducerClosesItself(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	// No event loop runs, so the full cmdChan keeps Close blocked on its send.
+	for i := 0; i < cap(p.cmdChan); i++ {
+		p.cmdChan <- &flushRequest{doneCh: make(chan struct{})}
+	}
+	closeEntered, releaseClose := holdCloseAfterStateCheck(p)
+
+	closeDone := runAsync(p.Close)
+	awaitSignal(t, closeEntered, "Close to pass its state check")
+	releaseClose()
+	p.doClose(ErrTopicTerminated)
+	awaitSignal(t, closeDone, "Close to return after the producer closed itself")
+}
+
+// A pending message fails while the producer closes itself, and its callback makes the first public Close call.
+// Close must not wait for the teardown that is running the callback.
+func TestPendingCallbackClosesProducerDuringSelfClose(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	pp := newTestTopLevelProducer(p)
+	startEventLoop(p)
+	cbErr := make(chan error, 1)
+	addPendingSend(t, p, func(_ MessageID, _ *ProducerMessage, err error) {
+		pp.Close()
+		cbErr <- err
+	})
+
+	selfCloseDone := runAsync(func() { p.doClose(ErrTopicTerminated) })
+	awaitSignal(t, selfCloseDone, "the self-close to finish")
+	require.ErrorIs(t, <-cbErr, ErrTopicTerminated)
+}
+
+// A public Close passes the partition state check, then the producer closes itself. A pending message's callback
+// calls the public Close too, and waits for the first call to leave closeOnce. The first call must return once the
+// producer is closed, without waiting for the callbacks.
+func TestPendingCallbackClosesProducerWhileCloseRacesSelfClose(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	pp := newTestTopLevelProducer(p)
+	startEventLoop(p)
+	cbEntered, cbErr := make(chan struct{}), make(chan error, 1)
+	addPendingSend(t, p, func(_ MessageID, _ *ProducerMessage, err error) {
+		close(cbEntered)
+		pp.Close()
+		cbErr <- err
+	})
+	closeEntered, releaseClose := holdCloseAfterStateCheck(p)
+
+	closeDone := runAsync(pp.Close)
+	awaitSignal(t, closeEntered, "Close to pass its state check")
+	selfCloseDone := runAsync(func() { p.doClose(ErrTopicTerminated) })
+	awaitSignal(t, cbEntered, "the pending callback to run")
+
+	releaseClose()
+	awaitSignal(t, closeDone, "the first Close to return")
+	awaitSignal(t, selfCloseDone, "the self-close to finish")
+	require.ErrorIs(t, <-cbErr, ErrTopicTerminated)
+}
+
+// An explicit Close fails a pending message, and its callback calls the public Close again. The nested call waits
+// for the outer one to leave closeOnce, so the outer Close must not wait for the callbacks. The permit must already
+// be released when Close returns.
+func TestPendingCallbackClosesProducerDuringExplicitClose(t *testing.T) {
+	p := newClosableTestProducer(t, 2)
+	pp := newTestTopLevelProducer(p)
+	startEventLoop(p)
+	cbErr := make(chan error, 1)
+	addPendingSend(t, p, func(_ MessageID, _ *ProducerMessage, err error) {
+		pp.Close()
+		cbErr <- err
+	})
+
+	closeDone := runAsync(pp.Close)
+	awaitSignal(t, closeDone, "Close to return")
+	for i := 0; i < 2; i++ {
+		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
+	}
+	select {
+	case err := <-cbErr:
+		require.ErrorIs(t, err, ErrProducerClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("the pending callback did not finish")
+	}
 }
