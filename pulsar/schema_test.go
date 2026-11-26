@@ -660,3 +660,70 @@ func TestDoubleSchema(t *testing.T) {
 	assert.Equal(t, res, float64(1))
 	defer consumer.Close()
 }
+
+// TestBytesSchemaOnTypedTopic checks that a BYTES producer and consumer can use a topic that already
+// has a typed schema, like the Java client's Schema.BYTES does. BYTES sends no schema information.
+func TestBytesSchemaOnTypedTopic(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	topic := fmt.Sprintf("issue-1600-bytes-on-typed-%d", time.Now().UnixNano())
+
+	// Register a STRING schema on the topic.
+	stringProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: NewStringSchema(nil),
+	})
+	require.NoError(t, err)
+	_, err = stringProducer.Send(context.Background(), &ProducerMessage{Value: "typed"})
+	require.NoError(t, err)
+	stringProducer.Close()
+
+	// A BYTES producer must be accepted on the typed topic.
+	bytesProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: NewBytesSchema(nil),
+	})
+	require.NoError(t, err)
+	defer bytesProducer.Close()
+	_, err = bytesProducer.Send(context.Background(), &ProducerMessage{Value: []byte("raw-bytes")})
+	require.NoError(t, err)
+
+	// A BYTES consumer must be accepted on the typed topic.
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "bytes-sub",
+		Schema:                      NewBytesSchema(nil),
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	require.NoError(t, err)
+	defer consumer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, want := range []string{"typed", "raw-bytes"} {
+		msg, err := consumer.Receive(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, want, string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+}
+
+func TestIsUntypedSchema(t *testing.T) {
+	tests := []struct {
+		name   string
+		info   *SchemaInfo
+		expect bool
+	}{
+		{"nil", nil, false},
+		{"bytes", NewBytesSchema(nil).GetSchemaInfo(), true},
+		{"none", &SchemaInfo{Type: NONE}, true},
+		{"string", NewStringSchema(nil).GetSchemaInfo(), false},
+		{"json", &SchemaInfo{Type: JSON}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expect, isUntypedSchema(tt.info))
+		})
+	}
+}

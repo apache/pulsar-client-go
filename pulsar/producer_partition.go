@@ -208,7 +208,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	p.setProducerState(producerInit)
 
-	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil {
+	if options.Schema != nil && options.Schema.GetSchemaInfo() != nil &&
+		!isUntypedSchema(options.Schema.GetSchemaInfo()) {
 		p.schemaInfo = options.Schema.GetSchemaInfo()
 	} else {
 		p.schemaInfo = nil
@@ -1221,6 +1222,12 @@ func (p *partitionProducer) updateSchema(sr *sendRequest) error {
 	}
 
 	if schema == nil {
+		return nil
+	}
+
+	// Messages of an untyped schema carry no schema version, as in the Java client.
+	if isUntypedSchema(schema.GetSchemaInfo()) {
+		sr.schema = schema
 		return nil
 	}
 

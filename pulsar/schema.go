@@ -69,6 +69,13 @@ type SchemaInfo struct {
 	hashOnce   sync.Once
 }
 
+// isUntypedSchema reports whether the schema is BYTES or NONE. Like the Java client, such a schema
+// carries no schema information, so it is not sent to the broker and is not checked against the
+// schema already registered on the topic.
+func isUntypedSchema(info *SchemaInfo) bool {
+	return info != nil && (info.Type == BYTES || info.Type == NONE)
+}
+
 func (s *SchemaInfo) hash() uint64 {
 	s.hashOnce.Do(func() {
 		h := maphash.Hash{}
