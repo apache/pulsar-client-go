@@ -1741,10 +1741,16 @@ func (p *partitionProducer) blockIfQueueFull() bool {
 }
 
 // contextExpiredError is returned when the send context ends while a send waits for resources.
-// It matches ErrContextExpired and also the context error, so errors.Is(err, context.Canceled)
-// holds no matter whether the cancellation was noticed before or during the reservation.
+// It is a *Error with the TimeoutError result, like ErrContextExpired, and errors.Is matches both
+// ErrContextExpired and the context error, so errors.Is(err, context.Canceled) holds no matter
+// whether the cancellation was noticed before or during the reservation.
 func contextExpiredError(ctx context.Context) error {
-	return fmt.Errorf("%w: %w", ErrContextExpired, ctx.Err())
+	cause := fmt.Errorf("%w: %w", ErrContextExpired, ctx.Err())
+	return &Error{
+		msg:    cause.Error(),
+		result: TimeoutError,
+		cause:  cause,
+	}
 }
 
 func (p *partitionProducer) reserveSemaphore(sr *sendRequest) error {

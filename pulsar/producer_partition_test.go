@@ -185,38 +185,68 @@ func TestReceivedSendReceiptAlreadyDone(t *testing.T) {
 }
 
 // A send blocked on a full semaphore or memory limit must report the context
-// error regardless of which resource blocked it.
-func TestReserveResourcesCancelledContextWrapsContextError(t *testing.T) {
+// error regardless of which resource blocked it, while staying a *Error whose
+// Result() is TimeoutError, as ErrContextExpired was before.
+func TestReserveResourcesContextErrorPreservesResult(t *testing.T) {
 	for _, blocked := range []string{"semaphore", "memory"} {
-		t.Run(blocked, func(t *testing.T) {
-			semaphore := internal.NewSemaphore(1)
-			memory := internal.NewMemoryLimitController(1024, 0)
-			if blocked == "semaphore" {
-				require.True(t, semaphore.TryAcquire())
-			} else {
-				require.True(t, memory.TryReserveMemory(1025)) // usage must exceed the limit to block
-			}
+		for _, tc := range []struct {
+			name    string
+			ctx     func() (context.Context, context.CancelFunc)
+			wantErr error
+		}{
+			{
+				name: "canceled",
+				ctx: func() (context.Context, context.CancelFunc) {
+					ctx, cancel := context.WithCancel(context.Background())
+					cancel()
+					return ctx, cancel
+				},
+				wantErr: context.Canceled,
+			},
+			{
+				name: "deadline",
+				ctx: func() (context.Context, context.CancelFunc) {
+					return context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				},
+				wantErr: context.DeadlineExceeded,
+			},
+		} {
+			t.Run(blocked+"/"+tc.name, func(t *testing.T) {
+				semaphore := internal.NewSemaphore(1)
+				memory := internal.NewMemoryLimitController(1024, 0)
+				if blocked == "semaphore" {
+					require.True(t, semaphore.TryAcquire())
+				} else {
+					require.True(t, memory.TryReserveMemory(1025)) // usage must exceed the limit to block
+				}
 
-			p := &partitionProducer{
-				publishSemaphore: semaphore,
-				client:           &client{memLimit: memory},
-				options:          &ProducerOptions{},
-				log:              plog.DefaultNopLogger(),
-				metrics:          internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
-			}
-			ctx, cancel := context.WithCancel(context.Background())
-			cancel()
-			sr := &sendRequest{
-				ctx:              ctx,
-				totalChunks:      1,
-				uncompressedSize: 1,
-				compressedSize:   1,
-				sendAsBatch:      true,
-			}
+				p := &partitionProducer{
+					publishSemaphore: semaphore,
+					client:           &client{memLimit: memory},
+					options:          &ProducerOptions{},
+					log:              plog.DefaultNopLogger(),
+					metrics:          internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
+				}
+				ctx, cancel := tc.ctx()
+				defer cancel()
+				sr := &sendRequest{
+					ctx:              ctx,
+					totalChunks:      1,
+					uncompressedSize: 1,
+					compressedSize:   1,
+					sendAsBatch:      true,
+				}
 
-			err := p.reserveResources(sr)
-			require.ErrorIs(t, err, ErrContextExpired)
-			require.ErrorIs(t, err, context.Canceled)
-		})
+				err := p.reserveResources(sr)
+				require.Error(t, err)
+				pulsarErr, ok := err.(*Error) //nolint:errorlint // direct assertion must keep working
+				require.True(t, ok, "expected *Error, got %T", err)
+				require.Equal(t, TimeoutError, pulsarErr.Result())
+				require.ErrorIs(t, err, ErrContextExpired)
+				require.ErrorIs(t, err, tc.wantErr)
+				require.Contains(t, err.Error(), ErrContextExpired.Error())
+				require.Contains(t, err.Error(), tc.wantErr.Error())
+			})
+		}
 	}
 }
