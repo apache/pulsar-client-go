@@ -19,7 +19,6 @@ package admin
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 	"net/url"
@@ -27,7 +26,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/auth"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/admin/config"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/rest"
 	"github.com/apache/pulsar-client-go/pulsaradmin/pkg/utils"
@@ -186,60 +184,38 @@ func TestUpdateDynamicConfigurationDoesNotCleanConfigPath(t *testing.T) {
 }
 
 func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
-	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
-	require.NoError(t, err)
-	cfg := &config.Config{
-		WebServiceURL: DefaultWebServiceURL,
-		Token:         string(readFile),
-	}
-
-	authProvider, err := auth.GetAuthProvider(cfg)
-	require.NoError(t, err)
-
-	client := rest.Client{
-		ServiceURL:  cfg.WebServiceURL,
-		VersionInfo: ReleaseVersion,
-		HTTPClient: &http.Client{
-			Timeout:   DefaultHTTPTimeOutDuration,
-			Transport: authProvider,
-		},
-	}
-	u, err := url.Parse(cfg.WebServiceURL)
-	require.NoError(t, err)
-
-	// example config value with '/'. replicationStartAt is a dynamic string-typed config, so the broker accepts
-	// any value for it (unlike boolean configs such as allowAutoSubscriptionCreation, which return 412).
-	const configName = "replicationStartAt"
+	// The broker round-trip for a config value containing '/' is covered by
+	// TestUpdateDynamicConfigurationEscapedValueE2E. Here an in-memory transport checks that a custom URL
+	// keeps its escaped RawPath on the wire instead of sending literal slashes.
 	value := `{"key/123":"https://example.com/"}`
 	encoded := url.QueryEscape(value)
+	const configPath = "/admin/v2/brokers/configuration/loadBalancerSheddingExcludedNamespaces/"
+
+	client := rest.Client{
+		ServiceURL:  "http://example.com",
+		VersionInfo: ReleaseVersion,
+		HTTPClient: &http.Client{
+			Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
+				require.Equal(t, http.MethodPost, r.Method)
+				require.Equal(t, configPath+encoded, r.URL.EscapedPath())
+				require.Equal(t, configPath+value, r.URL.Path)
+				return &http.Response{
+					StatusCode: http.StatusNoContent,
+					Body:       io.NopCloser(strings.NewReader("")),
+					Header:     make(http.Header),
+					Request:    r,
+				}, nil
+			}),
+		},
+	}
 
 	resp, err := client.MakeRequestWithURLWithContext(context.Background(), http.MethodPost, &url.URL{
-		Scheme: u.Scheme,
-		User:   u.User,
-		Host:   u.Host,
-		// use this config to test, will restore it later
-		Path:    "/admin/v2/brokers/configuration/" + configName + "/" + value,
-		RawPath: "/admin/v2/brokers/configuration/" + configName + "/" + encoded,
+		Scheme:  "http",
+		Host:    "example.com",
+		Path:    configPath + value,
+		RawPath: configPath + encoded,
 	})
 	require.NoError(t, err)
 	defer resp.Body.Close()
-	require.Equal(t, http.StatusOK, resp.StatusCode)
-
-	// get the config, check if it's updated
-	admin, err := New(cfg)
-	require.NoError(t, err)
-	require.NotNil(t, admin)
-
-	configurations, err := admin.Brokers().GetAllDynamicConfigurations()
-	require.NoError(t, err)
-	require.NotEmpty(t, configurations)
-
-	var m map[string]interface{}
-	err = json.Unmarshal([]byte(configurations[configName]), &m)
-	require.NoError(t, err)
-	assert.Equal(t, "https://example.com/", m["key/123"])
-
-	// restore the config to its default value
-	err = admin.Brokers().UpdateDynamicConfiguration(configName, "latest")
-	require.NoError(t, err)
+	require.Equal(t, http.StatusNoContent, resp.StatusCode)
 }
