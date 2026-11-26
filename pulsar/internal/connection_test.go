@@ -30,6 +30,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestConnectionRejectRequestsAfterClose(t *testing.T) {
@@ -272,4 +273,56 @@ func TestRecoverPanicOnAlreadyClosedConnection(t *testing.T) {
 	}
 
 	assert.True(t, c.closed())
+}
+
+// recordingConsumerHandler counts the consumer notifications a connection delivers.
+type recordingConsumerHandler struct {
+	reachedEndOfTopic atomic.Int32
+}
+
+func (h *recordingConsumerHandler) MessageReceived(_ *pb.CommandMessage, _ Buffer) error {
+	return nil
+}
+
+func (h *recordingConsumerHandler) ActiveConsumerChanged(_ bool) {}
+
+func (h *recordingConsumerHandler) ConnectionClosed(_ *pb.CommandCloseConsumer) {}
+
+func (h *recordingConsumerHandler) SetRedirectedClusterURI(_ string) {}
+
+func (h *recordingConsumerHandler) ReachedEndOfTopic() {
+	h.reachedEndOfTopic.Add(1)
+}
+
+// The broker sends REACHED_END_OF_TOPIC once a consumer has consumed every message
+// of a terminated topic. It is a notification, not a protocol error, so the
+// connection must stay open and the consumer must be told about it.
+func TestReachedEndOfTopicDoesNotCloseConnection(t *testing.T) {
+	c := newTestConnection()
+	defer c.Close()
+
+	handler := &recordingConsumerHandler{}
+	require.NoError(t, c.AddConsumeHandler(7, handler))
+
+	c.receivedCommand(&pb.BaseCommand{
+		Type:              pb.BaseCommand_REACHED_END_OF_TOPIC.Enum(),
+		ReachedEndOfTopic: &pb.CommandReachedEndOfTopic{ConsumerId: proto.Uint64(7)},
+	}, nil)
+
+	assert.False(t, c.closed(), "REACHED_END_OF_TOPIC must not close the connection")
+	assert.Equal(t, int32(1), handler.reachedEndOfTopic.Load(), "the consumer should be notified once")
+}
+
+// A REACHED_END_OF_TOPIC for a consumer that is not registered on this connection
+// is logged and ignored; it must not close the connection either.
+func TestReachedEndOfTopicUnknownConsumerDoesNotCloseConnection(t *testing.T) {
+	c := newTestConnection()
+	defer c.Close()
+
+	c.receivedCommand(&pb.BaseCommand{
+		Type:              pb.BaseCommand_REACHED_END_OF_TOPIC.Enum(),
+		ReachedEndOfTopic: &pb.CommandReachedEndOfTopic{ConsumerId: proto.Uint64(99)},
+	}, nil)
+
+	assert.False(t, c.closed(), "REACHED_END_OF_TOPIC for an unknown consumer must not close the connection")
 }

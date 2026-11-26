@@ -195,6 +195,10 @@ type partitionConsumer struct {
 	state          uAtomic.Int32
 	options        *partitionConsumerOpts
 
+	// reachedEndOfTopic is set once the broker reports that all messages of a
+	// terminated topic have been consumed.
+	reachedEndOfTopic uAtomic.Bool
+
 	conn         atomic.Pointer[internal.Connection]
 	cnxKeySuffix int32
 
@@ -270,6 +274,11 @@ func (pc *partitionConsumer) pauseDispatchMessage() {
 
 func (pc *partitionConsumer) Topic() string {
 	return pc.topic
+}
+
+func (pc *partitionConsumer) ReachedEndOfTopic() {
+	pc.reachedEndOfTopic.Store(true)
+	pc.log.Info("Reached end of topic")
 }
 
 func (pc *partitionConsumer) ActiveConsumerChanged(isActive bool) {
