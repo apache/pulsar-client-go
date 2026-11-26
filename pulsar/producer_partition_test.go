@@ -313,6 +313,7 @@ func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
 		dataChan:         make(chan *sendRequest, maxPending),
 		cmdChan:          make(chan interface{}, 10),
 		closedCh:         make(chan struct{}),
+		loopDone:         make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(time.Hour),
 		publishSemaphore: internal.NewSemaphore(int32(maxPending)),
@@ -559,28 +560,33 @@ func TestPendingCallbackClosesProducerWhileCloseRacesSelfClose(t *testing.T) {
 	require.ErrorIs(t, <-cbErr, ErrTopicTerminated)
 }
 
-// An explicit Close fails a pending message, and its callback calls the public Close again. The nested call waits
-// for the outer one to leave closeOnce, so the outer Close must not wait for the callbacks. The permit must already
-// be released when Close returns.
-func TestPendingCallbackClosesProducerDuringExplicitClose(t *testing.T) {
+// An explicit Close fails a pending message. Close returns only after the message's callback has run, as before.
+// The callback calls Close again, which must not wait for the teardown that runs it.
+func TestExplicitCloseReturnsAfterPendingCallbacks(t *testing.T) {
 	p := newClosableTestProducer(t, 2)
-	pp := newTestTopLevelProducer(p)
 	startEventLoop(p)
-	cbErr := make(chan error, 1)
+	closeDone := make(chan struct{})
+	cbErr, closedBeforeCallback := make(chan error, 1), make(chan bool, 1)
 	addPendingSend(t, p, func(_ MessageID, _ *ProducerMessage, err error) {
-		pp.Close()
+		// Close must not return while this callback runs. The bound only limits how long that is checked.
+		select {
+		case <-closeDone:
+			closedBeforeCallback <- true
+		case <-time.After(200 * time.Millisecond):
+			closedBeforeCallback <- false
+		}
+		p.Close()
 		cbErr <- err
 	})
 
-	closeDone := runAsync(pp.Close)
+	go func() {
+		defer close(closeDone)
+		p.Close()
+	}()
 	awaitSignal(t, closeDone, "Close to return")
+	require.False(t, <-closedBeforeCallback, "Close returned before the pending callback finished")
+	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
 	for i := 0; i < 2; i++ {
 		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
-	}
-	select {
-	case err := <-cbErr:
-		require.ErrorIs(t, err, ErrProducerClosed)
-	case <-time.After(5 * time.Second):
-		t.Fatal("the pending callback did not finish")
 	}
 }

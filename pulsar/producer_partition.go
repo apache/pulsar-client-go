@@ -118,7 +118,9 @@ type partitionProducer struct {
 	// closedCh is closed once, when doClose has finished its internal cleanup, to tell senders, Close and the event
 	// loop that the producer is closed. The callbacks of the messages failed by doClose run after it is closed.
 	// dataChan and cmdChan are never closed, so a send on them cannot panic.
-	closedCh             chan struct{}
+	closedCh chan struct{}
+	// loopDone is closed when the event loop exits.
+	loopDone             chan struct{}
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
 	pendingQueue         internal.BlockingQueue
@@ -193,6 +195,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
 		cmdChan:          make(chan interface{}, 10),
 		closedCh:         make(chan struct{}),
+		loopDone:         make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
@@ -585,6 +588,8 @@ func (p *partitionProducer) canRecoverFromFenced(errMsg string) bool {
 }
 
 func (p *partitionProducer) runEventsLoop() {
+	defer close(p.loopDone)
+
 	go func() {
 		for {
 			select {
@@ -609,7 +614,7 @@ func (p *partitionProducer) runEventsLoop() {
 			case *flushRequest:
 				p.internalFlush(v)
 			case *closeProducer:
-				p.internalClose()
+				p.internalClose(v)
 				return
 			}
 		case <-p.batchFlushTicker.C:
@@ -1506,7 +1511,9 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	pi.done(nil)
 }
 
-func (p *partitionProducer) internalClose() {
+func (p *partitionProducer) internalClose(req *closeProducer) {
+	defer close(req.doneCh)
+
 	p.doClose(ErrProducerClosed)
 }
 
@@ -1672,14 +1679,22 @@ func (p *partitionProducer) Close() {
 
 		// The event loop closes the producer. If the producer closes itself instead, the loop may exit without
 		// taking the request, so stop waiting to queue it once the producer is closed.
+		cp := &closeProducer{doneCh: make(chan struct{})}
 		select {
-		case p.cmdChan <- &closeProducer{}:
+		case p.cmdChan <- cp:
+			// When the loop takes the request, wait for it to finish, including the callbacks of the failed
+			// messages. Otherwise the loop exits without it.
+			select {
+			case <-cp.doneCh:
+			case <-p.loopDone:
+			}
 		case <-p.closedCh:
 		}
 	}
 
-	// Return once the producer is closed, by this request or by the producer closing itself. The callbacks of the
-	// failed messages run after closedCh is closed, so a callback that calls Close does not wait for itself.
+	// Return once the producer is closed, by this request or by the producer closing itself. When the producer
+	// closes itself, its callbacks run after closedCh is closed, so a callback that calls Close does not wait for
+	// itself.
 	<-p.closedCh
 }
 
@@ -1862,7 +1877,9 @@ func (p *partitionProducer) reserveResources(sr *sendRequest) error {
 	return nil
 }
 
-type closeProducer struct{}
+type closeProducer struct {
+	doneCh chan struct{}
+}
 
 type flushRequest struct {
 	doneCh chan struct{}
