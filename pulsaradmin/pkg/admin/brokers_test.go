@@ -187,14 +187,14 @@ func TestUpdateDynamicConfigurationDoesNotCleanConfigPath(t *testing.T) {
 
 func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
 	readFile, err := os.ReadFile("../../../integration-tests/tokens/admin-token")
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	cfg := &config.Config{
 		WebServiceURL: DefaultWebServiceURL,
 		Token:         string(readFile),
 	}
 
 	authProvider, err := auth.GetAuthProvider(cfg)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
 	client := rest.Client{
 		ServiceURL:  cfg.WebServiceURL,
@@ -205,9 +205,11 @@ func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
 		},
 	}
 	u, err := url.Parse(cfg.WebServiceURL)
-	assert.NoError(t, err)
+	require.NoError(t, err)
 
-	// example config value with '/'
+	// example config value with '/'. replicationStartAt is a dynamic string-typed config, so the broker accepts
+	// any value for it (unlike boolean configs such as allowAutoSubscriptionCreation, which return 412).
+	const configName = "replicationStartAt"
 	value := `{"key/123":"https://example.com/"}`
 	encoded := url.QueryEscape(value)
 
@@ -216,28 +218,28 @@ func TestUpdateDynamicConfigurationWithCustomURL(t *testing.T) {
 		User:   u.User,
 		Host:   u.Host,
 		// use this config to test, will restore it later
-		Path:    "/admin/v2/brokers/configuration/allowAutoSubscriptionCreation/" + value,
-		RawPath: "/admin/v2/brokers/configuration/allowAutoSubscriptionCreation/" + encoded,
+		Path:    "/admin/v2/brokers/configuration/" + configName + "/" + value,
+		RawPath: "/admin/v2/brokers/configuration/" + configName + "/" + encoded,
 	})
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	defer resp.Body.Close()
-	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	require.Equal(t, http.StatusOK, resp.StatusCode)
 
 	// get the config, check if it's updated
 	admin, err := New(cfg)
-	assert.NoError(t, err)
-	assert.NotNil(t, admin)
+	require.NoError(t, err)
+	require.NotNil(t, admin)
 
 	configurations, err := admin.Brokers().GetAllDynamicConfigurations()
-	assert.NoError(t, err)
-	assert.NotEmpty(t, configurations)
+	require.NoError(t, err)
+	require.NotEmpty(t, configurations)
 
 	var m map[string]interface{}
-	err = json.Unmarshal([]byte(configurations["allowAutoSubscriptionCreation"]), &m)
-	assert.NoError(t, err)
+	err = json.Unmarshal([]byte(configurations[configName]), &m)
+	require.NoError(t, err)
 	assert.Equal(t, "https://example.com/", m["key/123"])
 
-	// restore the config
-	err = admin.Brokers().UpdateDynamicConfiguration("allowAutoSubscriptionCreation", "true")
-	assert.NoError(t, err)
+	// restore the config to its default value
+	err = admin.Brokers().UpdateDynamicConfiguration(configName, "latest")
+	require.NoError(t, err)
 }
