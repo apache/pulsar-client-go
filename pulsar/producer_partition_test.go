@@ -251,18 +251,75 @@ func TestReserveResourcesContextErrorPreservesResult(t *testing.T) {
 	}
 }
 
-func TestSeedLastSequenceIDFromBroker(t *testing.T) {
+func TestRaiseLastSequenceID(t *testing.T) {
 	p := &partitionProducer{lastSequenceID: -1}
 
 	// A new or reconnected producer adopts the last sequence id the broker reports.
-	p.seedLastSequenceID(9)
+	p.raiseLastSequenceID(9)
 	require.Equal(t, int64(9), p.LastSequenceID())
 
 	// The value never moves backwards, including when the broker reports -1.
-	p.seedLastSequenceID(5)
-	p.seedLastSequenceID(-1)
+	p.raiseLastSequenceID(5)
+	p.raiseLastSequenceID(-1)
 	require.Equal(t, int64(9), p.LastSequenceID())
 
-	p.seedLastSequenceID(12)
+	p.raiseLastSequenceID(12)
 	require.Equal(t, int64(12), p.LastSequenceID())
+}
+
+// TestReceivedSendReceiptKeepsRecoveredLastSequenceID covers a reconnect where the broker already
+// persisted sequence ids 8 and 9 before their receipts arrived. The handshake seeds LastSequenceID to 9
+// and the producer replays both sends; the duplicate receipt for 8 must complete normally without
+// lowering LastSequenceID, including when it is read from the send callback.
+func TestReceivedSendReceiptKeepsRecoveredLastSequenceID(t *testing.T) {
+	q := internal.NewBlockingQueue(2)
+	p := &partitionProducer{
+		pendingQueue:   q,
+		options:        &ProducerOptions{},
+		log:            plog.DefaultNopLogger(),
+		metrics:        internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
+		lastSequenceID: -1,
+	}
+	p.setProducerState(producerReady)
+	p.raiseLastSequenceID(9)
+
+	seenInCallback := map[uint64]int64{}
+	callbackErrs := map[uint64]error{}
+	for _, seq := range []uint64{8, 9} {
+		seq := seq
+		ctx, cancel := context.WithCancel(context.Background())
+		sr := &sendRequest{
+			producer: p, pool: &sync.Pool{}, msg: &ProducerMessage{},
+			callbackOnce: &sync.Once{}, publishTime: time.Now(),
+			callback: func(_ MessageID, _ *ProducerMessage, err error) {
+				seenInCallback[seq] = p.LastSequenceID()
+				callbackErrs[seq] = err
+			},
+		}
+		pi := &pendingItem{
+			ctx: ctx, cancel: cancel, buffer: internal.NewBuffer(1),
+			sequenceID: seq, createdAt: time.Now(), sentAt: time.Now(),
+			sendRequests: []interface{}{sr},
+		}
+		pi.buffer.Retain()
+		q.Put(pi)
+	}
+	receipt := func(seq uint64) *pb.CommandSendReceipt {
+		return &pb.CommandSendReceipt{
+			SequenceId: proto.Uint64(seq),
+			// The broker answers a duplicate send with ledger and entry id -1.
+			MessageId: &pb.MessageIdData{LedgerId: proto.Uint64(^uint64(0)), EntryId: proto.Uint64(^uint64(0))},
+		}
+	}
+
+	p.ReceivedSendReceipt(receipt(8))
+	require.NoError(t, callbackErrs[8])
+	require.Equal(t, int64(9), seenInCallback[8], "duplicate receipt must not lower the recovered id")
+	require.Equal(t, int64(9), p.LastSequenceID())
+
+	p.ReceivedSendReceipt(receipt(9))
+	require.NoError(t, callbackErrs[9])
+	require.Equal(t, int64(9), seenInCallback[9])
+	require.Equal(t, int64(9), p.LastSequenceID())
+	require.Zero(t, q.Size())
 }

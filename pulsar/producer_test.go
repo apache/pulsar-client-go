@@ -313,32 +313,44 @@ func TestProducerLastSequenceID(t *testing.T) {
 
 // TestProducerLastSequenceIDAfterRecreate checks that a recreated producer reports the last sequence id
 // the broker persisted for its name. The broker only tracks that id with deduplication enabled, so the
-// test is skipped when deduplication is off.
+// test enables it on its own topic through the admin API and waits until the broker applies it.
 func TestProducerLastSequenceIDAfterRecreate(t *testing.T) {
 	const numMessages = 10
 	const producerName = "last-seq-recreate-producer"
 	ctx := context.Background()
 
+	topic := newTopicName()
+	tn, err := utils.GetTopicName(topic)
+	require.NoError(t, err)
+	admin, err := pulsaradmin.NewClient(&config.Config{WebServiceURL: adminURL})
+	require.NoError(t, err)
+	require.NoError(t, admin.Topics().Create(*tn, 0))
+	require.NoError(t, admin.Topics().SetDeduplicationStatus(*tn, true))
+
 	client, err := NewClient(ClientOptions{URL: serviceURL})
 	require.NoError(t, err)
 	defer client.Close()
 
-	// Probe: a repeated sequence id is rejected only when the broker deduplicates this topic.
+	// Topic policies are applied asynchronously. Wait until the broker rejects a repeated sequence id from
+	// a separate producer name, which shows deduplication is in effect for the topic.
 	probe, err := client.CreateProducer(ProducerOptions{
-		Topic:           fmt.Sprintf("public/default/last-seq-probe-%d", time.Now().UnixNano()),
+		Topic:           topic,
+		Name:            producerName + "-probe",
 		DisableBatching: true,
 	})
 	require.NoError(t, err)
-	defer probe.Close()
-	_, err = probe.Send(ctx, &ProducerMessage{Payload: []byte("probe"), SequenceID: proto.Int64(0)})
-	require.NoError(t, err)
-	probeID, err := probe.Send(ctx, &ProducerMessage{Payload: []byte("probe"), SequenceID: proto.Int64(0)})
-	require.NoError(t, err)
-	if probeID.LedgerID() != -1 {
-		t.Skip("broker deduplication is not enabled; enable it to run this check")
-	}
+	probeSeq := int64(0)
+	require.Eventually(t, func() bool {
+		probeSeq++
+		msg := &ProducerMessage{Payload: []byte("probe"), SequenceID: proto.Int64(probeSeq)}
+		if _, err := probe.Send(ctx, msg); err != nil {
+			return false
+		}
+		id, err := probe.Send(ctx, msg)
+		return err == nil && id.LedgerID() == -1
+	}, 30*time.Second, 500*time.Millisecond, "deduplication policy was not applied to %s", topic)
+	probe.Close()
 
-	topic := fmt.Sprintf("public/default/last-seq-recreate-%d", time.Now().UnixNano())
 	newProducer := func() Producer {
 		p, err := client.CreateProducer(ProducerOptions{
 			Topic:           topic,
@@ -350,6 +362,7 @@ func TestProducerLastSequenceIDAfterRecreate(t *testing.T) {
 	}
 
 	producer := newProducer()
+	require.Equal(t, int64(-1), producer.LastSequenceID())
 	for i := 0; i < numMessages; i++ {
 		_, err := producer.Send(ctx, &ProducerMessage{
 			Payload:    []byte(fmt.Sprintf("msg-%d", i)),
@@ -360,6 +373,7 @@ func TestProducerLastSequenceIDAfterRecreate(t *testing.T) {
 	require.Equal(t, int64(numMessages-1), producer.LastSequenceID())
 	producer.Close()
 
+	// The recreated producer learns the last sequence id from the ProducerSuccess handshake.
 	producer = newProducer()
 	defer producer.Close()
 	require.Equal(t, int64(numMessages-1), producer.LastSequenceID())

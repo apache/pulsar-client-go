@@ -367,7 +367,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
 		p.sequenceIDGenerator = &nextSequenceID
 	}
-	p.seedLastSequenceID(res.Response.ProducerSuccess.GetLastSequenceId())
+	p.raiseLastSequenceID(res.Response.ProducerSuccess.GetLastSequenceId())
 
 	schemaVersion := res.Response.ProducerSuccess.GetSchemaVersion()
 	if len(schemaVersion) != 0 {
@@ -1456,7 +1456,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	batchSize := int32(len(pi.sendRequests))
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
-		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
+		p.raiseLastSequenceID(int64(pi.sequenceID))
 
 		msgID := newMessageID(
 			int64(response.MessageId.GetLedgerId()),
@@ -1581,13 +1581,16 @@ func (p *partitionProducer) LastSequenceID() int64 {
 	return atomic.LoadInt64(&p.lastSequenceID)
 }
 
-// seedLastSequenceID raises lastSequenceID to the last sequence id the broker reports in ProducerSuccess,
-// so that a recreated producer reports the previous session's last message. It never lowers the value.
-func (p *partitionProducer) seedLastSequenceID(brokerLastSequenceID int64) {
+// raiseLastSequenceID sets lastSequenceID to sequenceID if that is greater; it never lowers the value.
+// It is fed by the last sequence id the broker reports in ProducerSuccess, so that a recreated producer
+// reports the previous session's last message, and by send receipts. After a reconnect the broker may
+// already have persisted messages whose receipts were lost; their replayed sends complete as duplicates,
+// and those receipts must not move lastSequenceID behind the recovered value.
+func (p *partitionProducer) raiseLastSequenceID(sequenceID int64) {
 	for {
 		current := atomic.LoadInt64(&p.lastSequenceID)
-		if brokerLastSequenceID <= current ||
-			atomic.CompareAndSwapInt64(&p.lastSequenceID, current, brokerLastSequenceID) {
+		if sequenceID <= current ||
+			atomic.CompareAndSwapInt64(&p.lastSequenceID, current, sequenceID) {
 			return
 		}
 	}
