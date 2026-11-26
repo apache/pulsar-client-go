@@ -132,7 +132,8 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		return nil, newError(InvalidConfiguration, "NackPrecisionBit cannot be negative")
 	}
 
-	if options.NackRedeliveryDelay < 0 {
+	// The fixed delay is only used when no NackBackoffPolicy is set.
+	if options.NackBackoffPolicy == nil && options.NackRedeliveryDelay < 0 {
 		return nil, newError(InvalidConfiguration, "NackRedeliveryDelay cannot be negative")
 	}
 
