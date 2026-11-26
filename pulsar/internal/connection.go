@@ -938,9 +938,11 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	consumerID := closeConsumer.GetConsumerId()
 	c.log.Infof("Broker notification of Closed consumer: %d", consumerID)
 
-	if consumer, ok := c.consumerHandler(consumerID); ok {
+	// Remove the handler before notifying: ConnectionClosed only queues the
+	// reconnect, and the consumer registers its new handler before SUBSCRIBE
+	// returns. A delete afterwards can catch the new handler.
+	if consumer, ok := c.takeConsumerHandler(consumerID); ok {
 		consumer.ConnectionClosed(closeConsumer)
-		c.DeleteConsumeHandler(consumerID)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
 	}
@@ -1201,6 +1203,17 @@ func (c *connection) DeleteConsumeHandler(id uint64) {
 	defer c.mu.Unlock()
 
 	delete(c.consumerHandlers, id)
+}
+
+func (c *connection) takeConsumerHandler(id uint64) (ConsumerHandler, bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	handler, ok := c.consumerHandlers[id]
+	if ok {
+		delete(c.consumerHandlers, id)
+	}
+	return handler, ok
 }
 
 func (c *connection) consumerHandler(id uint64) (ConsumerHandler, bool) {
