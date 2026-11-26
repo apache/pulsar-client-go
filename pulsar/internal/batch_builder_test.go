@@ -96,8 +96,10 @@ func TestBatchBuilderFlushSetsHighestSequenceID(t *testing.T) {
 	require.Equal(t, uint64(7), meta.GetHighestSequenceId())
 }
 
-// Each key-based sub-batch carries its own first and last sequence ids.
-func TestKeyBasedBatchFlushSetsHighestSequenceID(t *testing.T) {
+// Key-based sub-batches can interleave sequence ids (a: 1,3; b: 2,4), so advertising a
+// sub-batch's last id as highest_sequence_id could make the broker drop a later-sent
+// sub-batch with lower ids as a duplicate. They must not set highest_sequence_id.
+func TestKeyBasedBatchFlushDoesNotSetHighestSequenceID(t *testing.T) {
 	b := newTestBatchBuilder(t, true)
 	defer b.Close()
 
@@ -108,14 +110,14 @@ func TestKeyBasedBatchFlushSetsHighestSequenceID(t *testing.T) {
 
 	batches := b.FlushBatches()
 	require.Len(t, batches, 2)
-	expected := []struct{ first, highest uint64 }{{1, 3}, {2, 4}}
 	for i, fb := range batches {
+		first := uint64(i + 1)
 		require.NoError(t, fb.Error)
-		require.Equal(t, expected[i].first, fb.SequenceID)
+		require.Equal(t, first, fb.SequenceID)
 		send, meta := parseSendFrame(t, fb.BatchData.ReadableSlice())
-		require.Equal(t, expected[i].first, send.GetSequenceId())
-		require.Equal(t, expected[i].highest, send.GetHighestSequenceId())
-		require.Equal(t, expected[i].first, meta.GetSequenceId())
-		require.Equal(t, expected[i].highest, meta.GetHighestSequenceId())
+		require.Equal(t, first, send.GetSequenceId())
+		require.Nil(t, send.HighestSequenceId)
+		require.Equal(t, first, meta.GetSequenceId())
+		require.Nil(t, meta.HighestSequenceId)
 	}
 }
