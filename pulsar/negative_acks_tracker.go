@@ -81,7 +81,9 @@ func newNegativeAcksTracker(rc redeliveryConsumer, delay time.Duration,
 		t.delay = delay
 	}
 
-	t.tick = time.NewTicker(t.delay / 3)
+	// time.NewTicker panics on a non-positive interval, so clamp it. This covers
+	// tiny or negative delays and NackBackoffPolicy implementations returning 0.
+	t.tick = time.NewTicker(max(t.delay/3, minNackTickInterval))
 
 	go t.track()
 	return t
@@ -216,3 +218,7 @@ func (t *negativeAcksTracker) Close() {
 func ptr[T any](v T) *T { return &v }
 
 const defaultNackPrecisionBit = int64(8)
+
+// minNackTickInterval is the lower bound of the interval at which the negative acks tracker
+// checks for expired nacks.
+const minNackTickInterval = time.Millisecond

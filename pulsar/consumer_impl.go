@@ -132,6 +132,10 @@ func newConsumer(client *client, options ConsumerOptions) (Consumer, error) {
 		return nil, newError(InvalidConfiguration, "NackPrecisionBit cannot be negative")
 	}
 
+	if options.NackRedeliveryDelay < 0 {
+		return nil, newError(InvalidConfiguration, "NackRedeliveryDelay cannot be negative")
+	}
+
 	// did the user pass in a message channel?
 	messageCh := options.MessageChannel
 	if options.MessageChannel == nil {
