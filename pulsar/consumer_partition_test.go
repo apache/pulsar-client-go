@@ -896,6 +896,11 @@ func (r *grabConnSpyRPCClient) RequestOnCnxNoWait(_ internal.Connection, _ pb.Ba
 	return nil
 }
 
+func (r *grabConnSpyRPCClient) RequestOnCnxWithContext(_ context.Context, cnx internal.Connection,
+	reqID uint64, cmdType pb.BaseCommand_Type, msg proto.Message) (*internal.RPCResult, error) {
+	return r.RequestOnCnx(cnx, reqID, cmdType, msg)
+}
+
 func (r *grabConnSpyRPCClient) RequestOnCnx(_ internal.Connection, _ uint64,
 	cmdType pb.BaseCommand_Type, _ proto.Message) (*internal.RPCResult, error) {
 

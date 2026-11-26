@@ -6529,6 +6529,12 @@ func (r *partitionExpansionRaceRPCClient) RequestOnCnxNoWait(
 	return nil
 }
 
+func (r *partitionExpansionRaceRPCClient) RequestOnCnxWithContext(
+	_ context.Context, cnx internal.Connection, reqID uint64, cmdType pb.BaseCommand_Type, msg proto.Message,
+) (*internal.RPCResult, error) {
+	return r.RequestOnCnx(cnx, reqID, cmdType, msg)
+}
+
 func (r *partitionExpansionRaceRPCClient) RequestOnCnx(
 	_ internal.Connection, _ uint64, cmdType pb.BaseCommand_Type, msg proto.Message,
 ) (*internal.RPCResult, error) {
@@ -6596,6 +6602,12 @@ func (r *blockingSubscribeRPCClient) NewConsumerID() uint64 {
 func (r *blockingSubscribeRPCClient) RequestOnCnxNoWait(
 	_ internal.Connection, _ pb.BaseCommand_Type, _ proto.Message) error {
 	return nil
+}
+
+func (r *blockingSubscribeRPCClient) RequestOnCnxWithContext(
+	_ context.Context, cnx internal.Connection, reqID uint64, cmdType pb.BaseCommand_Type, msg proto.Message,
+) (*internal.RPCResult, error) {
+	return r.RequestOnCnx(cnx, reqID, cmdType, msg)
 }
 
 func (r *blockingSubscribeRPCClient) RequestOnCnx(

@@ -24,7 +24,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -82,7 +81,6 @@ func testTopicMigrate(
 	blueClientUrl string,
 	greenAdminURL string,
 	migrationBody string) {
-	runtime.GOMAXPROCS(1)
 	const (
 		cluster   = "cluster-a"
 		tenant    = utils.PUBLICTENANT

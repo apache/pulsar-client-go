@@ -74,6 +74,9 @@ type RPCClient interface {
 
 	RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
 
+	RequestOnCnxWithContext(ctx context.Context, cnx Connection, requestID uint64,
+		cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error)
+
 	LookupService(URL string) (LookupService, error)
 }
 
@@ -174,18 +177,53 @@ func (c *rpcClient) RequestWithCnxKeySuffix(logicalAddr *url.URL, physicalAddr *
 
 func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.BaseCommand_Type,
 	message proto.Message) (*RPCResult, error) {
+	return c.RequestOnCnxWithContext(context.Background(), cnx, requestID, cmdType, message)
+}
+
+func (c *rpcClient) RequestOnCnxWithContext(ctx context.Context, cnx Connection, requestID uint64,
+	cmdType pb.BaseCommand_Type, message proto.Message) (*RPCResult, error) {
+	if err := context.Cause(ctx); err != nil {
+		return nil, err
+	}
 	c.metrics.RPCRequestCount.Inc()
 
 	ch := make(chan result, 1)
+	done := make(chan struct{})
+	closeDone := sync.OnceFunc(func() {
+		close(done)
+	})
+	defer closeDone()
 
-	cnx.SendRequest(requestID, baseCommand(cmdType, message), func(response *pb.BaseCommand, err error) {
-		ch <- result{&RPCResult{
+	cleanupPending := func(err error) {
+		// Close done before CloseRequest so its synchronous callback cannot block
+		// if ch already holds an unread ProducerReady=false notification.
+		closeDone()
+		cnx.CloseRequest(requestID, err)
+	}
+
+	callback := func(response *pb.BaseCommand, err error) {
+		select {
+		case ch <- result{&RPCResult{
 			Cnx:      cnx,
 			Response: response,
-		}, err}
-	})
+		}, err}:
+		case <-done:
+		}
+	}
 
-	timeoutCh := time.After(c.requestTimeout)
+	timer := time.NewTimer(c.requestTimeout)
+	defer timer.Stop()
+	timeoutCh := timer.C
+
+	cmd := baseCommand(cmdType, message)
+	if conn, ok := cnx.(*connection); ok {
+		if err := conn.sendRequestWithContext(ctx, timeoutCh, requestID, cmd, callback); err != nil {
+			return nil, err
+		}
+	} else {
+		cnx.SendRequest(requestID, cmd, callback)
+	}
+
 	for {
 		select {
 		case res := <-ch:
@@ -193,12 +231,18 @@ func (c *rpcClient) RequestOnCnx(cnx Connection, requestID uint64, cmdType pb.Ba
 			// Continue to wait for the producer to create successfully
 			if res.error == nil && res.Response != nil && *res.RPCResult.Response.Type == pb.BaseCommand_PRODUCER_SUCCESS {
 				if !res.RPCResult.Response.ProducerSuccess.GetProducerReady() {
+					timer.Stop()
 					timeoutCh = nil
 					break
 				}
 			}
 			return res.RPCResult, res.error
+		case <-ctx.Done():
+			err := context.Cause(ctx)
+			cleanupPending(err)
+			return nil, err
 		case <-timeoutCh:
+			cleanupPending(ErrRequestTimeOut)
 			return nil, ErrRequestTimeOut
 		}
 	}

@@ -685,21 +685,32 @@ func (c *connection) registerIncomingRequest() bool {
 
 func (c *connection) SendRequest(requestID uint64, req *pb.BaseCommand,
 	callback func(command *pb.BaseCommand, err error)) {
+	_ = c.sendRequestWithContext(context.Background(), nil, requestID, req, callback)
+}
+
+func (c *connection) sendRequestWithContext(ctx context.Context, timeoutCh <-chan time.Time,
+	requestID uint64, req *pb.BaseCommand,
+	callback func(command *pb.BaseCommand, err error)) error {
 	if !c.registerIncomingRequest() {
 		callback(req, ErrConnectionClosed)
-		return
+		return nil
 	}
 	defer c.incomingRequestsWG.Done()
 
 	select {
 	case <-c.closeCh:
 		callback(req, ErrConnectionClosed)
-
+		return nil
+	case <-ctx.Done():
+		return context.Cause(ctx)
+	case <-timeoutCh:
+		return ErrRequestTimeOut
 	case c.incomingRequestsCh <- &request{
 		id:       &requestID,
 		cmd:      req,
 		callback: callback,
 	}:
+		return nil
 	}
 }
 

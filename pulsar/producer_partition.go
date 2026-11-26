@@ -70,6 +70,8 @@ var (
 	ErrProducerBlockedQuotaExceeded = newError(ProducerBlockedQuotaExceededException, "producer blocked")
 	ErrProducerFenced               = newError(ProducerFenced, "producer fenced")
 
+	errBrokerClosedDuringConnect = errors.New("broker closed resource during connection")
+
 	buffersPool     internal.BuffersPool
 	sendRequestPool *sync.Pool
 )
@@ -124,7 +126,8 @@ type partitionProducer struct {
 	epoch                uint64
 	schemaCache          *schemaCache
 	topicEpoch           *uint64
-	redirectedClusterURI string
+	redirectedClusterURI atomic.Pointer[string]
+	connectCanceler      connectCanceler
 	ctx                  context.Context
 	cancelFunc           context.CancelFunc
 	backOffPolicyFunc    func() backoff.Policy
@@ -222,6 +225,11 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 	}
 	p.setProducerState(producerConnecting)
 	err := p.grabCnx("")
+	if errors.Is(err, errBrokerClosedDuringConnect) && p.getRedirectedClusterURI() != "" {
+		// The broker redirected this producer to a migrated cluster while handling
+		// the initial CommandProducer request; retry once against the migrated cluster.
+		err = p.grabCnx("")
+	}
 	if err != nil {
 		p.batchFlushTicker.Stop()
 		logger.WithError(err).Error("Failed to create producer at newPartitionProducer")
@@ -246,8 +254,9 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 }
 
 func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
+	redirectedURI := p.getRedirectedClusterURI()
 	if len(brokerServiceURL) == 0 {
-		lookupService, err := p.client.rpcClient.LookupService(p.redirectedClusterURI)
+		lookupService, err := p.client.rpcClient.LookupService(redirectedURI)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get lookup service: %w", err)
 		}
@@ -260,7 +269,7 @@ func (p *partitionProducer) lookupTopic(brokerServiceURL string) (*internal.Look
 		p.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	lookupService, err := p.client.rpcClient.LookupService(p.redirectedClusterURI)
+	lookupService, err := p.client.rpcClient.LookupService(redirectedURI)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get lookup service: %w", err)
 	}
@@ -326,12 +335,16 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 	}
 
 	p._setConn(cnx)
+	connectCtx, finishConnect := p.connectCanceler.start(p.ctx)
 	err = p._getConn().RegisterListener(p.producerID, p)
 	if err != nil {
 		p.log.WithError(err).Errorf("Failed to register listener: {%d}", p.producerID)
 	}
 
-	res, err := p.client.rpcClient.RequestOnCnx(cnx, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	res, err := p.client.rpcClient.RequestOnCnxWithContext(connectCtx, cnx, id, pb.BaseCommand_PRODUCER, cmdProducer)
+	if cancelled := finishConnect(); err == nil && cancelled {
+		err = errBrokerClosedDuringConnect
+	}
 	if err != nil {
 		p._getConn().UnregisterListener(p.producerID)
 		p.log.WithError(err).Error("Failed to create producer at send PRODUCER request")
@@ -422,9 +435,63 @@ func (cc *connectionClosed) HasURL() bool {
 	return len(cc.assignedBrokerURL) > 0
 }
 
+type connectCanceler struct {
+	mu     sync.Mutex
+	seq    uint64
+	cancel context.CancelCauseFunc
+}
+
+func (c *connectCanceler) start(parent context.Context) (context.Context, func() bool) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	ctx, cancel := context.WithCancelCause(parent)
+	c.mu.Lock()
+	c.seq++
+	seq := c.seq
+	c.cancel = cancel
+	c.mu.Unlock()
+
+	return ctx, func() bool {
+		c.mu.Lock()
+		wasCancelled := c.seq == seq && c.cancel == nil
+		if c.seq == seq {
+			c.cancel = nil
+		}
+		c.mu.Unlock()
+		cancel(nil)
+		return wasCancelled
+	}
+}
+
+func (c *connectCanceler) cancelInFlight(cause error) bool {
+	c.mu.Lock()
+	fn := c.cancel
+	c.cancel = nil
+	c.mu.Unlock()
+
+	if fn != nil {
+		fn(cause)
+		return true
+	}
+	return false
+}
+
 func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProducer) {
 	// Trigger reconnection in the produce goroutine
-	p.log.WithField("cnx", p._getConn().ID()).Warn("Connection was closed")
+	if cnx := p._getConn(); cnx != nil {
+		p.log.WithField("cnx", cnx.ID()).Warn("Connection was closed")
+	} else {
+		p.log.Warn("Connection was closed")
+	}
+
+	// If a CommandProducer RPC is currently in flight (for example, the broker sent
+	// CommandTopicMigrated + CommandCloseProducer instead of a CommandProducer response),
+	// cancel its context immediately so grabCnx does not stall until OperationTimeout.
+	if closeProducer != nil && p.connectCanceler.cancelInFlight(errBrokerClosedDuringConnect) {
+		return
+	}
+
 	var assignedBrokerURL string
 	if closeProducer != nil {
 		assignedBrokerURL = p.client.selectServiceURL(
@@ -440,7 +507,15 @@ func (p *partitionProducer) ConnectionClosed(closeProducer *pb.CommandCloseProdu
 }
 
 func (p *partitionProducer) SetRedirectedClusterURI(redirectedClusterURI string) {
-	p.redirectedClusterURI = redirectedClusterURI
+	uri := redirectedClusterURI
+	p.redirectedClusterURI.Store(&uri)
+}
+
+func (p *partitionProducer) getRedirectedClusterURI() string {
+	if uri := p.redirectedClusterURI.Load(); uri != nil {
+		return *uri
+	}
+	return ""
 }
 
 func (p *partitionProducer) getOrCreateSchema(schemaInfo *SchemaInfo) (schemaVersion []byte, err error) {
@@ -490,7 +565,32 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		assignedBrokerURL = connectionClosed.assignedBrokerURL
 	}
 
+	if maxRetry == 0 || p.isClosingOrClosed() {
+		return
+	}
+
+	// Match Java client's ConnectionHandler.connectionClosed behavior:
+	// when the broker did not assign a target broker URL (e.g. generic disconnect
+	// or cluster migration), wait one initial backoff before the first reconnect
+	// attempt instead of immediately hammering the closing broker.
+	if assignedBrokerURL == "" {
+		initialDelay := bo.Next()
+		p.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": initialDelay,
+		}).Info("Reconnecting to broker")
+		timer := time.NewTimer(initialDelay)
+		select {
+		case <-p.ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+
+	var redirectedDuringAttempt bool
 	opFn := func() (struct{}, error) {
+		redirectedDuringAttempt = false
 		if maxRetry == 0 {
 			return struct{}{}, nil
 		}
@@ -501,6 +601,7 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			return struct{}{}, nil
 		}
 
+		redirectedBeforeAttempt := p.getRedirectedClusterURI()
 		atomic.AddUint64(&p.epoch, 1)
 		err := p.grabCnx(assignedBrokerURL)
 		if assignedBrokerURL != "" {
@@ -513,6 +614,14 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 			bo.Reset()
 			return struct{}{}, nil
 		}
+		redirectedAfterAttempt := p.getRedirectedClusterURI()
+		redirectedToNewCluster := redirectedAfterAttempt != "" && redirectedAfterAttempt != redirectedBeforeAttempt
+		if errors.Is(err, errBrokerClosedDuringConnect) && redirectedToNewCluster {
+			redirectedDuringAttempt = true
+			p.log.WithField("redirectedClusterURI", redirectedAfterAttempt).
+				Info("Producer redirected to migrated cluster during reconnect, retrying")
+			return struct{}{}, err
+		}
 		errMsg := err.Error()
 		if strings.Contains(errMsg, errMsgTopicNotFound) {
 			// when topic is deleted, we should give up reconnection.
@@ -522,6 +631,12 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		}
 
 		if strings.Contains(errMsg, errMsgTopicTerminated) {
+			if redirectedToNewCluster {
+				redirectedDuringAttempt = true
+				p.log.WithField("redirectedClusterURI", redirectedAfterAttempt).
+					Warn("Topic reported terminated on source cluster after redirect was received, retrying on migrated cluster")
+				return struct{}{}, err
+			}
 			p.log.Warn("Topic was terminated, failing pending messages, stop reconnecting, close the producer")
 			p.doClose(errors.Join(ErrTopicTerminated, err))
 			return struct{}{}, nil
@@ -558,6 +673,9 @@ func (p *partitionProducer) reconnectToBroker(connectionClosed *connectionClosed
 		return struct{}{}, err
 	}
 	_, _ = internal.Retry(p.ctx, opFn, func(_ error) time.Duration {
+		if redirectedDuringAttempt {
+			return 0
+		}
 		delayReconnectTime := bo.Next()
 		p.log.WithFields(log.Fields{
 			"assignedBrokerURL":  assignedBrokerURL,
