@@ -37,9 +37,13 @@ const (
 	SysPropertyRealTopic      = "REAL_TOPIC"
 	SysPropertyRetryTopic     = "RETRY_TOPIC"
 	SysPropertyReconsumeTimes = "RECONSUMETIMES"
-	// Deprecated: use PropertyOriginMessageID. This alias is kept for compatibility;
-	// it holds the same standard "ORIGIN_MESSAGE_ID" key.
-	SysPropertyOriginMessageID = PropertyOriginMessageID
+	// SysPropertyOriginMessageID is a legacy, misspelled message property key that
+	// carries the origin message id of retry and dead letter messages.
+	//
+	// Deprecated: use PropertyOriginMessageID. Retry and dead letter messages still
+	// carry this key alongside PropertyOriginMessageID so that older clients reading
+	// it keep working. Writing it will stop in a future release.
+	SysPropertyOriginMessageID = "ORIGIN_MESSAGE_IDY_TIME"
 	PropertyOriginMessageID    = "ORIGIN_MESSAGE_ID"
 )
 
