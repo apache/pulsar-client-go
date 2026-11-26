@@ -250,3 +250,19 @@ func TestReserveResourcesContextErrorPreservesResult(t *testing.T) {
 		}
 	}
 }
+
+func TestSeedLastSequenceIDFromBroker(t *testing.T) {
+	p := &partitionProducer{lastSequenceID: -1}
+
+	// A new or reconnected producer adopts the last sequence id the broker reports.
+	p.seedLastSequenceID(9)
+	require.Equal(t, int64(9), p.LastSequenceID())
+
+	// The value never moves backwards, including when the broker reports -1.
+	p.seedLastSequenceID(5)
+	p.seedLastSequenceID(-1)
+	require.Equal(t, int64(9), p.LastSequenceID())
+
+	p.seedLastSequenceID(12)
+	require.Equal(t, int64(12), p.LastSequenceID())
+}

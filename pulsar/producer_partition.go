@@ -367,6 +367,7 @@ func (p *partitionProducer) grabCnx(assignedBrokerURL string) error {
 		nextSequenceID := uint64(res.Response.ProducerSuccess.GetLastSequenceId() + 1)
 		p.sequenceIDGenerator = &nextSequenceID
 	}
+	p.seedLastSequenceID(res.Response.ProducerSuccess.GetLastSequenceId())
 
 	schemaVersion := res.Response.ProducerSuccess.GetSchemaVersion()
 	if len(schemaVersion) != 0 {
@@ -1578,6 +1579,18 @@ func (p *partitionProducer) failPendingMessages(err error) {
 
 func (p *partitionProducer) LastSequenceID() int64 {
 	return atomic.LoadInt64(&p.lastSequenceID)
+}
+
+// seedLastSequenceID raises lastSequenceID to the last sequence id the broker reports in ProducerSuccess,
+// so that a recreated producer reports the previous session's last message. It never lowers the value.
+func (p *partitionProducer) seedLastSequenceID(brokerLastSequenceID int64) {
+	for {
+		current := atomic.LoadInt64(&p.lastSequenceID)
+		if brokerLastSequenceID <= current ||
+			atomic.CompareAndSwapInt64(&p.lastSequenceID, current, brokerLastSequenceID) {
+			return
+		}
+	}
 }
 
 func (p *partitionProducer) Flush() error {

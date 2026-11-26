@@ -311,6 +311,60 @@ func TestProducerLastSequenceID(t *testing.T) {
 	}
 }
 
+// TestProducerLastSequenceIDAfterRecreate checks that a recreated producer reports the last sequence id
+// the broker persisted for its name. The broker only tracks that id with deduplication enabled, so the
+// test is skipped when deduplication is off.
+func TestProducerLastSequenceIDAfterRecreate(t *testing.T) {
+	const numMessages = 10
+	const producerName = "last-seq-recreate-producer"
+	ctx := context.Background()
+
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	require.NoError(t, err)
+	defer client.Close()
+
+	// Probe: a repeated sequence id is rejected only when the broker deduplicates this topic.
+	probe, err := client.CreateProducer(ProducerOptions{
+		Topic:           fmt.Sprintf("public/default/last-seq-probe-%d", time.Now().UnixNano()),
+		DisableBatching: true,
+	})
+	require.NoError(t, err)
+	defer probe.Close()
+	_, err = probe.Send(ctx, &ProducerMessage{Payload: []byte("probe"), SequenceID: proto.Int64(0)})
+	require.NoError(t, err)
+	probeID, err := probe.Send(ctx, &ProducerMessage{Payload: []byte("probe"), SequenceID: proto.Int64(0)})
+	require.NoError(t, err)
+	if probeID.LedgerID() != -1 {
+		t.Skip("broker deduplication is not enabled; enable it to run this check")
+	}
+
+	topic := fmt.Sprintf("public/default/last-seq-recreate-%d", time.Now().UnixNano())
+	newProducer := func() Producer {
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:           topic,
+			Name:            producerName,
+			DisableBatching: true,
+		})
+		require.NoError(t, err)
+		return p
+	}
+
+	producer := newProducer()
+	for i := 0; i < numMessages; i++ {
+		_, err := producer.Send(ctx, &ProducerMessage{
+			Payload:    []byte(fmt.Sprintf("msg-%d", i)),
+			SequenceID: proto.Int64(int64(i)),
+		})
+		require.NoError(t, err)
+	}
+	require.Equal(t, int64(numMessages-1), producer.LastSequenceID())
+	producer.Close()
+
+	producer = newProducer()
+	defer producer.Close()
+	require.Equal(t, int64(numMessages-1), producer.LastSequenceID())
+}
+
 func TestEventTime(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
