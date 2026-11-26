@@ -253,6 +253,54 @@ func TestNewAuthenticationOAuth2WithParams(t *testing.T) {
 	}
 }
 
+func TestOAuth2AuthenticationType(t *testing.T) {
+	server := mockOAuthServer()
+	defer server.Close()
+	expectedClientID.Store("client-id")
+	expectedClientSecret.Store("client-secret")
+	kf, err := mockKeyFile(server.URL)
+	require.NoError(t, err)
+	defer os.Remove(kf)
+
+	for _, tc := range []struct {
+		name    string
+		typeVal string
+		omit    bool
+		wantErr bool
+	}{
+		{name: "omitted", omit: true},
+		{name: "empty"},
+		{name: "client credentials", typeVal: ConfigParamTypeClientCredentials},
+		{name: "unsupported", typeVal: "password", wantErr: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			params := map[string]string{
+				ConfigParamIssuerURL: server.URL,
+				ConfigParamKeyFile:   kf,
+				ConfigParamAudience:  "audience",
+			}
+			if !tc.omit {
+				params[ConfigParamType] = tc.typeVal
+			}
+			auth, err := NewAuthenticationOAuth2WithParams(params)
+			value, present := params[ConfigParamType]
+			assert.Equal(t, !tc.omit, present)
+			assert.Equal(t, tc.typeVal, value)
+			if tc.wantErr {
+				require.EqualError(t, err, "unsupported authentication type: "+tc.typeVal)
+				assert.Nil(t, auth)
+				return
+			}
+			require.NoError(t, err)
+			require.NoError(t, auth.Init())
+			defer auth.Close()
+			token, err := auth.GetData()
+			require.NoError(t, err)
+			assert.Equal(t, "token-content", string(token))
+		})
+	}
+}
+
 func TestOAuth2IssuerOverrideUsesAuthParams(t *testing.T) {
 	expectedClientID.Store("client-id")
 	expectedClientSecret.Store("client-secret")
