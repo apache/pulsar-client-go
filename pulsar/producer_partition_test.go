@@ -308,6 +308,7 @@ func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
 		client: &client{
 			rpcClient: &closeTestRPC{},
 			memLimit:  internal.NewMemoryLimitController(1<<20, 0),
+			metrics:   internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()),
 		},
 		topic:            "topic",
 		log:              plog.DefaultNopLogger(),
@@ -316,6 +317,7 @@ func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
 		cmdChan:          make(chan interface{}, 10),
 		closedCh:         make(chan struct{}),
 		selfClosedCh:     make(chan struct{}),
+		closingCh:        make(chan struct{}),
 		loopDone:         make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(time.Hour),
@@ -441,6 +443,7 @@ func TestSendAsyncBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
 func TestFlushBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
 	p := newClosableTestProducer(t, 1)
 	// No event loop runs here, so the full cmdChan keeps FlushWithCtx blocked on its send.
+	close(p.loopDone)
 	for i := 0; i < cap(p.cmdChan); i++ {
 		p.cmdChan <- &flushRequest{doneCh: make(chan struct{})}
 	}
@@ -508,6 +511,7 @@ func TestCloseAfterSelfCloseFinishedReturns(t *testing.T) {
 func TestCloseBlockedOnFullCmdChanReturnsWhenProducerClosesItself(t *testing.T) {
 	p := newClosableTestProducer(t, 1)
 	// No event loop runs, so the full cmdChan keeps Close blocked on its send.
+	close(p.loopDone)
 	for i := 0; i < cap(p.cmdChan); i++ {
 		p.cmdChan <- &flushRequest{doneCh: make(chan struct{})}
 	}
@@ -667,6 +671,81 @@ func TestFlushWhilePendingMessagesFailReturnsError(t *testing.T) {
 	awaitSignal(t, fr.doneCh, "Flush to complete")
 	require.ErrorIs(t, fr.err, ErrProducerBlockedQuotaExceeded)
 	for i := 0; i < 2; i++ {
+		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
+	}
+}
+
+// Regression for #1582: send requests still buffered in dataChan when the producer closes itself must fail
+// with the close reason, and must release their permits and memory reservations.
+func TestBufferedSendRequestsFailWhenProducerCloses(t *testing.T) {
+	p := newClosableTestProducer(t, 10)
+	// No event loop runs, so the requests stay in dataChan. Mark the loop as already exited.
+	close(p.loopDone)
+
+	const n = 3
+	results := make(chan error, n)
+	for i := 0; i < n; i++ {
+		p.SendAsync(context.Background(), &ProducerMessage{Payload: make([]byte, 1024)},
+			func(_ MessageID, _ *ProducerMessage, err error) { results <- err })
+	}
+	require.Len(t, p.dataChan, n)
+	require.Positive(t, p.client.memLimit.CurrentUsage())
+
+	p.doClose(ErrTopicTerminated)
+
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-results:
+			require.ErrorIs(t, err, ErrTopicTerminated)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("callback %d of %d was never invoked", i+1, n)
+		}
+	}
+	require.Zero(t, p.client.memLimit.CurrentUsage())
+	for i := 0; i < 10; i++ {
+		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
+	}
+}
+
+// Regression for #1582: messages still in the open batch when the producer closes itself must fail their
+// callbacks and release their memory reservations.
+func TestBatchedMessagesFailWhenProducerCloses(t *testing.T) {
+	p := newClosableTestProducer(t, 10)
+	provider, err := GetBatcherBuilderProvider(DefaultBatchBuilder)
+	require.NoError(t, err)
+	p.batchBuilder, err = provider(1000, 128*1024, 5*1024*1024, "test", 1, pb.CompressionType_NONE,
+		compression.Level(0), buffersPool, p.client.metrics, p.log, internalcrypto.NewNoopEncryptor())
+	require.NoError(t, err)
+	p.encryptor = internalcrypto.NewNoopEncryptor()
+	p.sequenceIDGenerator = new(uint64)
+	// No event loop runs. Feed requests into the batch builder the way the loop does, one at a time.
+	close(p.loopDone)
+
+	const n = 5
+	results := make(chan error, n)
+	for i := 0; i < n; i++ {
+		p.SendAsync(context.Background(), &ProducerMessage{Payload: make([]byte, 1024)},
+			func(_ MessageID, _ *ProducerMessage, err error) { results <- err })
+	}
+	for i := 0; i < n; i++ {
+		p.internalSend(<-p.dataChan)
+	}
+	// The messages must be held in the open batch, not in pendingQueue, or this does not test the batch path.
+	require.Zero(t, p.pendingQueue.Size())
+	require.Positive(t, p.client.memLimit.CurrentUsage())
+
+	p.doClose(ErrTopicTerminated)
+
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-results:
+			require.ErrorIs(t, err, ErrTopicTerminated)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("batched callback %d of %d was never invoked", i+1, n)
+		}
+	}
+	require.Zero(t, p.client.memLimit.CurrentUsage())
+	for i := 0; i < 10; i++ {
 		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
 	}
 }
