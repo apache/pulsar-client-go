@@ -130,3 +130,80 @@ func TestSemaphore_ReleaseRacingCancelledAcquire(t *testing.T) {
 		cancel()
 	}
 }
+
+func TestSemaphore_CancelBlockedAcquire(t *testing.T) {
+	s := NewSemaphore(1)
+	require.True(t, s.Acquire(context.Background()))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	acquired := make(chan bool, 1)
+	go func() {
+		acquired <- s.Acquire(ctx)
+	}()
+
+	select {
+	case <-acquired:
+		t.Fatal("Acquire returned while no permit was available")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	cancel()
+	select {
+	case got := <-acquired:
+		assert.False(t, got)
+	case <-time.After(time.Second):
+		t.Fatal("Acquire did not return after cancel")
+	}
+
+	// The cancelled Acquire must not hold a permit.
+	assert.False(t, s.TryAcquire())
+	s.Release()
+	assert.True(t, s.TryAcquire())
+	assert.False(t, s.TryAcquire())
+}
+
+// TestSemaphore_ReleaseHandsPermitToWaiter checks that a permit released while an
+// Acquire is blocked goes to that Acquire, not to a later TryAcquire.
+func TestSemaphore_ReleaseHandsPermitToWaiter(t *testing.T) {
+	s := NewSemaphore(1)
+	require.True(t, s.Acquire(context.Background()))
+
+	acquired := make(chan bool, 1)
+	go func() {
+		acquired <- s.Acquire(context.Background())
+	}()
+	// Wait for the waiter to park.
+	time.Sleep(50 * time.Millisecond)
+
+	s.Release()
+	assert.False(t, s.TryAcquire(), "released permit was taken from the blocked Acquire")
+
+	select {
+	case got := <-acquired:
+		assert.True(t, got)
+	case <-time.After(time.Second):
+		t.Fatal("blocked Acquire did not get the released permit")
+	}
+	s.Release()
+	assert.True(t, s.TryAcquire())
+}
+
+func TestSemaphore_ReleaseWithoutAcquire(t *testing.T) {
+	s := NewSemaphore(2)
+
+	done := make(chan struct{})
+	go func() {
+		s.Release()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Release blocked when no permit was held")
+	}
+
+	// An unmatched Release must not raise the capacity above maxPermits.
+	assert.True(t, s.TryAcquire())
+	assert.True(t, s.TryAcquire())
+	assert.False(t, s.TryAcquire())
+}

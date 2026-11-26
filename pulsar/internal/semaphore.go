@@ -18,9 +18,7 @@
 package internal
 
 import (
-	"container/list"
 	"context"
-	"sync"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -40,31 +38,20 @@ type Semaphore interface {
 	// one.  If any threads are trying to acquire a permit, then one is
 	// selected and given the permit that was just released.  That thread
 	// is (re)enabled for thread scheduling purposes.
-	// There is no requirement that a thread that releases a permit must
-	// have acquired that permit by calling Acquire().
-	// Correct usage of a semaphore is established by programming convention
-	// in the application.
+	// Release never blocks. The permit does not have to be released by the
+	// goroutine that acquired it, but each Release must match an earlier
+	// successful Acquire or TryAcquire. A Release when no permit is held is
+	// a no-op.
 	Release()
 }
 
 type semaphore struct {
-	maxPermits int32
-
-	// mu protects permits and waiters. Holding it only for short, non-blocking
-	// critical sections guarantees that Release never blocks.
-	mu sync.Mutex
-	// permits is the number of permits currently held (or handed to a waiter).
-	// When waiters is non-empty, permits is always maxPermits.
-	permits int32
-	// waiters is a FIFO queue of blocked Acquire calls, each holding a *waiter.
-	waiters list.List
-}
-
-type waiter struct {
-	// ready is closed by Release when it hands a permit to this waiter.
-	ready chan struct{}
-	// granted is set under semaphore.mu when a permit has been handed to this waiter.
-	granted bool
+	// tokens holds one element per permit currently held. Its capacity is the
+	// maximum number of permits. Acquire puts a token in, Release takes one out.
+	// Release never waits for another goroutine, and a blocked Acquire is
+	// cancelled atomically by select, so no permit can be lost or leaked.
+	// Goroutines blocked sending on a full channel are woken in FIFO order.
+	tokens chan struct{}
 }
 
 func NewSemaphore(maxPermits int32) Semaphore {
@@ -73,62 +60,44 @@ func NewSemaphore(maxPermits int32) Semaphore {
 	}
 
 	return &semaphore{
-		maxPermits: maxPermits,
-		permits:    0,
+		tokens: make(chan struct{}, maxPermits),
 	}
 }
 
 func (s *semaphore) Acquire(ctx context.Context) bool {
-	s.mu.Lock()
-	if s.permits < s.maxPermits {
-		s.permits++
-		s.mu.Unlock()
+	// Fast path: take a free permit without considering the context,
+	// matching the previous behaviour.
+	select {
+	case s.tokens <- struct{}{}:
 		return true
+	default:
 	}
 
-	w := &waiter{ready: make(chan struct{})}
-	elem := s.waiters.PushBack(w)
-	s.mu.Unlock()
-
-	// Block until a permit is handed over or the context expires
+	// Block until a permit is available or the context expires
 	select {
-	case <-w.ready:
+	case s.tokens <- struct{}{}:
 		return true
 	case <-ctx.Done():
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		if w.granted {
-			// Release already handed us a permit before we could leave the queue.
-			// Keep it: the caller will see a successful acquire.
-			return true
-		}
-		s.waiters.Remove(elem)
 		return false
 	}
 }
 
 func (s *semaphore) TryAcquire() bool {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.permits >= s.maxPermits {
+	select {
+	case s.tokens <- struct{}{}:
+		return true
+	default:
 		// All the permits are already exhausted
 		return false
 	}
-	s.permits++
-	return true
 }
 
 func (s *semaphore) Release() {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if front := s.waiters.Front(); front != nil {
-		// Hand the permit directly to the next waiter. permits stays at maxPermits.
-		w := s.waiters.Remove(front).(*waiter)
-		w.granted = true
-		close(w.ready)
-		return
+	select {
+	case <-s.tokens:
+	default:
+		// No permit is held. Releasing it is a no-op, so an unmatched Release
+		// cannot raise the capacity above maxPermits.
+		log.Warn("Semaphore released without a matching acquire")
 	}
-	s.permits--
 }
