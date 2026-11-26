@@ -250,3 +250,58 @@ func TestReserveResourcesContextErrorPreservesResult(t *testing.T) {
 		}
 	}
 }
+
+func TestReceivedSendReceiptUpdatesLastSequenceIDToHighest(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		highest         *uint64
+		expectedLastSeq int64
+	}{
+		// A batch of sequence ids 5..7 is acknowledged with highest_sequence_id 7.
+		{name: "highest echoed by broker", highest: proto.Uint64(7), expectedLastSeq: 7},
+		// Without highest_sequence_id the first sequence id of the item is used.
+		{name: "highest not echoed", highest: nil, expectedLastSeq: 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := internal.NewBlockingQueue(1)
+			p := &partitionProducer{
+				pendingQueue:   q,
+				lastSequenceID: -1,
+				options:        &ProducerOptions{SendTimeout: time.Minute},
+				log:            plog.DefaultNopLogger(),
+				metrics:        internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
+			}
+			p.setProducerState(producerReady)
+			memory := internal.NewMemoryLimitController(1024, 0)
+			semaphore := internal.NewSemaphore(2)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			require.True(t, semaphore.TryAcquire())
+			memory.ForceReserveMemory(10)
+			p.metrics.MessagesPending.Inc()
+			p.metrics.BytesPending.Add(10)
+			var result error
+			req := &sendRequest{
+				producer: p, pool: &sync.Pool{}, msg: &ProducerMessage{},
+				callbackOnce: &sync.Once{}, publishTime: time.Now(),
+				semaphore: semaphore, memLimit: memory, reservedMem: 10,
+				callback: func(_ MessageID, _ *ProducerMessage, err error) { result = err },
+			}
+			pi := &pendingItem{
+				ctx: ctx, cancel: cancel, buffer: internal.NewBuffer(1), sequenceID: 5,
+				sentAt: time.Now(), sendRequests: []interface{}{req},
+			}
+			pi.buffer.Retain()
+			q.Put(pi)
+
+			p.ReceivedSendReceipt(&pb.CommandSendReceipt{
+				SequenceId:        proto.Uint64(5),
+				HighestSequenceId: tc.highest,
+				MessageId:         &pb.MessageIdData{LedgerId: proto.Uint64(1), EntryId: proto.Uint64(7)},
+			})
+
+			require.NoError(t, result)
+			require.Equal(t, tc.expectedLastSeq, p.LastSequenceID())
+		})
+	}
+}

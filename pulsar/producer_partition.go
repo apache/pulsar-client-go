@@ -1453,9 +1453,15 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	}
 	p.metrics.PublishRPCLatency.Observe(float64(now-pi.sentAt.UnixNano()) / 1.0e9)
 	batchSize := int32(len(pi.sendRequests))
+	// For a batch, pi.sequenceID is the first message's id and the receipt's highest_sequence_id
+	// is the last message's id.
+	lastSequenceID := int64(pi.sequenceID)
+	if highest := int64(response.GetHighestSequenceId()); highest > lastSequenceID {
+		lastSequenceID = highest
+	}
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
-		atomic.StoreInt64(&p.lastSequenceID, int64(pi.sequenceID))
+		atomic.StoreInt64(&p.lastSequenceID, lastSequenceID)
 
 		msgID := newMessageID(
 			int64(response.MessageId.GetLedgerId()),

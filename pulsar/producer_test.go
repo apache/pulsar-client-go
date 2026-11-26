@@ -311,6 +311,115 @@ func TestProducerLastSequenceID(t *testing.T) {
 	}
 }
 
+// sendBatchedAndWait publishes count messages asynchronously through a batching producer and waits for all acks.
+func sendBatchedAndWait(t *testing.T, producer Producer, count int) {
+	t.Helper()
+	var wg sync.WaitGroup
+	wg.Add(count)
+	for i := 0; i < count; i++ {
+		producer.SendAsync(context.Background(), &ProducerMessage{
+			Payload: []byte(fmt.Sprintf("msg-%d", i)),
+		}, func(_ MessageID, _ *ProducerMessage, err error) {
+			assert.NoError(t, err)
+			wg.Done()
+		})
+	}
+	require.NoError(t, producer.Flush())
+	wg.Wait()
+}
+
+// TestProducerLastSequenceIDAfterBatchedSend checks that LastSequenceID reports the last
+// message of an acknowledged batch, not the first one.
+func TestProducerLastSequenceIDAfterBatchedSend(t *testing.T) {
+	const numMessages = 10
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	require.NoError(t, err)
+	defer client.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   newTopicName(),
+		BatchingMaxMessages:     numMessages,
+		BatchingMaxPublishDelay: time.Minute,
+	})
+	require.NoError(t, err)
+	defer producer.Close()
+
+	sendBatchedAndWait(t, producer, numMessages)
+	require.Equal(t, int64(numMessages-1), producer.LastSequenceID())
+}
+
+// TestProducerDedupAfterBatchedSend checks that the broker records the last sequence id of a batch,
+// so deduplication rejects a re-sent id from inside that batch. It needs deduplication enabled on the
+// broker, and is skipped otherwise.
+func TestProducerDedupAfterBatchedSend(t *testing.T) {
+	const numMessages = 10
+	topic := fmt.Sprintf("public/default/dedup-batched-%d", time.Now().UnixNano())
+	const producerName = "dedup-batched-producer"
+	ctx := context.Background()
+
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	require.NoError(t, err)
+	defer client.Close()
+
+	// Probe: a repeated sequence id is rejected only when the broker deduplicates this topic.
+	probe, err := client.CreateProducer(ProducerOptions{
+		Topic:           fmt.Sprintf("public/default/dedup-probe-%d", time.Now().UnixNano()),
+		DisableBatching: true,
+	})
+	require.NoError(t, err)
+	defer probe.Close()
+	_, err = probe.Send(ctx, &ProducerMessage{Payload: []byte("probe"), SequenceID: proto.Int64(0)})
+	require.NoError(t, err)
+	probeID, err := probe.Send(ctx, &ProducerMessage{Payload: []byte("probe"), SequenceID: proto.Int64(0)})
+	require.NoError(t, err)
+	if probeID.LedgerID() != -1 {
+		t.Skip("broker deduplication is not enabled; enable it to run this check")
+	}
+
+	newProducer := func(batchDelay time.Duration) Producer {
+		p, err := client.CreateProducer(ProducerOptions{
+			Topic:                   topic,
+			Name:                    producerName,
+			BatchingMaxMessages:     numMessages,
+			BatchingMaxPublishDelay: batchDelay,
+		})
+		require.NoError(t, err)
+		return p
+	}
+
+	producer := newProducer(time.Minute)
+	sendBatchedAndWait(t, producer, numMessages)
+	producer.Close()
+
+	producer = newProducer(10 * time.Millisecond)
+	defer producer.Close()
+	// Sequence id 5 was persisted inside the batch above, so the broker must deduplicate it.
+	id, err := producer.Send(ctx, &ProducerMessage{
+		Payload:    []byte("duplicate"),
+		SequenceID: proto.Int64(5),
+	})
+	require.NoError(t, err)
+	require.Equal(t, int64(-1), id.LedgerID(), "the duplicate was persisted")
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "sub",
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	require.NoError(t, err)
+	defer consumer.Close()
+	for i := 0; i < numMessages; i++ {
+		rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		_, err := consumer.Receive(rctx)
+		cancel()
+		require.NoError(t, err)
+	}
+	rctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	_, err = consumer.Receive(rctx)
+	require.Error(t, err, "the deduplicated message must not be persisted")
+}
+
 func TestEventTime(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,

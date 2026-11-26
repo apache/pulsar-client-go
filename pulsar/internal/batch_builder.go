@@ -98,6 +98,10 @@ type batchContainer struct {
 	msgMetadata *pb.MessageMetadata
 	callbacks   []interface{}
 
+	// Sequence id of the last message added to the batch. The batch's sequence_id is the
+	// first message's, so this is what the broker needs as highest_sequence_id.
+	highestSequenceID uint64
+
 	compressionProvider compression.Provider
 	buffersPool         BuffersPool
 	metrics             *Metrics
@@ -234,6 +238,10 @@ func (bc *batchContainer) Add(
 			bc.cmdSend.Send.TxnidMostBits = proto.Uint64(mostSigBits)
 			bc.cmdSend.Send.TxnidLeastBits = proto.Uint64(leastSigBits)
 		}
+		bc.highestSequenceID = sequenceID
+	}
+	if metadata.SequenceId != nil {
+		bc.highestSequenceID = metadata.GetSequenceId()
 	}
 	addSingleMessageToBatch(bc.buffer, metadata, payload)
 
@@ -263,6 +271,8 @@ func (bc *batchContainer) Flush() *FlushBatch {
 
 	bc.msgMetadata.NumMessagesInBatch = proto.Int32(int32(bc.numMessages))
 	bc.cmdSend.Send.NumMessages = proto.Int32(int32(bc.numMessages))
+	bc.msgMetadata.HighestSequenceId = proto.Uint64(bc.highestSequenceID)
+	bc.cmdSend.Send.HighestSequenceId = proto.Uint64(bc.highestSequenceID)
 
 	uncompressedSize := bc.buffer.ReadableBytes()
 	bc.msgMetadata.UncompressedSize = &uncompressedSize
