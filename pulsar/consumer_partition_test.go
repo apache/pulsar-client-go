@@ -1081,7 +1081,7 @@ func TestInternalAckListFailsFastOnClosedConsumerConnection(t *testing.T) {
 	assert.Empty(t, cnx.closedRequests)
 }
 
-func TestClosedAckConnsClearedAfterReconnect(t *testing.T) {
+func TestClosedAckConnsTakeAndRestore(t *testing.T) {
 	oldCnx := &closeRecordingConnection{}
 	newCnx := &closeRecordingConnection{}
 	pc := &partitionConsumer{}
@@ -1090,11 +1090,25 @@ func TestClosedAckConnsClearedAfterReconnect(t *testing.T) {
 	assert.True(t, pc.connClosedForAck(oldCnx))
 	assert.True(t, pc.connClosedForAck(newCnx))
 
-	// A CLOSE_CONSUMER processed on the new connection between the
-	// SUBSCRIBE response and grabConn resuming must survive the cleanup.
-	pc.clearClosedAckConnsExcept(newCnx)
+	// The pool can hand back the connection the consumer was closed on, so
+	// grabConn takes every marker before registering the new subscription.
+	taken := pc.takeClosedAckConns()
+	assert.Len(t, taken, 2)
 	assert.False(t, pc.connClosedForAck(oldCnx))
+	assert.False(t, pc.connClosedForAck(newCnx))
+
+	// A CLOSE_CONSUMER processed for the new subscription after the handler
+	// is registered must survive.
+	pc.markConnClosedForAck(newCnx)
+
+	// A failed attempt puts the taken markers back and keeps the new one.
+	pc.restoreClosedAckConns(taken)
+	assert.True(t, pc.connClosedForAck(oldCnx))
 	assert.True(t, pc.connClosedForAck(newCnx))
+
+	assert.Len(t, pc.takeClosedAckConns(), 2)
+	assert.False(t, pc.connClosedForAck(oldCnx))
+	assert.False(t, pc.connClosedForAck(newCnx))
 }
 
 type stubRPCClient struct {

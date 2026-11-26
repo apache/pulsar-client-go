@@ -210,7 +210,8 @@ type partitionConsumer struct {
 	inflightAck atomic.Pointer[inflightAckRequest]
 	// Connections on which the broker closed this consumer. Acks that would
 	// go out on them fail fast with errAckConsumerClosed instead of waiting
-	// for a broker that no longer answers; cleared on successful reconnect.
+	// for a broker that no longer answers. grabConn takes them before it
+	// registers a new subscription and puts them back if that fails.
 	closedAckConnsMu sync.Mutex
 	closedAckConns   map[internal.Connection]struct{}
 
@@ -1844,18 +1845,36 @@ func (pc *partitionConsumer) connClosedForAck(cnx internal.Connection) bool {
 	return ok
 }
 
-// clearClosedAckConnsExcept forgets the close markers of every connection
-// except cnx. A successful re-subscribe only proves the replaced connections
-// are stale: the reader may already have processed a CLOSE_CONSUMER on cnx
-// itself between the SUBSCRIBE response and grabConn resuming, and that
-// marker must survive so acks queued behind the reconnect still fail fast.
-func (pc *partitionConsumer) clearClosedAckConnsExcept(cnx internal.Connection) {
+// takeClosedAckConns removes and returns every close marker. grabConn takes
+// them before registering the handler of a new subscription: the pool may hand
+// back the connection the broker closed the consumer on (CLOSE_CONSUMER keeps
+// the connection open), and a close of the new subscription can only be
+// delivered once its handler exists, so nothing valid is dropped.
+func (pc *partitionConsumer) takeClosedAckConns() []internal.Connection {
 	pc.closedAckConnsMu.Lock()
 	defer pc.closedAckConnsMu.Unlock()
+	conns := make([]internal.Connection, 0, len(pc.closedAckConns))
 	for c := range pc.closedAckConns {
-		if c != cnx {
-			delete(pc.closedAckConns, c)
-		}
+		conns = append(conns, c)
+	}
+	pc.closedAckConns = nil
+	return conns
+}
+
+// restoreClosedAckConns puts back the markers taken by takeClosedAckConns
+// when the reconnect that took them fails, so acks queued behind it still
+// fail fast.
+func (pc *partitionConsumer) restoreClosedAckConns(conns []internal.Connection) {
+	if len(conns) == 0 {
+		return
+	}
+	pc.closedAckConnsMu.Lock()
+	defer pc.closedAckConnsMu.Unlock()
+	if pc.closedAckConns == nil {
+		pc.closedAckConns = make(map[internal.Connection]struct{}, len(conns))
+	}
+	for _, c := range conns {
+		pc.closedAckConns[c] = struct{}{}
 	}
 }
 
@@ -1869,20 +1888,22 @@ func (pc *partitionConsumer) ConnectionClosed(cnx internal.Connection, closeCons
 			closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
 	}
 
-	select {
-	case pc.connectClosedCh <- &connectionClosed{assignedBrokerURL: assignedBrokerURL}:
-	default:
-		// Reconnect has already been requested so we do not block the
-		// connection callback.
-	}
-
 	// The broker does not always answer in-flight acks when it closes the
-	// consumer, so fail the wait instead of waiting for the timeout.
+	// consumer, so fail the wait instead of waiting for the timeout. The
+	// marker is set before the reconnect is signalled: grabConn takes the
+	// markers, so one landing after that would outlive the re-subscribe.
 	if closeConsumer != nil {
 		pc.markConnClosedForAck(cnx)
 		if ack := pc.inflightAck.Load(); ack != nil && ack.cnx == cnx {
 			cnx.CloseRequest(ack.requestID, errAckConsumerClosed)
 		}
+	}
+
+	select {
+	case pc.connectClosedCh <- &connectionClosed{assignedBrokerURL: assignedBrokerURL}:
+	default:
+		// Reconnect has already been requested so we do not block the
+		// connection callback.
 	}
 }
 
@@ -2433,9 +2454,16 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		}
 	}
 
-	// Register handler BEFORE the subscribe RPC so no frames are missed
+	// Register handler BEFORE the subscribe RPC so no frames are missed.
+	// The close markers are taken first: the pool may hand back the very
+	// connection the broker closed the consumer on, and leaving its marker
+	// would fail every ack from now on. A close of the new subscription can
+	// only be delivered after the handler exists, so it is not wiped; a
+	// failed attempt puts the markers back.
+	closedAckConns := pc.takeClosedAckConns()
 	err = cnx.AddConsumeHandler(pc.consumerID, pc)
 	if err != nil {
+		pc.restoreClosedAckConns(closedAckConns)
 		restoreConn()
 		pc.log.WithError(err).Error("Failed to add consumer handler")
 		return err
@@ -2444,6 +2472,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 	res, err := pc.client.rpcClient.RequestOnCnx(cnx, requestID, pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
 	if err != nil {
 		cnx.DeleteConsumeHandler(pc.consumerID)
+		pc.restoreClosedAckConns(closedAckConns)
 		restoreConn()
 		pc.log.WithError(err).Error("Failed to create consumer")
 		if err == internal.ErrRequestTimeOut {
@@ -2462,7 +2491,6 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		pc.name = res.Response.ConsumerStatsResponse.GetConsumerName()
 	}
 
-	pc.clearClosedAckConnsExcept(cnx)
 	pc.log.Info("Connected consumer")
 
 	msgType := res.Response.GetType()
@@ -2476,8 +2504,10 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		return nil
 	case pb.BaseCommand_ERROR:
 		errMsg := res.Response.GetError()
+		pc.restoreClosedAckConns(closedAckConns)
 		return fmt.Errorf("%s: %s", errMsg.GetError().String(), errMsg.GetMessage())
 	default:
+		pc.restoreClosedAckConns(closedAckConns)
 		return newUnexpectedErrMsg(msgType, requestID)
 	}
 }
