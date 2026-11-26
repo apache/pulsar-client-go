@@ -128,7 +128,7 @@ type partitionProducer struct {
 	// loopDone is closed when the event loop exits.
 	loopDone chan struct{}
 	// sendMu guards dataChan against late senders. Senders add to dataChan under the read lock, and
-	// failQueuedSendRequests takes the write lock after closingCh is closed.
+	// takeQueuedSendRequests takes the write lock after closingCh is closed.
 	sendMu               sync.RWMutex
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
@@ -670,7 +670,7 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 				p.log.WithField("size", sr.uncompressedSize).
 					WithField("properties", sr.msg.Properties).
 					Error("unable to add message to batch")
-				sr.done(nil, ErrFailAddToBatch)
+				p.failRequestsOffLoop(ErrFailAddToBatch, []interface{}{sr})
 				return
 			}
 		}
@@ -716,6 +716,7 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 			transaction:         sr.transaction,
 			memLimit:            sr.memLimit,
 			semaphore:           sr.semaphore,
+			reservedSemaphore:   1,
 			reservedMem:         int64(rhs - lhs),
 			sendAsBatch:         sr.sendAsBatch,
 			schema:              sr.schema,
@@ -881,8 +882,8 @@ func (p *partitionProducer) internalSingleSend(
 	)
 
 	if err != nil {
-		sr.done(nil, err)
 		p.log.WithError(err).Errorf("Single message serialize failed %s", msg.Value)
+		p.failRequestsOffLoop(err, []interface{}{sr})
 		return
 	}
 
@@ -924,11 +925,7 @@ func (p *partitionProducer) internalFlushCurrentBatch() {
 	// error occurred in batch flush
 	// report it using callback
 	if err != nil {
-		for _, cb := range callbacks {
-			if sr, ok := cb.(*sendRequest); ok {
-				sr.done(nil, err)
-			}
-		}
+		p.failRequestsOffLoop(err, callbacks)
 
 		if errors.Is(err, internal.ErrExceedMaxMessageSize) {
 			p.log.WithError(ErrMessageTooLarge).Errorf("internal err: %s", err)
@@ -944,11 +941,7 @@ func (p *partitionProducer) writeData(buffer internal.Buffer, sequenceID uint64,
 	select {
 	case <-p.ctx.Done():
 		buffer.Release()
-		for _, cb := range callbacks {
-			if sr, ok := cb.(*sendRequest); ok {
-				sr.done(nil, ErrProducerClosed)
-			}
-		}
+		p.failRequestsOffLoop(ErrProducerClosed, callbacks)
 		return
 	default:
 		now := time.Now()
@@ -1077,11 +1070,7 @@ func (p *partitionProducer) internalFlushCurrentBatches() {
 		// error occurred in processing batch
 		// report it using callback
 		if b.Error != nil {
-			for _, cb := range b.Callbacks {
-				if sr, ok := cb.(*sendRequest); ok {
-					sr.done(nil, b.Error)
-				}
-			}
+			p.failRequestsOffLoop(b.Error, b.Callbacks)
 
 			if errors.Is(b.Error, internal.ErrExceedMaxMessageSize) {
 				p.log.WithError(ErrMessageTooLarge).Errorf("internal err: %s", b.Error)
@@ -1431,8 +1420,8 @@ func (p *partitionProducer) enqueueSendRequest(ctx context.Context, sr *sendRequ
 	p.sendMu.RLock()
 	defer p.sendMu.RUnlock()
 
-	// closingCh is closed before doClose takes the write lock, so a sender that gets the read lock after that
-	// sees closingCh and fails here instead of adding a request nobody will drain.
+	// closingCh is closed before takeQueuedSendRequests takes the write lock, so a sender that gets the read lock
+	// after that sees closingCh and fails here instead of adding a request nobody will drain.
 	select {
 	case <-p.closingCh:
 		return ErrProducerClosed
@@ -1579,8 +1568,8 @@ func (p *partitionProducer) finishClose(reason error, selfClose bool) {
 		p.log.Info("Closed producer")
 	}
 	pending := p.takePendingItems()
-	p.failBatchedMessages(reason)
-	p.failQueuedSendRequests(reason)
+	batched := p.takeBatchedRequests()
+	queued := p.takeQueuedSendRequests()
 
 	if p.batchBuilder != nil {
 		if err = p.batchBuilder.Close(); err != nil {
@@ -1599,6 +1588,8 @@ func (p *partitionProducer) finishClose(reason error, selfClose bool) {
 	// Run the callbacks only now. A callback may call Close, which waits for closedCh, or a public Close that
 	// waits for another Close to leave closeOnce.
 	p.failPendingItems(pending, reason)
+	failRequests(batched, reason)
+	failRequests(queued, reason)
 }
 
 // failPendingMessages fails the messages in pendingQueue while the producer keeps running. Each item stays in
@@ -1699,48 +1690,60 @@ func (p *partitionProducer) failPendingItems(items []*pendingItem, err error) {
 	}
 }
 
-// failBatchedMessages fails the messages still in the open batch. They were never sent,
-// so no receipt will complete them.
-func (p *partitionProducer) failBatchedMessages(reason error) {
+// takeBatchedRequests discards the open batch without encoding it, and releases the permits and memory of its send
+// requests. They were never sent, so no receipt will complete them. The caller must fail them with failRequests.
+func (p *partitionProducer) takeBatchedRequests() []*sendRequest {
 	if p.batchBuilder == nil {
-		return
+		return nil
 	}
-
-	var batches []*internal.FlushBatch
-	if p.batchBuilder.IsMultiBatches() {
-		batches = p.batchBuilder.FlushBatches()
-	} else if batch := p.batchBuilder.Flush(); batch != nil {
-		batches = append(batches, batch)
-	}
-
-	for _, batch := range batches {
-		if batch.BatchData != nil {
-			batch.BatchData.Release()
-		}
-		for _, cb := range batch.Callbacks {
-			if sr, ok := cb.(*sendRequest); ok {
-				sr.done(nil, reason)
-			}
-		}
-	}
+	return takeSendRequests(p.batchBuilder.Discard())
 }
 
-// failQueuedSendRequests fails the send requests still buffered in dataChan. The event loop no longer reads
-// dataChan.
-func (p *partitionProducer) failQueuedSendRequests(reason error) {
+// takeQueuedSendRequests removes the send requests still buffered in dataChan, and releases their permits and
+// memory. The event loop no longer reads dataChan. The caller must fail them with failRequests.
+func (p *partitionProducer) takeQueuedSendRequests() []*sendRequest {
 	var queued []*sendRequest
 
 	p.sendMu.Lock()
 	// No sender can add to dataChan while the write lock is held, so len is stable and only this goroutine receives.
 	for len(p.dataChan) > 0 {
-		queued = append(queued, <-p.dataChan)
+		sr := <-p.dataChan
+		sr.releaseResources()
+		queued = append(queued, sr)
 	}
 	p.sendMu.Unlock()
 
-	// Complete the requests after unlocking, since a callback may call SendAsync and take the read lock.
-	for _, sr := range queued {
-		sr.done(nil, reason)
+	return queued
+}
+
+// takeSendRequests returns the send requests among callbacks, after releasing their permits and memory.
+func takeSendRequests(callbacks []interface{}) []*sendRequest {
+	requests := make([]*sendRequest, 0, len(callbacks))
+	for _, cb := range callbacks {
+		if sr, ok := cb.(*sendRequest); ok {
+			sr.releaseResources()
+			requests = append(requests, sr)
+		}
 	}
+	return requests
+}
+
+// failRequests completes requests with err.
+func failRequests(requests []*sendRequest, err error) {
+	for _, sr := range requests {
+		sr.done(nil, err)
+	}
+}
+
+// failRequestsOffLoop fails send requests that the event loop could not send. It releases their permits and memory
+// right away, and runs their callbacks on another goroutine, because a callback may call Close or Flush, which wait
+// for the event loop.
+func (p *partitionProducer) failRequestsOffLoop(err error, callbacks []interface{}) {
+	requests := takeSendRequests(callbacks)
+	if len(requests) == 0 {
+		return
+	}
+	go failRequests(requests, err)
 }
 
 func (p *partitionProducer) LastSequenceID() int64 {
@@ -1917,12 +1920,15 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 	}
 }
 
-// releaseResources returns the publish permit and the memory reserved by sr. It does nothing if they were already
-// returned, so done can call it again.
+// releaseResources returns the publish permits and the memory reserved by sr. It does nothing if they were already
+// returned, so done can call it again. A chunked request that has not been split yet holds one permit per chunk.
+// Once split, each chunk's request holds one.
 func (sr *sendRequest) releaseResources() {
 	if sr.semaphore != nil {
-		sr.semaphore.Release()
-		sr.producer.metrics.MessagesPending.Dec()
+		for i := 0; i < sr.reservedSemaphore; i++ {
+			sr.semaphore.Release()
+			sr.producer.metrics.MessagesPending.Dec()
+		}
 		sr.semaphore = nil
 	}
 
