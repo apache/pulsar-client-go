@@ -113,8 +113,11 @@ type partitionProducer struct {
 	compressionProvider      compression.Provider
 
 	// Channel where app is posting messages to be published
-	dataChan             chan *sendRequest
-	cmdChan              chan interface{}
+	dataChan chan *sendRequest
+	cmdChan  chan interface{}
+	// closeCh is closed once, by doClose, to tell senders and the event loop that the producer is closing.
+	// dataChan and cmdChan are never closed, so a send on them cannot panic.
+	closeCh              chan struct{}
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
 	pendingQueue         internal.BlockingQueue
@@ -188,6 +191,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		producerID:       client.rpcClient.NewProducerID(),
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
 		cmdChan:          make(chan interface{}, 10),
+		closeCh:          make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
@@ -594,17 +598,11 @@ func (p *partitionProducer) runEventsLoop() {
 	}()
 	for {
 		select {
-		case data, ok := <-p.dataChan:
-			// when doClose() is call, p.dataChan will be closed, data will be nil
-			if !ok {
-				return
-			}
+		case <-p.closeCh:
+			return
+		case data := <-p.dataChan:
 			p.internalSend(data)
-		case cmd, ok := <-p.cmdChan:
-			// when doClose() is call, p.dataChan will be closed, cmd will be nil
-			if !ok {
-				return
-			}
+		case cmd := <-p.cmdChan:
 			switch v := cmd.(type) {
 			case *flushRequest:
 				p.internalFlush(v)
@@ -1405,12 +1403,21 @@ func (p *partitionProducer) internalSendAsync(
 		return
 	}
 
+	// Check closeCh before the send: once the producer is closing, select could pick dataChan
+	// even though nothing will consume it.
+	select {
+	case <-p.closeCh:
+		sr.done(nil, ErrProducerClosed)
+		return
+	default:
+	}
+
 	select {
 	case <-ctx.Done():
 		sr.done(nil, ctx.Err())
-		return
+	case <-p.closeCh:
+		sr.done(nil, ErrProducerClosed)
 	case p.dataChan <- sr:
-		return
 	}
 }
 
@@ -1509,8 +1516,7 @@ func (p *partitionProducer) doClose(reason error) {
 	}
 
 	p.log.Info("Closing producer")
-	defer close(p.dataChan)
-	defer close(p.cmdChan)
+	close(p.closeCh)
 
 	id := p.client.rpcClient.NewRequestID()
 	_, err := p.client.rpcClient.RequestOnCnx(p._getConn(), id, pb.BaseCommand_CLOSE_PRODUCER, &pb.CommandCloseProducer{
@@ -1596,6 +1602,8 @@ func (p *partitionProducer) FlushWithCtx(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-p.closeCh:
+		return ErrProducerClosed
 	case p.cmdChan <- flushReq:
 	}
 
@@ -1603,6 +1611,14 @@ func (p *partitionProducer) FlushWithCtx(ctx context.Context) error {
 	select {
 	case <-ctx.Done():
 		return ctx.Err()
+	case <-p.closeCh:
+		// The flush may have completed just before the close, so prefer its result.
+		select {
+		case <-flushReq.doneCh:
+			return flushReq.err
+		default:
+			return ErrProducerClosed
+		}
 	case <-flushReq.doneCh:
 		return flushReq.err
 	}

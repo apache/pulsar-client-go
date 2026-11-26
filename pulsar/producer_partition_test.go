@@ -250,3 +250,126 @@ func TestReserveResourcesContextErrorPreservesResult(t *testing.T) {
 		}
 	}
 }
+
+// closeTestRPC answers CLOSE_PRODUCER locally so doClose can run without a broker.
+type closeTestRPC struct {
+	internal.RPCClient
+}
+
+func (closeTestRPC) NewRequestID() uint64 { return 1 }
+
+func (closeTestRPC) RequestOnCnx(_ internal.Connection, _ uint64, _ pb.BaseCommand_Type,
+	_ proto.Message) (*internal.RPCResult, error) {
+	return nil, nil
+}
+
+// newClosableTestProducer builds a ready partitionProducer that can run its event loop and doClose without a broker.
+func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	p := &partitionProducer{
+		client: &client{
+			rpcClient: closeTestRPC{},
+			memLimit:  internal.NewMemoryLimitController(1<<20, 0),
+		},
+		topic:            "topic",
+		log:              plog.DefaultNopLogger(),
+		options:          &ProducerOptions{},
+		dataChan:         make(chan *sendRequest, maxPending),
+		cmdChan:          make(chan interface{}, 10),
+		closeCh:          make(chan struct{}),
+		connectClosedCh:  make(chan *connectionClosed, 1),
+		batchFlushTicker: time.NewTicker(time.Hour),
+		publishSemaphore: internal.NewSemaphore(int32(maxPending)),
+		pendingQueue:     internal.NewBlockingQueue(maxPending),
+		metrics:          internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
+		ctx:              ctx,
+		cancelFunc:       cancel,
+	}
+	p.setProducerState(producerReady)
+	p._setConn(&dummyConnection{})
+	return p
+}
+
+// callOutcome records what a concurrent call returned, or whether it panicked.
+type callOutcome struct {
+	err      error
+	panicked any
+}
+
+// Regression for #1583: a sender that is blocked when the producer closes itself must get
+// ErrProducerClosed. It must not panic with "send on closed channel".
+func TestSendAsyncBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	go p.runEventsLoop()
+
+	// Hold the only permit through a pending message so the next sender blocks in reserveSemaphore.
+	require.True(t, p.publishSemaphore.TryAcquire())
+	p.metrics.MessagesPending.Inc()
+	held := &sendRequest{
+		producer: p, pool: &sync.Pool{}, msg: &ProducerMessage{}, callbackOnce: &sync.Once{},
+		publishTime: time.Now(), semaphore: p.publishSemaphore,
+		callback: func(MessageID, *ProducerMessage, error) {},
+	}
+	buf := internal.NewBuffer(1)
+	buf.Retain()
+	p.pendingQueue.Put(&pendingItem{
+		buffer: buf, sequenceID: 1, createdAt: time.Now(), sentAt: time.Now(),
+		sendRequests: []interface{}{held},
+	})
+
+	resCh := make(chan callOutcome, 1)
+	go func() {
+		var out callOutcome
+		defer func() {
+			out.panicked = recover()
+			resCh <- out
+		}()
+		p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("blocked")},
+			func(_ MessageID, _ *ProducerMessage, err error) { out.err = err })
+	}()
+
+	// Give the sender time to block on the held permit, then close the producer the way the reconnect path does.
+	time.Sleep(100 * time.Millisecond)
+	p.doClose(ErrTopicTerminated)
+
+	select {
+	case out := <-resCh:
+		require.Nil(t, out.panicked, "SendAsync panicked while the producer was closing")
+		require.ErrorIs(t, out.err, ErrProducerClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("SendAsync did not return after the producer closed")
+	}
+}
+
+// Regression for #1583: a FlushWithCtx blocked on a full cmdChan when the producer closes itself must
+// return ErrProducerClosed. It must not panic with "send on closed channel".
+func TestFlushBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	// No event loop runs here, so the full cmdChan keeps FlushWithCtx blocked on its send.
+	for i := 0; i < cap(p.cmdChan); i++ {
+		p.cmdChan <- &flushRequest{doneCh: make(chan struct{})}
+	}
+
+	resCh := make(chan callOutcome, 1)
+	go func() {
+		var out callOutcome
+		defer func() {
+			out.panicked = recover()
+			resCh <- out
+		}()
+		out.err = p.FlushWithCtx(context.Background())
+	}()
+
+	time.Sleep(100 * time.Millisecond)
+	p.doClose(ErrTopicTerminated)
+
+	select {
+	case out := <-resCh:
+		require.Nil(t, out.panicked, "FlushWithCtx panicked while the producer was closing")
+		require.ErrorIs(t, out.err, ErrProducerClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("FlushWithCtx did not return after the producer closed")
+	}
+}
