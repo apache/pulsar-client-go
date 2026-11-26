@@ -18,8 +18,9 @@
 package internal
 
 import (
+	"container/list"
 	"context"
-	"sync/atomic"
+	"sync"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -48,8 +49,22 @@ type Semaphore interface {
 
 type semaphore struct {
 	maxPermits int32
-	permits    int32
-	ch         chan bool
+
+	// mu protects permits and waiters. Holding it only for short, non-blocking
+	// critical sections guarantees that Release never blocks.
+	mu sync.Mutex
+	// permits is the number of permits currently held (or handed to a waiter).
+	// When waiters is non-empty, permits is always maxPermits.
+	permits int32
+	// waiters is a FIFO queue of blocked Acquire calls, each holding a *waiter.
+	waiters list.List
+}
+
+type waiter struct {
+	// ready is closed by Release when it hands a permit to this waiter.
+	ready chan struct{}
+	// granted is set under semaphore.mu when a permit has been handed to this waiter.
+	granted bool
 }
 
 func NewSemaphore(maxPermits int32) Semaphore {
@@ -60,46 +75,60 @@ func NewSemaphore(maxPermits int32) Semaphore {
 	return &semaphore{
 		maxPermits: maxPermits,
 		permits:    0,
-		ch:         make(chan bool),
 	}
 }
 
 func (s *semaphore) Acquire(ctx context.Context) bool {
-	permits := atomic.AddInt32(&s.permits, 1)
-	if permits <= s.maxPermits {
+	s.mu.Lock()
+	if s.permits < s.maxPermits {
+		s.permits++
+		s.mu.Unlock()
 		return true
 	}
 
-	// Block on the channel until a new permit is available
-	// or the context expires
+	w := &waiter{ready: make(chan struct{})}
+	elem := s.waiters.PushBack(w)
+	s.mu.Unlock()
+
+	// Block until a permit is handed over or the context expires
 	select {
-	case <-s.ch:
+	case <-w.ready:
 		return true
 	case <-ctx.Done():
-		atomic.AddInt32(&s.permits, -1)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		if w.granted {
+			// Release already handed us a permit before we could leave the queue.
+			// Keep it: the caller will see a successful acquire.
+			return true
+		}
+		s.waiters.Remove(elem)
 		return false
 	}
 }
 
 func (s *semaphore) TryAcquire() bool {
-	for {
-		currentPermits := atomic.LoadInt32(&s.permits)
-		if currentPermits >= s.maxPermits {
-			// All the permits are already exhausted
-			return false
-		}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-		if atomic.CompareAndSwapInt32(&s.permits, currentPermits, currentPermits+1) {
-			// Successfully incremented counter
-			return true
-		}
+	if s.permits >= s.maxPermits {
+		// All the permits are already exhausted
+		return false
 	}
+	s.permits++
+	return true
 }
 
 func (s *semaphore) Release() {
-	permits := atomic.AddInt32(&s.permits, -1)
-	if permits >= s.maxPermits {
-		// Unblock the next in line to acquire the semaphore
-		s.ch <- true
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if front := s.waiters.Front(); front != nil {
+		// Hand the permit directly to the next waiter. permits stays at maxPermits.
+		w := s.waiters.Remove(front).(*waiter)
+		w.granted = true
+		close(w.ready)
+		return
 	}
+	s.permits--
 }

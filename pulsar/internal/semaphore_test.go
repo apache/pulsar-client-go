@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSemaphore(t *testing.T) {
@@ -73,4 +74,59 @@ func TestSemaphore_ContextExpire(t *testing.T) {
 	s.Release()
 
 	assert.True(t, s.TryAcquire())
+}
+
+// TestSemaphore_ReleaseRacingCancelledAcquire reproduces the race where Release runs
+// while a blocked Acquire is being cancelled. Release must never block, and the
+// permit accounting must stay correct.
+func TestSemaphore_ReleaseRacingCancelledAcquire(t *testing.T) {
+	const iterations = 2000
+	for i := 0; i < iterations; i++ {
+		s := NewSemaphore(1)
+		require.True(t, s.Acquire(context.Background()))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		acquired := make(chan bool, 1)
+		go func() {
+			acquired <- s.Acquire(ctx)
+		}()
+		// Give the waiter a chance to park.
+		time.Sleep(50 * time.Microsecond)
+
+		start := make(chan struct{})
+		released := make(chan struct{})
+		go func() {
+			<-start
+			s.Release()
+			close(released)
+		}()
+		close(start)
+		cancel()
+
+		select {
+		case <-released:
+		case <-time.After(time.Second):
+			t.Fatalf("iteration %d: Release blocked while racing a cancelled Acquire", i)
+		}
+
+		var got bool
+		select {
+		case got = <-acquired:
+		case <-time.After(time.Second):
+			t.Fatalf("iteration %d: Acquire did not return after cancel", i)
+		}
+
+		// Exactly one permit is outstanding if the waiter reports success, none otherwise.
+		if got {
+			require.False(t, s.TryAcquire(), "iteration %d: permit granted to waiter but still available", i)
+			s.Release()
+		} else {
+			require.True(t, s.TryAcquire(), "iteration %d: permit lost after cancelled Acquire", i)
+			s.Release()
+		}
+		require.True(t, s.TryAcquire(), "iteration %d: semaphore not empty after cleanup", i)
+		require.False(t, s.TryAcquire(), "iteration %d: semaphore over-admitted", i)
+		s.Release()
+		cancel()
+	}
 }
