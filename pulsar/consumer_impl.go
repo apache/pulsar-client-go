@@ -668,7 +668,6 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 		reconsumeTimes++
 	} else {
 		props[SysPropertyRealTopic] = msg.Topic()
-		props[SysPropertyOriginMessageID] = msgID.messageID.String()
 		props[PropertyOriginMessageID] = msgID.messageID.String()
 	}
 	props[SysPropertyReconsumeTimes] = strconv.Itoa(reconsumeTimes)

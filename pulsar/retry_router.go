@@ -33,11 +33,13 @@ const (
 	RetryTopicSuffix  = "-RETRY"
 	MaxReconsumeTimes = 16
 
-	SysPropertyDelayTime       = "DELAY_TIME"
-	SysPropertyRealTopic       = "REAL_TOPIC"
-	SysPropertyRetryTopic      = "RETRY_TOPIC"
-	SysPropertyReconsumeTimes  = "RECONSUMETIMES"
-	SysPropertyOriginMessageID = "ORIGIN_MESSAGE_IDY_TIME"
+	SysPropertyDelayTime      = "DELAY_TIME"
+	SysPropertyRealTopic      = "REAL_TOPIC"
+	SysPropertyRetryTopic     = "RETRY_TOPIC"
+	SysPropertyReconsumeTimes = "RECONSUMETIMES"
+	// Deprecated: use PropertyOriginMessageID. This alias is kept for compatibility;
+	// it holds the same standard "ORIGIN_MESSAGE_ID" key.
+	SysPropertyOriginMessageID = PropertyOriginMessageID
 	PropertyOriginMessageID    = "ORIGIN_MESSAGE_ID"
 )
 

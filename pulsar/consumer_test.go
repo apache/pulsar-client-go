@@ -2092,10 +2092,10 @@ func DLQWithProducerOptions(t *testing.T, prodOpt *ProducerOptions) {
 		assert.True(t, regex.MatchString(msg.ProducerName()))
 
 		// check original messageId
-		assert.NotEmpty(t, msg.Properties()[SysPropertyOriginMessageID])
-		assert.Equal(t, msgIDList[expectedMsgIdx], msg.Properties()[SysPropertyOriginMessageID])
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
 		assert.Equal(t, msgIDList[expectedMsgIdx], msg.Properties()[PropertyOriginMessageID])
+		// the bogus typo'd key must no longer be written on DLQ messages
+		assert.NotContains(t, msg.Properties(), "ORIGIN_MESSAGE_IDY_TIME")
 
 		// check original topic
 		assert.Contains(t, msg.Properties()[SysPropertyRealTopic], topic)
@@ -2555,6 +2555,11 @@ func TestRLQ(t *testing.T) {
 	for rlqReceived < N*(maxRedeliveries+1) {
 		msg, err := rlqConsumer.Receive(ctx)
 		assert.Nil(t, err)
+		if _, ok := msg.Properties()[SysPropertyReconsumeTimes]; ok {
+			// retry messages carry the origin id under the standard key only
+			assert.Contains(t, msgIDList, msg.Properties()[PropertyOriginMessageID])
+			assert.NotContains(t, msg.Properties(), "ORIGIN_MESSAGE_IDY_TIME")
+		}
 		rlqConsumer.ReconsumeLater(msg, 1*time.Second)
 		rlqReceived++
 	}
@@ -2582,10 +2587,10 @@ func TestRLQ(t *testing.T) {
 		//	check original messageId
 		//	we create a topic with three partitions,
 		//	so that messages maybe not be received as the same order as we produced
-		assert.NotEmpty(t, msg.Properties()[SysPropertyOriginMessageID])
-		assert.Contains(t, msgIDList, msg.Properties()[SysPropertyOriginMessageID])
 		assert.NotEmpty(t, msg.Properties()[PropertyOriginMessageID])
 		assert.Contains(t, msgIDList, msg.Properties()[PropertyOriginMessageID])
+		// the bogus typo'd key must no longer be written on DLQ messages
+		assert.NotContains(t, msg.Properties(), "ORIGIN_MESSAGE_IDY_TIME")
 
 		// check original topic
 		assert.Contains(t, msg.Properties()[SysPropertyRealTopic], topic)

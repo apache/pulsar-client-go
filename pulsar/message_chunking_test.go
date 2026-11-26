@@ -854,7 +854,7 @@ func TestChunkReconsumeLater(t *testing.T) {
 
 	// Verify DLQ message properties
 	assert.NotEmpty(t, dlqMsg.Properties()[SysPropertyRealTopic])
-	assert.NotEmpty(t, dlqMsg.Properties()[SysPropertyOriginMessageID])
+	assert.NotEmpty(t, dlqMsg.Properties()[PropertyOriginMessageID])
 
 	assert.NoError(t, dlqConsumer.Ack(dlqMsg))
 
@@ -957,7 +957,7 @@ func TestChunkDLQWithNack(t *testing.T) {
 	// Verify DLQ metadata properties
 	assert.NotEmpty(t, dlqMsg.Properties()[SysPropertyRealTopic])
 	assert.Contains(t, dlqMsg.Properties()[SysPropertyRealTopic], topic)
-	assert.NotEmpty(t, dlqMsg.Properties()[SysPropertyOriginMessageID])
+	assert.NotEmpty(t, dlqMsg.Properties()[PropertyOriginMessageID])
 
 	assert.NoError(t, dlqConsumer.Ack(dlqMsg))
 
