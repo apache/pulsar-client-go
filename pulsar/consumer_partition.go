@@ -851,6 +851,22 @@ func (pc *partitionConsumer) AckID(msgID MessageID) error {
 	return pc.ackID(msgID, false)
 }
 
+// isNonPartitionedTopicMessageID reports whether msgID identifies a message of the non-partitioned
+// topic consumed by pc although its partition index is -1 rather than pc's index 0. Message ids from
+// the Java client use -1 for non-partitioned topics, and so does a serialized id that omits the
+// partition field. A -1 partition index never belongs to a partition of a partitioned topic, and the
+// earliest and latest message ids are seek markers rather than messages, so both are excluded. The
+// markers are matched by ledger and entry id because a deserialized marker is a different instance.
+func (pc *partitionConsumer) isNonPartitionedTopicMessageID(msgID MessageID) bool {
+	if msgID.PartitionIdx() != -1 || pc.partitionIdx != 0 || internal.IsPartitionTopicName(pc.topic) {
+		return false
+	}
+	ledgerID, entryID := msgID.LedgerID(), msgID.EntryID()
+	isEarliest := ledgerID == earliestMessageID.ledgerID && entryID == earliestMessageID.entryID
+	isLatest := ledgerID == latestMessageID.ledgerID && entryID == latestMessageID.entryID
+	return !isEarliest && !isLatest
+}
+
 func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 	if !pc.options.ackWithResponse {
 		for _, msgID := range msgIDs {
@@ -867,8 +883,7 @@ func (pc *partitionConsumer) AckIDList(msgIDs []MessageID) error {
 
 	// They might be complete after the whole for loop
 	for _, msgID := range msgIDs {
-		// -1 is the partition index Java uses for non-partitioned topics, whose only partition is 0.
-		if idx := msgID.PartitionIdx(); idx != pc.partitionIdx && !(idx == -1 && pc.partitionIdx == 0) {
+		if msgID.PartitionIdx() != pc.partitionIdx && !pc.isNonPartitionedTopicMessageID(msgID) {
 			pc.log.Errorf("%v inconsistent partition index %v (current: %v)", msgID, msgID.PartitionIdx(), pc.partitionIdx)
 		} else if msgID.BatchIdx() >= 0 && msgID.BatchSize() > 0 &&
 			msgID.BatchIdx() >= msgID.BatchSize() {

@@ -7106,8 +7106,14 @@ func TestFindPartitionConsumerWithNegativeOnePartitionIndexOnSinglePartition(t *
 
 func newSinglePartitionConsumerForAckTest(t *testing.T, ackWithResponse bool) (*consumer, *partitionConsumer) {
 	t.Helper()
+	return newSinglePartitionConsumerForAckTestWithTopic(t, "persistent://public/default/test-topic", ackWithResponse)
+}
+
+func newSinglePartitionConsumerForAckTestWithTopic(t *testing.T, topic string,
+	ackWithResponse bool) (*consumer, *partitionConsumer) {
+	t.Helper()
 	pc := &partitionConsumer{
-		topic:    "persistent://public/default/test-topic",
+		topic:    topic,
 		eventsCh: make(chan interface{}, 1),
 		log:      plog.DefaultNopLogger(),
 		metrics:  newTestMetrics(),
@@ -7118,7 +7124,7 @@ func newSinglePartitionConsumerForAckTest(t *testing.T, ackWithResponse bool) (*
 	t.Cleanup(pc.nackTracker.Close)
 
 	c := &consumer{
-		topic:     "persistent://public/default/test-topic",
+		topic:     topic,
 		messageCh: make(chan ConsumerMessage, 1),
 		options:   ConsumerOptions{AckWithResponse: ackWithResponse},
 		log:       plog.DefaultNopLogger(),
@@ -7169,4 +7175,98 @@ func TestAckIDListWithResponseAndNegativeOnePartitionIndexOnSinglePartition(t *t
 		t.Fatal("ack list request did not reach the partition consumer")
 	}
 	require.NoError(t, <-errCh)
+}
+
+// A message id with partition index -1 does not belong to a partitioned topic, so a consumer of a
+// single partition of a partitioned topic must not accept it, even though it has partition index 0.
+func TestNegativeOnePartitionIndexRejectedOnPartitionOfPartitionedTopic(t *testing.T) {
+	const topic = "persistent://public/default/test-topic-partition-0"
+	msgID := NewMessageID(1, 2, -1, -1)
+
+	_, err := findPartitionConsumer([]*partitionConsumer{{topic: topic}}, msgID)
+	assert.Error(t, err)
+
+	c, pc := newSinglePartitionConsumerForAckTestWithTopic(t, topic, false)
+	var acked []MessageID
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { acked = append(acked, id) }, nil, nil)
+	assert.Error(t, c.AckID(msgID))
+	assert.Empty(t, acked)
+
+	c.NackID(msgID)
+	pc.nackTracker.Lock()
+	size := pc.nackTracker.negativeAcks.Size()
+	pc.nackTracker.Unlock()
+	assert.Equal(t, 0, size)
+}
+
+func TestAckIDListWithResponseRejectsNegativeOnePartitionIndexOnPartitionOfPartitionedTopic(t *testing.T) {
+	_, pc := newSinglePartitionConsumerForAckTestWithTopic(t,
+		"persistent://public/default/test-topic-partition-0", true)
+
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- pc.AckIDList([]MessageID{NewMessageID(1, 2, -1, -1)})
+	}()
+
+	select {
+	case event := <-pc.eventsCh:
+		req, ok := event.(*ackListRequest)
+		require.True(t, ok, "expected an ack list request, got %T", event)
+		assert.Empty(t, req.msgIDs, "a message id with partition index -1 must not be acked on a partition")
+		req.errCh <- nil
+	case <-time.After(3 * time.Second):
+		t.Fatal("ack list request did not reach the partition consumer")
+	}
+	require.NoError(t, <-errCh)
+}
+
+// The earliest and latest message ids are seek markers, not messages. They must be rejected by the
+// ack paths even when they are not the sentinel instances, e.g. after serialization.
+func TestSeekMarkersRejectedAfterSerializationOnSinglePartition(t *testing.T) {
+	for _, marker := range []MessageID{EarliestMessageID(), LatestMessageID()} {
+		msgID, err := DeserializeMessageID(marker.Serialize())
+		require.NoError(t, err)
+		require.Equal(t, int32(-1), msgID.PartitionIdx())
+
+		pc := &partitionConsumer{topic: "persistent://public/default/test-topic"}
+		_, err = findPartitionConsumer([]*partitionConsumer{pc}, msgID)
+		assert.Error(t, err, "seek marker %v must be rejected", marker)
+
+		c, _ := newSinglePartitionConsumerForAckTest(t, false)
+		assert.Error(t, c.AckID(msgID), "seek marker %v must not be acked", marker)
+
+		_, pc = newSinglePartitionConsumerForAckTest(t, true)
+		errCh := make(chan error, 1)
+		go func() {
+			errCh <- pc.AckIDList([]MessageID{msgID})
+		}()
+		select {
+		case event := <-pc.eventsCh:
+			req, ok := event.(*ackListRequest)
+			require.True(t, ok, "expected an ack list request, got %T", event)
+			assert.Empty(t, req.msgIDs, "seek marker %v must not be acked", marker)
+			req.errCh <- nil
+		case <-time.After(3 * time.Second):
+			t.Fatal("ack list request did not reach the partition consumer")
+		}
+		require.NoError(t, <-errCh)
+	}
+}
+
+// Message ids serialized by the Java client for a non-partitioned topic may omit the partition field,
+// which decodes as partition index -1. They must still be acknowledged.
+func TestAckIDWithOmittedProtobufPartitionOnNonPartitionedTopic(t *testing.T) {
+	data, err := proto.Marshal(&pb.MessageIdData{LedgerId: proto.Uint64(1), EntryId: proto.Uint64(2)})
+	require.NoError(t, err)
+	msgID, err := DeserializeMessageID(data)
+	require.NoError(t, err)
+	require.Equal(t, int32(-1), msgID.PartitionIdx())
+
+	c, pc := newSinglePartitionConsumerForAckTest(t, false)
+	var acked []MessageID
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { acked = append(acked, id) }, nil, nil)
+	require.NoError(t, c.AckID(msgID))
+	require.Len(t, acked, 1)
 }

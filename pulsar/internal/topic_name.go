@@ -120,6 +120,11 @@ func TopicNameWithoutPartitionPart(tn *TopicName) string {
 	return tn.Name
 }
 
+// IsPartitionTopicName reports whether topic names a partition of a partitioned topic.
+func IsPartitionTopicName(topic string) bool {
+	return strings.Contains(topic, partitionedTopicSuffix)
+}
+
 func getPartitionIndex(topic string) (int, error) {
 	if strings.Contains(topic, partitionedTopicSuffix) {
 		idx := strings.LastIndex(topic, "-") + 1

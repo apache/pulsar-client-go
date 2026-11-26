@@ -817,10 +817,7 @@ func (c *consumer) SeekByTime(time time.Time) error {
 
 func findPartitionConsumer(consumers []*partitionConsumer, msgID MessageID) (*partitionConsumer, error) {
 	partition := int(msgID.PartitionIdx())
-	if partition == -1 && len(consumers) == 1 && msgID != EarliestMessageID() && msgID != LatestMessageID() {
-		// Message ids from the Java client use partition index -1 for non-partitioned topics,
-		// while the only partition consumer of such a topic is index 0. The earliest and latest
-		// message ids are sentinels that do not identify a message, so they are still rejected.
+	if len(consumers) == 1 && consumers[0].isNonPartitionedTopicMessageID(msgID) {
 		return consumers[0], nil
 	}
 	if partition < 0 || partition >= len(consumers) {
