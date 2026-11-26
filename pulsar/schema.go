@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"hash/maphash"
 	"reflect"
+	"strconv"
 	"sync"
 	"unsafe"
 
@@ -76,10 +77,14 @@ func isUntypedSchema(info *SchemaInfo) bool {
 	return info != nil && (info.Type == BYTES || info.Type == NONE)
 }
 
+// hash identifies the schema by its type and definition. The type is needed because several schemas,
+// such as BYTES, STRING and INT32, all have an empty definition.
 func (s *SchemaInfo) hash() uint64 {
 	s.hashOnce.Do(func() {
 		h := maphash.Hash{}
 		h.SetSeed(seed)
+		h.WriteString(strconv.Itoa(int(s.Type)))
+		h.WriteByte(0)
 		h.Write([]byte(s.Schema))
 		s.hashVal = h.Sum64()
 	})

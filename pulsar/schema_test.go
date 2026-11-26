@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -726,4 +727,63 @@ func TestIsUntypedSchema(t *testing.T) {
 			assert.Equal(t, tt.expect, isUntypedSchema(tt.info))
 		})
 	}
+}
+
+// TestDisableMultiSchemaRejectsUntypedOverride checks that a producer with DisableMultiSchema rejects a
+// per-message schema of another type even when both schemas have an empty definition, so a BYTES
+// message (which carries no schema version) is never batched with a typed one, in either order.
+func TestDisableMultiSchemaRejectsUntypedOverride(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	for _, bytesFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("bytesFirst=%v", bytesFirst), func(t *testing.T) {
+			topic := fmt.Sprintf("issue-1600-disable-multi-schema-%d", time.Now().UnixNano())
+			producer, err := client.CreateProducer(ProducerOptions{
+				Topic:                   topic,
+				Schema:                  NewInt32Schema(nil),
+				DisableMultiSchema:      true,
+				BatchingMaxPublishDelay: time.Minute,
+				BatchingMaxMessages:     100,
+			})
+			require.NoError(t, err)
+			defer producer.Close()
+
+			var wg sync.WaitGroup
+			var typedErr, bytesErr error
+			sendTyped := func() {
+				wg.Add(1)
+				producer.SendAsync(context.Background(), &ProducerMessage{Value: int32(1)},
+					func(_ MessageID, _ *ProducerMessage, err error) { typedErr = err; wg.Done() })
+			}
+			sendBytes := func() {
+				wg.Add(1)
+				producer.SendAsync(context.Background(),
+					&ProducerMessage{Value: []byte("raw"), Schema: NewBytesSchema(nil)},
+					func(_ MessageID, _ *ProducerMessage, err error) { bytesErr = err; wg.Done() })
+			}
+			if bytesFirst {
+				sendBytes()
+				sendTyped()
+			} else {
+				sendTyped()
+				sendBytes()
+			}
+			require.NoError(t, producer.Flush())
+			wg.Wait()
+
+			assert.NoError(t, typedErr)
+			assert.ErrorIs(t, bytesErr, ErrSchema)
+		})
+	}
+}
+
+func TestSchemaInfoHashIncludesType(t *testing.T) {
+	int32Info := NewInt32Schema(nil).GetSchemaInfo()
+	bytesInfo := NewBytesSchema(nil).GetSchemaInfo()
+	stringInfo := NewStringSchema(nil).GetSchemaInfo()
+	assert.Equal(t, int32Info.Schema, bytesInfo.Schema)
+	assert.NotEqual(t, int32Info.hash(), bytesInfo.hash())
+	assert.NotEqual(t, int32Info.hash(), stringInfo.hash())
+	assert.Equal(t, int32Info.hash(), NewInt32Schema(nil).GetSchemaInfo().hash())
 }
