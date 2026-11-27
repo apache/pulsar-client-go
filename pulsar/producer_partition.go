@@ -665,6 +665,12 @@ func (p *partitionProducer) internalSend(sr *sendRequest) {
 		return
 	}
 
+	// Write the messages buffered in the batch before this one, which then takes the next sequence
+	// id. Sequence ids go out in increasing order, so the broker's deduplication never sees an id
+	// below the highest_sequence_id of a batch it has already persisted.
+	p.internalFlushCurrentBatch()
+	p.updateMetadataSeqID(sr.mm, sr.msg, true)
+
 	if sr.totalChunks <= 1 {
 		p.internalSingleSend(sr.mm, sr.compressedPayload, sr, uint32(sr.maxMessageSize))
 		return
@@ -774,11 +780,17 @@ func (p *partitionProducer) genMetadata(msg *ProducerMessage,
 	return
 }
 
-func (p *partitionProducer) updateMetadataSeqID(mm *pb.MessageMetadata, msg *ProducerMessage) {
-	if msg.SequenceID != nil {
+// updateMetadataSeqID sets the message's sequence id: the one set by the application if any,
+// otherwise the next automatic id. An automatic id is only taken from the generator when reserve
+// is true, which must happen on the event loop; otherwise the next id is peeked as an estimate.
+func (p *partitionProducer) updateMetadataSeqID(mm *pb.MessageMetadata, msg *ProducerMessage, reserve bool) {
+	switch {
+	case msg.SequenceID != nil:
 		mm.SequenceId = proto.Uint64(uint64(*msg.SequenceID))
-	} else {
+	case reserve:
 		mm.SequenceId = proto.Uint64(internal.GetAndAdd(p.sequenceIDGenerator, 1))
+	default:
+		mm.SequenceId = proto.Uint64(atomic.LoadUint64(p.sequenceIDGenerator))
 	}
 }
 
@@ -1281,9 +1293,10 @@ func (p *partitionProducer) updateMetaData(sr *sendRequest) {
 		deliverAt.UnixNano() < 0
 
 	if !sr.sendAsBatch {
-		// update sequence id for metadata, make the size of msgMetadata more accurate
-		// batch sending will update sequence ID in the BatchBuilder
-		p.updateMetadataSeqID(sr.mm, sr.msg)
+		// Set the sequence id now so the metadata size used to split chunks is accurate. An automatic
+		// id is only an estimate here: the event loop assigns the real one in internalSend, like it
+		// does for batched messages, so that sequence ids reach the broker in increasing order.
+		p.updateMetadataSeqID(sr.mm, sr.msg, false)
 	}
 
 	sr.deliverAt = deliverAt

@@ -420,6 +420,100 @@ func TestProducerDedupAfterBatchedSend(t *testing.T) {
 	require.Error(t, err, "the deduplicated message must not be persisted")
 }
 
+// TestProducerDedupKeepsUnbatchedSendBetweenBatchedSends checks that, with deduplication enabled,
+// a message sent outside the batch (here a delayed message) between two batched messages does not
+// make the broker drop any of them as duplicates. The sequence ids must reach the broker in order.
+func TestProducerDedupKeepsUnbatchedSendBetweenBatchedSends(t *testing.T) {
+	ctx := context.Background()
+
+	topic := newTopicName()
+	tn, err := utils.GetTopicName(topic)
+	require.NoError(t, err)
+	admin, err := pulsaradmin.NewClient(&config.Config{WebServiceURL: adminURL})
+	require.NoError(t, err)
+	require.NoError(t, admin.Topics().Create(*tn, 0))
+	require.NoError(t, admin.Topics().SetDeduplicationStatus(*tn, true))
+
+	client, err := NewClient(ClientOptions{URL: serviceURL})
+	require.NoError(t, err)
+	defer client.Close()
+
+	// Topic policies are applied asynchronously. Wait until the broker rejects a repeated sequence id from
+	// a separate producer name, which shows deduplication is in effect for the topic.
+	probe, err := client.CreateProducer(ProducerOptions{
+		Topic:           topic,
+		Name:            "dedup-unbatched-probe",
+		DisableBatching: true,
+	})
+	require.NoError(t, err)
+	probeSeq := int64(0)
+	require.Eventually(t, func() bool {
+		probeSeq++
+		msg := &ProducerMessage{Payload: []byte("probe"), SequenceID: proto.Int64(probeSeq)}
+		if _, err := probe.Send(ctx, msg); err != nil {
+			return false
+		}
+		id, err := probe.Send(ctx, msg)
+		return err == nil && id.LedgerID() == -1
+	}, 30*time.Second, 500*time.Millisecond, "deduplication policy was not applied to %s", topic)
+	probe.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:            topic,
+		SubscriptionName: "sub",
+		Type:             Shared,
+	})
+	require.NoError(t, err)
+	defer consumer.Close()
+
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic:                   topic,
+		Name:                    "dedup-unbatched-producer",
+		BatchingMaxPublishDelay: time.Minute,
+	})
+	require.NoError(t, err)
+	defer producer.Close()
+
+	// The first message is buffered in the batch.
+	firstDone := make(chan struct{})
+	var firstID MessageID
+	var firstErr error
+	producer.SendAsync(ctx, &ProducerMessage{Payload: []byte("batched-1")},
+		func(id MessageID, _ *ProducerMessage, err error) {
+			firstID, firstErr = id, err
+			close(firstDone)
+		})
+	// Give the producer event loop time to add it to the batch.
+	time.Sleep(100 * time.Millisecond)
+
+	// A delayed message is sent on its own, and the next message joins the batch and flushes it.
+	delayedID, err := producer.Send(ctx, &ProducerMessage{
+		Payload:      []byte("delayed"),
+		DeliverAfter: time.Second,
+	})
+	require.NoError(t, err)
+	secondID, err := producer.Send(ctx, &ProducerMessage{Payload: []byte("batched-2")})
+	require.NoError(t, err)
+	<-firstDone
+	require.NoError(t, firstErr)
+
+	// A message dropped as a duplicate is acknowledged with ledger id -1.
+	for name, id := range map[string]MessageID{"batched-1": firstID, "delayed": delayedID, "batched-2": secondID} {
+		require.NotEqual(t, int64(-1), id.LedgerID(), "%s was dropped as a duplicate", name)
+	}
+
+	received := map[string]bool{}
+	for i := 0; i < 3; i++ {
+		rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		msg, err := consumer.Receive(rctx)
+		cancel()
+		require.NoError(t, err)
+		received[string(msg.Payload())] = true
+		require.NoError(t, consumer.Ack(msg))
+	}
+	require.Equal(t, map[string]bool{"batched-1": true, "delayed": true, "batched-2": true}, received)
+}
+
 func TestEventTime(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: serviceURL,
