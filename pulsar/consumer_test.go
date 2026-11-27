@@ -7200,6 +7200,32 @@ func TestNegativeOnePartitionIndexRejectedOnPartitionOfPartitionedTopic(t *testi
 	assert.Equal(t, 0, size)
 }
 
+// A namespace or local name may contain the "-partition-" token without the topic being a partition.
+// Only a terminal "-partition-<index>" suffix names a partition, so a consumer of such a non-partitioned
+// topic must accept a message id with partition index -1.
+func TestNegativeOnePartitionIndexAcceptedOnNonPartitionedTopicWithPartitionTokenInName(t *testing.T) {
+	const topic = "persistent://public/team-partition-rollouts/orders-2026"
+	msgID := NewMessageID(1, 2, -1, -1)
+
+	pc := &partitionConsumer{topic: topic}
+	found, err := findPartitionConsumer([]*partitionConsumer{pc}, msgID)
+	require.NoError(t, err)
+	assert.Same(t, pc, found)
+
+	c, pc := newSinglePartitionConsumerForAckTestWithTopic(t, topic, false)
+	var acked []MessageID
+	pc.ackGroupingTracker = newAckGroupingTracker(&AckGroupingOptions{MaxSize: 0},
+		func(id MessageID) { acked = append(acked, id) }, nil, nil)
+	require.NoError(t, c.AckID(msgID))
+	require.Len(t, acked, 1)
+
+	c.NackID(msgID)
+	pc.nackTracker.Lock()
+	size := pc.nackTracker.negativeAcks.Size()
+	pc.nackTracker.Unlock()
+	assert.Equal(t, 1, size)
+}
+
 func TestAckIDListWithResponseRejectsNegativeOnePartitionIndexOnPartitionOfPartitionedTopic(t *testing.T) {
 	_, pc := newSinglePartitionConsumerForAckTestWithTopic(t,
 		"persistent://public/default/test-topic-partition-0", true)

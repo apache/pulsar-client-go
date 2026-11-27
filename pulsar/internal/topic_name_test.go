@@ -188,3 +188,32 @@ func TestGetTopicRestPath(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, "persistent/my-tenant/my-cluster/my-ns/my-topic", GetTopicRestPath(topic))
 }
+
+func TestIsPartitionTopicName(t *testing.T) {
+	tests := []struct {
+		topic    string
+		expected bool
+	}{
+		{"persistent://public/default/my-topic", false},
+		{"persistent://public/default/my-topic-partition-0", true},
+		{"persistent://public/default/my-topic-partition-12", true},
+		{"non-persistent://public/default/my-topic-partition-3", true},
+		{"persistent://my-tenant/my-cluster/my-ns/my-topic-partition-1", true},
+		{"my-topic-partition-5", true},
+		// The token in the namespace or in the middle of the local name does not make a partition.
+		{"persistent://public/team-partition-rollouts/orders-2026", false},
+		{"persistent://public/team-partition-1/orders", false},
+		{"persistent://team-partition-0/default/orders", false},
+		{"persistent://public/default/my-partition-1-topic", false},
+		{"persistent://public/default/my-topic-partition-1-archive", false},
+		// Partitions are always named with a canonical non-negative decimal index.
+		{"persistent://public/default/my-topic-partition-x", false},
+		{"persistent://public/default/my-topic-partition-", false},
+		{"persistent://public/default/my-topic-partition--1", false},
+		{"persistent://public/default/my-topic-partition-+1", false},
+		{"persistent://public/default/my-topic-partition-01", false},
+	}
+	for _, test := range tests {
+		assert.Equal(t, test.expected, IsPartitionTopicName(test.topic), test.topic)
+	}
+}
