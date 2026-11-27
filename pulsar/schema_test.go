@@ -787,3 +787,69 @@ func TestSchemaInfoHashIncludesType(t *testing.T) {
 	assert.NotEqual(t, int32Info.hash(), stringInfo.hash())
 	assert.Equal(t, int32Info.hash(), NewInt32Schema(nil).GetSchemaInfo().hash())
 }
+
+// TestBatchSplitsUntypedAndTypedSchemaWithoutProducerSchema checks that a batching producer without a
+// producer schema and with DisableMultiSchema never puts a BYTES message (no schema version) and an
+// INT32 message (with a schema version) in the same batch, in either order.
+func TestBatchSplitsUntypedAndTypedSchemaWithoutProducerSchema(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	for _, bytesFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("bytesFirst=%v", bytesFirst), func(t *testing.T) {
+			topic := fmt.Sprintf("issue-1600-batch-no-producer-schema-%d", time.Now().UnixNano())
+			consumer, err := client.Subscribe(ConsumerOptions{
+				Topic:            topic,
+				SubscriptionName: "sub",
+			})
+			require.NoError(t, err)
+			defer consumer.Close()
+
+			producer, err := client.CreateProducer(ProducerOptions{
+				Topic:                   topic,
+				DisableMultiSchema:      true,
+				BatchingMaxPublishDelay: time.Minute,
+				BatchingMaxMessages:     100,
+			})
+			require.NoError(t, err)
+			defer producer.Close()
+
+			bytesMsg := &ProducerMessage{Value: []byte("raw"), Schema: NewBytesSchema(nil)}
+			int32Msg := &ProducerMessage{Value: int32(7), Schema: NewInt32Schema(nil)}
+			msgs := []*ProducerMessage{bytesMsg, int32Msg}
+			if !bytesFirst {
+				msgs = []*ProducerMessage{int32Msg, bytesMsg}
+			}
+
+			var wg sync.WaitGroup
+			errs := make([]error, len(msgs))
+			for i, m := range msgs {
+				wg.Add(1)
+				producer.SendAsync(context.Background(), m,
+					func(_ MessageID, _ *ProducerMessage, err error) { errs[i] = err; wg.Done() })
+			}
+			require.NoError(t, producer.Flush())
+			wg.Wait()
+			for _, err := range errs {
+				require.NoError(t, err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			for _, m := range msgs {
+				msg, err := consumer.Receive(ctx)
+				require.NoError(t, err)
+				if m == bytesMsg {
+					assert.Equal(t, "raw", string(msg.Payload()))
+					assert.Empty(t, msg.SchemaVersion(), "BYTES message must carry no schema version")
+				} else {
+					var v int32
+					require.NoError(t, NewInt32Schema(nil).Decode(msg.Payload(), &v))
+					assert.Equal(t, int32(7), v)
+					assert.NotEmpty(t, msg.SchemaVersion(), "INT32 message must carry its schema version")
+				}
+				consumer.Ack(msg)
+			}
+		})
+	}
+}
