@@ -954,6 +954,47 @@ func (m *grabConnMockPool) GetConnection(_ *url.URL, _ *url.URL, _ int32) (inter
 	return m.cnx, nil
 }
 
+func TestShrinkReceiverQueueSizeDoesNotUnderflowPermits(t *testing.T) {
+	pc := &partitionConsumer{
+		options: &partitionConsumerOpts{
+			autoReceiverQueueSize: true,
+			receiverQueueSize:     1000,
+		},
+		log: log.DefaultNopLogger(),
+	}
+	pc.availablePermits = &availablePermits{pc: pc}
+	pc.availablePermits.permits.Store(5)
+	pc.currentQueueSize.Store(100)
+
+	pc.shrinkReceiverQueueSize()
+
+	assert.Equal(t, int32(50), pc.currentQueueSize.Load())
+	assert.GreaterOrEqual(t, pc.availablePermits.get(), int32(0))
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+}
+
+func TestDiscardOldestChunkMessagePopsQueue(t *testing.T) {
+	pc := &partitionConsumer{
+		options: &partitionConsumerOpts{
+			autoAckIncompleteChunk: false,
+		},
+		log: log.DefaultNopLogger(),
+	}
+	m := newChunkedMsgCtxMap(1, pc)
+
+	m.addIfAbsent("uuid-1", 2, 1024)
+	m.addIfAbsent("uuid-2", 2, 1024)
+
+	assert.Equal(t, 2, m.pendingQueue.Len())
+	assert.Equal(t, "uuid-1", m.pendingQueue.Front().Value.(string))
+
+	m.discardOldestChunkMessage(false)
+
+	assert.Equal(t, 1, m.pendingQueue.Len())
+	assert.Equal(t, "uuid-2", m.pendingQueue.Front().Value.(string))
+	assert.Nil(t, m.get("uuid-1"))
+	assert.NotNil(t, m.get("uuid-2"))
+}
 type closeRecordingConnection struct {
 	dummyConnection
 	closedRequests []uint64
