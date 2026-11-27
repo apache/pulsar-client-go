@@ -190,7 +190,7 @@ func (bc *batchContainer) Add(
 	metadata *pb.SingleMessageMetadata, sequenceIDGenerator *uint64,
 	payload []byte,
 	callback interface{}, replicateTo []string, deliverAt time.Time,
-	schemaVersion []byte, multiSchemaEnabled bool,
+	schemaVersion []byte, _ bool,
 	useTxn bool, mostSigBits uint64, leastSigBits uint64,
 ) bool {
 
@@ -205,8 +205,11 @@ func (bc *batchContainer) Add(
 	} else if !bc.hasSpace(payload) {
 		// The current batch is full. Producer has to call Flush() to
 		return false
-	} else if multiSchemaEnabled && !bc.hasSameSchema(schemaVersion) {
-		// The current batch has a different schema. Producer has to call Flush() to
+	} else if !bc.hasSameSchema(schemaVersion) {
+		// The current batch has a different schema version. A batch carries a single schema version
+		// for all its messages, so the producer has to call Flush() first. This applies even when
+		// multi-schema is disabled: a producer without a schema can still send per-message schemas,
+		// e.g. BYTES (no schema version) and INT32 (with a schema version).
 		return false
 	}
 

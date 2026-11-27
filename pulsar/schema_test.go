@@ -21,6 +21,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sync"
 	"testing"
 	"time"
 
@@ -659,4 +660,196 @@ func TestDoubleSchema(t *testing.T) {
 	assert.Nil(t, err)
 	assert.Equal(t, res, float64(1))
 	defer consumer.Close()
+}
+
+// TestBytesSchemaOnTypedTopic checks that a BYTES producer and consumer can use a topic that already
+// has a typed schema, like the Java client's Schema.BYTES does. BYTES sends no schema information.
+func TestBytesSchemaOnTypedTopic(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	topic := fmt.Sprintf("issue-1600-bytes-on-typed-%d", time.Now().UnixNano())
+
+	// Register a STRING schema on the topic.
+	stringProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: NewStringSchema(nil),
+	})
+	require.NoError(t, err)
+	_, err = stringProducer.Send(context.Background(), &ProducerMessage{Value: "typed"})
+	require.NoError(t, err)
+	stringProducer.Close()
+
+	// A BYTES producer must be accepted on the typed topic.
+	bytesProducer, err := client.CreateProducer(ProducerOptions{
+		Topic:  topic,
+		Schema: NewBytesSchema(nil),
+	})
+	require.NoError(t, err)
+	defer bytesProducer.Close()
+	_, err = bytesProducer.Send(context.Background(), &ProducerMessage{Value: []byte("raw-bytes")})
+	require.NoError(t, err)
+
+	// A BYTES consumer must be accepted on the typed topic.
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:                       topic,
+		SubscriptionName:            "bytes-sub",
+		Schema:                      NewBytesSchema(nil),
+		SubscriptionInitialPosition: SubscriptionPositionEarliest,
+	})
+	require.NoError(t, err)
+	defer consumer.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	for _, want := range []string{"typed", "raw-bytes"} {
+		msg, err := consumer.Receive(ctx)
+		require.NoError(t, err)
+		assert.Equal(t, want, string(msg.Payload()))
+		consumer.Ack(msg)
+	}
+}
+
+func TestIsUntypedSchema(t *testing.T) {
+	tests := []struct {
+		name   string
+		info   *SchemaInfo
+		expect bool
+	}{
+		{"nil", nil, false},
+		{"bytes", NewBytesSchema(nil).GetSchemaInfo(), true},
+		{"none", &SchemaInfo{Type: NONE}, true},
+		{"string", NewStringSchema(nil).GetSchemaInfo(), false},
+		{"json", &SchemaInfo{Type: JSON}, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expect, isUntypedSchema(tt.info))
+		})
+	}
+}
+
+// TestDisableMultiSchemaRejectsUntypedOverride checks that a producer with DisableMultiSchema rejects a
+// per-message schema of another type even when both schemas have an empty definition, so a BYTES
+// message (which carries no schema version) is never batched with a typed one, in either order.
+func TestDisableMultiSchemaRejectsUntypedOverride(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	for _, bytesFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("bytesFirst=%v", bytesFirst), func(t *testing.T) {
+			topic := fmt.Sprintf("issue-1600-disable-multi-schema-%d", time.Now().UnixNano())
+			producer, err := client.CreateProducer(ProducerOptions{
+				Topic:                   topic,
+				Schema:                  NewInt32Schema(nil),
+				DisableMultiSchema:      true,
+				BatchingMaxPublishDelay: time.Minute,
+				BatchingMaxMessages:     100,
+			})
+			require.NoError(t, err)
+			defer producer.Close()
+
+			var wg sync.WaitGroup
+			var typedErr, bytesErr error
+			sendTyped := func() {
+				wg.Add(1)
+				producer.SendAsync(context.Background(), &ProducerMessage{Value: int32(1)},
+					func(_ MessageID, _ *ProducerMessage, err error) { typedErr = err; wg.Done() })
+			}
+			sendBytes := func() {
+				wg.Add(1)
+				producer.SendAsync(context.Background(),
+					&ProducerMessage{Value: []byte("raw"), Schema: NewBytesSchema(nil)},
+					func(_ MessageID, _ *ProducerMessage, err error) { bytesErr = err; wg.Done() })
+			}
+			if bytesFirst {
+				sendBytes()
+				sendTyped()
+			} else {
+				sendTyped()
+				sendBytes()
+			}
+			require.NoError(t, producer.Flush())
+			wg.Wait()
+
+			assert.NoError(t, typedErr)
+			assert.ErrorIs(t, bytesErr, ErrSchema)
+		})
+	}
+}
+
+func TestSchemaInfoHashIncludesType(t *testing.T) {
+	int32Info := NewInt32Schema(nil).GetSchemaInfo()
+	bytesInfo := NewBytesSchema(nil).GetSchemaInfo()
+	stringInfo := NewStringSchema(nil).GetSchemaInfo()
+	assert.Equal(t, int32Info.Schema, bytesInfo.Schema)
+	assert.NotEqual(t, int32Info.hash(), bytesInfo.hash())
+	assert.NotEqual(t, int32Info.hash(), stringInfo.hash())
+	assert.Equal(t, int32Info.hash(), NewInt32Schema(nil).GetSchemaInfo().hash())
+}
+
+// TestBatchSplitsUntypedAndTypedSchemaWithoutProducerSchema checks that a batching producer without a
+// producer schema and with DisableMultiSchema never puts a BYTES message (no schema version) and an
+// INT32 message (with a schema version) in the same batch, in either order.
+func TestBatchSplitsUntypedAndTypedSchemaWithoutProducerSchema(t *testing.T) {
+	client := createClient()
+	defer client.Close()
+
+	for _, bytesFirst := range []bool{true, false} {
+		t.Run(fmt.Sprintf("bytesFirst=%v", bytesFirst), func(t *testing.T) {
+			topic := fmt.Sprintf("issue-1600-batch-no-producer-schema-%d", time.Now().UnixNano())
+			consumer, err := client.Subscribe(ConsumerOptions{
+				Topic:            topic,
+				SubscriptionName: "sub",
+			})
+			require.NoError(t, err)
+			defer consumer.Close()
+
+			producer, err := client.CreateProducer(ProducerOptions{
+				Topic:                   topic,
+				DisableMultiSchema:      true,
+				BatchingMaxPublishDelay: time.Minute,
+				BatchingMaxMessages:     100,
+			})
+			require.NoError(t, err)
+			defer producer.Close()
+
+			bytesMsg := &ProducerMessage{Value: []byte("raw"), Schema: NewBytesSchema(nil)}
+			int32Msg := &ProducerMessage{Value: int32(7), Schema: NewInt32Schema(nil)}
+			msgs := []*ProducerMessage{bytesMsg, int32Msg}
+			if !bytesFirst {
+				msgs = []*ProducerMessage{int32Msg, bytesMsg}
+			}
+
+			var wg sync.WaitGroup
+			errs := make([]error, len(msgs))
+			for i, m := range msgs {
+				wg.Add(1)
+				producer.SendAsync(context.Background(), m,
+					func(_ MessageID, _ *ProducerMessage, err error) { errs[i] = err; wg.Done() })
+			}
+			require.NoError(t, producer.Flush())
+			wg.Wait()
+			for _, err := range errs {
+				require.NoError(t, err)
+			}
+
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			for _, m := range msgs {
+				msg, err := consumer.Receive(ctx)
+				require.NoError(t, err)
+				if m == bytesMsg {
+					assert.Equal(t, "raw", string(msg.Payload()))
+					assert.Empty(t, msg.SchemaVersion(), "BYTES message must carry no schema version")
+				} else {
+					var v int32
+					require.NoError(t, NewInt32Schema(nil).Decode(msg.Payload(), &v))
+					assert.Equal(t, int32(7), v)
+					assert.NotEmpty(t, msg.SchemaVersion(), "INT32 message must carry its schema version")
+				}
+				consumer.Ack(msg)
+			}
+		})
+	}
 }

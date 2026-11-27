@@ -73,3 +73,46 @@ func TestKeyBasedBatcherOrdering(t *testing.T) {
 		}
 	}
 }
+
+// TestBatchBuildersSplitOnSchemaVersion checks that the built-in batch builders refuse a message whose
+// schema version differs from the current batch's, whether multi-schema is enabled or not.
+func TestBatchBuildersSplitOnSchemaVersion(t *testing.T) {
+	newBuilders := map[string]func() (BatchBuilder, error){
+		"default": func() (BatchBuilder, error) {
+			return NewBatchBuilder(1000, 1000, 1000, "test", 1, pb.CompressionType_NONE, compression.Level(0),
+				&bufferPoolImpl{}, NewMetricsProvider(2, map[string]string{}, prometheus.NewRegistry()),
+				log.NewLoggerWithLogrus(logrus.StandardLogger()), &mockEncryptor{})
+		},
+		"key-based": func() (BatchBuilder, error) {
+			return NewKeyBasedBatchBuilder(1000, 1000, 1000, "test", 1, pb.CompressionType_NONE,
+				compression.Level(0), &bufferPoolImpl{},
+				NewMetricsProvider(2, map[string]string{}, prometheus.NewRegistry()),
+				log.NewLoggerWithLogrus(logrus.StandardLogger()), &mockEncryptor{})
+		},
+	}
+	versions := [][]byte{nil, {0, 0, 0, 0, 0, 0, 0, 0}}
+	for name, newBuilder := range newBuilders {
+		for _, multiSchemaEnabled := range []bool{true, false} {
+			for _, untypedFirst := range []bool{true, false} {
+				t.Run(fmt.Sprintf("%s/multiSchema=%v/untypedFirst=%v", name, multiSchemaEnabled, untypedFirst),
+					func(t *testing.T) {
+						bb, err := newBuilder()
+						assert.NoError(t, err)
+						first, second := versions[0], versions[1]
+						if !untypedFirst {
+							first, second = second, first
+						}
+						add := func(version []byte) bool {
+							metadata := &pb.SingleMessageMetadata{PayloadSize: proto.Int32(4)}
+							sequenceID := uint64(0)
+							return bb.Add(metadata, &sequenceID, []byte("test"), nil, nil, time.Now(),
+								version, multiSchemaEnabled, false, 0, 0)
+						}
+						assert.True(t, add(first))
+						assert.True(t, add(first), "same schema version must share the batch")
+						assert.False(t, add(second), "different schema version must not share the batch")
+					})
+			}
+		}
+	}
+}

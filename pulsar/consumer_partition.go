@@ -2413,7 +2413,8 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 
 	var pbSchema *pb.Schema
 
-	if pc.options.schema != nil && pc.options.schema.GetSchemaInfo() != nil {
+	if pc.options.schema != nil && pc.options.schema.GetSchemaInfo() != nil &&
+		!isUntypedSchema(pc.options.schema.GetSchemaInfo()) {
 		tmpSchemaType := pb.Schema_Type(int32(pc.options.schema.GetSchemaInfo().Type))
 		pbSchema = &pb.Schema{
 			Name:       proto.String(pc.options.schema.GetSchemaInfo().Name),
