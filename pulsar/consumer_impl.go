@@ -668,6 +668,7 @@ func (c *consumer) ReconsumeLaterWithCustomProperties(msg Message, customPropert
 		reconsumeTimes++
 	} else {
 		props[SysPropertyRealTopic] = msg.Topic()
+		// the legacy key is still written for older readers; see SysPropertyOriginMessageID
 		props[SysPropertyOriginMessageID] = msgID.messageID.String()
 		props[PropertyOriginMessageID] = msgID.messageID.String()
 	}

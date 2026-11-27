@@ -2009,6 +2009,7 @@ func (pc *partitionConsumer) dispatcher() {
 					// we need to create a new ConsumerMessage and add dlq related metadata properties
 					properties := make(map[string]string)
 					properties[SysPropertyRealTopic] = messages[0].Topic()
+					// the legacy key is still written for older readers; see SysPropertyOriginMessageID
 					properties[SysPropertyOriginMessageID] = messages[0].msgID.String()
 					properties[PropertyOriginMessageID] = messages[0].msgID.String()
 					for key, value := range messages[0].properties {
