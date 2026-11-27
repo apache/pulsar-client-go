@@ -19,6 +19,7 @@ package internal
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"net/url"
@@ -117,6 +118,12 @@ func (c *mockedLookupRPCClient) RequestWithCnxKeySuffix(_ *url.URL, _ *url.URL,
 
 func (c *mockedLookupRPCClient) RequestOnCnx(_ Connection, _ uint64, _ pb.BaseCommand_Type,
 	_ proto.Message) (*RPCResult, error) {
+	assert.Fail(c.t, "Shouldn't be called")
+	return nil, nil
+}
+
+func (c *mockedLookupRPCClient) RequestOnCnxWithContext(_ context.Context, _ Connection, _ uint64,
+	_ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
 	assert.Fail(c.t, "Shouldn't be called")
 	return nil, nil
 }
@@ -504,6 +511,12 @@ func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnxNoWait(_ Connection
 }
 
 func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnx(_ Connection, _ uint64,
+	_ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
+	assert.Fail(m.t, "Shouldn't be called")
+	return nil, nil
+}
+
+func (m mockedPartitionedTopicMetadataRPCClient) RequestOnCnxWithContext(_ context.Context, _ Connection, _ uint64,
 	_ pb.BaseCommand_Type, _ proto.Message) (*RPCResult, error) {
 	assert.Fail(m.t, "Shouldn't be called")
 	return nil, nil

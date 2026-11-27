@@ -3022,6 +3022,11 @@ type mockRPCClient struct {
 	internal.RPCClient
 }
 
+func (m *mockRPCClient) RequestOnCnxWithContext(_ context.Context, cnx internal.Connection, reqID uint64,
+	cmdType pb.BaseCommand_Type, msg proto.Message) (*internal.RPCResult, error) {
+	return m.RequestOnCnx(cnx, reqID, cmdType, msg)
+}
+
 func (m *mockRPCClient) RequestOnCnx(_ internal.Connection, _ uint64, _ pb.BaseCommand_Type,
 	_ proto.Message) (*internal.RPCResult, error) {
 	return nil, fmt.Errorf("expected error")

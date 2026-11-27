@@ -262,7 +262,8 @@ type partitionConsumer struct {
 
 	lastMessageInBroker *trackingMessageID
 
-	redirectedClusterURI string
+	redirectedClusterURI atomic.Pointer[string]
+	connectCanceler      connectCanceler
 	backoffPolicyFunc    func() backoff.Policy
 
 	dispatcherSeekingControlCh chan struct{}
@@ -533,6 +534,11 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 		options.nackPrecisionBit)
 
 	err := pc.grabConn("")
+	if errors.Is(err, errBrokerClosedDuringConnect) && pc.getRedirectedClusterURI() != "" {
+		// The broker redirected this consumer to a migrated cluster while handling
+		// the initial CommandSubscribe request; retry once against the migrated cluster.
+		err = pc.grabConn("")
+	}
 	if err != nil {
 		pc.log.WithError(err).Error("Failed to create consumer")
 		pc.nackTracker.Close()
@@ -1917,6 +1923,14 @@ func (pc *partitionConsumer) ConnectionClosed(cnx internal.Connection, closeCons
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
 	pc.reconnectCount.Inc()
+
+	// If a CommandSubscribe RPC is currently in flight (for example, the broker sent
+	// CommandTopicMigrated + CommandCloseConsumer instead of a CommandSubscribe response),
+	// cancel its context immediately so grabConn does not stall until OperationTimeout.
+	if closeConsumer != nil && pc.connectCanceler.cancelInFlight(errBrokerClosedDuringConnect) {
+		return
+	}
+
 	var assignedBrokerURL string
 	if closeConsumer != nil {
 		assignedBrokerURL = pc.client.selectServiceURL(
@@ -1943,7 +1957,15 @@ func (pc *partitionConsumer) ConnectionClosed(cnx internal.Connection, closeCons
 }
 
 func (pc *partitionConsumer) SetRedirectedClusterURI(redirectedClusterURI string) {
-	pc.redirectedClusterURI = redirectedClusterURI
+	uri := redirectedClusterURI
+	pc.redirectedClusterURI.Store(&uri)
+}
+
+func (pc *partitionConsumer) getRedirectedClusterURI() string {
+	if uri := pc.redirectedClusterURI.Load(); uri != nil {
+		return *uri
+	}
+	return ""
 }
 
 func (pc *partitionConsumer) pause() {
@@ -2315,6 +2337,28 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		assignedBrokerURL = connectionClosed.assignedBrokerURL
 	}
 
+	if maxRetry == 0 || pc.getConsumerState() != consumerReady {
+		return
+	}
+
+	// Match Java client's ConnectionHandler.connectionClosed behavior:
+	// when the broker did not assign a target broker URL, wait one initial backoff
+	// before the first reconnect attempt instead of immediately reconnecting.
+	if assignedBrokerURL == "" {
+		initialDelay := bo.Next()
+		pc.log.WithFields(log.Fields{
+			"assignedBrokerURL":  assignedBrokerURL,
+			"delayReconnectTime": initialDelay,
+		}).Info("Reconnecting to broker")
+		timer := time.NewTimer(initialDelay)
+		select {
+		case <-pc.ctx.Done():
+			timer.Stop()
+			return
+		case <-timer.C:
+		}
+	}
+
 	var giveUpNotified bool
 	notifyReconnectGiveUp := func(cause error) {
 		if giveUpNotified {
@@ -2328,7 +2372,9 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		}
 	}
 
+	var redirectedDuringAttempt bool
 	opFn := func() (struct{}, error) {
+		redirectedDuringAttempt = false
 		if maxRetry == 0 {
 			return struct{}{}, nil
 		}
@@ -2339,6 +2385,7 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 			return struct{}{}, nil
 		}
 
+		redirectedBeforeAttempt := pc.getRedirectedClusterURI()
 		err := pc.grabConn(assignedBrokerURL)
 		if assignedBrokerURL != "" {
 			// Attempt connecting to the assigned broker just once
@@ -2352,6 +2399,14 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 				pc.options.zeroQueueReconnectedPolicy(pc)
 			}
 			return struct{}{}, nil
+		}
+		redirectedAfterAttempt := pc.getRedirectedClusterURI()
+		if errors.Is(err, errBrokerClosedDuringConnect) &&
+			redirectedAfterAttempt != "" && redirectedAfterAttempt != redirectedBeforeAttempt {
+			redirectedDuringAttempt = true
+			pc.log.WithField("redirectedClusterURI", redirectedAfterAttempt).
+				Info("Consumer redirected to migrated cluster during reconnect, retrying")
+			return struct{}{}, err
 		}
 		pc.log.WithError(err).Error("Failed to create consumer at reconnect")
 		if isNonRetriableSubscribeError(err) {
@@ -2373,6 +2428,9 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 		return struct{}{}, err
 	}
 	_, _ = internal.Retry(pc.ctx, opFn, func(_ error) time.Duration {
+		if redirectedDuringAttempt {
+			return 0
+		}
 		delayReconnectTime := bo.Next()
 		pc.log.WithFields(log.Fields{
 			"assignedBrokerURL":  assignedBrokerURL,
@@ -2383,8 +2441,9 @@ func (pc *partitionConsumer) reconnectToBroker(connectionClosed *connectionClose
 }
 
 func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.LookupResult, error) {
+	redirectedURI := pc.getRedirectedClusterURI()
 	if len(brokerServiceURL) == 0 {
-		lookupService, err := pc.client.rpcClient.LookupService(pc.redirectedClusterURI)
+		lookupService, err := pc.client.rpcClient.LookupService(redirectedURI)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get lookup service: %w", err)
 		}
@@ -2397,7 +2456,11 @@ func (pc *partitionConsumer) lookupTopic(brokerServiceURL string) (*internal.Loo
 		pc.log.Debug("Lookup result: ", lr)
 		return lr, err
 	}
-	return pc.client.lookupService.GetBrokerAddress(brokerServiceURL, pc._getConn().IsProxied())
+	lookupService, err := pc.client.rpcClient.LookupService(redirectedURI)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get lookup service: %w", err)
+	}
+	return lookupService.GetBrokerAddress(brokerServiceURL, pc._getConn().IsProxied())
 }
 
 func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
@@ -2507,15 +2570,21 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 	// only be delivered after the handler exists, so it is not wiped; a
 	// failed attempt puts the markers back.
 	closedAckConns := pc.takeClosedAckConns()
+	connectCtx, finishConnect := pc.connectCanceler.start(pc.ctx)
 	err = cnx.AddConsumeHandler(pc.consumerID, pc)
 	if err != nil {
+		finishConnect()
 		pc.restoreClosedAckConns(closedAckConns)
 		restoreConn()
 		pc.log.WithError(err).Error("Failed to add consumer handler")
 		return err
 	}
 
-	res, err := pc.client.rpcClient.RequestOnCnx(cnx, requestID, pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
+	res, err := pc.client.rpcClient.RequestOnCnxWithContext(
+		connectCtx, cnx, requestID, pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
+	if cancelled := finishConnect(); err == nil && cancelled {
+		err = errBrokerClosedDuringConnect
+	}
 	if err != nil {
 		cnx.DeleteConsumeHandler(pc.consumerID)
 		pc.restoreClosedAckConns(closedAckConns)
