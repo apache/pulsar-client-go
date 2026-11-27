@@ -993,7 +993,7 @@ func (c *connection) handleCloseConsumer(closeConsumer *pb.CommandCloseConsumer)
 	// reconnect, and the consumer registers its new handler before SUBSCRIBE
 	// returns. A delete afterwards can catch the new handler.
 	if consumer, ok := c.takeConsumerHandler(consumerID); ok {
-		consumer.ConnectionClosed(closeConsumer)
+		consumer.ConnectionClosed(c, closeConsumer)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer with ID not found while closing consumer")
 	}

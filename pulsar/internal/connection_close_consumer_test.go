@@ -42,7 +42,7 @@ func (c *reconnectingHandler) ActiveConsumerChanged(_ bool) {}
 
 func (c *reconnectingHandler) SetRedirectedClusterURI(_ string) {}
 
-func (c *reconnectingHandler) ConnectionClosed(_ *pb.CommandCloseConsumer) {
+func (c *reconnectingHandler) ConnectionClosed(_ Connection, _ *pb.CommandCloseConsumer) {
 	c.onClose()
 }
 
