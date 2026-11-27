@@ -135,6 +135,9 @@ const (
 type Error struct {
 	msg    string
 	result Result
+	// cause, when set, is returned by Unwrap so errors.Is and errors.As can match the errors
+	// that led to this one, e.g. ErrContextExpired and the context error for a cancelled send.
+	cause error
 }
 
 // Result get error's original result.
@@ -144,6 +147,13 @@ func (e *Error) Result() Result {
 
 func (e *Error) Error() string {
 	return e.msg
+}
+
+// Unwrap returns the underlying cause of the error, if any. Use errors.Is rather than == to
+// compare an error with the exported sentinels such as ErrContextExpired, since the returned
+// error may be a distinct *Error that wraps the sentinel.
+func (e *Error) Unwrap() error {
+	return e.cause
 }
 
 func newError(result Result, msg string) error {
