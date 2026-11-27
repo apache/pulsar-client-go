@@ -554,7 +554,7 @@ func sendSingleChunk(p Producer, uuid string, chunkID int, totalChunks int) {
 	mm.NumChunksFromMsg = proto.Int32(int32(totalChunks))
 	mm.TotalChunkMsgSize = proto.Int32(int32(len(wholePayload)))
 	mm.ChunkId = proto.Int32(int32(chunkID))
-	producerImpl.updateMetadataSeqID(mm, msg)
+	producerImpl.updateMetadataSeqID(mm, msg, true)
 	producerImpl.internalSingleSend(
 		mm,
 		msg.Payload,

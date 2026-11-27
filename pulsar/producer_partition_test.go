@@ -19,6 +19,7 @@ package pulsar
 
 import (
 	"context"
+	"encoding/binary"
 	"sync"
 	"testing"
 	"time"
@@ -28,6 +29,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -249,4 +252,178 @@ func TestReserveResourcesContextErrorPreservesResult(t *testing.T) {
 			})
 		}
 	}
+}
+
+func TestReceivedSendReceiptUpdatesLastSequenceIDToHighest(t *testing.T) {
+	for _, tc := range []struct {
+		name            string
+		highest         *uint64
+		expectedLastSeq int64
+	}{
+		// A batch of sequence ids 5..7 is acknowledged with highest_sequence_id 7.
+		{name: "highest echoed by broker", highest: proto.Uint64(7), expectedLastSeq: 7},
+		// Without highest_sequence_id the first sequence id of the item is used.
+		{name: "highest not echoed", highest: nil, expectedLastSeq: 5},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			q := internal.NewBlockingQueue(1)
+			p := &partitionProducer{
+				pendingQueue:   q,
+				lastSequenceID: -1,
+				options:        &ProducerOptions{SendTimeout: time.Minute},
+				log:            plog.DefaultNopLogger(),
+				metrics:        internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
+			}
+			p.setProducerState(producerReady)
+			memory := internal.NewMemoryLimitController(1024, 0)
+			semaphore := internal.NewSemaphore(2)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			require.True(t, semaphore.TryAcquire())
+			memory.ForceReserveMemory(10)
+			p.metrics.MessagesPending.Inc()
+			p.metrics.BytesPending.Add(10)
+			var result error
+			req := &sendRequest{
+				producer: p, pool: &sync.Pool{}, msg: &ProducerMessage{},
+				callbackOnce: &sync.Once{}, publishTime: time.Now(),
+				semaphore: semaphore, memLimit: memory, reservedMem: 10,
+				callback: func(_ MessageID, _ *ProducerMessage, err error) { result = err },
+			}
+			pi := &pendingItem{
+				ctx: ctx, cancel: cancel, buffer: internal.NewBuffer(1), sequenceID: 5,
+				sentAt: time.Now(), sendRequests: []interface{}{req},
+			}
+			pi.buffer.Retain()
+			q.Put(pi)
+
+			p.ReceivedSendReceipt(&pb.CommandSendReceipt{
+				SequenceId:        proto.Uint64(5),
+				HighestSequenceId: tc.highest,
+				MessageId:         &pb.MessageIdData{LedgerId: proto.Uint64(1), EntryId: proto.Uint64(7)},
+			})
+
+			require.NoError(t, result)
+			require.Equal(t, tc.expectedLastSeq, p.LastSequenceID())
+		})
+	}
+}
+
+// frameRecordingConnection records the SEND commands written to the connection.
+type frameRecordingConnection struct {
+	dummyConnection
+	sends []*pb.CommandSend
+}
+
+func (c *frameRecordingConnection) WriteData(_ context.Context, data internal.Buffer) {
+	frame := data.ReadableSlice()
+	cmdSize := binary.BigEndian.Uint32(frame[4:8])
+	cmd := &pb.BaseCommand{}
+	if err := proto.Unmarshal(frame[8:8+cmdSize], cmd); err != nil {
+		panic(err)
+	}
+	c.sends = append(c.sends, cmd.GetSend())
+}
+
+func newSequenceTestProducer(t *testing.T, cnx internal.Connection) *partitionProducer {
+	metrics := internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	p := &partitionProducer{
+		client:              &client{metrics: metrics},
+		ctx:                 context.Background(),
+		pendingQueue:        internal.NewBlockingQueue(10),
+		lastSequenceID:      -1,
+		options:             &ProducerOptions{SendTimeout: time.Minute},
+		log:                 plog.DefaultNopLogger(),
+		metrics:             metrics.GetLeveledMetrics("topic"),
+		compressionProvider: compression.NewNoopProvider(),
+		encryptor:           crypto.NewNoopEncryptor(),
+		sequenceIDGenerator: new(uint64),
+	}
+	p._setConn(cnx)
+	p.setProducerState(producerReady)
+	var err error
+	p.batchBuilder, err = internal.NewBatchBuilder(10, 128*1024, uint32(cnx.GetMaxMessageSize()), "producer", 1,
+		pb.CompressionType_NONE, compression.Level(0), buffersPool, metrics, p.log, p.encryptor)
+	require.NoError(t, err)
+	return p
+}
+
+// prepareSend runs the part of SendAsync that happens on the caller's goroutine, before the
+// request is handed to the producer event loop.
+func prepareSend(t *testing.T, p *partitionProducer, msg *ProducerMessage, flushImmediately bool) *sendRequest {
+	sr := &sendRequest{
+		pool: &sync.Pool{}, msg: msg, producer: p, callbackOnce: &sync.Once{},
+		flushImmediately: flushImmediately, publishTime: time.Now(), chunkID: -1,
+		uncompressedPayload: msg.Payload, uncompressedSize: int64(len(msg.Payload)),
+	}
+	p.updateMetaData(sr)
+	require.NoError(t, p.updateChunkInfo(sr))
+	return sr
+}
+
+// A send prepared on the caller's goroutine can reach the event loop after a later send. The
+// sequence ids must still go out in increasing order, or the broker's deduplication drops the
+// message whose id is below a batch's highest_sequence_id that it has already persisted.
+func TestSequenceIDsOnTheWireAreMonotonicWhenUnbatchedSendIsDelayed(t *testing.T) {
+	cnx := &frameRecordingConnection{}
+	p := newSequenceTestProducer(t, cnx)
+
+	// Message 0 is buffered in the batch.
+	p.internalSend(prepareSend(t, p, &ProducerMessage{Payload: []byte("batched")}, false))
+
+	// A delayed message is prepared, but pauses before it reaches the event loop.
+	delayed := prepareSend(t, p, &ProducerMessage{Payload: []byte("delayed"), DeliverAfter: time.Minute}, false)
+	require.False(t, delayed.sendAsBatch)
+
+	// A synchronous send joins the batch and flushes it.
+	p.internalSend(prepareSend(t, p, &ProducerMessage{Payload: []byte("sync")}, true))
+
+	// The delayed message reaches the event loop.
+	p.internalSend(delayed)
+
+	require.Len(t, cnx.sends, 2)
+	var previousHighest int64 = -1
+	for i, send := range cnx.sends {
+		lowest := int64(send.GetSequenceId())
+		highest := lowest
+		if send.HighestSequenceId != nil {
+			highest = int64(send.GetHighestSequenceId())
+		}
+		require.Greater(t, lowest, previousHighest,
+			"send %d has sequence ids [%d, %d] after a send with highest sequence id %d",
+			i, lowest, highest, previousHighest)
+		previousHighest = highest
+	}
+	require.Equal(t, uint64(2), cnx.sends[1].GetSequenceId())
+}
+
+// Buffered batch messages are written before an unbatched send, so a batch never carries
+// sequence ids lower than an unbatched send written before it.
+func TestUnbatchedSendFlushesBufferedBatchFirst(t *testing.T) {
+	cnx := &frameRecordingConnection{}
+	p := newSequenceTestProducer(t, cnx)
+
+	p.internalSend(prepareSend(t, p, &ProducerMessage{Payload: []byte("batched")}, false))
+	p.internalSend(prepareSend(t, p, &ProducerMessage{Payload: []byte("delayed"), DeliverAfter: time.Minute}, false))
+	p.internalFlushCurrentBatch()
+
+	require.Len(t, cnx.sends, 2)
+	require.Equal(t, uint64(0), cnx.sends[0].GetSequenceId())
+	require.Equal(t, int32(1), cnx.sends[0].GetNumMessages())
+	require.Equal(t, uint64(1), cnx.sends[1].GetSequenceId())
+}
+
+// A sequence id set by the application is used as is, whichever path the message takes.
+func TestExplicitSequenceIDIsKeptForUnbatchedSend(t *testing.T) {
+	cnx := &frameRecordingConnection{}
+	p := newSequenceTestProducer(t, cnx)
+
+	id := int64(42)
+	p.internalSend(prepareSend(t, p,
+		&ProducerMessage{Payload: []byte("delayed"), DeliverAfter: time.Minute, SequenceID: &id}, false))
+	p.internalSend(prepareSend(t, p, &ProducerMessage{Payload: []byte("auto"), DeliverAfter: time.Minute}, false))
+
+	require.Len(t, cnx.sends, 2)
+	require.Equal(t, uint64(42), cnx.sends[0].GetSequenceId())
+	require.Equal(t, uint64(0), cnx.sends[1].GetSequenceId())
 }
