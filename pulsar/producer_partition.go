@@ -115,9 +115,16 @@ type partitionProducer struct {
 	// Channel where app is posting messages to be published
 	dataChan chan *sendRequest
 	cmdChan  chan interface{}
-	// closedCh is closed once, at the end of doClose, to tell senders and the event loop that the producer is
-	// closed. dataChan and cmdChan are never closed, so a send on them cannot panic.
-	closedCh             chan struct{}
+	// closedCh is closed once, when doClose has finished its internal cleanup, to tell senders, Close and the event
+	// loop that the producer is closed. The callbacks of the messages failed by doClose run after it is closed.
+	// dataChan and cmdChan are never closed, so a send on them cannot panic.
+	closedCh chan struct{}
+	// selfClosedCh is closed right after closedCh when the producer closes itself, that is, when doClose runs
+	// outside the event loop. An explicit Close that lost that race waits for it instead of the event loop, which
+	// may be running a callback that waits for that Close.
+	selfClosedCh chan struct{}
+	// loopDone is closed when the event loop exits.
+	loopDone             chan struct{}
 	connectClosedCh      chan *connectionClosed
 	publishSemaphore     internal.Semaphore
 	pendingQueue         internal.BlockingQueue
@@ -192,6 +199,8 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
 		cmdChan:          make(chan interface{}, 10),
 		closedCh:         make(chan struct{}),
+		selfClosedCh:     make(chan struct{}),
+		loopDone:         make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
 		compressionProvider: internal.GetCompressionProvider(pb.CompressionType(options.CompressionType),
@@ -584,6 +593,8 @@ func (p *partitionProducer) canRecoverFromFenced(errMsg string) bool {
 }
 
 func (p *partitionProducer) runEventsLoop() {
+	defer close(p.loopDone)
+
 	go func() {
 		for {
 			select {
@@ -1508,10 +1519,16 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer close(req.doneCh)
 
-	p.doClose(ErrProducerClosed)
+	p.closeProducer(ErrProducerClosed, false)
 }
 
+// doClose closes the producer when it closes itself, outside the event loop.
 func (p *partitionProducer) doClose(reason error) {
+	p.closeProducer(reason, true)
+}
+
+// closeProducer closes the producer. selfClose is true when it runs outside the event loop.
+func (p *partitionProducer) closeProducer(reason error, selfClose bool) {
 	if !p.casProducerState(producerReady, producerClosing) && !p.casProducerState(producerConnecting, producerClosing) {
 		return
 	}
@@ -1529,7 +1546,7 @@ func (p *partitionProducer) doClose(reason error) {
 	} else {
 		p.log.Info("Closed producer")
 	}
-	p.failPendingMessages(reason)
+	pending := p.takePendingItems()
 
 	if p.batchBuilder != nil {
 		if err = p.batchBuilder.Close(); err != nil {
@@ -1541,8 +1558,17 @@ func (p *partitionProducer) doClose(reason error) {
 	p._getConn().UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
 	close(p.closedCh)
+	if selfClose {
+		close(p.selfClosedCh)
+	}
+
+	// Run the callbacks only now. A callback may call Close, which waits for closedCh, or a public Close that
+	// waits for another Close to leave closeOnce.
+	p.failPendingItems(pending, reason)
 }
 
+// failPendingMessages fails the messages in pendingQueue while the producer keeps running. Each item stays in
+// pendingQueue until its callbacks have run, so a concurrent Flush waits for the last one and gets err.
 func (p *partitionProducer) failPendingMessages(err error) {
 	curViewItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(curViewItems)
@@ -1580,6 +1606,62 @@ func (p *partitionProducer) failPendingMessages(err error) {
 			p.log.Infof("%d messages complete failed", viewSize)
 			return
 		}
+	}
+}
+
+// takePendingItems removes the items currently in pendingQueue and releases the permits and memory of their send
+// requests. The caller owns the items and must complete them with failPendingItems. Only the teardown uses it: the
+// queue is empty before the callbacks run, so a Flush could no longer wait for them.
+func (p *partitionProducer) takePendingItems() []*pendingItem {
+	curViewItems := p.pendingQueue.ReadableSlice()
+	viewSize := len(curViewItems)
+	if viewSize <= 0 {
+		return nil
+	}
+	lastViewItem := curViewItems[viewSize-1].(*pendingItem)
+
+	// iterate at most viewSize items
+	items := make([]*pendingItem, 0, viewSize)
+	for i := 0; i < viewSize; i++ {
+		item := p.pendingQueue.CompareAndPoll(
+			func(m interface{}) bool {
+				return m != nil
+			})
+
+		if item == nil {
+			break
+		}
+
+		pi := item.(*pendingItem)
+		pi.Lock()
+		for _, i := range pi.sendRequests {
+			i.(*sendRequest).releaseResources()
+		}
+		pi.Unlock()
+		items = append(items, pi)
+
+		// finally reached the last view item, current iteration ends
+		if pi == lastViewItem {
+			break
+		}
+	}
+	return items
+}
+
+// failPendingItems fails the send requests of items taken by takePendingItems.
+func (p *partitionProducer) failPendingItems(items []*pendingItem, err error) {
+	if len(items) == 0 {
+		return
+	}
+	p.log.Infof("Failing %d messages on closing producer", len(items))
+	for _, pi := range items {
+		pi.Lock()
+		for _, i := range pi.sendRequests {
+			i.(*sendRequest).done(nil, err)
+		}
+		// flag the sending has completed with error, flush make no effect
+		pi.done(err)
+		pi.Unlock()
 	}
 }
 
@@ -1645,18 +1727,31 @@ func (p *partitionProducer) casProducerState(oldState, newState producerState) b
 }
 
 func (p *partitionProducer) Close() {
-	if p.isClosingOrClosed() {
-		// Producer is closing or closed
-		return
+	if !p.isClosingOrClosed() {
+		p.cancelFunc()
+
+		// The event loop closes the producer. If the producer closes itself instead, the loop may exit without
+		// taking the request, so stop waiting to queue it once the producer is closed.
+		cp := &closeProducer{doneCh: make(chan struct{})}
+		select {
+		case p.cmdChan <- cp:
+			// When the loop takes the request, wait for it to finish, including the callbacks of the failed
+			// messages. If the producer closed itself instead, the loop may exit without taking it, or may be
+			// running a callback that waits for this Close, so stop waiting once that teardown has finished its
+			// cleanup.
+			select {
+			case <-cp.doneCh:
+			case <-p.loopDone:
+			case <-p.selfClosedCh:
+			}
+		case <-p.closedCh:
+		}
 	}
 
-	p.cancelFunc()
-
-	cp := &closeProducer{doneCh: make(chan struct{})}
-	p.cmdChan <- cp
-
-	// wait for close producer request to complete
-	<-cp.doneCh
+	// Return once the producer is closed, by this request or by the producer closing itself. When the producer
+	// closes itself, its callbacks run after closedCh is closed, so a callback that calls Close does not wait for
+	// itself.
+	<-p.closedCh
 }
 
 type sendRequest struct {
@@ -1723,15 +1818,7 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		sr.producer.metrics.PublishErrorsMsgTooLarge.Inc()
 	}
 
-	if sr.semaphore != nil {
-		sr.semaphore.Release()
-		sr.producer.metrics.MessagesPending.Dec()
-	}
-
-	if sr.memLimit != nil {
-		sr.memLimit.ReleaseMemory(sr.reservedMem)
-		sr.producer.metrics.BytesPending.Sub(float64(sr.reservedMem))
-	}
+	sr.releaseResources()
 
 	// sr.chunkID == -1 means a chunked message is not yet prepared, so that we should fail it immediately
 	if sr.totalChunks <= 1 || sr.chunkID == -1 || sr.chunkID == sr.totalChunks-1 {
@@ -1749,6 +1836,22 @@ func (sr *sendRequest) done(msgID MessageID, err error) {
 		// reset all the fields
 		*sr = sendRequest{}
 		pool.Put(sr)
+	}
+}
+
+// releaseResources returns the publish permit and the memory reserved by sr. It does nothing if they were already
+// returned, so done can call it again.
+func (sr *sendRequest) releaseResources() {
+	if sr.semaphore != nil {
+		sr.semaphore.Release()
+		sr.producer.metrics.MessagesPending.Dec()
+		sr.semaphore = nil
+	}
+
+	if sr.memLimit != nil {
+		sr.memLimit.ReleaseMemory(sr.reservedMem)
+		sr.producer.metrics.BytesPending.Sub(float64(sr.reservedMem))
+		sr.memLimit = nil
 	}
 }
 
