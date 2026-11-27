@@ -103,6 +103,10 @@ type ConsumerHandler interface {
 
 	// SetRedirectedClusterURI set the redirected cluster URI for lookups
 	SetRedirectedClusterURI(redirectedClusterURI string)
+
+	// ReachedEndOfTopic is called when the broker reports that the consumer has
+	// consumed every message of a terminated topic.
+	ReachedEndOfTopic()
 }
 
 type connectionState int32
@@ -655,6 +659,9 @@ func (c *connection) receivedCommand(cmd *pb.BaseCommand, headersAndPayload Buff
 	case pb.BaseCommand_ACTIVE_CONSUMER_CHANGE:
 		c.handleActiveConsumerChange(cmd.GetActiveConsumerChange())
 
+	case pb.BaseCommand_REACHED_END_OF_TOPIC:
+		c.handleReachedEndOfTopic(cmd.GetReachedEndOfTopic())
+
 	default:
 		c.log.Errorf("Received invalid command type: %s", cmd.Type)
 		c.Close()
@@ -1004,6 +1011,15 @@ func (c *connection) handleActiveConsumerChange(consumerChange *pb.CommandActive
 		consumer.ActiveConsumerChanged(isActive)
 	} else {
 		c.log.WithField("consumerID", consumerID).Warnf("Consumer not found while active consumer change")
+	}
+}
+
+func (c *connection) handleReachedEndOfTopic(reachedEndOfTopic *pb.CommandReachedEndOfTopic) {
+	consumerID := reachedEndOfTopic.GetConsumerId()
+	if consumer, ok := c.consumerHandler(consumerID); ok {
+		consumer.ReachedEndOfTopic()
+	} else {
+		c.log.WithField("consumerID", consumerID).Warn("Consumer not found while reaching end of topic")
 	}
 }
 
