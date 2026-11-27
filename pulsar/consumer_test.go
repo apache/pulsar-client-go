@@ -6235,10 +6235,27 @@ func TestSelectConnectionForSameConsumer(t *testing.T) {
 	conn := partitionConsumerImpl._getConn()
 
 	for i := 0; i < 5; i++ {
-		assert.NoError(t, partitionConsumerImpl.grabConn(""))
+		grabConnRetryingServiceNotReady(t, partitionConsumerImpl)
 		assert.Equal(t, conn.ID(), partitionConsumerImpl._getConn().ID(),
 			"The consumer uses a different connection when reconnecting")
 	}
+}
+
+// grabConnRetryingServiceNotReady re-subscribes the partition consumer like a reconnect does.
+// A broker that already has a consumer with the same id on the connection may answer
+// ServiceNotReady instead of success: it closes the existing consumer so that the messages
+// dispatched to it are redelivered, and the client has to subscribe again. The reconnect loop
+// retries on this error, so the helper does the same. Older brokers succeed on the first attempt.
+func grabConnRetryingServiceNotReady(t *testing.T, pc *partitionConsumer) {
+	t.Helper()
+	var err error
+	for attempt := 0; attempt < 3; attempt++ {
+		err = pc.grabConn("")
+		if err == nil || !strings.Contains(err.Error(), "ServiceNotReady") {
+			break
+		}
+	}
+	require.NoError(t, err)
 }
 
 func TestInternalTopicSubscribeToPartitionsDoesNotBlockExistingPartitionLookup(t *testing.T) {
