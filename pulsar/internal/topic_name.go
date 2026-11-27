@@ -120,6 +120,20 @@ func TopicNameWithoutPartitionPart(tn *TopicName) string {
 	return tn.Name
 }
 
+// IsPartitionTopicName reports whether topic names a partition of a partitioned topic, that is whether
+// its local name ends with a "-partition-<index>" suffix where index is a canonical non-negative decimal
+// integer. A "-partition-" token elsewhere, e.g. in the namespace or in the middle of the local name,
+// does not make the topic a partition. This matches how the Java client derives the partition index.
+func IsPartitionTopicName(topic string) bool {
+	idx := strings.LastIndex(topic, partitionedTopicSuffix)
+	if idx < 0 {
+		return false
+	}
+	suffix := topic[idx+len(partitionedTopicSuffix):]
+	partition, err := strconv.Atoi(suffix)
+	return err == nil && partition >= 0 && strconv.Itoa(partition) == suffix
+}
+
 func getPartitionIndex(topic string) (int, error) {
 	if strings.Contains(topic, partitionedTopicSuffix) {
 		idx := strings.LastIndex(topic, "-") + 1

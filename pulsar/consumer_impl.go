@@ -817,6 +817,9 @@ func (c *consumer) SeekByTime(time time.Time) error {
 
 func findPartitionConsumer(consumers []*partitionConsumer, msgID MessageID) (*partitionConsumer, error) {
 	partition := int(msgID.PartitionIdx())
+	if len(consumers) == 1 && consumers[0].isNonPartitionedTopicMessageID(msgID) {
+		return consumers[0], nil
+	}
 	if partition < 0 || partition >= len(consumers) {
 		return nil, fmt.Errorf("invalid partition index %d expected a partition between [0-%d]",
 			partition, len(consumers)-1)
