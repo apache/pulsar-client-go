@@ -119,6 +119,10 @@ type partitionProducer struct {
 	// loop that the producer is closed. The callbacks of the messages failed by doClose run after it is closed.
 	// dataChan and cmdChan are never closed, so a send on them cannot panic.
 	closedCh chan struct{}
+	// selfClosedCh is closed right after closedCh when the producer closes itself, that is, when doClose runs
+	// outside the event loop. An explicit Close that lost that race waits for it instead of the event loop, which
+	// may be running a callback that waits for that Close.
+	selfClosedCh chan struct{}
 	// loopDone is closed when the event loop exits.
 	loopDone             chan struct{}
 	connectClosedCh      chan *connectionClosed
@@ -195,6 +199,7 @@ func newPartitionProducer(client *client, topic string, options *ProducerOptions
 		dataChan:         make(chan *sendRequest, maxPendingMessages),
 		cmdChan:          make(chan interface{}, 10),
 		closedCh:         make(chan struct{}),
+		selfClosedCh:     make(chan struct{}),
 		loopDone:         make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(batchingMaxPublishDelay),
@@ -1514,10 +1519,16 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 func (p *partitionProducer) internalClose(req *closeProducer) {
 	defer close(req.doneCh)
 
-	p.doClose(ErrProducerClosed)
+	p.closeProducer(ErrProducerClosed, false)
 }
 
+// doClose closes the producer when it closes itself, outside the event loop.
 func (p *partitionProducer) doClose(reason error) {
+	p.closeProducer(reason, true)
+}
+
+// closeProducer closes the producer. selfClose is true when it runs outside the event loop.
+func (p *partitionProducer) closeProducer(reason error, selfClose bool) {
 	if !p.casProducerState(producerReady, producerClosing) && !p.casProducerState(producerConnecting, producerClosing) {
 		return
 	}
@@ -1547,18 +1558,60 @@ func (p *partitionProducer) doClose(reason error) {
 	p._getConn().UnregisterListener(p.producerID)
 	p.batchFlushTicker.Stop()
 	close(p.closedCh)
+	if selfClose {
+		close(p.selfClosedCh)
+	}
 
 	// Run the callbacks only now. A callback may call Close, which waits for closedCh, or a public Close that
 	// waits for another Close to leave closeOnce.
 	p.failPendingItems(pending, reason)
 }
 
+// failPendingMessages fails the messages in pendingQueue while the producer keeps running. Each item stays in
+// pendingQueue until its callbacks have run, so a concurrent Flush waits for the last one and gets err.
 func (p *partitionProducer) failPendingMessages(err error) {
-	p.failPendingItems(p.takePendingItems(), err)
+	curViewItems := p.pendingQueue.ReadableSlice()
+	viewSize := len(curViewItems)
+	if viewSize <= 0 {
+		return
+	}
+	p.log.Infof("Failing %d messages on closing producer", viewSize)
+	lastViewItem := curViewItems[viewSize-1].(*pendingItem)
+
+	// iterate at most viewSize items
+	for i := 0; i < viewSize; i++ {
+		item := p.pendingQueue.CompareAndPoll(
+			func(m interface{}) bool {
+				return m != nil
+			})
+
+		if item == nil {
+			return
+		}
+
+		pi := item.(*pendingItem)
+		pi.Lock()
+
+		for _, i := range pi.sendRequests {
+			sr := i.(*sendRequest)
+			sr.done(nil, err)
+		}
+
+		// flag the sending has completed with error, flush make no effect
+		pi.done(err)
+		pi.Unlock()
+
+		// finally reached the last view item, current iteration ends
+		if pi == lastViewItem {
+			p.log.Infof("%d messages complete failed", viewSize)
+			return
+		}
+	}
 }
 
 // takePendingItems removes the items currently in pendingQueue and releases the permits and memory of their send
-// requests. The caller owns the items and must complete them with failPendingItems.
+// requests. The caller owns the items and must complete them with failPendingItems. Only the teardown uses it: the
+// queue is empty before the callbacks run, so a Flush could no longer wait for them.
 func (p *partitionProducer) takePendingItems() []*pendingItem {
 	curViewItems := p.pendingQueue.ReadableSlice()
 	viewSize := len(curViewItems)
@@ -1683,10 +1736,13 @@ func (p *partitionProducer) Close() {
 		select {
 		case p.cmdChan <- cp:
 			// When the loop takes the request, wait for it to finish, including the callbacks of the failed
-			// messages. Otherwise the loop exits without it.
+			// messages. If the producer closed itself instead, the loop may exit without taking it, or may be
+			// running a callback that waits for this Close, so stop waiting once that teardown has finished its
+			// cleanup.
 			select {
 			case <-cp.doneCh:
 			case <-p.loopDone:
+			case <-p.selfClosedCh:
 			}
 		case <-p.closedCh:
 		}

@@ -28,6 +28,8 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/apache/pulsar-client-go/pulsar/internal"
+	"github.com/apache/pulsar-client-go/pulsar/internal/compression"
+	internalcrypto "github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
 	plog "github.com/apache/pulsar-client-go/pulsar/log"
 )
@@ -313,6 +315,7 @@ func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
 		dataChan:         make(chan *sendRequest, maxPending),
 		cmdChan:          make(chan interface{}, 10),
 		closedCh:         make(chan struct{}),
+		selfClosedCh:     make(chan struct{}),
 		loopDone:         make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(time.Hour),
@@ -586,6 +589,83 @@ func TestExplicitCloseReturnsAfterPendingCallbacks(t *testing.T) {
 	awaitSignal(t, closeDone, "Close to return")
 	require.False(t, <-closedBeforeCallback, "Close returned before the pending callback finished")
 	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+	for i := 0; i < 2; i++ {
+		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
+	}
+}
+
+// A public Close queues its request while the event loop runs the callback of a send that failed because Close
+// cancelled the context. The callback calls the public Close and waits for the first call to leave closeOnce. Then
+// the producer closes itself and finishes its cleanup. The first Close must return without waiting for the event
+// loop, which is held by the callback.
+func TestLoopCallbackClosesProducerWhileSelfCloseWins(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	p.options = &ProducerOptions{DisableBatching: true}
+	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
+	p.sequenceIDGenerator = new(uint64)
+	p.encryptor = internalcrypto.NewNoopEncryptor()
+	p.client.metrics = internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	pp := newTestTopLevelProducer(p)
+	cbEntered, cbErr := make(chan struct{}), make(chan error, 1)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("late")},
+		func(_ MessageID, _ *ProducerMessage, err error) {
+			close(cbEntered)
+			pp.Close()
+			cbErr <- err
+		})
+	require.Len(t, p.dataChan, 1)
+
+	closeDone := runAsync(pp.Close)
+	// No event loop runs. Wait until Close has cancelled the context and queued its request, and leave it queued.
+	select {
+	case cmd := <-p.cmdChan:
+		p.cmdChan <- cmd
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not queue its request")
+	}
+	// Play the event loop: it handles the send first, and its callback runs on the loop. After that the loop sees
+	// closedCh and exits without taking the close request.
+	loopExited := runAsync(func() {
+		defer close(p.loopDone)
+		p.internalSend(<-p.dataChan)
+	})
+	awaitSignal(t, cbEntered, "the send callback to run on the event loop")
+
+	p.doClose(ErrTopicTerminated)
+	awaitSignal(t, closeDone, "the first Close to return after the producer closed itself")
+	awaitSignal(t, loopExited, "the event loop to exit")
+	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+}
+
+// Regression for the retryable backlog-quota path: failPendingMessages fails the pending messages but the producer
+// keeps running. A Flush that runs while a callback is still running must not return nil while later pending
+// messages are being failed.
+func TestFlushWhilePendingMessagesFailReturnsError(t *testing.T) {
+	p := newClosableTestProducer(t, 2)
+	p.options = &ProducerOptions{DisableBatching: true}
+	cbEntered, cbRelease := make(chan struct{}), make(chan struct{})
+	addPendingSend(t, p, func(_ MessageID, _ *ProducerMessage, _ error) {
+		close(cbEntered)
+		<-cbRelease
+	})
+	addPendingSend(t, p, nil)
+
+	failDone := runAsync(func() { p.failPendingMessages(ErrProducerBlockedQuotaExceeded) })
+	awaitSignal(t, cbEntered, "the first pending callback to run")
+
+	// Flush the way the event loop does, while the first callback is held.
+	fr := &flushRequest{doneCh: make(chan struct{})}
+	p.internalFlush(fr)
+	select {
+	case <-fr.doneCh:
+		t.Fatalf("Flush completed with %v while the pending messages were being failed", fr.err)
+	default:
+	}
+
+	close(cbRelease)
+	awaitSignal(t, failDone, "failPendingMessages to return")
+	awaitSignal(t, fr.doneCh, "Flush to complete")
+	require.ErrorIs(t, fr.err, ErrProducerBlockedQuotaExceeded)
 	for i := 0; i < 2; i++ {
 		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
 	}
