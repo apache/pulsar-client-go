@@ -55,6 +55,7 @@ type oauth2AuthProvider struct {
 
 // NewAuthenticationOAuth2WithParams creates an OAuth2 auth provider from string params.
 //
+// If type is omitted or empty, it defaults to client_credentials.
 // For client_credentials, tokenEndpointAuthMethod defaults to client_secret_post.
 // Required params:
 //   - client_secret_post: privateKey
@@ -67,7 +68,7 @@ func NewAuthenticationOAuth2WithParams(params map[string]string) (Provider, erro
 	}
 
 	switch params[ConfigParamType] {
-	case ConfigParamTypeClientCredentials:
+	case "", ConfigParamTypeClientCredentials:
 		flow, err := oauth2.NewDefaultClientCredentialsFlow(oauth2.ClientCredentialsFlowOptions{
 			KeyFile:                 params[ConfigParamKeyFile],
 			ClientID:                params[ConfigParamClientID],
