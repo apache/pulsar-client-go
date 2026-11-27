@@ -250,3 +250,113 @@ func TestReserveResourcesContextErrorPreservesResult(t *testing.T) {
 		}
 	}
 }
+
+func TestRaiseLastSequenceID(t *testing.T) {
+	p := &partitionProducer{lastSequenceID: -1}
+
+	// A new or reconnected producer adopts the last sequence id the broker reports.
+	p.raiseLastSequenceID(9)
+	require.Equal(t, int64(9), p.LastSequenceID())
+
+	// The value never moves backwards, including when the broker reports -1.
+	p.raiseLastSequenceID(5)
+	p.raiseLastSequenceID(-1)
+	require.Equal(t, int64(9), p.LastSequenceID())
+
+	p.raiseLastSequenceID(12)
+	require.Equal(t, int64(12), p.LastSequenceID())
+}
+
+// TestReceivedSendReceiptKeepsRecoveredLastSequenceID covers a reconnect where the broker already
+// persisted sequence ids 8 and 9 before their receipts arrived. The handshake seeds LastSequenceID to 9
+// and the producer replays both sends; the duplicate receipt for 8 must complete normally without
+// lowering LastSequenceID, including when it is read from the send callback.
+func TestReceivedSendReceiptKeepsRecoveredLastSequenceID(t *testing.T) {
+	p, q := newReceiptTestProducer()
+	p.raiseLastSequenceID(9)
+
+	seenInCallback, callbackErrs := enqueuePendingSends(p, 8, 9)
+	receipt := func(seq uint64) *pb.CommandSendReceipt {
+		return &pb.CommandSendReceipt{
+			SequenceId: proto.Uint64(seq),
+			// The broker answers a duplicate send with ledger and entry id -1.
+			MessageId: &pb.MessageIdData{LedgerId: proto.Uint64(^uint64(0)), EntryId: proto.Uint64(^uint64(0))},
+		}
+	}
+
+	p.ReceivedSendReceipt(receipt(8))
+	require.NoError(t, callbackErrs[8])
+	require.Equal(t, int64(9), seenInCallback[8], "duplicate receipt must not lower the recovered id")
+	require.Equal(t, int64(9), p.LastSequenceID())
+
+	p.ReceivedSendReceipt(receipt(9))
+	require.NoError(t, callbackErrs[9])
+	require.Equal(t, int64(9), seenInCallback[9])
+	require.Equal(t, int64(9), p.LastSequenceID())
+	require.Zero(t, q.Size())
+}
+
+// TestReceivedSendReceiptTracksLatestPublishedSequenceID covers ordinary (non-duplicate) receipts:
+// LastSequenceID reports the most recently published and acknowledged id, even when explicit
+// sequence ids go backwards, e.g. 9 and then 8 with deduplication disabled.
+func TestReceivedSendReceiptTracksLatestPublishedSequenceID(t *testing.T) {
+	p, q := newReceiptTestProducer()
+	seenInCallback, callbackErrs := enqueuePendingSends(p, 9, 8)
+	receipt := func(seq, entryID uint64) *pb.CommandSendReceipt {
+		return &pb.CommandSendReceipt{
+			SequenceId: proto.Uint64(seq),
+			MessageId:  &pb.MessageIdData{LedgerId: proto.Uint64(3), EntryId: proto.Uint64(entryID)},
+		}
+	}
+
+	p.ReceivedSendReceipt(receipt(9, 0))
+	require.NoError(t, callbackErrs[9])
+	require.Equal(t, int64(9), seenInCallback[9])
+	require.Equal(t, int64(9), p.LastSequenceID())
+
+	p.ReceivedSendReceipt(receipt(8, 1))
+	require.NoError(t, callbackErrs[8])
+	require.Equal(t, int64(8), seenInCallback[8])
+	require.Equal(t, int64(8), p.LastSequenceID())
+	require.Zero(t, q.Size())
+}
+
+func newReceiptTestProducer() (*partitionProducer, internal.BlockingQueue) {
+	q := internal.NewBlockingQueue(2)
+	p := &partitionProducer{
+		pendingQueue:   q,
+		options:        &ProducerOptions{},
+		log:            plog.DefaultNopLogger(),
+		metrics:        internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
+		lastSequenceID: -1,
+	}
+	p.setProducerState(producerReady)
+	return p, q
+}
+
+// enqueuePendingSends queues one single-message pending item per sequence id and records, per id,
+// the error and the LastSequenceID observed in its send callback.
+func enqueuePendingSends(p *partitionProducer, seqs ...uint64) (map[uint64]int64, map[uint64]error) {
+	seenInCallback := map[uint64]int64{}
+	callbackErrs := map[uint64]error{}
+	for _, seq := range seqs {
+		seq := seq
+		ctx, cancel := context.WithCancel(context.Background())
+		sr := &sendRequest{
+			producer: p, pool: &sync.Pool{}, msg: &ProducerMessage{},
+			callbackOnce: &sync.Once{}, publishTime: time.Now(),
+			callback: func(_ MessageID, _ *ProducerMessage, err error) {
+				seenInCallback[seq] = p.LastSequenceID()
+				callbackErrs[seq] = err
+			},
+		}
+		pi := &pendingItem{
+			ctx: ctx, cancel: cancel, buffer: internal.NewBuffer(1),
+			sequenceID: seq, createdAt: time.Now(), sentAt: time.Now(),
+			sendRequests: []interface{}{sr},
+		}
+		pi.buffer.Retain()
+		p.pendingQueue.Put(pi)
+	}
+	return seenInCallback, callbackErrs
+}
