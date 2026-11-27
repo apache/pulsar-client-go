@@ -36,6 +36,7 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 var _brokerMaxMessageSize = 1024 * 1024
@@ -805,7 +806,7 @@ func TestChunkReconsumeLater(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	msg, err := consumer.Receive(ctx)
 	cancel()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, content, msg.Payload())
 	assert.Equal(t, "chunk-key", msg.Key())
 	consumer.ReconsumeLater(msg, 1*time.Second)
@@ -815,7 +816,7 @@ func TestChunkReconsumeLater(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 	msg, err = consumer.Receive(ctx)
 	cancel()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, content, msg.Payload())
 	consumer.ReconsumeLater(msg, 1*time.Second)
 
@@ -823,7 +824,7 @@ func TestChunkReconsumeLater(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 	msg, err = consumer.Receive(ctx)
 	cancel()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, content, msg.Payload())
 	consumer.ReconsumeLater(msg, 1*time.Second)
 
@@ -848,7 +849,7 @@ func TestChunkReconsumeLater(t *testing.T) {
 	ctx, cancel = context.WithTimeout(context.Background(), 15*time.Second)
 	dlqMsg, err := dlqConsumer.Receive(ctx)
 	cancel()
-	assert.NoError(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, content, dlqMsg.Payload())
 	assert.Equal(t, "chunk-key", dlqMsg.Key())
 
