@@ -995,3 +995,200 @@ func TestDiscardOldestChunkMessagePopsQueue(t *testing.T) {
 	assert.Nil(t, m.get("uuid-1"))
 	assert.NotNil(t, m.get("uuid-2"))
 }
+type closeRecordingConnection struct {
+	dummyConnection
+	closedRequests []uint64
+}
+
+func (c *closeRecordingConnection) CloseRequest(requestID uint64, _ error) {
+	c.closedRequests = append(c.closedRequests, requestID)
+}
+
+func TestConnectionClosedCancelsInflightAckOnBrokerClose(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	pc := &partitionConsumer{
+		client:          &client{},
+		log:             log.DefaultNopLogger(),
+		connectClosedCh: make(chan *connectionClosed, 1),
+	}
+	pc.inflightAck.Store(&inflightAckRequest{requestID: 42, cnx: cnx})
+
+	pc.ConnectionClosed(cnx, &pb.CommandCloseConsumer{})
+
+	assert.Equal(t, []uint64{42}, cnx.closedRequests)
+	select {
+	case <-pc.connectClosedCh:
+	default:
+		t.Fatal("reconnect was not requested")
+	}
+}
+
+func TestConnectionClosedKeepsInflightAckOnConnectionFailure(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	pc := &partitionConsumer{
+		log:             log.DefaultNopLogger(),
+		connectClosedCh: make(chan *connectionClosed, 1),
+	}
+	pc.inflightAck.Store(&inflightAckRequest{requestID: 42, cnx: cnx})
+
+	pc.ConnectionClosed(cnx, nil)
+
+	assert.Empty(t, cnx.closedRequests)
+	select {
+	case <-pc.connectClosedCh:
+	default:
+		t.Fatal("reconnect was not requested")
+	}
+}
+
+func TestConnectionClosedSkipsInflightAckFromOtherConnection(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	other := &closeRecordingConnection{}
+	pc := &partitionConsumer{
+		client:          &client{},
+		log:             log.DefaultNopLogger(),
+		connectClosedCh: make(chan *connectionClosed, 1),
+	}
+	pc.inflightAck.Store(&inflightAckRequest{requestID: 42, cnx: other})
+
+	pc.ConnectionClosed(cnx, &pb.CommandCloseConsumer{})
+
+	assert.Empty(t, cnx.closedRequests)
+	select {
+	case <-pc.connectClosedCh:
+	default:
+		t.Fatal("reconnect was not requested")
+	}
+}
+
+func TestConnectionClosedMarksConnForAckOnlyOnBrokerClose(t *testing.T) {
+	brokerClosed := &closeRecordingConnection{}
+	connectionFailed := &closeRecordingConnection{}
+	pc := &partitionConsumer{
+		client:          &client{},
+		log:             log.DefaultNopLogger(),
+		connectClosedCh: make(chan *connectionClosed, 4),
+	}
+
+	pc.ConnectionClosed(brokerClosed, &pb.CommandCloseConsumer{})
+	pc.ConnectionClosed(connectionFailed, nil)
+
+	assert.True(t, pc.connClosedForAck(brokerClosed))
+	assert.False(t, pc.connClosedForAck(connectionFailed))
+}
+
+func TestInternalAckFailsFastOnClosedConsumerConnection(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	var iconn internal.Connection = cnx
+	pc := &partitionConsumer{
+		client:  &client{rpcClient: stubRPCClient{}},
+		log:     log.DefaultNopLogger(),
+		options: &partitionConsumerOpts{ackWithResponse: true},
+	}
+	pc.conn.Store(&iconn)
+	pc.markConnClosedForAck(cnx)
+
+	req := &ackRequest{
+		doneCh:  make(chan struct{}),
+		msgID:   trackingMessageID{messageID: &messageID{}},
+		ackType: individualAck,
+	}
+	pc.internalAck(req)
+
+	assert.ErrorIs(t, req.err, errAckConsumerClosed)
+	assert.Empty(t, cnx.closedRequests)
+	<-req.doneCh
+}
+
+func TestInternalAckListFailsFastOnClosedConsumerConnection(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	var iconn internal.Connection = cnx
+	pc := &partitionConsumer{
+		client: &client{rpcClient: stubRPCClient{}},
+		log:    log.DefaultNopLogger(),
+	}
+	pc.conn.Store(&iconn)
+	pc.markConnClosedForAck(cnx)
+
+	errCh := make(chan error, 1)
+	pc.internalAckList(&ackListRequest{errCh: errCh})
+
+	select {
+	case err := <-errCh:
+		assert.ErrorIs(t, err, errAckConsumerClosed)
+	default:
+		t.Fatal("queued ack was not failed on the closed connection")
+	}
+	assert.Empty(t, cnx.closedRequests)
+}
+
+func TestClosedAckConnsTakeAndRestore(t *testing.T) {
+	oldCnx := &closeRecordingConnection{}
+	newCnx := &closeRecordingConnection{}
+	pc := &partitionConsumer{}
+	pc.markConnClosedForAck(oldCnx)
+	pc.markConnClosedForAck(newCnx)
+	assert.True(t, pc.connClosedForAck(oldCnx))
+	assert.True(t, pc.connClosedForAck(newCnx))
+
+	// The pool can hand back the connection the consumer was closed on, so
+	// grabConn takes every marker before registering the new subscription.
+	taken := pc.takeClosedAckConns()
+	assert.Len(t, taken, 2)
+	assert.False(t, pc.connClosedForAck(oldCnx))
+	assert.False(t, pc.connClosedForAck(newCnx))
+
+	// A CLOSE_CONSUMER processed for the new subscription after the handler
+	// is registered must survive.
+	pc.markConnClosedForAck(newCnx)
+
+	// A failed attempt puts the taken markers back and keeps the new one.
+	pc.restoreClosedAckConns(taken)
+	assert.True(t, pc.connClosedForAck(oldCnx))
+	assert.True(t, pc.connClosedForAck(newCnx))
+
+	assert.Len(t, pc.takeClosedAckConns(), 2)
+	assert.False(t, pc.connClosedForAck(oldCnx))
+	assert.False(t, pc.connClosedForAck(newCnx))
+}
+
+type stubRPCClient struct {
+	internal.RPCClient
+}
+
+func (stubRPCClient) NewRequestID() uint64 { return 1 }
+
+func TestInternalAckWithTxnFailsFastOnClosedConsumerConnection(t *testing.T) {
+	cnx := &closeRecordingConnection{}
+	var iconn internal.Connection = cnx
+	pc := &partitionConsumer{
+		client:  &client{rpcClient: stubRPCClient{}},
+		log:     log.DefaultNopLogger(),
+		options: &partitionConsumerOpts{topic: "t", subscription: "s"},
+	}
+	pc.conn.Store(&iconn)
+	pc.markConnClosedForAck(cnx)
+
+	txn := &transaction{
+		registerAckSubscriptions: map[subscription]bool{
+			{topic: "t", subscription: "s"}: true,
+		},
+		opsFlow:   make(chan bool, 1),
+		opTimeout: time.Second,
+	}
+	txn.state.Store(int32(TxnOpen))
+	txn.opsFlow <- true
+
+	req := &ackWithTxnRequest{
+		doneCh:      make(chan struct{}),
+		msgID:       trackingMessageID{messageID: &messageID{}},
+		Transaction: txn,
+	}
+	pc.internalAckWithTxn(req)
+
+	assert.ErrorIs(t, req.err, errAckConsumerClosed)
+	assert.Empty(t, cnx.closedRequests)
+	assert.Zero(t, txn.opsCount.Load())
+	assert.Equal(t, int32(TxnError), txn.state.Load())
+	<-req.doneCh
+}

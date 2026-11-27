@@ -2434,7 +2434,7 @@ func TestMemLimitContextCancel(t *testing.T) {
 			Payload: make([]byte, 1024),
 		}, func(_ MessageID, _ *ProducerMessage, e error) {
 			assert.Error(t, e)
-			assert.ErrorContains(t, e, "context canceled")
+			assert.ErrorIs(t, e, context.Canceled)
 			wg.Done()
 		})
 	}()
@@ -2846,6 +2846,10 @@ func (m *mockConn) WriteData(_ context.Context, buffer internal.Buffer) {
 
 func (m *mockConn) SendRequest(requestID uint64, req *pb.BaseCommand, callback func(*pb.BaseCommand, error)) {
 	m.realConn.SendRequest(requestID, req, callback)
+}
+
+func (m *mockConn) CloseRequest(requestID uint64, err error) {
+	m.realConn.CloseRequest(requestID, err)
 }
 
 func (m *mockConn) getBuffersLen() int {
