@@ -26,6 +26,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/apache/pulsar-client-go/pulsar/backoff"
 	"github.com/apache/pulsar-client-go/pulsar/internal"
 	"github.com/apache/pulsar-client-go/pulsar/internal/crypto"
 	pb "github.com/apache/pulsar-client-go/pulsar/internal/pulsar_proto"
@@ -763,6 +764,76 @@ func TestUnsubscribeReleasesPartitionConsumer(t *testing.T) {
 	pc.Close()
 }
 
+func TestNewPartitionConsumerRetriesServiceNotReady(t *testing.T) {
+	transient := fmt.Errorf("server error: ServiceNotReady: Subscription is fenced")
+	permanent := fmt.Errorf("server error: AuthorizationError: ServiceNotReady in error details")
+	tests := []struct {
+		name         string
+		brokerError  error
+		failures     int
+		delay        time.Duration
+		timeout      time.Duration
+		cancel       bool
+		wantError    error
+		wantAttempts int
+	}{
+		{"transient then success", transient, 2, 0, time.Second, false, nil, 3},
+		{"permanent", permanent, 1, time.Hour, time.Second, false, permanent, 1},
+		{"timeout", transient, 100, time.Hour, 50 * time.Millisecond, false, context.DeadlineExceeded, 1},
+		{"cancelled", transient, 100, time.Hour, time.Second, true, context.Canceled, 1},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cnx := newSpyConnection()
+			rpc := &grabConnSpyRPCClient{cnx: cnx}
+			seed := newGrabConnTestConsumerNoConn(cnx, rpc)
+			seed.client.operationTimeout = tt.timeout
+			opts := &partitionConsumerOpts{
+				topic:               seed.topic,
+				subscription:        "sub",
+				receiverQueueSize:   1,
+				nackRedeliveryDelay: time.Second,
+				ackGroupingOptions:  &AckGroupingOptions{MaxSize: 0},
+				backOffPolicyFunc: func() backoff.Policy {
+					return &testBackoffPolicy{minBackoff: tt.delay, maxBackoff: tt.delay}
+				},
+			}
+			attempts := 0
+			var attemptedConsumer *partitionConsumer
+			rpc.duringSubscribe = func() {
+				attempts++
+				attemptedConsumer = cnx.handler.Load().(*partitionConsumer)
+				if attempts <= tt.failures {
+					rpc.subscribeErr = tt.brokerError
+				} else {
+					rpc.subscribeErr = nil
+				}
+				if tt.cancel {
+					attemptedConsumer.cancelFunc()
+				}
+			}
+
+			pc, err := newPartitionConsumer(nil, seed.client, opts, make(chan ConsumerMessage), nil, seed.metrics, false)
+			if tt.wantError == nil {
+				assert.NoError(t, err)
+			} else {
+				assert.ErrorIs(t, err, tt.wantError)
+				assert.Nil(t, pc)
+			}
+			assert.Equal(t, tt.wantAttempts, attempts)
+			if pc != nil {
+				pc.Close()
+			}
+			assert.True(t, cnx.handlerRemoved.Load())
+			assert.Nil(t, cnx.handler.Load())
+			if attemptedConsumer != nil {
+				assert.ErrorIs(t, attemptedConsumer.ctx.Err(), context.Canceled)
+				assert.True(t, attemptedConsumer.chunkedMsgCtxMap.closed)
+			}
+		})
+	}
+}
+
 // --- Helpers
 
 // newGrabConnTestConsumer builds a minimal partitionConsumer wired to the
@@ -891,6 +962,8 @@ type grabConnSpyRPCClient struct {
 
 func (r *grabConnSpyRPCClient) NewRequestID() uint64 { return 1 }
 
+func (r *grabConnSpyRPCClient) NewConsumerID() uint64 { return 1 }
+
 func (r *grabConnSpyRPCClient) RequestOnCnxNoWait(_ internal.Connection, _ pb.BaseCommand_Type,
 	_ proto.Message) error {
 	return nil
@@ -946,6 +1019,8 @@ type grabConnMockPool struct {
 	cnx internal.Connection
 	err error
 }
+
+func (m *grabConnMockPool) GenerateRoundRobinIndex() int32 { return 0 }
 
 func (m *grabConnMockPool) GetConnection(_ *url.URL, _ *url.URL, _ int32) (internal.Connection, error) {
 	if m.err != nil {

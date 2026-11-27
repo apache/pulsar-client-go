@@ -532,8 +532,9 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	pc.nackTracker = newNegativeAcksTracker(pc, options.nackRedeliveryDelay, options.nackBackoffPolicy, pc.log,
 		options.nackPrecisionBit)
 
-	err := pc.grabConn("")
+	err := pc.grabConnWithRetry()
 	if err != nil {
+		pc.cancelFunc()
 		pc.log.WithError(err).Error("Failed to create consumer")
 		pc.nackTracker.Close()
 		pc.ackGroupingTracker.close()
@@ -569,6 +570,39 @@ func newPartitionConsumer(parent Consumer, client *client, options *partitionCon
 	}
 
 	return pc, nil
+}
+
+// grabConnWithRetry retries initial ServiceNotReady failures until the operation
+// deadline. In-flight RPCs retain their existing request timeout.
+func (pc *partitionConsumer) grabConnWithRetry() error {
+	ctx, cancel := context.WithTimeout(pc.ctx, pc.client.operationTimeout)
+	defer cancel()
+	bo := pc.backoffPolicyFunc()
+	var lastErr error
+	for {
+		if err := ctx.Err(); err != nil {
+			if lastErr != nil {
+				return errors.Wrap(err, lastErr.Error())
+			}
+			return err
+		}
+		lastErr = pc.grabConn("")
+		if lastErr == nil {
+			return nil
+		}
+		// Broker errors include the code before the message. Don't retry a
+		// permanent error just because its message mentions ServiceNotReady.
+		msg := strings.TrimPrefix(lastErr.Error(), "server error: ")
+		if !strings.HasPrefix(msg, pb.ServerError_ServiceNotReady.String()+":") {
+			return lastErr
+		}
+		timer := time.NewTimer(bo.Next())
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+		case <-timer.C:
+		}
+	}
 }
 
 func (pc *partitionConsumer) startDispatcher() {
