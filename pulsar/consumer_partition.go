@@ -187,6 +187,15 @@ type ConsumerEventListener interface {
 	BecameInactive(consumer Consumer, topicName string, partition int32)
 }
 
+// inflightAckRequest is the ack-with-response currently being waited for
+// by the events loop.
+type inflightAckRequest struct {
+	requestID uint64
+	cnx       internal.Connection
+}
+
+var errAckConsumerClosed = errors.New("consumer closed before ack response was received")
+
 type partitionConsumer struct {
 	client *client
 
@@ -197,6 +206,14 @@ type partitionConsumer struct {
 
 	conn         atomic.Pointer[internal.Connection]
 	cnxKeySuffix int32
+
+	inflightAck atomic.Pointer[inflightAckRequest]
+	// Connections on which the broker closed this consumer. Acks that would
+	// go out on them fail fast with errAckConsumerClosed instead of waiting
+	// for a broker that no longer answers. grabConn takes them before it
+	// registers a new subscription and puts them back if that fails.
+	closedAckConnsMu sync.Mutex
+	closedAckConns   map[internal.Connection]struct{}
 
 	topic        string
 	name         string
@@ -702,7 +719,17 @@ func (pc *partitionConsumer) internalAckWithTxn(req *ackWithTxnRequest) {
 	}
 
 	cmdAck.RequestId = proto.Uint64(reqID)
-	_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+	cnx := pc._getConn()
+	pc.inflightAck.Store(&inflightAckRequest{requestID: reqID, cnx: cnx})
+	if pc.connClosedForAck(cnx) {
+		pc.inflightAck.Store(nil)
+		pc.log.Debug("Skip ack on a connection that closed this consumer")
+		req.Transaction.endSendOrAckOp(errAckConsumerClosed)
+		req.err = errAckConsumerClosed
+		return
+	}
+	_, err := pc.client.rpcClient.RequestOnCnx(cnx, reqID, pb.BaseCommand_ACK, cmdAck)
+	pc.inflightAck.Store(nil)
 	if err != nil {
 		pc.log.WithError(err).Error("Ack with response error")
 	}
@@ -1270,7 +1297,18 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 
 	if pc.options.ackWithResponse {
 		cmdAck.RequestId = proto.Uint64(reqID)
-		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, cmdAck)
+		cnx := pc._getConn()
+		pc.inflightAck.Store(&inflightAckRequest{requestID: reqID, cnx: cnx})
+		// Checked after the store so a close landing in between is still
+		// caught by ConnectionClosed.
+		if pc.connClosedForAck(cnx) {
+			pc.inflightAck.Store(nil)
+			pc.log.Debug("Skip ack on a connection that closed this consumer")
+			req.err = errAckConsumerClosed
+			return
+		}
+		_, err := pc.client.rpcClient.RequestOnCnx(cnx, reqID, pb.BaseCommand_ACK, cmdAck)
+		pc.inflightAck.Store(nil)
 		if err != nil {
 			pc.log.WithError(err).Error("Ack with response error")
 			req.err = err
@@ -1288,12 +1326,21 @@ func (pc *partitionConsumer) internalAck(req *ackRequest) {
 func (pc *partitionConsumer) internalAckList(request *ackListRequest) {
 	if request.errCh != nil {
 		reqID := pc.client.rpcClient.NewRequestID()
-		_, err := pc.client.rpcClient.RequestOnCnx(pc._getConn(), reqID, pb.BaseCommand_ACK, &pb.CommandAck{
+		cnx := pc._getConn()
+		pc.inflightAck.Store(&inflightAckRequest{requestID: reqID, cnx: cnx})
+		if pc.connClosedForAck(cnx) {
+			pc.inflightAck.Store(nil)
+			pc.log.Debug("Skip ack list on a connection that closed this consumer")
+			request.errCh <- errAckConsumerClosed
+			return
+		}
+		_, err := pc.client.rpcClient.RequestOnCnx(cnx, reqID, pb.BaseCommand_ACK, &pb.CommandAck{
 			AckType:    pb.CommandAck_Individual.Enum(),
 			ConsumerId: proto.Uint64(pc.consumerID),
 			MessageId:  request.msgIDs,
 			RequestId:  &reqID,
 		})
+		pc.inflightAck.Store(nil)
 		request.errCh <- err
 		return
 	}
@@ -1817,7 +1864,56 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 	return &encCtx
 }
 
-func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
+func (pc *partitionConsumer) markConnClosedForAck(cnx internal.Connection) {
+	pc.closedAckConnsMu.Lock()
+	defer pc.closedAckConnsMu.Unlock()
+	if pc.closedAckConns == nil {
+		pc.closedAckConns = make(map[internal.Connection]struct{})
+	}
+	pc.closedAckConns[cnx] = struct{}{}
+}
+
+func (pc *partitionConsumer) connClosedForAck(cnx internal.Connection) bool {
+	pc.closedAckConnsMu.Lock()
+	defer pc.closedAckConnsMu.Unlock()
+	_, ok := pc.closedAckConns[cnx]
+	return ok
+}
+
+// takeClosedAckConns removes and returns every close marker. grabConn takes
+// them before registering the handler of a new subscription: the pool may hand
+// back the connection the broker closed the consumer on (CLOSE_CONSUMER keeps
+// the connection open), and a close of the new subscription can only be
+// delivered once its handler exists, so nothing valid is dropped.
+func (pc *partitionConsumer) takeClosedAckConns() []internal.Connection {
+	pc.closedAckConnsMu.Lock()
+	defer pc.closedAckConnsMu.Unlock()
+	conns := make([]internal.Connection, 0, len(pc.closedAckConns))
+	for c := range pc.closedAckConns {
+		conns = append(conns, c)
+	}
+	pc.closedAckConns = nil
+	return conns
+}
+
+// restoreClosedAckConns puts back the markers taken by takeClosedAckConns
+// when the reconnect that took them fails, so acks queued behind it still
+// fail fast.
+func (pc *partitionConsumer) restoreClosedAckConns(conns []internal.Connection) {
+	if len(conns) == 0 {
+		return
+	}
+	pc.closedAckConnsMu.Lock()
+	defer pc.closedAckConnsMu.Unlock()
+	if pc.closedAckConns == nil {
+		pc.closedAckConns = make(map[internal.Connection]struct{}, len(conns))
+	}
+	for _, c := range conns {
+		pc.closedAckConns[c] = struct{}{}
+	}
+}
+
+func (pc *partitionConsumer) ConnectionClosed(cnx internal.Connection, closeConsumer *pb.CommandCloseConsumer) {
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
 	pc.reconnectCount.Inc()
@@ -1825,6 +1921,17 @@ func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseCons
 	if closeConsumer != nil {
 		assignedBrokerURL = pc.client.selectServiceURL(
 			closeConsumer.GetAssignedBrokerServiceUrl(), closeConsumer.GetAssignedBrokerServiceUrlTls())
+	}
+
+	// The broker does not always answer in-flight acks when it closes the
+	// consumer, so fail the wait instead of waiting for the timeout. The
+	// marker is set before the reconnect is signalled: grabConn takes the
+	// markers, so one landing after that would outlive the re-subscribe.
+	if closeConsumer != nil {
+		pc.markConnClosedForAck(cnx)
+		if ack := pc.inflightAck.Load(); ack != nil && ack.cnx == cnx {
+			cnx.CloseRequest(ack.requestID, errAckConsumerClosed)
+		}
 	}
 
 	select {
@@ -2393,9 +2500,16 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		}
 	}
 
-	// Register handler BEFORE the subscribe RPC so no frames are missed
+	// Register handler BEFORE the subscribe RPC so no frames are missed.
+	// The close markers are taken first: the pool may hand back the very
+	// connection the broker closed the consumer on, and leaving its marker
+	// would fail every ack from now on. A close of the new subscription can
+	// only be delivered after the handler exists, so it is not wiped; a
+	// failed attempt puts the markers back.
+	closedAckConns := pc.takeClosedAckConns()
 	err = cnx.AddConsumeHandler(pc.consumerID, pc)
 	if err != nil {
+		pc.restoreClosedAckConns(closedAckConns)
 		restoreConn()
 		pc.log.WithError(err).Error("Failed to add consumer handler")
 		return err
@@ -2404,6 +2518,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 	res, err := pc.client.rpcClient.RequestOnCnx(cnx, requestID, pb.BaseCommand_SUBSCRIBE, cmdSubscribe)
 	if err != nil {
 		cnx.DeleteConsumeHandler(pc.consumerID)
+		pc.restoreClosedAckConns(closedAckConns)
 		restoreConn()
 		pc.log.WithError(err).Error("Failed to create consumer")
 		if err == internal.ErrRequestTimeOut {
@@ -2435,8 +2550,10 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 		return nil
 	case pb.BaseCommand_ERROR:
 		errMsg := res.Response.GetError()
+		pc.restoreClosedAckConns(closedAckConns)
 		return fmt.Errorf("%s: %s", errMsg.GetError().String(), errMsg.GetMessage())
 	default:
+		pc.restoreClosedAckConns(closedAckConns)
 		return newUnexpectedErrMsg(msgType, requestID)
 	}
 }

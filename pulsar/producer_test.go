@@ -2848,6 +2848,10 @@ func (m *mockConn) SendRequest(requestID uint64, req *pb.BaseCommand, callback f
 	m.realConn.SendRequest(requestID, req, callback)
 }
 
+func (m *mockConn) CloseRequest(requestID uint64, err error) {
+	m.realConn.CloseRequest(requestID, err)
+}
+
 func (m *mockConn) getBuffersLen() int {
 	m.l.Lock()
 	defer m.l.Unlock()
