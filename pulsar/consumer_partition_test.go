@@ -32,6 +32,7 @@ import (
 	"github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -952,4 +953,250 @@ func (m *grabConnMockPool) GetConnection(_ *url.URL, _ *url.URL, _ int32) (inter
 		return nil, m.err
 	}
 	return m.cnx, nil
+}
+
+func TestShrinkReceiverQueueSizeBalanceIsPermitDebt(t *testing.T) {
+	pc := newPermitRegressionConsumer(&flowCapturingRPCClient{})
+	pc.currentQueueSize.Store(2)
+	pc.availablePermits.permits.Store(0)
+
+	pc.shrinkReceiverQueueSize()
+
+	assert.Equal(t, int32(1), pc.currentQueueSize.Load())
+	// Shrinking 2 -> 1 takes back a permit that the broker may already hold.
+	// A negative balance is debt, not an underflow bug, and must not be clamped.
+	assert.Equal(t, int32(-1), pc.availablePermits.get())
+}
+
+func TestShrinkReceiverQueueSizeDebtIsRepaidByConsumption(t *testing.T) {
+	rpc := &flowCapturingRPCClient{}
+	pc := newPermitRegressionConsumer(rpc)
+	pc.currentQueueSize.Store(2)
+	pc.availablePermits.permits.Store(0)
+
+	pc.shrinkReceiverQueueSize()
+	assert.Equal(t, int32(-1), pc.availablePermits.get())
+
+	// Both messages granted for the old capacity can still be in flight.
+	// Consuming the first pays the debt and leaves a zero balance, which is
+	// below the flow threshold for a queue of one.
+	pc.availablePermits.inc()
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+	assert.Empty(t, rpc.flowPermits())
+	assert.Equal(t, int32(1), pc.currentQueueSize.Load())
+
+	// Consuming the second repays the remaining capacity and resumes flow.
+	pc.availablePermits.inc()
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+	assert.Equal(t, []uint32{1}, rpc.flowPermits())
+}
+
+func TestResizeDoesNotAdjustPermitsWhenCASFails(t *testing.T) {
+	rpc := &flowCapturingRPCClient{}
+	pc := newPermitRegressionConsumer(rpc)
+	pc.currentQueueSize.Store(4)
+	pc.availablePermits.permits.Store(3)
+
+	// Another resize already moved the queue before this stale resize runs.
+	require.True(t, pc.currentQueueSize.CompareAndSwap(4, 8))
+	assert.False(t, pc.resizeCurrentQueueSize(4, 2))
+
+	assert.Equal(t, int32(8), pc.currentQueueSize.Load())
+	assert.Equal(t, int32(3), pc.availablePermits.get())
+	assert.Empty(t, rpc.flowPermits())
+}
+
+func TestShrinkDuringReconnectIsFoldedIntoInitialPermits(t *testing.T) {
+	rpc := &flowCapturingRPCClient{}
+	pc := newPermitRegressionConsumer(rpc)
+	pc.currentQueueSize.Store(2)
+	pc.availablePermits.permits.Store(0)
+	pc.invalidateAvailablePermits()
+
+	// The shrink wins while the reconnect has reset the permit balance but has
+	// not granted the new window yet. It must resize the queue without booking
+	// debt against the previous window.
+	pc.shrinkReceiverQueueSize()
+	assert.Equal(t, int32(1), pc.currentQueueSize.Load())
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+
+	pc.initializeAvailablePermits()
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+	assert.Equal(t, []uint32{1}, rpc.flowPermits())
+
+	// Consuming the newly granted permit must resume flow instead of paying
+	// phantom debt carried over from the previous capacity.
+	pc.availablePermits.inc()
+	assert.Equal(t, []uint32{1, 1}, rpc.flowPermits())
+}
+
+func TestPermitWritesDuringConnectionTransitionDoNotFlow(t *testing.T) {
+	rpc := &flowCapturingRPCClient{}
+	pc := newPermitRegressionConsumer(rpc)
+	pc.currentQueueSize.Store(4)
+	pc.availablePermits.permits.Store(10)
+
+	// Simulate ConnectionClosed / _setConn(newCnx): the old broker window is
+	// gone until the dispatcher grants the new one.
+	pc.invalidateAvailablePermits()
+	assert.False(t, pc.permitsInitialized)
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+
+	pc.scaleReceiverQueueHint.Store(true)
+	pc.expectMoreIncomingMessages()
+	assert.Equal(t, int32(8), pc.currentQueueSize.Load())
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+
+	pc.shrinkReceiverQueueSize()
+	assert.Equal(t, int32(4), pc.currentQueueSize.Load())
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+
+	// Old-window message consumption, skipped messages, and resume all have to
+	// stay off the new connection until the initial window is granted.
+	pc.availablePermits.inc()
+	pc.availablePermits.add(5)
+	pc.availablePermits.flush()
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+	assert.Empty(t, rpc.flowPermits())
+
+	pc.initializeAvailablePermits()
+	assert.True(t, pc.permitsInitialized)
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+	assert.Equal(t, []uint32{4}, rpc.flowPermits())
+}
+
+func TestInitializeAvailablePermitsSerializesConcurrentResizes(t *testing.T) {
+	rpc := newBlockingFlowRPCClient()
+	pc := newPermitRegressionConsumer(rpc)
+	pc.currentQueueSize.Store(4)
+	pc.availablePermits.permits.Store(100)
+
+	pc.invalidateAvailablePermits()
+	initDone := make(chan struct{})
+	go func() {
+		pc.initializeAvailablePermits()
+		close(initDone)
+	}()
+
+	select {
+	case permits := <-rpc.entered:
+		assert.Equal(t, uint32(4), permits)
+	case <-time.After(2 * time.Second):
+		t.Fatal("initial FLOW was not sent")
+	}
+	// The old balance is already discarded while the initial grant is in flight.
+	assert.Equal(t, int32(0), pc.availablePermits.get())
+
+	var resizes sync.WaitGroup
+	resizes.Add(2)
+	start := make(chan struct{})
+	go func() {
+		defer resizes.Done()
+		<-start
+		pc.resizeCurrentQueueSize(4, 2)
+	}()
+	go func() {
+		defer resizes.Done()
+		<-start
+		pc.resizeCurrentQueueSize(4, 8)
+	}()
+	close(start)
+
+	// Release the initial grant. Both resizes must run against the fresh window;
+	// exactly one can win the CAS from the shared old size of 4.
+	close(rpc.release)
+	resizes.Wait()
+	<-initDone
+
+	flows := rpc.flowPermits()
+	require.NotEmpty(t, flows)
+	assert.Equal(t, uint32(4), flows[0])
+	assert.NotContains(t, flows, uint32(100), "old-window balance must not be flushed")
+
+	switch pc.currentQueueSize.Load() {
+	case 2:
+		assert.Equal(t, int32(-2), pc.availablePermits.get())
+		assert.Len(t, flows, 1)
+	case 8:
+		assert.Equal(t, int32(0), pc.availablePermits.get())
+		assert.Equal(t, []uint32{4, 4}, flows)
+	default:
+		t.Fatalf("unexpected receiver queue size: %d", pc.currentQueueSize.Load())
+	}
+}
+
+func newPermitRegressionConsumer(rpc internal.RPCClient) *partitionConsumer {
+	c := &client{
+		rpcClient: rpc,
+		memLimit:  internal.NewMemoryLimitController(100*1024*1024, 0.95),
+		log:       log.DefaultNopLogger(),
+	}
+	pc := &partitionConsumer{
+		client: c,
+		options: &partitionConsumerOpts{
+			autoReceiverQueueSize: true,
+			receiverQueueSize:     100,
+		},
+		log:                log.DefaultNopLogger(),
+		permitsInitialized: true,
+	}
+	pc.availablePermits = &availablePermits{pc: pc}
+	pc._setConn(dummyConnection{})
+	return pc
+}
+
+type flowCapturingRPCClient struct {
+	internal.RPCClient
+	mu      sync.Mutex
+	permits []uint32
+}
+
+func (r *flowCapturingRPCClient) RequestOnCnxNoWait(_ internal.Connection, cmdType pb.BaseCommand_Type,
+	cmd proto.Message) error {
+	if cmdType == pb.BaseCommand_FLOW {
+		r.mu.Lock()
+		r.permits = append(r.permits, cmd.(*pb.CommandFlow).GetMessagePermits())
+		r.mu.Unlock()
+	}
+	return nil
+}
+
+func (r *flowCapturingRPCClient) flowPermits() []uint32 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]uint32(nil), r.permits...)
+}
+
+type blockingFlowRPCClient struct {
+	internal.RPCClient
+	entered chan uint32
+	release chan struct{}
+	mu      sync.Mutex
+	permits []uint32
+}
+
+func newBlockingFlowRPCClient() *blockingFlowRPCClient {
+	return &blockingFlowRPCClient{
+		entered: make(chan uint32, 4),
+		release: make(chan struct{}),
+	}
+}
+
+func (r *blockingFlowRPCClient) RequestOnCnxNoWait(_ internal.Connection, cmdType pb.BaseCommand_Type,
+	cmd proto.Message) error {
+	if cmdType == pb.BaseCommand_FLOW {
+		permits := cmd.(*pb.CommandFlow).GetMessagePermits()
+		r.mu.Lock()
+		r.permits = append(r.permits, permits)
+		r.mu.Unlock()
+		r.entered <- permits
+		<-r.release
+	}
+	return nil
+}
+
+func (r *blockingFlowRPCClient) flowPermits() []uint32 {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return append([]uint32(nil), r.permits...)
 }

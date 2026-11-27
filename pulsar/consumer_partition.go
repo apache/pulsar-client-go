@@ -208,6 +208,10 @@ type partitionConsumer struct {
 
 	// the number of message slots available
 	availablePermits *availablePermits
+	// permitMu serializes receiver queue resizes with the fresh permit window
+	// granted on (re)connect. permitsInitialized is guarded by permitMu.
+	permitMu           sync.Mutex
+	permitsInitialized bool
 
 	// the size of the queue channel for buffering messages
 	maxQueueSize    int32
@@ -291,13 +295,23 @@ type availablePermits struct {
 }
 
 func (p *availablePermits) inc() {
-	// atomic add availablePermits
-	p.add(1)
+	p.pc.permitMu.Lock()
+	defer p.pc.permitMu.Unlock()
+	p.addLocked(1)
 }
 
 func (p *availablePermits) add(delta int32) {
+	p.pc.permitMu.Lock()
+	defer p.pc.permitMu.Unlock()
+	p.addLocked(delta)
+}
+
+func (p *availablePermits) addLocked(delta int32) {
+	if !p.pc.permitsInitialized && !p.pc.isZeroQueueConsumer() {
+		return
+	}
 	p.permits.Add(delta)
-	p.flowIfNeed()
+	p.flowIfNeedLocked()
 }
 
 func (p *availablePermits) reset() {
@@ -308,8 +322,11 @@ func (p *availablePermits) get() int32 {
 	return p.permits.Load()
 }
 
-func (p *availablePermits) flowIfNeed() {
+func (p *availablePermits) flowIfNeedLocked() {
 	if p.pc.paused.Load() {
+		return
+	}
+	if !p.pc.permitsInitialized && !p.pc.isZeroQueueConsumer() {
 		return
 	}
 
@@ -339,7 +356,16 @@ func (p *availablePermits) flowIfNeed() {
 }
 
 func (p *availablePermits) flush() {
+	p.pc.permitMu.Lock()
+	defer p.pc.permitMu.Unlock()
+	p.flushLocked()
+}
+
+func (p *availablePermits) flushLocked() {
 	if p.pc.paused.Load() {
+		return
+	}
+	if !p.pc.permitsInitialized && !p.pc.isZeroQueueConsumer() {
 		return
 	}
 
@@ -1818,6 +1844,11 @@ func createEncryptionContext(msgMeta *pb.MessageMetadata) *EncryptionContext {
 }
 
 func (pc *partitionConsumer) ConnectionClosed(closeConsumer *pb.CommandCloseConsumer) {
+	// The broker permit window belongs to the connection that is going away.
+	// Suppress permit additions and FLOW until the next connection grants a
+	// fresh window (see initializeAvailablePermits).
+	pc.invalidateAvailablePermits()
+
 	// Trigger reconnection in the consumer goroutine
 	pc.log.Debug("connection closed and send to connectClosedCh")
 	pc.reconnectCount.Inc()
@@ -1945,23 +1976,7 @@ func (pc *partitionConsumer) dispatcher() {
 			pc.log.Debug("dispatcher received connection event")
 
 			messages = nil
-
-			// reset available permits
-			pc.availablePermits.reset()
-
-			var initialPermits uint32
-			if pc.options.autoReceiverQueueSize {
-				initialPermits = uint32(pc.currentQueueSize.Load())
-			} else {
-				initialPermits = uint32(pc.maxQueueSize)
-			}
-
-			pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
-			if pc.paused.Load() {
-				pc.availablePermits.add(int32(initialPermits))
-			} else if err := pc.internalFlow(initialPermits); err != nil && !pc.options.enableZeroQueueConsumer {
-				pc.log.WithError(err).Error("unable to send initial permits to broker")
-			}
+			pc.initializeAvailablePermits()
 
 		case _, ok := <-pc.dispatcherSeekingControlCh:
 			if !ok {
@@ -2380,6 +2395,7 @@ func (pc *partitionConsumer) grabConn(assignedBrokerURL string) error {
 	if v := pc.conn.Load(); v != nil {
 		prevConn = *v
 	}
+	pc.invalidateAvailablePermits()
 	pc._setConn(cnx)
 
 	// restoreConn rolls back pc.conn to the previous connection (or nil on
@@ -2509,6 +2525,70 @@ func getPreviousMessage(mid *trackingMessageID) *trackingMessageID {
 	}
 }
 
+// initializeAvailablePermits starts a fresh broker permit window after a
+// (re)connect. The receiver queue size is sampled and the initial grant is sent
+// under permitMu, so a concurrent resize is either folded into the sample or
+// applied to the window after it is granted; it can never book debt against the
+// previous window. This mirrors the Java client's initializeReceiverQueuePermits.
+func (pc *partitionConsumer) initializeAvailablePermits() {
+	pc.permitMu.Lock()
+	defer pc.permitMu.Unlock()
+
+	pc.availablePermits.reset()
+	pc.permitsInitialized = false
+
+	var initialPermits uint32
+	if pc.options.autoReceiverQueueSize {
+		initialPermits = uint32(pc.currentQueueSize.Load())
+	} else {
+		initialPermits = uint32(pc.maxQueueSize)
+	}
+
+	pc.log.Debugf("dispatcher requesting initial permits=%d", initialPermits)
+	pc.permitsInitialized = true
+	if pc.paused.Load() {
+		pc.availablePermits.addLocked(int32(initialPermits))
+	} else if err := pc.internalFlow(initialPermits); err != nil && !pc.options.enableZeroQueueConsumer {
+		pc.log.WithError(err).Error("unable to send initial permits to broker")
+	}
+}
+
+// resizeCurrentQueueSize applies a resize and its permit delta under permitMu.
+// It returns false when another resize already changed the queue size.
+func (pc *partitionConsumer) resizeCurrentQueueSize(oldSize, newSize int32) bool {
+	pc.permitMu.Lock()
+	defer pc.permitMu.Unlock()
+
+	if !pc.currentQueueSize.CompareAndSwap(oldSize, newSize) {
+		return false
+	}
+	if pc.permitsInitialized {
+		// A negative balance is intentional debt that consumption repays, as in
+		// the Java client. Resizes before the initial grant are folded into it.
+		pc.availablePermits.addLocked(newSize - oldSize)
+	}
+	return true
+}
+
+// invalidateAvailablePermits closes the current broker permit window before the
+// connection is replaced or lost. Until initializeAvailablePermits grants the
+// new window, permit additions and FLOW commands are suppressed, so messages
+// consumed from the previous window cannot over-grant permits on the new
+// connection.
+func (pc *partitionConsumer) invalidateAvailablePermits() {
+	pc.permitMu.Lock()
+	defer pc.permitMu.Unlock()
+
+	pc.permitsInitialized = false
+	if pc.availablePermits != nil {
+		pc.availablePermits.reset()
+	}
+}
+
+func (pc *partitionConsumer) isZeroQueueConsumer() bool {
+	return pc.options != nil && pc.options.enableZeroQueueConsumer
+}
+
 func (pc *partitionConsumer) expectMoreIncomingMessages() {
 	if !pc.options.autoReceiverQueueSize {
 		return
@@ -2518,9 +2598,8 @@ func (pc *partitionConsumer) expectMoreIncomingMessages() {
 		maxSize := int32(pc.options.receiverQueueSize)
 		newSize := int32(math.Min(float64(maxSize), float64(oldSize*2)))
 		usagePercent := pc.client.memLimit.CurrentUsagePercent()
-		if usagePercent < receiverQueueExpansionMemThreshold && newSize > oldSize {
-			pc.currentQueueSize.CompareAndSwap(oldSize, newSize)
-			pc.availablePermits.add(newSize - oldSize)
+		if usagePercent < receiverQueueExpansionMemThreshold && newSize > oldSize &&
+			pc.resizeCurrentQueueSize(oldSize, newSize) {
 			pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
 		}
 	}
@@ -2544,9 +2623,7 @@ func (pc *partitionConsumer) shrinkReceiverQueueSize() {
 	oldSize := pc.currentQueueSize.Load()
 	minSize := int32(math.Min(float64(initialReceiverQueueSize), float64(pc.options.receiverQueueSize)))
 	newSize := int32(math.Max(float64(minSize), float64(oldSize/2)))
-	if newSize < oldSize {
-		pc.currentQueueSize.CompareAndSwap(oldSize, newSize)
-		pc.availablePermits.add(newSize - oldSize)
+	if newSize < oldSize && pc.resizeCurrentQueueSize(oldSize, newSize) {
 		pc.log.Debugf("update currentQueueSize from %d -> %d", oldSize, newSize)
 	}
 }
