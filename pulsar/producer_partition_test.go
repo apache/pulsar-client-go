@@ -250,3 +250,197 @@ func TestReserveResourcesContextErrorPreservesResult(t *testing.T) {
 		}
 	}
 }
+
+// closeTestRPC answers CLOSE_PRODUCER locally so doClose can run without a broker. If closeEntered is set, the
+// close RPC signals it and then waits for closeRelease, so a test can act while the RPC is in flight.
+type closeTestRPC struct {
+	internal.RPCClient
+	closeEntered chan struct{}
+	closeRelease chan struct{}
+}
+
+func (*closeTestRPC) NewRequestID() uint64 { return 1 }
+
+func (r *closeTestRPC) RequestOnCnx(_ internal.Connection, _ uint64, cmd pb.BaseCommand_Type,
+	_ proto.Message) (*internal.RPCResult, error) {
+	if cmd == pb.BaseCommand_CLOSE_PRODUCER && r.closeEntered != nil {
+		close(r.closeEntered)
+		<-r.closeRelease
+	}
+	return nil, nil
+}
+
+// gatedSemaphore signals entered when Acquire is called and waits for release before acquiring, so a test knows the
+// sender has passed the producer state check and controls when it continues.
+type gatedSemaphore struct {
+	internal.Semaphore
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s *gatedSemaphore) Acquire(ctx context.Context) bool {
+	close(s.entered)
+	<-s.release
+	return s.Semaphore.Acquire(ctx)
+}
+
+// doneSignalCtx signals entered the first time Done is called. FlushWithCtx calls Done only in its enqueue select,
+// after the producer state check.
+type doneSignalCtx struct {
+	context.Context
+	once    sync.Once
+	entered chan struct{}
+}
+
+func (c *doneSignalCtx) Done() <-chan struct{} {
+	c.once.Do(func() { close(c.entered) })
+	return c.Context.Done()
+}
+
+// newClosableTestProducer builds a ready partitionProducer that can run its event loop and doClose without a broker.
+func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
+	t.Helper()
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	p := &partitionProducer{
+		client: &client{
+			rpcClient: &closeTestRPC{},
+			memLimit:  internal.NewMemoryLimitController(1<<20, 0),
+		},
+		topic:            "topic",
+		log:              plog.DefaultNopLogger(),
+		options:          &ProducerOptions{},
+		dataChan:         make(chan *sendRequest, maxPending),
+		cmdChan:          make(chan interface{}, 10),
+		closedCh:         make(chan struct{}),
+		connectClosedCh:  make(chan *connectionClosed, 1),
+		batchFlushTicker: time.NewTicker(time.Hour),
+		publishSemaphore: internal.NewSemaphore(int32(maxPending)),
+		pendingQueue:     internal.NewBlockingQueue(maxPending),
+		metrics:          internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()).GetLeveledMetrics("topic"),
+		ctx:              ctx,
+		cancelFunc:       cancel,
+	}
+	p.setProducerState(producerReady)
+	p._setConn(&dummyConnection{})
+	return p
+}
+
+// callOutcome records what a concurrent call returned, or whether it panicked.
+type callOutcome struct {
+	err      error
+	panicked any
+}
+
+func awaitSignal(t *testing.T, ch <-chan struct{}, what string) {
+	t.Helper()
+	select {
+	case <-ch:
+	case <-time.After(5 * time.Second):
+		t.Fatalf("timed out waiting for %s", what)
+	}
+}
+
+// Regression for #1583: a sender that passed the state check before the producer closed itself must get
+// ErrProducerClosed. It must not panic with "send on closed channel".
+func TestSendAsyncBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	go p.runEventsLoop()
+	sem := &gatedSemaphore{Semaphore: p.publishSemaphore, entered: make(chan struct{}), release: make(chan struct{})}
+	p.publishSemaphore = sem
+
+	resCh := make(chan callOutcome, 1)
+	go func() {
+		var out callOutcome
+		defer func() {
+			out.panicked = recover()
+			resCh <- out
+		}()
+		p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("blocked")},
+			func(_ MessageID, _ *ProducerMessage, err error) { out.err = err })
+	}()
+
+	// The sender is in Acquire, so it has passed the state check. Close the producer the way the reconnect path
+	// does, and only then let the sender continue to the enqueue.
+	awaitSignal(t, sem.entered, "the sender to reach Acquire")
+	p.doClose(ErrTopicTerminated)
+	close(sem.release)
+
+	select {
+	case out := <-resCh:
+		require.Nil(t, out.panicked, "SendAsync panicked while the producer was closing")
+		require.ErrorIs(t, out.err, ErrProducerClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("SendAsync did not return after the producer closed")
+	}
+}
+
+// Regression for #1583: a FlushWithCtx blocked on a full cmdChan when the producer closes itself must
+// return ErrProducerClosed. It must not panic with "send on closed channel".
+func TestFlushBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	// No event loop runs here, so the full cmdChan keeps FlushWithCtx blocked on its send.
+	for i := 0; i < cap(p.cmdChan); i++ {
+		p.cmdChan <- &flushRequest{doneCh: make(chan struct{})}
+	}
+
+	ctx := &doneSignalCtx{Context: context.Background(), entered: make(chan struct{})}
+	resCh := make(chan callOutcome, 1)
+	go func() {
+		var out callOutcome
+		defer func() {
+			out.panicked = recover()
+			resCh <- out
+		}()
+		out.err = p.FlushWithCtx(ctx)
+	}()
+
+	awaitSignal(t, ctx.entered, "FlushWithCtx to reach its enqueue")
+	p.doClose(ErrTopicTerminated)
+
+	select {
+	case out := <-resCh:
+		require.Nil(t, out.panicked, "FlushWithCtx panicked while the producer was closing")
+		require.ErrorIs(t, out.err, ErrProducerClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("FlushWithCtx did not return after the producer closed")
+	}
+}
+
+// Close passes its state check, then the producer starts closing itself. While the close RPC is in flight, Close
+// queues its request. The event loop must still be running to take it, so Close returns.
+func TestCloseQueuedDuringSelfCloseRPCReturns(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	rpc := &closeTestRPC{closeEntered: make(chan struct{}), closeRelease: make(chan struct{})}
+	p.client.rpcClient = rpc
+	go p.runEventsLoop()
+
+	// Close calls cancelFunc right after its state check. Hold it there.
+	cancelEntered, cancelRelease := make(chan struct{}), make(chan struct{})
+	cancel := p.cancelFunc
+	p.cancelFunc = func() {
+		close(cancelEntered)
+		<-cancelRelease
+		cancel()
+	}
+
+	closeDone := make(chan struct{})
+	go func() {
+		defer close(closeDone)
+		p.Close()
+	}()
+	awaitSignal(t, cancelEntered, "Close to pass its state check")
+
+	selfCloseDone := make(chan struct{})
+	go func() {
+		defer close(selfCloseDone)
+		p.doClose(ErrTopicTerminated)
+	}()
+	awaitSignal(t, rpc.closeEntered, "the self-close RPC to start")
+
+	close(cancelRelease)
+	awaitSignal(t, closeDone, "Close to return while the self-close RPC is in flight")
+
+	close(rpc.closeRelease)
+	awaitSignal(t, selfCloseDone, "the self-close to finish")
+}
