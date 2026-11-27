@@ -21,9 +21,11 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSemaphore(t *testing.T) {
@@ -73,4 +75,151 @@ func TestSemaphore_ContextExpire(t *testing.T) {
 	s.Release()
 
 	assert.True(t, s.TryAcquire())
+}
+
+// TestSemaphore_ReleaseRacingCancelledAcquire reproduces the race where Release runs
+// while a blocked Acquire is being cancelled. Release must never block, and the
+// permit accounting must stay correct.
+func TestSemaphore_ReleaseRacingCancelledAcquire(t *testing.T) {
+	const iterations = 2000
+	for i := 0; i < iterations; i++ {
+		// Each iteration runs in a synctest bubble so synctest.Wait can confirm
+		// the waiter is parked. Release and cancel still race on real goroutines.
+		synctest.Test(t, func(t *testing.T) {
+			s := NewSemaphore(1)
+			require.True(t, s.Acquire(context.Background()))
+
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			acquired := make(chan bool, 1)
+			go func() {
+				acquired <- s.Acquire(ctx)
+			}()
+			// Wait until the waiter is blocked in Acquire.
+			synctest.Wait()
+
+			start := make(chan struct{})
+			released := make(chan struct{})
+			go func() {
+				<-start
+				s.Release()
+				close(released)
+			}()
+			close(start)
+			cancel()
+
+			// Time is fake inside the bubble: the timeout fires only if every
+			// goroutine is durably blocked, i.e. Release or Acquire is stuck.
+			select {
+			case <-released:
+			case <-time.After(time.Second):
+				t.Fatalf("iteration %d: Release blocked while racing a cancelled Acquire", i)
+			}
+
+			var got bool
+			select {
+			case got = <-acquired:
+			case <-time.After(time.Second):
+				t.Fatalf("iteration %d: Acquire did not return after cancel", i)
+			}
+
+			// Exactly one permit is outstanding if the waiter reports success, none otherwise.
+			if got {
+				require.False(t, s.TryAcquire(), "iteration %d: permit granted to waiter but still available", i)
+				s.Release()
+			} else {
+				require.True(t, s.TryAcquire(), "iteration %d: permit lost after cancelled Acquire", i)
+				s.Release()
+			}
+			require.True(t, s.TryAcquire(), "iteration %d: semaphore not empty after cleanup", i)
+			require.False(t, s.TryAcquire(), "iteration %d: semaphore over-admitted", i)
+			s.Release()
+		})
+	}
+}
+
+func TestSemaphore_CancelBlockedAcquire(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := NewSemaphore(1)
+		require.True(t, s.Acquire(context.Background()))
+
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		acquired := make(chan bool, 1)
+		go func() {
+			acquired <- s.Acquire(ctx)
+		}()
+
+		// Wait until the waiter is blocked in Acquire.
+		synctest.Wait()
+		select {
+		case <-acquired:
+			t.Fatal("Acquire returned while no permit was available")
+		default:
+		}
+
+		cancel()
+		synctest.Wait()
+		select {
+		case got := <-acquired:
+			assert.False(t, got)
+		default:
+			t.Fatal("Acquire did not return after cancel")
+		}
+
+		// The cancelled Acquire must not hold a permit.
+		assert.False(t, s.TryAcquire())
+		s.Release()
+		assert.True(t, s.TryAcquire())
+		assert.False(t, s.TryAcquire())
+	})
+}
+
+// TestSemaphore_ReleaseHandsPermitToWaiter checks that a permit released while an
+// Acquire is blocked goes to that Acquire, not to a later TryAcquire.
+func TestSemaphore_ReleaseHandsPermitToWaiter(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		s := NewSemaphore(1)
+		require.True(t, s.Acquire(context.Background()))
+
+		acquired := make(chan bool, 1)
+		go func() {
+			acquired <- s.Acquire(context.Background())
+		}()
+		// Wait until the waiter is blocked in Acquire, so Release hands it the slot.
+		synctest.Wait()
+
+		s.Release()
+		assert.False(t, s.TryAcquire(), "released permit was taken from the blocked Acquire")
+
+		synctest.Wait()
+		select {
+		case got := <-acquired:
+			assert.True(t, got)
+		default:
+			t.Fatal("blocked Acquire did not get the released permit")
+		}
+		s.Release()
+		assert.True(t, s.TryAcquire())
+	})
+}
+
+func TestSemaphore_ReleaseWithoutAcquire(t *testing.T) {
+	s := NewSemaphore(2)
+
+	done := make(chan struct{})
+	go func() {
+		s.Release()
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("Release blocked when no permit was held")
+	}
+
+	// An unmatched Release must not raise the capacity above maxPermits.
+	assert.True(t, s.TryAcquire())
+	assert.True(t, s.TryAcquire())
+	assert.False(t, s.TryAcquire())
 }

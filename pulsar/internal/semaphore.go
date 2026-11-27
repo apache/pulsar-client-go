@@ -19,7 +19,6 @@ package internal
 
 import (
 	"context"
-	"sync/atomic"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -39,17 +38,20 @@ type Semaphore interface {
 	// one.  If any threads are trying to acquire a permit, then one is
 	// selected and given the permit that was just released.  That thread
 	// is (re)enabled for thread scheduling purposes.
-	// There is no requirement that a thread that releases a permit must
-	// have acquired that permit by calling Acquire().
-	// Correct usage of a semaphore is established by programming convention
-	// in the application.
+	// Release never blocks. The permit does not have to be released by the
+	// goroutine that acquired it, but each Release must match an earlier
+	// successful Acquire or TryAcquire. A Release when no permit is held is
+	// a no-op.
 	Release()
 }
 
 type semaphore struct {
-	maxPermits int32
-	permits    int32
-	ch         chan bool
+	// tokens holds one element per permit currently held. Its capacity is the
+	// maximum number of permits. Acquire puts a token in, Release takes one out.
+	// Release never waits for another goroutine, and a blocked Acquire is
+	// cancelled atomically by select, so no permit can be lost or leaked.
+	// Goroutines blocked sending on a full channel are woken in FIFO order.
+	tokens chan struct{}
 }
 
 func NewSemaphore(maxPermits int32) Semaphore {
@@ -58,48 +60,44 @@ func NewSemaphore(maxPermits int32) Semaphore {
 	}
 
 	return &semaphore{
-		maxPermits: maxPermits,
-		permits:    0,
-		ch:         make(chan bool),
+		tokens: make(chan struct{}, maxPermits),
 	}
 }
 
 func (s *semaphore) Acquire(ctx context.Context) bool {
-	permits := atomic.AddInt32(&s.permits, 1)
-	if permits <= s.maxPermits {
+	// Fast path: take a free permit without considering the context,
+	// matching the previous behaviour.
+	select {
+	case s.tokens <- struct{}{}:
 		return true
+	default:
 	}
 
-	// Block on the channel until a new permit is available
-	// or the context expires
+	// Block until a permit is available or the context expires
 	select {
-	case <-s.ch:
+	case s.tokens <- struct{}{}:
 		return true
 	case <-ctx.Done():
-		atomic.AddInt32(&s.permits, -1)
 		return false
 	}
 }
 
 func (s *semaphore) TryAcquire() bool {
-	for {
-		currentPermits := atomic.LoadInt32(&s.permits)
-		if currentPermits >= s.maxPermits {
-			// All the permits are already exhausted
-			return false
-		}
-
-		if atomic.CompareAndSwapInt32(&s.permits, currentPermits, currentPermits+1) {
-			// Successfully incremented counter
-			return true
-		}
+	select {
+	case s.tokens <- struct{}{}:
+		return true
+	default:
+		// All the permits are already exhausted
+		return false
 	}
 }
 
 func (s *semaphore) Release() {
-	permits := atomic.AddInt32(&s.permits, -1)
-	if permits >= s.maxPermits {
-		// Unblock the next in line to acquire the semaphore
-		s.ch <- true
+	select {
+	case <-s.tokens:
+	default:
+		// No permit is held. Releasing it is a no-op, so an unmatched Release
+		// cannot raise the capacity above maxPermits.
+		log.Warn("Semaphore released without a matching acquire")
 	}
 }
