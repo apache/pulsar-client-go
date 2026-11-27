@@ -21,6 +21,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -319,7 +320,6 @@ func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
 		dataChan:         make(chan *sendRequest, maxPending),
 		cmdChan:          make(chan interface{}, 10),
 		closedCh:         make(chan struct{}),
-		selfClosedCh:     make(chan struct{}),
 		closingCh:        make(chan struct{}),
 		loopDone:         make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
@@ -601,22 +601,23 @@ func TestExplicitCloseReturnsAfterPendingCallbacks(t *testing.T) {
 	}
 }
 
-// A public Close queues its request while the event loop runs the callback of a send that failed because Close
-// cancelled the context. The callback calls the public Close and waits for the first call to leave closeOnce. Then
-// the producer closes itself and finishes its cleanup. The first Close must return without waiting for the event
-// loop, which is held by the callback.
-func TestLoopCallbackClosesProducerWhileSelfCloseWins(t *testing.T) {
+// A public Close queues its request after it cancelled the context, and the event loop handles a send before it
+// would take the request. The send is not written, and the event loop runs no callback for it. Then the producer
+// closes itself: the send fails with the self-close reason, and its callback calls the public Close while the first
+// call holds closeOnce. Both calls must return.
+func TestSendAfterCloseCancelFailsWhenSelfCloseWins(t *testing.T) {
 	p := newClosableTestProducer(t, 1)
 	p.options = &ProducerOptions{DisableBatching: true}
 	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
 	p.sequenceIDGenerator = new(uint64)
 	p.encryptor = internalcrypto.NewNoopEncryptor()
 	p.client.metrics = internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	conn := &countingWriteConnection{}
+	p._setConn(conn)
 	pp := newTestTopLevelProducer(p)
-	cbEntered, cbErr := make(chan struct{}), make(chan error, 1)
+	cbErr := make(chan error, 1)
 	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("late")},
 		func(_ MessageID, _ *ProducerMessage, err error) {
-			close(cbEntered)
 			pp.Close()
 			cbErr <- err
 		})
@@ -630,18 +631,14 @@ func TestLoopCallbackClosesProducerWhileSelfCloseWins(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Close did not queue its request")
 	}
-	// Play the event loop: it handles the send first, and its callback runs on the loop. After that the loop sees
-	// closedCh and exits without taking the close request.
-	loopExited := runAsync(func() {
-		defer close(p.loopDone)
-		p.internalSend(<-p.dataChan)
-	})
-	awaitSignal(t, cbEntered, "the send callback to run on the event loop")
+	// Play the event loop: it handles the send first, then sees closingCh and exits without taking the request.
+	p.internalSend(<-p.dataChan)
+	close(p.loopDone)
 
 	p.doClose(ErrTopicTerminated)
 	awaitSignal(t, closeDone, "the first Close to return after the producer closed itself")
-	awaitSignal(t, loopExited, "the event loop to exit")
-	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+	require.ErrorIs(t, <-cbErr, ErrTopicTerminated)
+	require.Zero(t, conn.writes.Load(), "a message was written after Close")
 }
 
 // Regression for the retryable backlog-quota path: failPendingMessages fails the pending messages but the producer
@@ -999,4 +996,109 @@ func TestPendingChunksReleaseAllPermitsWhenProducerCloses(t *testing.T) {
 	require.False(t, p.publishSemaphore.TryAcquire(), "more permits were released than acquired")
 	require.Zero(t, pending.v.Load())
 	require.Zero(t, p.client.memLimit.CurrentUsage())
+}
+
+// An explicit public Close fails a pending message and a queued send, and both callbacks call the public Close
+// again. The nested calls must return although the outer call has not returned yet, and the outer call must return
+// after the callbacks.
+func TestShutdownCallbacksCallPublicCloseDuringExplicitClose(t *testing.T) {
+	p := newClosableTestProducer(t, 2)
+	pp := newTestTopLevelProducer(p)
+	closeDone := make(chan struct{})
+	cbErrs := make(chan error, 2)
+	cb := func(_ MessageID, _ *ProducerMessage, err error) {
+		// The outer Close must not return while this callback runs. The bound only limits how long that is checked.
+		select {
+		case <-closeDone:
+			cbErrs <- errors.New("Close returned before the callback ran")
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+		pp.Close()
+		cbErrs <- err
+	}
+	addPendingSend(t, p, cb)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("queued")}, cb)
+	require.Len(t, p.dataChan, 1)
+
+	go func() {
+		defer close(closeDone)
+		pp.Close()
+	}()
+	// No event loop runs. Play it, so the send request is still queued when the producer closes.
+	loopClosed := runAsync(func() {
+		cmd := <-p.cmdChan
+		p.internalClose(cmd.(*closeProducer))
+	})
+
+	awaitSignal(t, closeDone, "the outer public Close to return")
+	awaitSignal(t, loopClosed, "the event loop to finish the close")
+	for i := 0; i < 2; i++ {
+		require.ErrorIs(t, <-cbErrs, ErrProducerClosed)
+	}
+}
+
+// reconnectTestRPC lets grabCnx reconnect the producer without a broker.
+type reconnectTestRPC struct {
+	closeTestRPC
+	cnx internal.Connection
+}
+
+func (r *reconnectTestRPC) LookupService(_ string) (internal.LookupService, error) {
+	u, _ := url.Parse("pulsar://localhost:6650")
+	return &grabConnMockLookup{result: &internal.LookupResult{LogicalAddr: u, PhysicalAddr: u}}, nil
+}
+
+func (r *reconnectTestRPC) RequestOnCnx(cnx internal.Connection, id uint64, cmd pb.BaseCommand_Type,
+	msg proto.Message) (*internal.RPCResult, error) {
+	if cmd == pb.BaseCommand_PRODUCER {
+		return &internal.RPCResult{Cnx: r.cnx, Response: &pb.BaseCommand{
+			ProducerSuccess: &pb.CommandProducerSuccess{ProducerName: proto.String("test")},
+		}}, nil
+	}
+	return r.closeTestRPC.RequestOnCnx(cnx, id, cmd, msg)
+}
+
+// A send reaches the event loop after Close cancelled the producer context, and a reconnect that was already
+// running finishes before the loop takes the close request. The reconnect must not write that message: Close fails
+// it with ErrProducerClosed, and a caller that retries could otherwise duplicate it.
+func TestSendAfterCloseCancelIsNotResentOnReconnect(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	p.options = &ProducerOptions{DisableBatching: true}
+	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
+	p.sequenceIDGenerator = new(uint64)
+	p.encryptor = internalcrypto.NewNoopEncryptor()
+	p.client.metrics = internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	conn := &countingWriteConnection{}
+	p._setConn(conn)
+	p.client.rpcClient = &reconnectTestRPC{cnx: conn}
+	p.client.cnxPool = &grabConnMockPool{cnx: conn}
+	cbErr := make(chan error, 1)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("late")},
+		func(_ MessageID, _ *ProducerMessage, err error) { cbErr <- err })
+	require.Len(t, p.dataChan, 1)
+
+	// Hold Close after it cancelled the context, before it queues its request.
+	cancelled, release := make(chan struct{}), make(chan struct{})
+	cancel := p.cancelFunc
+	p.cancelFunc = func() {
+		cancel()
+		close(cancelled)
+		<-release
+	}
+	closeDone := runAsync(p.Close)
+	awaitSignal(t, cancelled, "Close to cancel the context")
+
+	// Play the event loop: the send reaches it after the context was cancelled. Then the reconnect finishes and
+	// resends what is in pendingQueue.
+	p.internalSend(<-p.dataChan)
+	require.NoError(t, p.grabCnx(""))
+	require.Zero(t, conn.writes.Load(), "the reconnect wrote a message sent after Close")
+
+	close(release)
+	playEventLoopClose(t, p)
+	awaitSignal(t, closeDone, "Close to return")
+	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+	require.Zero(t, conn.writes.Load(), "a message was written after Close")
+	require.True(t, p.publishSemaphore.TryAcquire(), "the permit was not released")
 }
