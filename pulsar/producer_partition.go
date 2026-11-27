@@ -1456,7 +1456,7 @@ func (p *partitionProducer) ReceivedSendReceipt(response *pb.CommandSendReceipt)
 	batchSize := int32(len(pi.sendRequests))
 	for idx, i := range pi.sendRequests {
 		sr := i.(*sendRequest)
-		p.raiseLastSequenceID(int64(pi.sequenceID))
+		p.updateLastSequenceID(response, int64(pi.sequenceID))
 
 		msgID := newMessageID(
 			int64(response.MessageId.GetLedgerId()),
@@ -1581,11 +1581,29 @@ func (p *partitionProducer) LastSequenceID() int64 {
 	return atomic.LoadInt64(&p.lastSequenceID)
 }
 
+// updateLastSequenceID records the sequence id acknowledged by a send receipt. An ordinary receipt
+// stores it as is, so LastSequenceID reports the most recently published id even when explicit
+// sequence ids go backwards. A receipt for a send the broker deduplicated (ledger and entry id -1)
+// may be a replay of a message persisted before a reconnect whose receipt was lost; it only raises
+// the value, so it cannot move LastSequenceID behind the id recovered from ProducerSuccess.
+func (p *partitionProducer) updateLastSequenceID(response *pb.CommandSendReceipt, sequenceID int64) {
+	if isDuplicateSendReceipt(response) {
+		p.raiseLastSequenceID(sequenceID)
+		return
+	}
+	atomic.StoreInt64(&p.lastSequenceID, sequenceID)
+}
+
+// isDuplicateSendReceipt reports whether the broker answered the send as a duplicate, which it does
+// with ledger and entry id -1.
+func isDuplicateSendReceipt(response *pb.CommandSendReceipt) bool {
+	id := response.GetMessageId()
+	return int64(id.GetLedgerId()) == -1 && int64(id.GetEntryId()) == -1
+}
+
 // raiseLastSequenceID sets lastSequenceID to sequenceID if that is greater; it never lowers the value.
 // It is fed by the last sequence id the broker reports in ProducerSuccess, so that a recreated producer
-// reports the previous session's last message, and by send receipts. After a reconnect the broker may
-// already have persisted messages whose receipts were lost; their replayed sends complete as duplicates,
-// and those receipts must not move lastSequenceID behind the recovered value.
+// reports the previous session's last message, and by deduplicated send receipts.
 func (p *partitionProducer) raiseLastSequenceID(sequenceID int64) {
 	for {
 		current := atomic.LoadInt64(&p.lastSequenceID)
