@@ -62,6 +62,9 @@ type BatchBuilder interface {
 	// Return the batch container batch message in multiple batches.
 	IsMultiBatches() bool
 
+	// Discard empties the builder without encoding the batch, and returns the callbacks of the discarded messages.
+	Discard() []interface{}
+
 	reset()
 	Close() error
 }
@@ -289,6 +292,13 @@ func (bc *batchContainer) Flush() *FlushBatch {
 		Callbacks:  callbacks,
 		Error:      err,
 	}
+}
+
+// Discard empties the container without encoding the batch, and returns the callbacks of the discarded messages.
+func (bc *batchContainer) Discard() []interface{} {
+	callbacks := bc.callbacks
+	bc.reset()
+	return callbacks
 }
 
 // FlushBatches only for multiple batches container

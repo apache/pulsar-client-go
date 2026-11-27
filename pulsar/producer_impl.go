@@ -351,15 +351,31 @@ func (p *producer) FlushWithCtx(ctx context.Context) error {
 }
 
 func (p *producer) Close() {
+	var waits []func()
 	p.closeOnce.Do(func() {
 		p.stopDiscovery()
 
 		producers := p.getProducers()
 		for _, pp := range producers {
-			pp.Close()
+			waits = append(waits, startClose(pp))
 		}
 		p.client.handlers.Del(p)
 		p.metrics.ProducersPartitions.Sub(float64(len(producers)))
 		p.metrics.ProducersClosed.Inc()
 	})
+
+	// Wait for the callbacks of the failed messages only after leaving closeOnce. A callback that calls Close
+	// waits for closeOnce, so it would otherwise wait for itself.
+	for _, wait := range waits {
+		wait()
+	}
+}
+
+// startClose closes pp and returns a function that waits for the callbacks of the messages failed by the close.
+func startClose(pp Producer) func() {
+	if partition, ok := pp.(*partitionProducer); ok {
+		return partition.startClose()
+	}
+	pp.Close()
+	return func() {}
 }

@@ -19,7 +19,11 @@ package pulsar
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"net/url"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -76,7 +80,7 @@ func TestReceivedSendReceiptOwnership(t *testing.T) {
 				requests[idx] = &sendRequest{
 					producer: p, pool: &sync.Pool{}, msg: &ProducerMessage{},
 					callbackOnce: &sync.Once{}, publishTime: time.Now(),
-					semaphore: semaphore, memLimit: memory, reservedMem: 10,
+					semaphore: semaphore, reservedSemaphore: 1, memLimit: memory, reservedMem: 10,
 					callback: func(_ MessageID, _ *ProducerMessage, err error) {
 						calls[idx]++
 						results[idx] = err
@@ -308,6 +312,7 @@ func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
 		client: &client{
 			rpcClient: &closeTestRPC{},
 			memLimit:  internal.NewMemoryLimitController(1<<20, 0),
+			metrics:   internal.NewMetricsProvider(4, nil, prometheus.NewRegistry()),
 		},
 		topic:            "topic",
 		log:              plog.DefaultNopLogger(),
@@ -315,7 +320,7 @@ func newClosableTestProducer(t *testing.T, maxPending int) *partitionProducer {
 		dataChan:         make(chan *sendRequest, maxPending),
 		cmdChan:          make(chan interface{}, 10),
 		closedCh:         make(chan struct{}),
-		selfClosedCh:     make(chan struct{}),
+		closingCh:        make(chan struct{}),
 		loopDone:         make(chan struct{}),
 		connectClosedCh:  make(chan *connectionClosed, 1),
 		batchFlushTicker: time.NewTicker(time.Hour),
@@ -441,6 +446,7 @@ func TestSendAsyncBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
 func TestFlushBlockedWhenProducerClosesDoesNotPanic(t *testing.T) {
 	p := newClosableTestProducer(t, 1)
 	// No event loop runs here, so the full cmdChan keeps FlushWithCtx blocked on its send.
+	close(p.loopDone)
 	for i := 0; i < cap(p.cmdChan); i++ {
 		p.cmdChan <- &flushRequest{doneCh: make(chan struct{})}
 	}
@@ -508,6 +514,7 @@ func TestCloseAfterSelfCloseFinishedReturns(t *testing.T) {
 func TestCloseBlockedOnFullCmdChanReturnsWhenProducerClosesItself(t *testing.T) {
 	p := newClosableTestProducer(t, 1)
 	// No event loop runs, so the full cmdChan keeps Close blocked on its send.
+	close(p.loopDone)
 	for i := 0; i < cap(p.cmdChan); i++ {
 		p.cmdChan <- &flushRequest{doneCh: make(chan struct{})}
 	}
@@ -594,22 +601,23 @@ func TestExplicitCloseReturnsAfterPendingCallbacks(t *testing.T) {
 	}
 }
 
-// A public Close queues its request while the event loop runs the callback of a send that failed because Close
-// cancelled the context. The callback calls the public Close and waits for the first call to leave closeOnce. Then
-// the producer closes itself and finishes its cleanup. The first Close must return without waiting for the event
-// loop, which is held by the callback.
-func TestLoopCallbackClosesProducerWhileSelfCloseWins(t *testing.T) {
+// A public Close queues its request after it cancelled the context, and the event loop handles a send before it
+// would take the request. The send is not written, and the event loop runs no callback for it. Then the producer
+// closes itself: the send fails with the self-close reason, and its callback calls the public Close while the first
+// call holds closeOnce. Both calls must return.
+func TestSendAfterCloseCancelFailsWhenSelfCloseWins(t *testing.T) {
 	p := newClosableTestProducer(t, 1)
 	p.options = &ProducerOptions{DisableBatching: true}
 	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
 	p.sequenceIDGenerator = new(uint64)
 	p.encryptor = internalcrypto.NewNoopEncryptor()
 	p.client.metrics = internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	conn := &countingWriteConnection{}
+	p._setConn(conn)
 	pp := newTestTopLevelProducer(p)
-	cbEntered, cbErr := make(chan struct{}), make(chan error, 1)
+	cbErr := make(chan error, 1)
 	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("late")},
 		func(_ MessageID, _ *ProducerMessage, err error) {
-			close(cbEntered)
 			pp.Close()
 			cbErr <- err
 		})
@@ -623,18 +631,14 @@ func TestLoopCallbackClosesProducerWhileSelfCloseWins(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Close did not queue its request")
 	}
-	// Play the event loop: it handles the send first, and its callback runs on the loop. After that the loop sees
-	// closedCh and exits without taking the close request.
-	loopExited := runAsync(func() {
-		defer close(p.loopDone)
-		p.internalSend(<-p.dataChan)
-	})
-	awaitSignal(t, cbEntered, "the send callback to run on the event loop")
+	// Play the event loop: it handles the send first, then sees closingCh and exits without taking the request.
+	p.internalSend(<-p.dataChan)
+	close(p.loopDone)
 
 	p.doClose(ErrTopicTerminated)
 	awaitSignal(t, closeDone, "the first Close to return after the producer closed itself")
-	awaitSignal(t, loopExited, "the event loop to exit")
-	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+	require.ErrorIs(t, <-cbErr, ErrTopicTerminated)
+	require.Zero(t, conn.writes.Load(), "a message was written after Close")
 }
 
 // Regression for the retryable backlog-quota path: failPendingMessages fails the pending messages but the producer
@@ -669,4 +673,432 @@ func TestFlushWhilePendingMessagesFailReturnsError(t *testing.T) {
 	for i := 0; i < 2; i++ {
 		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
 	}
+}
+
+// Regression for #1582: send requests still buffered in dataChan when the producer closes itself must fail
+// with the close reason, and must release their permits and memory reservations.
+func TestBufferedSendRequestsFailWhenProducerCloses(t *testing.T) {
+	p := newClosableTestProducer(t, 10)
+	// No event loop runs, so the requests stay in dataChan. Mark the loop as already exited.
+	close(p.loopDone)
+
+	const n = 3
+	results := make(chan error, n)
+	for i := 0; i < n; i++ {
+		p.SendAsync(context.Background(), &ProducerMessage{Payload: make([]byte, 1024)},
+			func(_ MessageID, _ *ProducerMessage, err error) { results <- err })
+	}
+	require.Len(t, p.dataChan, n)
+	require.Positive(t, p.client.memLimit.CurrentUsage())
+
+	p.doClose(ErrTopicTerminated)
+
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-results:
+			require.ErrorIs(t, err, ErrTopicTerminated)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("callback %d of %d was never invoked", i+1, n)
+		}
+	}
+	require.Zero(t, p.client.memLimit.CurrentUsage())
+	for i := 0; i < 10; i++ {
+		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
+	}
+}
+
+// countingEncryptor counts Encrypt calls and fails them, so a test can see whether a batch was encoded.
+type countingEncryptor struct {
+	calls atomic.Int32
+}
+
+func (e *countingEncryptor) Encrypt([]byte, *pb.MessageMetadata) ([]byte, error) {
+	e.calls.Add(1)
+	return nil, errors.New("encrypt failed")
+}
+
+// countingGauge tracks the value of a gauge that is only incremented and decremented.
+type countingGauge struct {
+	prometheus.Gauge
+	v atomic.Int64
+}
+
+func (g *countingGauge) Inc() { g.v.Add(1) }
+func (g *countingGauge) Dec() { g.v.Add(-1) }
+
+// countPendingMessages replaces the MessagesPending gauge of p with one the test can read.
+func countPendingMessages(p *partitionProducer) *countingGauge {
+	g := &countingGauge{Gauge: p.metrics.MessagesPending}
+	p.metrics.MessagesPending = g
+	return g
+}
+
+// setTestBatchBuilder gives p a batch builder of the given type whose encryptor is enc.
+func setTestBatchBuilder(t *testing.T, p *partitionProducer, typ BatcherBuilderType, enc internalcrypto.Encryptor) {
+	t.Helper()
+	provider, err := GetBatcherBuilderProvider(typ)
+	require.NoError(t, err)
+	p.batchBuilder, err = provider(1000, 128*1024, 5*1024*1024, "test", 1, pb.CompressionType_NONE,
+		compression.Level(0), buffersPool, p.client.metrics, p.log, enc)
+	require.NoError(t, err)
+	p.encryptor = enc
+	p.sequenceIDGenerator = new(uint64)
+}
+
+func awaitErrors(t *testing.T, results <-chan error, n int, want error) {
+	t.Helper()
+	for i := 0; i < n; i++ {
+		select {
+		case err := <-results:
+			require.ErrorIs(t, err, want)
+		case <-time.After(5 * time.Second):
+			t.Fatalf("callback %d of %d was never invoked", i+1, n)
+		}
+	}
+}
+
+// Regression for #1582: messages still in the open batch when the producer closes itself must fail their
+// callbacks and release their memory reservations. The batch is discarded without being encoded.
+func TestBatchedMessagesFailWhenProducerCloses(t *testing.T) {
+	builders := map[string]BatcherBuilderType{"default": DefaultBatchBuilder, "key_based": KeyBasedBatchBuilder}
+	for name, typ := range builders {
+		t.Run(name, func(t *testing.T) {
+			p := newClosableTestProducer(t, 10)
+			enc := &countingEncryptor{}
+			setTestBatchBuilder(t, p, typ, enc)
+			// No event loop runs. Feed requests into the batch builder the way the loop does, one at a time.
+			close(p.loopDone)
+
+			const n = 5
+			results := make(chan error, n)
+			for i := 0; i < n; i++ {
+				p.SendAsync(context.Background(), &ProducerMessage{Key: fmt.Sprint(i % 2), Payload: make([]byte, 1024)},
+					func(_ MessageID, _ *ProducerMessage, err error) { results <- err })
+			}
+			for i := 0; i < n; i++ {
+				p.internalSend(<-p.dataChan)
+			}
+			// The messages must be held in the open batch, not in pendingQueue, or this does not test the batch path.
+			require.Zero(t, p.pendingQueue.Size())
+			require.Positive(t, p.client.memLimit.CurrentUsage())
+
+			p.doClose(ErrTopicTerminated)
+
+			awaitErrors(t, results, n, ErrTopicTerminated)
+			require.Zero(t, enc.calls.Load(), "the open batch was encoded on close")
+			require.Zero(t, p.client.memLimit.CurrentUsage())
+			for i := 0; i < 10; i++ {
+				require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
+			}
+		})
+	}
+}
+
+// A queued send fails while the producer closes itself, and its callback calls the public Close. Close must not
+// wait for the teardown that runs the callback.
+func TestQueuedSendCallbackClosesProducerDuringSelfClose(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	pp := newTestTopLevelProducer(p)
+	// No event loop runs, so the request stays in dataChan. Mark the loop as already exited.
+	close(p.loopDone)
+	cbErr := make(chan error, 1)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("queued")},
+		func(_ MessageID, _ *ProducerMessage, err error) {
+			pp.Close()
+			cbErr <- err
+		})
+	require.Len(t, p.dataChan, 1)
+
+	selfCloseDone := runAsync(func() { p.doClose(ErrTopicTerminated) })
+	awaitSignal(t, selfCloseDone, "the self-close to finish")
+	require.ErrorIs(t, <-cbErr, ErrTopicTerminated)
+}
+
+// expectCloseAfterCallback returns a callback that fails the test if Close has already returned when it runs, then
+// calls Close itself and reports its error. closeDone must be closed when the outer Close returns.
+func expectCloseAfterCallback(t *testing.T, p *partitionProducer, closeDone <-chan struct{}) (
+	func(MessageID, *ProducerMessage, error), <-chan error) {
+	t.Helper()
+	cbErr := make(chan error, 1)
+	return func(_ MessageID, _ *ProducerMessage, err error) {
+		// Close must not return while this callback runs. The bound only limits how long that is checked.
+		select {
+		case <-closeDone:
+			cbErr <- errors.New("Close returned before the callback ran")
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+		p.Close()
+		cbErr <- err
+	}, cbErr
+}
+
+// playEventLoopClose takes the close request that Close queued, and closes the producer the way the event loop does.
+func playEventLoopClose(t *testing.T, p *partitionProducer) {
+	t.Helper()
+	select {
+	case cmd := <-p.cmdChan:
+		require.IsType(t, &closeProducer{}, cmd)
+		p.internalClose(cmd.(*closeProducer))
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not queue its request")
+	}
+}
+
+// An explicit Close fails a queued send, and its callback calls Close again. The outer Close returns after the
+// callback, and the nested call must not wait for the teardown that runs it.
+func TestQueuedSendCallbackClosesProducerDuringExplicitClose(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	closeDone := make(chan struct{})
+	cb, cbErr := expectCloseAfterCallback(t, p, closeDone)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("queued")}, cb)
+	require.Len(t, p.dataChan, 1)
+
+	// No event loop runs. The test plays the loop, so the send request is still queued when the producer closes.
+	go func() {
+		defer close(closeDone)
+		p.Close()
+	}()
+	playEventLoopClose(t, p)
+
+	awaitSignal(t, closeDone, "Close to return")
+	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+}
+
+// A send request reaches the event loop after Close cancelled the producer context but before the loop takes the
+// close request. It must not be sent, and its callback must run before Close returns.
+func TestSendAfterCloseCancelFailsBeforeCloseReturns(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	p.options = &ProducerOptions{DisableBatching: true}
+	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
+	p.sequenceIDGenerator = new(uint64)
+	p.encryptor = internalcrypto.NewNoopEncryptor()
+	p.client.metrics = internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	conn := &countingWriteConnection{}
+	p._setConn(conn)
+	closeDone := make(chan struct{})
+	cb, cbErr := expectCloseAfterCallback(t, p, closeDone)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("late")}, cb)
+	require.Len(t, p.dataChan, 1)
+
+	go func() {
+		defer close(closeDone)
+		p.Close()
+	}()
+	// Close cancels the context before it queues the close request. Play the loop: handle the send first.
+	select {
+	case cmd := <-p.cmdChan:
+		p.internalSend(<-p.dataChan)
+		p.internalClose(cmd.(*closeProducer))
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close did not queue its request")
+	}
+
+	awaitSignal(t, closeDone, "Close to return")
+	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+	require.Zero(t, conn.writes.Load(), "a message was written after Close")
+	require.True(t, p.publishSemaphore.TryAcquire(), "the permit was not released")
+}
+
+// countingWriteConnection counts WriteData calls.
+type countingWriteConnection struct {
+	dummyConnection
+	writes atomic.Int32
+}
+
+func (c *countingWriteConnection) WriteData(_ context.Context, _ internal.Buffer) { c.writes.Add(1) }
+
+// A batch fails to serialize on the event loop, and the failed message's callback calls Close. Close needs the event
+// loop, so the callback must not run on it.
+func TestBatchErrorCallbackClosesProducer(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	enc := &countingEncryptor{}
+	setTestBatchBuilder(t, p, DefaultBatchBuilder, enc)
+	startEventLoop(p)
+
+	cbErr := make(chan error, 1)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("batched")},
+		func(_ MessageID, _ *ProducerMessage, err error) {
+			p.Close()
+			cbErr <- err
+		})
+	// Flush makes the event loop serialize the batch, which fails in the encryptor.
+	flushDone := runAsync(func() { _ = p.Flush() })
+
+	select {
+	case err := <-cbErr:
+		require.Error(t, err)
+		require.NotErrorIs(t, err, ErrProducerClosed)
+	case <-time.After(5 * time.Second):
+		t.Fatal("Close called from the batch error callback did not return")
+	}
+	awaitSignal(t, flushDone, "Flush to return")
+	require.EqualValues(t, 1, enc.calls.Load())
+}
+
+// Regression for #1582: a chunked send still queued in dataChan holds one permit per chunk. Failing it on close must
+// return all of them.
+func TestQueuedChunkedSendReleasesAllPermitsWhenProducerCloses(t *testing.T) {
+	const chunks = 3
+	p := newClosableTestProducer(t, chunks)
+	p.options = &ProducerOptions{DisableBatching: true, EnableChunking: true, ChunkMaxMessageSize: 1024}
+	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
+	p.sequenceIDGenerator = new(uint64)
+	// No event loop runs, so the request stays in dataChan. Mark the loop as already exited.
+	close(p.loopDone)
+	pending := countPendingMessages(p)
+
+	results := make(chan error, 1)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: make([]byte, 1024*chunks-100)},
+		func(_ MessageID, _ *ProducerMessage, err error) { results <- err })
+	require.Len(t, p.dataChan, 1)
+	require.False(t, p.publishSemaphore.TryAcquire(), "the chunked send should hold every permit")
+	require.EqualValues(t, chunks, pending.v.Load())
+
+	p.doClose(ErrTopicTerminated)
+
+	awaitErrors(t, results, 1, ErrTopicTerminated)
+	for i := 0; i < chunks; i++ {
+		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
+	}
+	require.Zero(t, pending.v.Load())
+	require.Zero(t, p.client.memLimit.CurrentUsage())
+}
+
+// A chunked send already split into chunks by the event loop holds one permit per pending chunk. Failing the
+// chunks on close must return all of them.
+func TestPendingChunksReleaseAllPermitsWhenProducerCloses(t *testing.T) {
+	const chunks = 3
+	p := newClosableTestProducer(t, chunks)
+	p.options = &ProducerOptions{DisableBatching: true, EnableChunking: true, ChunkMaxMessageSize: 1024}
+	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
+	p.sequenceIDGenerator = new(uint64)
+	p.encryptor = internalcrypto.NewNoopEncryptor()
+	p.client.metrics = internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	close(p.loopDone)
+	pending := countPendingMessages(p)
+
+	results := make(chan error, 1)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: make([]byte, 1024*chunks-100)},
+		func(_ MessageID, _ *ProducerMessage, err error) { results <- err })
+	// Split the request into chunks the way the event loop does. The producer is not connected, so the chunks
+	// stay in pendingQueue.
+	p.setProducerState(producerConnecting)
+	p.internalSend(<-p.dataChan)
+	require.Equal(t, chunks, p.pendingQueue.Size())
+
+	p.doClose(ErrTopicTerminated)
+
+	awaitErrors(t, results, 1, ErrTopicTerminated)
+	for i := 0; i < chunks; i++ {
+		require.True(t, p.publishSemaphore.TryAcquire(), "permit %d was not released", i)
+	}
+	require.False(t, p.publishSemaphore.TryAcquire(), "more permits were released than acquired")
+	require.Zero(t, pending.v.Load())
+	require.Zero(t, p.client.memLimit.CurrentUsage())
+}
+
+// An explicit public Close fails a pending message and a queued send, and both callbacks call the public Close
+// again. The nested calls must return although the outer call has not returned yet, and the outer call must return
+// after the callbacks.
+func TestShutdownCallbacksCallPublicCloseDuringExplicitClose(t *testing.T) {
+	p := newClosableTestProducer(t, 2)
+	pp := newTestTopLevelProducer(p)
+	closeDone := make(chan struct{})
+	cbErrs := make(chan error, 2)
+	cb := func(_ MessageID, _ *ProducerMessage, err error) {
+		// The outer Close must not return while this callback runs. The bound only limits how long that is checked.
+		select {
+		case <-closeDone:
+			cbErrs <- errors.New("Close returned before the callback ran")
+			return
+		case <-time.After(200 * time.Millisecond):
+		}
+		pp.Close()
+		cbErrs <- err
+	}
+	addPendingSend(t, p, cb)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("queued")}, cb)
+	require.Len(t, p.dataChan, 1)
+
+	go func() {
+		defer close(closeDone)
+		pp.Close()
+	}()
+	// No event loop runs. Play it, so the send request is still queued when the producer closes.
+	loopClosed := runAsync(func() {
+		cmd := <-p.cmdChan
+		p.internalClose(cmd.(*closeProducer))
+	})
+
+	awaitSignal(t, closeDone, "the outer public Close to return")
+	awaitSignal(t, loopClosed, "the event loop to finish the close")
+	for i := 0; i < 2; i++ {
+		require.ErrorIs(t, <-cbErrs, ErrProducerClosed)
+	}
+}
+
+// reconnectTestRPC lets grabCnx reconnect the producer without a broker.
+type reconnectTestRPC struct {
+	closeTestRPC
+	cnx internal.Connection
+}
+
+func (r *reconnectTestRPC) LookupService(_ string) (internal.LookupService, error) {
+	u, _ := url.Parse("pulsar://localhost:6650")
+	return &grabConnMockLookup{result: &internal.LookupResult{LogicalAddr: u, PhysicalAddr: u}}, nil
+}
+
+func (r *reconnectTestRPC) RequestOnCnx(cnx internal.Connection, id uint64, cmd pb.BaseCommand_Type,
+	msg proto.Message) (*internal.RPCResult, error) {
+	if cmd == pb.BaseCommand_PRODUCER {
+		return &internal.RPCResult{Cnx: r.cnx, Response: &pb.BaseCommand{
+			ProducerSuccess: &pb.CommandProducerSuccess{ProducerName: proto.String("test")},
+		}}, nil
+	}
+	return r.closeTestRPC.RequestOnCnx(cnx, id, cmd, msg)
+}
+
+// A send reaches the event loop after Close cancelled the producer context, and a reconnect that was already
+// running finishes before the loop takes the close request. The reconnect must not write that message: Close fails
+// it with ErrProducerClosed, and a caller that retries could otherwise duplicate it.
+func TestSendAfterCloseCancelIsNotResentOnReconnect(t *testing.T) {
+	p := newClosableTestProducer(t, 1)
+	p.options = &ProducerOptions{DisableBatching: true}
+	p.compressionProvider = internal.GetCompressionProvider(pb.CompressionType_NONE, compression.Level(0))
+	p.sequenceIDGenerator = new(uint64)
+	p.encryptor = internalcrypto.NewNoopEncryptor()
+	p.client.metrics = internal.NewMetricsProvider(4, nil, prometheus.NewRegistry())
+	conn := &countingWriteConnection{}
+	p._setConn(conn)
+	p.client.rpcClient = &reconnectTestRPC{cnx: conn}
+	p.client.cnxPool = &grabConnMockPool{cnx: conn}
+	cbErr := make(chan error, 1)
+	p.SendAsync(context.Background(), &ProducerMessage{Payload: []byte("late")},
+		func(_ MessageID, _ *ProducerMessage, err error) { cbErr <- err })
+	require.Len(t, p.dataChan, 1)
+
+	// Hold Close after it cancelled the context, before it queues its request.
+	cancelled, release := make(chan struct{}), make(chan struct{})
+	cancel := p.cancelFunc
+	p.cancelFunc = func() {
+		cancel()
+		close(cancelled)
+		<-release
+	}
+	closeDone := runAsync(p.Close)
+	awaitSignal(t, cancelled, "Close to cancel the context")
+
+	// Play the event loop: the send reaches it after the context was cancelled. Then the reconnect finishes and
+	// resends what is in pendingQueue.
+	p.internalSend(<-p.dataChan)
+	require.NoError(t, p.grabCnx(""))
+	require.Zero(t, conn.writes.Load(), "the reconnect wrote a message sent after Close")
+
+	close(release)
+	playEventLoopClose(t, p)
+	awaitSignal(t, closeDone, "Close to return")
+	require.ErrorIs(t, <-cbErr, ErrProducerClosed)
+	require.Zero(t, conn.writes.Load(), "a message was written after Close")
+	require.True(t, p.publishSemaphore.TryAcquire(), "the permit was not released")
 }

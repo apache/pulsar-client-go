@@ -219,6 +219,13 @@ func (bc *keyBasedBatchContainer) FlushBatches() []*FlushBatch {
 	return flushBatches
 }
 
+// Discard empties every key's batch without encoding it, and returns the callbacks of the discarded messages.
+func (bc *keyBasedBatchContainer) Discard() []interface{} {
+	callbacks := bc.callbacks
+	bc.reset()
+	return callbacks
+}
+
 func (bc *keyBasedBatchContainer) Flush() *FlushBatch {
 	panic("multi batches container not support Flush(), please use FlushBatches() instead")
 }

@@ -70,7 +70,7 @@ func TestGetMessagesByID(t *testing.T) {
 		EntryID  int64
 	}
 	messageIDMap := make(map[ledgerEntry]int32)
-	for i := 0; i <= numberMessages; i++ {
+	for i := 0; i < numberMessages; i++ {
 		producer.SendAsync(ctx, &pulsar.ProducerMessage{
 			Payload: []byte(fmt.Sprintf("hello-%d", i)),
 		}, func(id pulsar.MessageID, _ *pulsar.ProducerMessage, err error) {
@@ -208,25 +208,21 @@ func TestPeekMessagesWithProperties(t *testing.T) {
 			}
 
 			var wg sync.WaitGroup
-			numberOfMessagesToWaitFor := 10
-			numberOfMessagesToSend := numberOfMessagesToWaitFor
-			if tc.batched {
-				// If batched send one extra message to cause the batch to be sent immediately
-				numberOfMessagesToSend++
-			}
-			wg.Add(numberOfMessagesToWaitFor)
+			numberOfMessages := 10
+			wg.Add(numberOfMessages)
 
-			for i := 0; i < numberOfMessagesToSend; i++ {
+			for i := 0; i < numberOfMessages; i++ {
 				producer.SendAsync(ctx, &pulsar.ProducerMessage{
 					Payload:    []byte("test-message"),
 					Properties: props,
 				}, func(_ pulsar.MessageID, _ *pulsar.ProducerMessage, err error) {
 					assert.Nil(t, err)
-					if i < numberOfMessagesToWaitFor {
-						wg.Done()
-					}
+					wg.Done()
 				})
 			}
+			// Send the last batch now instead of waiting for the publish delay. A message left in the open batch
+			// would fail with ErrProducerClosed when the producer closes.
+			assert.NoError(t, producer.FlushWithCtx(ctx))
 			wg.Wait()
 
 			// Peek messages
