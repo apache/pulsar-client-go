@@ -385,3 +385,56 @@ func (msg *mockMessage2) Index() *uint64 {
 func (msg *mockMessage2) BrokerPublishTime() *time.Time {
 	return nil
 }
+
+// fixedNackBackoffPolicy always returns the same delay, used to simulate a
+// NackBackoffPolicy that returns a tiny or zero delay.
+type fixedNackBackoffPolicy time.Duration
+
+func (p fixedNackBackoffPolicy) Next(_ uint32) time.Duration {
+	return time.Duration(p)
+}
+
+func TestNacksTrackerTinyDelayDoesNotPanic(t *testing.T) {
+	// A delay below 3ns used to make delay/3 zero, which made time.NewTicker panic.
+	for _, delay := range []time.Duration{time.Nanosecond, 2 * time.Nanosecond, 0, -time.Second} {
+		t.Run(delay.String(), func(t *testing.T) {
+			nmc := newNackMockedConsumer(nil)
+			var nacks *negativeAcksTracker
+			assert.NotPanics(t, func() {
+				nacks = newNegativeAcksTracker(nmc, delay, nil, log.DefaultNopLogger(), testNackPrecisionBit)
+			})
+			defer nacks.Close()
+
+			nacks.Add(&messageID{ledgerID: 1, entryID: 1})
+
+			select {
+			case id := <-nmc.Wait():
+				assert.Equal(t, int64(1), id.ledgerID)
+				assert.Equal(t, int64(1), id.entryID)
+			case <-time.After(5 * time.Second):
+				t.Fatal("message was not redelivered")
+			}
+		})
+	}
+}
+
+func TestNacksTrackerBackoffReturningZeroDoesNotPanic(t *testing.T) {
+	// A NackBackoffPolicy returning 0 (redeliver immediately) used to panic in the constructor.
+	for _, policy := range []NackBackoffPolicy{fixedNackBackoffPolicy(0), fixedNackBackoffPolicy(time.Nanosecond)} {
+		nmc := newNackMockedConsumer(policy)
+		var nacks *negativeAcksTracker
+		assert.NotPanics(t, func() {
+			nacks = newNegativeAcksTracker(nmc, time.Minute, policy, log.DefaultNopLogger(), testNackPrecisionBit)
+		})
+
+		nacks.AddMessage(new(mockMessage1))
+
+		select {
+		case id := <-nmc.Wait():
+			assert.Equal(t, int64(1), id.ledgerID)
+		case <-time.After(5 * time.Second):
+			t.Fatal("message was not redelivered")
+		}
+		nacks.Close()
+	}
+}

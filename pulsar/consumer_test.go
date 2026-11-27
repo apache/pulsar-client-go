@@ -250,6 +250,117 @@ func TestConsumerWithInvalidPriorityLevel(t *testing.T) {
 	assert.Equal(t, err.(*Error).Result(), InvalidConfiguration)
 }
 
+func TestConsumerWithNegativeNackRedeliveryDelay(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               newTopicName(),
+		SubscriptionName:    "my-sub",
+		NackRedeliveryDelay: -time.Second,
+	})
+
+	assert.Nil(t, consumer)
+	assert.NotNil(t, err)
+	assert.Equal(t, err.(*Error).Result(), InvalidConfiguration)
+}
+
+func TestConsumerWithNegativeNackRedeliveryDelayAndBackoff(t *testing.T) {
+	// With a NackBackoffPolicy the fixed NackRedeliveryDelay is unused, so a negative
+	// value must not be rejected.
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	require.Nil(t, err)
+	defer client.Close()
+
+	t.Run("CustomPolicy", func(t *testing.T) {
+		topicName := newTopicName()
+		producer, err := client.CreateProducer(ProducerOptions{
+			Topic: topicName,
+		})
+		require.Nil(t, err)
+		defer producer.Close()
+
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:               topicName,
+			SubscriptionName:    "my-sub",
+			NackRedeliveryDelay: -time.Second,
+			NackBackoffPolicy:   fixedNackBackoffPolicy(100 * time.Millisecond),
+		})
+		require.Nil(t, err)
+		defer consumer.Close()
+
+		_, err = producer.Send(context.Background(), &ProducerMessage{Payload: []byte("backoff-nack")})
+		require.Nil(t, err)
+
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		msg, err := consumer.Receive(ctx)
+		require.Nil(t, err)
+		consumer.Nack(msg)
+
+		redelivered, err := consumer.Receive(ctx)
+		require.Nil(t, err)
+		assert.Equal(t, "backoff-nack", string(redelivered.Payload()))
+		consumer.Ack(redelivered)
+	})
+
+	t.Run("DefaultPolicy", func(t *testing.T) {
+		consumer, err := client.Subscribe(ConsumerOptions{
+			Topic:                          newTopicName(),
+			SubscriptionName:               "my-sub",
+			NackRedeliveryDelay:            -time.Second,
+			EnableDefaultNackBackoffPolicy: true,
+		})
+		require.Nil(t, err)
+		consumer.Close()
+	})
+}
+
+func TestConsumerWithTinyNackRedeliveryDelay(t *testing.T) {
+	client, err := NewClient(ClientOptions{
+		URL: lookupURL,
+	})
+	assert.Nil(t, err)
+	defer client.Close()
+
+	topicName := newTopicName()
+	producer, err := client.CreateProducer(ProducerOptions{
+		Topic: topicName,
+	})
+	require.Nil(t, err)
+	defer producer.Close()
+
+	// A delay of a few nanoseconds used to panic in Subscribe.
+	consumer, err := client.Subscribe(ConsumerOptions{
+		Topic:               topicName,
+		SubscriptionName:    "my-sub",
+		NackRedeliveryDelay: time.Nanosecond,
+	})
+	require.Nil(t, err)
+	defer consumer.Close()
+
+	_, err = producer.Send(context.Background(), &ProducerMessage{Payload: []byte("tiny-nack")})
+	require.Nil(t, err)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	msg, err := consumer.Receive(ctx)
+	require.Nil(t, err)
+	consumer.Nack(msg)
+
+	redelivered, err := consumer.Receive(ctx)
+	require.Nil(t, err)
+	assert.Equal(t, "tiny-nack", string(redelivered.Payload()))
+	consumer.Ack(redelivered)
+}
+
 func TestPriorityConsumer(t *testing.T) {
 	client, err := NewClient(ClientOptions{
 		URL: lookupURL,

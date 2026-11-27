@@ -215,7 +215,11 @@ type ConsumerOptions struct {
 	EnableAutoScaledReceiverQueueSize bool
 
 	// NackRedeliveryDelay specifies the delay after which to redeliver the messages that failed to be
-	// processed. Default is 1 min. (See `Consumer.Nack()`)
+	// processed. Default is 1 min. When NackBackoffPolicy is not set (and EnableDefaultNackBackoffPolicy
+	// is false), a negative value is rejected with an InvalidConfiguration error; otherwise this delay
+	// is unused. Very small positive values are accepted, but the interval at which expired nacks are
+	// polled is never set below 1 ms, so actual redelivery may occur later than the configured delay.
+	// (See `Consumer.Nack()`)
 	NackRedeliveryDelay time.Duration
 
 	// NackPrecisionBit specifies the precision bit for nack redelivery delay.
