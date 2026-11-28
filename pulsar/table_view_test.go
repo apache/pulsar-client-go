@@ -1022,3 +1022,157 @@ func TestHandleMessageSkipsOnDecodeError(t *testing.T) {
 	assert.Equal(t, 1, listenerCalls,
 		"listener must be called exactly once, only for the successful message")
 }
+
+// TestForEachAndListenNoLossOrDuplicateUnderConcurrentWrites verifies the
+// atomicity contract of ForEachAndListen: a message that arrives after the
+// snapshot replay but before (or concurrently with) listener registration
+// must still be observed by the action exactly once.
+//
+// The regression this guards against is a window where handleMessage can
+// slip in between "ForEach releases dataMu" and "append(listeners, action)":
+//   - handleMessage acquires dataMu, writes the key, dispatches to
+//     tv.listeners (action is NOT yet in the slice) → listener miss;
+//   - the key was not in the snapshot ForEach iterated either → replay miss;
+//   - net effect: the key is silently dropped from the action's view.
+//
+// We force this interleaving deterministically by having the action itself
+// block for a while inside ForEach (which holds dataMu). A separate writer
+// goroutine calls handleMessage during that block and parks on dataMu.
+// Under the buggy implementation, when ForEach finally releases dataMu the
+// parked writer runs handleMessage before ForEachAndListen can append the
+// listener, so the probe key is observed by nobody. The fixed implementation
+// keeps dataMu held across the append, forcing the writer to wait until the
+// listener is already registered, which guarantees exactly-once delivery.
+func TestForEachAndListenNoLossOrDuplicateUnderConcurrentWrites(t *testing.T) {
+	// The race is scheduling-dependent and only reproduces on a subset of
+	// iterations under the buggy implementation. Repeat many times so a
+	// buggy regression is virtually guaranteed to be caught, while a
+	// correct implementation must satisfy the invariant on EVERY iteration.
+	const iterations = 100
+
+	for it := 0; it < iterations; it++ {
+		tv := &TableViewImpl{
+			// Prime with one existing entry so ForEach is guaranteed to invoke
+			// the action at least once (and thus give us a hook to stall inside
+			// the critical section).
+			data: map[string]interface{}{
+				"prime": "v",
+			},
+			logger:  log.DefaultNopLogger(),
+			options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
+		}
+
+		var mu sync.Mutex
+		seen := make(map[string]int)
+
+		// actionEntered is closed the first time the action runs, i.e. while
+		// ForEach is still holding dataMu. actionCanReturn gates the action so
+		// we can keep dataMu locked long enough for the writer to park on it.
+		actionEntered := make(chan struct{})
+		actionCanReturn := make(chan struct{})
+
+		writerDone := make(chan struct{})
+		go func() {
+			defer close(writerDone)
+			// Wait until we know the action is executing inside ForEach,
+			// then issue the probe write. handleMessage will park on dataMu
+			// until ForEach releases it, which is exactly the window we are
+			// probing.
+			<-actionEntered
+			tv.handleMessage(&mockMessage{key: "probe", payload: []byte("v")})
+		}()
+
+		err := tv.ForEachAndListen(func(key string, _ interface{}) error {
+			mu.Lock()
+			seen[key]++
+			mu.Unlock()
+
+			if key == "prime" {
+				// Signal the writer and stall so its handleMessage call has
+				// ample time to park on dataMu. We are still holding dataMu
+				// here via ForEach's lock.
+				close(actionEntered)
+				select {
+				case <-actionCanReturn:
+				case <-time.After(50 * time.Millisecond):
+				}
+			}
+			return nil
+		})
+		require.NoError(t, err)
+		close(actionCanReturn)
+
+		<-writerDone
+
+		// Sentinel confirms that any pending listener dispatch is flushed
+		// and that the listener is still active after ForEachAndListen.
+		tv.handleMessage(&mockMessage{key: "sentinel", payload: []byte("v")})
+
+		mu.Lock()
+		primeCount := seen["prime"]
+		probeCount := seen["probe"]
+		sentinelCount := seen["sentinel"]
+		mu.Unlock()
+
+		if primeCount != 1 {
+			t.Fatalf("iter %d: existing entry \"prime\" must be replayed exactly once, got %d",
+				it, primeCount)
+		}
+		// "probe" is the key written during the replay/register window.
+		// Buggy implementation: probeCount == 0 on some iterations (neither
+		// snapshot nor listener). Correct implementation: probeCount == 1
+		// on EVERY iteration.
+		if probeCount == 0 {
+			t.Fatalf("iter %d: ForEachAndListen lost the probe key: it was "+
+				"written between snapshot replay and listener registration, "+
+				"and observed by neither path", it)
+		}
+		if probeCount != 1 {
+			t.Fatalf("iter %d: probe key must be delivered exactly once, got %d",
+				it, probeCount)
+		}
+		if sentinelCount != 1 {
+			t.Fatalf("iter %d: listener must still fire for messages after "+
+				"ForEachAndListen returns, got sentinel count %d", it, sentinelCount)
+		}
+	}
+}
+
+// TestForEachAndListenReplaysExistingEntriesExactlyOnce is a deterministic
+// companion test: when there are no concurrent writers, every pre-existing
+// entry must be replayed to the action exactly once, and the listener must
+// also be registered so that subsequent writes are observed.
+func TestForEachAndListenReplaysExistingEntriesExactlyOnce(t *testing.T) {
+	tv := &TableViewImpl{
+		data: map[string]interface{}{
+			"a": "1",
+			"b": "2",
+			"c": "3",
+		},
+		logger:  log.DefaultNopLogger(),
+		options: TableViewOptions{SchemaValueType: reflect.TypeOf("")},
+	}
+
+	counts := make(map[string]int)
+	err := tv.ForEachAndListen(func(key string, _ interface{}) error {
+		counts[key]++
+		return nil
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, map[string]int{"a": 1, "b": 1, "c": 1}, counts,
+		"each pre-existing entry must be replayed exactly once")
+
+	// A subsequent handleMessage should trigger the registered listener.
+	tv.handleMessage(&mockMessage{key: "d", payload: []byte("v")})
+	assert.Equal(t, 1, counts["d"],
+		"listener must receive messages delivered after ForEachAndListen returns")
+}
+
+// firstN returns up to n items from s, used to keep failure messages readable.
+func firstN(s []string, n int) []string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n]
+}
